@@ -1,10 +1,10 @@
-# ProvenanceEF2 — Star Trek: Voyager — Elite Force II (Android)
+# P:EFII — Star Trek: Voyager — Elite Force II (Android)
 
 A native Android port of *Star Trek: Voyager — Elite Force II*, built on a
 de-MOHAAd id Tech 3 engine lineage. Every function, struct, table and constant is
-held to the EF2 SDK and the retail Mac PPC binaries; the engine, the game DLL, the
-cgame, the GLES 3.0 renderer and the tiki/skeletor model layer all build from the
-tree in `app/src/main/cpp/`.
+held to the EF2 SDK and the retail Mac PPC binaries; the engine, the game DLL,
+the cgame, the GLES 3.0 renderer and the tiki/skeletor model layer all build from
+the tree in `app/src/main/cpp/`.
 
 No game data is included. Build the APK; supply your own retail *Elite Force II*
 installation at run time.
@@ -15,9 +15,11 @@ installation at run time.
 |---|---|
 | `app/` | the Android module (`app/build.gradle.kts`, manifest, assets, java, res) |
 | `app/src/main/cpp/` | **all native source**: engine, `fgame`, `cgame`, `renderergles3`, tiki, skeletor, uilib, qcommon, and the vendored third-party libraries |
-| `docs/` | the provenance documentation (board, rules, reverse-engineering reference, validation, release plan) and `docs/closeouts/` for historical material |
+| `docs/` | project documentation: `ARCHITECTURE.md`, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`, `RE_REFERENCE_CITATIONS.tsv`, and `docs/closeouts/` for historical material |
 | `docs/tools/`, `docs/scripts/` | evidence tools and the build/capture wrappers |
-| `docs/evidence/` | untracked, on-disk-only evidence: the Mac PPC decompile corpus, the retail PC binary, the SDK source and the oracle corpus |
+| `docs/evidence/`, `docs/oracle/` | untracked, on-disk-only evidence: the Mac PPC decompile corpus, the retail binary, the SDK source and the oracle corpus |
+
+Process and provenance notes are kept out of the repository, on disk only.
 
 ## Build
 
@@ -50,10 +52,9 @@ The gate for every change: 0 warnings / 0 errors on a clean rebuild and
 
 ## Documentation
 
-Start at `docs/WORK_INDEX.md`. The binding rules are `docs/STANDING_RULES.md`;
-the live board is `docs/DIVERGENCE_LEDGER_0904.md`; the reverse-engineering
-reference is `docs/RE_REFERENCE.md` with the machine-readable citation index
-`docs/notes/RE_REFERENCE_CITATIONS.tsv`.
+Start at `docs/ARCHITECTURE.md`. `docs/BUILD.md` covers both targets;
+the GLES 3.0 backend; `docs/PROVENANCE.md` the evidence and the citation register;
+`docs/ANDROID_PORT.md` the launcher, import and controls.
 
 ## Licence
 

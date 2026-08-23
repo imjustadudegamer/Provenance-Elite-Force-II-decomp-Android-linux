@@ -44,3 +44,6 @@ __pycache__/
 *~
 .DS_Store
 
+# ---- process and provenance material: on disk only, never in the repository ----
+personal/
+
