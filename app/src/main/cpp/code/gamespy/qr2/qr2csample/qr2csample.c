@@ -1,17 +1,3 @@
-/***********************
-qrcsample.c
-GameSpy Query & Reporting SDK 
-  
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-******
-
- See the ReadMe file for qrcsample info, and consult the GameSpy Query & Reporting 2
- SDK documentation for more information on implementing the qr2 SDK.
-
-************************/
 
 #include "../qr2.h"
 

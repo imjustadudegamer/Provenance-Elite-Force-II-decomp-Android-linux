@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #ifndef __GSSSL_H__
 #define __GSSSL_H__
 
@@ -103,7 +102,6 @@ typedef struct gsSSLRecordHeaderMsg
 	unsigned char versionMinor; 
 	unsigned char lengthNBO[2]; 
 	
-	// WARNING: lengthNBO can NOT be an unsigned short
 
 } gsSSLRecordHeaderMsg;
 
@@ -116,7 +114,7 @@ typedef struct gsSSLClientHelloMsg
 	unsigned char versionMinor;  
 	unsigned char time[4];       
 	unsigned char random[28];    
-	unsigned char sessionIdLen;  // how many of the bytes that follow are session info? (def:0)
+	unsigned char sessionIdLen;   
 	
 	unsigned short cipherSuitesLength; 
 	unsigned short cipherSuites[GS_SSL_NUM_CIPHER_SUITES];

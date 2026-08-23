@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "ghttpCommon.h"
 #if defined(MATRIXSSL)
 #include "../matrixssl/matrixssl.h"
@@ -872,7 +871,6 @@ GHIEncryptionResult ghiEncryptorSslStartFunc(struct GHIConnection * connection,
 
 	if (GHTTPFalse == ghiAppendDataToBuffer(&connection->sendBuffer, (const char*)&helloMsg, sizeof(gsSSLClientHelloMsg)))
 	{
-		// assert or just return?
 		return GHIEncryptionResult_BufferTooSmall;
 	}
 	
@@ -1179,7 +1177,6 @@ GHIEncryptionResult ghiEncryptorProcessSSLHandshake(struct GHIConnection * conne
 				if (certLength > (data->len - data->pos))
 					return GHIEncryptionResult_Error; 
 
-				// 0xFFFF is max message size in SSL v3.0, we don't currently support
 				if (certLength > 0xFFFF) 
 					return GHIEncryptionResult_Error;
 	
@@ -1364,7 +1361,6 @@ GHIEncryptionResult ghiEncryptorProcessSSLHandshake(struct GHIConnection * conne
 			changeCipherSpec->lengthNBO[1] = 1; 
 			connection->sendBuffer.len += sizeof(gsSSLRecordHeaderMsg);
 			connection->sendBuffer.data[connection->sendBuffer.len++] = 0x01; 
-			// DO NOT add it to the running handshake hash (its content is not GS_SSL_CONTENT_HANDSHAKE)
 
 			ghiEncryptorGenerateEncryptionKeys(sslInterface);
 

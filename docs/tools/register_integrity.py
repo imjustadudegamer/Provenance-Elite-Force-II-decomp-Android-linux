@@ -5,7 +5,7 @@ Mac PPC symbol tables, and every function size it states must match.
 The register (docs/agent_reports/w30final_0912_master.tsv) carries the evidence for each
 divergence row.  This tool extracts every `@0xADDR` citation from the evidence columns and
 every `(NNNN B)` / `size=NNNN` size statement next to it, then checks them against
-docs/evidence/mac_symbols/{engine_EF2exe,game_dll,cgame_dll}_symbols.txt -- the tables are kept
+personal/evidence/mac_symbols/{engine_EF2exe,game_dll,cgame_dll}_symbols.txt -- the tables are kept
 SEPARATE because the same address means different things in the engine, the game DLL and
 the cgame DLL (a cross-table merge produces false mismatches; that bug bit the first run
 of this tool).
@@ -21,9 +21,9 @@ from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + ""
 TABLES = {
-    "engine": ROOT + "/docs/evidence/mac_symbols/engine_EF2exe_symbols.txt",
-    "game": ROOT + "/docs/evidence/mac_symbols/game_dll_symbols.txt",
-    "cgame": ROOT + "/docs/evidence/mac_symbols/cgame_dll_symbols.txt",
+    "engine": ROOT + "/personal/evidence/mac_symbols/engine_EF2exe_symbols.txt",
+    "game": ROOT + "/personal/evidence/mac_symbols/game_dll_symbols.txt",
+    "cgame": ROOT + "/personal/evidence/mac_symbols/cgame_dll_symbols.txt",
 }
 SYM = defaultdict(list)
 

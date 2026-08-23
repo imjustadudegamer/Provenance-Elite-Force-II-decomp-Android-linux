@@ -479,7 +479,7 @@ void main()
 		color.a = max(f, 0.0);
 	}
 	else if (u_AlphaGen == 15) {				/* AGEN_CONSTANT :1180 */
-		/* The oracle's AGEN_CONSTANT arm (the deleted docs/oracle/tr_shade.c:1180-1181)
+		/* The oracle's AGEN_CONSTANT arm (the deleted personal/oracle/tr_shade.c:1180-1181)
 		   reads pStage->colorConst[3], NOT the stage's sCoord/tCoord
 		   alphaConst byte: ParseStage's `alphaGen const` arm
 		   (tr_shader.c:1683-1684) writes colorConst[3], and only
@@ -508,7 +508,7 @@ void main()
 		color.a = floor(255.0 * u_EntityFade);
 	}
 	else if (u_AlphaGen == 22 || u_AlphaGen == 23) {
-		/* AGEN_DOT_VIEW / AGEN_ONE_MINUS_DOT_VIEW, the deleted docs/oracle/tr_shade_calc.c
+		/* AGEN_DOT_VIEW / AGEN_ONE_MINUS_DOT_VIEW, the deleted personal/oracle/tr_shade_calc.c
 		   RB_CalcAlphaFromDotView :2620-2655 and RB_CalcAlphaFromOneMinusDotView
 		   :2660-2695:
 		       VectorCopy(tr.refdef.viewaxis[0], viewInModel);

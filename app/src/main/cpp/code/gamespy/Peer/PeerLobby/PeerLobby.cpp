@@ -1,4 +1,3 @@
-// PeerLobby.cpp : Defines the class behaviors for the application.
 
 #include "stdafx.h"
 #include "PeerLobby.h"
@@ -17,8 +16,6 @@ static char THIS_FILE[] = __FILE__;
 
 
 BEGIN_MESSAGE_MAP(CPeerLobbyApp, CWinApp)
-		// NOTE - the ClassWizard will add and remove mapping macros here.
-		//    DO NOT EDIT what you see in these blocks of generated code!
 	ON_COMMAND(ID_HELP, CWinApp::OnHelp)
 END_MESSAGE_MAP()
 

@@ -318,7 +318,6 @@ void gviAddPacketToSourceList(GVISourceList sourceList,
 		else if(gviSource->m_clockOffsetAverage >= GVI_FRAMESTAMP_MAX)
 			gviSource->m_clockOffsetAverage -= GVI_FRAMESTAMP_MAX;
 
-		// calculate the divergence
 		divergence = (GVFrameStamp)(gviSource->m_clockOffset - (GVFrameStamp)gviSource->m_clockOffsetAverage);
 
 		if(gviIsFrameStampGT(divergence, GVI_DIVERGENCE_HIGH_WATERMARK))

@@ -91,7 +91,6 @@ static SBBool FIFORemove(SBServerFIFO *fifo, SBServer server)
 			if (fifo->last == hold)
 				fifo->last = prev;
 			fifo->count--;
-		//	assert((fifo->count == 0 && fifo->first == NULL && fifo->last == NULL) || fifo->count > 0);
 			return SBTrue;
 		}
 		prev = hold;
@@ -329,7 +328,6 @@ void SBEngineCleanup(SBQueryEngine *engine)
 }
 
 
-//NOTE: the server must not be in the pending or update list currently!
 void SBQueryEngineUpdateServer(SBQueryEngine *engine, SBServer server, int addfront, int querytype, SBBool usequerychallenge)
 {
 	FIFODebugCheckAdd(&engine->pendinglist, server);

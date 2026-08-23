@@ -1,8 +1,3 @@
-/* [SCE CONFIDENTIAL DOCUMENT]
- * PLAYSTATION(R)3 SPU Optimized Bullet Physics Library (http://bulletphysics.com)
- *                Copyright (C) 2007 Sony Computer Entertainment Inc.
- *                                                All Rights Reserved.
- */
 
 
 #ifndef __SPURS_SUPPORT_INTERFACE_H
@@ -20,7 +15,7 @@
 #if CELL_SDK_VERSION < 0x081000
 #define CELL_SPURS_TASK_ERROR_AGAIN CELL_SPURS_EAGAIN
 #define CELL_SPURS_TASK_ERROR_BUSY CELL_SPURS_EBUSY
-#endif // CELL_SDK_VERSION < 0x081000
+#endif  
 
 #else 
 #include <cell/spurs/task.h>

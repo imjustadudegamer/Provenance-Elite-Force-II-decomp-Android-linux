@@ -922,9 +922,6 @@ void InitializeProfile(Profile * profile)
 	highestConnections = max(highestConnections, numConnections);
 }
 
-/***************
-** VALIDATION **
-***************/
 void GetUserNicksCallback(GPConnection * connection, GPGetUserNicksResponseArg * arg, ValidationData * validationData)
 {
 	int i;

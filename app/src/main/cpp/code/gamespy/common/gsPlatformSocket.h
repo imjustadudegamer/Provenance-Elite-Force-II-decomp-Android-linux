@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #ifndef __GSSOCKET_H__
 #define __GSSOCKET_H__
 
@@ -24,7 +23,6 @@ extern "C" {
 
 
 #if (0) 
-// also out debug libs will assert all params comming in.
 typedef enum
 {
 	GS_SOCKERR_NONE = 0,   

@@ -2,7 +2,7 @@
 """Delete only the preprocessor lines that are provably compiled out.
 
 Retail EF2 has no curl / mumble / voip / vorbis / opus, verified against
-docs/evidence/mac_symbols/macbin/EF2_mac_engine.pef: zero occurrences of mumble, voip,
+personal/evidence/mac_symbols/macbin/EF2_mac_engine.pef: zero occurrences of mumble, voip,
 opus, vorbis and openal; the lone `curl' hit is the literal "curly brace".
 The port carries the ioquake3 `#ifdef'd implementations, compiled out today
 but left as dead text.

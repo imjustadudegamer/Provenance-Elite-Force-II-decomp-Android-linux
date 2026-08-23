@@ -1,17 +1,3 @@
-/******
-gcdkeyc.c
-GameSpy CDKey SDK Client Code
-  
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-******
-
- Please see the GameSpy CDKey SDK documentation for more 
- information
-
-******/
 #include "../md5.h"
 #include "gcdkeyc.h"
 #include <string.h>
@@ -42,8 +28,6 @@ void gcd_compute_response(char *cdkey, char *challenge, char response[RESPONSE_S
 	anyrandom = (rand() << 16 | rand()); 
 	sprintf(randstr,"%.8x",anyrandom);
 
-	/* auth response   = MD5(cdkey + random mod 0xffff + challenge) */
-	/* reauth response = MD5(challenge + random mode 0xffff + cdkey) */ 
 	if (method == 0)
 		sprintf(rawout, "%s%d%s",cdkey, anyrandom % 0xFFFF , challenge );
 	else

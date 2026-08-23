@@ -11,9 +11,8 @@ captures/
 *.apk
 *.apk.idsig
 local.properties
-docs/evidence/
 logs/
-docs/oracle/
+personal/oracle/
 *.id0
 *.id1
 *.id2

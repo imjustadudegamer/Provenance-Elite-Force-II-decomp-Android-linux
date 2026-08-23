@@ -40,10 +40,10 @@ file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
 # EF2: the Mac GAME binary carries 196 Bot*/AINode_* + 8 AIEnter_* symbols plus the
 # G_AddBot / G_AddRandomBot / G_BotConnect / G_CheckBotSpawn / G_CountBotPlayers /
 # G_CheckBotSpawn / G_GetBotInfoByName / G_InitBots / G_LoadBots / G_LoadBotsFromFile /
-# G_SpawnBots / SV_AddBot_f glue (docs/evidence/mac_symbols/game_dll_symbols.txt:1156-1263,
+# G_SpawnBots / SV_AddBot_f glue (personal/evidence/mac_symbols/game_dll_symbols.txt:1156-1263,
 # 1326-1333, 4092-4104), the engine reaches it through the BOTAI_START_FRAME game
 # export, and the files are byte-identical to the SDK's copies
-# (docs/evidence/ef2-sdk/ef2-sdk/dlls/game).  Their port-side surface notes live in
+# (personal/evidence/ef2-sdk/ef2-sdk/dlls/game).  Their port-side surface notes live in
 # fgame/ai_main.h and at each adjusted call site.
 
 # retail fgame/scriptvariable.cpp is the game's implementation; the MOHAA
@@ -126,7 +126,7 @@ set(RESIDUE_CGAME_DROP mem_tempalloc.cpp)
 
 # EF2: cgame compiles the RETAIL Event/Listener/Class/str/Script core, not the
 # MOHAA corepp+script one.  Retail instances these files per module
-# (docs/evidence/mac_symbols/pc_binary_source_paths.txt:24-27 -- dlls/cgame/{class,
+# (personal/evidence/mac_symbols/pc_binary_source_paths.txt:24-27 -- dlls/cgame/{class,
 # listener,script,str}.cpp vs dlls/game/{class,listener,script,str}.cpp:62-164;
 # the SDK headers say it themselves, "instanced in each one of these
 # directories"), and retail's cgame carries no ScriptVariable / ScriptException

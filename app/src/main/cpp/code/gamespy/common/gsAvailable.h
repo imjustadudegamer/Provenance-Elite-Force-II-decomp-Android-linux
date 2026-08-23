@@ -13,7 +13,6 @@ extern "C" {
 #define GSIStartAvailableCheck   GSIStartAvailableCheckW
 #endif
 
-// the available check contacts a backend server at "<gamename>.available.gamespy.com"
 extern char GSIACHostname[64];
 
 typedef enum

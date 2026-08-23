@@ -56,7 +56,7 @@ def categorize_md(relpath):
     p = relpath
     if p.startswith("docs/notes/") and "SESSION_" in p:
         return "session-record"
-    if "/golden/" in p or "/oracle/" in p or p.startswith("docs/oracle/"):
+    if "/golden/" in p or "/oracle/" in p or p.startswith("personal/oracle/"):
         return "oracle"
     if p.startswith("docs/agent_reports/"):
         return "workstream-report"

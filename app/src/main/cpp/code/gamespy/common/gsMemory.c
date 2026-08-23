@@ -1,6 +1,5 @@
 
 
-///////////////////////////////////////////////////////////////////////////////
 #include "gsPlatform.h"
 #include "gsPlatformUtil.h"
 #include "gsMemory.h"
@@ -91,7 +90,6 @@ static void* MEM_MANAGER_CALL _gsi_realloc(void* ptr, size_t size)
 	static void* _gsi_memalign(size_t boundary, size_t size)
 	{
 		void *ptr = calloc((size)/(boundary), (boundary));
-		// truncated address.  size_t is pointer-width, so the assertion is real.
 		GS_ASSERT((((size_t)ptr)% boundary)==0);
 		return ptr;
 	}
@@ -178,7 +176,7 @@ static	gsi_u32			MemTagStackIndex					= 0;
 #define MEM_IS_POWER_OF_2(x)	(((x) & ((x)-1)) == 0)	
 #define MEMALIGN_POWEROF2(x,a)	(((gsi_uint)(x)+(a-1)) &~ ( ((gsi_uint)(a)) -1))
 
-#if(1)	// enable assert, otherwise this runs faster
+#if(1)	 
 	#define MP_ASSERT(x)	GS_ASSERT(x)
 #else
 	#define MP_ASSERT(x)	
@@ -542,7 +540,6 @@ void MEM_CHUNK_POOLSplitChunk(MEM_CHUNK_POOL *_this, MEM_CHUNK *header, gsi_bool
 	NewHeader = (MEM_CHUNK *) ((gsi_u8*)header + MEM_CHUNKMemUsedGet(header) + sizeof(MEM_CHUNK));
 	NewHeader = (MEM_CHUNK *)MEMALIGN_POWEROF2(NewHeader,sizeof(MEM_CHUNK));
 	
-	//assert we have enough room for this new chunk
 	MP_ASSERT ((gsi_uint)NewHeader  + 2 * sizeof(MEM_CHUNK) <= (gsi_uint)header->next)
 	
 	#if (MEM_PROFILE)

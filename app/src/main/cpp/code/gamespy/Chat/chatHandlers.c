@@ -1,12 +1,3 @@
-/*
-GameSpy Chat SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include <stdio.h>
 #include <string.h>
@@ -1239,7 +1230,6 @@ static ciModeChange * ciParseMode(char * mode, char ** params, int numParams)
 			break;
 
 		default:
-			//assert(0);
 			modeChange = -1;
 		}
 
@@ -3197,7 +3187,6 @@ void ciRplListStartHandler(CHAT chat, const ciServerMessage * message)
 	{
 		LISTData * data = (LISTData *)filter->data;
 		assert(data != NULL);
-		//assert(!data->gotStart);
 
 		data->gotStart = CHATTrue;
 	}
@@ -3235,7 +3224,6 @@ void ciRplListHandler(CHAT chat, const ciServerMessage * message)
 			LISTData * data = (LISTData *)filter->data;
 
 			assert(data != NULL);
-			//assert(data->gotStart);
 
 			len = (int)(strlen(message->params[1]) + 1);
 			channel = (char *)gsimalloc((unsigned int)len);

@@ -494,9 +494,6 @@ void CGhttpmfcDlg::OnIeSettings()
 			str.ReleaseBuffer();
 			if(SUCCEEDED(result) && (len > 0))
 			{
-				// Use the same proxy for all protocols: "single_proxy_address:13"
-				// individualized protocols: "ftp=ftp_address;gopher=gopher_address:4;http=http_address:1;https=secure_address:2;socks=socks_address:5"
-				// If only protocol is to use proxy: "socks=socks_address:5"
 				nStart = str.Find("http=");
 				if(nStart != -1)
 				{

@@ -14,14 +14,12 @@ static char THIS_FILE[] = __FILE__;
 CWaitingDlg::CWaitingDlg(CWnd* pParent )
 	: CDialog(CWaitingDlg::IDD, pParent)
 {
-		// NOTE: the ClassWizard will add member initialization here
 }
 
 
 void CWaitingDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialog::DoDataExchange(pDX);
-		// NOTE: the ClassWizard will add DDX and DDV calls here
 }
 
 

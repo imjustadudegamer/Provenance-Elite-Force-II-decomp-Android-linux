@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "sciReport.h"
 #include "sciSerialize.h"
 #include "../md5.h"
@@ -331,7 +330,6 @@ SCResult SC_CALL sciReportAddIntValue(SCIReport * theReport,
 		theReport->mCurEntityKeyCount++;
 		sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mCurEntityStartPos], (gsi_i16)theReport->mCurEntityKeyCount);
 	}
-	// Needs real error handling code or an assertion on a non-constant expression
 
 	sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mBuffer.mPos], (gsi_i16)theKeyId);
 	theReport->mBuffer.mPos += sizeof(gsi_u16);
@@ -426,7 +424,6 @@ SCResult SC_CALL sciReportAddShortValue(SCIReport * theReport,
 		theReport->mCurEntityKeyCount++;
 		sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mCurEntityStartPos], (gsi_i16)theReport->mCurEntityKeyCount);
 	}
-	// Needs real error handling code or an assertion on a non-constant expression
 
 	sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mBuffer.mPos], (gsi_i16)theKeyId);
 	theReport->mBuffer.mPos += sizeof(gsi_u16);
@@ -474,7 +471,6 @@ SCResult SC_CALL sciReportAddByteValue(SCIReport * theReport,
 		theReport->mCurEntityKeyCount++;
 		sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mCurEntityStartPos], (gsi_i16)theReport->mCurEntityKeyCount);
 	}
-	// Needs real error handling code or an assertion on a non-constant expression
 
 	sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mBuffer.mPos], (gsi_i16)theKeyId);
 	theReport->mBuffer.mPos += sizeof(gsi_u16);
@@ -522,7 +518,6 @@ SCResult SC_CALL sciReportAddFloatValue(SCIReport * theReport,
 		theReport->mCurEntityKeyCount++;
 		sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mCurEntityStartPos], (gsi_i16)theReport->mCurEntityKeyCount);
 	}
-	// Needs real error handling code or an assertion on a non-constant expression
 
 	sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mBuffer.mPos], (gsi_i16)theKeyId);
 	theReport->mBuffer.mPos += sizeof(gsi_u16);
@@ -585,7 +580,6 @@ SCResult SC_CALL sciReportAddStringValue(SCIReport *      theReport,
 		theReport->mCurEntityKeyCount++;
 		sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mCurEntityStartPos], (gsi_i16)theReport->mCurEntityKeyCount);
 	}
-	// Needs real error handling code or an assertion on a non-constant expression
 
 	sciSerializeInt16((gsi_u8 *)&theReport->mBuffer.mData[theReport->mBuffer.mPos], (gsi_i16)theKeyId);
 	theReport->mBuffer.mPos += sizeof(gsi_u16);

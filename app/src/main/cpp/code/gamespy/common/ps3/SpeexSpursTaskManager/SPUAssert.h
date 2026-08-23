@@ -1,7 +1,6 @@
 #ifndef __SPU_ASSERT_H__
 #define __SPU_ASSERT_H__
 
-// Better assert on SPU side, but it assumes spu_printf works.
 
 #ifdef _DEBUG
 

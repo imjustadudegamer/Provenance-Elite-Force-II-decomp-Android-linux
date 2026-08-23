@@ -1,5 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
-//   Note:  This code is not intended to be used in a retail program
 #include <cell/sysmodule.h>
 #include <netex/net.h>
 #include <netex/libnetctl.h>

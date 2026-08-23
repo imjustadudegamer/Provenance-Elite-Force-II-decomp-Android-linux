@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsCommon.h"
 #include "gsPlatformUtil.h"
 
@@ -124,7 +123,6 @@ static void *gsiResolveHostnameThread(void * arg)
 }
 #endif 
 
-// NOTE: The compiler option "-lpthread" must used for this
 #if defined(_UNIX)
 static void gsiResolveHostnameThread(void * arg)
 {
@@ -656,7 +654,6 @@ void msleep(gsi_time msec)
 #endif
 }
 
-// NOTE: some portions of this copied from standard C library
 #if defined(_NITRO) || defined(_REVOLUTION)
 
 #define MKTIME_ERROR	  (time_t)(-1)
@@ -1036,7 +1033,6 @@ void B64Decode(const char *input, char *output, int inlen, int * outlen, int enc
 			break;
 		else 
 		{
-			//	(assert(0)); //bad input data
 			if (outlen)
 				*outlen = 0;
 			output[0] = '\0';

@@ -1,12 +1,3 @@
-/*
-GameSpy Peer SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include <limits.h>
 #include "peer.h"
@@ -1581,35 +1572,6 @@ void peerCreateStagingRoomWithSocketW
 }
 #endif
 
-/*
-qr2_t peerGetReportingRecord(PEER peer)
-{
-	PEER_CONNECTION;
-	if (!connection->title[0])
-		return NULL;
-
-	if (!connection->connected)
-		return NULL;
-	
-	assert(connection->queryReporting || connection->autoMatchReporting);
-	// When we are reporting normal games, the normal qr2 record
-	// is returned.
-	if (connection->queryReporting)
-	{
-		return connection->queryReporting;
-	}
-
-	
-	// When we are reporting automatch games, the automatch qr2 record
-	// is returned.
-	if (peerIsAutoMatching(peer) && connection->autoMatchReporting)
-	{
-		return connection->autoMatchReporting;
-	}
-	
-	return NULL;
-}
-*/
 
 void peerLeaveRoomA
 (

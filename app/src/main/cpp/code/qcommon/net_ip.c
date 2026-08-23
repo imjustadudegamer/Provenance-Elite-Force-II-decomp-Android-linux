@@ -362,7 +362,6 @@ const char	*NET_AdrToStringwPort (netadr_t a)
 	return s;
 }
 
-/* address-free form for logs; four slots so one printf can name several endpoints */
 const char	*NET_AdrToLogString (netadr_t a)
 {
 	static	char	s[4][NET_ADDRSTRMAXLEN];

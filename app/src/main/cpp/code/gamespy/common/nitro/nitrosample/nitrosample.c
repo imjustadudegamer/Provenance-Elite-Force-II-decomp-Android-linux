@@ -4,7 +4,6 @@
 #include "menu.h"
 #include "screen.h"
 
-/************************************************************************/
 
 static const char mscHostServer[] = "Host Server";
 static const char mscListServers[] = "List Servers";

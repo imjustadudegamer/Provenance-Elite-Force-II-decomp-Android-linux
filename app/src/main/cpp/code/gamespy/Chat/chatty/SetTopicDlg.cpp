@@ -26,6 +26,5 @@ void CSetTopicDlg::DoDataExchange(CDataExchange* pDX)
 
 
 BEGIN_MESSAGE_MAP(CSetTopicDlg, CDialog)
-		// NOTE: the ClassWizard will add message map macros here
 END_MESSAGE_MAP()
 

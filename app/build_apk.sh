@@ -31,16 +31,16 @@ export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}"
 # there ("Read-only file system") and Gradle dies on its wrapper lock before it
 # builds anything -- the failure is `gradle-8.13-bin.zip.lck ... Read-only file
 # system`, not a build error.  When $HOME is not writable we fall back to copies
-# kept under docs/evidence/ (gitignored), so the build completes with no privilege
+# kept under personal/evidence/ (gitignored), so the build completes with no privilege
 # escalation at all.  A normal interactive shell has a writable $HOME and is
 # completely unaffected -- no path here changes for it.
 #
-if [ ! -w "${HOME}/.gradle" ] && [ -d "${ROOT}/docs/evidence/gradle-home/wrapper" ]; then
-    export GRADLE_USER_HOME="${GRADLE_USER_HOME:-${ROOT}/docs/evidence/gradle-home}"
+if [ ! -w "${HOME}/.gradle" ] && [ -d "${ROOT}/personal/evidence/gradle-home/wrapper" ]; then
+    export GRADLE_USER_HOME="${GRADLE_USER_HOME:-${ROOT}/personal/evidence/gradle-home}"
     echo "note: \$HOME/.gradle is not writable -> GRADLE_USER_HOME=${GRADLE_USER_HOME}"
 fi
-if [ ! -w "${HOME}/.cache" ] && [ -d "${ROOT}/docs/evidence/ccache" ]; then
-    export CCACHE_DIR="${CCACHE_DIR:-${ROOT}/docs/evidence/ccache}"
+if [ ! -w "${HOME}/.cache" ] && [ -d "${ROOT}/personal/evidence/ccache" ]; then
+    export CCACHE_DIR="${CCACHE_DIR:-${ROOT}/personal/evidence/ccache}"
     echo "note: \$HOME/.cache is not writable -> CCACHE_DIR=${CCACHE_DIR}"
 fi
 # AGP keeps its analytics/prefs under $HOME/.android and WARNS when that is not
@@ -48,7 +48,7 @@ fi
 # NOTE: do NOT also set ANDROID_PREFS_ROOT.  AGP 8.13 rejects the legacy variable:
 # it fails to construct AndroidLocationsBuildService and the whole configure dies.
 if [ ! -w "${HOME}/.android" ]; then
-    export ANDROID_USER_HOME="${ANDROID_USER_HOME:-${ROOT}/docs/evidence/android-home}"
+    export ANDROID_USER_HOME="${ANDROID_USER_HOME:-${ROOT}/personal/evidence/android-home}"
     mkdir -p "$ANDROID_USER_HOME"
     echo "note: \$HOME/.android is not writable -> ANDROID_USER_HOME=${ANDROID_USER_HOME}"
 fi

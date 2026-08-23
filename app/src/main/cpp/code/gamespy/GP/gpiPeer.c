@@ -1,15 +1,3 @@
-/*
-gpiPeer.c
-GameSpy Presence SDK 
-Dan "Mr. Pants" Schoenblum
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -556,7 +544,6 @@ GPResult gpiProcessPeers(GPConnection *connection)
 	return GP_NO_ERROR;
 }
 
-// NOTE: use this function when in a gp function
 GPIPeer * gpiGetPeerByProfile(const GPConnection * connection,
 							  int profileid)
 {
@@ -574,7 +561,6 @@ GPIPeer * gpiGetPeerByProfile(const GPConnection * connection,
 	return NULL;
 }
 
-// NOTE: use this function only when in a UDP layer callback
 GPIPeer * gpiGetPeerByAddr(const GPConnection *connection,
                            unsigned int ip,
                            unsigned short port)

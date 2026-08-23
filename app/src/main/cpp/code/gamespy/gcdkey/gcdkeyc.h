@@ -1,17 +1,3 @@
-/******
-gcdkeyc.h
-GameSpy CDKey SDK Client Header
-  
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-******
-
- Please see the GameSpy CDKey SDK documentation for more 
- information
-
-******/
 
 #ifndef _GOACDKEYC_H_
 #define _GOACDKEYC_H_

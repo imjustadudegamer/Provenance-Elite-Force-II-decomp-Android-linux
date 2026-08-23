@@ -2,7 +2,7 @@
 """Port-only class-member census -- the mechanical half of MOHAA_RESIDUE_PLAN 4.3.
 
 For each class whose header exists in BOTH the retail EF2 SDK
-(docs/evidence/ef2-sdk/ef2-sdk/dlls/game/*.h) and the port (code/fgame/*.h):
+(personal/evidence/ef2-sdk/ef2-sdk/dlls/game/*.h) and the port (code/fgame/*.h):
 
   1. parse the SDK header  -> the authoritative member set of that class
   2. parse the port header -> the port's member set
@@ -26,7 +26,7 @@ Output: a table ready to feed the deletion pass, plus
 import os
 import json, os, re, sys
 
-SDK = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/docs/evidence/ef2-sdk/ef2-sdk/dlls/game"
+SDK = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/personal/evidence/ef2-sdk/ef2-sdk/dlls/game"
 PORT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/app/src/main/cpp/code/fgame"
 SCAN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/app/src/main/cpp/code"
 

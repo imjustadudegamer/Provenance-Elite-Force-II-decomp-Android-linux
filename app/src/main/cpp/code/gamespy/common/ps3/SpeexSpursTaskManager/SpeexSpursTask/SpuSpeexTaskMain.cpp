@@ -152,7 +152,6 @@ void gviSpursSpeexEncode(SpursSpeexTaskOutput *spuTaskOut)
 
 	speex_encode(gviSpursSpeexStateBuffer, speexBuffer, &gviSpursSpeexBits);
 	spuTaskOut->mSpeexOutBufferSize = speex_bits_write(&gviSpursSpeexBits, (char *)outBuffer, gviSpursSpeexTaskDesc.mEncodedFrameSize);
-	//spuDebugPrintf("[Speex][SPU] transferring data back, output size should be: %d\n", gviSpursSpeexTaskDesc.mOutputBufferSize>16?gviSpursSpeexTaskDesc.mOutputBufferSize:16);
 	cellDmaPut(outBuffer, (uint64_t)gviSpursSpeexTaskDesc.mOutputBuffer, gviSpursSpeexTaskDesc.mOutputBufferSize, DMA_TAG(1), 0, 0);
 	cellDmaWaitTagStatusAll(DMA_MASK(1));
 	free(speexBuffer);

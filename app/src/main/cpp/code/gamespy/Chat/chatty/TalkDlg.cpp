@@ -28,6 +28,5 @@ void CTalkDlg::DoDataExchange(CDataExchange* pDX)
 
 
 BEGIN_MESSAGE_MAP(CTalkDlg, CDialog)
-		// NOTE: the ClassWizard will add message map macros here
 END_MESSAGE_MAP()
 

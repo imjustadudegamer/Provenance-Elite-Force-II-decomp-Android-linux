@@ -1,11 +1,3 @@
-/*
-GameSpy PT SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 2000 GameSpy Industries, Inc
-
-*/
 
 #include <stdio.h>
 #include "pt.h"

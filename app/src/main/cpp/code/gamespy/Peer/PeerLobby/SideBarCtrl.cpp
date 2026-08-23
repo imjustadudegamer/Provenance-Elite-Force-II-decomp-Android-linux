@@ -98,7 +98,7 @@ COLORREF findMidColor( COLORREF cOne, COLORREF cTwo )
 							 findMidTone( GetBValue(cOne), GetBValue(cTwo) ) ) );
 }
 
-void CSideBarCtrl::DrawGradient(CDC* pDC, const CRect &rcGrad, COLORREF clrStart, COLORREF clrEnd, BOOL bVertical, COLORREF clrDither /*=0xFFFFFFFF*/ )
+void CSideBarCtrl::DrawGradient(CDC* pDC, const CRect &rcGrad, COLORREF clrStart, COLORREF clrEnd, BOOL bVertical, COLORREF clrDither   )
 {
 	int r = (GetRValue(clrEnd) - GetRValue(clrStart));
 	int g = (GetGValue(clrEnd) - GetGValue(clrStart));

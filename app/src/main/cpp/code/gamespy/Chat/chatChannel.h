@@ -1,12 +1,3 @@
-/*
-GameSpy Chat SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #ifndef _CHATCHANNEL_H_
 #define _CHATCHANNEL_H_
@@ -46,7 +37,6 @@ void ciEnumJoinedChannels(CHAT chat, chatEnumJoinedChannelsCallback callback, vo
 void ciSetUserBasicInfo(CHAT chat, const char * nick, const char * user, const char * address);
 void ciClearAllUsers(CHAT chat);
 
-// DO NOT CHANGE nick to an unsigned short*, nicks are internally store as char*
 CHATBool ciGetUserBasicInfoA(CHAT chat, const char * nick, const char ** user, const char ** address);
 CHATBool ciGetUserBasicInfoW(CHAT chat, const char * nick, const unsigned short ** user, const unsigned short ** address);
 

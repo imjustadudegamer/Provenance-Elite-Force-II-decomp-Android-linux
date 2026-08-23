@@ -1,12 +1,3 @@
-/*
-GameSpy GT2 SDK
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 2002 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include "gt2Callback.h"
 #include "gt2Socket.h"

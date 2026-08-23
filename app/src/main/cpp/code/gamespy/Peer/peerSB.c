@@ -1,12 +1,3 @@
-/*
-GameSpy Peer SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include <string.h>
 #include <stdlib.h>
@@ -533,7 +524,6 @@ static void piSBAutoMatchListCallback
 	case slc_serverupdated:
 		if(!SBServerHasFullKeys(server) && SBServerDirectConnect(server) && !(server->state & STATE_PENDINGFULLQUERY))
 		{
-			// assert(SBServerDirectConnect(server))
 			SBBool usequerychallenge = SBFalse;
 			if (serverlist->backendgameflags & QR2_USE_QUERY_CHALLENGE)
 				usequerychallenge = SBTrue;

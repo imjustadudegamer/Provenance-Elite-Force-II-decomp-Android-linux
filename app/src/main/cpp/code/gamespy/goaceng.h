@@ -1,7 +1,3 @@
-/************
-GameSpy Open Architecture 
- Portable C Engine
-*************/
 
 #ifndef _GOACENG_H
 #define _GOACENG_H

@@ -1,14 +1,3 @@
-/******
-gpersist.h
-GameSpy Persistent Storage SDK 
-  
-Copyright 1999-2007 GameSpy Industries, Inc
-
-******
-
-Please see the GameSpy Persistent Storage SDK for more info
-
-*****/
 
 #ifndef _GPERSIST_H_
 #define _GPERSIST_H_

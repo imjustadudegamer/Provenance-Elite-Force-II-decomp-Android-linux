@@ -27,7 +27,7 @@ import sav_stream as S
 
 _SAVARG = [a for a in sys.argv[1:] if not a.startswith("-") and a != "all"]
 SAV = _SAVARG[0] if _SAVARG else (
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + '/docs/oracle/saves/retail_corpus_116/'
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + '/personal/oracle/saves/retail_corpus_116/'
     'Elite Force II/base/save/Jens-Christian-Huus/SaveGame1057164666/'
     'SaveGame1057164666.sav')
 

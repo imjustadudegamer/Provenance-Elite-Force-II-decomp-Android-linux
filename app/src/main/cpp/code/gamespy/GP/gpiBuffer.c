@@ -1,15 +1,3 @@
-/*
-gpiBuffer.c
-GameSpy Presence SDK 
-Dan "Mr. Pants" Schoenblum
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #include <stdlib.h>
 #include <string.h>
@@ -215,22 +203,6 @@ gpiSendOrBufferChar(
   char c
 )
 {
-/*
-	assert(peer->outputBuffer.buffer != NULL);
-
-	// Only try to send if the buffer is empty and there are no messages.
-	/////////////////////////////////////////////////////////////////////
-	if(!(peer->outputBuffer.len - peer->outputBuffer.pos) && !ArrayLength(peer->messages))
-	{
-		CHECK_RESULT(gpiSendData(connection, peer->sock, &c, 1, &closed, &sent, "PT"));
-		if(sent)
-			return GP_NO_ERROR;
-	}
-
-	// Buffer if not sent.
-	//////////////////////
-	return gpiAppendCharToBuffer(connection, &peer->outputBuffer, c);
-	*/
 	GSI_UNUSED(c);
 	GSI_UNUSED(peer);
 	GSI_UNUSED(connection);
@@ -290,61 +262,6 @@ gpiSendOrBufferStringLenToPeer(
 	return GP_NO_ERROR;
 }
 
-/*
-GPResult
-gpiSendOrBufferStringLen(
-						 GPConnection * connection,
-						 GPIPeer_st peer,
-						 const char * string,
-						 int stringLen
-						 )
-{
-	
-	GPIBool closed;
-	int sent;
-	int total;
-	int remaining;
-	
-	
-	assert(peer->outputBuffer.buffer != NULL);
-
-	remaining = stringLen;
-	total = 0;
-
-	// Check for nothing to send.
-	/////////////////////////////
-	if(stringLen == 0)
-		return GP_NO_ERROR;
-
-	// Only try to send if the buffer is empty and there are no messages.
-	/////////////////////////////////////////////////////////////////////
-	if(!(peer->outputBuffer.len - peer->outputBuffer.pos) && !ArrayLength(peer->messages))
-	{
-		do
-		{
-			CHECK_RESULT(gpiSendData(connection, peer->sock, &string[total], remaining, &closed, &sent, "PT"));
-			if(sent)
-			{
-				total += sent;
-				remaining -= sent;
-			}
-		}
-		while(sent && remaining);
-	}
-
-	// Buffer what wasn't sent.
-	///////////////////////////
-	if(remaining)
-		CHECK_RESULT(gpiAppendStringToBufferLen(connection, &peer->outputBuffer, &string[total], remaining));
-
-	
-	GSI_UNUSED(stringLen);
-	GSI_UNUSED(string);
-	GSI_UNUSED(peer);
-	GSI_UNUSED(connection);
-	return GP_NO_ERROR;
-}
-*/
 
 GPResult
 gpiSendOrBufferString(

@@ -26,6 +26,5 @@ void CKickReasonDlg::DoDataExchange(CDataExchange* pDX)
 
 
 BEGIN_MESSAGE_MAP(CKickReasonDlg, CDialog)
-		// NOTE: the ClassWizard will add message map macros here
 END_MESSAGE_MAP()
 

@@ -1,12 +1,3 @@
-/*
-GameSpy GT2 SDK
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 2002 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 
 
@@ -317,7 +308,6 @@ unsigned short gt2HostToNetworkShort(unsigned short s);
 unsigned short gt2NetworkToHostShort(unsigned short s);
 
 
-// If both the IP and port are non-zero, the string will be of the form "1.2.3.4:5" ("<IP>:<port>").
 const char * gt2AddressToString
 (
 	unsigned int ip,                
@@ -325,11 +315,6 @@ const char * gt2AddressToString
 	char string[22]                 
 );
 
-// "1.2.3.4:0" => 1.2.3.4 IP, any port (localAddress only).
-// "host.com:0" => host.com's IP, any port (localAddress only).
-// "0.0.0.0:2786" => all IPs, 2786 port (localAddress only).
-// "1.2.3.4:2786" => 1.2.3.4 IP, 2786 port (localAddress or remoteAddress).
-// "host.com:2786" => host.com's IP, 2786 port (localAddress or remoteAddress).
 GT2Bool gt2StringToAddress
 (
 	const char * string,            

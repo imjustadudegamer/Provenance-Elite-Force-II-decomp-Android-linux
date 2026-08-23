@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #ifndef __GSPLATFORMTHREAD_H__
 #define __GSPLATFORMTHREAD_H__
 
@@ -80,7 +79,7 @@ extern "C" {
 	} GSICriticalSection;
 	typedef void (*GSThreadFunc)(void *arg);
 
-#elif defined(_UNIX) // Linux, Mac OS X, openbsd, etc.
+#elif defined(_UNIX)  
 	#if defined(__OpenBSD__)
 		#include <pthread.h>
 	#endif

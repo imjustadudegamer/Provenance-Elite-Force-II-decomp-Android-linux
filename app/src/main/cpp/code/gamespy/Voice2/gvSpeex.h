@@ -1,13 +1,3 @@
-/*
-GameSpy Voice2 SDK
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 2004 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-http://gamespy.net
-*/
 
 #ifndef _GV_SPEEX_H_
 #define _GV_SPEEX_H_

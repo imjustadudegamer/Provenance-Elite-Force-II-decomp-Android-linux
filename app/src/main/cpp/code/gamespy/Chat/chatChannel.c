@@ -1,12 +1,3 @@
-/*
-GameSpy Chat SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include <stdio.h>
 #include <string.h>
@@ -352,8 +343,6 @@ void ciChannelLeft(CHAT chat, const char * channel)
 	{
 		TableRemove(connection->channelTable, &chatChannel);
 
-		// This will assert if we don't think we're in this channel.
-		//assert(rcode != 0);
 	}
 }
 

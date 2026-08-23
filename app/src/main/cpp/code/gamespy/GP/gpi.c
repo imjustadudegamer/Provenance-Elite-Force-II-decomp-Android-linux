@@ -1,15 +1,3 @@
-/*
-gpi.c
-GameSpy Presence SDK 
-Dan "Mr. Pants" Schoenblum
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #include <stdlib.h>
 #include <string.h>
@@ -475,7 +463,6 @@ gpiProcess(
 	}
 	else
 	{
-		//assert(!((result != GP_NO_ERROR) && (iconnection->connectState != GPI_CONNECTED)));
 	}
 
 	return result;

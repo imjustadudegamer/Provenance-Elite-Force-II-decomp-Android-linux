@@ -4,9 +4,6 @@
 #include "../common/gsCommon.h"
 
 
-/**********
-qr2regkeys.h contains defines for all of the reserved keys currently available.
-***********/
 #include "qr2regkeys.h"
 
 

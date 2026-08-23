@@ -1,12 +1,3 @@
-/*
-GameSpy Ping SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 
 #include <limits.h>
@@ -100,8 +91,6 @@ static PINGERBool piBytesToPing(unsigned char * buffer, piUDPPing * udpPing, cha
 	udpPing->ID_B = (unsigned short)(*buffer++ << 8);
 	udpPing->ID_B |= *buffer++;
 
-	// JED 12/18/00 15:20, again from 24.156.198.26
-	//assert(udpPing->magic == PI_MAGIC);
 	if(udpPing->magic != PI_MAGIC)
 		return PINGERFalse;
 
@@ -217,12 +206,6 @@ static PINGERBool piSocketInit(const char * localAddress,
 #ifndef INSOCK   
 	rcode = setsockopt(piSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&bFlag, sizeof(bFlag) );
 #endif
-	/*if(gsiSocketIsError(rcode))
-	{
-		iLastError = WSAGetLastError();
-		assert(0);
-		return PINGERFalse;
-	}*/
 
 	rcode = bind(piSocket, (SOCKADDR *)&sockaddr, sizeof(SOCKADDR_IN));
 	if (gsiSocketIsError(rcode))
@@ -436,7 +419,6 @@ static void piProcessTrip1(piUDPPing * udpPing, const char * data, SOCKADDR_IN *
 	uint16 ID;
 
 	assert(udpPing->trip == 1);
-	//assert(udpPing->ID_A != 0);
 	if(udpPing->ID_A == 0)
 		return;
 	assert(udpPing->ID_B == 0);
@@ -489,7 +471,6 @@ static void piProcessTrip2(piUDPPing * udpPing, const char * data, SOCKADDR_IN *
 	int index;
 	piActivePing * activePing;
 
-	// This is the same IP as the shifted ping assert above.
 	assert(udpPing->trip == 2);
 	assert(udpPing->ID_A != 0);
 	if(udpPing->ID_A == 0)

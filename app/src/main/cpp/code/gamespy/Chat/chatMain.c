@@ -1,12 +1,3 @@
-/*
-GameSpy Chat SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include "chat.h"
 #include "chatMain.h"
@@ -254,7 +245,6 @@ static CHAT chatConnectDoit(CILoginType loginType,
 	ciConnection * connection;
 	const char * socketNick = "";
 	
-	//assert(serverAddress != NULL);
 	assert(callbacks != NULL);
 	assert(connectCallback != NULL);
 	

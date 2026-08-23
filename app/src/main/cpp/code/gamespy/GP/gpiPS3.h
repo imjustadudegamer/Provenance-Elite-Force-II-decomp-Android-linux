@@ -1,12 +1,3 @@
-/*
-gpiPS3.h
-GameSpy Presence SDK 
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #ifndef _GPIPS3_H_
 #define _GPIPS3_H_

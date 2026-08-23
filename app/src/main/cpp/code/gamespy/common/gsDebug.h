@@ -1,6 +1,5 @@
 #ifndef __GSIDEBUG_H__
 #define __GSIDEBUG_H__
-///////////////////////////////////////////////////////////////////////////////
 #include <stdarg.h>
 
 #if defined(__LANGUAGE_C_PLUS_PLUS)||defined(__cplusplus)||defined(c_plusplus)

@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import r132n2_restore_decoder as D
 
 SAV = sys.argv[1] if len(sys.argv) > 1 else (
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + '/docs/oracle/saves/retail_corpus_116/'
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + '/personal/oracle/saves/retail_corpus_116/'
     'Elite Force II/base/save/Jens-Christian-Huus/SaveGame1057164666/'
     'SaveGame1057164666.sav')
 

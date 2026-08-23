@@ -9,7 +9,6 @@
 #define SUPPORT_SAVED_CONFIGS
 
 #define AUTO_CONNECT
-//static u8 MyBSSID[IW_BSSID_SIZE] = { 0x00, 0x0f, 0x66, 0x82, 0x38, 0x70 };
 static u8 MyBSSID[IW_BSSID_SIZE] = { 0x00, 0x09, 0x5b, 0x3f, 0x4b, 0xfb };
 static u8 MyWEP[IW_WEP_SIZE] = { WM_WEPMODE_NO };
 

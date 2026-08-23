@@ -1,18 +1,3 @@
-/*
- *  sha1.h
- *
- *  Description:
- *      This is the header file for code which implements the Secure
- *      Hashing Algorithm 1 as defined in FIPS PUB 180-1 published
- *      April 17, 1995.
- *
- *      Many of the variable names in this code, especially the
- *      single character names, were used because those were the names
- *      used in the publication.
- *
- *      Please read the file sha1.c for more information.
- *
- */
 
 #ifndef _SHA1_H_
 #define _SHA1_H_

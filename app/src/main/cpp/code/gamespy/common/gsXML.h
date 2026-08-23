@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #ifndef __GSXML_H__
 #define __GSXML_H__
 
@@ -64,14 +63,10 @@ gsi_bool gsXmlReadChildAsFloat    (GSXmlStreamReader stream, const char * matcht
 gsi_bool gsXmlReadChildAsDateTimeElement(GSXmlStreamReader stream, const char * matchtag, time_t * valueOut);
 gsi_bool gsXmlResetChildReadPosition(GSXmlStreamReader stream); 
 
-// NOTE:  HexStrings are BIG-endian, the valueout will also be BIG-endian.
-// NOTE:  Call with NULL valueOut to get the lenOut.  Doing this will not move read position.
 gsi_bool gsXmlReadChildAsHexBinary(GSXmlStreamReader stream, const char * matchtag, gsi_u8 valueOut[], int maxLen, int * lenOut);
 
-// NOTE:  Call with NULL valueOut to get the lenOut.  Doing this will not move read position
 gsi_bool gsXmlReadChildAsBase64Binary(GSXmlStreamReader stream, const char * matchtag, gsi_u8 valueOut[], int * lenOut);
 
-// NOTE:  gsLargeInt_t is transmitted as HexString, but must be converted to little-endian.
 gsi_bool gsXmlReadChildAsLargeInt(GSXmlStreamReader stream, const char * matchtag, struct gsLargeInt_s * valueOut);
 
 int      gsXmlCountChildren     (GSXmlStreamReader stream, const char * matchtag);

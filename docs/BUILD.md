@@ -21,7 +21,7 @@ app/build_apk.sh assembleRelease        # the release variant, same signing key
 untracked or modified work the CMake globs would compile in), then Gradle's
 `externalNativeBuild`, which configures the engine CMake with the NDK toolchain
 and `-DEF2_PLATFORM=android -DEF2_RENDERER=gles3`. When `$HOME` is not writable
-it redirects Gradle and ccache state to copies under `docs/evidence/` and prints
+it redirects Gradle and ccache state to copies under `personal/evidence/` and prints
 the substitution; a normal interactive shell is unaffected.
 
 ## Linux reference

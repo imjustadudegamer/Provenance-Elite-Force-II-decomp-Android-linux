@@ -26,6 +26,5 @@ void CSendRawDlg::DoDataExchange(CDataExchange* pDX)
 
 
 BEGIN_MESSAGE_MAP(CSendRawDlg, CDialog)
-		// NOTE: the ClassWizard will add message map macros here
 END_MESSAGE_MAP()
 

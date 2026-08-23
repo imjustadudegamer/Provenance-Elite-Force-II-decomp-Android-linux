@@ -1,4 +1,3 @@
-// chatty.cpp : Defines the class behaviors for the application.
 
 #include "stdafx.h"
 #include "chatty.h"

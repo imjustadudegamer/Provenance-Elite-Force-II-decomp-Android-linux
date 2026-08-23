@@ -246,7 +246,6 @@ bool spursConfiguration_isSpursInitialized()
 
 SpursSupportInterface::SpursSupportInterface() 
 {
-	//assert(elfId < SPU_ELF_LAST);
 	m_bQueueInitialized=false;
 
 	cellAtomicIncr32(&g_uiSpursReferenceCounter);

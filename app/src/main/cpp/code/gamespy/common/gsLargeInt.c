@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsLargeInt.h"
 
 
@@ -109,7 +108,6 @@ gsi_bool gsiLargeIntResize(gsLargeInt_t *lint, l_word length)
 }
 
 
-//  NOTE: Testing next multiple of two, not power of 2
 gsi_bool gsiLargeIntSizePower2(const gsLargeInt_t *src1, const gsLargeInt_t *src2, l_word *lenout)
 {
 	unsigned int i = 0;
@@ -438,7 +436,6 @@ static gsi_bool gsiLargeIntDiv(const l_word *src, l_word len, const gsLargeInt_t
 	}
 	divisorHighBit += (divisorLen-1)*GS_LARGEINT_DIGIT_SIZE_BITS;
 	
-	// WARNING: digits are indexed [2][1][0], first byte to read is index[2]
 	readIndex = (int)(scopyLen - divisorLen);
 	readLength = (int)divisorLen;
 
@@ -473,7 +470,6 @@ static gsi_bool gsiLargeIntDiv(const l_word *src, l_word len, const gsLargeInt_t
 		else
 		{
 			l_word quotientTemp = 0;
-			//if (readLength > 0xffff)
 			if (gsi_is_false(gsiLargeIntSubDivide(&scopy[readIndex], (l_word)readLength, divisorData, divisorLen, (gsi_u32)divisorHighBit, &quotientTemp)))
 			{
 				GSLINT_EXITTIMER(GSLintTimerDiv);
@@ -519,8 +515,6 @@ static gsi_bool gsiLargeIntSubDivide(l_word *src, l_word length, const l_word *d
 	gsLargeInt_t quotientCopy; 
 
 	GSLINT_ENTERTIMER(GSLintTimerSubDivide);
-	// assert(src > divisor)
-	// assert(src < (MAX_DIGIT_VALUE * divisor))
 
 	if (length > dlen)
 		aboveBits = (src[length-2]&divisor[dlen-1]) | ((l_dword)src[length-1]<<GS_LARGEINT_DIGIT_SIZE_BITS);
@@ -736,7 +730,6 @@ gsi_bool gsLargeIntSquareMod(const gsLargeInt_t *lint, const gsLargeInt_t *mod, 
 #ifdef NEWEXP
 
 
-// SPECIAL NOTE:
 gsi_bool gsLargeIntPowerMod(const gsLargeInt_t *b, const gsLargeInt_t *p, const gsLargeInt_t *m, gsLargeInt_t *dest)
 {
 	gsLargeInt_t base;
@@ -1002,7 +995,6 @@ gsi_bool gsLargeIntPowerMod(const gsLargeInt_t *b, const gsLargeInt_t *p, const 
 #else
 
 
-// SPECIAL NOTE:
 gsi_bool gsLargeIntPowerMod(const gsLargeInt_t *b, const gsLargeInt_t *p, const gsLargeInt_t *m, gsLargeInt_t *dest)
 {
 	int i=0; 
@@ -1196,7 +1188,6 @@ gsi_bool gsiLargeIntMultM(gsLargeInt_t *x, gsLargeInt_t *y, const gsLargeInt_t *
 		}
 	}
 
-	// **WARNING**
 	if (gsiLargeIntCompare(&temp[logB_r], tempLen - logB_r, m->mData, m->mLength) != -1)
 	{
 		if (gsi_is_false(gsiLargeIntSub(m->mData, m->mLength, &temp[logB_r], tempLen - logB_r, dest->mData, &dest->mLength)))
@@ -1328,18 +1319,6 @@ gsi_bool gsiLargeIntMultM(gsLargeInt_t *x, gsLargeInt_t *y, const gsLargeInt_t *
 }
 
 #endif
-/*
-//    Computes (src*src*r^-1)%mod
-static gsi_bool gsiLargeIntSquareM(const gsLargeInt_t *src, const gsLargeInt_t *mod, gsi_u32 modPrime, gsi_u32 R, gsLargeInt_t *dest)
-{
-	GSI_UNUSED(src);
-	GSI_UNUSED(mod);
-	GSI_UNUSED(modPrime);
-	GSI_UNUSED(R);
-	GSI_UNUSED(dest);
-	assert(0);
-	return gsi_true;
-}*/
 
 
 gsi_bool gsiLargeIntInverseMod(const gsLargeInt_t *mod, l_word *dest)

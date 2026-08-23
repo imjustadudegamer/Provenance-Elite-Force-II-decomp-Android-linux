@@ -1,4 +1,3 @@
-// retail links it; nothing in the engine starts a GameSpy thread on Android
 #include "../gsPlatformUtil.h"
 #include "../gsPlatformThread.h"
 #include "../gsAssert.h"

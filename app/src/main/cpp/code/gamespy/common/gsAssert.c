@@ -1,15 +1,12 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsCommon.h"
 #include "gsDebug.h"
 
 
 
-// This is the platform specific default assert condition handler
 extern void  _gsDebugAssert	(const char * string);
 
 static gsDebugAssertCallback gsDebugAssertHandler = _gsDebugAssert;
 
-//  Call this function to override the default assert handler  
 void gsDebugAssertCallbackSet(gsDebugAssertCallback theCallback)
 {
 	if (theCallback)
@@ -19,7 +16,6 @@ void gsDebugAssertCallbackSet(gsDebugAssertCallback theCallback)
 }
 
 
-// This is the default assert condition handler
 void  gsDebugAssert				(const char *szError,const char *szText, const char *szFile, int line)
 {
 	char String[256];

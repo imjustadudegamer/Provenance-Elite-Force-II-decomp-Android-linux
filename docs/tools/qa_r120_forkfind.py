@@ -17,7 +17,7 @@ USAGE
 
     python3 docs/tools/qa_r120_forkfind.py \\
         scratchpad/logs/play_ef2-20260922-063024.log \\
-        docs/oracle/golden/solomatch/retail.F
+        personal/oracle/golden/solomatch/retail.F
 
 With no retail golden, only the probe walk and the port-side class census run.
 Exit code 0 always; findings are printed to stdout.
@@ -116,7 +116,7 @@ FAILURE_MARKERS = [
 ]
 
 # ---------------------------------------------------------------------------
-# R131 -- the RETAIL DUMP WORKSTREAM pairings (docs/oracle/shim/oracle_log.c SECTION
+# R131 -- the RETAIL DUMP WORKSTREAM pairings (personal/oracle/shim/oracle_log.c SECTION
 # 11).  A capture taken with EF2_ORACLE_DUMPS set carries `# retail <family>`
 # records; each one is the RETAIL measurement of a port probe this workstream cannot
 # take at the contract boundary.  `pairings()` joins them by `f=` (the per-side
@@ -217,7 +217,7 @@ def pairings(lines, gold_label):
     counts, frames = dump_census(lines)
     if not counts:
         print("  no `# retail` records.  Re-capture with EF2_ORACLE_DUMPS set")
-        print("  (see docs/oracle/doc/install.txt, section DUMPS).")
+        print("  (see personal/oracle/doc/install.txt, section DUMPS).")
         return
     for item, fams, verdict in DUMP_PAIRINGS:
         print("\n-- %s" % item)

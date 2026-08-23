@@ -1,12 +1,3 @@
-/*
-GameSpy GT2 SDK
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 2002 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include "gt2Main.h"
 #include "gt2Auth.h"
@@ -64,7 +55,6 @@ GT2Byte * gti2GetResponse
 	int keylen = (int)strlen(GT2ChallengeKey);
 	int chalrand;
 	valid = gti2VerifyChallenge(challenge); 
-	//assert(GTI2_RESPONSE_LEN <= GTI2_CHALLENGE_LEN);
 	for (i = 0 ; i < GTI2_RESPONSE_LEN ; i++)
 	{
 		if (!valid || i == 0 || i == 13)

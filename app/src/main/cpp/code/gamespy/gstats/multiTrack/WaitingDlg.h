@@ -12,7 +12,6 @@ public:
 	CWaitingDlg(CWnd* pParent = NULL);   
 
 	enum { IDD = IDD_WAITING };
-		// NOTE: the ClassWizard will add data members here
 
 
 	protected:

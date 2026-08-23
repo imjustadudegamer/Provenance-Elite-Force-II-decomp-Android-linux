@@ -297,12 +297,6 @@ cpuFeatures_t Sys_GetProcessorFeatures( void )
 	return features;
 }
 
-/*
- * The device and CPU model for the startup log.  The CPU model comes from the
- * kernel's own /proc/cpuinfo; the device model from the platform's own
- * identity source.  Both are best-effort and return "Unknown" when the platform
- * exposes neither, so the log line never invents a value.
- */
 #define SYS_MODEL_LEN 256
 
 static const char *Sys_FirstField( const char *path, const char *key, char *out, size_t outlen );
@@ -362,10 +356,6 @@ const char *Sys_GetDeviceModel( void )
 	return model;
 }
 
-/*
- * The value after `key` on its own line in a procfs-style file, trimmed; NULL if
- * the key or the file is absent.  Writes into `out` and returns it.
- */
 static const char *Sys_FirstField( const char *path, const char *key, char *out, size_t outlen )
 {
 	char  line[512];

@@ -5,7 +5,7 @@ Decode a RETAIL Star Trek: Elite Force II .sav / .sub level archive.
 Verified against the whole shipped corpus: all 116 retail .sav files decode to
 EXACTLY end-of-file with zero bytes left over.
 
-The format is the EF2 SDK's Archiver (docs/evidence/ef2-sdk/dlls/game/archive.cpp) with
+The format is the EF2 SDK's Archiver (personal/evidence/ef2-sdk/dlls/game/archive.cpp) with
 ARCHIVE_USE_TYPES undefined, so plain data carries no type tag -- but objects
 always do. Retail is a 32-bit binary: every size/length field is 4 bytes.
 

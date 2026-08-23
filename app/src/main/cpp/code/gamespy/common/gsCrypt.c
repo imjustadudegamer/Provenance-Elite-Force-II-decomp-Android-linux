@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsCrypt.h"
 #include "gsLargeInt.h"
 #include "gsSHA1.h"
@@ -326,7 +325,7 @@ gsi_i32 gsCryptRSASignHash(const gsCryptRSAKey *privateKey, const unsigned char 
 	else if (hashLen == GS_CRYPT_SHA1_HASHSIZE)
 		memcpy(&writeBuf[aKeyByteLength-hashLen-anOidLen], sha1Header, sizeof(sha1Header));
 	else
-		return -1; // should probably assert here
+		return -1;  
 
 	memcpy(&writeBuf[aKeyByteLength-hashLen], hash, hashLen);
 	

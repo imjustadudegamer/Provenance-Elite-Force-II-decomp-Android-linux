@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract ordered Class::Archive field lists out of the real EF2 SDK source.
 
-Every rule this emits is read straight out of docs/evidence/ef2-sdk/ef2-sdk/... -- the
+Every rule this emits is read straight out of personal/evidence/ef2-sdk/ef2-sdk/... -- the
 retail game source Ritual shipped -- so it is the format ground truth, not a
 guess.  The output feeds sav_stream.CLASS_FIELDS.
 
@@ -33,7 +33,7 @@ import re
 import sys
 
 SDK_ROOT_CANDIDATES = [
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/docs/evidence/ef2-sdk/ef2-sdk",
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/personal/evidence/ef2-sdk/ef2-sdk",
 ]
 
 # --------------------------------------------------------------- C++ scanner

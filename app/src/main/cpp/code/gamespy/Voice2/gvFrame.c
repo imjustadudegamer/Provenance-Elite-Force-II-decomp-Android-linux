@@ -1,7 +1,6 @@
 #include "gvFrame.h"
 #include "gvCodec.h"
 
-// packets are only accepted if they are frameStamped to be played
 #define GVI_INCOMING_PACKET_TIMEFRAME_FRAMES      (GVI_FRAMESTAMP_MAX / 2)
 
 #define GVI_PREALLOCATED_FRAMES                   200

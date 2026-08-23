@@ -1,15 +1,3 @@
-/*
-gp.h
-GameSpy Presence SDK 
-Dan "Mr. Pants" Schoenblum
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 #ifndef _GP_H_
 #define _GP_H_
 
@@ -1182,14 +1170,12 @@ GPResult gpSetTransferDirectory(
   const gsi_char * directory
 );
 
-// NOTE: THROTTLING IS NOT CURRENTLY IMPLEMENTED
 GPResult gpSetTransferThrottle(
   GPConnection * connection,
   GPTransfer transfer,
   int throttle
 );
 
-// NOTE: THROTTLING IS NOT CURRENTLY IMPLEMENTED
 GPResult gpGetTransferThrottle(
   GPConnection * connection,
   GPTransfer transfer,

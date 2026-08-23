@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsCommon.h"
 #include "gsDebug.h"
 
@@ -147,7 +146,6 @@ void gsDebugFormat(GSIDebugCategory theCat, GSIDebugType theType,
 
 	va_start(aParameterList, theTokenStr);
 	
-	// Pass to VA version
 	gsDebugVaList(theCat, theType, theLevel, theTokenStr, aParameterList);
 }
 

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+
+Name=P:EFII
+Comment=Unofficial Star Trek: Elite Force II port (based on OpenMoHAA)
+Categories=Game;Shooter;
+
+Icon=com.provenanceef2
+Exec=launch_provenanceef2_base
+Terminal=false

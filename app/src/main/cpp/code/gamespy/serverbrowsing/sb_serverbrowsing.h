@@ -1,16 +1,3 @@
-/******
-GameSpy Server Browsing SDK
-  
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-******
-
- Please see the GameSpy Server Browsing SDK documentation for more 
- information
-
-******/
 
 
 #ifndef _SB_SERVERBROWSING_H

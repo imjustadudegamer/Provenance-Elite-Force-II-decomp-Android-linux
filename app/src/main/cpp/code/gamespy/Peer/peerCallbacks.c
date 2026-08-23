@@ -1,12 +1,3 @@
-/*
-GameSpy Peer SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include <string.h>
 #include <stdlib.h>
@@ -3428,7 +3419,6 @@ static int piAddCallback
 	PEER_CONNECTION;
 
 	assert(callback);
-	//assert(type >= 0);
 	assert(type < PI_NUM_CALLBACK_TYPES);
 	assert(paramsIn);
 	assert(paramsSize > 0);

@@ -1,12 +1,3 @@
-/*
-GameSpy Chat SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -207,7 +198,6 @@ CHATBool ciSocketConnect(ciSocket * sock,
 #if !defined(INSOCK) && !defined(_NITRO) && !defined(_REVOLUTION)
 	keepalive = 1;
 	rcode = setsockopt(sock->sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&keepalive, sizeof(int));
-	//assert(gsiSocketIsNotError(rcode));
 #endif
 
 	rcode = connect(sock->sock, (SOCKADDR *)&address, sizeof(SOCKADDR_IN));

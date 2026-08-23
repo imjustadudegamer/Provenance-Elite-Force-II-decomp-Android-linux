@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsPlatform.h"
 #include "gsMemory.h"
 #include "gsXML.h"
@@ -593,7 +592,6 @@ static gsi_bool gsiXmlUtilDecodeString(char * buffer, int * len)
 		else if (strncmp(&buffer[readPos], "&#x", 3)==0)
 		{
 			unsigned int digitValue = 0;
-			//unsigned int digitLength = 0;  // 0x00000065 = 1 byte
 			char ch = ' ';
 			gsi_bool haveWritten = gsi_false;
 			int i=0;
@@ -609,7 +607,7 @@ static gsi_bool gsiXmlUtilDecodeString(char * buffer, int * len)
 
 			for (i=0; i < 4; i++)
 			{
-				ch = (char)((digitValue & mask) >> ((3-i)*8)); // make 0x00006500 into 0x65
+				ch = (char)((digitValue & mask) >> ((3-i)*8));  
 				if (haveWritten || ch != 0x00)
 				{
 					buffer[readPos++] = ch;
@@ -623,7 +621,6 @@ static gsi_bool gsiXmlUtilDecodeString(char * buffer, int * len)
 		else if (strncmp(&buffer[readPos], "&#", 2)==0)
 		{
 			unsigned int digitValue = 0;
-			//unsigned int digitLength = 0;  // 0x00000065 = 1 byte
 			char ch = ' ';
 			gsi_bool haveWritten = gsi_false;
 			int i=0;
@@ -637,7 +634,7 @@ static gsi_bool gsiXmlUtilDecodeString(char * buffer, int * len)
 
 			for (i=0; i < 4; i++)
 			{
-				ch = (char)((digitValue & mask) >> ((3-i)*8)); // make 0x00006500 into 0x65
+				ch = (char)((digitValue & mask) >> ((3-i)*8));  
 				if (haveWritten || ch != 0x00)
 				{
 					buffer[readPos++] = ch;
@@ -838,7 +835,6 @@ gsi_bool gsXmlWriteUnicodeStringElement(GSXmlStreamWriter stream, const char * n
 	GS_ASSERT(value != NULL);
 	GS_ASSERT(gsi_is_false(writer->mClosed));
 
-	//  [0x20-0xD7FF]
 	len = gsUnicodeStringLen(value);
 	for (i=0; i < len; i++)
 	{

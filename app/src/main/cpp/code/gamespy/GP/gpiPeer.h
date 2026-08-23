@@ -1,15 +1,3 @@
-/*
-gpiPeer.h
-GameSpy Presence SDK 
-Dan "Mr. Pants" Schoenblum
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #ifndef _GPIPEER_H_
 #define _GPIPEER_H_
@@ -94,11 +82,9 @@ gpiPeerStartConnect(
   GPIPeer * peer
 );
 
-// NOTE: use this function when in a gp function
 GPIPeer * gpiGetPeerByProfile(const GPConnection * connection,
 							  int profileid);
 
-// NOTE: use this function only when in a UDP layer callback
 GPIPeer *gpiGetPeerByAddr(const GPConnection *connection,
                           unsigned int ip,
                           unsigned short port);

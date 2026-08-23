@@ -543,8 +543,6 @@ static int gtDecodeInternalV(int usetype, const char *fmtString, char *inBuffer,
 		inLength -= elemSize;
 		fmtString++;
 	}
-	//NOTE: inLength should be 0 here if we "ate" the whole message
-//	assert(inLength == 0);
 	return totSize - inLength;
 }
 

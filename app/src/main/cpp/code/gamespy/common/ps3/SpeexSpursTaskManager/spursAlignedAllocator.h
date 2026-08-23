@@ -1,4 +1,3 @@
-// NOTE:  this code has been provided by Sony for usage in Speex SPURS Manager
 
 
 #ifndef BT_ALIGNED_ALLOCATOR

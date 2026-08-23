@@ -1,4 +1,3 @@
-// stdafx.h : include file for standard system include files,
 
 #if !defined(AFX_STDAFX_H__207466EE_5E75_4F57_8FC6_639F9C33B505__INCLUDED_)
 #define AFX_STDAFX_H__207466EE_5E75_4F57_8FC6_639F9C33B505__INCLUDED_

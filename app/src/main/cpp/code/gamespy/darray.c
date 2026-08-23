@@ -1,12 +1,3 @@
-/* 
- *
- * File: darray.c
- * ---------------
- *	David Wright
- *	10/8/98
- * 
- *  See darray.h for function descriptions
- */
 #if !defined(UNDER_CE) && !defined(__KATANA__)
 #include <assert.h>
 #else
@@ -175,7 +166,6 @@ void ArraySort(DArray array, ArrayCompareFn comparator)
     qsort(array->list, array->count, array->elemsize, comparator);
 }
 
-//assert will be raised by ArrayNth if fromindex out of range
 int ArraySearch(DArray array, const void *key, ArrayCompareFn comparator, 
                   int fromIndex, int isSorted)
 {

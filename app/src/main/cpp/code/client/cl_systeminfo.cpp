@@ -114,7 +114,6 @@ void SystemInfo::detectSystemInformation(void)
     detectCPUFrequency();
     detectCPUType();
 
-    /* The startup identity line: the CPU and the device model, and nothing else. */
     Com_Printf("CPU: %s\n", Sys_GetCPUModel());
     if (Sys_GetDeviceModel()[0]) {
         Com_Printf("Device: %s\n", Sys_GetDeviceModel());

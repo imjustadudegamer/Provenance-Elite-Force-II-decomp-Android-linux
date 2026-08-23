@@ -384,9 +384,9 @@ def main():
     ap.add_argument("cls")
     ap.add_argument("header")
     ap.add_argument("--port", default=None)
-    ap.add_argument("--sdk", default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))) + "/docs/evidence/ef2-sdk/ef2-sdk/dlls/game")
-    ap.add_argument("--sym", default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))) + "/docs/evidence/mac_symbols/game_dll_symbols.txt")
-    ap.add_argument("--decomp", default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))) + "/docs/evidence/mac_symbols/game_decomp")
+    ap.add_argument("--sdk", default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))) + "/personal/evidence/ef2-sdk/ef2-sdk/dlls/game")
+    ap.add_argument("--sym", default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))) + "/personal/evidence/mac_symbols/game_dll_symbols.txt")
+    ap.add_argument("--decomp", default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))) + "/personal/evidence/mac_symbols/game_decomp")
     ap.add_argument("--refs", action="store_true", help="also show port-tree reference counts")
     ap.add_argument("--nodefs", action="store_true", help="report declarations with no definition")
     ap.add_argument("--undeclared", action="store_true",

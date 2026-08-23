@@ -28,7 +28,6 @@ public:
 	virtual void DoDataExchange(CDataExchange* pDX);    
 
 protected:
-		// NOTE: the ClassWizard will add member functions here
 	DECLARE_MESSAGE_MAP()
 
 };

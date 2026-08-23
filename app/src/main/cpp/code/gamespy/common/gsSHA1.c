@@ -1,33 +1,3 @@
-/*
- *  sha1.c
- *
- *  Description:
- *      This file implements the Secure Hashing Algorithm 1 as
- *      defined in FIPS PUB 180-1 published April 17, 1995.
- *
- *      The SHA-1, produces a 160-bit message digest for a given
- *      data stream.  It should take about 2**n steps to find a
- *      message with the same digest as a given message and
- *      2**(n/2) to find any two messages with the same digest,
- *      when n is the digest size in bits.  Therefore, this
- *      algorithm can serve as a means of providing a
- *      "fingerprint" for a message.
- *
- *  Portability Issues:
- *      SHA-1 is defined in terms of 32-bit "words".  This code
- *      uses <stdint.h> (included via "sha1.h" to define 32 and 8
- *      bit unsigned integer types.  If your C compiler does not
- *      support 32 bit unsigned integers, this code is not
- *      appropriate.
- *
- *  Caveats:
- *      SHA-1 is designed to work with messages less than 2^64 bits
- *      long.  Although SHA-1 allows a message digest to be generated
- *      for messages of any number of bits less than 2^64, this
- *      implementation only works with messages with a length that is
- *      a multiple of the size of an 8-bit character.
- *
- */
 
 #include "gsSHA1.h"
 
@@ -60,25 +30,6 @@ int SHA1Reset(SHA1Context *context)
     return shaSuccess;
 }
 
-/*
- *  SHA1Result
- *
- *  Description:
- *      This function will return the 160-bit message digest into the
- *      Message_Digest array  provided by the caller.
- *      NOTE: The first octet of hash is stored in the 0th element,
- *            the last octet of hash in the 19th element.
- *
- *  Parameters:
- *      context: [in/out]
- *          The context to use to calculate the SHA-1 hash.
- *      Message_Digest: [out]
- *          Where the digest is returned.
- *
- *  Returns:
- *      sha Error Code.
- *
- */
 int SHA1Result( SHA1Context *context,
                 uint8_t Message_Digest[SHA1HashSize])
 {

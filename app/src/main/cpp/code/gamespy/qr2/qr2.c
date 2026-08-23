@@ -555,7 +555,6 @@ void qr2_shutdown(qr2_t qrec)
 
 gsi_bool qr2_keybuffer_add(qr2_keybuffer_t keybuffer, int keyid)
 {
-	// mj these are codetime not runtime errors, changing to assert
 	if (keybuffer->numkeys >= MAX_REGISTERED_KEYS)
 		return gsi_false;
 	if (keyid < 1 || keyid > MAX_REGISTERED_KEYS)

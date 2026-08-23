@@ -1,5 +1,3 @@
-////////////////////////////////////////////////////////////////////////////////
-// WARNING: Please do not use this code as a basis for 
 #include "../gsCommon.h"
 #include <demo.h>
 #include <string.h>

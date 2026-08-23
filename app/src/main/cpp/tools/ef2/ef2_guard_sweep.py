@@ -15,7 +15,7 @@ each hit against the SDK + Mac decompile before touching it.
 import os, re, sys
 
 PORT_DIR = "openmohaa/code/fgame"
-RET_DIR  = "docs/evidence/ef2-sdk/ef2-sdk/dlls/game"
+RET_DIR  = "personal/evidence/ef2-sdk/ef2-sdk/dlls/game"
 
 def read(fn):
     with open(fn, encoding="latin1") as f:
@@ -99,7 +99,7 @@ def load_mac_names():
     """Map demangled name -> mangled name from game_dll_symbols.txt (Mac PPC build)."""
     mapping = {}
     try:
-        with open("docs/evidence/mac_symbols/game_dll_symbols.txt", encoding="latin1") as f:
+        with open("personal/evidence/mac_symbols/game_dll_symbols.txt", encoding="latin1") as f:
             for line in f:
                 parts = line.split()
                 if len(parts) >= 3 and "." in parts[1]:

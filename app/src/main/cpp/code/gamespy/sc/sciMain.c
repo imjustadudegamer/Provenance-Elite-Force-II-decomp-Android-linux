@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "sci.h"
 #include "sciInterface.h"
 #include "sciReport.h"
@@ -476,7 +475,6 @@ SCResult SC_CALL scPeerCipherInit(const GSLoginCertificate * theLocalCert, SCPee
 	MD5_CTX md5;
 
 	GS_ASSERT(theCipher != NULL);
-	//CANNOT assert on constant expressions, they are meaningless.
 
 	#if defined (GS_CRYPT_NO_RANDOM)
 		Util_RandSeed(0x2d2d2d2d);

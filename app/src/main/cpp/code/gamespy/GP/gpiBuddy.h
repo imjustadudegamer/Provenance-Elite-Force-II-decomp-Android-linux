@@ -1,15 +1,3 @@
-/*
-gpiBuddy.h
-GameSpy Presence SDK 
-Dan "Mr. Pants" Schoenblum
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #ifndef _GPIBUDDY_H_
 #define _GPIBUDDY_H_

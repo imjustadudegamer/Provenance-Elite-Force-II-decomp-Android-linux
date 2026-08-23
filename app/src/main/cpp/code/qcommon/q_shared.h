@@ -12,7 +12,7 @@ extern "C" {
 #define BASEGAME				"base"
 
 // Support on the Mac), but a port that must run from a read-only Android/desktop
- #define HOMEPATH_NAME_UNIX_LEGACY	".openef2"
+ #define HOMEPATH_NAME_UNIX_LEGACY	".provenanceef2"
  #define HOMEPATH_NAME				"provenanceef2"
 
 #define CONFIG_PREFIX			"omconfig"
@@ -1610,7 +1610,7 @@ typedef struct playerState_s {
 
 
 
-// (docs/evidence/ef2-sdk/dlls/game/q_shared.h:1528-1545).  This is NOT MOHAA's table: MOHAA put
+// (personal/evidence/ef2-sdk/dlls/game/q_shared.h:1528-1545).  This is NOT MOHAA's table: MOHAA put
 #define BUTTON_ATTACKRIGHT_BITINDEX     0
 #define BUTTON_ATTACKLEFT_BITINDEX      1
 #define BUTTON_RELOAD_BITINDEX          2           

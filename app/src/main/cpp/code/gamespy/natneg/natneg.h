@@ -1,17 +1,4 @@
 
-/******
-GameSpy NAT Negotiation SDK
-  
-Copyright 2002 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-******
-
- Please see the GameSpy NAT Negotiation SDK documentation for more 
- information
-
-******/
 
 
 #ifndef _NATNEG_H_

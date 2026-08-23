@@ -1,12 +1,3 @@
-/*
-GameSpy GT2 SDK
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 2002 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include "gt2Main.h"
 #include "gt2Utility.h"
@@ -159,7 +150,6 @@ GT2Bool gt2StringToAddress(const char * string, unsigned int * ip, unsigned shor
 #ifdef GSI_ADHOC
 gsi_u32 gti2MacToIp(const char *mac)
 {
-	// Mac (48 bit)<---> IP (32 bit) convertion.
 	GTI2MacEntry *entry;
 	int i;
 	gsi_u32 ip;

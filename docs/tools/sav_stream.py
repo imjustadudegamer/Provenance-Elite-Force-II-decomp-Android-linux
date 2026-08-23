@@ -195,7 +195,7 @@ def read_eventargdef(r):
 #  Class field-order table
 #  ------------------------
 #  Each entry is the ordered Archive* call list of that class's Class::Archive,
-#  transcribed from the retail SDK (docs/evidence/ef2-sdk/ef2-sdk/dlls/game/<file>.cpp,
+#  transcribed from the retail SDK (personal/evidence/ef2-sdk/ef2-sdk/dlls/game/<file>.cpp,
 #  CRLF-stripped).  Token grammar is in FIELD_TOKENS below.
 #
 #  A class with NO entry here is walked as an opaque, size-bounded blob: its

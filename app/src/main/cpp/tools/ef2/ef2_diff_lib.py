@@ -3,11 +3,11 @@
 EF2 Diff Library — shared utilities for comparing retail SDK, port, and IDA decompilations.
 
 Data sources:
-  - Retail SDK:  docs/evidence/ef2-sdk/ef2-sdk/dlls/game/  (151 .cpp + 131 .h)
+  - Retail SDK:  personal/evidence/ef2-sdk/ef2-sdk/dlls/game/  (151 .cpp + 131 .h)
   - Port code:   app/src/main/cpp/code/fgame/        (180 .cpp + 164 .h)
-  - IDA decomp:  docs/evidence/mac_symbols/game_decomp/     (9025 .c files)
-  - Symbol table: docs/evidence/mac_symbols/game_dll_symbols.txt
-  - Import table: docs/evidence/mac_symbols/game_import_t_EF2.txt
+  - IDA decomp:  personal/evidence/mac_symbols/game_decomp/     (9025 .c files)
+  - Symbol table: personal/evidence/mac_symbols/game_dll_symbols.txt
+  - Import table: personal/evidence/mac_symbols/game_import_t_EF2.txt
 """
 import os
 import re, os, sys, glob, collections

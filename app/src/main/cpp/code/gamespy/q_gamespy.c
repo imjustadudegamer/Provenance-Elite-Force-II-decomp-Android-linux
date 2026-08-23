@@ -1,29 +1,7 @@
-/*
-===========================================================================
-Copyright (C) 2025 the OpenMoHAA team
-
-This file is part of OpenMoHAA source code.
-
-OpenMoHAA source code is free software; you can redistribute it
-and/or modify it under the terms of the GNU General Public License as
-published by the Free Software Foundation; either version 2 of the License,
-or (at your option) any later version.
-
-OpenMoHAA source code is distributed in the hope that it will be
-useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with OpenMoHAA source code; if not, write to the Free Software
-Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-===========================================================================
-*/
 
 #include "q_gamespy.h"
 #include "../qcommon/qcommon.h"
 #include "cl_gamespy.h"
-// (sv_gamespy.c): EF2 retail has no gamespy query responder in the engine.
 
 #define MAX_MASTERS           8
 #define MASTER_DEFAULT_MSPORT 28900
@@ -107,17 +85,6 @@ void Com_InitGameSpy(void)
 {
     Com_RefreshGameSpyMasters();
 
-    // W31-SWEEP r2 correction.  The earlier note here claimed "Retail EF2 carries no
-    // REFUTED by the shipped bytes: the retail Mac engine's string table carries the QR2
-    // at PEF file 0x264ef1 (the leading `2` is the encoded-table length byte, so the
-    // literal is "master.gamespy.com"), the literal "GameSpy" at 0x2533bc, and a real
-    // retail GameSpy C++ body UpdateServerListCallBack__FP25GServerListImplementationiPvPvPv
-    // @0x001B51D0 in the 5241-function corpus.  So the SDK subtrees under code/gamespy/**
-    // are shipped middleware, not port-only -- and this glue's com_master* 333networks
-    // override set IS a port-only delta (its host literals occur in no retail image; the
-    // retail server master list is sv_master1..sv_master5, engine string table 0x2679ae,
-    // default "ef2master.activision.com" at 0x2679ba, reproduced in sv_init.c:1061).
-    // Restoring retail's own GameSpy master defaults needs the retail init site re-derived;
 }
 
 unsigned int Com_GetNumMasterEntries(void)

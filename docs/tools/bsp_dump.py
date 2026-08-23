@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """EF2 retail BSP lump dumper / CM-model oracle.
 
-Structures are the retail SDK's (docs/evidence/ef2-sdk/ef2-sdk/Shared/qcommon/qfiles.h,
+Structures are the retail SDK's (personal/evidence/ef2-sdk/ef2-sdk/Shared/qcommon/qfiles.h,
 LF-normalised).  Lump indices are LUMP_* from that same header (0..29,
 HEADER_LUMPS = 30); sizeof(dheader_t) = 12 + 30*8 = 252, matching retail
 CM_LoadMap's `FS_Read(v61, 252, v56)` (engine_decomp/CM_LoadMap.c:112) and its

@@ -72,7 +72,6 @@ END_MESSAGE_MAP()
 CVoice2BuddyMFCDlg::CVoice2BuddyMFCDlg(CWnd* pParent )
 	: CDialog(CVoice2BuddyMFCDlg::IDD, pParent)
 {
-		// NOTE: the ClassWizard will add member initialization here
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
 

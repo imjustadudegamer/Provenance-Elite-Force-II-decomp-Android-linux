@@ -1,4 +1,3 @@
-////////////////////////////////////////////////////////////////////////////////
 #ifndef __GS_UDP_ENGINE_H__
 #define __GS_UDP_ENGINE_H__
 
@@ -97,7 +96,6 @@ GSUdpErrorCode gsUdpEngineStartTalkingToPeer(unsigned int theIp, unsigned short 
 GSUdpErrorCode gsUdpEngineAcceptPeer(unsigned int theIp, unsigned short thePort);
 GSUdpErrorCode gsUdpEngineRejectPeer(unsigned int theIp, unsigned short thePort);
 
-// WARNING: Messages should not be greater than the outgoing buffer size minus the header 
 GSUdpErrorCode gsUdpEngineSendMessage(unsigned int theIp, unsigned short thePort, 
 									  char theHeader[GS_UDP_MSG_HEADER_LEN], unsigned char *theMsg, 
 									  unsigned int theMsgLen, gsi_bool theReliable);

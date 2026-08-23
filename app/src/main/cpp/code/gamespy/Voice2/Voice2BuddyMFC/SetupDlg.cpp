@@ -22,7 +22,6 @@ enum SetupMessage
 CSetupDlg::CSetupDlg(CWnd* pParent )
 	: CDialog(CSetupDlg::IDD, pParent)
 {
-		// NOTE: the ClassWizard will add member initialization here
 }
 
 

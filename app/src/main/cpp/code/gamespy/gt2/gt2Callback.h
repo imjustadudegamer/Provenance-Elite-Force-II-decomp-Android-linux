@@ -1,12 +1,3 @@
-/*
-GameSpy GT2 SDK
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 2002 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #ifndef _GT2_CALLBACK_H_
 #define _GT2_CALLBACK_H_

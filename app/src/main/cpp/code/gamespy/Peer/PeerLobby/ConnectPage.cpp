@@ -41,7 +41,6 @@ void CConnectPage::DoDataExchange(CDataExchange* pDX)
 }
 
 BEGIN_MESSAGE_MAP(CConnectPage, CPropertyPage)
-		// NOTE: the ClassWizard will add message map macros here
 END_MESSAGE_MAP()
 
 static void PrintCallback(const char * callback)

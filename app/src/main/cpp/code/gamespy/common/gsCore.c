@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsPlatform.h"
 #include "gsPlatformThread.h"
 
@@ -29,7 +28,6 @@ static void gsiCoreAtExitShutdown(void)
 }
 
 
-//     - WARNING:  This code is a bit tricky do to multithread issues
 void gsCoreInitialize()
 {
 	GSCoreMgr* aCore = gsiGetStaticCore();

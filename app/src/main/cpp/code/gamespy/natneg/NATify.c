@@ -354,7 +354,6 @@ gsi_bool DetermineNatType(NAT * nat)
 
 	if(nat->mappings[packet_map1b].publicPort != 0 && nat->mappings[packet_map1a].publicPort != nat->mappings[packet_map1b].publicPort)
 	{
-		// NOTE: The NAT maps different ports for the same destination.
 		nat->qr2Compatible = gsi_false;
 	}
 

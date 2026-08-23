@@ -1,4 +1,3 @@
-// NOTE:  this code has been provided by Sony for usage in Speex SPURS Manager
 
 
 #ifndef THREAD_SUPPORT_INTERFACE_H

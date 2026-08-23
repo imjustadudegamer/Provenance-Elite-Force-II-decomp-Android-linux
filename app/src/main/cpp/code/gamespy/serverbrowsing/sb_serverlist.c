@@ -1011,7 +1011,6 @@ static int IncomingListParseServer(SBServerList *slist, char *buf, int len)
 		if (!FullRulesPresent(buf + i, len - i))
 			return 0;
 	}
-	//see if it's the "last" server (0xffffffff)
 	if (memcmp(buf + 1, LAST_SERVER_MARKER, SERVER_MARKER_LEN) == 0)
 		return -1;
 	ParseServerIPPort(slist, buf, len, &ip, &port);
@@ -1051,54 +1050,6 @@ void SBSetLastListErrorPtr(SBServerList *slist, char* theError)
 
 #define FIXED_HEADER_LEN 6
 
-/*
---challenge header
-1 byte - number of random bytes to follow xor 0xEC
-random bytes
-1 byte - length xor 0xEA
-keylen bytes - server challenge
---fixed header
-YOUR public IP - 4 bytes
-Standard query port - 2 bytes - or 0xFFFF if the master does not know about this gamename yet
-[rest only follows if they requested a server slist]
---key slist
-Number of Keys - 1 byte
-List of Keys - with key type
-Key Type - 1 Byte (0 = string, 1 = byte, 2 = short)	
-KeyName - NTS
---unique value slist
-number of unique string values - 1 byte
-Table of Unique String Values (255 most popular string keys)
-Key	NTS 
---servers
-Server Table (for each server - terminated with IP of 0xFFFFFFFF, flags 0)
-1 byte flags
--Connect negotiate support?
--Has private IP
--Unsolicited UDP support?
--Has ICMP IP
--Nonstandard Public Port
--Nonstandard Private Port
--Has Keys
-4 bytes public ip
-[optional]
-4 bytes port
-[optional]
-4 bytes private IP
-[optional]
-4 bytes private port
-[optional]
-4 bytes ICMP IP
-[optional - keys]
-String values
-1-bytes - value ID
-or
-FF + valuestring + 00
-Byte Values
-	1 byte - value
-	Short values?
-	2 bytes - value
-*/		  
 
 static SBError ProcessMainListData(SBServerList *slist)
 {

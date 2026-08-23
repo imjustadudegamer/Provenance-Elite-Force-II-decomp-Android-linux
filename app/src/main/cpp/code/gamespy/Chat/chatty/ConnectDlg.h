@@ -22,7 +22,6 @@ public:
 
 protected:
 
-		// NOTE: the ClassWizard will add member functions here
 	DECLARE_MESSAGE_MAP()
 };
 

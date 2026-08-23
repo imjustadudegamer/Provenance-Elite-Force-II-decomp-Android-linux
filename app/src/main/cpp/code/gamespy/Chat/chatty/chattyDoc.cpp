@@ -38,7 +38,7 @@ CChattyDoc::~CChattyDoc()
 }
 
 #if 0
-CChattyDoc * pDoc;  // Get rid of VA complaints.
+CChattyDoc * pDoc;   
 #endif
 #define DOC			CChattyDoc * pDoc;\
 					pDoc = (CChattyDoc *)param;\

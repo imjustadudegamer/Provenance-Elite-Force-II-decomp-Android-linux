@@ -1,4 +1,3 @@
-// NOTE: when implementing this make sure the "-lpthread" compiler option is used
 #include "../gsPlatformUtil.h"
 #include "../gsPlatformThread.h"
 #include "../gsAssert.h"

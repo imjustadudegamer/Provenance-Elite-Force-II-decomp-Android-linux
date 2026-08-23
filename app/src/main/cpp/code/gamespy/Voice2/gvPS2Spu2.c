@@ -60,7 +60,7 @@ static int DMA_EE_To_IOP(int dst, u_char *src, int size)
 	sceSifDmaData transData;
 	int did;
 
-	assert((((gsi_u32)src) & 0x3f) == 0); // assert 64 byte aligned
+	assert((((gsi_u32)src) & 0x3f) == 0);  
 		
 	if (size <= 0) {
 		return 0;
@@ -485,7 +485,6 @@ static void gviPS2Spu2FreeDevice(GVIDevice * device)
 	sceSdRemoteCallbackQuit();
 	sceSdRemote(1, rSdSetTransIntrHandler,AUTODMA_CH,NULL, NULL);
 
-    //changeInputVolume(0x0000);
 
 	if(data->m_playbackSources)
 		gviFreeSourceList(data->m_playbackSources);

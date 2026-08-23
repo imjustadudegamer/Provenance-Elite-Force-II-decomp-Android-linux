@@ -1,15 +1,3 @@
-/*
-gpiUtility.h
-GameSpy Presence SDK 
-Dan "Mr. Pants" Schoenblum
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #ifndef _GPIUTILITY_H_
 #define _GPIUTILITY_H_

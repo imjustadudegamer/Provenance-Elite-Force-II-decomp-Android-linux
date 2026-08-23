@@ -22,8 +22,6 @@ public:
 	virtual BOOL InitInstance();
 
 
-		// NOTE - the ClassWizard will add and remove member functions here.
-		//    DO NOT EDIT what you see in these blocks of generated code !
 	DECLARE_MESSAGE_MAP()
 };
 

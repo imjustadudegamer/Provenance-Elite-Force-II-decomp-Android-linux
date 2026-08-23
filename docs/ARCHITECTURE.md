@@ -14,7 +14,7 @@ one tree.
 | `app/src/main/cpp/` | **all native source**: the engine modules, the renderer, the vendored third-party libraries, the CMake build |
 | `docs/` | project documentation (this file, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`) and `docs/closeouts/` for historical material |
 | `docs/scripts/`, `docs/tools/` | build/capture wrappers and the evidence tools |
-| `docs/evidence/`, `docs/oracle/` | untracked, on-disk-only evidence: the Mac PPC decompile corpus, the retail binary, the oracle corpora |
+| `personal/evidence/`, `personal/oracle/` | untracked, on-disk-only evidence: the Mac PPC decompile corpus, the retail binary, the oracle corpora |
 
 ## Native modules (`app/src/main/cpp/code/`)
 
@@ -56,4 +56,4 @@ Two CMake cache variables select the target:
 The accepted divergences from retail are confined to platform glue, the sound
 backend and the GLES 3.0 renderer/platform layer. Everything else is held
 retail-exact against the SDK and the retail binaries; the citations that back
-each claim are recorded in `docs/RE_REFERENCE_CITATIONS.tsv`.
+each claim are recorded in `personal/RE_REFERENCE_CITATIONS.tsv`.

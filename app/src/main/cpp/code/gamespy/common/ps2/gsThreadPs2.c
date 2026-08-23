@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "../gscommon.h"
 
 
@@ -41,7 +40,6 @@ void gsiEnterCriticalSection(GSICriticalSection *theCrit)
 }
 void gsiLeaveCriticalSection(GSICriticalSection *theCrit)
 { 
-	// We must be the owner? (assert?)
 	if (GetThreadId() != theCrit->mOwnerThread)
 	{
 		assert(GetThreadId() == theCrit->mOwnerThread);

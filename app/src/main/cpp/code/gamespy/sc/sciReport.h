@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #ifndef __SCIREPORT_H__
 #define __SCIREPORT_H__
 
@@ -14,7 +13,6 @@ extern "C" {
 
 #define SC_REPORT_PROTOCOL 2
 
-// NOTE: broke up entity index in two - for later versions we will want to send the 2 byte
 
 #define SC_REPORT_ROSTERDATA_LENGTH    20 
 #define SC_REPORT_PLAYERINDEX_LENGTH    2 

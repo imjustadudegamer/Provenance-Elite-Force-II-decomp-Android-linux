@@ -18,8 +18,8 @@ from collections import defaultdict
 
 # Paths
 PORT_DIR = Path("<repo-root>/app/src/main/cpp/code/fgame")
-SDK_DIR = Path("<repo-root>/docs/evidence/ef2-sdk/ef2-sdk/dlls/game")
-IDA_DIR = Path("<repo-root>/docs/evidence/mac_symbols/game_decomp")
+SDK_DIR = Path("<repo-root>/personal/evidence/ef2-sdk/ef2-sdk/dlls/game")
+IDA_DIR = Path("<repo-root>/personal/evidence/mac_symbols/game_decomp")
 CENSUS_FILE = Path("<repo-root>/docs/tools/ef2_census.json")
 
 # Member variable mappings (SDK -> Port)

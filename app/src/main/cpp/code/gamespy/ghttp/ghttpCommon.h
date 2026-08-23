@@ -1,12 +1,3 @@
- /*
-GameSpy GHTTP SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #ifndef _GHTTPCOMMON_H_
 #define _GHTTPCOMMON_H_

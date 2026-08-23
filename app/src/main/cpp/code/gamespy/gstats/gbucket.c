@@ -1,12 +1,3 @@
-/******
-gbucket.c
-GameSpy Stats/Tracking SDK 
-  
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-
-******/
 
 #include "../common/gsCommon.h"
 #include "gbucket.h"

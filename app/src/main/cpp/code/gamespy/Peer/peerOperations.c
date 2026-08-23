@@ -1,12 +1,3 @@
-/*
-GameSpy Peer SDK 
-Dan "Mr. Pants" Schoenblum
-dan@gamespy.com
-
-Copyright 1999-2007 GameSpy Industries, Inc
-
-devsupport@gamespy.com
-*/
 
 #include <string.h>
 #include <stdio.h>
@@ -247,7 +238,6 @@ static piOperation * piAddOperation
 
 	PEER_CONNECTION;
 
-	//assert(type >= 0);
 	assert(type < PI_NUM_OPERATION_TYPES);
 
 	if(!connection->operationList)

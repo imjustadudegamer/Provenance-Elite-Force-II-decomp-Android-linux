@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "../gsCommon.h"
 #include "../gsPlatformUtil.h"
 
@@ -73,7 +72,6 @@ char *gsiCTime(time_t *theTime)
 	static char str[26];
 	struct tm *ptm = gsiGetGmTime(theTime);
 
-	// e.g.: "Wed Jan 02 02:03:55 1980\n\0"
 	sprintf(str, "%s %s %02d %02d:%02d:%02d %d\n",
 		GSIWeekDayNames[ptm->tm_wday],
 		GSIMonthNames[ptm->tm_mon], ptm->tm_mday,

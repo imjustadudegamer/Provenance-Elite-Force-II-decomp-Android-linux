@@ -1,12 +1,3 @@
-/*
-gpiPS3.c
-GameSpy Presence SDK 
-
-devsupport@gamespy.com
-
-***********************************************************************
-Please see the GameSpy Presence SDK documentation for more information
-**********************************************************************/
 
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +35,6 @@ GPResult gpiInitializeNpBasic(
 
     if (ret == SCE_NP_ERROR_ALREADY_INITIALIZED)
     {
-        // If already initialized - DO NOT terminate after sync (game might need it)
         iconnection->npBasicGameInitialized = gsi_true;
     }
 	else if (ret < 0) 
@@ -121,7 +111,6 @@ GPResult gpiCheckNpStatus(
         ret = sceNpLookupInit();
         if (ret == SCE_NP_COMMUNITY_ERROR_ALREADY_INITIALIZED)
         {
-            // If already initialized - DO NOT terminate after GP destroy (game might need it)
             iconnection->npLookupGameInitialized = gsi_true;
         }
         else if (ret < 0) 

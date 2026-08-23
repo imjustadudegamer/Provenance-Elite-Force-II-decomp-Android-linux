@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import sav_stream as S
 
 FIELDS = S.load_class_table()
-ROOT = (os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + '/docs/oracle/saves/'
+ROOT = (os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + '/personal/oracle/saves/'
         'retail_corpus_116')
 MAX_TEAMMATES = 4
 

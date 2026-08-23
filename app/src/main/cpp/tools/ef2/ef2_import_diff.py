@@ -6,8 +6,8 @@ The game_import_t is the function table the engine provides to the game DLL.
 Retail has 322 entries. The port may have missing or different entries.
 
 Data sources:
-  - docs/evidence/mac_symbols/game_import_t_EF2.txt (retail binary, 322 entries)
-  - docs/evidence/mac_symbols/game_import_t_MISSING_from_port.txt (101 missing)
+  - personal/evidence/mac_symbols/game_import_t_EF2.txt (retail binary, 322 entries)
+  - personal/evidence/mac_symbols/game_import_t_MISSING_from_port.txt (101 missing)
   - Port's game_import_t definition (grep for it in engine code)
 """
 import re, os, sys

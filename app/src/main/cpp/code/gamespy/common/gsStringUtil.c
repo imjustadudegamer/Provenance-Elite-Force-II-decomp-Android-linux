@@ -1,4 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
 #include "gsCommon.h"
 #include "gsStringUtil.h"
 
@@ -14,7 +13,6 @@ int _ReadUCS2CharFromUTF8String(const UTF8String theUTF8String,  UCS2Char* theUn
 
 	if (theMaxLength == 0)
 	{
-		// assert?
 		*theUnicodeChar = (UCS2Char)REPLACE_INVALID_CHAR;
 		return 0; 
 	}
@@ -78,13 +76,13 @@ int _UCS2CharToUTF8String(UCS2Char theUCS2Char, UTF8String theUTF8String)
 	}
 	else if (theUCS2Char <= 0x07FF)
 	{
-		theUTF8String[0] = (char)(UTF8ByteType)(UTF8_TWO_BYTE_TAG | (theUCS2Char >> 6));				// Store the upper 5/11 bits as 0x110xxxxx
+		theUTF8String[0] = (char)(UTF8ByteType)(UTF8_TWO_BYTE_TAG | (theUCS2Char >> 6));				 
 		theUTF8String[1] = (char)(UTF8ByteType)(UTF8_FOLLOW_BYTE_TAG | (theUCS2Char & UTF8_FOLLOW_BYTE_MASK));	
 		return 2;
 	}
 	else
 	{
-		theUTF8String[0] = (char)(UTF8ByteType)(UTF8_THREE_BYTE_TAG |  (theUCS2Char >> 12));					// Store the upper 4/16 bits as 0x1110xxxx
+		theUTF8String[0] = (char)(UTF8ByteType)(UTF8_THREE_BYTE_TAG |  (theUCS2Char >> 12));					 
 		theUTF8String[1] = (char)(UTF8ByteType)(UTF8_FOLLOW_BYTE_TAG | ((theUCS2Char >> 6) & UTF8_FOLLOW_BYTE_MASK));	
 		theUTF8String[2] = (char)(UTF8ByteType)(UTF8_FOLLOW_BYTE_TAG | ((theUCS2Char) & UTF8_FOLLOW_BYTE_MASK));			
 		return 3;
@@ -218,7 +216,6 @@ int _UCS2ToUTF8ConversionLengthOnly(const UCS2String theUCS2String)
 	{
 		if (*theReadPos <= 0x7F)
 			length++;
-		// Values > 0x7F and <= 0x07FF are two bytes in UTF8
 		else if (*theReadPos <= 0x07FF) 
 			length += 2;
 		else

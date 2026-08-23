@@ -1,14 +1,3 @@
-/* 
- *
- * File: hashtable.c
- * ---------------
- *	David Wright
- *	10/8/98
- *
- * See hashtable.h for function comments
- * Implmentation is straight-forward, using a fixed dynamically allocated
- * array for the buckets, and a DArray for each individual bucket
- */
 
 #if !defined(UNDER_CE) && !defined(__KATANA__)
 #include <assert.h>
@@ -67,7 +56,7 @@ HashTable TableNew2(int elemSize, int nBuckets, int nChains,
     
     table->buckets = (DArray *)gsimalloc(nBuckets * sizeof(DArray));
     assert(table->buckets);
-    for (i = 0; i < nBuckets; i++) //ArrayNew will assert if allocation fails
+    for (i = 0; i < nBuckets; i++)  
         table->buckets[i] = ArrayNew(elemSize, nChains, freeFn);
     table->nbuckets = nBuckets;
     table->freefn = freeFn;

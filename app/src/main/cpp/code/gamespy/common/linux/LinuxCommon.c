@@ -2,7 +2,6 @@
 #include "../gsMemory.h"
 #include "../gsDebug.h"
 
-//extern void * __cdecl _aligned_malloc(size_t size, int boundary);
 
 #ifdef GSI_COMMON_DEBUG
 	static void DebugCallback(GSIDebugCategory theCat, GSIDebugType theType,

@@ -1,20 +1,3 @@
-/******
-gt2hostmig.c
-GameSpy Transport 2 SDK
-GameSpy Query & Reporting 2 SDK
-  
-Copyright 2000 GameSpy Industries, Inc
-
-******
-
- This sample demonstrates the use of the Transport 2 SDK to do host migration.
- It also uses the Query & Reporting 2 SDK to report the host to the 
- Master Server.
-
- Please see the GameSpy Transport 2 SDK documentation for more 
- information
-
-******/
 
 
 #include <stdio.h>

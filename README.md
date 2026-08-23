@@ -17,7 +17,7 @@ installation at run time.
 | `app/src/main/cpp/` | **all native source**: engine, `fgame`, `cgame`, `renderergles3`, tiki, skeletor, uilib, qcommon, and the vendored third-party libraries |
 | `docs/` | project documentation: `ARCHITECTURE.md`, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`, `RE_REFERENCE_CITATIONS.tsv`, and `docs/closeouts/` for historical material |
 | `docs/tools/`, `docs/scripts/` | evidence tools and the build/capture wrappers |
-| `docs/evidence/`, `docs/oracle/` | untracked, on-disk-only evidence: the Mac PPC decompile corpus, the retail binary, the SDK source and the oracle corpus |
+| `personal/evidence/`, `personal/oracle/` | untracked, on-disk-only evidence: the Mac PPC decompile corpus, the retail binary, the SDK source and the oracle corpus |
 
 Process and provenance notes are kept out of the repository, on disk only.
 
