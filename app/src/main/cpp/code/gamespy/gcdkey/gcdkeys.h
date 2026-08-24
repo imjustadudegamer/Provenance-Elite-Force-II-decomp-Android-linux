@@ -1,3 +1,17 @@
+/******
+gcdkeys.h
+GameSpy CDKey SDK Server Header
+  
+Copyright 1999-2007 GameSpy Industries, Inc
+
+devsupport@gamespy.com
+
+******
+
+ Please see the GameSpy CDKey SDK documentation for more 
+ information
+
+******/
 
 
 #ifndef _GOACDKEYS_H_

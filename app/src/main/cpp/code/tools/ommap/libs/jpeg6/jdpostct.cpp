@@ -1,3 +1,20 @@
+/*
+ * jdpostct.c
+ *
+ * Copyright (C) 1994-1995, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains the decompression postprocessing controller.
+ * This controller manages the upsampling, color conversion, and color
+ * quantization/reduction steps; specifically, it controls the buffering
+ * between upsample/color conversion and color quantization/reduction.
+ *
+ * If no color quantization/reduction is required, then this module has no
+ * work to do, and it just hands off to the upsample/color conversion code.
+ * An integrated upsample/convert/quantize process would replace this module
+ * entirely.
+ */
 
 #define JPEG_INTERNALS
 #include "jinclude.h"

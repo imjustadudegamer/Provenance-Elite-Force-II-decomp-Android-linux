@@ -1,3 +1,8 @@
+/*
+ *  This is a modified version of Mark Adlers work,
+ *  see below for the original copyright.
+ *  2006 - Joerg Dietrich <dietrich_joerg@gmx.de>
+ */
 
 
 

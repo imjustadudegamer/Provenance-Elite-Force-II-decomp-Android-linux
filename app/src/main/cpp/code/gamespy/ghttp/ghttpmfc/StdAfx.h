@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_STDAFX_H__5ED40F92_A7FA_40E2_B911_E0DA573FB72A__INCLUDED_)
 #define AFX_STDAFX_H__5ED40F92_A7FA_40E2_B911_E0DA573FB72A__INCLUDED_

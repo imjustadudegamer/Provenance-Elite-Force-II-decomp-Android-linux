@@ -18,3 +18,13 @@ Vendored under `app/src/main/cpp/code/thirdparty/` and wired by
 
 The 16 KB-page-aligned `libc++_shared.so` in `app/thirdparty/libcxx-16k/` comes
 from NDK r27; its symbol audit is in `app/thirdparty/libcxx-16k/PROVENANCE.md`.
+
+`code/gamespy/`, `code/tools/` and the other vendored directories under
+`app/src/main/cpp/code/` keep their own upstream notices, restored verbatim; they
+are never relabelled with a project licence identifier. `PROVENANCE.tsv` records
+each of them as `vendored`.
+
+The Elite Force II SDK-derived and retail-reconstructed parts of the tree are not
+third-party libraries and are not covered by this file: their terms, and the
+reason no single licence covers the tree, are in `LICENSING.md`. The SDK
+Agreement ships verbatim at `docs/EF2-SDK-licenseAgreement.txt`.

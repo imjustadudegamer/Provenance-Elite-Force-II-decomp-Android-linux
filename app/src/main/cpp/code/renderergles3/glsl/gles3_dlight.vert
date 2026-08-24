@@ -9,6 +9,7 @@ in vec4 a_Color;			/* colorArray[i] (byte colour / 255) */
 uniform mat4 u_MVP;
 uniform mat4 u_ModelMatrix;	/* backEnd.ori.modelMatrix: eye-space clip test */
 
+//@@GLES3_CLIP@@
 
 out vec4 v_Color;
 out vec2 v_TexCoord0;

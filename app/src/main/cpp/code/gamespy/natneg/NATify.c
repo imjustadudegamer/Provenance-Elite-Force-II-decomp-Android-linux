@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include <stddef.h>
 #include "nninternal.h"
 #include "NATify.h"

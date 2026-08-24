@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __CELL_VECTORMATH_H__
 #define __CELL_VECTORMATH_H__
 

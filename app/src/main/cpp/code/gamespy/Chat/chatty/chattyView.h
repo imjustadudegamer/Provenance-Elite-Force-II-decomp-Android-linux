@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_CHATTYVIEW_H__E1B25967_4DA7_4ABD_A404_9C60D59E1C60__INCLUDED_)
 #define AFX_CHATTYVIEW_H__E1B25967_4DA7_4ABD_A404_9C60D59E1C60__INCLUDED_

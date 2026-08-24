@@ -49,6 +49,27 @@ constant whenever the defaults header changes.
 
 There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
 
+### In-game HUD scale
+
+`ui_hudScale` scales the in-game HUD — weapon ammo, the dialogue box, the
+tricorder, the radar and the rest — from the one place the 640x480 virtual space
+is resolved (`CL_FillUIDef`), so it is a layout-time factor and it composes with
+the pillarbox rect that same function computes. It is archived, so a config
+rewrite keeps it.
+
+| value | effect |
+|-------|--------|
+| `0` | auto (default) |
+| `> 0` | that factor, clamped to `[1.0, 2.0]` |
+
+Auto is `1.0` on the desktop, which leaves the Linux build pixel-identical: the
+stores are multiplied by exactly `1.0f`. On Android it is the display density
+over 160, clamped to `[1.0, 2.0]` — a physical-size rule, not a pixel count. A
+6.4" 720p panel reports density 320 and a 6.4" 1440p panel reports 560, so both
+land on the shared cap of `2.0` and the HUD reads the same size on each, while
+the clamp is the same at both ends and no device ends up smaller than it is
+today.
+
 ## Controls
 
 Both input methods ship and share one key map

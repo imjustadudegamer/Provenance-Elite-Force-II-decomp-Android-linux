@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_CHANNELMODEDLG_H__87449420_C42C_11D3_BD38_00C0F056BC39__INCLUDED_)
 #define AFX_CHANNELMODEDLG_H__87449420_C42C_11D3_BD38_00C0F056BC39__INCLUDED_
 

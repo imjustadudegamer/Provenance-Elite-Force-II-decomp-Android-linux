@@ -183,7 +183,7 @@ static vector unsigned char reorder_ppc64le_vec(vector unsigned char vpermute)
        little endian when the two first vector parameters of vec_perm are
        not of type 'vector char'. This is because the numbering from the
        left for BE, and numbering from the right for LE, produces a
-       different interpretation of what the odd and even workstreams are.
+       different interpretation of what the odd and even work streams are.
        Refer to fedora bug 1392465
      */
 

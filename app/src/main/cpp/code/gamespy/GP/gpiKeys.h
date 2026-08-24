@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _GPIKEYS_H_
 #define _GPIKEYS_H_
 

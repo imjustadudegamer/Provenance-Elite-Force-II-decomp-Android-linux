@@ -1,3 +1,15 @@
+/*
+ * jdinput.c
+ *
+ * Copyright (C) 1991-1995, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains input control logic for the JPEG decompressor.
+ * These routines are concerned with controlling the decompressor's input
+ * processing (marker reading and coefficient decoding).  The actual input
+ * reading is done in jdmarker.c, jdhuff.c, and jdphuff.c.
+ */
 
 #define JPEG_INTERNALS
 #include "jinclude.h"

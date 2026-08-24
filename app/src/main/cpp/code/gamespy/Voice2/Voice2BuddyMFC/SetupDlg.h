@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_SETUPDLG_H__36B5B6D7_690D_4628_92E4_96B2CAE34B82__INCLUDED_)
 #define AFX_SETUPDLG_H__36B5B6D7_690D_4628_92E4_96B2CAE34B82__INCLUDED_
 

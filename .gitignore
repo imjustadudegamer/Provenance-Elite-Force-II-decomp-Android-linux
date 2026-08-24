@@ -12,6 +12,7 @@ captures/
 *.apk.idsig
 local.properties
 logs/
+scratchpad/
 personal/oracle/
 *.id0
 *.id1

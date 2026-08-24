@@ -1,3 +1,18 @@
+/******
+gbucket.h
+GameSpy Stats/Tracking SDK 
+  
+Copyright 1999-2007 GameSpy Industries, Inc
+
+devsupport@gamespy.com
+
+******
+
+Please see the GameSpy Stats and Tracking SDK for more info
+You should not need to use the functions in this file, they
+are used to manage the buckets by the gstats SDK.
+Use the type-safe bucket functions in the gstats SDK instead.
+******/
 
 
 #ifndef _GBUCKET_H_

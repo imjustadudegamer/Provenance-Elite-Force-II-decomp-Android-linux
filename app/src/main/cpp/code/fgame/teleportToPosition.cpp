@@ -1,3 +1,53 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/teleportToPosition.cpp                     $
+// $Revision:: 5                                                              $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:36p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+// TeleportToPosition Behavior Implementation.
+//	-- Currently, this is misnamed as a result of the transition to individual
+//	   files for each behavior.  Additionally, this behavior needs much refactoring
+//	   to make it more generalized and flexible
+//
+//	-- What it does RIGHT NOW
+//	   The Behavior iterates through "position" flagged pathnodes.  It picks a random
+//	   one ( based on a naming convention ) and uses that as a teleport position.
+//	   It then checks if this new position will hold the actor.  If that is true, then 
+//	   it plays the "start" animation.  When that animation is completed, it rechecks
+//	   the spot -- If it's still good, then it sets the actor's origin to that spot
+//	   and plays the "end" animation
+//
+//	-- Naming Convention
+//	   2 of the parameters ( _teleportPositionName , _numberOfTeleportPositions )
+//	   build up a naming convention for the behavior to use.  What this means is
+//	   you will need to coordinate with the level designers to make sure that they
+//	   name the pathnodes appropriately.  "WarpNode1" is a good example.  For every
+//	   teleport position, they should increment the number at the end.  "WarpNode3" ,
+//	   "WarpNode2", etc...  
+//
+//	   For the state machine, ( using this example ) you would pass "WarpNode" and 3
+//	   for the count of possible positions.  The behaivor then picks a random integer
+//	   up to the count number, and concatenates with the Name to get a random node.
+//
+//	ANIMATIONS:
+//		Start Animation : Parameter
+//		End Animation   : Parameter
+//--------------------------------------------------------------------------------
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include "actor.h"
 #include "player.h"

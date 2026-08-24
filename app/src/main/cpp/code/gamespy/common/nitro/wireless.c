@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "../nonport.h"
 #include "wireless.h"
 #include "screen.h"

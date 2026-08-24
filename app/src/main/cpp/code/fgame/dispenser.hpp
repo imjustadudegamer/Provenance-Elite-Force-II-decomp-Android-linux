@@ -1,3 +1,27 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /Code/DLLs/game/misc.cpp                                      $
+// $Revision:: 13                                                             $
+//   $Author:: Steven                                                         $
+//     $Date:: 2/18/02 1:35p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source is may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+// DESCRIPTION:
+// This is all the dispensing type objects in the world.  They basically work
+// by the player using them.  As the player uses them they give the player
+// something (health/ammo/etc.).
+//
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #ifndef __DISPENSER_HPP__
 #define __DISPENSER_HPP__

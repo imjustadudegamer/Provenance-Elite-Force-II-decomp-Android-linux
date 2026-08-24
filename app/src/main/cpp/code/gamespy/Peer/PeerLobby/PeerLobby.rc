@@ -1,18 +1,12 @@
 //Microsoft Developer Studio generated resource script.
-//
 #include "resource.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
-/////////////////////////////////////////////////////////////////////////////
-//
 // Generated from the TEXTINCLUDE 2 resource.
-//
 #include "afxres.h"
 
-/////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
 
-/////////////////////////////////////////////////////////////////////////////
 // English (U.S.) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
@@ -22,10 +16,7 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 #endif //_WIN32
 
 #ifdef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
 // TEXTINCLUDE
-//
 
 1 TEXTINCLUDE DISCARDABLE 
 BEGIN
@@ -59,10 +50,7 @@ END
 #endif    // APSTUDIO_INVOKED
 
 
-/////////////////////////////////////////////////////////////////////////////
-//
 // Icon
-//
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
@@ -74,10 +62,7 @@ IDI_STAGING_ROOM        ICON    DISCARDABLE     "res\\ico00003.ico"
 IDI_YELLOW_SMILEY       ICON    DISCARDABLE     "res\\icon1.ico"
 
 #ifndef _MAC
-/////////////////////////////////////////////////////////////////////////////
-//
 // Version
-//
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 1,0,0,1
@@ -116,10 +101,7 @@ END
 #endif    // !_MAC
 
 
-/////////////////////////////////////////////////////////////////////////////
-//
 // Dialog
-//
 
 IDD_CONNECT_PAGE DIALOG DISCARDABLE  0, 0, 277, 242
 STYLE WS_CHILD | WS_DISABLED | WS_CAPTION
@@ -218,10 +200,7 @@ BEGIN
 END
 
 
-/////////////////////////////////////////////////////////////////////////////
-//
 // DESIGNINFO
-//
 
 #ifdef APSTUDIO_INVOKED
 GUIDELINES DESIGNINFO DISCARDABLE 
@@ -269,10 +248,7 @@ END
 #endif    // APSTUDIO_INVOKED
 
 
-/////////////////////////////////////////////////////////////////////////////
-//
 // String Table
-//
 
 STRINGTABLE DISCARDABLE 
 BEGIN
@@ -280,15 +256,11 @@ BEGIN
 END
 
 #endif    // English (U.S.) resources
-/////////////////////////////////////////////////////////////////////////////
 
 
 
 #ifndef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
 // Generated from the TEXTINCLUDE 3 resource.
-//
 #define _AFX_NO_SPLITTER_RESOURCES
 #define _AFX_NO_OLE_RESOURCES
 #define _AFX_NO_TRACKER_RESOURCES
@@ -303,6 +275,5 @@ LANGUAGE 9, 1
 #include "afxres.rc"         // Standard components
 #endif
 
-/////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
 

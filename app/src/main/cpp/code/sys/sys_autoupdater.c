@@ -1,3 +1,7 @@
+/*
+The code in this file is in the public domain. The rest of ioquake3
+is licensed under the GPLv2. Do not mingle code, please!
+*/
 
 #ifdef USE_AUTOUPDATER
 #  ifndef AUTOUPDATER_BIN

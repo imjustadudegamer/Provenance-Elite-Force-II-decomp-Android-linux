@@ -1,12 +1,100 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
+
+/*****************************************************************************
+ * name:		unzip.c
+ *
+ * desc:		IO on .zip files using portions of zlib 
+ *
+ * $Archive: /source/code/qcommon/unzip.c $
+ * $Author: ttimo $ 
+ * $Revision: 1.1.1.3 $
+ * $Modtime: 10/19/99 3:59p $
+ * $Date: 2000/01/11 16:37:27 $
+ *
+ *****************************************************************************/
 
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
 #include "unzip.h"
+//#include "cmdlib.h"
+
+/* unzip.h -- IO for uncompress .zip files using zlib 
+   Version 0.15 beta, Mar 19th, 1998,
+
+   Copyright (C) 1998 Gilles Vollant
+
+   This unzip package allow extract file from .ZIP file, compatible with PKZip 2.04g
+     WinZip, InfoZip tools and compatible.
+   Encryption and multi volume ZipFile (span) are not supported.
+   Old compressions used by old PKZip 1.x are not supported
+
+   THIS IS AN ALPHA VERSION. AT THIS STAGE OF DEVELOPPEMENT, SOMES API OR STRUCTURE
+   CAN CHANGE IN FUTURE VERSION !!
+   I WAIT FEEDBACK at mail info@winimage.com
+   Visit also http://www.winimage.com/zLibDll/unzip.htm for evolution
+
+   Condition of use and distribution are the same than zlib :
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
 
 
+*/
+/* for more info about .ZIP format, see 
+      ftp://ftp.cdrom.com/pub/infozip/doc/appnote-970311-iz.zip
+   PkWare has also a specification at :
+      ftp://ftp.pkware.com/probdesc.zip */
+
+/* zlib.h -- interface of the 'zlib' general purpose compression library
+  version 1.1.3, July 9th, 1998
+
+  Copyright (C) 1995-1998 Jean-loup Gailly and Mark Adler
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  Jean-loup Gailly        Mark Adler
+  jloup@gzip.org          madler@alumni.caltech.edu
 
 
+  The data format used by the zlib library is described by RFCs (Request for
+  Comments) 1950 to 1952 in the files ftp://ds.internic.net/rfc/rfc1950.txt
+  (zlib format), rfc1951.txt (deflate format) and rfc1952.txt (gzip format).
+*/
+
+/* zconf.h -- configuration of the zlib compression library
+ * Copyright (C) 1995-1998 Jean-loup Gailly.
+ * For conditions of distribution and use, see copyright notice in zlib.h 
+ */
+
+/* @(#) $Id: unzip.cpp,v 1.1.1.3 2000/01/11 16:37:27 ttimo Exp $ */
 
 #ifndef _ZCONF_H
 #define _ZCONF_H

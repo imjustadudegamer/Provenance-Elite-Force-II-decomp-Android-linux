@@ -1,3 +1,33 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/actorstrategies.cpp                        $
+// $Revision:: 46                                                             $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:35p                                                  $
+//
+// Copyright (C) 2001 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+// 
+//
+// DESCRIPTION:
+// I am replacing the old way that Actor::Think was done by implementing a group of strategies for it
+// instead.  This will form the foundation for new flexiblility within the actor class.  
+//
+// What I am trying to achieve is a specialized "think" for different types of actors.  A Boss, for instance,
+// would use BossThink, an Non-Attacking-NPC could use NPCThink.  Using the event system we already have inplace
+// it will be easy to change thinking modalities on the fly, allowing us to make a cowardly NPC turn into a 
+// roaring death machine if he gets shot.
+//
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include "actor.h"
 #include "actorstrategies.h"

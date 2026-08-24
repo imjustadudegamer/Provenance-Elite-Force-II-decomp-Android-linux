@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_CHATTYDOC_H__A9A7E462_6E3D_4AE0_9DF8_355AE2D28FBC__INCLUDED_)
 #define AFX_CHATTYDOC_H__A9A7E462_6E3D_4AE0_9DF8_355AE2D28FBC__INCLUDED_

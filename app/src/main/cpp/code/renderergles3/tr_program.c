@@ -1,3 +1,51 @@
+/*
+===========================================================================
+Copyright (C) 1999-2005 Id Software, Inc.
+Copyright (C) 2026 the ProvenanceEF2 team
+
+This file is part of a retail-exact decompilation port of Star Trek: Elite
+Force II.  It is the OpenGL ES 3.0 successor to the fixed-function GL1
+pipeline.
+
+tr_program.c -- THE PROGRAM / STATE LAYER.
+
+WHAT THIS REPLACES
+------------------
+The GL1 renderer (OpenMoHAA's GL1 backend) is fixed-function:
+  * tr_backend.c:263  GL_State()        -> glBlendFunc/glDepthFunc/glDepthMask/
+                                           glAlphaFunc/glPolygonMode/glTexEnv/
+                                           glFog* + the wrap parameter
+  * tr_backend.c:191  GL_TexEnv()       -> the texture-env combiner unit
+  * tr_shade.c:806    ComputeColors()   -> a CPU vertex-colour ARRAY
+  * tr_shade.c:1457   ComputeTexCoords()-> a CPU texcoord ARRAY
+  * tr_shade.c:163    R_DrawElements()  -> glDrawElements over client arrays
+
+GLES 3.0 has no colour array, no texture env, no glAlphaFunc, no glPolygonMode
+and no fixed-function fog, so each of those becomes one of:
+  * a PROGRAM PERMUTATION (GLP_* bitmask -> gles3ProgramDefs[] source pair),
+  * a uniform (the generator arm; retail's own enum ordinals, no translation),
+  * a render-state application (GLES3_ApplyStateBits), or
+  * a CPU-side array uploaded as a vertex attribute (RB_VBO_DrawTessArrays,
+    tr_vbo.c, at the attribute locations in tr_vbo.h:62-68).
+
+THE TABLES
+----------
+  gles3StateDefs[]       one GLES3_STATE_DEF row per state word the shipped
+                         corpus carries -- the census asserts every shipped
+                         word matches a row
+  gles3StateBitArms[]    every GLS_* nibble value GL_State can decode (audit)
+  tr_program_table.inc   the shipped-content census: program keys, generator
+                         arms, tcMod arms, acff arms, iterator families
+
+REFERENCES
+----------
+  * the GL1 backend's tr_backend.c     GL_State/GL_TexEnv/GL_Cull/GL_Bind
+  * the GL1 backend's tr_shade.c       ComputeColors/ComputeTexCoords/iterators
+  * the GL1 backend's tr_shade_calc.c  every RB_Calc* generator
+  * renderergl2 tr_glsl.c (the program cache + uniform table) and
+    renderergl2 glsl/generic_vp.glsl
+===========================================================================
+*/
 
 #include "tr_local.h"
 #include "qgl_gles3_tokens.h"
@@ -1858,6 +1906,56 @@ static void NVFIX_NvNote( void )
 	}
 }
 
+/*
+ * The stage-bind census exists to name the tutorial bridge's night-vision
+ * funnel, so its rows are split: ordinary rows share one large budget, and the
+ * funnel rows -- the night-vision arm, or a bind that did not follow the
+ * stage's own image -- keep their own, so a menu pass cannot spend it before the
+ * bridge is drawn.  A claim past a budget is reported once, as the budget it is.
+ */
+#define SURFSTATS_ROWS			4096
+#define SURFSTATS_FUNNEL_ROWS	64
+
+#define SURFSTAT_DUP	0
+#define SURFSTAT_NEW	1
+#define SURFSTAT_FULL	2
+
+typedef struct {
+	const void	*sh;
+	const void	*st;
+	int			rgb;
+	int			u0, u1;
+} surfStatRow_t;
+
+static int R_SurfStatClaim( surfStatRow_t *rows, int *used, int cap,
+						   const void *sh, const void *st, int rgb, unsigned u0, unsigned u1 )
+{
+	int		i;
+
+	for ( i = 0; i < *used && i < cap; i++ ) {
+		if ( rows[i].sh == sh && rows[i].st == st && rows[i].rgb == rgb
+		  && rows[i].u0 == (int)u0 && rows[i].u1 == (int)u1 ) {
+			return SURFSTAT_DUP;
+		}
+	}
+
+	if ( *used >= cap ) {
+		if ( *used == cap ) {
+			(*used)++;
+			return SURFSTAT_FULL;
+		}
+		return SURFSTAT_DUP;
+	}
+
+	rows[*used].sh  = sh;
+	rows[*used].st  = st;
+	rows[*used].rgb = rgb;
+	rows[*used].u0  = (int)u0;
+	rows[*used].u1  = (int)u1;
+	(*used)++;
+	return SURFSTAT_NEW;
+}
+
 void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -1920,11 +2018,13 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	}
 
 	{
-		static struct { const void *sh; const void *st; int rgb, u0, u1; } s_surfSeen[64];
-		static int			s_surfN;
+		static surfStatRow_t	s_surfSeen[SURFSTATS_ROWS];
+		static surfStatRow_t	s_surfFunnel[SURFSTATS_FUNNEL_ROWS];
+		static int			s_surfN, s_surfFunnelN, s_surfRows;
 		static cvar_t		*s_surfCvar;
 
-		int			i, sIdx = -1;
+		int			i, sIdx = -1, claim;
+		qboolean	funnel;
 		unsigned	u0 = (unsigned)glState.currenttextures[0];
 		unsigned	u1 = (unsigned)glState.currenttextures[1];
 		unsigned	w0 = pStage->bundle[0].image[0] ? (unsigned)pStage->bundle[0].image[0]->texnum : 0u;
@@ -1938,38 +2038,38 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 			if ( tess.xstages[i] == pStage ) { sIdx = i; break; }
 		}
 
-		for ( i = 0; i < s_surfN; i++ ) {
-			if ( s_surfSeen[i].sh == (const void *)shader && s_surfSeen[i].st == (const void *)pStage
-			  && s_surfSeen[i].rgb == (int)pStage->rgbGen
-			  && s_surfSeen[i].u0 == (int)u0 && s_surfSeen[i].u1 == (int)u1 ) {
-				break;
-			}
-		}
+		funnel = (qboolean)( ( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D
+							   && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) )
+						  || u0 != w0 || ( w1 != 0 && u1 != w1 ) );
 
-		if ( i == s_surfN && s_surfCvar && s_surfCvar->integer ) {
-			if ( s_surfN < 64 ) {
-				s_surfSeen[s_surfN].sh  = (const void *)shader;
-				s_surfSeen[s_surfN].st  = (const void *)pStage;
-				s_surfSeen[s_surfN].rgb = (int)pStage->rgbGen;
-				s_surfSeen[s_surfN].u0  = (int)u0;
-				s_surfSeen[s_surfN].u1  = (int)u1;
-				s_surfN++;
+		if ( s_surfCvar && s_surfCvar->integer ) {
+			claim = funnel
+				? R_SurfStatClaim( s_surfFunnel, &s_surfFunnelN, SURFSTATS_FUNNEL_ROWS,
+								   (const void *)shader, (const void *)pStage, (int)pStage->rgbGen, u0, u1 )
+				: R_SurfStatClaim( s_surfSeen, &s_surfN, SURFSTATS_ROWS,
+								   (const void *)shader, (const void *)pStage, (int)pStage->rgbGen, u0, u1 );
+
+			if ( claim == SURFSTAT_FULL ) {
+				ri.Printf( PRINT_ALL, "[LIFECYCLE:surf] capped at %d %s rows; no further rows\n",
+						   funnel ? SURFSTATS_FUNNEL_ROWS : SURFSTATS_ROWS,
+						   funnel ? "funnel" : "distinct" );
+			} else if ( claim == SURFSTAT_NEW ) {
+				s_surfRows++;
 
 				ri.Printf( PRINT_ALL,
 					"[LIFECYCLE:surf] n=%d shader=%s stage=%d rgb=%d lm=%d/%d in2D=%d "
-					"want0=%u want1=%u u0=%u u1=%u arm0=%d arm1=%d nv=%d\n",
-					s_surfN, shader->name, sIdx, (int)pStage->rgbGen,
+					"want0=%u want1=%u u0=%u u1=%u arm0=%d arm1=%d nv=%d funnel=%d\n",
+					s_surfRows, shader->name, sIdx, (int)pStage->rgbGen,
 					(int)pStage->bundle[0].isLightmap, (int)pStage->bundle[1].isLightmap,
 					(int)backEnd.in2D, w0, w1, u0, u1,
 					(int)( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[0].isLightmap ),
 					(int)( pStage->bundle[1].image[0] && ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[1].isLightmap ),
-					(int)( backEnd.refdef.rdflags & RDF_HUD ) );
-			} else if ( s_surfN == 64 ) {
-				s_surfN++;
-				ri.Printf( PRINT_ALL, "[LIFECYCLE:surf] capped at 64 rows; no further rows\n" );
+					(int)( backEnd.refdef.rdflags & RDF_HUD ),
+					(int)funnel );
 			}
 		}
 	}
+
 
 	if ( cpuTexCoords )
 	{

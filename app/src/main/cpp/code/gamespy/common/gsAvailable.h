@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _AVAILABLE_H_
 #define _AVAILABLE_H_
 

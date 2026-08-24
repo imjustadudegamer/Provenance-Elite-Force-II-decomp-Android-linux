@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "gsCore.h"
 #include "gsSoap.h"
 #include "gsPlatformThread.h"

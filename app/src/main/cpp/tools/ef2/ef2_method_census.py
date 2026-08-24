@@ -17,7 +17,7 @@ reference anywhere in the port tree (a declaration of a retail method must
 NEVER be deleted for that reason -- see the 0905 verdicts below).
 
 VERDICT TABLE, TASK 7 (Player/Weapon/Level/Entity/Sentient method tranches),
-port @ 98db44d:
+port:
 
   Player    port 507 / SDK 519.  4 port-only, ALL LIVE, none deletable:
             FindObjectiveIndex    <- retail Player::SetObjectiveShow/

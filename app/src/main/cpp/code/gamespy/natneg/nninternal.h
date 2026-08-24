@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _NNINTERNAL_H_
 #define _NNINTERNAL_H_
 

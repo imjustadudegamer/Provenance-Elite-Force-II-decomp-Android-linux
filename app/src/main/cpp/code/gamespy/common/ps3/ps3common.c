@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include <cell/sysmodule.h>
 #include <netex/net.h>
 #include <netex/libnetctl.h>

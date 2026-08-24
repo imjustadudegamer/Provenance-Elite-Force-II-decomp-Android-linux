@@ -2,33 +2,26 @@
 <component type="desktop-application">
   <id>com.provenanceef2</id>
 
-  <name>P:EFII</name>
-  <summary>An unofficial native port of Star Trek: Elite Force II, based on the OpenMoHAA engine</summary>
+  <name>Provenance: Elite Force II</name>
+  <summary>An unofficial native port of Star Trek: Elite Force II</summary>
 
   <metadata_license>FSFAP</metadata_license>
-  <project_license>GPL-2.0-or-later</project_license>
+  <!-- No single licence covers the whole application.  The engine lineage (id Tech 3
+       through OpenMoHAA) is GPL-2.0-or-later; the Elite Force II game layer is used
+       under the Ritual SDK's limited-use agreement; material rebuilt from the retail
+       binaries is not the project's to license.  See LICENSING.md and PROVENANCE.tsv. -->
+  <project_license>GPL-2.0-or-later AND LicenseRef-Ritual-EF2-SDK AND LicenseRef-EF2-Retail-Reconstruction</project_license>
 
   <description>
     <p>
-      ProvenanceEF2 is an unofficial project to bring Star Trek: Elite Force II to modern platforms by running its game content natively on the open-source OpenMoHAA engine (a descendant of the ioquake3 and F.A.K.K. lineage). It aims to play the original single-player campaign using the retail game assets.
+      ProvenanceEF2 is an unofficial, non-commercial project that runs Star Trek: Elite Force II (2003, developed by Ritual Entertainment and published by Activision) natively on modern platforms.
+    </p>
+    <p>
+      The engine is the id Tech 3 lineage through OpenMoHAA, under the GNU GPL v2 or later. The game layer derives from the Ritual Elite Force II SDK under its limited-use agreement and, where the publisher released no source, from the retail binaries; those parts are not covered by the GPL. The two regimes cannot govern one file, so no single licence covers the tree. The project ships no game assets: it reads the operator's own retail installation.
     </p>
   </description>
 
   <launchable type="desktop-id">com.provenanceef2.desktop</launchable>
-  <screenshots>
-    <screenshot type="default">
-      <image>https://github.com/openmoh/openmohaa/blob/main/docs/assets/images/v0.60.0-x86_64/mohdm1_1.png?raw=true</image>
-      <caption>Shows a smoke being deployed during multiplayer gameplay</caption>
-    </screenshot>
-    <screenshot>
-      <image>https://github.com/openmoh/openmohaa/blob/main/docs/assets/images/v0.60.0-x86_64/flughafen_1.png?raw=true</image>
-      <caption>Shows a turret firing during multiplayer gameplay</caption>
-    </screenshot>
-    <screenshot>
-      <image>https://github.com/openmoh/openmohaa/blob/main/docs/assets/images/v0.60.0-x86_64/flughafen_3.png?raw=true</image>
-      <caption>Shows a mortar firing during multiplayer gameplay</caption>
-    </screenshot>
-  </screenshots>
 
   <content_rating type="oars-1.0">
     <content_attribute id="violence-realistic">moderate</content_attribute>

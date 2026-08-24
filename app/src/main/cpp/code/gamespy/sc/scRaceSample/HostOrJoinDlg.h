@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_HOSTORJOINDLG_H__7A7BDB42_5AA8_45CD_9DD1_0EA7FC3A723F__INCLUDED_)
 #define AFX_HOSTORJOINDLG_H__7A7BDB42_5AA8_45CD_9DD1_0EA7FC3A723F__INCLUDED_
 

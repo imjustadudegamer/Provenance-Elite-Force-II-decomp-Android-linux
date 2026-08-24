@@ -1,6 +1,7 @@
 #version 300 es
 precision highp float;
 precision highp sampler2D;
+//@@GLES3_CLIP@@
 in highp float v_ClipDist;
 
 in vec4 v_Color;

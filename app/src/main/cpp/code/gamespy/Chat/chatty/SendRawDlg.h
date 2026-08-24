@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_SENDRAWDLG_H__543BE7A8_4BE8_4ED0_972D_2339364077F6__INCLUDED_)
 #define AFX_SENDRAWDLG_H__543BE7A8_4BE8_4ED0_972D_2339364077F6__INCLUDED_
 

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_GP_STATS_H__90B1DDCE_A86E_49A8_B136_0B29EA43F6B4__INCLUDED_)
 #define AFX_GP_STATS_H__90B1DDCE_A86E_49A8_B136_0B29EA43F6B4__INCLUDED_

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "gvPS2Headset.h"
 #if !defined(GV_NO_PS2_HEADSET)
 #include "gvDevice.h"

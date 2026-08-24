@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __SCWEBSERVICES_H__
 #define __SCWEBSERVICES_H__
 

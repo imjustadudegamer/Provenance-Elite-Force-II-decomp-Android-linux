@@ -1,3 +1,26 @@
+/******
+gcdkeygen.c
+GameSpy CDKey SDK CD Key Generation / Validation Example
+  
+Copyright 1999-2007 GameSpy Industries, Inc
+
+devsupport@gamespy.com
+
+******
+
+  This source is simply an example of how you might generate
+  CD Keys and how you would validate them on the client side.
+
+  You can use this algorithm, or a derivation thereof, or your own,
+  but always make sure that:
+  1. Your valid keys are a SMALL subset of the possible keys
+  2. The distribution of valid keys within the full set is even, but
+     not regular.
+
+ Please see the GameSpy CDKey SDK documentation for more 
+ information
+
+******/
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __CELL_UTILITY_MACROS_H
 #define __CELL_UTILITY_MACROS_H
 

@@ -1,3 +1,17 @@
+/******
+gcdkeys.c
+GameSpy CDKey SDK Server Code
+  
+Copyright 1999-2007 GameSpy Industries, Inc
+
+devsupport@gamespy.com
+
+******
+
+ Please see the GameSpy CDKey SDK documentation for more 
+ information
+
+******/
 
 
 #include "gcdkeys.h"

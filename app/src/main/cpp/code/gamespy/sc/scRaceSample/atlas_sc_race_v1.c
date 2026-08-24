@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #include <string.h>
 #include "atlas_sc_race_v1.h"

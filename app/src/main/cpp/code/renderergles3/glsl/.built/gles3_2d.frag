@@ -4,16 +4,11 @@
    varying must match or the pair is a LINK error on a strict driver.
    sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an
    R32F sin/table texture read with texelFetch and its value precision is
-   the sampler qualifier, so lowp would truncate the oracle-exact table. */
+   the sampler qualifier, so a lowp sampler would truncate the table. */
 precision highp int;
 precision highp float;
 precision highp sampler2D;
 
-/* ProvenanceEF2 GLES3 shade layer -- 2D/HUD/font fragment program.
-   GL_MODULATE (tr_shade.c:1665 GL_State leaves TEXTURE_ENV MODULATE) plus the
-   three GLS_ATEST arms for the font/UI alpha-tested bitmaps
-   (tr_backend.c:490-523).  The 2D path is never fogged (tr_shade.c:430
-   `!backEnd.in2D` is the global-fog gate), so there is no fog here. */
 precision highp float;
 precision highp sampler2D;
 
@@ -21,8 +16,8 @@ in vec4 v_Color;
 in vec2 v_TexCoord0;
 
 uniform sampler2D u_Tex0;
-uniform int u_TexEnv0;		/* 1 modulate, 3 replace */
-uniform int u_AlphaTest;	/* 0,1 GT0, 2 LT_80, 4 GE_80 */
+uniform int u_TexEnv0;		
+uniform int u_AlphaTest;	
 
 out vec4 fragColor;
 

@@ -1,3 +1,12 @@
+/*
+GameSpy Peer SDK 
+Dan "Mr. Pants" Schoenblum
+dan@gamespy.com
+
+Copyright 1999-2007 GameSpy Industries, Inc
+
+devsupport@gamespy.com
+*/
 
 #ifndef _PEERAUTOMATCH_H_
 #define _PEERAUTOMATCH_H_

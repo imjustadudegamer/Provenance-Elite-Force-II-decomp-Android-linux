@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_CREATEPAGE_H__4FC1C8CA_9B4C_47F6_B226_C211DC74D504__INCLUDED_)
 #define AFX_CREATEPAGE_H__4FC1C8CA_9B4C_47F6_B226_C211DC74D504__INCLUDED_
 

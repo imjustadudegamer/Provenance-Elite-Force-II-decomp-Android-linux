@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_TRACK_H__0DF04935_1FD6_4741_AEC5_5A40455C0C7F__INCLUDED_)
 #define AFX_TRACK_H__0DF04935_1FD6_4741_AEC5_5A40455C0C7F__INCLUDED_

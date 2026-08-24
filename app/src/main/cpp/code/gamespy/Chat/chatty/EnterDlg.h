@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_ENTERDLG_H__56D121BA_9750_4FF9_AEA2_0CDAC1CB1DC2__INCLUDED_)
 #define AFX_ENTERDLG_H__56D121BA_9750_4FF9_AEA2_0CDAC1CB1DC2__INCLUDED_
 

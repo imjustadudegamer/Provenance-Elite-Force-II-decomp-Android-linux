@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __SCISERIALIZE_H__
 #define __SCISERIALIZE_H__
 

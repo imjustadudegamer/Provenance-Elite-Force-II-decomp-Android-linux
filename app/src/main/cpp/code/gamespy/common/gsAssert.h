@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GSIASSERT_H__
 #define __GSIASSERT_H__
 

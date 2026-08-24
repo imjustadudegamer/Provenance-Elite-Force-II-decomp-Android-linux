@@ -1,3 +1,37 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/watchEntityEX.cpp                          $
+// $Revision:: 4                                                              $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:36p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+//		Keeps the actor rotated to face the entity ( enemy by default ) for the specified
+//		amount of time ( or forever, if time is -1 )
+//	
+// PARAMETERS:
+//		_time      -- The time to keep rotated
+//		_turnspeed -- How fast to rotate
+//		_anim	   -- Animation to play while rotating
+//		_ent	   -- Entity to watch ( Must be set by another behavior -- defaults to enemy )
+//	
+// ANIMATIONS:
+//		Rotation Anim -- Parameter
+//	
+//--------------------------------------------------------------------------------
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include "actor.h"
 #include "watchEntityEX.hpp"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GLSL ES 3.00 build + validation for the gles3-gles3-shade change (G2).
+GLSL ES 3.00 build + validation for the GLES3 shade layer.
 
 WHAT IT DOES
 ------------
@@ -81,20 +81,47 @@ RE_KEY = re.compile(r'GLES3_PROGRAM_KEY\([^)]*?(0x[0-9a-fA-F]+|\d+)\s*,\s*"([^"]
 # "precision highp int;\nprecision highp float;").  Both stages then default to
 # highp, so every shared interface matches -- present and future.
 #
-# MALI_FIXES.md note: its entry #2 (never emit gl_ClipDistance on Mali) is why
-# the portal clip is a varying + fragment discard in gles3_clip.inc.glsl rather
-# than gl_ClipDistance; that choice already matches the documented guidance.
+# Mali driver note: never emit gl_ClipDistance on Mali, which is why the
+# portal clip is a varying + fragment discard in gles3_clip.inc.glsl rather
+# than gl_ClipDistance.
 PRECISION_PRELUDE = (
     '/* gles3: stage-matched default precision (see build_glsl.py); int and\n'
     '   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n'
     '   varying must match or the pair is a LINK error on a strict driver.\n'
     '   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n'
     '   R32F sin/table texture read with texelFetch and its value precision is\n'
-    '   the sampler qualifier, so lowp would truncate the oracle-exact table. */\n'
+    '   the sampler qualifier, so a lowp sampler would truncate the table. */\n'
     'precision highp int;\n'
     'precision highp float;\n'
     'precision highp sampler2D;\n'
 )
+
+
+def strip_comments(src):
+    """Drop comments from a built source.
+
+    The `.glsl` files under glsl/ are the sources of truth and carry the
+    editorial comments (retail line citations, arm rationale).  The generated
+    copy is compiled and embedded, so its comments would only duplicate the
+    source's -- and the comment budget counts every line once, not once per
+    generated copy.  The precision prelude is inserted after this, so the
+    generated file still documents its own precision choice."""
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        if src.startswith('//', i):
+            j = src.find('\n', i)
+            i = n if j < 0 else j
+        elif src.startswith('/*', i):
+            j = src.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            out.append(src[i])
+            i += 1
+    text = ''.join(out)
+    # Collapse the blank runs a removed block can leave behind.
+    text = re.sub(r'\n[ \t]*\n[ \t]*\n[ \t]*\n+', '\n\n\n', text)
+    return text
 
 
 def with_precision_prelude(src):
@@ -118,8 +145,7 @@ def substitute(src):
                           by every program that can be bound while the plane is
                           enabled; see the chunk's header for the adjudication.
     Two separate chunks so the deliberately small UI/sprite/flare programs do
-    not have to carry the generator library (old-Mali shader-compiler faults,
-    MALI_FIXES.md)."""
+    not have to carry the generator library (old-Mali shader-compiler faults)."""
     common = open(os.path.join(HERE, 'gles3_common.inc.glsl'), 'r', encoding='utf-8').read()
     clip = open(os.path.join(HERE, 'gles3_clip.inc.glsl'), 'r', encoding='utf-8').read()
     src = src.replace('//@@GLES3_COMMON@@', common)
@@ -138,7 +164,7 @@ def build(verbose=True):
     embedded = {}
     for f in sources:
         raw = open(os.path.join(HERE, f), 'r', encoding='utf-8').read()
-        out = with_precision_prelude(substitute(raw))
+        out = with_precision_prelude(strip_comments(substitute(raw)))
         path = os.path.join(BUILT, f)
         with open(path, 'w', encoding='utf-8') as fh:
             fh.write(out)
@@ -235,6 +261,23 @@ def validate_links(masks):
 
 def emit_header(embedded, out_path):
     with open(out_path, 'w', encoding='utf-8') as fh:
+        fh.write('/*\n'
+                 '===========================================================================\n'
+                 'This file is part of the port of Star Trek: Voyager -- Elite Force II, whose\n'
+                 'engine descends from id Tech 3 through OpenMoHAA.\n'
+                 '\n'
+                 'It is free software; you can redistribute it and/or modify it under the terms of\n'
+                 'the GNU General Public License as published by the Free Software Foundation;\n'
+                 'either version 2 of the License, or (at your option) any later version.\n'
+                 '\n'
+                 'It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;\n'
+                 'without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR\n'
+                 'PURPOSE.  See the GNU General Public License, COPYING.txt at the repository\n'
+                 'root, for more details.\n'
+                 '===========================================================================\n'
+                 '*/\n'
+                 '// SPDX-License-Identifier: GPL-2.0-or-later\n'
+                 '// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.\n')
         fh.write('/* GENERATED by glsl/build_glsl.py -- do not edit by hand.\n'
                  ' * Embedded GLSL ES 3.00 sources for code/renderergles3.\n'
                  ' * The .glsl files under glsl/ are the sources of truth;\n'

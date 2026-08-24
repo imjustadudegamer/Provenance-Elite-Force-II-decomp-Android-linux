@@ -1,3 +1,18 @@
+/******
+gstats.h
+GameSpy Stats/Tracking SDK 
+  
+Copyright 1999-2007 GameSpy Industries, Inc
+
+******
+
+Please see the GameSpy Stats and Tracking SDK documentation for more info
+
+08-23-00 - DDW
+Fixed a problem that prevented opening/closing/re-opening of the connection within
+a single session.
+
+*****/
 
 #ifndef _GSTATS_H_
 #define _GSTATS_H_

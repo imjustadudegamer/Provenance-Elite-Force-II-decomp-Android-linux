@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_CONNECTPAGE_H__70C3619F_ED14_49F8_9155_9F96147FF4C2__INCLUDED_)
 #define AFX_CONNECTPAGE_H__70C3619F_ED14_49F8_9155_9F96147FF4C2__INCLUDED_
 

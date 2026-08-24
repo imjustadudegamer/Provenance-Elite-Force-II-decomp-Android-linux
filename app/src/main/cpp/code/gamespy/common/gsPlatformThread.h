@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GSPLATFORMTHREAD_H__
 #define __GSPLATFORMTHREAD_H__
 

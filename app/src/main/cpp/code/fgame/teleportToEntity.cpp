@@ -1,3 +1,40 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/teleportToEntity.cpp                       $
+// $Revision:: 5                                                              $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:36p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+// TeleportToEntity Behavior Implementation.
+//	-- Currently, this is misnamed as a result of the transition to individual
+//	   files for each behavior.  Additionally, this behavior needs much refactoring
+//	   to make it more generalized and flexible
+//
+//	-- What it does RIGHT NOW
+//	   The Behavior grabs the player's position, offsets it ( Preferring to go behind )
+//	   It checks if this new position will hold the actor.  If that is true, then 
+//	   it plays the "start" animation.  When that animation is completed, it rechecks
+//	   the spot -- If it's still good, then it sets the actor's origin to that spot
+//	   and plays the "end" animation
+//
+//	ANIMATIONS:
+//		Start Animation : Parameter
+//		End Animation   : Parameter
+//--------------------------------------------------------------------------------
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include "actor.h"
 #include "player.h"

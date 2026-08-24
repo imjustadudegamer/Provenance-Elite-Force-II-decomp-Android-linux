@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include <stdio.h>
 #include <math.h>
 #include "gvDirectSound.h"

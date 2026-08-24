@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GSIMEMORY_H__
 #define __GSIMEMORY_H__
 

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_TALKDLG_H__87449421_C42C_11D3_BD38_00C0F056BC39__INCLUDED_)
 #define AFX_TALKDLG_H__87449421_C42C_11D3_BD38_00C0F056BC39__INCLUDED_
 

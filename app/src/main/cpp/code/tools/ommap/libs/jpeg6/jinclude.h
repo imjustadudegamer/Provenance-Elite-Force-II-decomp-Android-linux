@@ -1,3 +1,18 @@
+/*
+ * jinclude.h
+ *
+ * Copyright (C) 1991-1994, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file exists to provide a single place to fix any problems with
+ * including the wrong system include files.  (Common problems are taken
+ * care of by the standard jconfig symbols, but on really weird systems
+ * you may have to edit this file.)
+ *
+ * NOTE: this file is NOT intended to be included by applications using the
+ * JPEG library.  Most applications need only include jpeglib.h.
+ */
 
 
 

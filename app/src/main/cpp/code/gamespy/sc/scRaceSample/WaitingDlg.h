@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_WAITINGDLG_H__874B6CC6_8058_4BDF_B714_8FE3610A12B4__INCLUDED_)
 #define AFX_WAITINGDLG_H__874B6CC6_8058_4BDF_B714_8FE3610A12B4__INCLUDED_
 

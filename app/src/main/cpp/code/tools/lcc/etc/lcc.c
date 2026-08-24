@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 static char rcsid[] = "Id: dummy rcsid";
 
 #include <stdio.h>

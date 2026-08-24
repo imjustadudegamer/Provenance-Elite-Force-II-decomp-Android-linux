@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GHTTPENCRYPTION_H__
 #define __GHTTPENCRYPTION_H__
 

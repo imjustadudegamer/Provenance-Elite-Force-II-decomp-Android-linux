@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "gvDevice.h"
 
 GVIDevice * gviNewDevice(GVDeviceID deviceID, GVHardwareType hardwareType, GVDeviceType types, int dataSize)

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _GT_ENCODE_H
 #define _GT_ENCODE_H
 

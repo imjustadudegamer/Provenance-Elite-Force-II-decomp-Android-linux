@@ -1,3 +1,27 @@
+/******
+gserver.c
+GameSpy C Engine SDK
+  
+Copyright 1999-2000 GameSpy Industries, Inc
+
+18002 Skypark Circle
+Irvine, CA 92614-6429
+(949)798-4200
+Fax(949)798-4299
+
+http://developer.gamespy.com
+
+******
+
+Updated 10-15-99 (BGW)
+    Modified ServerParseKeyVals to actually parse and store empty
+    values for keys (i.e. "\delete\\" adds key="delete" and value="")
+Updated 6-17-99 (DDW)
+    Added new tokenize function to handle empty values for keys
+Updated 11-9-00 (JED)
+    Added ServerGetBoolValue() to get generic boolean values
+    
+*******/
 #if defined(applec) || defined(THINK_C) || defined(__MWERKS__) && !defined(__KATANA__) && !defined(__mips64)
     #include "::nonport.h"
 #else

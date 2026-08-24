@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #define HAVE_PROTOTYPES
 #define HAVE_UNSIGNED_CHAR

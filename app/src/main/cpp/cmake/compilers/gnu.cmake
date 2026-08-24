@@ -74,10 +74,9 @@ add_compile_options(-Werror=return-type)
 # up to date forever, and no number of later incremental builds repairs it.  Reproduce it
 # in ~20 seconds with `misc/odr-race-repro.sh`; avoid it with `misc/ninja-guard.sh`.
 #
-# Ninja's ordinary header tracking is CORRECT and was measured twice: a clean build at
-# `26d25f1` followed by `git merge 9656a91` -- the S12 Animate re-parenting, which moves
-# Animate, Trigger, Sentient, Projectile and Gib -- rebuilt 225 edges with 0 warnings and
-# 0 ODR.  Do not "fix" the depfiles.  See docs/KNOWN_GROUND.md, "BUILD INTEGRITY".
+# Ninja's ordinary header tracking is CORRECT and was measured twice: a clean build
+# followed by a merge that re-parented Animate, Trigger, Sentient, Projectile and Gib
+# rebuilt 225 edges with 0 warnings and 0 ODR.  Do not "fix" the depfiles.  See docs/KNOWN_GROUND.md, "BUILD INTEGRITY".
 #
 # Promoting these two to errors is the part a wrapper script cannot do: it protects
 # somebody who ran bare `ninja`, and it makes the poisoned binary impossible to produce

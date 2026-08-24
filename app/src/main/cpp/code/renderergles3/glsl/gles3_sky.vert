@@ -9,6 +9,7 @@ in vec4 a_Color;
 uniform mat4 u_MVP;
 uniform mat4 u_ModelMatrix;	/* backEnd.ori.modelMatrix: eye-space clip test */
 
+//@@GLES3_CLIP@@
 uniform vec4 u_BaseColor;	/* sky stage colour (rgbGen identity = white) */
 uniform float u_SkyAlpha;	/* tr.refdef.sky_alpha */
 uniform vec2 u_SkyScroll;	/* cloud-layer texcoord scroll (tr_sky.c) */

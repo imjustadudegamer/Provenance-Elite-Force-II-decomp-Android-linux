@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #define	INS	32768		
 #define	OBS	4096		
 #define	NARG	32		

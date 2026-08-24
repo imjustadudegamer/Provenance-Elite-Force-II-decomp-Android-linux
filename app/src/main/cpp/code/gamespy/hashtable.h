@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
  #ifndef _HASHTABLE_H
 #define _HASHTABLE_H
 

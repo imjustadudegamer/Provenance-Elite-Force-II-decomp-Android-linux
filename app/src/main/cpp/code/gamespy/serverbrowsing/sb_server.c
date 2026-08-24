@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "sb_internal.h"
 #include "sb_ascii.h"
 

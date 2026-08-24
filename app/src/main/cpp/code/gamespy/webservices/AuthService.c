@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "AuthService.h"
 #include "../common/gsXML.h"
 #include "../common/gsAvailable.h"

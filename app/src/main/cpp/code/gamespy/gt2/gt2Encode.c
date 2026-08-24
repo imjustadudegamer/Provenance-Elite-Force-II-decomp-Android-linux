@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include <stdarg.h>
 #include <string.h>
 #include "gt2Encode.h"

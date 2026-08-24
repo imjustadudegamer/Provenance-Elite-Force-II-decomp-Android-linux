@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GSUTILITY_H__
 #define __GSUTILITY_H__
 

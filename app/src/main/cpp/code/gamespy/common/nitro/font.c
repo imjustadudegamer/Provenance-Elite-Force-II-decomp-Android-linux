@@ -1,3 +1,24 @@
+/*---------------------------------------------------------------------------*
+  Project:  NitroSDK - RTC - demos
+  File:     font.c
+
+  Copyright 2003,2004 Nintendo.  All rights reserved.
+
+  These coded instructions, statements, and computer programs contain
+  proprietary information of Nintendo of America Inc. and/or Nintendo
+  Company Ltd., and are protected by Federal copyright law.  They may
+  not be disclosed to third parties or copied or duplicated in any form,
+  in whole or in part, without the prior written consent of Nintendo.
+
+  $Log: font.c,v $
+  Revision 1.2  2004/11/02 07:19:52  terui
+  Fixed spelling mistakes in comments.
+
+  Revision 1.1  2004/05/12 02:38:49  terui
+  initial upload
+
+  $NoKeywords: $
+ *---------------------------------------------------------------------------*/
 
 #include    "font.h"
 

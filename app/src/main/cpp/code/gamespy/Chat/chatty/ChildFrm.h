@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_CHILDFRM_H__CECBEADE_E41E_4FB6_93DD_C3735CFC4679__INCLUDED_)
 #define AFX_CHILDFRM_H__CECBEADE_E41E_4FB6_93DD_C3735CFC4679__INCLUDED_

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "spursConfiguration.h"
 #include "SpursSpeexCInterface.h"
 #include <stdio.h>

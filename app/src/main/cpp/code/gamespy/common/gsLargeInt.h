@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GSLARGEINT_H__
 #define __GSLARGEINT_H__
 
