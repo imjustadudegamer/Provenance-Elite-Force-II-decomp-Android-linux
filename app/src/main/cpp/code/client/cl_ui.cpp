@@ -126,6 +126,8 @@ static str               ui_sCurrentLoadingMenu;
 static str               ui_sLevelLoadingScreen;
 static Container<Menu *> hudList;
 
+static void UI_SyncHudScale( void );
+
 const UColor UWhiteChatMessageColor(0.75, 0.75, 0.75);
 const UColor URedChatMessageColor(1.0, 0.333, 0.333);
 const UColor UGreenChatMessageColor(0.0, 1.0, 0.333, 1.0);
@@ -341,9 +343,19 @@ void UI_DisplayHudList(void)
     for (int i = 1; i <= hudList.NumObjects(); i++) {
         Menu     *pMenu   = hudList.ObjectAt(i);
         UIWidget *pWidget = pMenu->GetContainerWidget();
+        float     hudScale = pWidget ? pWidget->getHudScale() : 1.0f;
 
         pMenu->ForceShow();
+
+        if (hudScale > 1.0f) {
+            UIWidget::HudScalePush(hudScale);
+        }
+
         pWidget->Display(uWinMan.getFrame(), 1.0);
+
+        if (hudScale > 1.0f) {
+            UIWidget::HudScalePop();
+        }
     }
 }
 
@@ -935,6 +947,7 @@ static void UI_Update_Impl(void)
 
     if ( ui_hudScale && ui_hudScale->modified ) {
         ui_hudScale->modified = false;
+        UI_SyncHudScale();
         UI_ResolutionChange();
     }
 
@@ -1926,14 +1939,16 @@ void UI_Cvar_Set(const char *var_name, const char *value)
 }
 
 /*
- * One HUD scale factor, applied where the 640x480 virtual space is resolved, so
- * every HUD element -- weapon ammo, the dialogue box, the tricorder, the radar --
- * scales at layout time and composes with the pillarbox rect the same stores use.
- * `ui_hudScale' 0 means auto: 1.0 on a desktop, and on Android the display
- * density over 160 clamped to [1,2], which is a physical-size rule -- a 6.4"
- * 720p panel (density 320) and a 6.4" 1440p panel (density 560) both land on the
- * cap and therefore read the same size.  The clamp is the same on both ends, so
- * no device is smaller than it is today.
+ * One HUD scale factor for the in-game HUD only -- weapon ammo, the dialogue box,
+ * the tricorder, the radar and the rest.  The 640x480 virtual space that
+ * `uid.scaleRes' resolves stays retail, so every 2D menu, dialog, loading screen
+ * and scoreboard is pixel-identical; a HUD element's subtree is the only place
+ * `uid.scaleRes' is multiplied, and each HUD menu keeps the edge its `align'
+ * declares.  `ui_hudScale' 0 means auto: 1.0 on a desktop, and on Android the
+ * display density over 160 clamped to [1,2], which is a physical-size rule -- a
+ * 6.4" 720p panel (density 320) and a 6.4" 1440p panel (density 560) both land on
+ * the cap and therefore read the same size.  The clamp is the same on both ends,
+ * so no device is smaller than it is today.
  */
 #define HUD_SCALE_MIN	1.0f
 #define HUD_SCALE_MAX	2.0f
@@ -1975,6 +1990,75 @@ static float UI_EffectiveHudScale( void )
     return s_uiHudScaleAuto;
 }
 
+/*
+ * `hudList' is the whole in-game HUD draw set.  Every name reachable through
+ * `ui_addhud' is an in-game HUD element -- health, radar, inventory, item text,
+ * mission objectives, the pause icon, the objective notices, the arena and
+ * match-mode status boards, and the weapon-detail HUDs cgame adds per view mode.
+ * The one exception is `dm_scoreboard': the multiplayer scoreboard is interface,
+ * not HUD, so it is explicitly excluded and stays retail-sized.
+ */
+static qboolean UI_HudMenuScaled( const Menu *hud )
+{
+    return hud && strcmp( hud->m_name.c_str(), "dm_scoreboard" ) != 0;
+}
+
+static void UI_ApplyHudScale( Menu *hud )
+{
+    UIWidget *cont;
+
+    if ( !hud ) {
+        return;
+    }
+
+    cont = hud->GetContainerWidget();
+
+    if ( cont ) {
+        cont->setHudScale( UI_HudMenuScaled( hud ) ? UI_EffectiveHudScale() : 1.0f );
+    }
+}
+
+/* A HUD menu added mid-session was last laid out at retail scale, so it is
+   re-laid out here in its own scope and re-aligned afterwards.  At 1.0 the
+   menu is already correct and retail's own layout is left untouched. */
+static void UI_RelayoutHudMenu( Menu *hud )
+{
+    float hudScale;
+    int   i, n;
+
+    if ( !hud || !hud->GetContainerWidget() ) {
+        return;
+    }
+
+    hudScale = hud->GetContainerWidget()->getHudScale();
+
+    if ( !( hudScale > 1.0f ) ) {
+        return;
+    }
+
+    UIWidget::HudScalePush( hudScale );
+
+    n = hud->GetWidgetCount();
+    for ( i = 1; i <= n; i++ ) {
+        UIWidget *wid = hud->GetWidget(i);
+
+        if ( wid ) {
+            wid->ChangeResolution();
+        }
+    }
+
+    UIWidget::HudScalePop();
+
+    hud->RealignWidgets();
+}
+
+static void UI_SyncHudScale( void )
+{
+    for ( int i = 1; i <= hudList.NumObjects(); i++ ) {
+        UI_ApplyHudScale( hudList.ObjectAt(i) );
+    }
+}
+
 // THE single writer of the whole `uid` block.  Retail CL_FillUIDef @0x00196BE0
 void CL_FillUIDef(void)
 {
@@ -1996,12 +2080,8 @@ void CL_FillUIDef(void)
     uid.vidHeight  = dh;
     uid.uiHasMouse = in_guimouse != qfalse;
 
-    {
-        float hudScale = UI_EffectiveHudScale();
-
-        uid.scaleRes[0] = (float)uid.vidWidth / ef2VirtualWidth * hudScale;
-        uid.scaleRes[1] = (float)uid.vidHeight / ef2VirtualHeight * hudScale;
-    }
+    uid.scaleRes[0] = (float)uid.vidWidth / ef2VirtualWidth;
+    uid.scaleRes[1] = (float)uid.vidHeight / ef2VirtualHeight;
     uid.bHighResScaling = qtrue;
 
     uid.mouseX -= uid.originX;
@@ -2543,6 +2623,9 @@ void UI_AddHud(const char *name, int show)
             hud->ForceHide();
         }
     }
+
+    UI_ApplyHudScale(hud);
+    UI_RelayoutHudMenu(hud);
 }
 
 void UI_RemoveHud(const char *name)
@@ -2552,6 +2635,10 @@ void UI_RemoveHud(const char *name)
     if (hud && hudList.ObjectInList(hud)) {
         hudList.RemoveObject(hud);
         hud->ProcessEvent(new Event(EV_HideMenu));
+
+        if (hud->GetContainerWidget()) {
+            hud->GetContainerWidget()->setHudScale(1.0f);
+        }
     }
 }
 

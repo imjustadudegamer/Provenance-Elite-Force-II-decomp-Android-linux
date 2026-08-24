@@ -608,7 +608,18 @@ void MenuManager::ChangeResolution(void)
 
     num = m_menulist.NumObjects();
     for (i = 1; i <= num; i++) {
-        Menu *menu = m_menulist.ObjectAt(i);
+        Menu     *menu = m_menulist.ObjectAt(i);
+        UIWidget *cont = menu->GetContainerWidget();
+        float     hudScale = cont ? cont->getHudScale() : 1.0f;
+        bool      bHudScale = hudScale > 1.0f;
+
+        /* Only a HUD menu is laid out with the multiplied virtual space.  The
+           scope wraps the whole item list so a child's own ChangeResolution
+           call, which this loop issues after the container's, resolves the
+           same space as the container. */
+        if (bHudScale) {
+            UIWidget::HudScalePush(hudScale);
+        }
 
         n = menu->m_itemlist.NumObjects();
         for (j = 1; j <= n; j++) {
@@ -617,6 +628,10 @@ void MenuManager::ChangeResolution(void)
             if (wid) {
                 wid->ChangeResolution();
             }
+        }
+
+        if (bHudScale) {
+            UIWidget::HudScalePop();
         }
     }
 }

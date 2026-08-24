@@ -31,7 +31,6 @@ public class EF2Activity extends SDLActivity {
      */
     private static final String[] STALE_BASE_FILES = {
             "config.cfg",            // 6,271 B: an older build's home==base config
-            "legacy.cfg",              // 3,782 B: the pre-unification OS-user config
             "android_defaults.cfg",  // the retired defaults asset (now in the binary)
             "autoexec.cfg",          // the retired empty autoexec hook (effects removed)
             // baseline retail's FS_InitFilesystem requires, and defaultcontrols.cfg /
