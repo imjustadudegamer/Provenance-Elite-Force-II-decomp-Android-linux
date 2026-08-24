@@ -1066,7 +1066,12 @@ UIReggedMaterial::UIReggedMaterial()
 
 uihandle_t UIReggedMaterial::GetMaterial()
 {
-    if (!isGot) {
+    /* `RegisterShaderNoMip' answers 0 when a shader resolved to the renderer's
+       defaultShader, and a 0 latched here is permanent: the material is asked
+       for every frame and would keep drawing the default.  The cursor arrow is
+       the one material with no other route to the screen, so a failed resolve
+       is retried instead of being remembered. */
+    if (!isGot || hMat == 0) {
         isGot      = true;
         this->hMat = uii.Rend_RegisterMaterial(name.c_str());
     }
@@ -1076,7 +1081,13 @@ uihandle_t UIReggedMaterial::GetMaterial()
 void UIReggedMaterial::ReregisterMaterial(void)
 {
     if (isGot) {
-        this->hMat = uii.Rend_RegisterMaterial(name.c_str());
+        uihandle_t refreshed = uii.Rend_RegisterMaterial(name.c_str());
+
+        /* A refresh must not downgrade a live handle to the default-shader 0;
+           GetMaterial retries on the next ask. */
+        if (refreshed) {
+            this->hMat = refreshed;
+        }
     }
 }
 
@@ -3761,6 +3772,49 @@ float UIWidget::getBackgroundAlpha(void)
     return m_alpha;
 }
 
+void UIWidget::setHudScale(float scale)
+{
+    m_hudScale = scale;
+}
+
+float UIWidget::getHudScale(void) const
+{
+    return m_hudScale;
+}
+
+/* The effective HUD scale multiplies the two virtual-space stores for exactly
+   one HUD subtree.  The depth guard keeps a menu pushed from both the HUD draw
+   list and its own Display from multiplying twice, and the saved pair is what
+   every other element in the frame still resolves against. */
+static int   s_hudScaleDepth = 0;
+static float s_hudScaleRes[2] = {0.0f, 0.0f};
+
+void UIWidget::HudScalePush(float scale)
+{
+    if (s_hudScaleDepth == 0) {
+        s_hudScaleRes[0] = uid.scaleRes[0];
+        s_hudScaleRes[1] = uid.scaleRes[1];
+        uid.scaleRes[0] *= scale;
+        uid.scaleRes[1] *= scale;
+    }
+
+    s_hudScaleDepth++;
+}
+
+void UIWidget::HudScalePop(void)
+{
+    if (s_hudScaleDepth <= 0) {
+        return;
+    }
+
+    s_hudScaleDepth--;
+
+    if (s_hudScaleDepth == 0) {
+        uid.scaleRes[0] = s_hudScaleRes[0];
+        uid.scaleRes[1] = s_hudScaleRes[1];
+    }
+}
+
 void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
 {
     int    i;
@@ -3781,6 +3835,15 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
     if (m_hideDuringLoad && menuManager.getLoading()) {
         LIMIT_VW_Exit(LIMIT_VW_Self(limit_t0, getClassname(), getName()));
         return;
+    }
+
+    /* A HUD menu's subtree is the only place the 640x480 virtual space is
+       multiplied.  The pushed scope covers this widget and every child it
+       recurses into, and is popped before anything else draws. */
+    bool bHudScale = m_hudScale > 1.0f;
+
+    if (bHudScale) {
+        HudScalePush(m_hudScale);
     }
 
     if (m_direction || m_fadetime != 0.0f || m_bMoveActive) {
@@ -3882,6 +3945,10 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
         if (child->m_visible) {
             child->Display(m_frame, m_local_alpha);
         }
+    }
+
+    if (bHudScale) {
+        HudScalePop();
     }
 
     LIMIT_VW_Exit(limit_self);

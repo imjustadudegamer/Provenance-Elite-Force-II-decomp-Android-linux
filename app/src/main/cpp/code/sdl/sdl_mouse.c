@@ -49,3 +49,22 @@ qboolean IN_IsCursorActive(void)
 {
     return SDL_GetRelativeMouseMode() == SDL_TRUE;
 }
+
+/* Touch and gamepad input reach the UI on Android, but neither is a pointer, so
+   neither may raise one.  Only a real mouse event sets this, and it stays set
+   once one has arrived. */
+static qboolean in_realmouse = qfalse;
+
+void IN_NoteRealMouse(void)
+{
+    in_realmouse = qtrue;
+}
+
+qboolean IN_HasRealMouse(void)
+{
+#ifdef __ANDROID__
+    return in_realmouse;
+#else
+    return qtrue;
+#endif
+}

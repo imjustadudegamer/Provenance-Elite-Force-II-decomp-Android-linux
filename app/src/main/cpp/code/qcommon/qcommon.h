@@ -892,6 +892,11 @@ void IN_GetMousePosition(int *x, int *y);
 
 void IN_FreeCursor(void);
 qboolean IN_IsCursorActive(void);
+/* True where a pointer device should put the software cursor on screen.  On
+   Android that is only after a genuine (non-touch, non-gamepad) mouse event;
+   elsewhere it is true, so the desktop cursor is exactly retail's. */
+qboolean IN_HasRealMouse(void);
+void     IN_NoteRealMouse(void);
 
 void Com_Pause(void);
 void Com_Unpause(void);

@@ -353,7 +353,11 @@ void UIWindowManager::UpdateViews(void)
     UI_ZONE_END(UI_FAM_DISP, UI_DZ_disp);
     UI_ZONE_BEGIN(UI_DZ_cursor);
 
-    if (m_cursor && m_showcursor && uid.uiHasMouse) {
+    /* `uiHasMouse' is the UI's desire for a pointer, and touch sets it too, so
+       it cannot decide whether a pointer exists.  `IN_HasRealMouse' is the
+       platform answer: on Android it stays false until a real mouse event, and
+       on the desktop it is true, so the cursor there is exactly retail's. */
+    if (m_cursor && m_showcursor && uid.uiHasMouse && IN_HasRealMouse()) {
         vec4_t col;
 
         setCursor(m_cursorname);

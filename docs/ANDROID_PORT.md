@@ -52,23 +52,37 @@ There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
 ### In-game HUD scale
 
 `ui_hudScale` scales the in-game HUD — weapon ammo, the dialogue box, the
-tricorder, the radar and the rest — from the one place the 640x480 virtual space
-is resolved (`CL_FillUIDef`), so it is a layout-time factor and it composes with
-the pillarbox rect that same function computes. It is archived, so a config
-rewrite keeps it.
+tricorder, the radar and the rest — and nothing else. The 640x480 virtual space
+is still resolved by `CL_FillUIDef` as the retail division of the pillarbox rect,
+so every 2D menu, dialog, loading screen and scoreboard is pixel-identical. The
+factor is a scope around a HUD element's own subtree: the widget set's
+`ChangeResolution` lays out a HUD menu with the pair multiplied, `Display` draws
+it that way, and the pair is restored before anything else in the frame resolves
+it. Each HUD menu keeps the edge its `align` declares, so a `bottom left` element
+grows up and right from the bottom-left corner, a `top right` element grows down
+and left, and a centred element grows about its centre. `hudList` is the HUD set;
+the multiplayer scoreboard (`dm_scoreboard`) is excluded and stays retail-sized.
+It is archived, so a config rewrite keeps it.
 
 | value | effect |
 |-------|--------|
 | `0` | auto (default) |
 | `> 0` | that factor, clamped to `[1.0, 2.0]` |
 
-Auto is `1.0` on the desktop, which leaves the Linux build pixel-identical: the
-stores are multiplied by exactly `1.0f`. On Android it is the display density
-over 160, clamped to `[1.0, 2.0]` — a physical-size rule, not a pixel count. A
-6.4" 720p panel reports density 320 and a 6.4" 1440p panel reports 560, so both
-land on the shared cap of `2.0` and the HUD reads the same size on each, while
-the clamp is the same at both ends and no device ends up smaller than it is
-today.
+Auto is `1.0` on the desktop, which leaves the Linux build pixel-identical: no
+scope is entered at all at `1.0`. On Android it is the display density over 160,
+clamped to `[1.0, 2.0]` — a physical-size rule, not a pixel count. A 6.4" 720p
+panel reports density 320 and a 6.4" 1440p panel reports 560, so both land on the
+shared cap of `2.0` and the HUD reads the same size on each, while the clamp is
+the same at both ends and no device ends up smaller than it is today.
+
+### Pointer
+
+The software cursor is drawn only where a pointer exists. On Android a touch or a
+gamepad reaches the UI but is not a pointer, so nothing is drawn until SDL
+delivers a genuine mouse event (`which` other than `SDL_TOUCH_MOUSEID`); once one
+arrives the cursor appears, so a mouse attached to the device works. On the
+desktop the draw is unconditional, exactly as retail.
 
 ## Controls
 

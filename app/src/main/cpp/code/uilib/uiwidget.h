@@ -266,11 +266,20 @@ protected:
     Container<WidgetCvarPair *> m_cvarVisibilityData;
     UIRect2D m_authoredFrame;
     bool     m_bFrameLatched = false;
+    /* In-game HUD menus carry the effective HUD scale here; 1.0 means retail.
+       It is the only widget state that multiplies `uid.scaleRes', and it is
+       scoped to the flagged menu's own subtree. */
+    float    m_hudScale = 1.0f;
 
 public:
     CLASS_PROTOTYPE(UIWidget);
 
     void (*m_commandhandler)(const char *, void *);
+
+    void        setHudScale(float scale);
+    float       getHudScale(void) const;
+    static void HudScalePush(float scale);
+    static void HudScalePop(void);
 
     // PAINT TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Prints this
     void PAINTDumpState(int index, const char *menuName);

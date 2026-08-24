@@ -1478,6 +1478,10 @@ static void IN_ProcessEvents( void )
 
 			case SDL_MOUSEMOTION:
 #ifdef __ANDROID__
+				/* SDL reports a touch as a mouse with `SDL_TOUCH_MOUSEID';
+				   anything else here is a real pointer, so raise one. */
+				if ( e.motion.which != SDL_TOUCH_MOUSEID )
+					IN_NoteRealMouse( );
 				if ( in_guimouse )
 				{
 					int sx = e.motion.x;
@@ -1522,6 +1526,9 @@ static void IN_ProcessEvents( void )
 				{
 					int b;
 #ifdef __ANDROID__
+					if ( e.button.which != SDL_TOUCH_MOUSEID ) {
+						IN_NoteRealMouse( );
+					}
 					if ( e.button.which == SDL_TOUCH_MOUSEID ) {
 						if ( e.type == SDL_MOUSEBUTTONUP && tc_skipClickSuppress > 0 ) {
 							tc_skipClickSuppress--;
@@ -1568,6 +1575,10 @@ static void IN_ProcessEvents( void )
 				break;
 
 			case SDL_MOUSEWHEEL:
+#ifdef __ANDROID__
+				/* A wheel only comes from a real pointer. */
+				IN_NoteRealMouse( );
+#endif
 				if( e.wheel.y > 0 )
 				{
 					Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELUP, qtrue, 0, NULL );
