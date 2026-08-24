@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_GHTTPMFC_H__30518F92_6CEC_4512_AC74_EF31A5DE2D1C__INCLUDED_)
 #define AFX_GHTTPMFC_H__30518F92_6CEC_4512_AC74_EF31A5DE2D1C__INCLUDED_

@@ -6,6 +6,7 @@
    must be bound. */
 precision highp float;	/* gles3: must match the vertex stage's default (see build_glsl.py) */
 
+//@@GLES3_CLIP@@
 in highp float v_ClipDist;
 out vec4 fragColor;
 void main()

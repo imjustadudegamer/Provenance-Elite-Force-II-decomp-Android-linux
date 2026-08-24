@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __PS2PAD_H__
 #define __PS2PAD_H__
 

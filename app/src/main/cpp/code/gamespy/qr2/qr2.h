@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _QR2_H_
 #define _QR2_H_
 

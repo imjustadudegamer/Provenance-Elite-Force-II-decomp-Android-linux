@@ -1,12 +1,12 @@
 #version 300 es
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer
 gles3_stage.frag -- the generic-stage fragment program.
 
 Replaces fixed-function texture env + alpha test + (per-vertex) fog output.
 
-TEXTURE ENV -- the deleted oracle GL_TexEnv (tr_backend.c:191) and the multitexture
+TEXTURE ENV -- the GL1 renderer's GL_TexEnv (tr_backend.c:191) and the multitexture
 combine arms at tr_shade.c:582-606 / tr_backend.c:458-485:
   * one bundle, texEnv 0            -> the stage colour modulates the texel
                                        (GL_MODULATE; tr_shade.c:1665 GL_State

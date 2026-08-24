@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if defined(STRICTUNZIP) || defined(STRICTZIPUNZIP)
 typedef struct TagunzFile__ { int unused; } unzFile__; 

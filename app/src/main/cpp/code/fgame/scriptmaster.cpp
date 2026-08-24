@@ -1,3 +1,29 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /Code/DLLs/game/scriptmaster.cpp                              $
+// $Revision:: 13                                                             $
+//   $Author:: Steven                                                         $
+//     $Date:: 10/04/02 1:32p                                                 $
+//
+// Copyright (C) 1997 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source is may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+// Script masters are invisible entities that are spawned at the begining of each
+// map.  They simple parse the script and send commands to the specified objects
+// at the apropriate time.  Using a combination of simple commands, very complex
+// scripted events can occur.
+//
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 
 #include "g_local.h"

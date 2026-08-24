@@ -38,7 +38,7 @@ SCOPE=(app/src/main/cpp app docs/scripts)
 PROBE_REL="app/src/main/cpp/code/qcommon/__tree_isolation_probe.tmp"
 
 tree_count() {
-    git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c '^tree '
+    git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c '^worktree '
 }
 
 dirty_in() {

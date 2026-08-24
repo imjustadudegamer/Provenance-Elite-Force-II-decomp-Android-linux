@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "sciReport.h"
 #include "sciSerialize.h"
 #include "../md5.h"

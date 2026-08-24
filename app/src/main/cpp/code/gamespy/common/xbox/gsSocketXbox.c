@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if defined(_XBOX)
 char * inet_ntoa(IN_ADDR in_addr)

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #include "../gt2.h"
 #include "../../darray.h"

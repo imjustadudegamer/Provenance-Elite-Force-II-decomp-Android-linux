@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __SAKE_H__
 #define __SAKE_H__
 

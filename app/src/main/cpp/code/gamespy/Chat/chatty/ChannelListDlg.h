@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_CHANNELLISTDLG_H__2D417F5B_EB62_4913_BB7A_6B20477ED21D__INCLUDED_)
 #define AFX_CHANNELLISTDLG_H__2D417F5B_EB62_4913_BB7A_6B20477ED21D__INCLUDED_
 

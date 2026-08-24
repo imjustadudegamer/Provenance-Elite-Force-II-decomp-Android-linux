@@ -1,4 +1,4 @@
-# renderer_gles3.cmake -- the GLES 3.0 renderer (gles3-gles3, G1).
+# renderer_gles3.cmake -- the GLES 3.0 renderer.
 #
 # This target is the programme's shipping renderer and the ONLY one: it is a
 # FORK of the fixed-function renderer's sources with its substrate swapped:
@@ -9,17 +9,15 @@
 #                                    loader) + renderergles3/gl_gles3_platform.c
 #
 # Source provenance: every forked file listed below descends from the
-# fixed-function renderer's same-named file at the programme switch commit.
-# That renderer (the former behaviour oracle) is deleted by decision; its
-# sources remain reconstructible from git history at the commit that precedes
-# the deletion.  This target's own platform layer is:
+# fixed-function renderer's same-named file.  That renderer is deleted by
+# decision.  This target's own platform layer is:
 #   qgl.h / qgl_gles3.[ch] / qgl_gles3_procs.h / qgl_gles3_tokens.h
 #   gl_gles3_platform.c   -- this target's platform layer
 #   gles3_firstlight.c    -- the provable first-light bootstrap
 #   tools/gen_qgl_gles3.py -- the loader's generated proc list
-# The coverage matrix in docs/notes/GLES3_CORE_GLES3.md records, per translation
-# unit, whether its arms were already ES3-clean or were replaced by the G2
-# (shade/shader) and G3 (geometry) changes.
+# The coverage matrix in docs/RENDERER.md records, per translation
+# unit, whether its arms were already ES3-clean or were replaced by the
+# shade/shader and geometry changes.
 #
 # Configuration (app/src/main/cpp/CMakeLists.txt EF2_RENDERER):
 #   gles3       -> this target; cl_renderer defaults to "gles3"
@@ -41,10 +39,10 @@ set(RENDERER_GLES3_SOURCES
     ${SOURCE_DIR}/renderergles3/tr_init.c
     ${SOURCE_DIR}/renderergles3/qgl_gles3.c
     ${SOURCE_DIR}/renderergles3/gl_gles3_platform.c
-    # smp-mcore: the render-thread layer + the EGL/GL context handshake.
+    # the render-thread layer + the EGL/GL context handshake.
     ${SOURCE_DIR}/renderergles3/gles3_renderthread.c
     ${SOURCE_DIR}/renderergles3/gles3_firstlight.c
-    # -- forked oracle translation units (G2/G3 own their conversion) --------
+    # -- forked fixed-function renderer translation units --------------------
     ${SOURCE_DIR}/renderergles3/tr_bsp.c
     ${SOURCE_DIR}/renderergles3/tr_curve.c
     ${SOURCE_DIR}/renderergles3/tr_draw.c
@@ -58,13 +56,13 @@ set(RENDERER_GLES3_SOURCES
     ${SOURCE_DIR}/renderergles3/tr_shade_calc.c
     ${SOURCE_DIR}/renderergles3/tr_shade.c
     ${SOURCE_DIR}/renderergles3/tr_shader.c
-    # -- G2's program/state layer -------------------------------------------
+    # -- the program/state layer --------------------------------------------
     # tr_program.c is the GLSL ES 3.0 program/state layer tr_shade.c drives;
     # without it the merged module links with every GLES3_* symbol undefined.
     ${SOURCE_DIR}/renderergles3/tr_program.c
-    # progcache-progcache: the disk-persisted program cache.  tr_program.c drives
+    # the disk-persisted program cache.  tr_program.c drives
     # it; the file itself is GL- and engine-free above its adapter, so the
-    # progcache_progcache_probe below links THIS source with a fake driver and a
+    # progcache_probe below links THIS source with a fake driver and a
     # host filesystem and certifies the code that ships.
     ${SOURCE_DIR}/renderergles3/tr_program_cache.c
     ${SOURCE_DIR}/renderergles3/tr_shadows.c
@@ -77,10 +75,10 @@ set(RENDERER_GLES3_SOURCES
     ${SOURCE_DIR}/renderergles3/tr_surface.c
     ${SOURCE_DIR}/renderergles3/tr_swipe.cpp
     ${SOURCE_DIR}/renderergles3/tr_util.cpp
-    # -- G3's VBO/stream substrate ------------------------------------------
-    # tr_vbo.c is the glBegin/glEnd replacement (tr_vbo.h is G3's interface)
+    # -- the VBO/stream substrate -------------------------------------------
+    # tr_vbo.c is the glBegin/glEnd replacement (tr_vbo.h is its interface)
     # and tr_main.c/tr_surface.c call into it; tr_world.c is the forked
-    # oracle world path (R_AddWorldSurfaces and friends) without which the
+    # world path (R_AddWorldSurfaces and friends) without which the
     # backend has no world to draw.  Both are needed for the module to link.
     ${SOURCE_DIR}/renderergles3/tr_vbo.c
     ${SOURCE_DIR}/renderergles3/tr_world.c
@@ -173,16 +171,16 @@ endif()
 # trusting that the marker string 
 # ---------------------------------------------------------------------------
 if(NOT ANDROID AND NOT EMSCRIPTEN)
-    add_executable(gles3_gles3_firstlight
+    add_executable(gles3_firstlight
         ${SOURCE_DIR}/renderergles3/gles3_firstlight_probe.c
         ${SOURCE_DIR}/renderergles3/gles3_firstlight.c
         ${SOURCE_DIR}/renderergles3/qgl_gles3.c)
-    target_include_directories(gles3_gles3_firstlight PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(gles3_gles3_firstlight PRIVATE
+    target_include_directories(gles3_firstlight PRIVATE ${RENDERER_INCLUDE_DIRS})
+    target_compile_definitions(gles3_firstlight PRIVATE
                                EF2_GLES3=1 GLES3_FIRSTLIGHT_STANDALONE=1)
-    target_compile_options(gles3_gles3_firstlight PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(gles3_gles3_firstlight PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
-    set_output_dirs(gles3_gles3_firstlight)
+    target_compile_options(gles3_firstlight PRIVATE ${RENDERER_COMPILE_OPTIONS})
+    target_link_libraries(gles3_firstlight PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
+    set_output_dirs(gles3_firstlight)
 
     # smp-hwtex: the transcode probe links the SAME tr_hwtex.c the renderer
     # ships (it has no engine or GL entry-point dependencies of its own), so
@@ -213,18 +211,18 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
     set_output_dirs(smp_texcache_probe)
 
     # progcache-progcache: the probe links the SAME tr_program_cache.c the renderer
-    # ships (compiled with PROGCACHE_PROGCACHE_STANDALONE, which drops only the
+    # ships (compiled with PROGCACHE_STANDALONE, which drops only the
     # engine adapter) and drives it through the two vtables with a fake driver
     # and a host filesystem.  So the format, the fingerprint, the key
     # derivation, the restore verification and the fallback it certifies are the ones that ship.
-    add_executable(progcache_progcache_probe
+    add_executable(progcache_probe
         ${SOURCE_DIR}/renderergles3/progcache_probe.c
         ${SOURCE_DIR}/renderergles3/tr_program_cache.c)
-    target_include_directories(progcache_progcache_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(progcache_progcache_probe PRIVATE EF2_GLES3=1 PROGCACHE_PROGCACHE_STANDALONE=1)
-    target_compile_options(progcache_progcache_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(progcache_progcache_probe PRIVATE m)
-    set_output_dirs(progcache_progcache_probe)
+    target_include_directories(progcache_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
+    target_compile_definitions(progcache_probe PRIVATE EF2_GLES3=1 PROGCACHE_STANDALONE=1)
+    target_compile_options(progcache_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
+    target_link_libraries(progcache_probe PRIVATE m)
+    set_output_dirs(progcache_probe)
 
     # progcache-progcache (real driver): the SAME tr_program_cache.c against a real
     # headless EGL GLES 3.0 context, so the one claim only a driver can settle
@@ -232,12 +230,12 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
     # glProgramBinary into a fresh program -> an IDENTICAL interface -- is
     # tested here and not only against the fake driver.  It exits 77 when the
     # host has no ES3 context, and callers treat that as SKIP.
-    add_executable(progcache_progcache_gl_probe
+    add_executable(progcache_gl_probe
         ${SOURCE_DIR}/renderergles3/progcache_gl_probe.c
         ${SOURCE_DIR}/renderergles3/tr_program_cache.c)
-    target_include_directories(progcache_progcache_gl_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(progcache_progcache_gl_probe PRIVATE EF2_GLES3=1 PROGCACHE_PROGCACHE_STANDALONE=1)
-    target_compile_options(progcache_progcache_gl_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(progcache_progcache_gl_probe PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
-    set_output_dirs(progcache_progcache_gl_probe)
+    target_include_directories(progcache_gl_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
+    target_compile_definitions(progcache_gl_probe PRIVATE EF2_GLES3=1 PROGCACHE_STANDALONE=1)
+    target_compile_options(progcache_gl_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
+    target_link_libraries(progcache_gl_probe PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
+    set_output_dirs(progcache_gl_probe)
 endif()

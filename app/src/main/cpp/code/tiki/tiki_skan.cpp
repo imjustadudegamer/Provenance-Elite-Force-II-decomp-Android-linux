@@ -1,3 +1,13 @@
+/*
+===========================================================================
+Reconstructed from the retail Star Trek: Voyager -- Elite Force II binaries.
+The publisher released no source for this file.  This port asserts no copyright
+in it and grants no rights to it: it remains the property of its respective
+rights holders, and it is covered neither by the GNU GPL nor by the Ritual
+Elite Force II SDK agreement.  See LICENSING.md.
+===========================================================================
+*/
+// SPDX-License-Identifier: LicenseRef-EF2-Retail-Reconstruction
 
 
 #include "q_shared.h"

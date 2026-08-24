@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "sakeRequestInternal.h"
 #include "sakeRequest.h"
 

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _SB_INTERNAL_H_
 #define _SB_INTERNAL_H_
 

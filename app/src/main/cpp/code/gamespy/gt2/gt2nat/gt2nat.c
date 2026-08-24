@@ -1,3 +1,18 @@
+/******
+gt2nat.c
+GameSpy Transport 2 SDK 
+  
+Copyright 2000 GameSpy Industries, Inc
+
+******
+
+ This sample demonstrates sharing a UDP socket with the Query & Reporting 2 SDK 
+ to enable developers to create games that can be hosted behind a NAT.
+
+ Please see the GameSpy Query & Reporting 2 SDK documentation for more 
+ information
+
+******/
 
 
 #include "../gt2.h"

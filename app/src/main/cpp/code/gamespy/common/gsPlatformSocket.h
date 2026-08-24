@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GSSOCKET_H__
 #define __GSSOCKET_H__
 

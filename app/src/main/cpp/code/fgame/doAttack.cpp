@@ -1,3 +1,36 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/doAttack.cpp                               $
+// $Revision:: 11                                                             $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:36p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+// DoAttack Behavior Implementation
+//	-- DoAttack will rotate the actor to face his current enemy, after the
+//	   the rotation( with optional animation ) has completed, it will check
+//	   if the actor is able to hit its current enemy with an attack.  If that
+//	   check is successful, then it will play its specified attack animation.
+//
+//	   Currently, you must put the attack commands inside the animation.
+//
+//	ANIMATIONS:
+//		Attack Animation   : Parameter
+//		Rotation Animation : Optional 
+//--------------------------------------------------------------------------------
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include "actor.h"
 #include "doAttack.hpp"

@@ -24,7 +24,9 @@ out highp float v_ClipDist;	/* portal clip plane, eye space (gles3_clip.inc.glsl
 out vec2 v_TexCoord1;
 #endif
 
+//@@GLES3_COMMON@@
 
+//@@GLES3_CLIP@@
 
 uniform vec3	u_LocalViewOrigin;
 uniform float	u_ForceAlpha;
@@ -189,8 +191,8 @@ vec2 GLES3_ApplyTexMod0(vec2 st, vec3 pos)
 			st.y += now;
 		}
 		else if (ty == GLES3_TMOD_BULGETRANS) {				/* :1587 tr_shade_calc.c:188 */
-			/* RB_CalcBulgeTexCoords computes `offset' per vertex and DISCARDS it
-			   oracle is the contract, so this arm is deliberately a no-op. */
+			/* RB_CalcBulgeTexCoords computes `offset' per vertex and DISCARDS it,
+			   so this arm is deliberately a no-op. */
 		}
 	}
 	return st;
@@ -249,7 +251,7 @@ vec2 GLES3_ApplyTexMod1(vec2 st, vec3 pos)
 		}
 		else if (ty == GLES3_TMOD_WAVETRANS) { st.x += GLES3_Wave(int(p0.y), p0.z, p0.w, p1.x, p1.y); }
 		else if (ty == GLES3_TMOD_WAVETRANT) { st.y += GLES3_Wave(int(p0.y), p0.z, p0.w, p1.x, p1.y); }
-		else if (ty == GLES3_TMOD_BULGETRANS) { /* oracle no-op, see ApplyTexMod0 */ }
+		else if (ty == GLES3_TMOD_BULGETRANS) { /* no-op, see ApplyTexMod0 */ }
 	}
 	return st;
 }

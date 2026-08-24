@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_CONNECTDLG_H__999D9DD8_12B0_4F46_BF46_F607FB3341A0__INCLUDED_)
 #define AFX_CONNECTDLG_H__999D9DD8_12B0_4F46_BF46_F607FB3341A0__INCLUDED_
 

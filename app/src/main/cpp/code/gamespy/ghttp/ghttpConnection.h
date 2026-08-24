@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #ifndef _GHTTPCONNECTION_H_
 #define _GHTTPCONNECTION_H_

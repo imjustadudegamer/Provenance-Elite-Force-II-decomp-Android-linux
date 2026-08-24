@@ -18,7 +18,7 @@ Why this is safe:
 | LOAD segment alignment | `0x4000` (16384) on every LOAD |
 | `DT_SONAME` | `libc++_shared.so` — identical to the r25 one it replaces |
 | `DT_NEEDED` | `libc.so`, `libm.so`, `libdl.so` (a superset of r25's `libc.so`+`libdl.so`; both are public Android libs) |
-| C++ runtime symbols our r25-built modules import | all 22 present (`__cxa_*`, `__gxx_personality_v0`, operator new/delete, `__ndk1::chrono::steady_clock::now`, the `__cxxabiv1` vtables, typeinfo for `char*`/`const char*`) — checked symbol for symbol against `llvm-nm -D` |
+| C++ runtime symbols the r25-built modules import | all 22 present (`__cxa_*`, `__gxx_personality_v0`, operator new/delete, `__ndk1::chrono::steady_clock::now`, the `__cxxabiv1` vtables, typeinfo for `char*`/`const char*`) — checked symbol for symbol against `llvm-nm -D` |
 | mangling namespace | `__ndk1`, same as r25's |
 | `BIND_NOW` | set |
 

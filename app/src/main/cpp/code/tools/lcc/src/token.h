@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 yy(0,         0, 0,  0,    0,      0,      0)
 xx(FLOAT,     1, 0,  0,    0,      CHAR,   "float")
 xx(DOUBLE,    2, 0,  0,    0,      CHAR,   "double")

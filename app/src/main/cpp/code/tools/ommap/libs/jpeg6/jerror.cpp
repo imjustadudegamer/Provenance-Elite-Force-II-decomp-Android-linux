@@ -1,3 +1,17 @@
+/*
+ * jerror.c
+ *
+ * Copyright (C) 1991-1994, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains simple error-reporting and trace-message routines.
+ * These are suitable for Unix-like systems and others where writing to
+ * stderr is the right thing to do.  Many applications will want to replace
+ * some or all of these routines.
+ *
+ * These routines are used by both the compression and decompression code.
+ */
 
 #include "jinclude.h"
 #include "jpeglib.h"

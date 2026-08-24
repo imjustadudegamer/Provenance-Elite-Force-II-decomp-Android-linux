@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_CHATTY_H__D2C88C24_CA2E_4ED3_B08E_BF48F6C0A36B__INCLUDED_)
 #define AFX_CHATTY_H__D2C88C24_CA2E_4ED3_B08E_BF48F6C0A36B__INCLUDED_

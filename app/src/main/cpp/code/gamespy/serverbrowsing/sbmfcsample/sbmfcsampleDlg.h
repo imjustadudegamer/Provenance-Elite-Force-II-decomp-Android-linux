@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_SBMFCSAMPLEDLG_H__8B726D03_AF99_4938_A63C_18525912E55D__INCLUDED_)
 #define AFX_SBMFCSAMPLEDLG_H__8B726D03_AF99_4938_A63C_18525912E55D__INCLUDED_

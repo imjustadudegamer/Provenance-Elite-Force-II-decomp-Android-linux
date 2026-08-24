@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #define IDD_GP_STATS_DIALOG             102
 #define IDR_MAINFRAME                   128
 #define IDC_EMAIL                       1000

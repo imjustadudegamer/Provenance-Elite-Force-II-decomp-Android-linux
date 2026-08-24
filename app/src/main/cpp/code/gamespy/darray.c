@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(UNDER_CE) && !defined(__KATANA__)
 #include <assert.h>
 #else

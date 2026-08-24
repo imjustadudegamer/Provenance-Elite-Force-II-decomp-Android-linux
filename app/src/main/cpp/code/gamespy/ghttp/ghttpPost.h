@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #ifndef _GHTTPPOST_H_
 #define _GHTTPPOST_H_

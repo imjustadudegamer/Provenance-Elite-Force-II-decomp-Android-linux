@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>

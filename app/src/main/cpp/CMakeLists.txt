@@ -41,7 +41,7 @@ project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C CXX)
 #       Which renderer .so gets built and which one `cl_renderer` defaults to.
 #       `gles3` is the shipping substrate on Android AND desktop.  The depth
 #       Vulkan renderer and the OpenGL 1.x fixed-function renderer (retail's
-#       Mac substrate, this project's former behaviour oracle) are both deleted
+#       Mac substrate) are both deleted
 #       by decision; `gles3` is the only value left, and the switch is kept
 #       so a stale cache entry fails loudly instead of silently selecting
 #       nothing.

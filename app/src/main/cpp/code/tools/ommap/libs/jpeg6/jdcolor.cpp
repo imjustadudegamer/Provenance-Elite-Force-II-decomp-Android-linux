@@ -1,3 +1,12 @@
+/*
+ * jdcolor.c
+ *
+ * Copyright (C) 1991-1995, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains output colorspace conversion routines.
+ */
 
 #define JPEG_INTERNALS
 #include "jinclude.h"

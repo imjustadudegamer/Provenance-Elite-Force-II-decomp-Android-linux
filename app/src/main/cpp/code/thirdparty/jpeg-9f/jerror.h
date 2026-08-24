@@ -1,7 +1,7 @@
 /*
  * jerror.h
  *
- * Copyright (C) 1994-1997, Thomas G. Workstream.
+ * Copyright (C) 1994-1997, Thomas G. Lane.
  * Modified 1997-2018 by Guido Vollbeding.
  * This file is part of the Independent JPEG Group's software.
  * For conditions of distribution and use, see the accompanying README file.

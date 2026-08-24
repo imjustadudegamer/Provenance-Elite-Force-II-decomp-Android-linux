@@ -1,3 +1,17 @@
+/******
+gcdkeyc.c
+GameSpy CDKey SDK Client Code
+  
+Copyright 1999-2007 GameSpy Industries, Inc
+
+devsupport@gamespy.com
+
+******
+
+ Please see the GameSpy CDKey SDK documentation for more 
+ information
+
+******/
 #include "../md5.h"
 #include "gcdkeyc.h"
 #include <string.h>

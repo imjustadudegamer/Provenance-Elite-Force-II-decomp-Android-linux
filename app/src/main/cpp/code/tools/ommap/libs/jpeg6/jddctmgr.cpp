@@ -1,3 +1,19 @@
+/*
+ * jddctmgr.c
+ *
+ * Copyright (C) 1994-1995, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains the inverse-DCT management logic.
+ * This code selects a particular IDCT implementation to be used,
+ * and it performs related housekeeping chores.  No code in this file
+ * is executed per IDCT step, only during output pass setup.
+ *
+ * Note that the IDCT routines are responsible for performing coefficient
+ * dequantization as well as the IDCT proper.  This module sets up the
+ * dequantization multiplier table needed by the IDCT routine.
+ */
 
 #define JPEG_INTERNALS
 #include "jinclude.h"

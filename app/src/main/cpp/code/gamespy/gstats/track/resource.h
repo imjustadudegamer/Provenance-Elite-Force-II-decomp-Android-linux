@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #define IDC_EMAIL                       101
 #define IDD_TRACK_DIALOG                102
 #define IDC_NICK                        102

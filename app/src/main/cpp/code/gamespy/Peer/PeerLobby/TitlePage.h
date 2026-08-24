@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_TITLEPAGE_H__15BC897B_80B2_4DED_8622_568C60F30225__INCLUDED_)
 #define AFX_TITLEPAGE_H__15BC897B_80B2_4DED_8622_568C60F30225__INCLUDED_
 

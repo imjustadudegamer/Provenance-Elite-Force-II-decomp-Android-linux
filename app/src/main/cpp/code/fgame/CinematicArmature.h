@@ -1,3 +1,29 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /Code/DLLs/game/CinematicArmature.h                            $
+// $Revision:: 24                                                             $
+//   $Author:: Steven                                                         $
+//     $Date:: 5/16/03 8:27p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source is may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+// DESCRIPTION: Classes related to supporting Cinematic Armature.  The
+//				CinematicArmature itself is a singleton that governs
+//				the loading, cacheing, playing, and stopping of 
+//				cinematics.  The Cinematic class represents a single
+//				cinematic with actors, cameras, objects, and associated
+//				events.
+//
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 
 class Cinematic ;

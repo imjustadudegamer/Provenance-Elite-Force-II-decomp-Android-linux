@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #define ID_SETUP                        3
 #define ID_VOICECHAT                    4
 #define IDM_ABOUTBOX                    0x0010

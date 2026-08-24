@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 
 #ifndef SPU_SAMPLE_TASK_PROCESS_H

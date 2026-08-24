@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_VOICESESSIONDLG_H__4D78C45C_9CB3_4F4B_81DF_8BF65316598E__INCLUDED_)
 #define AFX_VOICESESSIONDLG_H__4D78C45C_9CB3_4F4B_81DF_8BF65316598E__INCLUDED_
 

@@ -1,3 +1,41 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/suppressionFireCombat.cpp                  $
+// $Revision:: 4                                                              $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:36p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+//	SuppressionFireCombat Implementation
+// 
+// PARAMETERS:
+//		str _movementAnim		-- The animation to play while moving to the cover node
+//		str _torsoIdleAnim		-- The animation to play on the torso while idling
+//		str _torsoAttackAnim	-- The animation to play on the torso while attacking
+//		float _maxDistance		-- The maximum distance the actor will look for a node
+//		float _pauseTimeMin		-- The minimum time to pause between attacking
+//		float _pauseTimeMax		-- The maximum time to pause between attacking
+//		float _fireTimeMin		-- The minimum time to fire
+//		float _fireTimeMax		-- The maximum time to fire
+//
+// ANIMATIONS:
+//		_movementAnim		: PARAMETER
+//		_torsoIdleAnim		: PARAMETER
+//		_torsoAttackAnim	: PARAMETER
+//		"idle"				: TIKI Required
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 
 #include "actor.h"

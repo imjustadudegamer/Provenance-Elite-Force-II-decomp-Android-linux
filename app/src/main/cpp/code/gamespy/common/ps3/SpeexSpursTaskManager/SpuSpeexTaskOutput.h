@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 
 #ifndef __SPEEX_TASK_OUTPUT_H

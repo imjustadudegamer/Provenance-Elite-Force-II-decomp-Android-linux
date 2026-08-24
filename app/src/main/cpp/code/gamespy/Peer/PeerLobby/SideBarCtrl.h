@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_SIDEBARCTRL_H__CC0DCA41_C330_11D5_A480_000102C2601F__INCLUDED_)
 #define AFX_SIDEBARCTRL_H__CC0DCA41_C330_11D5_A480_000102C2601F__INCLUDED_
 

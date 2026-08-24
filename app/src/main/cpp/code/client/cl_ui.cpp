@@ -1,3 +1,25 @@
+/*
+===========================================================================
+Copyright (C) 2024 the OpenMoHAA team
+
+This file is part of OpenMoHAA source code.
+
+OpenMoHAA source code is free software; you can redistribute it
+and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the License,
+or (at your option) any later version.
+
+OpenMoHAA source code is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with OpenMoHAA source code; if not, write to the Free Software
+Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "client.h"
 
@@ -16,6 +38,10 @@
 #include "../qcommon/qa_ui.h"
 
 #include "../uilib/limit_uiprobe.h"
+
+#ifdef __ANDROID__
+#include <SDL.h>
+#endif
 
 #include "../corepp/listener.h"
 #include "../corepp/script.h"
@@ -83,6 +109,7 @@ static cvar_t *ui_radarmode;
 static cvar_t *ui_serverrefresh;      
 static cvar_t *ui_mainMenuModel;      
 static cvar_t *cg_targetedPlayerName; 
+static cvar_t *ui_hudScale;
 // "$$" (pool +1032); retail never Cvar_Get()s it -- Cvar_Set creates it.
 
 static char          server_mapname[64];
@@ -905,6 +932,11 @@ static void UI_Update_Impl(void)
     ui_z1 = ( ui_statsOn ? UI_Microseconds() : 0 );
     CL_FillUIDef();
     if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_filluid, UI_Microseconds() - ui_z1 ); }
+
+    if ( ui_hudScale && ui_hudScale->modified ) {
+        ui_hudScale->modified = false;
+        UI_ResolutionChange();
+    }
 
     if (cl.snap.ps.stats[STAT_CINEMATIC] & 1) {
         int limit_uit_cine = LIMIT_Leg();
@@ -1893,6 +1925,56 @@ void UI_Cvar_Set(const char *var_name, const char *value)
     Cvar_Set2(var_name, value, qfalse);
 }
 
+/*
+ * One HUD scale factor, applied where the 640x480 virtual space is resolved, so
+ * every HUD element -- weapon ammo, the dialogue box, the tricorder, the radar --
+ * scales at layout time and composes with the pillarbox rect the same stores use.
+ * `ui_hudScale' 0 means auto: 1.0 on a desktop, and on Android the display
+ * density over 160 clamped to [1,2], which is a physical-size rule -- a 6.4"
+ * 720p panel (density 320) and a 6.4" 1440p panel (density 560) both land on the
+ * cap and therefore read the same size.  The clamp is the same on both ends, so
+ * no device is smaller than it is today.
+ */
+#define HUD_SCALE_MIN	1.0f
+#define HUD_SCALE_MAX	2.0f
+
+static float s_uiHudScaleAuto = 1.0f;
+
+static float UI_ClampHudScale( float scale )
+{
+    if ( !( scale > HUD_SCALE_MIN ) ) {
+        return HUD_SCALE_MIN;
+    }
+    if ( scale > HUD_SCALE_MAX ) {
+        return HUD_SCALE_MAX;
+    }
+    return scale;
+}
+
+static void UI_ComputeAutoHudScale( void )
+{
+    s_uiHudScaleAuto = 1.0f;
+
+#ifdef __ANDROID__
+    {
+        float ddpi = 0.0f;
+
+        if ( SDL_GetDisplayDPI( 0, &ddpi, NULL, NULL ) == 0 && ddpi > 0.0f ) {
+            s_uiHudScaleAuto = UI_ClampHudScale( ddpi / 160.0f );
+        }
+    }
+#endif
+}
+
+static float UI_EffectiveHudScale( void )
+{
+    if ( ui_hudScale && ui_hudScale->value > 0.0f ) {
+        return UI_ClampHudScale( ui_hudScale->value );
+    }
+
+    return s_uiHudScaleAuto;
+}
+
 // THE single writer of the whole `uid` block.  Retail CL_FillUIDef @0x00196BE0
 void CL_FillUIDef(void)
 {
@@ -1914,8 +1996,12 @@ void CL_FillUIDef(void)
     uid.vidHeight  = dh;
     uid.uiHasMouse = in_guimouse != qfalse;
 
-    uid.scaleRes[0]     = (float)uid.vidWidth / ef2VirtualWidth;
-    uid.scaleRes[1]     = (float)uid.vidHeight / ef2VirtualHeight;
+    {
+        float hudScale = UI_EffectiveHudScale();
+
+        uid.scaleRes[0] = (float)uid.vidWidth / ef2VirtualWidth * hudScale;
+        uid.scaleRes[1] = (float)uid.vidHeight / ef2VirtualHeight * hudScale;
+    }
     uid.bHighResScaling = qtrue;
 
     uid.mouseX -= uid.originX;
@@ -5419,6 +5505,8 @@ void CL_InitializeUI(void)
     ui_serverrefresh      = Cvar_Get("ui_serverrefresh", "0", 0);          
     ui_mainMenuModel      = Cvar_Get("ui_mainMenuModel", "", 1);           
     cg_targetedPlayerName = Cvar_Get("cg_targetedPlayerName", "", 0);      
+    ui_hudScale           = Cvar_Get("ui_hudScale", "0", CVAR_ARCHIVE);     
+    UI_ComputeAutoHudScale();
     Cvar_Get("ui_consoleLineHistory", "300", 1);                           
     Cvar_Get("ui_startmap", "", 1);                                        
     Cvar_Get("dlg_badsave", "This save game is invalid", 0);               

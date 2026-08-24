@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "gvPS3Audio.h"
 #include "gvPS3Headset.h"
 

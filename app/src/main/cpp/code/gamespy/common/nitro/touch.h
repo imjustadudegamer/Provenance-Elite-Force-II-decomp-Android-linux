@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _TOUCH_H_
 #define _TOUCH_H_
 

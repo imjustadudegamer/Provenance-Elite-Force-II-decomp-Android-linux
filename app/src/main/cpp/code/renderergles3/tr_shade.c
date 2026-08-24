@@ -1,3 +1,25 @@
+/*
+===========================================================================
+Copyright (C) 1999-2005 Id Software, Inc.
+
+This file is part of Quake III Arena source code.
+
+Quake III Arena source code is free software; you can redistribute it
+and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the License,
+or (at your option) any later version.
+
+Quake III Arena source code is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Foobar; if not, write to the Free Software
+Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "tr_local.h"
 #include "tr_program.h"
@@ -368,11 +390,11 @@ static void ComputeColors( shaderStage_t *pStage )
 			RB_CalcColorFromOneMinusEntity((unsigned char*)tess.svars.colors);
 			break;
 		case CGEN_EXACT_VERTEX:
-			// aspect-2dcolor ORACLE CORRECTION (retail, not this file).  Retail's
+			// aspect-2dcolor RETAIL CORRECTION (retail, not this file).  Retail's
 			Com_Memcpy( tess.svars.colors, tess.vertexColors, tess.numVertexes * sizeof( tess.vertexColors[0] ) );
 			break;
 		case CGEN_VERTEX:
-			// aspect-2dcolor ORACLE CORRECTION (retail, not this file).  Retail case 6 tests
+			// aspect-2dcolor RETAIL CORRECTION (retail, not this file).  Retail case 6 tests
 			if (!tess.vertexColorValid) {
 				static qboolean bWarned = qfalse;
 

@@ -1,3 +1,15 @@
+/******
+gstats.c
+GameSpy Stats/Tracking SDK 
+GameSpy Persistent Storage SDK 
+
+Copyright 1999-2007 GameSpy Industries, Inc
+
+******
+
+Please see the GameSpy Stats and Tracking SDK documentation for more info
+
+******/
 
 #include "gstats.h"
 #include "gpersist.h"

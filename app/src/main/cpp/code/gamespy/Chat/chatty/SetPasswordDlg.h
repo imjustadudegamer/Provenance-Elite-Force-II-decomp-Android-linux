@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_SETPASSWORDDLG_H__666C66DA_E10E_420D_954E_FB2BCE01D798__INCLUDED_)
 #define AFX_SETPASSWORDDLG_H__666C66DA_E10E_420D_954E_FB2BCE01D798__INCLUDED_
 

@@ -1,3 +1,46 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/healGroupMember.cpp                        $
+// $Revision:: 6                                                              $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:36p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+//		Generates a triage list from the actors group, then based on priority 
+//		of patients ( right now, solely health based -- but distance is stored
+//		so we can factor that in if we need to ) it will run to the patient
+//		and play the specified "heal" animation... After the animation it will
+//		send a heal event to the patient which should kick start the regen process
+//	
+// PARAMETERS:
+//		_anim					-- The animation to play while "healing"		
+//		_healDistance			-- How far away to get from the patient
+//		_maxDistance			-- How far away to consider a patient 	
+//		_initialHealPercentage	-- How much to heal right away
+//		_regenHealPercentage	-- How much to heal at each interval
+//		_regenInterval			-- How often to regen
+//		_maxPercentage			-- How Much Total Health can be regened
+//	
+// ANIMATIONS:
+//		Heal Animation	: Parameter
+//		"run"			: TIKI Requirement
+//		"duck"			: TIKI Requirement
+//
+//	
+//--------------------------------------------------------------------------------
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include "actor.h"
 #include "groupcoordinator.h" 

@@ -1,3 +1,26 @@
+/*
+===========================================================================
+Copyright (C) 2007-2009 Robert Beckebans <trebor_7@users.sourceforge.net>
+
+This file is part of XreaL source code.
+
+XreaL source code is free software; you can redistribute it
+and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the License,
+or (at your option) any later version.
+
+XreaL source code is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with XreaL source code; if not, write to the Free Software
+Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
 #include "tr_local.h"
 #include "tr_vbo.h"
 #include "tr_imm_decompose.h"
@@ -510,40 +533,95 @@ void RB_LoadIdentityProjection( void )
 	RB_MatrixIdentity( s_projectionMatrix );
 }
 
+/*
+ * The saved-matrix copies are fortify-checked, and the bound the compiler
+ * derives for the destination is the whole-array remainder,
+ * sizeof(stack) - 16*depth, which is zero for every depth outside
+ * [0, RB_MATRIX_STACK_DEPTH).  A one-ended test does not bound that copy: a
+ * negative depth satisfies a signed upper test, the remainder collapses to
+ * zero, and the abort lands in __memcpy_chk.  Each accessor therefore tests the
+ * index as unsigned, so the copy is reachable only where the remainder is at
+ * least one matrix and an out-of-range state value is refused, not fatal.
+ */
 void RB_PushModelView( void )
 {
-	if ( s_modelViewDepth >= RB_MATRIX_STACK_DEPTH ) {
+	unsigned int	depth = (unsigned int)s_modelViewDepth;
+
+	if ( depth >= (unsigned int)RB_MATRIX_STACK_DEPTH ) {
 		return;
 	}
-	Com_Memcpy( s_modelViewStack[s_modelViewDepth], s_modelViewMatrix, sizeof( s_modelViewMatrix ) );
-	s_modelViewDepth++;
+	Com_Memcpy( s_modelViewStack[depth], s_modelViewMatrix, sizeof( s_modelViewMatrix ) );
+	s_modelViewDepth = (int)( depth + 1u );
 }
 
 void RB_PopModelView( void )
 {
-	if ( s_modelViewDepth <= 0 ) {
+	unsigned int	depth = (unsigned int)s_modelViewDepth;
+
+	if ( depth == 0u || depth > (unsigned int)RB_MATRIX_STACK_DEPTH ) {
 		return;
 	}
-	s_modelViewDepth--;
-	Com_Memcpy( s_modelViewMatrix, s_modelViewStack[s_modelViewDepth], sizeof( s_modelViewMatrix ) );
+	depth--;
+	s_modelViewDepth = (int)depth;
+	Com_Memcpy( s_modelViewMatrix, s_modelViewStack[depth], sizeof( s_modelViewMatrix ) );
 }
 
 void RB_PushProjection( void )
 {
-	if ( s_projectionDepth >= RB_MATRIX_STACK_DEPTH ) {
+	unsigned int	depth = (unsigned int)s_projectionDepth;
+
+	if ( depth >= (unsigned int)RB_MATRIX_STACK_DEPTH ) {
 		return;
 	}
-	Com_Memcpy( s_projectionStack[s_projectionDepth], s_projectionMatrix, sizeof( s_projectionMatrix ) );
-	s_projectionDepth++;
+	Com_Memcpy( s_projectionStack[depth], s_projectionMatrix, sizeof( s_projectionMatrix ) );
+	s_projectionDepth = (int)( depth + 1u );
 }
 
 void RB_PopProjection( void )
 {
-	if ( s_projectionDepth <= 0 ) {
+	unsigned int	depth = (unsigned int)s_projectionDepth;
+
+	if ( depth == 0u || depth > (unsigned int)RB_MATRIX_STACK_DEPTH ) {
 		return;
 	}
-	s_projectionDepth--;
-	Com_Memcpy( s_projectionMatrix, s_projectionStack[s_projectionDepth], sizeof( s_projectionMatrix ) );
+	depth--;
+	s_projectionDepth = (int)depth;
+	Com_Memcpy( s_projectionMatrix, s_projectionStack[depth], sizeof( s_projectionMatrix ) );
+}
+
+/*
+ * A caller that saves both matrices restores to the depth it measured before
+ * saving, so a push that was refused inside the scope cannot be matched by a
+ * pop, and the depth and the saved stack cannot drift apart.
+ */
+int RB_ModelViewDepth( void )
+{
+	return s_modelViewDepth;
+}
+
+int RB_ProjectionDepth( void )
+{
+	return s_projectionDepth;
+}
+
+void RB_PopModelViewTo( int depth )
+{
+	if ( depth < 0 || depth > s_modelViewDepth ) {
+		return;
+	}
+	while ( s_modelViewDepth > depth ) {
+		RB_PopModelView();
+	}
+}
+
+void RB_PopProjectionTo( int depth )
+{
+	if ( depth < 0 || depth > s_projectionDepth ) {
+		return;
+	}
+	while ( s_projectionDepth > depth ) {
+		RB_PopProjection();
+	}
 }
 
 void RB_TranslateModelView( float x, float y, float z )

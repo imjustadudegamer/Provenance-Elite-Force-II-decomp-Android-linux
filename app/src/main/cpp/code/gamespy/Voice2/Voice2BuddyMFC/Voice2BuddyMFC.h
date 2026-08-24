@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_VOICE2BUDDYMFC_H__B124CD13_D911_4447_AF83_E1503E9147BF__INCLUDED_)
 #define AFX_VOICE2BUDDYMFC_H__B124CD13_D911_4447_AF83_E1503E9147BF__INCLUDED_

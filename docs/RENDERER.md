@@ -35,6 +35,6 @@ class — are recorded with their addresses in the citation register.
 
 ## Probes
 
-`renderergles3` builds offline probe binaries (`gles3_gles3_firstlight`,
-`smp_hwtex_probe`, `progcache_progcache_probe`…) that compile and read back,
+`renderergles3` builds offline probe binaries (`gles3_firstlight`,
+`smp_hwtex_probe`, `progcache_probe`…) that compile and read back,
 and are never run.

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include <psptypes.h>
 #include <wlan.h>
 #include <errno.h>

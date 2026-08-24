@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _SCREEN_H_
 #define _SCREEN_H_
 

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "chatCrypt.h"
 
 #define swap_byte(x,y) t = *(x); *(x) = *(y); *(y) = t

@@ -1,3 +1,32 @@
+//----------------------------------------------------------------------------- 
+//
+//  $Logfile:: /Code/DLLs/game/class.cpp                                      $
+// $Revision:: 17                                                             $
+//   $Author:: Steven                                                         $
+//     $Date:: 10/13/03 9:43a                                                 $
+//
+// Copyright (C) 1997 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source is may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+// Base class that all classes that are used in conjunction with the game should
+// be based off of.  Class gives run-time type information about any class
+// derived from it.  This is really handy when you have a pointer to an object
+// that you need to know if it supports certain behaviour.
+//
+// WARNING: This file is shared between game, cgame and possibly the user interface.
+// It is instanced in each one of these directories because of the way that SourceSafe works.
+//
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include <string.h>
 #include <stdio.h>

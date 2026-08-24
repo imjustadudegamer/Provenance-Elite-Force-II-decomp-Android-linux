@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #if !defined(AFX_LADDERTRACK_H__E9856F44_580A_48C0_ABFF_6FFA9BA944A3__INCLUDED_)
 #define AFX_LADDERTRACK_H__E9856F44_580A_48C0_ABFF_6FFA9BA944A3__INCLUDED_

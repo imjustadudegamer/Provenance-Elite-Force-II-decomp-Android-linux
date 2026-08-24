@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef _GV_PS3_HEADSET_H_
 #define _GV_PS3_HEADSET_H_
 

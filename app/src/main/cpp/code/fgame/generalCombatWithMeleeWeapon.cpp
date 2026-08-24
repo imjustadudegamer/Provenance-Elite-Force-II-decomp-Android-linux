@@ -1,3 +1,62 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /EF2/Code/DLLs/game/generalCombatWithMeleeWeapon.cpp           $
+// $Revision:: 16                                                             $
+//   $Author:: Singlis                                                        $
+//     $Date:: 9/26/03 2:36p                                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+//	GeneralCombatWithMeleeWeapon Implementation
+//	-- GCWMW will run the actor towards its enemy until it is within melee range.
+//		it will work to keep the actor rotated to face its enemy and play the
+//		specified attack animations.  There is also rudimentary support for changing
+//		"posture" which will allow the actor to duck and lean out of the way.  Additionally
+//		there is very minimal support for blocking... Though this will really need to 
+//		be fleshed out for it to work.
+//
+// PARAMETERS:
+//		Primary Torso Anim ( the Idle Animation )	-- Required
+//		Attack Anim									-- Required
+//		MaxDistanceToEngage							-- Optional
+//		MeleeDistance								-- Optional
+//		Rush Anim									-- Optional
+//		Allow Rush Failure							-- Optional
+//		Rotation Anim								-- Optional
+//		Strafe Chance								-- Optional
+//		Block Chance								-- Optional
+//		Attack Chance								-- Optional
+//		Posture Change Chance						-- Optional	
+//
+// ANIMATIONS:
+//		Primary Torso Animation ( Idle ) : Parameter
+//		Attack Animation                 : Parameter		
+//		Rotation Animation				 : Parameter -- Defaults to "rotate"
+//		Rush Animation					 : Parameter -- Defaults to "run"
+//		"strafe_left"					 : TIKI Requirement -- If Strafing
+//		"strafe_right"					 : TIKI Requirement -- If Strafing
+//		"roll_left"						 : TIKI Requirement -- If Strafing
+//		"roll_right"					 : TIKI Requirement -- If Strafing
+//		"block"							 : TIKI Requirement -- If Blocking
+//		"lean_left_dual_stand"			 : TIKI Requirement -- If Changing Posture
+//		"lean_right_dual_stand"			 : TIKI Requirement -- If Changing Posture
+//		"lean_left_dual_stand_end"		 : TIKI Requirement -- If Changing Posture
+//		"lean_right_dual_stand_end"		 : TIKI Requirement -- If Changing Posture
+//		"lean_left_dual_stand_start"	 : TIKI Requirement -- If Changing Posture
+//		"lean_right_dual_stand_start"    : TIKI Requirement -- If Changing Posture
+//--------------------------------------------------------------------------------
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #include "actor.h"
 #include "generalCombatWithMeleeWeapon.hpp"

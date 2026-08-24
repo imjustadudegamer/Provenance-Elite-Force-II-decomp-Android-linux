@@ -1,3 +1,22 @@
+/*
+ * jdsample.c
+ *
+ * Copyright (C) 1991-1994, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains upsampling routines.
+ *
+ * Upsampling input data is counted in "row groups".  A row group
+ * is defined to be (v_samp_factor * DCT_scaled_size / min_DCT_scaled_size)
+ * sample rows of each component.  Upsampling will normally produce
+ * max_v_samp_factor pixel rows from each row group (but this could vary
+ * if the upsampler is applying a scale factor of its own).
+ *
+ * An excellent reference for image resampling is
+ *   Digital Image Warping, George Wolberg, 1990.
+ *   Pub. by IEEE Computer Society Press, Los Alamitos, CA. ISBN 0-8186-8944-7.
+ */
 
 #define JPEG_INTERNALS
 #include "jinclude.h"

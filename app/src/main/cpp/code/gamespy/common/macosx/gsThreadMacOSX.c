@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "../gsPlatformUtil.h"
 #include "../gsPlatformThread.h"
 #include "../gsAssert.h"

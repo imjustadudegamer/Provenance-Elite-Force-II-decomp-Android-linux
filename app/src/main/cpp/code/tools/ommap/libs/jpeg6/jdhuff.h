@@ -1,3 +1,14 @@
+/*
+ * jdhuff.h
+ *
+ * Copyright (C) 1991-1995, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains declarations for Huffman entropy decoding routines
+ * that are shared between the sequential decoder (jdhuff.c) and the
+ * progressive decoder (jdphuff.c).  No other modules need to see these.
+ */
 
 
 #ifdef NEED_SHORT_EXTERNAL_NAMES

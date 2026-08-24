@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #ifndef FAKE_DMA_H
 #define FAKE_DMA_H

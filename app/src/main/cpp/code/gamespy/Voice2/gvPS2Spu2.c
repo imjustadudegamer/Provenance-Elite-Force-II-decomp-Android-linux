@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "gvPS2Spu2.h"
 #if !defined(GV_NO_PS2_SPU2)
 #include "gvDevice.h"

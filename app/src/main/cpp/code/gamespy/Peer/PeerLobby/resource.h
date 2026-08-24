@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #define IDD_PEERLOBBY_DIALOG            102
 #define IDP_SOCKETS_INIT_FAILED         103
 #define IDD_TITLE_PAGE                  106

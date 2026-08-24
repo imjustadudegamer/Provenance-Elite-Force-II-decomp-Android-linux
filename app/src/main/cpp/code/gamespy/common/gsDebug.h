@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __GSIDEBUG_H__
 #define __GSIDEBUG_H__
 #include <stdarg.h>

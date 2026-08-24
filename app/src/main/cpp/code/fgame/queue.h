@@ -1,3 +1,26 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /Code/DLLs/game/queue.h                                       $
+// $Revision:: 4                                                              $
+//   $Author:: Steven                                                         $
+//     $Date:: 10/13/03 8:54a                                                 $
+//
+// Copyright (C) 1997 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source is may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+// Generic Queue object
+//
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 #ifndef __QUEUE_H__
 #define __QUEUE_H__

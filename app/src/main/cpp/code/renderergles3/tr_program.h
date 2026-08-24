@@ -1,3 +1,70 @@
+/*
+===========================================================================
+Copyright (C) 1999-2005 Id Software, Inc.
+Copyright (C) 2026 the ProvenanceEF2 team
+
+This file is part of a retail-exact decompilation port of Star Trek: Elite
+Force II.  It is the OpenGL ES 3.0 successor to the fixed-function GL1
+pipeline, forked from the GL1 renderer's sources.
+
+GLES3 PROGRAM / STATE LAYER -- the replacement for fixed-function GL.
+
+WHY THIS FILE EXISTS
+--------------------
+The GL1 renderer (OpenMoHAA's GL1 backend) drives a fixed-function
+pipeline: per stage it calls GL_State(pStage->stateBits), binds 1 or 2 texture
+bundles, and hands the fixed-function unit a per-vertex colour array computed
+on the CPU by tr_shade_calc.c.  GLES 3.0 has none of that: there is no colour
+array, no texture env, no glAlphaFunc, no fog, no polygon mode and no
+fixed-function matrix stack, so every one of those arms has to become an
+explicit program permutation plus a render-state object.
+
+This header declares the mapping.  The implementation template is the idTech3
+GL2 backend (OpenMoHAA's renderergl2, tr_glsl.c), whose glsl/generic_vp.glsl
+shows the two-axis split this file uses:
+
+  * PROGRAM axis -- a small, enumerable set of compiled programs, selected by
+    a #define bitmask (GLP_RGBAGEN, GLP_TCGEN0, GLP_TCGEN1, GLP_TCMOD0,
+    GLP_TCMOD1, GLP_FOG, GLP_LIGHTMAP, GLP_VERTEXLIT, GLP_2D, ...).
+    This is the axis that costs a shader compile, so it is kept small.
+
+  * UNIFORM axis -- the per-stage generator arm, selected by integer uniforms
+    (u_ColorGen = pStage->rgbGen, u_AlphaGen = pStage->alphaGen,
+    u_TCGen0/1 = bundle[b].tcGen) plus their parameters.  This is retail's own
+    dispatch: the GL1 renderer's tr_shade.c ComputeColors() switches on exactly
+    these ordinals, so the uniform values are the SAME integers GL1 switches
+    on and no translation table is needed (renderergl2 tr_local.h:649-657
+    carries UNIFORM_TCGEN0 / UNIFORM_COLORGEN / UNIFORM_ALPHAGEN for the same
+    reason).
+
+The exact arithmetic of every arm lives in glsl/gles3_common.inc.glsl; every
+function there cites the tr_shade_calc.c line range it mirrors.
+
+STATE -> ENUMERABLE STATE DEFS
+------------------------------
+GL1's state word is glStateBits (tr_local.h:2418-2492).  GLES3 renders it as
+a lookup into gles3StateDefs[] (one row per distinct word the shipped corpus
+carries, tr_program.c) plus GLES3_ApplyStateBits(), the replacement for
+GL_State() (tr_backend.c:263 in the GL1 renderer).  Every GL1 state word the
+shipped shaders carry must map to one of those rows;
+
+a shipped stage whose state word has no row renders undefined.
+
+TWO WRITERS, NO THREAD -- THE STATE OF THIS LAYER
+------------------------------------------------
+There is still no render thread in this renderer (no r_smp, no thread primitives),
+so nothing here takes a lock.  The earlier claim that "nothing in this layer ...
+assumes a second writer" is NOT true of the code as it stands, and the two-writer
+audit says exactly where: GLES3_ApplyStateBits
+writes the module static s_currentAlphaTest and is reached from BOTH the back end
+(GL_State, tr_backend.c) and the front end's immediate 2D path (tr_draw.c);
+GLES3_SelectTexture writes glState.currenttmu from both; and GLES3_GetProgram
+lazily compiles into gles3Programs[] / gles3NumPrograms / s_programsInitialised
+with no guard.  Making that true is the audit's work list: build every
+program during registration and give the tracked-state writes one owner per
+frame.  Until then the layer is single-EXECUTOR, which is what keeps it correct.
+==========================================================================
+*/
 
 #include "tr_vbo.h"
 

@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #include "gsPlatformSocket.h"
 #include "gsPlatformUtil.h"
 #include "gsMemory.h"

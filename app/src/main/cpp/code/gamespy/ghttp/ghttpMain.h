@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #ifndef _GHTTPMAIN_H_
 #define _GHTTPMAIN_H_

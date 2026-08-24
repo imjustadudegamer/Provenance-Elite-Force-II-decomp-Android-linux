@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #define ID_CHANNELS                     2
 #define ID_GET_INFO                     2
 #define ID_USERS                        3

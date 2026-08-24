@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __SPU_ASSERT_H__
 #define __SPU_ASSERT_H__
 

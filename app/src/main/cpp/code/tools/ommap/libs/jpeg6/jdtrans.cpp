@@ -1,3 +1,14 @@
+/*
+ * jdtrans.c
+ *
+ * Copyright (C) 1995, Thomas G. Lane.
+ * This file is part of the Independent JPEG Group's software.
+ * For conditions of distribution and use, see the accompanying README file.
+ *
+ * This file contains library routines for transcoding decompression,
+ * that is, reading raw DCT coefficient arrays from an input JPEG file.
+ * The routines in jdapimin.c will also be needed by a transcoder.
+ */
 
 #define JPEG_INTERNALS
 #include "jinclude.h"

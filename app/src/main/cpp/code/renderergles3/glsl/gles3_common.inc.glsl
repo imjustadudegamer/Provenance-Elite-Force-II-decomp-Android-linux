@@ -1,4 +1,5 @@
 /*
+//@@GLES3_COMMON@@ by glsl/build_glsl.py.
 reproduces.  This is a retail port: an approximation is a divergence, so the
 */
 

@@ -1,3 +1,24 @@
+/******
+gserverlist.c
+GameSpy C Engine SDK
+  
+Copyright 1999 GameSpy Industries, Inc
+
+Suite E-204
+2900 Bristol Street
+Costa Mesa, CA 92626
+(714)549-7689
+Fax(714)549-0757
+
+******
+
+ Please see the GameSpy C Engine SDK documentation for more 
+ information
+
+  The goaceng.h file has extensive comments on each of the public functions
+  for this SDK. It also has a change history for the SDK.
+
+******/
 
 #include "goaceng.h"
 #include "gserver.h"

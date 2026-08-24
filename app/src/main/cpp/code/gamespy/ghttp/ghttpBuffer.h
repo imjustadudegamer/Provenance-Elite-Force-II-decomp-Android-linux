@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #ifndef _GHTTPBUFFER_H_
 #define _GHTTPBUFFER_H_

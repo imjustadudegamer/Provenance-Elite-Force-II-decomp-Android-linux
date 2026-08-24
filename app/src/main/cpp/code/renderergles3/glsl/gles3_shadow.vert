@@ -9,6 +9,7 @@ in vec3 a_Position;
 uniform mat4 u_MVP;
 uniform mat4 u_ModelMatrix;	/* backEnd.ori.modelMatrix: eye-space clip test */
 
+//@@GLES3_CLIP@@
 out highp float v_ClipDist;
 void main()
 {

@@ -1,3 +1,46 @@
+//-----------------------------------------------------------------------------
+//
+//  $Logfile:: /Code/DLLs/game/entity.cpp           $
+// $Revision:: 271                                                           $
+//   $Author:: Steven                                                   $
+//     $Date:: 10/13/03 9:43a                                  $
+//
+// Copyright (C) 2002 by Ritual Entertainment, Inc.
+// All rights reserved.
+//
+// This source is may not be distributed and/or modified without
+// expressly written permission by Ritual Entertainment, Inc.
+//
+//
+// DESCRIPTION:
+// Base class for all enities that are controlled by the game.  If you have any
+// object that should be called on a periodic basis and it is not an entity,
+// then you have to have an dummy entity that calls it.
+//
+// An entity in the game is any object that is not part of the world.  Any non-world
+// object that is visible in the game is an entity, although it is not required that
+// all entities be visible to the player.  Some objects are basically just virtual
+// constructs that act as an instigator of certain actions, for example, some
+// triggers are invisible and cannot be touched, but when activated by other
+// objects can cause things to happen.
+//
+// All entities are capable of receiving messages from the game or from other entities.
+// Messages received by an entity may be ignored, passed on to their superclass,
+// or acted upon by the entity itself.  The programmer must decide on the proper
+// action for the entity to take to any message.  There will be many messages
+// that are completely irrelevant to an entity and should be ignored.  Some messages
+// may require certain states to exist and if they are received by an entity when
+// it these states don't exist may indicate a logic error on the part of the
+// programmer or map designer and should be reported as warnings (if the problem is
+// not severe enough for the game to be halted) or as errors (if the problem should
+// not be ignored at any cost).
+//
+// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK
+// Modified 2026-10-04 for this port.  The Ritual Elite Force II SDK agreement
+// permits non-commercial distribution of the SDK and its New Creations
+// with the agreement attached (docs/EF2-SDK-licenseAgreement.txt); it
+// forbids derivative works (section 2(j)) and requires the notice above
+// to stay intact (section 2(k)).
 
 
 #include "entity.h"

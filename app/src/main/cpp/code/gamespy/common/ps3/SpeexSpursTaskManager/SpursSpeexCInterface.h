@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef SPU_TASK_C_INTERFACE_H
 #define SPU_TASK_C_INTERFACE_H
 

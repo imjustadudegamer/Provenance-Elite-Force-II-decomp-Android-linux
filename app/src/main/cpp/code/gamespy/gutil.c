@@ -1,3 +1,17 @@
+/******
+gutil.c
+GameSpy C Engine SDK
+  
+Copyright 1999-2001 GameSpy Industries, Inc
+
+18002 Skypark Circle
+Irvine, California 92614
+949.798.4200 (Tel)
+949.798.4299 (Fax)
+devsupport@gamespy.com
+
+
+******/
 #if defined(applec) || defined(THINK_C) || defined(__MWERKS__) && !defined(__KATANA__) && !defined(__mips64)
 	#include "::nonport.h"
 #else

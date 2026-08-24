@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef DOUBLE_BUFFER_H
 #define DOUBLE_BUFFER_H
 

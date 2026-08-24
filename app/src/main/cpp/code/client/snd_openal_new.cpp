@@ -1,3 +1,25 @@
+/*
+===========================================================================
+Copyright (C) 2024 the OpenMoHAA team
+
+This file is part of OpenMoHAA source code.
+
+OpenMoHAA source code is free software; you can redistribute it
+and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the License,
+or (at your option) any later version.
+
+OpenMoHAA source code is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with OpenMoHAA source code; if not, write to the Free Software
+Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "snd_local.h"
 #include "snd_openal_new.h"
@@ -1301,7 +1323,10 @@ static void SND_SndRow(
         Com_Printf("[SND:snd] row budget 96 spent -- one in 16 from here; `qa_snd 0' silences\n");
     }
 
-    if (rows > 96 && (rows % 16) != 0) {
+    /* The gate samples the world; a weapon's own fire row is the one event this
+       census exists to see, so it is never one of the sampled-away rows. */
+    if (rows > 96 && (rows % 16) != 0
+        && !(name && (strstr(name, "_fire") || strstr(name, "/fire") || strstr(name, "firestop")))) {
         return;
     }
 
@@ -1938,6 +1963,22 @@ void S_OPENAL_AddLoopSounds(const vec3_t vTempAxis)
                 vLoopOrigin
             );
 
+            continue;
+        }
+
+        /* One source per playing loop: a second slot for the same sound joins the
+           channel already playing it, so a re-start finds its previous copy
+           instead of adding a second source at the same level. */
+        for (j = 0; j < MAX_SOUNDSYSTEM_LOOP_SOUNDS; j++) {
+            openal_loop_sound_t *pLoopSound2 = &openal.loop_sounds[j];
+
+            if (pLoopSound2 != pLoopSound && pLoopSound2->pSfx == pLoopSound->pSfx && pLoopSound2->bPlaying) {
+                pLoopSound->bPlaying = true;
+                pLoopSound->iChannel = pLoopSound2->iChannel;
+                break;
+            }
+        }
+        if (j < MAX_SOUNDSYSTEM_LOOP_SOUNDS) {
             continue;
         }
 

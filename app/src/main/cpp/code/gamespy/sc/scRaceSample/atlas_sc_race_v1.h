@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 
 #ifndef _ATLAS_SC_RACE_V1_H_
 #define _ATLAS_SC_RACE_V1_H_

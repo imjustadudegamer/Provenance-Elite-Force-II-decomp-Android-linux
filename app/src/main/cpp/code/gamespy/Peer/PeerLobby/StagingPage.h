@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #if !defined(AFX_STAGINGPAGE_H__E66D2915_B2B7_4A43_B875_D0C905FA1395__INCLUDED_)
 #define AFX_STAGINGPAGE_H__E66D2915_B2B7_4A43_B875_D0C905FA1395__INCLUDED_
 

@@ -1,18 +1,12 @@
 //Microsoft Developer Studio generated resource script.
-//
 #include "resource.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
-/////////////////////////////////////////////////////////////////////////////
-//
 // Generated from the TEXTINCLUDE 2 resource.
-//
 #include "afxres.h"
 
-/////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
 
-/////////////////////////////////////////////////////////////////////////////
 // English (U.S.) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
@@ -22,10 +16,7 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 #endif //_WIN32
 
 #ifdef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
 // TEXTINCLUDE
-//
 
 1 TEXTINCLUDE DISCARDABLE 
 BEGIN
@@ -59,19 +50,13 @@ END
 #endif    // APSTUDIO_INVOKED
 
 
-/////////////////////////////////////////////////////////////////////////////
-//
 // Icon
-//
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 IDR_MAINFRAME           ICON    DISCARDABLE     "res\\ladderTrack.ico"
 
-/////////////////////////////////////////////////////////////////////////////
-//
 // Dialog
-//
 
 IDD_LADDERTRACK_DIALOG DIALOGEX 0, 0, 212, 100
 STYLE DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
@@ -136,10 +121,7 @@ END
 
 
 #ifndef _MAC
-/////////////////////////////////////////////////////////////////////////////
-//
 // Version
-//
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 1,0,0,1
@@ -178,10 +160,7 @@ END
 #endif    // !_MAC
 
 
-/////////////////////////////////////////////////////////////////////////////
-//
 // DESIGNINFO
-//
 
 #ifdef APSTUDIO_INVOKED
 GUIDELINES DESIGNINFO DISCARDABLE 
@@ -213,15 +192,11 @@ END
 #endif    // APSTUDIO_INVOKED
 
 #endif    // English (U.S.) resources
-/////////////////////////////////////////////////////////////////////////////
 
 
 
 #ifndef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
 // Generated from the TEXTINCLUDE 3 resource.
-//
 #define _AFX_NO_SPLITTER_RESOURCES
 #define _AFX_NO_OLE_RESOURCES
 #define _AFX_NO_TRACKER_RESOURCES
@@ -236,6 +211,5 @@ LANGUAGE 9, 1
 #include "afxres.rc"         // Standard components
 #endif
 
-/////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
 

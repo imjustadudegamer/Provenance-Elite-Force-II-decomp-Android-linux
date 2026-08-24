@@ -1,3 +1,4 @@
+/* Third-party component; the applicable licence is recorded in THIRDPARTY.md. */
 #ifndef __SCIINTERFACE_H__
 #define __SCIINTERFACE_H__
 
