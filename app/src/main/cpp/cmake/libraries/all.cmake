@@ -1,0 +1,6 @@
+include(libraries/freetype)
+include(libraries/jpeg)
+include(libraries/openal)
+include(libraries/sdl)
+include(libraries/zlib)
+include(libraries/libmad)

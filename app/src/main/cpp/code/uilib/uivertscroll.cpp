@@ -1,0 +1,438 @@
+
+#include "ui_local.h"
+
+Event W_Scrollbar_Positioned
+(
+    "scrollbar_positioned",
+    EV_DEFAULT,
+    "i",
+    "new_position",
+    "Signaled when the operator scrolls the view"
+);
+
+Event EV_Scrollbar_Scroll
+(
+    "scrollbar_scroll",   
+    EV_DEFAULT,
+    "ii",
+    "scrollrate autorepeat",
+    "scroll the scrollbar, at the specified rate.\nThe autorepeat is used for autoscrolling with the mouse button held down"
+);
+
+Event EV_Scrollbar_Width
+(
+    "scrollbar_width",
+    EV_DEFAULT,
+    "f",
+    "width",
+    "Sets the scrollbar width"
+);
+
+Event EV_Scrollbar_ThumbColor
+(
+    "scrollbar_thumbcolor",
+    EV_DEFAULT,
+    "ffff",
+    "red green blue alpha",
+    "Sets the thumb color for the scroll bar"
+);
+
+CLASS_DECLARATION(UIWidget, UIVertScroll, NULL) {
+    {&W_LeftMouseDown,        &UIVertScroll::MouseDown              },
+    {&W_LeftMouseUp,          &UIVertScroll::MouseUp                },
+    {&W_LeftMouseDragged,     &UIVertScroll::MouseDragged           },
+    {&W_MouseEntered,         &UIVertScroll::MouseEnter             },
+    {&W_MouseExited,          &UIVertScroll::MouseLeave             },
+    {&EV_Scrollbar_Scroll,    &UIVertScroll::Scroll                 },
+    {&EV_Scrollbar_Width,     &UIVertScroll::setScrollbarWidth   },
+    {&EV_Scrollbar_ThumbColor,&UIVertScroll::thumbColor},
+    {NULL,                    NULL                                  }
+};
+
+UIVertScroll::UIVertScroll()
+    : m_numitems(0)
+    , m_pageheight(0)
+    , m_topitem(0)
+    , m_marlett("marlett")
+    , m_pressed(VS_NONE)
+    , thumbRect(0, 0, 0, 0)
+    , m_frameinitted(false)
+    , m_thumbcolor(UDarkGrey)
+    , m_solidbordercolor(UBlack)
+    , m_scrollbarWidth(16.0f)
+    , m_scrollbarWidthBase(16.0f)
+{
+}
+
+int UIVertScroll::getItemFromHeight(float height)
+{
+    return (int)((height - 16.0) * (float)this->m_numitems
+                 / (m_frame.size.height - 32.0));
+}
+
+bool UIVertScroll::isEnoughItems(void)
+{
+    return m_numitems > m_pageheight;
+}
+
+void UIVertScroll::Draw(void)
+{
+    UIWidget::Draw();
+
+    DrawBoxWithSolidBorder(getClientFrame(), getBackgroundColor(), m_solidbordercolor, 1, 3, m_local_alpha);
+
+    DrawArrow(0.0, "5", m_pressed == VS_UP_ARROW);
+    DrawArrow(m_frame.size.height - 16.0, "6", m_pressed == VS_DOWN_ARROW);
+
+    if (m_numitems > m_pageheight) {
+        DrawThumb();
+    }
+}
+
+void UIVertScroll::DrawArrow(float top, const char *text, bool pressed)
+{
+    UIRect2D arrowRect;
+    UColor   innerColor;
+
+    arrowRect.pos.x       = 0.0;
+    arrowRect.pos.y       = top;
+    arrowRect.size.width  = m_frame.size.width;
+    arrowRect.size.height = 16.0;
+
+    innerColor = getBackgroundColor();
+    m_marlett.setColor(getForegroundColor());
+
+    if (pressed) {
+        if (m_background_color.r == 0.0f && m_background_color.g == 0.0f && m_background_color.b == 0.0f) {
+            m_marlett.setColor(UColor(UGrey));
+        } else {
+            m_marlett.setColor(getBorderColor().light);
+        }
+    }
+
+    DrawBoxWithSolidBorder(arrowRect, innerColor, m_solidbordercolor, 1, 3, m_local_alpha);
+    if (m_numitems > m_pageheight) {
+        DrawMac3DBox(arrowRect, pressed, m_border_color, 1, m_local_alpha);
+    }
+
+    m_marlett.setAlpha(m_local_alpha);
+    m_marlett.PrintJustified(
+        arrowRect,
+        m_iFontAlignmentHorizontal,
+        m_iFontAlignmentVertical,
+        text,
+        UColor(0.0f, 0.0f, 0.0f, 0.0f),
+        0
+    );
+}
+
+void UIVertScroll::DrawThumb(void)
+{
+    UIRect2D inbarrect;
+    float    thumbHeight, thumbdiff;
+    UColor   thumbInside;
+
+    thumbdiff = m_frame.size.height - 32.0;
+
+    inbarrect.pos.x       = 0.0;
+    inbarrect.pos.y       = 16.0;
+    inbarrect.size.width  = m_frame.size.width;
+    inbarrect.size.height = m_frame.size.height - thumbdiff;
+
+    thumbHeight = m_pageheight * thumbdiff;
+
+    thumbRect.pos.x       = 0.0;
+    thumbRect.pos.y       = m_topitem * thumbdiff / (float)m_numitems;
+    thumbRect.size.width  = m_frame.size.width;
+    thumbRect.size.height = thumbHeight / (float)m_numitems;
+    if (thumbRect.size.height < 6.0) {
+        thumbRect.size.height = 6.0;
+    }
+
+    thumbInside = UColor(0.15, 0.196, 0.278, 1.0);
+
+    if (thumbRect.pos.y + thumbRect.size.height - thumbdiff > 0.0) {
+        thumbRect.pos.y -= thumbRect.pos.y + thumbRect.size.height - thumbdiff;
+    }
+    thumbRect.pos.y = thumbRect.pos.y + inbarrect.pos.y;
+
+    DrawBoxWithSolidBorder(thumbRect, thumbInside, m_solidbordercolor, 1, 3, m_local_alpha);
+    DrawMac3DBox(thumbRect, m_pressed == VS_THUMB, thumbInside, true, m_local_alpha);
+
+    inbarrect.pos.x += 1.0;
+    inbarrect.pos.y += 1.0;
+    inbarrect.size.width -= 2.0;
+    inbarrect.size.height -= 2.0;
+
+    thumbRect.pos.x -= 1.0;
+    thumbRect.pos.y -= 1.0;
+    thumbRect.size.width -= 2.0;
+    thumbRect.size.height -= 2.0;
+
+    if (m_pressed == VS_PAGE_UP) {
+        DrawBox(
+            0.0,
+            inbarrect.pos.y,
+            m_frame.size.width,
+            thumbRect.pos.y - inbarrect.pos.y,
+            m_border_color.light,
+            m_local_alpha
+        );
+    } else if (m_pressed == VS_PAGE_DOWN) {
+        DrawBox(
+            0.0,
+            thumbRect.pos.y + thumbRect.size.height,
+            m_frame.size.width,
+            inbarrect.pos.y + inbarrect.size.height - (thumbRect.pos.y + thumbRect.size.height),
+            m_border_color.light,
+            m_local_alpha
+        );
+    }
+}
+
+void UIVertScroll::MouseDown(Event *ev)
+{
+    UIPoint2D p;
+    int       scrollrate;
+
+    scrollrate = 0;
+
+    p.x       = ev->GetFloat(1) - m_screenframe.pos.x;
+    p.y       = ev->GetFloat(2) - m_screenframe.pos.y;
+    m_pressed = VS_NONE;
+
+    if (p.x < 0 || p.y < 0) {
+        return;
+    }
+
+    if (p.x > m_frame.size.width || p.y > m_frame.size.height) {
+        return;
+    }
+
+    if (m_numitems <= m_pageheight) {
+        return;
+    }
+
+    if (p.y >= 16.0) {
+        if (m_frame.size.height - 16.0 >= p.y) {
+            if (thumbRect.pos.y > p.y) {
+                m_pressed  = VS_PAGE_UP;
+                scrollrate = -m_pageheight;
+            } else {
+                if (thumbRect.pos.y + thumbRect.size.height > p.y) {
+                    m_pressed                   = VS_THUMB;
+                    m_dragThumbState.itemOffset = m_topitem - getItemFromHeight(p.y);
+                    m_dragThumbState.orgItem    = m_topitem;
+                    uWinMan.setFirstResponder(this);
+                } else {
+                    m_pressed  = VS_PAGE_DOWN;
+                    scrollrate = m_pageheight;
+                }
+            }
+
+            if (!scrollrate) {
+                return;
+            }
+        } else {
+            m_pressed  = VS_DOWN_ARROW;
+            scrollrate = 1;
+        }
+    } else {
+        m_pressed  = VS_UP_ARROW;
+        scrollrate = -1;
+    }
+
+    Event *newev = new Event(EV_Scrollbar_Scroll);
+    newev->AddInteger(scrollrate);
+    newev->AddInteger(0);
+    CancelEventsOfType(EV_Scrollbar_Scroll);
+    PostEvent(newev, 0);
+
+    uWinMan.setFirstResponder(this);
+}
+
+void UIVertScroll::MouseUp(Event *ev)
+{
+    CancelEventsOfType(EV_Scrollbar_Scroll);
+    if (uWinMan.getFirstResponder() == this) {
+        uWinMan.setFirstResponder(NULL);
+    }
+
+    m_pressed = VS_NONE;
+}
+
+void UIVertScroll::MouseDragged(Event *ev)
+{
+    UIPoint2D p;
+
+    if (m_pressed != VS_THUMB) {
+        return;
+    }
+
+    p.x = ev->GetFloat(1) - m_screenframe.pos.x;
+    p.y = ev->GetFloat(2);
+
+    if (p.x < -24.0 || p.x > m_frame.size.width + 24.0) {
+        AttemptScrollTo(m_dragThumbState.orgItem);
+    } else {
+        AttemptScrollTo(m_dragThumbState.itemOffset + getItemFromHeight(p.y - m_screenframe.pos.y));
+    }
+}
+
+void UIVertScroll::MouseEnter(Event *ev)
+{
+    // comment that argued it away is an upstream judgement call, not retail.
+    uWinMan.ActivateControl(this);
+}
+
+void UIVertScroll::MouseLeave(Event *ev) {}
+
+void UIVertScroll::Scroll(Event *ev)
+{
+    if (AttemptScrollTo(m_topitem + ev->GetInteger(1))) {
+        float delay = 0.2;
+        if (ev->GetInteger(2)) {
+            delay = 0.1;
+        }
+
+        Event *newev = new Event(EV_Scrollbar_Scroll);
+        newev->AddInteger(ev->GetInteger(1));
+        newev->AddInteger(0);
+        PostEvent(newev, delay);
+    }
+}
+
+bool UIVertScroll::AttemptScrollTo(int to)
+{
+    int besttopitem;
+
+    if (to < 0) {
+        to = 0;
+    }
+
+    besttopitem = m_numitems - m_pageheight;
+    if (besttopitem < 0) {
+        besttopitem = 0;
+    }
+
+    if (to > besttopitem) {
+        to = besttopitem;
+    }
+
+    if (to == m_topitem) {
+        return false;
+    }
+
+    m_topitem = to;
+
+    Event ev(W_Scrollbar_Positioned);
+    ev.AddInteger(m_topitem);
+    SendSignal(ev);
+
+    return true;
+}
+
+void UIVertScroll::setNumItems(int i)
+{
+    m_numitems = i;
+}
+
+void UIVertScroll::setPageHeight(int i)
+{
+    m_pageheight = i;
+}
+
+void UIVertScroll::setTopItem(int i)
+{
+    if (i >= 0) {
+        m_topitem = i;
+    } else {
+        m_topitem = 0;
+    }
+}
+
+int UIVertScroll::getTopItem(void)
+{
+    return m_topitem;
+}
+
+int UIVertScroll::getPageHeight(void)
+{
+    return m_pageheight;
+}
+
+int UIVertScroll::getNumItems(void)
+{
+    return m_numitems;
+}
+
+void UIVertScroll::setThumbColor(const UColor& thumb)
+{
+    m_thumbcolor = thumb;
+}
+
+void UIVertScroll::setScrollbarWidth(Event *ev)
+{
+    m_scrollbarWidth     = ev->GetFloat(1);
+    m_scrollbarWidthBase = ev->GetFloat(1);
+}
+
+void UIVertScroll::thumbColor(Event *ev)
+{
+    setThumbColor(UColor(ev->GetFloat(1), ev->GetFloat(2), ev->GetFloat(3), ev->GetFloat(4)));
+}
+
+void UIVertScroll::setSolidBorderColor(const UColor& col)
+{
+    m_solidbordercolor = col;
+}
+
+void UIVertScroll::solidBorderColor(Event *ev)
+{
+    m_solidbordercolor.r = ev->GetFloat(1);
+    m_solidbordercolor.g = ev->GetFloat(2);
+    m_solidbordercolor.b = ev->GetFloat(3);
+    m_solidbordercolor.a = ev->GetFloat(4);
+}
+
+void UIVertScroll::copyProperties(UIWidget& other)
+{
+    UIWidget::copyProperties(other);
+
+    if (!other.isSubclassOf(UIVertScroll)) {
+        return;
+    }
+
+    UIVertScroll *dest = (UIVertScroll *)&other;
+
+    dest->m_thumbcolor         = m_thumbcolor;
+    dest->m_solidbordercolor   = m_solidbordercolor;
+
+    float swapped       = m_scrollbarWidthBase;
+    dest->m_scrollbarWidth     = m_scrollbarWidthBase;
+    dest->m_scrollbarWidthBase = swapped;
+}
+
+
+void UIVertScroll::InitFrameAlignRight(UIWidget *parent)
+{
+    UIRect2D frame, clientFrame;
+
+    clientFrame          = parent->getClientFrame();
+    frame.pos.x          = clientFrame.pos.x + clientFrame.size.width - m_scrollbarWidth;
+    frame.pos.y          = 0.0f;
+    frame.size.width     = m_scrollbarWidth;
+    frame.size.height    = clientFrame.size.height;
+
+    if (!m_frameinitted) {
+        InitFrame(parent, frame, -1, "tahoma-8");
+        m_frameinitted = true;
+    } else {
+        setFrame(frame);
+    }
+}
+
+void UIVertScroll::FrameInitialized()
+{
+    UIWidget::FrameInitialized();
+}

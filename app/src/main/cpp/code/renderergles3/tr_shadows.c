@@ -1,0 +1,240 @@
+#include "tr_local.h"
+#include "tr_vbo.h"
+#include "tr_program.h"
+
+
+
+typedef struct {
+	int		i2;
+	int		facing;
+} edgeDef_t;
+
+#define	MAX_EDGE_DEFS	32
+
+static	edgeDef_t	edgeDefs[SHADER_MAX_VERTEXES][MAX_EDGE_DEFS];
+static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
+static	int			facing[SHADER_MAX_INDEXES/3];
+
+void R_ShutdownShadows( void ) {
+	Com_Memset( numEdgeDefs, 0, sizeof( numEdgeDefs ) );
+	Com_Memset( facing, 0, sizeof( facing ) );
+}
+
+void R_AddEdgeDef( int i1, int i2, int localFacing ) {
+	int		c;
+
+	c = numEdgeDefs[ i1 ];
+	if ( c == MAX_EDGE_DEFS ) {
+		return;		
+	}
+	edgeDefs[ i1 ][ c ].i2 = i2;
+	edgeDefs[ i1 ][ c ].facing = localFacing;
+
+	numEdgeDefs[ i1 ]++;
+}
+
+void R_RenderShadowEdges( void ) {
+	int		i;
+
+	GLES3_BeginShadow();
+
+#if 0
+	int		numTris;
+
+	numTris = tess.numIndexes / 3;
+
+	for ( i = 0 ; i < numTris ; i++ ) {
+		int		i1, i2, i3;
+
+		if ( !facing[i] ) {
+			continue;
+		}
+
+		i1 = tess.indexes[ i*3 + 0 ];
+		i2 = tess.indexes[ i*3 + 1 ];
+		i3 = tess.indexes[ i*3 + 2 ];
+
+		RB_ImmBegin( GL_TRIANGLE_STRIP );
+		RB_ImmVertex3fv( tess.xyz[ i1 ] );
+		RB_ImmVertex3fv( tess.xyz[ i1 + tess.numVertexes ] );
+		RB_ImmVertex3fv( tess.xyz[ i2 ] );
+		RB_ImmVertex3fv( tess.xyz[ i2 + tess.numVertexes ] );
+		RB_ImmVertex3fv( tess.xyz[ i3 ] );
+		RB_ImmVertex3fv( tess.xyz[ i3 + tess.numVertexes ] );
+		RB_ImmVertex3fv( tess.xyz[ i1 ] );
+		RB_ImmVertex3fv( tess.xyz[ i1 + tess.numVertexes ] );
+		RB_ImmEnd();
+	}
+#else
+	int		c, c2;
+	int		j, k;
+	int		i2;
+	int		hit[2];
+
+
+	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
+		c = numEdgeDefs[ i ];
+		for ( j = 0 ; j < c ; j++ ) {
+			if ( !edgeDefs[ i ][ j ].facing ) {
+				continue;
+			}
+
+			hit[0] = 0;
+			hit[1] = 0;
+
+			i2 = edgeDefs[ i ][ j ].i2;
+			c2 = numEdgeDefs[ i2 ];
+			for ( k = 0 ; k < c2 ; k++ ) {
+				if ( edgeDefs[ i2 ][ k ].i2 == i ) {
+					hit[ edgeDefs[ i2 ][ k ].facing ]++;
+				}
+			}
+
+			if ( hit[ 1 ] == 0 ) {
+				R204_Bump( R204_FAM_DS, R204_DSC_edges, 1 );
+				RB_ImmBegin( GL_TRIANGLE_STRIP );
+				RB_ImmVertex3fv( tess.xyz[ i ] );
+				RB_ImmVertex3fv( tess.xyz[ i + tess.numVertexes ] );
+				RB_ImmVertex3fv( tess.xyz[ i2 ] );
+				RB_ImmVertex3fv( tess.xyz[ i2 + tess.numVertexes ] );
+				RB_ImmEndDeferred();
+			}
+		}
+	}
+#endif
+
+	RB_ImmFlush();
+}
+
+
+void RB_ShadowTessEnd( void ) {
+	int		i;
+	int		numTris;
+	int		r208BuildT0;
+	vec3_t	lightDir;
+
+	if ( tess.numVertexes >= SHADER_MAX_VERTEXES / 2 ) {
+		return;
+	}
+
+	if ( glConfig.stencilBits < 4 ) {
+		return;
+	}
+
+	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
+
+	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
+		VectorMA( tess.xyz[i], -512, lightDir, tess.xyz[i+tess.numVertexes] );
+	}
+
+	Com_Memset( numEdgeDefs, 0, 4 * tess.numVertexes );
+
+	numTris = tess.numIndexes / 3;
+	r208BuildT0 = R204_On() ? R204_Microseconds() : 0;
+	for ( i = 0 ; i < numTris ; i++ ) {
+		int		i1, i2, i3;
+		vec3_t	d1, d2, normal;
+		float	*v1, *v2, *v3;
+		float	d;
+
+		i1 = tess.indexes[ i*3 + 0 ];
+		i2 = tess.indexes[ i*3 + 1 ];
+		i3 = tess.indexes[ i*3 + 2 ];
+
+		v1 = tess.xyz[ i1 ];
+		v2 = tess.xyz[ i2 ];
+		v3 = tess.xyz[ i3 ];
+
+		VectorSubtract( v2, v1, d1 );
+		VectorSubtract( v3, v1, d2 );
+		CrossProduct( d1, d2, normal );
+
+		d = DotProduct( normal, lightDir );
+		if ( d > 0 ) {
+			facing[ i ] = 1;
+		} else {
+			facing[ i ] = 0;
+		}
+
+		R_AddEdgeDef( i1, i2, facing[ i ] );
+		R_AddEdgeDef( i2, i3, facing[ i ] );
+		R_AddEdgeDef( i3, i1, facing[ i ] );
+	}
+
+	GL_BindUnit0( tr.whiteImage );
+	qglEnable( GL_CULL_FACE );
+	glState.faceCulling = -1;
+	GL_State( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO );
+	RB_ImmColor3f( 0.2f, 0.2f, 0.2f );
+
+	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+
+	qglEnable( GL_STENCIL_TEST );
+	qglStencilFunc( GL_ALWAYS, 1, 255 );
+
+	if ( backEnd.viewParms.isMirror ) {
+		qglCullFace( GL_FRONT );
+		qglStencilOp( GL_KEEP, GL_KEEP, GL_INCR );
+
+		R_RenderShadowEdges();
+
+		qglCullFace( GL_BACK );
+		qglStencilOp( GL_KEEP, GL_KEEP, GL_DECR );
+
+		R_RenderShadowEdges();
+	} else {
+		qglCullFace( GL_BACK );
+		qglStencilOp( GL_KEEP, GL_KEEP, GL_INCR );
+
+		R_RenderShadowEdges();
+
+		qglCullFace( GL_FRONT );
+		qglStencilOp( GL_KEEP, GL_KEEP, GL_DECR );
+
+		R_RenderShadowEdges();
+	}
+
+
+	qglColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+
+	if ( R204_On() ) {
+		R204_Sub( R204_FAM_DS, R204_DSZ_sub_shadow, R204_Microseconds() - r208BuildT0 );
+	}
+}
+
+void RB_ShadowFinish( void ) {
+	if ( r_shadows->integer != 2 ) {
+		return;
+	}
+	if ( glConfig.stencilBits < 4 ) {
+		return;
+	}
+	qglEnable( GL_STENCIL_TEST );
+	qglStencilFunc( GL_NOTEQUAL, 0, 255 );
+
+	RB_ClipPlane_Disable();
+	qglDisable (GL_CULL_FACE);
+	glState.faceCulling = -1;
+
+	GL_BindUnit0( tr.whiteImage );
+
+	RB_LoadIdentityModelView();
+
+	RB_ImmColor3f( 0.6f, 0.6f, 0.6f );
+	GL_State( GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO );
+
+	GLES3_BeginWire();
+
+
+
+	RB_ImmBegin( GL_TRIANGLE_FAN );
+	RB_ImmVertex3f( -100, 100, -10 );
+	RB_ImmVertex3f( 100, 100, -10 );
+	RB_ImmVertex3f( 100, -100, -10 );
+	RB_ImmVertex3f( -100, -100, -10 );
+	RB_ImmEnd();
+	RB_ImmFlush();
+
+	RB_ImmColor4f( 1, 1, 1, 1 );
+	qglDisable( GL_STENCIL_TEST );
+}

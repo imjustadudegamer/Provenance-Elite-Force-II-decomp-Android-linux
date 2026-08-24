@@ -1,0 +1,40 @@
+// multiTrack.cpp : Defines the class behaviors for the application.
+
+#include "stdafx.h"
+#include "multiTrack.h"
+#include "multiTrackDlg.h"
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#undef THIS_FILE
+static char THIS_FILE[] = __FILE__;
+#endif
+
+
+BEGIN_MESSAGE_MAP(CMultiTrackApp, CWinApp)
+	ON_COMMAND(ID_HELP, CWinApp::OnHelp)
+END_MESSAGE_MAP()
+
+
+CMultiTrackApp::CMultiTrackApp()
+{
+}
+
+
+CMultiTrackApp theApp;
+
+
+BOOL CMultiTrackApp::InitInstance()
+{
+	CMultiTrackDlg dlg;
+	m_pMainWnd = &dlg;
+	int nResponse = dlg.DoModal();
+	if (nResponse == IDOK)
+	{
+	}
+	else if (nResponse == IDCANCEL)
+	{
+	}
+
+	return FALSE;
+}

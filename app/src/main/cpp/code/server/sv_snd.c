@@ -1,0 +1,88 @@
+
+
+#include "server.h"
+
+
+
+float SV_SoundLength(const char *name)
+{
+    return LIP_GetLength(name);
+}
+
+
+void SV_ClientSound(client_t* client, vec3_t* org, int entnum, int channel, int sound_index, float volume, float mindist, float pitch, float maxdist, qboolean streamed) {
+	server_sound_t* sound;
+
+	if (client->state != CS_ACTIVE)
+		return;
+
+    if (client->number_of_server_sounds >= MAX_SERVER_SOUNDS) {
+        return;
+    }
+
+	sound = &client->server_sounds[client->number_of_server_sounds];
+	sound->stop_flag = 0;
+	sound->entity_number = entnum;
+
+	if (org)
+	{
+		VectorCopy(*org, sound->origin);
+	}
+	else
+	{
+		VectorClear(sound->origin);
+	}
+
+	sound->channel = channel;
+	sound->volume = volume;
+	sound->min_dist = mindist;
+	sound->pitch_modifier = pitch;
+	sound->sound_index = sound_index;
+	// EF2 PARITY (ledger T4.6): `maxdist` and `streamed` are deliberately NOT stored.
+	(void)maxdist;
+	(void)streamed;
+	client->number_of_server_sounds++;
+}
+
+void SV_Sound( vec3_t *org, int entnum, int channel, const char *sound_name, float volume, float mindist, float pitch, float maxdist, qboolean streamed )
+{
+    int i;
+
+    for (i = 0; i < sv_maxclients->integer; i++)
+    {
+        client_t* client = &svs.clients[i];
+		if (client->state != CS_ACTIVE) {
+			continue;
+        }
+
+		if (client->number_of_server_sounds >= MAX_SERVER_SOUNDS) {
+			continue;
+		}
+
+        SV_ClientSound(client, org, entnum, channel, SV_SoundIndex(sound_name), volume, mindist, pitch, maxdist, streamed);
+    }
+}
+
+void SV_ClearSounds( client_t *client )
+{
+	client->number_of_server_sounds = 0;
+}
+
+void SV_StopSound( int entnum, int channel )
+{
+	server_sound_t *server_sound;
+	int i;
+	client_t *client;
+
+	for( client = svs.clients, i = 0; i < sv_maxclients->integer; client++, i++ )
+	{
+		if( client->state == CS_ACTIVE && client->number_of_server_sounds < MAX_SERVER_SOUNDS )
+		{
+			server_sound = &client->server_sounds[ client->number_of_server_sounds ];
+			server_sound->stop_flag = qtrue;
+			server_sound->entity_number = entnum;
+			server_sound->channel = channel;
+			client->number_of_server_sounds++;
+		}
+	}
+}

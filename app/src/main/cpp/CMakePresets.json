@@ -1,0 +1,65 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "vendor": {
+    "ef2.workstream": {
+      "renderer-switch": [
+        "the ONE-tree renderer/platform switch.",
+        "",
+        "linux-gles3   -- the shipping substrate: renderer_gles3.so; it is the",
+        "   only renderer left (the fixed-function and Vulkan backends are",
+        "   deleted by human order), so the client's cl_renderer default is",
+        "   'gles3'.",
+        "android-gles3 -- the device target.  Needs an NDK on the host:",
+        "   export EF2_ANDROID_NDK=<ndk root> first.",
+        "",
+        "The switch is two cache variables (EF2_PLATFORM, EF2_RENDERER) declared",
+        "in the top-level CMakeLists.txt; BUILD_RENDERER_GLES3 keeps working",
+        "verbatim underneath them."
+      ]
+    }
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-gles3",
+      "displayName": "Linux x86-64, GLES 3.0 backend (the r200-gles3 gate)",
+      "inherits": "base",
+      "cacheVariables": {
+        "EF2_PLATFORM": "linux",
+        "EF2_RENDERER": "gles3"
+      }
+    },
+    {
+      "name": "android-gles3",
+      "displayName": "Android (arm64-v8a), GLES 3.0 backend [needs EF2_ANDROID_NDK]",
+      "inherits": "base",
+      "cacheVariables": {
+        "EF2_PLATFORM": "android",
+        "EF2_RENDERER": "gles3",
+        "CMAKE_SYSTEM_NAME": "Android",
+        "CMAKE_ANDROID_ARCH_ABI": "arm64-v8a",
+        "CMAKE_ANDROID_NDK": "$env{EF2_ANDROID_NDK}",
+        "ANDROID_NDK": "$env{EF2_ANDROID_NDK}",
+        "CMAKE_ANDROID_API": "26"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-gles3", "configurePreset": "linux-gles3" },
+    { "name": "android-gles3", "configurePreset": "android-gles3" }
+  ]
+}

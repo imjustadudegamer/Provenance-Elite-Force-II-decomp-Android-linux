@@ -1,0 +1,166 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+    xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+>
+    <Package Name="ProvenanceEF2" Manufacturer="ProvenanceEF2"
+        Version="0.0.1" UpgradeCode="66545884-bb0a-4fa3-a1d4-1bc15f02b901" Scope="perMachine">
+        <MajorUpgrade AllowSameVersionUpgrades="yes" IgnoreLanguage="yes"
+            DowngradeErrorMessage="Can't install a lower version" />
+        <MediaTemplate EmbedCab="yes" />
+        <util:QueryNativeMachine />
+        <?if $(sys.BUILDARCH) = "x64"?>
+        <?define ProgramFilesFolder="ProgramFiles64Folder"?>
+        <?define ImageFileMachine=34404?>
+        <?define Bitness="64"?>
+        <?elseif $(sys.BUILDARCH) = "x86"?>
+        <?define ProgramFilesFolder="ProgramFilesFolder"?>
+        <?define ImageFileMachine=332?>
+        <?define Bitness="32"?>
+        <?elseif $(sys.BUILDARCH) = "arm64"?>
+        <?define ProgramFilesFolder="ProgramFiles64Folder"?>
+        <?define ImageFileMachine=43620?>
+        <?define Bitness="64"?>
+        <?else?>
+        <?define ProgramFilesFolder="ProgramFilesFolder"?>
+        <?define ImageFileMachine=34404?>
+        <?define Bitness="64"?>
+        <?endif?>
+
+        <StandardDirectory Id="$(var.ProgramFilesFolder)">
+            <Directory Id="INSTALLFOLDER" Name="EA Games\MOHAA">
+                <Directory Name="provenanceef2">
+                    <!-- Core components -->
+                    <Component Id="provenanceef2.exe">
+                        <File Source="files/provenanceef2.exe" />
+                    </Component>
+                    <Component Id="provenanceef2ded.exe">
+                        <File Source="files/provenanceef2ded.exe" />
+                    </Component>
+                    <Component Id="cgame.dll">
+                        <File Source="files/cgame.dll" />
+                    </Component>
+                    <Component Id="game.dll">
+                        <File Source="files/game.dll" />
+                    </Component>
+
+                    <!-- Third-party -->
+                    <Component Id="SDL2.dll">
+                        <File Source="files/SDL2.dll" />
+                    </Component>
+                    <Component Id="OpenAL$(var.Bitness).dll">
+                        <File Source="files/OpenAL$(var.Bitness).dll" />
+                    </Component>
+                    <Component Id="libcurl.dll">
+                        <File Source="files/libcurl.dll" />
+                    </Component>
+
+                    <!-- Launchers -->
+                    <Component Id="launch_provenanceef2_base.exe">
+                        <File Source="files/launch_provenanceef2_base.exe"
+                            KeyPath="yes">
+                            <Shortcut Advertise="yes" Directory="DesktopFolder"
+                                Name="ProvenanceEF2 (Allied Assault)" Icon="provenanceef2_icon.exe"
+                                WorkingDirectory="INSTALLFOLDER" />
+                            <Shortcut Advertise="yes" Directory="ProgramMenuFolder"
+                                Name="ProvenanceEF2 (Allied Assault)" Icon="provenanceef2_icon.exe"
+                                WorkingDirectory="INSTALLFOLDER" />
+                        </File>
+                    </Component>
+                    <Component Id="launch_provenanceef2_spearhead.exe">
+                        <File Source="files/launch_provenanceef2_spearhead.exe"
+                            KeyPath="yes">
+                            <Shortcut Advertise="yes" Directory="DesktopFolder"
+                                Name="ProvenanceEF2 (Spearhead)" Icon="provenanceef2_icon.exe"
+                                WorkingDirectory="INSTALLFOLDER" />
+                            <Shortcut Advertise="yes" Directory="ProgramMenuFolder"
+                                Name="ProvenanceEF2 (Spearhead)" Icon="provenanceef2_icon.exe"
+                                WorkingDirectory="INSTALLFOLDER" />
+                        </File>
+                    </Component>
+                    <Component Id="launch_provenanceef2_breakthrough.exe">
+                        <File Source="files/launch_provenanceef2_breakthrough.exe"
+                            KeyPath="yes">
+                            <Shortcut Advertise="yes" Directory="DesktopFolder"
+                                Name="ProvenanceEF2 (Breakthrough)" Icon="provenanceef2_icon.exe"
+                                WorkingDirectory="INSTALLFOLDER" />
+                            <Shortcut Advertise="yes" Directory="ProgramMenuFolder"
+                                Name="ProvenanceEF2 (Breakthrough)" Icon="provenanceef2_icon.exe"
+                                WorkingDirectory="INSTALLFOLDER" />
+                        </File>
+                    </Component>
+                </Directory>
+            </Directory>
+        </StandardDirectory>
+
+        <Icon Id="provenanceef2_icon.exe" SourceFile="files/provenanceef2.exe" />
+
+        <ComponentGroup Id="Core">
+            <ComponentRef Id="provenanceef2.exe" />
+            <ComponentRef Id="provenanceef2ded.exe" />
+            <ComponentRef Id="cgame.dll" />
+            <ComponentRef Id="game.dll" />
+        </ComponentGroup>
+
+        <ComponentGroup Id="ThirdParty">
+            <ComponentRef Id="SDL2.dll" />
+            <ComponentRef Id="OpenAL$(var.Bitness).dll" />
+            <ComponentRef Id="libcurl.dll" />
+        </ComponentGroup>
+
+        <ComponentGroup Id="Launchers">
+            <ComponentRef Id="launch_provenanceef2_base.exe" />
+            <ComponentRef Id="launch_provenanceef2_spearhead.exe" />
+            <ComponentRef Id="launch_provenanceef2_breakthrough.exe" />
+        </ComponentGroup>
+
+        <Property Id="INSTALLFOLDER">
+            <RegistrySearch Root="HKLM"
+                Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\MOHAA.exe" Name="Path"
+                Type="directory" />
+            <RegistrySearch Root="HKLM"
+                Bitness="always32"
+                Key="SOFTWARE\GOG.com\GOGMEDALOFHONOR" Name="PATH"
+                Type="directory" />
+        </Property>
+
+        <Property Id="CHECKMOHAAEXE" Value="0">
+            <DirectorySearch Id="MOHAAExeSearch" Depth="0"
+                Path="[INSTALLFOLDER]MOHAA.exe">
+            </DirectorySearch>
+        </Property>
+
+        <ui:WixUI
+            Id="WixUI_InstallDir_Custom"
+            InstallDirectory="INSTALLFOLDER"
+        />
+
+        <Launch Condition="WIX_NATIVE_MACHINE=$(var.ImageFileMachine)"
+            Message="The incorrect installer is being used for your platform. Use the installer that matches your platform." />
+        <!-- <Launch Condition="INSTALLFOLDER" Message="Couldn't find existing MOH:AA directory" /> -->
+    </Package>
+
+    <Fragment>
+        <PackageGroup Id="VC_REDIST_X64">
+            <ExePackage
+                Id="VC_REDIST_X64"
+                DisplayName="Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.40.33810"
+                Cache="remove"
+                PerMachine="yes"
+                Permanent="yes"
+                Protocol="burn"
+                InstallCondition="VersionNT64 AND (ARCH_NAME = &quot;AMD64&quot;)"
+                DetectCondition="(VCRUNTIME_X64_VER &gt;= VCRUNTIME_VER) AND VersionNT64 AND (ARCH_NAME = &quot;AMD64&quot;)"
+                InstallArguments="/install /quiet /norestart"
+                RepairArguments="/repair /quiet /norestart"
+                UninstallArguments="/uninstall /quiet /norestart">
+                <ExePackagePayload
+                    Name="VC_redist.x64.exe"
+                    ProductName="Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.40.33810"
+                    Description="Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.40.33810"
+                    Hash="5935B69F5138AC3FBC33813C74DA853269BA079F910936AEFA95E230C6092B92F6225BFFB594E5DD35FF29BF260E4B35F91ADEDE90FDF5F062030D8666FD0104"
+                    Size="25397512"
+                    Version="14.40.33810.0"
+                    DownloadUrl="https://download.visualstudio.microsoft.com/download/pr/1754ea58-11a6-44ab-a262-696e194ce543/3642E3F95D50CC193E4B5A0B0FFBF7FE2C08801517758B4C8AEB7105A091208A/VC_redist.x64.exe" />
+            </ExePackage>
+        </PackageGroup>
+    </Fragment>
+</Wix>

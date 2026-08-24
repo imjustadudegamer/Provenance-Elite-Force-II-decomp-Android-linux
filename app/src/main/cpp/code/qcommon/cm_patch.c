@@ -1,0 +1,1366 @@
+
+#include "cm_local.h"
+#include "cm_patch.h"
+
+
+int	c_totalPatchBlocks;
+int	c_totalPatchSurfaces;
+int	c_totalPatchEdges;
+
+static const patchCollide_t	*debugPatchCollide;
+static const facet_t		*debugFacet;
+static qboolean		debugBlock;
+static vec3_t		debugBlockPoints[4];
+
+void CM_ClearLevelPatches( void ) {
+	debugPatchCollide = NULL;
+	debugFacet = NULL;
+}
+
+static int CM_SignbitsForNormal( vec3_t normal ) {
+	int	bits, j;
+
+	bits = 0;
+	for (j=0 ; j<3 ; j++) {
+		if ( normal[j] < 0 ) {
+			bits |= 1<<j;
+		}
+	}
+	return bits;
+}
+
+qboolean CM_PlaneFromPoints( vec4_t plane, vec3_t a, vec3_t b, vec3_t c ) {
+	vec3_t	d1, d2;
+
+	VectorSubtract( b, a, d1 );
+	VectorSubtract( c, a, d2 );
+	CrossProduct( d2, d1, plane );
+	if ( VectorNormalize( plane ) == 0 ) {
+		return qfalse;
+	}
+
+	plane[3] = DotProduct( a, plane );
+	return qtrue;
+}
+
+
+
+static qboolean	CM_NeedsSubdivision( vec3_t a, vec3_t b, vec3_t c, float subdivisions ) {
+	vec3_t		cmid;
+	vec3_t		lmid;
+	vec3_t		delta;
+	float		dist;
+	int			i;
+
+	for ( i = 0 ; i < 3 ; i++ ) {
+		lmid[i] = 0.5*(a[i] + c[i]);
+	}
+
+	for ( i = 0 ; i < 3 ; i++ ) {
+		cmid[i] = 0.5 * ( 0.5*(a[i] + b[i]) + 0.5*(b[i] + c[i]) );
+	}
+
+	VectorSubtract( cmid, lmid, delta );
+	dist = VectorLength( delta );
+	
+	return dist >= subdivisions;
+}
+
+static void CM_Subdivide( vec3_t a, vec3_t b, vec3_t c, vec3_t out1, vec3_t out2, vec3_t out3 ) {
+	int		i;
+
+	for ( i = 0 ; i < 3 ; i++ ) {
+		out1[i] = 0.5 * (a[i] + b[i]);
+		out3[i] = 0.5 * (b[i] + c[i]);
+		out2[i] = 0.5 * (out1[i] + out3[i]);
+	}
+}
+
+static void CM_TransposeGrid( cGrid_t *grid ) {
+	int			i, j, l;
+	vec3_t		temp;
+	qboolean	tempWrap;
+
+	if ( grid->width > grid->height ) {
+		for ( i = 0 ; i < grid->height ; i++ ) {
+			for ( j = i + 1 ; j < grid->width ; j++ ) {
+				if ( j < grid->height ) {
+					VectorCopy( grid->points[i][j], temp );
+					VectorCopy( grid->points[j][i], grid->points[i][j] );
+					VectorCopy( temp, grid->points[j][i] );
+				} else {
+					VectorCopy( grid->points[j][i], grid->points[i][j] );
+				}
+			}
+		}
+	} else {
+		for ( i = 0 ; i < grid->width ; i++ ) {
+			for ( j = i + 1 ; j < grid->height ; j++ ) {
+				if ( j < grid->width ) {
+					VectorCopy( grid->points[j][i], temp );
+					VectorCopy( grid->points[i][j], grid->points[j][i] );
+					VectorCopy( temp, grid->points[i][j] );
+				} else {
+					VectorCopy( grid->points[i][j], grid->points[j][i] );
+				}
+			}
+		}
+	}
+
+	l = grid->width;
+	grid->width = grid->height;
+	grid->height = l;
+
+	tempWrap = grid->wrapWidth;
+	grid->wrapWidth = grid->wrapHeight;
+	grid->wrapHeight = tempWrap;
+}
+
+static void CM_SetGridWrapWidth( cGrid_t *grid ) {
+	int		i, j;
+	float	d;
+
+	for ( i = 0 ; i < grid->height ; i++ ) {
+		for ( j = 0 ; j < 3 ; j++ ) {
+			d = grid->points[0][i][j] - grid->points[grid->width-1][i][j];
+			if ( d < -WRAP_POINT_EPSILON || d > WRAP_POINT_EPSILON ) {
+				break;
+			}
+		}
+		if ( j != 3 ) {
+			break;
+		}
+	}
+	if ( i == grid->height ) {
+		grid->wrapWidth = qtrue;
+	} else {
+		grid->wrapWidth = qfalse;
+	}
+}
+
+static void CM_SubdivideGridColumns( cGrid_t *grid, float subdivisions ) {
+	int		i, j, k;
+
+	for ( i = 0 ; i < grid->width - 2 ;  ) {
+
+		for ( j = 0 ; j < grid->height ; j++ ) {
+			if( CM_NeedsSubdivision( grid->points[ i ][ j ], grid->points[ i + 1 ][ j ], grid->points[ i + 2 ][ j ], subdivisions ) ) {
+				break;
+			}
+		}
+		if ( j == grid->height ) {
+			for ( j = 0 ; j < grid->height ; j++ ) {
+				for ( k = i + 2 ; k < grid->width ; k++ ) {
+					VectorCopy( grid->points[k][j], grid->points[k-1][j] );
+				}
+			}
+
+			grid->width--;
+
+			i++;
+			continue;
+		}
+
+		for ( j = 0 ; j < grid->height ; j++ ) {
+			vec3_t	prev, mid, next;
+
+			VectorCopy( grid->points[i][j], prev );
+			VectorCopy( grid->points[i+1][j], mid );
+			VectorCopy( grid->points[i+2][j], next );
+
+			for ( k = grid->width - 1 ; k > i + 1 ; k-- ) {
+				VectorCopy( grid->points[k][j], grid->points[k+2][j] );
+			}
+
+			CM_Subdivide( prev, mid, next, grid->points[i+1][j], grid->points[i+2][j], grid->points[i+3][j] );
+		}
+
+		grid->width += 2;
+
+	}
+}
+
+#define	POINT_EPSILON	0.1
+static qboolean CM_ComparePoints( float *a, float *b ) {
+	float		d;
+
+	d = a[0] - b[0];
+	if ( d < -POINT_EPSILON || d > POINT_EPSILON ) {
+		return qfalse;
+	}
+	d = a[1] - b[1];
+	if ( d < -POINT_EPSILON || d > POINT_EPSILON ) {
+		return qfalse;
+	}
+	d = a[2] - b[2];
+	if ( d < -POINT_EPSILON || d > POINT_EPSILON ) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
+static void CM_RemoveDegenerateColumns( cGrid_t *grid ) {
+	int		i, j, k;
+
+	for ( i = 0 ; i < grid->width - 1 ; i++ ) {
+		for ( j = 0 ; j < grid->height ; j++ ) {
+			if ( !CM_ComparePoints( grid->points[i][j], grid->points[i+1][j] ) ) {
+				break;
+			}
+		}
+
+		if ( j != grid->height ) {
+			continue;	
+		}
+
+		for ( j = 0 ; j < grid->height ; j++ ) {
+			for ( k = i + 2 ; k < grid->width ; k++ ) {
+				VectorCopy( grid->points[k][j], grid->points[k-1][j] );
+			}
+		}
+		grid->width--;
+
+		i--;
+	}
+}
+
+
+static	int				numPlanes;
+static	patchPlane_t	planes[MAX_PATCH_PLANES];
+
+static	int				numFacets;
+static	facet_t			facets[MAX_PATCH_PLANES]; 
+
+#define	NORMAL_EPSILON	0.0001
+#define	DIST_EPSILON	0.02
+
+int CM_PlaneEqual(patchPlane_t *p, float plane[4], int *flipped) {
+	float invplane[4];
+
+	if (
+	   fabs(p->plane[0] - plane[0]) < NORMAL_EPSILON
+	&& fabs(p->plane[1] - plane[1]) < NORMAL_EPSILON
+	&& fabs(p->plane[2] - plane[2]) < NORMAL_EPSILON
+	&& fabs(p->plane[3] - plane[3]) < DIST_EPSILON )
+	{
+		*flipped = qfalse;
+		return qtrue;
+	}
+
+	VectorNegate(plane, invplane);
+	invplane[3] = -plane[3];
+
+	if (
+	   fabs(p->plane[0] - invplane[0]) < NORMAL_EPSILON
+	&& fabs(p->plane[1] - invplane[1]) < NORMAL_EPSILON
+	&& fabs(p->plane[2] - invplane[2]) < NORMAL_EPSILON
+	&& fabs(p->plane[3] - invplane[3]) < DIST_EPSILON )
+	{
+		*flipped = qtrue;
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+void CM_SnapVector(vec3_t normal) {
+	int		i;
+
+	for (i=0 ; i<3 ; i++)
+	{
+		if ( fabs(normal[i] - 1) < NORMAL_EPSILON )
+		{
+			VectorClear (normal);
+			normal[i] = 1;
+			break;
+		}
+		if ( fabs(normal[i] - -1) < NORMAL_EPSILON )
+		{
+			VectorClear (normal);
+			normal[i] = -1;
+			break;
+		}
+	}
+}
+
+int CM_FindPlane2(float plane[4], int *flipped) {
+	int i;
+
+	for ( i = 0 ; i < numPlanes ; i++ ) {
+		if (CM_PlaneEqual(&planes[i], plane, flipped)) return i;
+	}
+
+	if ( numPlanes == MAX_PATCH_PLANES ) {
+		Com_Error( ERR_DROP, "MAX_PATCH_PLANES" );
+	}
+
+	Vector4Copy( plane, planes[numPlanes].plane );
+	planes[numPlanes].signbits = CM_SignbitsForNormal( plane );
+
+	numPlanes++;
+
+	*flipped = qfalse;
+
+	return numPlanes-1;
+}
+
+static int CM_FindPlane( float *p1, float *p2, float *p3 ) {
+	float	plane[4];
+	int		i;
+	float	d;
+
+	if ( !CM_PlaneFromPoints( plane, p1, p2, p3 ) ) {
+		return -1;
+	}
+
+	for ( i = 0 ; i < numPlanes ; i++ ) {
+		if ( DotProduct( plane, planes[i].plane ) < 0 ) {
+			continue;	
+		}
+
+		d = DotProduct( p1, planes[i].plane ) - planes[i].plane[3];
+		if ( d < -PLANE_TRI_EPSILON || d > PLANE_TRI_EPSILON ) {
+			continue;
+		}
+
+		d = DotProduct( p2, planes[i].plane ) - planes[i].plane[3];
+		if ( d < -PLANE_TRI_EPSILON || d > PLANE_TRI_EPSILON ) {
+			continue;
+		}
+
+		d = DotProduct( p3, planes[i].plane ) - planes[i].plane[3];
+		if ( d < -PLANE_TRI_EPSILON || d > PLANE_TRI_EPSILON ) {
+			continue;
+		}
+
+		return i;
+	}
+
+	if ( numPlanes == MAX_PATCH_PLANES ) {
+		Com_Error( ERR_DROP, "MAX_PATCH_PLANES" );
+	}
+
+	Vector4Copy( plane, planes[numPlanes].plane );
+	planes[numPlanes].signbits = CM_SignbitsForNormal( plane );
+
+	numPlanes++;
+
+	return numPlanes-1;
+}
+
+static int CM_PointOnPlaneSide( float *p, int planeNum ) {
+	float	*plane;
+	float	d;
+
+	if ( planeNum == -1 ) {
+		return SIDE_ON;
+	}
+	plane = planes[ planeNum ].plane;
+
+	d = DotProduct( p, plane ) - plane[3];
+
+	if ( d > PLANE_TRI_EPSILON ) {
+		return SIDE_FRONT;
+	}
+
+	if ( d < -PLANE_TRI_EPSILON ) {
+		return SIDE_BACK;
+	}
+
+	return SIDE_ON;
+}
+
+static int	CM_GridPlane( int gridPlanes[MAX_GRID_SIZE][MAX_GRID_SIZE][2], int i, int j, int tri ) {
+	int		p;
+
+	p = gridPlanes[i][j][tri];
+	if ( p != -1 ) {
+		return p;
+	}
+	p = gridPlanes[i][j][!tri];
+	if ( p != -1 ) {
+		return p;
+	}
+
+	Com_Printf( "WARNING: CM_GridPlane unresolvable\n" );
+	return -1;
+}
+
+static int CM_EdgePlaneNum( cGrid_t *grid, int gridPlanes[MAX_GRID_SIZE][MAX_GRID_SIZE][2], int i, int j, int k ) {
+	float	*p1, *p2;
+	vec3_t		up;
+	int			p;
+
+	switch ( k ) {
+	case 0:	
+		p1 = grid->points[i][j];
+		p2 = grid->points[i+1][j];
+		p = CM_GridPlane( gridPlanes, i, j, 0 );
+		if ( p == -1 ) {
+			return -1;
+		}
+		VectorMA( p1, 4, planes[ p ].plane, up );
+		return CM_FindPlane( p1, p2, up );
+
+	case 2:	
+		p1 = grid->points[i][j+1];
+		p2 = grid->points[i+1][j+1];
+		p = CM_GridPlane( gridPlanes, i, j, 1 );
+		if ( p == -1 ) {
+			return -1;
+		}
+		VectorMA( p1, 4, planes[ p ].plane, up );
+		return CM_FindPlane( p2, p1, up );
+
+	case 3: 
+		p1 = grid->points[i][j];
+		p2 = grid->points[i][j+1];
+		p = CM_GridPlane( gridPlanes, i, j, 1 );
+		if ( p == -1 ) {
+			return -1;
+		}
+		VectorMA( p1, 4, planes[ p ].plane, up );
+		return CM_FindPlane( p2, p1, up );
+
+	case 1:	
+		p1 = grid->points[i+1][j];
+		p2 = grid->points[i+1][j+1];
+		p = CM_GridPlane( gridPlanes, i, j, 0 );
+		if ( p == -1 ) {
+			return -1;
+		}
+		VectorMA( p1, 4, planes[ p ].plane, up );
+		return CM_FindPlane( p1, p2, up );
+
+	case 4:	
+		p1 = grid->points[i+1][j+1];
+		p2 = grid->points[i][j];
+		p = CM_GridPlane( gridPlanes, i, j, 0 );
+		if ( p == -1 ) {
+			return -1;
+		}
+		VectorMA( p1, 4, planes[ p ].plane, up );
+		return CM_FindPlane( p1, p2, up );
+
+	case 5:	
+		p1 = grid->points[i][j];
+		p2 = grid->points[i+1][j+1];
+		p = CM_GridPlane( gridPlanes, i, j, 1 );
+		if ( p == -1 ) {
+			return -1;
+		}
+		VectorMA( p1, 4, planes[ p ].plane, up );
+		return CM_FindPlane( p1, p2, up );
+
+	}
+
+	Com_Error( ERR_DROP, "CM_EdgePlaneNum: bad k" );
+	return -1;
+}
+
+static void CM_SetBorderInward( facet_t *facet, cGrid_t *grid, int gridPlanes[MAX_GRID_SIZE][MAX_GRID_SIZE][2],
+						  int i, int j, int which ) {
+	int		k, l;
+	float	*points[4];
+	int		numPoints;
+
+	switch ( which ) {
+	case -1:
+		points[0] = grid->points[i][j];
+		points[1] = grid->points[i+1][j];
+		points[2] = grid->points[i+1][j+1];
+		points[3] = grid->points[i][j+1];
+		numPoints = 4;
+		break;
+	case 0:
+		points[0] = grid->points[i][j];
+		points[1] = grid->points[i+1][j];
+		points[2] = grid->points[i+1][j+1];
+		numPoints = 3;
+		break;
+	case 1:
+		points[0] = grid->points[i+1][j+1];
+		points[1] = grid->points[i][j+1];
+		points[2] = grid->points[i][j];
+		numPoints = 3;
+		break;
+	default:
+		Com_Error( ERR_FATAL, "CM_SetBorderInward: bad parameter" );
+		numPoints = 0;
+		break;
+	}
+
+	for ( k = 0 ; k < facet->numBorders ; k++ ) {
+		int		front, back;
+
+		front = 0;
+		back = 0;
+
+		for ( l = 0 ; l < numPoints ; l++ ) {
+			int		side;
+
+			side = CM_PointOnPlaneSide( points[l], facet->borderPlanes[k] );
+			if ( side == SIDE_FRONT ) {
+				front++;
+			} if ( side == SIDE_BACK ) {
+				back++;
+			}
+		}
+
+		if ( front && !back ) {
+			facet->borderInward[k] = qtrue;
+		} else if ( back && !front ) {
+			facet->borderInward[k] = qfalse;
+		} else if ( !front && !back ) {
+			facet->borderPlanes[k] = -1;
+		} else {
+			Com_DPrintf( "WARNING: CM_SetBorderInward: mixed plane sides\n" );
+			facet->borderInward[k] = qfalse;
+			if ( !debugBlock ) {
+				debugBlock = qtrue;
+				VectorCopy( grid->points[i][j], debugBlockPoints[0] );
+				VectorCopy( grid->points[i+1][j], debugBlockPoints[1] );
+				VectorCopy( grid->points[i+1][j+1], debugBlockPoints[2] );
+				VectorCopy( grid->points[i][j+1], debugBlockPoints[3] );
+			}
+		}
+	}
+}
+
+static qboolean CM_ValidateFacet( facet_t *facet ) {
+	float		plane[4];
+	int			j;
+	winding_t	*w;
+	vec3_t		bounds[2];
+
+	if ( facet->surfacePlane == -1 ) {
+		return qfalse;
+	}
+
+	Vector4Copy( planes[ facet->surfacePlane ].plane, plane );
+	w = BaseWindingForPlane( plane,  plane[3] );
+	for ( j = 0 ; j < facet->numBorders && w ; j++ ) {
+		if ( facet->borderPlanes[j] == -1 ) {
+			FreeWinding( w );
+			return qfalse;
+		}
+		Vector4Copy( planes[ facet->borderPlanes[j] ].plane, plane );
+		if ( !facet->borderInward[j] ) {
+			VectorSubtract( vec3_origin, plane, plane );
+			plane[3] = -plane[3];
+		}
+		ChopWindingInPlace( &w, plane, plane[3], 0.1f );
+	}
+
+	if ( !w ) {
+		return qfalse;		
+	}
+
+	WindingBounds( w, bounds[0], bounds[1] );
+	FreeWinding( w );
+	
+	for ( j = 0 ; j < 3 ; j++ ) {
+		if ( bounds[1][j] - bounds[0][j] > MAP_SIZE ) {
+			return qfalse;		
+		}
+	}
+	return qtrue;		
+}
+
+void CM_AddFacetBevels( facet_t *facet ) {
+
+	int i, j, k, l;
+	int axis, dir, order, flipped;
+	float plane[4], d, newplane[4];
+	winding_t *w, *w2;
+	vec3_t mins, maxs, vec, vec2;
+
+	Vector4Copy( planes[ facet->surfacePlane ].plane, plane );
+
+	w = BaseWindingForPlane( plane,  plane[3] );
+	for ( j = 0 ; j < facet->numBorders && w ; j++ ) {
+		if (facet->borderPlanes[j] == facet->surfacePlane) continue;
+		Vector4Copy( planes[ facet->borderPlanes[j] ].plane, plane );
+
+		if ( !facet->borderInward[j] ) {
+			VectorSubtract( vec3_origin, plane, plane );
+			plane[3] = -plane[3];
+		}
+
+		ChopWindingInPlace( &w, plane, plane[3], 0.1f );
+	}
+	if ( !w ) {
+		return;
+	}
+
+	WindingBounds(w, mins, maxs);
+
+	order = 0;
+	for ( axis = 0 ; axis < 3 ; axis++ )
+	{
+		for ( dir = -1 ; dir <= 1 ; dir += 2, order++ )
+		{
+			VectorClear(plane);
+			plane[axis] = dir;
+			if (dir == 1) {
+				plane[3] = maxs[axis];
+			}
+			else {
+				plane[3] = -mins[axis];
+			}
+			if (CM_PlaneEqual(&planes[facet->surfacePlane], plane, &flipped)) {
+				continue;
+			}
+			for ( i = 0 ; i < facet->numBorders ; i++ ) {
+				if (CM_PlaneEqual(&planes[facet->borderPlanes[i]], plane, &flipped))
+					break;
+			}
+
+			if ( i == facet->numBorders ) {
+				if (facet->numBorders > 4 + 6 + 16) Com_Printf("ERROR: too many bevels\n");
+				facet->borderPlanes[facet->numBorders] = CM_FindPlane2(plane, &flipped);
+				facet->borderNoAdjust[facet->numBorders] = 0;
+				facet->borderInward[facet->numBorders] = flipped;
+				facet->numBorders++;
+			}
+		}
+	}
+	for ( j = 0 ; j < w->numpoints ; j++ )
+	{
+		k = (j+1)%w->numpoints;
+		VectorSubtract (w->p[j], w->p[k], vec);
+		if (VectorNormalize (vec) < 0.5)
+			continue;
+		CM_SnapVector(vec);
+		for ( k = 0; k < 3 ; k++ )
+			if ( vec[k] == -1 || vec[k] == 1 )
+				break;	
+		if ( k < 3 )
+			continue;	
+
+		for ( axis = 0 ; axis < 3 ; axis++ )
+		{
+			for ( dir = -1 ; dir <= 1 ; dir += 2 )
+			{
+				VectorClear (vec2);
+				vec2[axis] = dir;
+				CrossProduct (vec, vec2, plane);
+				if (VectorNormalize (plane) < 0.5)
+					continue;
+				plane[3] = DotProduct (w->p[j], plane);
+
+				for ( l = 0 ; l < w->numpoints ; l++ )
+				{
+					d = DotProduct (w->p[l], plane) - plane[3];
+					if (d > 0.1)
+						break;	
+				}
+				if ( l < w->numpoints )
+					continue;
+
+				if (CM_PlaneEqual(&planes[facet->surfacePlane], plane, &flipped)) {
+					continue;
+				}
+				for ( i = 0 ; i < facet->numBorders ; i++ ) {
+					if (CM_PlaneEqual(&planes[facet->borderPlanes[i]], plane, &flipped)) {
+							break;
+					}
+				}
+
+				if ( i == facet->numBorders ) {
+					if (facet->numBorders > 4 + 6 + 16) Com_Printf("ERROR: too many bevels\n");
+					facet->borderPlanes[facet->numBorders] = CM_FindPlane2(plane, &flipped);
+
+					for ( k = 0 ; k < facet->numBorders ; k++ ) {
+						if (facet->borderPlanes[facet->numBorders] ==
+							facet->borderPlanes[k]) Com_Printf("WARNING: bevel plane already used\n");
+					}
+
+					facet->borderNoAdjust[facet->numBorders] = 0;
+					facet->borderInward[facet->numBorders] = flipped;
+					w2 = CopyWinding(w);
+					Vector4Copy(planes[facet->borderPlanes[facet->numBorders]].plane, newplane);
+					if (!facet->borderInward[facet->numBorders])
+					{
+						VectorNegate(newplane, newplane);
+						newplane[3] = -newplane[3];
+					} 
+					ChopWindingInPlace( &w2, newplane, newplane[3], 0.1f );
+					if (!w2) {
+						if( developer->integer == 2 ) {
+							Com_DPrintf( "WARNING: CM_AddFacetBevels... invalid bevel\n" );
+						}
+						continue;
+					}
+					else {
+						FreeWinding(w2);
+					}
+					facet->numBorders++;
+				}
+			}
+		}
+	}
+	FreeWinding( w );
+
+#ifndef BSPC
+	facet->borderPlanes[facet->numBorders] = facet->surfacePlane;
+	facet->borderNoAdjust[facet->numBorders] = 0;
+	facet->borderInward[facet->numBorders] = qtrue;
+	facet->numBorders++;
+#endif 
+
+}
+
+typedef enum {
+	EN_TOP,
+	EN_RIGHT,
+	EN_BOTTOM,
+	EN_LEFT
+} edgeName_t;
+
+static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
+	int				i, j;
+	float			*p1, *p2, *p3;
+	int				gridPlanes[MAX_GRID_SIZE][MAX_GRID_SIZE][2];
+	facet_t			*facet;
+	int				borders[4];
+	int				noAdjust[4];
+
+	numPlanes = 0;
+	numFacets = 0;
+
+	for ( i = 0 ; i < grid->width - 1 ; i++ ) {
+		for ( j = 0 ; j < grid->height - 1 ; j++ ) {
+			p1 = grid->points[i][j];
+			p2 = grid->points[i+1][j];
+			p3 = grid->points[i+1][j+1];
+			gridPlanes[i][j][0] = CM_FindPlane( p1, p2, p3 );
+
+			p1 = grid->points[i+1][j+1];
+			p2 = grid->points[i][j+1];
+			p3 = grid->points[i][j];
+			gridPlanes[i][j][1] = CM_FindPlane( p1, p2, p3 );
+		}
+	}
+
+	for ( i = 0 ; i < grid->width - 1 ; i++ ) {
+		for ( j = 0 ; j < grid->height - 1 ; j++ ) {
+			 
+			borders[EN_TOP] = -1;
+			if ( j > 0 ) {
+				borders[EN_TOP] = gridPlanes[i][j-1][1];
+			} else if ( grid->wrapHeight ) {
+				borders[EN_TOP] = gridPlanes[i][grid->height-2][1];
+			} 
+			noAdjust[EN_TOP] = ( borders[EN_TOP] == gridPlanes[i][j][0] );
+			if ( borders[EN_TOP] == -1 || noAdjust[EN_TOP] ) {
+				borders[EN_TOP] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 0 );
+			}
+
+			borders[EN_BOTTOM] = -1;
+			if ( j < grid->height - 2 ) {
+				borders[EN_BOTTOM] = gridPlanes[i][j+1][0];
+			} else if ( grid->wrapHeight ) {
+				borders[EN_BOTTOM] = gridPlanes[i][0][0];
+			}
+			noAdjust[EN_BOTTOM] = ( borders[EN_BOTTOM] == gridPlanes[i][j][1] );
+			if ( borders[EN_BOTTOM] == -1 || noAdjust[EN_BOTTOM] ) {
+				borders[EN_BOTTOM] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 2 );
+			}
+
+			borders[EN_LEFT] = -1;
+			if ( i > 0 ) {
+				borders[EN_LEFT] = gridPlanes[i-1][j][0];
+			} else if ( grid->wrapWidth ) {
+				borders[EN_LEFT] = gridPlanes[grid->width-2][j][0];
+			}
+			noAdjust[EN_LEFT] = ( borders[EN_LEFT] == gridPlanes[i][j][1] );
+			if ( borders[EN_LEFT] == -1 || noAdjust[EN_LEFT] ) {
+				borders[EN_LEFT] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 3 );
+			}
+
+			borders[EN_RIGHT] = -1;
+			if ( i < grid->width - 2 ) {
+				borders[EN_RIGHT] = gridPlanes[i+1][j][1];
+			} else if ( grid->wrapWidth ) {
+				borders[EN_RIGHT] = gridPlanes[0][j][1];
+			}
+			noAdjust[EN_RIGHT] = ( borders[EN_RIGHT] == gridPlanes[i][j][0] );
+			if ( borders[EN_RIGHT] == -1 || noAdjust[EN_RIGHT] ) {
+				borders[EN_RIGHT] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 1 );
+			}
+
+			if ( numFacets == MAX_FACETS ) {
+				Com_Error( ERR_DROP, "MAX_FACETS" );
+			}
+			facet = &facets[numFacets];
+			Com_Memset( facet, 0, sizeof( *facet ) );
+
+			if ( gridPlanes[i][j][0] == gridPlanes[i][j][1] ) {
+				if ( gridPlanes[i][j][0] == -1 ) {
+					continue;		
+				}
+				facet->surfacePlane = gridPlanes[i][j][0];
+				facet->numBorders = 4;
+				facet->borderPlanes[0] = borders[EN_TOP];
+				facet->borderNoAdjust[0] = noAdjust[EN_TOP];
+				facet->borderPlanes[1] = borders[EN_RIGHT];
+				facet->borderNoAdjust[1] = noAdjust[EN_RIGHT];
+				facet->borderPlanes[2] = borders[EN_BOTTOM];
+				facet->borderNoAdjust[2] = noAdjust[EN_BOTTOM];
+				facet->borderPlanes[3] = borders[EN_LEFT];
+				facet->borderNoAdjust[3] = noAdjust[EN_LEFT];
+				CM_SetBorderInward( facet, grid, gridPlanes, i, j, -1 );
+				if ( CM_ValidateFacet( facet ) ) {
+					CM_AddFacetBevels( facet );
+					numFacets++;
+				}
+			} else {
+				facet->surfacePlane = gridPlanes[i][j][0];
+				facet->numBorders = 3;
+				facet->borderPlanes[0] = borders[EN_TOP];
+				facet->borderNoAdjust[0] = noAdjust[EN_TOP];
+				facet->borderPlanes[1] = borders[EN_RIGHT];
+				facet->borderNoAdjust[1] = noAdjust[EN_RIGHT];
+				facet->borderPlanes[2] = gridPlanes[i][j][1];
+				if ( facet->borderPlanes[2] == -1 ) {
+					facet->borderPlanes[2] = borders[EN_BOTTOM];
+					if ( facet->borderPlanes[2] == -1 ) {
+						facet->borderPlanes[2] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 4 );
+					}
+				}
+ 				CM_SetBorderInward( facet, grid, gridPlanes, i, j, 0 );
+				if ( CM_ValidateFacet( facet ) ) {
+					CM_AddFacetBevels( facet );
+					numFacets++;
+				}
+
+				if ( numFacets == MAX_FACETS ) {
+					Com_Error( ERR_DROP, "MAX_FACETS" );
+				}
+				facet = &facets[numFacets];
+				Com_Memset( facet, 0, sizeof( *facet ) );
+
+				facet->surfacePlane = gridPlanes[i][j][1];
+				facet->numBorders = 3;
+				facet->borderPlanes[0] = borders[EN_BOTTOM];
+				facet->borderNoAdjust[0] = noAdjust[EN_BOTTOM];
+				facet->borderPlanes[1] = borders[EN_LEFT];
+				facet->borderNoAdjust[1] = noAdjust[EN_LEFT];
+				facet->borderPlanes[2] = gridPlanes[i][j][0];
+				if ( facet->borderPlanes[2] == -1 ) {
+					facet->borderPlanes[2] = borders[EN_TOP];
+					if ( facet->borderPlanes[2] == -1 ) {
+						facet->borderPlanes[2] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 5 );
+					}
+				}
+				CM_SetBorderInward( facet, grid, gridPlanes, i, j, 1 );
+				if ( CM_ValidateFacet( facet ) ) {
+					CM_AddFacetBevels( facet );
+					numFacets++;
+				}
+			}
+		}
+	}
+
+	pf->numPlanes = numPlanes;
+    pf->numFacets = numFacets;
+	if (numPlanes >= 1) {
+		pf->planes = Hunk_Alloc(numPlanes * sizeof(*pf->planes), h_dontcare);
+		Com_Memcpy(pf->planes, planes, numPlanes * sizeof(*pf->planes));
+	} else {
+        pf->numPlanes = 0;
+        pf->planes = NULL;
+        Com_DPrintf(
+            "WARNING: CM_PatchCollideFromGrid: Degenerate patch - no planes (%i %i %i)-(%i %i %i)\n",
+            (int)pf->bounds[0][0],
+            (int)pf->bounds[0][1],
+            (int)pf->bounds[0][2],
+            (int)pf->bounds[1][0],
+            (int)pf->bounds[1][1],
+            (int)pf->bounds[1][2]);
+	}
+
+	if (numFacets >= 1) {
+		pf->facets = Hunk_Alloc(numFacets * sizeof(*pf->facets), h_dontcare);
+		Com_Memcpy(pf->facets, facets, numFacets * sizeof(*pf->facets));
+	} else {
+        pf->numFacets = 0;
+        pf->facets = NULL;
+        Com_DPrintf(
+            "WARNING: CM_PatchCollideFromGrid: Degenerate patch - no facets (%i %i %i)-(%i %i %i)\n",
+            (int)pf->bounds[0][0],
+            (int)pf->bounds[0][1],
+            (int)pf->bounds[0][2],
+            (int)pf->bounds[1][0],
+            (int)pf->bounds[1][1],
+            (int)pf->bounds[1][2]);
+	}
+}
+
+
+patchCollide_t *CM_GeneratePatchCollide( int width, int height, vec3_t *points, float subdivisions ) {
+	patchCollide_t	*pf;
+	cGrid_t			grid;
+	int				i, j;
+
+	if ( width <= 2 || height <= 2 || !points ) {
+		Com_Error( ERR_DROP, "CM_GeneratePatchFacets: bad parameters: (%i, %i, %p)",
+			width, height, (void *)points );
+	}
+
+	if ( !(width & 1) || !(height & 1) ) {
+		Com_Error( ERR_DROP, "CM_GeneratePatchFacets: even sizes are invalid for quadratic meshes" );
+	}
+
+	if ( width > MAX_GRID_SIZE || height > MAX_GRID_SIZE ) {
+		Com_Error( ERR_DROP, "CM_GeneratePatchFacets: source is > MAX_GRID_SIZE" );
+	}
+
+	grid.width = width;
+	grid.height = height;
+	grid.wrapWidth = qfalse;
+	grid.wrapHeight = qfalse;
+	for ( i = 0 ; i < width ; i++ ) {
+		for ( j = 0 ; j < height ; j++ ) {
+			VectorCopy( points[j*width + i], grid.points[i][j] );
+		}
+	}
+
+	CM_SetGridWrapWidth( &grid );
+	CM_SubdivideGridColumns( &grid, subdivisions );
+	CM_RemoveDegenerateColumns( &grid );
+
+	CM_TransposeGrid( &grid );
+
+	CM_SetGridWrapWidth( &grid );
+	CM_SubdivideGridColumns( &grid, subdivisions );
+	CM_RemoveDegenerateColumns( &grid );
+
+	pf = Hunk_Alloc( sizeof( *pf ), h_dontcare );
+	ClearBounds( pf->bounds[0], pf->bounds[1] );
+	for ( i = 0 ; i < grid.width ; i++ ) {
+		for ( j = 0 ; j < grid.height ; j++ ) {
+			AddPointToBounds( grid.points[i][j], pf->bounds[0], pf->bounds[1] );
+		}
+	}
+
+	c_totalPatchBlocks += ( grid.width - 1 ) * ( grid.height - 1 );
+
+	CM_PatchCollideFromGrid( &grid, pf );
+
+	pf->bounds[0][0] -= 1;
+	pf->bounds[0][1] -= 1;
+	pf->bounds[0][2] -= 1;
+
+	pf->bounds[1][0] += 1;
+	pf->bounds[1][1] += 1;
+	pf->bounds[1][2] += 1;
+
+	return pf;
+}
+
+
+void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc ) {
+	qboolean	frontFacing[MAX_PATCH_PLANES];
+	float		intersection[MAX_PATCH_PLANES];
+	float		intersect;
+	const patchPlane_t	*pcPlanes;
+	const facet_t	*facet;
+	int			i, j, k;
+	float		offset;
+	float		d1, d2;
+#ifndef BSPC
+	static cvar_t *cv;
+#endif 
+
+#ifndef BSPC
+	if ( !cm_playerCurveClip->integer || !tw->isPoint ) {
+		return;
+	}
+#endif
+
+	pcPlanes = pc->planes;
+	for ( i = 0 ; i < pc->numPlanes ; i++, pcPlanes++ ) {
+		offset = DotProduct( tw->offsets[ pcPlanes->signbits ], pcPlanes->plane );
+		d1 = DotProduct( tw->start, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
+		d2 = DotProduct( tw->end, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
+		if ( d1 <= 0 ) {
+			frontFacing[i] = qfalse;
+		} else {
+			frontFacing[i] = qtrue;
+		}
+		if ( d1 == d2 ) {
+			intersection[i] = 99999;
+		} else {
+			intersection[i] = d1 / ( d1 - d2 );
+			if ( intersection[i] <= 0 ) {
+				intersection[i] = 99999;
+			}
+		}
+	}
+
+
+	facet = pc->facets;
+	for ( i = 0 ; i < pc->numFacets ; i++, facet++ ) {
+		if ( !frontFacing[facet->surfacePlane] ) {
+			continue;
+		}
+		intersect = intersection[facet->surfacePlane];
+		if ( intersect < 0 ) {
+			continue;		
+		}
+		if ( intersect > tw->trace.fraction ) {
+			continue;		
+		}
+		for ( j = 0 ; j < facet->numBorders ; j++ ) {
+			k = facet->borderPlanes[j];
+			if ( frontFacing[k] != facet->borderInward[j] ) {
+				if ( intersection[k] > intersect ) {
+					break;
+				}
+			} else {
+				if ( intersection[k] < intersect ) {
+					break;
+				}
+			}
+		}
+		if ( j == facet->numBorders ) {
+#ifndef BSPC
+			if (!cv) {
+				cv = Cvar_Get( "r_debugSurfaceUpdate", "1", 0 );
+			}
+			if (cv->integer) {
+				debugPatchCollide = pc;
+				debugFacet = facet;
+			}
+#endif 
+			pcPlanes = &pc->planes[facet->surfacePlane];
+
+			offset = DotProduct( tw->offsets[ pcPlanes->signbits ], pcPlanes->plane );
+			d1 = DotProduct( tw->start, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
+			d2 = DotProduct( tw->end, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
+			tw->trace.fraction = ( d1 - SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
+
+			if ( tw->trace.fraction < 0 ) {
+				tw->trace.fraction = 0;
+			}
+
+			VectorCopy( pcPlanes->plane,  tw->trace.plane.normal );
+			tw->trace.plane.dist = pcPlanes->plane[3];
+		}
+	}
+}
+
+int CM_CheckFacetPlane(float *plane, vec3_t start, vec3_t end, float *enterFrac, float *leaveFrac, int *hit) {
+	float d1, d2, f;
+
+	*hit = qfalse;
+
+	d1 = DotProduct( start, plane ) - plane[3];
+	d2 = DotProduct( end, plane ) - plane[3];
+
+	if (d1 > 0 && ( d2 >= SURFACE_CLIP_EPSILON || d2 >= d1 )  ) {
+		return qfalse;
+	}
+
+	if (d1 <= 0 && d2 <= 0 ) {
+		return qtrue;
+	}
+
+	if (d1 > d2) {	
+		f = (d1-SURFACE_CLIP_EPSILON) / (d1-d2);
+		if ( f < 0 ) {
+			f = 0;
+		}
+		if (f > *enterFrac) {
+			*enterFrac = f;
+			*hit = qtrue;
+		}
+	} else {	
+		f = (d1+SURFACE_CLIP_EPSILON) / (d1-d2);
+		if ( f > 1 ) {
+			f = 1;
+		}
+		if (f < *leaveFrac) {
+			*leaveFrac = f;
+		}
+	}
+	return qtrue;
+}
+
+void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc ) {
+	int i, j, hit, hitnum;
+	float offset, enterFrac, leaveFrac;
+	patchPlane_t *pcPlanes;
+	facet_t	*facet;
+	float plane[4] = {0, 0, 0, 0}, bestplane[4] = {0, 0, 0, 0};
+#ifndef BSPC
+	static cvar_t *cv;
+#endif 
+
+	if (tw->isPoint) {
+		CM_TracePointThroughPatchCollide( tw, pc );
+		return;
+	}
+
+	facet = pc->facets;
+	for ( i = 0 ; i < pc->numFacets ; i++, facet++ ) {
+		enterFrac = -1.0;
+		leaveFrac = 1.0;
+		hitnum = -1;
+		pcPlanes = &pc->planes[ facet->surfacePlane ];
+		VectorCopy(pcPlanes->plane, plane);
+		plane[3] = pcPlanes->plane[3];
+		plane[3] -= DotProduct( tw->offsets[ pcPlanes->signbits ], plane);
+
+		if (!CM_CheckFacetPlane(plane, tw->start, tw->end, &enterFrac, &leaveFrac, &hit)) {
+			continue;
+		}
+		if (hit) {
+			Vector4Copy(plane, bestplane);
+		}
+
+		for ( j = 0; j < facet->numBorders; j++ ) {
+			pcPlanes = &pc->planes[ facet->borderPlanes[j] ];
+			if (facet->borderInward[j]) {
+				VectorNegate(pcPlanes->plane, plane);
+				plane[3] = -pcPlanes->plane[3];
+			}
+			else {
+				VectorCopy(pcPlanes->plane, plane);
+				plane[3] = pcPlanes->plane[3];
+			}
+
+			offset = DotProduct( tw->offsets[ pcPlanes->signbits ], plane);
+			plane[3] += fabs(offset);
+
+			if( !CM_CheckFacetPlane( plane, tw->start, tw->end, &enterFrac, &leaveFrac, &hit ) ) {
+				break;
+			}
+			if (hit) {
+				hitnum = j;
+				Vector4Copy(plane, bestplane);
+			}
+		}
+		if (j < facet->numBorders) continue;
+		if (hitnum == facet->numBorders - 1) continue;
+
+		if (enterFrac <= leaveFrac && enterFrac >= 0) {
+			if (enterFrac < tw->trace.fraction) {
+#ifndef BSPC
+				if (!cv) {
+					cv = Cvar_Get( "r_debugSurfaceUpdate", "1", 0 );
+				}
+				if (cv && cv->integer) {
+					debugPatchCollide = pc;
+					debugFacet = facet;
+				}
+#endif 
+
+				tw->trace.fraction = enterFrac;
+				VectorCopy( bestplane, tw->trace.plane.normal );
+				tw->trace.plane.dist = bestplane[3];
+			}
+		}
+	}
+}
+
+
+
+qboolean CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc ) {
+    byte cross[4096];
+    patchPlane_t* pcPlanes;
+    facet_t* facet;
+	int i, j;
+	float offset, d;
+
+    for (i = 0; i < 3; i++) {
+        if (tw->bounds[0][i] > pc->bounds[1][i] || tw->bounds[1][i] < pc->bounds[0][i]) {
+            return qfalse;
+        }
+	}
+
+	for (i = 0; i < pc->numPlanes; i++) {
+		pcPlanes = &pc->planes[i];
+
+		offset = fabs(DotProduct(tw->offsets[pcPlanes->signbits], pcPlanes->plane));
+		d = DotProduct(tw->start, pcPlanes->plane) - pcPlanes->plane[3];
+
+		if (-offset > d) {
+			cross[i] = 0;
+		} else if (offset < d) {
+			cross[i] = 1;
+		} else {
+			cross[i] = 2;
+		}
+	}
+
+	j = 0;
+	facet = pc->facets;
+	for (i = 0; i < pc->numFacets; i++, facet++) {
+		if (cross[facet->surfacePlane] == 2) {
+			for (j = 0; j < facet->numBorders; j++) {
+				if (cross[facet->borderPlanes[j]] != 2 && cross[facet->borderPlanes[j]] != (uint8_t)facet->borderInward[j]) {
+					break;
+				}
+			}
+
+			if (j < facet->numBorders) {
+				continue;
+			}
+
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+
+
+#ifndef BSPC
+void BotDrawDebugPolygons(void (*drawPoly)(int color, int numPoints, float *points), int value);
+#endif
+
+void CM_DrawDebugSurface( void (*drawPoly)(int color, int numPoints, float *points) ) {
+	static cvar_t	*cv;
+#ifndef BSPC
+	static cvar_t	*cv2;
+#endif
+	const patchCollide_t	*pc;
+	facet_t			*facet;
+	winding_t		*w;
+	int				i, j, k, n;
+	int				curplanenum, planenum, curinward, inward;
+	float			plane[4];
+	vec3_t mins = {-15, -15, -28}, maxs = {15, 15, 28};
+	vec3_t v1, v2;
+
+#ifndef BSPC
+	if ( !cv2 )
+	{
+		cv2 = Cvar_Get( "r_debugSurface", "0", 0 );
+	}
+
+	if (cv2->integer != 1)
+	{
+		return;
+	}
+#endif
+
+	if ( !debugPatchCollide ) {
+		return;
+	}
+
+#ifndef BSPC
+	if ( !cv ) {
+		cv = Cvar_Get( "cm_debugSize", "2", 0 );
+	}
+#endif
+	pc = debugPatchCollide;
+
+	for ( i = 0, facet = pc->facets ; i < pc->numFacets ; i++, facet++ ) {
+
+		for ( k = 0 ; k < facet->numBorders + 1; k++ ) {
+			if (k < facet->numBorders) {
+				planenum = facet->borderPlanes[k];
+				inward = facet->borderInward[k];
+			}
+			else {
+				planenum = facet->surfacePlane;
+				inward = qfalse;
+			}
+
+			Vector4Copy( pc->planes[ planenum ].plane, plane );
+
+			if ( inward ) {
+				VectorSubtract( vec3_origin, plane, plane );
+				plane[3] = -plane[3];
+			}
+
+			plane[3] += cv->value;
+			for (n = 0; n < 3; n++)
+			{
+				if (plane[n] > 0) v1[n] = maxs[n];
+				else v1[n] = mins[n];
+			} 
+			VectorNegate(plane, v2);
+			plane[3] += fabs(DotProduct(v1, v2));
+
+			w = BaseWindingForPlane( plane,  plane[3] );
+			for ( j = 0 ; j < facet->numBorders + 1 && w; j++ ) {
+				if (j < facet->numBorders) {
+					curplanenum = facet->borderPlanes[j];
+					curinward = facet->borderInward[j];
+				}
+				else {
+					curplanenum = facet->surfacePlane;
+					curinward = qfalse;
+				}
+				if (curplanenum == planenum) continue;
+
+				Vector4Copy( pc->planes[ curplanenum ].plane, plane );
+				if ( !curinward ) {
+					VectorSubtract( vec3_origin, plane, plane );
+					plane[3] = -plane[3];
+				}
+					plane[3] -= cv->value;
+				for (n = 0; n < 3; n++)
+				{
+					if (plane[n] > 0) v1[n] = maxs[n];
+					else v1[n] = mins[n];
+				} 
+				VectorNegate(plane, v2);
+				plane[3] -= fabs(DotProduct(v1, v2));
+
+				ChopWindingInPlace( &w, plane, plane[3], 0.1f );
+			}
+			if ( w ) {
+				if ( facet == debugFacet ) {
+					drawPoly( 4, w->numpoints, w->p[0] );
+				} else {
+					drawPoly( 1, w->numpoints, w->p[0] );
+				}
+				FreeWinding( w );
+			}
+			else
+				Com_Printf("winding chopped away by border planes\n");
+		}
+	}
+
+	{
+		vec3_t			v[3];
+
+		VectorCopy( debugBlockPoints[0], v[0] );
+		VectorCopy( debugBlockPoints[1], v[1] );
+		VectorCopy( debugBlockPoints[2], v[2] );
+		drawPoly( 2, 3, v[0] );
+
+		VectorCopy( debugBlockPoints[2], v[0] );
+		VectorCopy( debugBlockPoints[3], v[1] );
+		VectorCopy( debugBlockPoints[0], v[2] );
+		drawPoly( 2, 3, v[0] );
+	}
+
+#if 0
+	vec3_t			v[4];
+
+	v[0][0] = pc->bounds[1][0];
+	v[0][1] = pc->bounds[1][1];
+	v[0][2] = pc->bounds[1][2];
+
+	v[1][0] = pc->bounds[1][0];
+	v[1][1] = pc->bounds[0][1];
+	v[1][2] = pc->bounds[1][2];
+
+	v[2][0] = pc->bounds[0][0];
+	v[2][1] = pc->bounds[0][1];
+	v[2][2] = pc->bounds[1][2];
+
+	v[3][0] = pc->bounds[0][0];
+	v[3][1] = pc->bounds[1][1];
+	v[3][2] = pc->bounds[1][2];
+
+	drawPoly( 4, v[0] );
+#endif
+}

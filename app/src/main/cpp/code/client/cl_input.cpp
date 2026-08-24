@@ -1,0 +1,1058 @@
+
+#include "client.h"
+
+
+#define R120_PROBE_GET(r120_n, r120_d, r120_f) Cvar_Get(r120_n, r120_d, r120_f)
+#define R120_PROBE_PRINT                       Com_Printf
+#include "../qcommon/qa_r120.h"
+#include "cl_ui.h"
+
+unsigned	frame_msec;
+int			old_com_frameTime;
+
+
+
+kbutton_t	in_left, in_right, in_forward, in_back;
+kbutton_t	in_lookup, in_lookdown, in_moveleft, in_moveright;
+kbutton_t	in_strafe, in_speed;
+
+kbutton_t	in_leanleft, in_leanright;
+kbutton_t	in_crosshairmove, in_cameralook;
+
+cvar_t		*m_aim;
+cvar_t		*m_aimRadius;
+
+float		cl_fov;					 
+vec3_t		cl_viewTraceOrigin;		 
+vec3_t		cl_viewTraceAngles;		 
+
+extern	vec3_t	camera_offset;			 
+
+qboolean	in_guimouse;
+
+kbutton_t	in_up, in_down;
+
+#ifdef USE_VOIP
+#endif
+
+kbutton_t	in_buttons[16];
+
+qboolean	in_mlooking;
+
+void IN_ToggleMouse( void ) {
+	int				i;
+
+	if ( !in_guimouse ) {
+		for ( i = K_MOUSE1; i <= K_MOUSE5; i++ ) {
+			if ( keys[i].down ) {
+				CL_KeyEvent( i, qfalse, 0 );
+			}
+		}
+	}
+
+	in_guimouse = !in_guimouse;
+}
+
+void IN_MouseOn( void ) {
+	if( !in_guimouse )
+	{
+		for( int k = K_MOUSE1; k <= K_MOUSE5; k++ )
+		{
+			if( keys[ k ].down )
+			{
+				CL_KeyEvent( k, qfalse, 0 );
+			}
+		}
+	}
+
+	in_guimouse = qtrue;
+}
+
+void IN_MouseOff( void ) {
+	in_guimouse = qfalse;
+}
+
+void IN_MLookDown( void ) {
+	in_mlooking = qtrue;
+}
+
+int		in_objectivesHud;		 
+int		in_scoreboardShown;		 
+int		in_missionStatus;		 
+
+void IN_Objectives_ScoreDown( void ) {
+	R120_PROBE(
+		"score:down",
+		"cg_gametype=%d -> %s",
+		cg_gametype->integer,
+		cg_gametype->integer ? "UI_ShowScoreboard_f" : "missionobjectives hud (WRONG SURFACE)"
+	);
+	if ( cg_gametype->integer ) {
+		UI_ShowScoreboard_f();
+		in_scoreboardShown = 1;
+	} else {
+		in_objectivesHud = 1;
+		Cbuf_ExecuteText( EXEC_NOW, "ui_addhud missionobjectives" );        
+		Cbuf_ExecuteText( EXEC_NOW, "ui_removehud objectivenotify" );       
+	}
+}
+
+void IN_Objectives_ScoreUp( void ) {
+	if ( cg_gametype->integer ) {
+		UI_HideScoreboard_f();
+		in_scoreboardShown = 0;
+	} else {
+		Cbuf_ExecuteText( EXEC_NOW, "ui_removehud missionobjectives\n" );   
+	}
+}
+
+void IN_MissionStatusDown( void ) {
+	in_missionStatus = 1;
+}
+
+void IN_MissionStatusUp( void ) {
+	in_missionStatus = 0;
+}
+
+void IN_MLookUp( void ) {
+	in_mlooking = qfalse;
+	if ( !cl_freelook->integer ) {
+		IN_CenterView ();
+	}
+}
+
+void IN_KeyDown( kbutton_t *b ) {
+	int		k;
+	char	*c;
+
+	c = Cmd_Argv(1);
+	if ( c[0] ) {
+		k = atoi(c);
+	} else {
+		k = -1;		
+	}
+
+	if ( k == b->down[0] || k == b->down[1] ) {
+		return;		
+	}
+
+	if ( !b->down[0] ) {
+		b->down[0] = k;
+	} else if ( !b->down[1] ) {
+		b->down[1] = k;
+	} else {
+		Com_Printf ("Three keys down for a button!\n");
+		return;
+	}
+
+	if ( b->active ) {
+		return;		
+	}
+
+	c = Cmd_Argv(2);
+	b->downtime = atoi(c);
+
+	b->active = qtrue;
+	b->wasPressed = qtrue;
+}
+
+void IN_KeyUp( kbutton_t *b ) {
+	int		k;
+	char	*c;
+	unsigned	uptime;
+
+	c = Cmd_Argv(1);
+	if ( c[0] ) {
+		k = atoi(c);
+	} else {
+		b->down[0] = b->down[1] = 0;
+		b->active = qfalse;
+		return;
+	}
+
+	if ( b->down[0] == k ) {
+		b->down[0] = 0;
+	} else if ( b->down[1] == k ) {
+		b->down[1] = 0;
+	} else {
+		return;		
+	}
+	if ( b->down[0] || b->down[1] ) {
+		return;		
+	}
+
+	b->active = qfalse;
+
+	c = Cmd_Argv(2);
+	uptime = atoi(c);
+	if ( uptime ) {
+		b->msec += uptime - b->downtime;
+	} else {
+		b->msec += frame_msec / 2;
+	}
+
+	b->active = qfalse;
+}
+
+
+
+float CL_KeyState( kbutton_t *key ) {
+	float		val;
+	int			msec;
+
+	msec = key->msec;
+	key->msec = 0;
+
+	if ( key->active ) {
+		if ( !key->downtime ) {
+			msec = com_frameTime;
+		} else {
+			msec += com_frameTime - key->downtime;
+		}
+		key->downtime = com_frameTime;
+	}
+
+#if 0
+	if (msec) {
+		Com_Printf ("%i ", msec);
+	}
+#endif
+
+	val = (float)msec / frame_msec;
+	if ( val < 0 ) {
+		val = 0;
+	}
+	if ( val > 1 ) {
+		val = 1;
+	}
+
+	return val;
+}
+
+
+
+void IN_UpDown(void) {IN_KeyDown(&in_up);}
+void IN_UpUp(void) {IN_KeyUp(&in_up);}
+void IN_DownDown(void) {IN_KeyDown(&in_down);}
+void IN_DownUp(void) {IN_KeyUp(&in_down);}
+void IN_LeftDown(void) {IN_KeyDown(&in_left);}
+void IN_LeftUp(void) {IN_KeyUp(&in_left);}
+void IN_RightDown(void) {IN_KeyDown(&in_right);}
+void IN_RightUp(void) {IN_KeyUp(&in_right);}
+void IN_ForwardDown(void) {IN_KeyDown(&in_forward);}
+void IN_ForwardUp(void) {IN_KeyUp(&in_forward);}
+void IN_BackDown(void) {IN_KeyDown(&in_back);}
+void IN_BackUp(void) {IN_KeyUp(&in_back);}
+void IN_LookupDown(void) {IN_KeyDown(&in_lookup);}
+void IN_LookupUp(void) {IN_KeyUp(&in_lookup);}
+void IN_LookdownDown(void) {IN_KeyDown(&in_lookdown);}
+void IN_LookdownUp(void) {IN_KeyUp(&in_lookdown);}
+void IN_MoveleftDown(void) {IN_KeyDown(&in_moveleft);}
+void IN_MoveleftUp(void) {IN_KeyUp(&in_moveleft);}
+void IN_MoverightDown(void) {IN_KeyDown(&in_moveright);}
+void IN_MoverightUp(void) {IN_KeyUp(&in_moveright);}
+void IN_AttackRightDown(void) { IN_KeyDown(&in_buttons[BUTTON_ATTACKRIGHT_BITINDEX]); }
+void IN_AttackRightUp(void) { IN_KeyUp(&in_buttons[BUTTON_ATTACKRIGHT_BITINDEX]); }
+void IN_AttackLeftDown(void) { IN_KeyDown(&in_buttons[BUTTON_ATTACKLEFT_BITINDEX]); }
+void IN_AttackLeftUp(void) { IN_KeyUp(&in_buttons[BUTTON_ATTACKLEFT_BITINDEX]); }
+void IN_ReloadDown(void) { IN_KeyDown(&in_buttons[BUTTON_RELOAD_BITINDEX]); }
+void IN_ReloadUp(void) { IN_KeyUp(&in_buttons[BUTTON_RELOAD_BITINDEX]); }
+void IN_HolsterDown(void) { IN_KeyDown(&in_buttons[BUTTON_HOLSTERWEAPON_BITINDEX]); }
+void IN_HolsterUp(void) { IN_KeyUp(&in_buttons[BUTTON_HOLSTERWEAPON_BITINDEX]); }
+void IN_UseDown(void) { IN_KeyDown(&in_buttons[BUTTON_USE_BITINDEX]); }
+void IN_UseUp(void) { IN_KeyUp(&in_buttons[BUTTON_USE_BITINDEX]); }
+void IN_DropRuneDown(void) { IN_KeyDown(&in_buttons[BUTTON_DROP_RUNE_BITINDEX]); }
+void IN_DropRuneUp(void) { IN_KeyUp(&in_buttons[BUTTON_DROP_RUNE_BITINDEX]); }
+void IN_TransferEnergyDown(void) { IN_KeyDown(&in_buttons[BUTTON_TRANSFER_ENERGY_BITINDEX]); }
+void IN_TransferEnergyUp(void) { IN_KeyUp(&in_buttons[BUTTON_TRANSFER_ENERGY_BITINDEX]); }
+
+void IN_LeanLeftDown(void) { IN_KeyDown(&in_leanleft); }
+void IN_LeanLeftUp(void) { IN_KeyUp(&in_leanleft); }
+void IN_LeanRightDown(void) { IN_KeyDown(&in_leanright); }
+void IN_LeanRightUp(void) { IN_KeyUp(&in_leanright); }
+vec3_t		cl_crosshairoffset;
+
+void IN_CrosshairMoveDown(void) { IN_KeyDown(&in_crosshairmove); }
+
+// from the float constant pool (__ptr_glue 0x00219B30 + 0 = 0.0f), not from a cvar:
+void IN_CrosshairMoveUp(void) {
+	cl_crosshairoffset[0] = 0.0f;
+	cl_crosshairoffset[1] = 0.0f;
+	cl_crosshairoffset[2] = 0.0f;
+	IN_KeyUp(&in_crosshairmove);
+}
+
+float *get_crosshairoffset( void ) {
+	return cl_crosshairoffset;
+}
+void IN_CameraLookDown(void) { IN_KeyDown(&in_cameralook); }
+void IN_CameraLookUp(void) { IN_KeyUp(&in_cameralook); }
+
+void IN_SpeedDown(void) {IN_KeyDown(&in_speed);}
+void IN_SpeedUp(void) {IN_KeyUp(&in_speed);}
+void IN_StrafeDown(void) {IN_KeyDown(&in_strafe);}
+void IN_StrafeUp(void) {IN_KeyUp(&in_strafe);}
+
+#ifdef USE_VOIP
+#endif
+
+void IN_Button0Down(void) {IN_KeyDown(&in_buttons[0]);}
+void IN_Button0Up(void) {IN_KeyUp(&in_buttons[0]);}
+void IN_Button1Down(void) {IN_KeyDown(&in_buttons[1]);}
+void IN_Button1Up(void) {IN_KeyUp(&in_buttons[1]);}
+void IN_Button2Down(void) {IN_KeyDown(&in_buttons[2]);}
+void IN_Button2Up(void) {IN_KeyUp(&in_buttons[2]);}
+void IN_Button3Down(void) {IN_KeyDown(&in_buttons[3]);}
+void IN_Button3Up(void) {IN_KeyUp(&in_buttons[3]);}
+void IN_Button4Down(void) {IN_KeyDown(&in_buttons[4]);}
+void IN_Button4Up(void) {IN_KeyUp(&in_buttons[4]);}
+void IN_Button5Down(void) {IN_KeyDown(&in_buttons[5]);}
+void IN_Button5Up(void) {IN_KeyUp(&in_buttons[5]);}
+void IN_Button6Down(void) {IN_KeyDown(&in_buttons[6]);}
+void IN_Button6Up(void) {IN_KeyUp(&in_buttons[6]);}
+
+
+void IN_ButtonDown (void) {
+	IN_KeyDown(&in_buttons[1]);}
+void IN_ButtonUp (void) {
+	IN_KeyUp(&in_buttons[1]);}
+
+void IN_CenterView (void) {
+	camera_reset = qtrue;
+	cl.viewangles[PITCH] = -SHORT2ANGLE(cl.snap.ps.delta_angles[PITCH]);
+}
+
+
+
+cvar_t	*cl_upspeed;
+cvar_t	*cl_forwardspeed;
+cvar_t	*cl_sidespeed;
+
+cvar_t	*cl_yawspeed;
+cvar_t	*cl_pitchspeed;
+
+cvar_t	*cl_run;
+
+cvar_t	*cl_anglespeedkey;
+
+
+void CL_AdjustAngles( void ) {
+	float	speed;
+
+	if ( in_speed.active ) {
+		speed = 0.001 * cls.frametime * cl_anglespeedkey->value;
+	} else {
+		speed = 0.001 * cls.frametime;
+	}
+
+	if ( !in_strafe.active ) {
+		cl.viewangles[YAW] -= speed*cl_yawspeed->value*CL_KeyState (&in_right);
+		cl.viewangles[YAW] += speed*cl_yawspeed->value*CL_KeyState (&in_left);
+	}
+
+	cl.viewangles[PITCH] -= speed*cl_pitchspeed->value * CL_KeyState (&in_lookup);
+	cl.viewangles[PITCH] += speed*cl_pitchspeed->value * CL_KeyState (&in_lookdown);
+}
+
+void CL_KeyMove( usercmd_t *cmd ) {
+	int		movespeed;
+	int		forward, side, up, lean;
+
+	forward = 0;
+	side = 0;
+	up = 0;
+	lean = 0;
+	movespeed = 127;
+	if ( in_strafe.active ) {
+		side += movespeed * CL_KeyState (&in_right);
+		side -= movespeed * CL_KeyState (&in_left);
+	}
+
+	side += movespeed * CL_KeyState (&in_moveright);
+	side -= movespeed * CL_KeyState (&in_moveleft);
+
+
+	up += movespeed * CL_KeyState (&in_up);
+	up -= movespeed * CL_KeyState (&in_down);
+
+	forward += movespeed * CL_KeyState (&in_forward);
+	forward -= movespeed * CL_KeyState (&in_back);
+
+	// The lean term is NOT movespeed-scaled in retail.  CL_KeyMove @0x0016D900,
+	if ( !forward && !side && !up ) {
+		lean  = (int)-(float)CL_KeyState( &in_leanright );
+		lean  = (int)( (float)lean + CL_KeyState( &in_leanleft ) );
+	}
+
+	cmd->forwardmove = ClampChar( forward );
+	cmd->rightmove = ClampChar( side );
+	cmd->upmove = ClampChar( up );
+	cmd->lean = ClampChar( lean );
+}
+
+void CL_GetMouseState( int *x, int *y, unsigned int *buttons )
+{
+	if( x )
+		*x = cl.mousex;
+
+	if( y )
+		*y = cl.mousey;
+
+	if( buttons )
+	{
+		if( in_guimouse ) {
+			*buttons = cl.mouseButtons;
+		} else {
+			*buttons = 0;
+		}
+	}
+}
+
+void CL_SetMousePos( int x, int y )
+{
+	cl.mousex = x;
+	cl.mousey = y;
+}
+
+void CL_MouseEvent( int dx, int dy, int time ) {
+	if( in_guimouse )
+	{
+		cl.mousex += dx;
+		cl.mousey += dy;
+
+		if( cl.mousex < 0 )
+			cl.mousex = 0;
+
+		if( cl.mousex > cls.glconfig.vidWidth )
+			cl.mousex = cls.glconfig.vidWidth;
+
+		if( cl.mousey < 0 )
+			cl.mousey = 0;
+
+		if( cl.mousey > cls.glconfig.vidHeight )
+			cl.mousey = cls.glconfig.vidHeight;
+	}
+	else if ( !paused->integer )
+	{
+		cl.mouseDx[cl.mouseIndex] += dx;
+		cl.mouseDy[cl.mouseIndex] += dy;
+	}
+}
+
+void CL_JoystickEvent( int axis, int value, int time ) {
+	if ( axis < 0 || axis >= MAX_JOYSTICK_AXIS ) {
+		Com_Error( ERR_DROP, "CL_JoystickEvent: bad axis %i", axis );
+	}
+	cl.joystickAxis[axis] = value;
+}
+
+
+
+void CL_MouseMove( usercmd_t *cmd ) {
+	float	mx, my;
+	float	cgameSensitivity;
+	float	turnScale;
+	float	delta_yaw, delta_pitch;
+
+	if (m_filter->integer)
+	{
+		mx = (cl.mouseDx[0] + cl.mouseDx[1]) * 0.5f;
+		my = (cl.mouseDy[0] + cl.mouseDy[1]) * 0.5f;
+	}
+	else
+	{
+		mx = cl.mouseDx[cl.mouseIndex];
+		my = cl.mouseDy[cl.mouseIndex];
+	}
+
+	cl.mouseIndex ^= 1;
+	cl.mouseDx[cl.mouseIndex] = 0;
+	cl.mouseDy[cl.mouseIndex] = 0;
+
+	if (mx != 0.0f || my != 0.0f)
+	{
+	if (cl_mouseAccel->value != 0.0f)
+	{
+		float accelSensitivity;
+		float rate;
+
+		rate = sqrt(mx * mx + my * my) / (float) frame_msec;
+
+		accelSensitivity = cl_sensitivity->value + rate * cl_mouseAccel->value;
+		mx *= accelSensitivity;
+		my *= accelSensitivity;
+
+		if(cl_showMouseRate->integer)
+			Com_Printf("%f : %f\n", rate, accelSensitivity);
+	}
+	else
+	{
+		mx *= cl_sensitivity->value;
+		my *= cl_sensitivity->value;
+	}
+
+	cgameSensitivity = 1.0f;
+
+	mx *= cgameSensitivity;
+	my *= cgameSensitivity;
+
+	}	
+
+	turnScale = cl_fov / 90.0f;
+	if ( turnScale <= 0.0f ) {
+		turnScale = 1.0f;
+	}
+
+	if ( in_crosshairmove.active || m_aim->integer ) {
+		float	len;
+		qboolean clamped = qfalse;
+
+		cl_crosshairoffset[0] += 2.0f * (m_yaw->value * mx);
+		cl_crosshairoffset[1] += 2.0f * (m_pitch->value * my);
+		cl_crosshairoffset[2] = 0.0f;
+
+		len = sqrt( cl_crosshairoffset[0] * cl_crosshairoffset[0]
+			+ cl_crosshairoffset[1] * cl_crosshairoffset[1] );
+
+		if ( len > 0.0f && len > m_aimRadius->value ) {
+			clamped = qtrue;
+			cl_crosshairoffset[0] = (cl_crosshairoffset[0] / len) * m_aimRadius->value;
+			cl_crosshairoffset[1] = (cl_crosshairoffset[1] / len) * m_aimRadius->value;
+		}
+
+		cmd->choffset[0] = (short)(int)cl_crosshairoffset[0];
+		cmd->choffset[1] = (short)(int)cl_crosshairoffset[1];
+
+		if ( !clamped ) {
+			mx *= 0.5f;
+			my *= 0.5f;
+		}
+	} else {
+		cmd->choffset[0] = 0;
+		cmd->choffset[1] = 0;
+		cl_crosshairoffset[0] = 0.0f;
+		cl_crosshairoffset[1] = 0.0f;
+		cl_crosshairoffset[2] = 0.0f;
+	}
+
+	if (mx == 0.0f && my == 0.0f) {
+		return;
+	}
+
+	// get_camera_offset @0x17E220 hands to cgame -- and never the view.  The
+	if ( in_cameralook.active ) {
+		camera_offset[YAW] -= m_yaw->value * mx;
+		camera_offset[PITCH] += m_pitch->value * my;
+		return;
+	}
+
+	if ( in_strafe.active ) {
+		cmd->rightmove   = ClampChar( (int)( (float)(signed char)cmd->rightmove   + m_side->value    * mx ) );
+		cmd->forwardmove = ClampChar( (int)( (float)(signed char)cmd->forwardmove - m_forward->value * my ) );
+		cmd->upmove      = ClampChar( (int)( (float)(signed char)cmd->upmove      - m_up->value      * my ) );
+	} else {
+		delta_yaw = turnScale * ( -m_yaw->value * mx );
+		cl.viewangles[YAW] += delta_yaw;
+		cmd->deltaAngles[YAW] = (short)(int)( 65536.0f * delta_yaw / 360.0f );
+	}
+
+	if ( ( in_mlooking || cl_freelook->integer ) && !in_strafe.active ) {
+		delta_pitch = turnScale * ( m_pitch->value * my );
+		cl.viewangles[PITCH] += delta_pitch;
+		cmd->deltaAngles[PITCH] = (short)(int)( 65536.0f * delta_pitch / 360.0f );
+	} else {
+		cmd->forwardmove = ClampChar( (int)( (float)(signed char)cmd->forwardmove - m_forward->value * my ) );
+	}
+}
+
+void CL_ClearButtons( void ) {
+	memset( in_buttons, 0, sizeof( in_buttons ) );
+}
+
+void CL_CmdButtons( usercmd_t *cmd ) {
+	int		i;
+
+	for (i = 0 ; i < USERCMD_BUTTON_MAX ; i++) {
+		if ( in_buttons[i].active || in_buttons[i].wasPressed ) {
+			cmd->buttons |= (short)(1 << i);
+		}
+		in_buttons[i].wasPressed = qfalse;
+	}
+
+	if ( in_speed.active ^ (cl_run->integer != 0) ) {
+		cmd->buttons |= BUTTON_RUN;
+	}
+
+	// open, which retail's mask test explicitly does not (console is not the UI catcher).
+	if ( ( ( Key_GetCatcher() & KEYCATCH_UI ) && !( Key_GetCatcher() & KEYCATCH_CGAME ) )
+	     || UI_BindActive() ) {
+		cmd->buttons |= BUTTON_TALK;
+	}
+
+	if ( anykeydown && Key_GetCatcher() == 0 ) {
+		cmd->buttons |= BUTTON_ANY;
+	}
+
+}
+
+
+// 0x00219B90, 360/pi at 0x00219BA0.  math.h's M_PI is not guaranteed, so the
+#define	CL_MOUSE_PI	3.14159265358979323846
+
+void GetViewTrace( trace_t *trace ) {
+	vec3_t	forward, left, up;
+	vec3_t	start, end, dir;
+	float	horiz, vert;
+	float	znear;
+	double	tanHalfFov;
+	double	fovDeg;
+
+	AngleVectors( cl_viewTraceAngles, forward, left, up );
+
+	znear = Cvar_Get( "r_znear", "2", 0 )->value;
+
+	tanHalfFov = tan( CL_MOUSE_PI * ( (double)cl_fov / 360.0 ) );                              
+	fovDeg = (float)( atan2( 480.0, 640.0f / (float)tanHalfFov ) * ( 360.0 / CL_MOUSE_PI ) );  
+	vert = (float)( -( znear * tan( CL_MOUSE_PI * fovDeg / 360.0 ) ) ) / 240.0f;               
+	horiz = (float)( -( znear * tanHalfFov ) ) / 320.0f;                               
+
+	dir[0] = forward[0] * znear + left[0] * ( cl_crosshairoffset[0] * horiz )
+	                                       + up[0]   * ( cl_crosshairoffset[1] * vert );
+	dir[1] = forward[1] * znear + left[1] * ( cl_crosshairoffset[0] * horiz )
+	                                       + up[1]   * ( cl_crosshairoffset[1] * vert );
+	dir[2] = forward[2] * znear + left[2] * ( cl_crosshairoffset[0] * horiz )
+	                                       + up[2]   * ( cl_crosshairoffset[1] * vert );
+
+	VectorCopy( cl_viewTraceOrigin, start );
+	VectorScale( dir, 20000.0f, end );                       
+	VectorAdd( start, end, end );
+
+	CM_BoxTrace( trace, start, end, vec3_origin, vec3_origin, 0, 0x6182001, 0 );    
+}
+
+
+void CL_KeyMoveAlternate( usercmd_t *cmd ) {
+	vec3_t	viewForward, viewLeft;		
+	vec3_t	wishForward, wishLeft;		
+	float	forward, side;
+	float	x, y, z;
+	float	forwardDot, leftDot;
+
+	AngleVectors( cl.snap.ps.viewangles, viewForward, viewLeft, NULL );    
+	viewForward[2] = 0.0f;                                                 
+	viewLeft[2] = 0.0f;                                                    
+	VectorNormalize( viewForward );
+	VectorNormalize( viewLeft );
+
+	AngleVectors( cl_viewTraceAngles, wishForward, wishLeft, NULL );       
+	wishForward[2] = 0.0f;                                                 
+	VectorNormalize( wishForward );
+	VectorNormalize( wishLeft );
+
+	forward = (float)(int)( CL_KeyState( &in_forward ) - CL_KeyState( &in_back ) );
+	side    = (float)(int)( CL_KeyState( &in_moveleft ) - CL_KeyState( &in_moveright ) );
+
+	x = wishLeft[0] * side + wishForward[0] * forward;
+	y = wishLeft[1] * side + wishForward[1] * forward;
+	z = wishLeft[2] * side + wishForward[2] * side;
+
+	leftDot  = viewLeft[1] * y  + viewLeft[0] * x  + viewLeft[2] * z;
+	forwardDot = viewForward[1] * y + viewForward[0] * x + viewForward[2] * z;
+
+	forward = 127.0f * forwardDot;                
+	side    = -( 127.0f * leftDot );             
+
+	cmd->forwardmove = ClampChar( (int)forward );
+	cmd->rightmove   = ClampChar( (int)side );
+	cmd->upmove      = ClampChar( (int)( 127.0f * CL_KeyState( &in_up )
+	                                    - 127.0f * CL_KeyState( &in_down ) ) );
+	cmd->lean        = ClampChar( 0 );
+}
+
+
+void CL_FinishMove( usercmd_t *cmd ) {
+	int		i;
+
+	cmd->serverTime = cl.serverTime;
+
+	for (i=0 ; i<3 ; i++) {
+		cmd->angles[i] = ANGLE2SHORT(cl.viewangles[i]);
+	}
+
+	if ( cge ) {
+		cge->CG_GetViewOrigin( &cmd->realvieworigin[0], &cmd->realvieworigin[1], &cmd->realvieworigin[2] );
+		cge->CG_GetViewAngles( &cmd->realviewangles[0], &cmd->realviewangles[1], &cmd->realviewangles[2] );
+		cmd->thirdperson = cge->CG_GetThirdPerson();
+	}
+}
+
+
+usercmd_t CL_CreateCmd( void ) {
+	usercmd_t	cmd;
+	vec3_t		oldAngles;
+	vec3_t		dir;
+	trace_t		trace;
+
+	VectorCopy( cl.viewangles, oldAngles );
+
+	CL_AdjustAngles ();
+
+	Com_Memset( &cmd, 0, sizeof( cmd ) );
+
+	CL_CmdButtons( &cmd );
+
+	if ( cl_alternateMouseMove->integer || cl.snap.ps.pm_type == PM_SECRET_MOVE_MODE ) {
+		CL_KeyMoveAlternate( &cmd );
+
+		{
+			int rx, ry, rw, rh;
+
+			SCR_AndroidDisplayRect( cls.glconfig.vidWidth, cls.glconfig.vidHeight, &rx, &ry, &rw, &rh );
+
+			cl_crosshairoffset[0] = ( 640.0f / (float)rw )
+			                      * (float)( ( cl.mousex - rx ) - rw / 2 );
+			cl_crosshairoffset[1] = ( 480.0f / (float)rh )
+			                      * (float)( ( cl.mousey - ry ) - rh / 2 );
+		}
+
+		GetViewTrace( &trace );
+		VectorSet( dir,
+			trace.endpos[0] - cl.snap.ps.origin[0],
+			trace.endpos[1] - cl.snap.ps.origin[1],
+			trace.endpos[2] + 16.0f + ( trace.ent ? 16.0f : 0.0f )
+			                  - ( cl.snap.ps.origin[2] + (float)cl.snap.ps.viewheight ) );
+		VectorNormalize( dir );
+		vectoangles( dir, cl.viewangles );
+		cl.viewangles[PITCH] = (float)( 180.0 * asin( -dir[2] ) / CL_MOUSE_PI );
+	} else {
+		CL_KeyMove( &cmd );
+
+		CL_MouseMove( &cmd );
+	}
+
+	if ( cl.viewangles[PITCH] - oldAngles[PITCH] > 90 ) {
+		cl.viewangles[PITCH] = oldAngles[PITCH] + 90;
+	} else if ( oldAngles[PITCH] - cl.viewangles[PITCH] > 90 ) {
+		cl.viewangles[PITCH] = oldAngles[PITCH] - 90;
+	}
+
+	CL_FinishMove( &cmd );
+
+	if ( cl_debugMove->integer ) {
+		if ( cl_debugMove->integer == 1 ) {
+			SCR_DebugGraph( fabs(cl.viewangles[YAW] - oldAngles[YAW]) );
+		}
+		if ( cl_debugMove->integer == 2 ) {
+			SCR_DebugGraph( fabs(cl.viewangles[PITCH] - oldAngles[PITCH]) );
+		}
+	}
+
+	return cmd;
+}
+
+
+void CL_CreateNewCommands( void ) {
+	int			cmdNum;
+
+	if ( cls.state < CA_PRIMED ) {
+		return;
+	}
+
+	frame_msec = com_frameTime - old_com_frameTime;
+
+	if ( frame_msec > 200 ) {
+		frame_msec = 200;
+	}
+	old_com_frameTime = com_frameTime;
+
+
+	cl.cmdNumber++;
+	cmdNum = cl.cmdNumber & CMD_MASK;
+	cl.cmds[cmdNum] = CL_CreateCmd ();
+}
+
+
+qboolean CL_ReadyToSendPacket( void ) {
+	int		oldPacketNum;
+	int		delta;
+
+	if ( clc.demoplaying || cls.state == CA_CINEMATIC ) {
+		return qfalse;
+	}
+
+	if ( cls.state != CA_ACTIVE &&
+		cls.state != CA_PRIMED &&
+		cls.realtime - clc.lastPacketSentTime < 1000 ) {
+		return qfalse;
+	}
+
+	if ( clc.netchan.remoteAddress.type == NA_LOOPBACK ) {
+		return qtrue;
+	}
+	if ( Sys_IsLANAddress( clc.netchan.remoteAddress ) ) {
+		return qtrue;
+	}
+
+	if ( cl_maxpackets->integer < 15 ) {
+		Cvar_Set( "cl_maxpackets", "15" );
+	} else if ( cl_maxpackets->integer > 100 ) {
+		Cvar_Set( "cl_maxpackets", "100" );
+	}
+	oldPacketNum = (clc.netchan.outgoingSequence - 1) & PACKET_MASK;
+	delta = cls.realtime -  cl.outPackets[ oldPacketNum ].p_realtime;
+	if ( delta < 1000 / cl_maxpackets->integer ) {
+		return qfalse;
+	}
+
+	return qtrue;
+}
+
+void CL_WritePacket( void ) {
+	msg_t		buf;
+	byte		data[MAX_MSGLEN];
+	int			i, j;
+	usercmd_t	*cmd, *oldcmd;
+	usercmd_t	nullcmd;
+	int			packetNum;
+	int			oldPacketNum;
+	int			count, key;
+
+	if ( clc.demoplaying || cls.state == CA_CINEMATIC ) {
+		return;
+	}
+
+	Com_Memset( &nullcmd, 0, sizeof(nullcmd) );
+	oldcmd = &nullcmd;		
+		
+	MSG_Init( &buf, data, sizeof(data) );
+
+	MSG_Bitstream( &buf );
+	MSG_WriteLong( &buf, cl.serverId );
+
+	MSG_WriteLong( &buf, clc.serverMessageSequence );
+
+	MSG_WriteLong( &buf, clc.serverCommandSequence );
+
+	for ( i = clc.reliableAcknowledge + 1 ; i <= clc.reliableSequence ; i++ ) {
+		MSG_WriteByte( &buf, clc_clientCommand );
+		MSG_WriteLong( &buf, i );
+		MSG_WriteString( &buf, clc.reliableCommands[ i & (MAX_RELIABLE_COMMANDS-1) ] );
+	}
+
+	if ( cl_packetdup->integer < 0 ) {
+		Cvar_Set( "cl_packetdup", "0" );
+	} else if ( cl_packetdup->integer > 5 ) {
+		Cvar_Set( "cl_packetdup", "5" );
+	}
+	oldPacketNum = (clc.netchan.outgoingSequence - 1 - cl_packetdup->integer) & PACKET_MASK;
+	count = cl.cmdNumber - cl.outPackets[ oldPacketNum ].p_cmdNumber;
+	if ( count > MAX_PACKET_USERCMDS ) {
+		count = MAX_PACKET_USERCMDS;
+		Com_Printf("MAX_PACKET_USERCMDS\n");
+	}
+
+#ifdef USE_VOIP
+#endif
+
+	if ( count >= 1 ) {
+		if ( cl_showSend->integer ) {
+			Com_Printf( "(%i)", count );
+		}
+
+		if ( cl_nodelta->integer || !cl.snap.valid || clc.demowaiting
+			|| clc.serverMessageSequence != cl.snap.messageNum ) {
+			MSG_WriteByte (&buf, clc_moveNoDelta);
+		} else {
+			MSG_WriteByte (&buf, clc_move);
+		}
+
+		MSG_WriteByte( &buf, count );
+
+		key = clc.checksumFeed;
+		key ^= clc.serverMessageSequence;
+		key ^= Com_HashKey(clc.serverCommands[ clc.serverCommandSequence & (MAX_RELIABLE_COMMANDS-1) ], 32);
+
+		for ( i = 0 ; i < count ; i++ ) {
+			j = (cl.cmdNumber - count + i + 1) & CMD_MASK;
+			cmd = &cl.cmds[j];
+			MSG_WriteDeltaUsercmdKey (&buf, key, oldcmd, cmd, (qboolean)(cg_gametype->integer == 0));
+			oldcmd = cmd;
+		}
+	}
+
+	packetNum = clc.netchan.outgoingSequence & PACKET_MASK;
+	cl.outPackets[ packetNum ].p_realtime = cls.realtime;
+	cl.outPackets[ packetNum ].p_serverTime = oldcmd->serverTime;
+	cl.outPackets[ packetNum ].p_cmdNumber = cl.cmdNumber;
+	clc.lastPacketSentTime = cls.realtime;
+
+	if ( cl_showSend->integer ) {
+		Com_Printf( "%zu ", buf.cursize );
+	}
+
+	CL_Netchan_Transmit (&clc.netchan, &buf);
+
+	while ( clc.netchan.unsentFragments ) {
+		CL_Netchan_TransmitNextFragment( &clc.netchan );
+	}
+}
+
+void CL_SendCmd( void ) {
+	if ( cls.state < CA_CONNECTED ) {
+		return;
+	}
+
+	if ( com_sv_running->integer && paused->integer  ) {
+		return;
+	}
+
+	CL_CreateNewCommands();
+
+	if ( !CL_ReadyToSendPacket() ) {
+		if ( cl_showSend->integer ) {
+			Com_Printf( ". " );
+		}
+		return;
+	}
+
+	CL_WritePacket();
+}
+
+void CL_InitInput( void ) {
+	Cmd_AddCommand("centerview", IN_CenterView);		
+
+	Cmd_AddCommand("+moveup", IN_UpDown);				
+	Cmd_AddCommand("-moveup", IN_UpUp);					
+	Cmd_AddCommand("+movedown", IN_DownDown);			
+	Cmd_AddCommand("-movedown", IN_DownUp);				
+	Cmd_AddCommand("+left", IN_LeftDown);				
+	Cmd_AddCommand("-left", IN_LeftUp);					
+	Cmd_AddCommand("+right", IN_RightDown);				
+	Cmd_AddCommand("-right", IN_RightUp);				
+	Cmd_AddCommand("+forward", IN_ForwardDown);			
+	Cmd_AddCommand("-forward", IN_ForwardUp);			
+	Cmd_AddCommand("+back", IN_BackDown);				
+	Cmd_AddCommand("-back", IN_BackUp);					
+	Cmd_AddCommand("+lookup", IN_LookupDown);			
+	Cmd_AddCommand("-lookup", IN_LookupUp);				
+	Cmd_AddCommand("+lookdown", IN_LookdownDown);		
+	Cmd_AddCommand("-lookdown", IN_LookdownUp);			
+	Cmd_AddCommand("+strafe", IN_StrafeDown);			
+	Cmd_AddCommand("-strafe", IN_StrafeUp);				
+	Cmd_AddCommand("+moveleft", IN_MoveleftDown);		
+	Cmd_AddCommand("-moveleft", IN_MoveleftUp);			
+	Cmd_AddCommand("+moveright", IN_MoverightDown);		
+	Cmd_AddCommand("-moveright", IN_MoverightUp);		
+	Cmd_AddCommand("+leanleft", IN_LeanLeftDown);		
+	Cmd_AddCommand("-leanleft", IN_LeanLeftUp);			
+	Cmd_AddCommand("+leanright", IN_LeanRightDown);		
+	Cmd_AddCommand("-leanright", IN_LeanRightUp);		
+	Cmd_AddCommand("+attackright", IN_AttackRightDown);	
+	Cmd_AddCommand("-attackright", IN_AttackRightUp);	
+	Cmd_AddCommand("+attackleft", IN_AttackLeftDown);	
+	Cmd_AddCommand("-attackleft", IN_AttackLeftUp);		
+	Cmd_AddCommand("+holster", IN_HolsterDown);			
+	Cmd_AddCommand("-holster", IN_HolsterUp);			
+	Cmd_AddCommand("+use", IN_UseDown);					
+	Cmd_AddCommand("-use", IN_UseUp);					
+	Cmd_AddCommand("+speed", IN_SpeedDown);				
+	Cmd_AddCommand("-speed", IN_SpeedUp);				
+	Cmd_AddCommand("+droprune", IN_DropRuneDown);		
+	Cmd_AddCommand("-droprune", IN_DropRuneUp);			
+	Cmd_AddCommand("+transferenergy", IN_TransferEnergyDown);	
+	Cmd_AddCommand("-transferenergy", IN_TransferEnergyUp);		
+	Cmd_AddCommand("+reload", IN_ReloadDown);			
+	Cmd_AddCommand("-reload", IN_ReloadUp);				
+	Cmd_AddCommand("+button0", IN_Button0Down);			
+	Cmd_AddCommand("-button0", IN_Button0Up);			
+	Cmd_AddCommand("+button1", IN_Button1Down);			
+	Cmd_AddCommand("-button1", IN_Button1Up);			
+	Cmd_AddCommand("+button2", IN_Button2Down);			
+	Cmd_AddCommand("-button2", IN_Button2Up);			
+	Cmd_AddCommand("+button3", IN_Button3Down);			
+	Cmd_AddCommand("-button3", IN_Button3Up);			
+	Cmd_AddCommand("+button4", IN_Button4Down);			
+	Cmd_AddCommand("-button4", IN_Button4Up);			
+	Cmd_AddCommand("+button5", IN_Button5Down);			
+	Cmd_AddCommand("-button5", IN_Button5Up);			
+	Cmd_AddCommand("+button6", IN_Button6Down);			
+	Cmd_AddCommand("-button6", IN_Button6Up);			
+	Cmd_AddCommand("+mlook", IN_MLookDown);				
+	Cmd_AddCommand("-mlook", IN_MLookUp);				
+	Cmd_AddCommand("+togglemouse", IN_ToggleMouse);		
+	Cmd_AddCommand("+objectives_score", IN_Objectives_ScoreDown);	
+	Cmd_AddCommand("-objectives_score", IN_Objectives_ScoreUp);		
+	Cmd_AddCommand("+missionstatus", IN_MissionStatusDown);			
+	Cmd_AddCommand("-missionstatus", IN_MissionStatusUp);			
+	Cmd_AddCommand("+cameralook", IN_CameraLookDown);	
+	Cmd_AddCommand("-cameralook", IN_CameraLookUp);		
+	Cmd_AddCommand("+aim", IN_CrosshairMoveDown);		
+	Cmd_AddCommand("-aim", IN_CrosshairMoveUp);			
+
+#ifdef USE_VOIP
+#endif
+
+	cl_nodelta = Cvar_Get ("cl_nodelta", "0", 0);		
+	cl_debugMove = Cvar_Get ("cl_debugMove", "0", 0);	
+
+	m_aim = Cvar_Get ("m_aim", "0", CVAR_ARCHIVE);
+	m_aimRadius = Cvar_Get ("m_aimRadius", "75", CVAR_ARCHIVE);
+}
+
+void CL_ShutdownInput(void)
+{
+	Cmd_RemoveCommand("centerview");
+
+	Cmd_RemoveCommand("+moveup");
+	Cmd_RemoveCommand("-moveup");
+	Cmd_RemoveCommand("+movedown");
+	Cmd_RemoveCommand("-movedown");
+	Cmd_RemoveCommand("+left");
+	Cmd_RemoveCommand("-left");
+	Cmd_RemoveCommand("+right");
+	Cmd_RemoveCommand("-right");
+	Cmd_RemoveCommand("+forward");
+	Cmd_RemoveCommand("-forward");
+	Cmd_RemoveCommand("+back");
+	Cmd_RemoveCommand("-back");
+	Cmd_RemoveCommand("+lookup");
+	Cmd_RemoveCommand("-lookup");
+	Cmd_RemoveCommand("+lookdown");
+	Cmd_RemoveCommand("-lookdown");
+	Cmd_RemoveCommand("+strafe");
+	Cmd_RemoveCommand("-strafe");
+	Cmd_RemoveCommand("+moveleft");
+	Cmd_RemoveCommand("-moveleft");
+	Cmd_RemoveCommand("+moveright");
+	Cmd_RemoveCommand("-moveright");
+	Cmd_RemoveCommand("+speed");
+	Cmd_RemoveCommand("-speed");
+	Cmd_RemoveCommand("+button0");
+	Cmd_RemoveCommand("-button0");
+	Cmd_RemoveCommand("+button1");
+	Cmd_RemoveCommand("-button1");
+	Cmd_RemoveCommand("+button2");
+	Cmd_RemoveCommand("-button2");
+	Cmd_RemoveCommand("+button3");
+	Cmd_RemoveCommand("-button3");
+	Cmd_RemoveCommand("+button4");
+	Cmd_RemoveCommand("-button4");
+	Cmd_RemoveCommand("+button5");
+	Cmd_RemoveCommand("-button5");
+	Cmd_RemoveCommand("+button6");
+	Cmd_RemoveCommand("-button6");
+	Cmd_RemoveCommand("+mlook");
+	Cmd_RemoveCommand("-mlook");
+	Cmd_RemoveCommand("+togglemouse");
+	Cmd_RemoveCommand("+objectives_score");
+	Cmd_RemoveCommand("-objectives_score");
+	Cmd_RemoveCommand("+missionstatus");
+	Cmd_RemoveCommand("-missionstatus");
+	Cmd_RemoveCommand("+cameralook");
+	Cmd_RemoveCommand("-cameralook");
+	Cmd_RemoveCommand("+aim");
+	Cmd_RemoveCommand("-aim");
+
+#ifdef USE_VOIP
+#endif
+}

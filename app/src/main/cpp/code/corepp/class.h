@@ -1,0 +1,262 @@
+
+
+#pragma once
+#if defined( GAME_DLL )
+#include "../fgame/class.h"
+#else
+
+#include "con_set.h"
+#include "../corepp/container.h"
+#include "../qcommon/q_shared.h"
+#include "../corepp/str.h"
+#include "lightclass.h"
+
+#include "const_str.h"
+
+class Class;
+class Event;
+
+#define isSubclassOf(classname)   inheritsFrom(&classname::ClassInfo)
+#define isSuperclassOf(classname) isInheritedBy(&classname::ClassInfo)
+
+#ifdef WITH_SCRIPT_ENGINE
+
+#    define CLASS_DECLARATION(parentclass, classname, classid) \
+        ClassDef classname::ClassInfo(                         \
+            #classname,                                        \
+            classid,                                           \
+            #parentclass,                                      \
+            (ResponseDef<Class> *)classname::Responses,        \
+            classname::_newInstance,                           \
+            sizeof(classname)                                  \
+        );                                                     \
+        void *classname::_newInstance(void)                    \
+        {                                                      \
+            return new classname;                              \
+        }                                                      \
+        ClassDef *classname::classinfo(void) const             \
+        {                                                      \
+            return &(classname::ClassInfo);                    \
+        }                                                      \
+        ClassDef *classname::classinfostatic(void)             \
+        {                                                      \
+            return &(classname::ClassInfo);                    \
+        }                                                      \
+        void classname::AddWaitTill(str s)                     \
+        {                                                      \
+            classname::ClassInfo.AddWaitTill(s);               \
+        }                                                      \
+        void classname::RemoveWaitTill(str s)                  \
+        {                                                      \
+            classname::ClassInfo.RemoveWaitTill(s);            \
+        }                                                      \
+        bool classname::WaitTillDefined(str s)                 \
+        {                                                      \
+            return classname::ClassInfo.WaitTillDefined(s);    \
+        }                                                      \
+        bool classname::WaitTillAllowed(str s)                 \
+        {                                                      \
+            for (ClassDef *c = classinfo(); c; c = c->super) { \
+                if (c->WaitTillDefined(s)) {                   \
+                    return true;                               \
+                }                                              \
+            }                                                  \
+            return false;                                      \
+        }                                                      \
+        ResponseDef<classname> classname::Responses[] =
+
+#    define CLASS_PROTOTYPE(classname)                                \
+                                                                      \
+    public:                                                           \
+        static ClassDef               ClassInfo;                      \
+        static ClassDefHook           _ClassInfo_;                    \
+        static void                  *_newInstance(void);             \
+        static ClassDef              *classinfostatic(void);          \
+        ClassDef                     *classinfo(void) const override; \
+        static void                   AddWaitTill(str s);             \
+        static void                   RemoveWaitTill(str s);          \
+        static bool                   WaitTillDefined(str s);         \
+        bool                          WaitTillAllowed(str s);         \
+        static ResponseDef<classname> Responses[]
+
+#else
+
+#    define CLASS_DECLARATION(parentclass, classname, classid) \
+        ClassDef classname::ClassInfo(                         \
+            #classname,                                        \
+            classid,                                           \
+            #parentclass,                                      \
+            (ResponseDef<Class> *)classname::Responses,        \
+            classname::_newInstance,                           \
+            sizeof(classname)                                  \
+        );                                                     \
+        void *classname::_newInstance(void)                    \
+        {                                                      \
+            return new classname;                              \
+        }                                                      \
+        ClassDef *classname::classinfo(void) const             \
+        {                                                      \
+            return &(classname::ClassInfo);                    \
+        }                                                      \
+        ClassDef *classname::classinfostatic(void)             \
+        {                                                      \
+            return &(classname::ClassInfo);                    \
+        }                                                      \
+        ResponseDef<classname> classname::Responses[] =
+
+#    define CLASS_PROTOTYPE(classname)                                \
+                                                                      \
+    public:                                                           \
+        static ClassDef               ClassInfo;                      \
+        static ClassDefHook           _ClassInfo_;                    \
+        static void                  *_newInstance(void);             \
+        static ClassDef              *classinfostatic(void);          \
+        ClassDef                     *classinfo(void) const override; \
+        static ResponseDef<classname> Responses[]
+
+#endif
+
+typedef void (Class::*Response)(Event *ev);
+
+class EventDef;
+
+template<class Type>
+struct ResponseDef {
+    Event *event;
+    void (Type::*response)(Event *ev);
+    EventDef *def;
+};
+
+class ClassDef
+{
+public:
+    const char *classname;
+    const char *classID;
+    const char *superclass;
+    void *(*newInstance)(void);
+    int                  classSize;
+    ResponseDef<Class>  *responses;
+    ResponseDef<Class> **responseLookup;
+    ClassDef            *super;
+    ClassDef            *next;
+    ClassDef            *prev;
+
+#ifdef WITH_SCRIPT_ENGINE
+    con_set<str, str> *waitTillSet;
+#endif
+
+    int numEvents;
+
+    static ClassDef *classlist;
+    static ClassDef *classroot;
+    static int       numclasses;
+
+    static int                   dump_numclasses;
+    static int                   dump_numevents;
+    static Container<int>        sortedList;
+    static Container<ClassDef *> sortedClassList;
+
+public:
+    ClassDef();
+    ~ClassDef();
+
+    static int  compareClasses(const void *arg1, const void *arg2);
+    static void SortClassList(Container<ClassDef *> *sortedList);
+
+#ifdef WITH_SCRIPT_ENGINE
+    void AddWaitTill(str s);
+    void RemoveWaitTill(str s);
+    bool WaitTillDefined(str s);
+#endif
+
+    ClassDef(
+        const char         *classname,
+        const char         *classID,
+        const char         *superclass,
+        ResponseDef<Class> *responses,
+        void *(*newInstance)(void),
+        int classSize
+    );
+
+    EventDef *GetDef(int eventnum);
+    EventDef *GetDef(Event *ev);
+    int       GetFlags(Event *event);
+
+    void Destroy();
+
+public:
+    static void BuildEventResponses();
+
+    void BuildResponseList();
+};
+
+ClassDef *getClassList(void);
+qboolean  checkInheritance(const ClassDef *superclass, const ClassDef *subclass);
+qboolean  checkInheritance(ClassDef *superclass, const char *subclass);
+qboolean  checkInheritance(const char *superclass, const char *subclass);
+void      CLASS_Print(FILE *class_file, const char *fmt, ...) Q_PRINTF_FUNC(2, 3);
+void      ClassEvents(const char *classname, qboolean print_to_disk);
+void      DumpClass(FILE *class_file, const char *className);
+void      DumpAllClasses(void);
+
+class ClassDefHook
+{
+private:
+    ClassDef *classdef;
+
+public:
+
+    ClassDefHook();
+    ~ClassDefHook();
+
+    ClassDefHook(ClassDef *classdef, ResponseDef<Class> *responses);
+};
+
+ClassDef *getClassForID(const char *name);
+ClassDef *getClass(const char *name);
+ClassDef *getClassList(void);
+void      listAllClasses(void);
+void      listInheritanceOrder(const char *classname);
+
+class SafePtrBase;
+class Archiver;
+
+class Class : public LightClass
+{
+private:
+    friend class SafePtrBase;
+    SafePtrBase *SafePtrList;
+
+public:
+    static ClassDef           ClassInfo;
+    static ClassDefHook       _ClassInfo_; 
+    static ResponseDef<Class> Responses[];
+
+protected:
+    void ClearSafePointers();
+
+public:
+    Class();
+    virtual ~Class();
+    virtual ClassDef *classinfo(void) const;
+
+    static void     *_newInstance(void);
+    static ClassDef *classinfostatic(void);
+
+    void warning(const char *function, const char *format, ...) const Q_PRINTF_FUNC(3, 4);
+    void error(const char *function, const char *format, ...) const Q_PRINTF_FUNC(3, 4);
+
+    qboolean    inheritsFrom(ClassDef *c) const;
+    qboolean    inheritsFrom(const char *name) const;
+    qboolean    isInheritedBy(const char *name) const;
+    qboolean    isInheritedBy(ClassDef *c) const;
+    const char *getClassname(void) const;
+    const char *getClassID(void) const;
+    const char *getSuperclass(void) const;
+
+    virtual void Archive(Archiver& arc);
+};
+
+#include "safeptr.h"
+
+#endif 

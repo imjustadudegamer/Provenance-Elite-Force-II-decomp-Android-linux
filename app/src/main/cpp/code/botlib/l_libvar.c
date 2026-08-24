@@ -1,0 +1,178 @@
+
+
+#include "../qcommon/q_shared.h"
+#include "l_memory.h"
+#include "l_libvar.h"
+
+libvar_t *libvarlist = NULL;
+
+float LibVarStringValue(const char *string)
+{
+	int dotfound = 0;
+	float value = 0;
+
+	while(*string)
+	{
+		if (*string < '0' || *string > '9')
+		{
+			if (dotfound || *string != '.')
+			{
+				return 0;
+			} 
+			else
+			{
+				dotfound = 10;
+				string++;
+			} 
+		} 
+		if (dotfound)
+		{
+			value = value + (float) (*string - '0') / (float) dotfound;
+			dotfound *= 10;
+		} 
+		else
+		{
+			value = value * 10.0 + (float) (*string - '0');
+		} 
+		string++;
+	} 
+	return value;
+} 
+libvar_t *LibVarAlloc(const char *var_name)
+{
+	libvar_t *v;
+
+	v = (libvar_t *) GetMemory(sizeof(libvar_t));
+	Com_Memset(v, 0, sizeof(libvar_t));
+	v->name = (char *) GetMemory(strlen(var_name)+1);
+	strcpy(v->name, var_name);
+	v->next = libvarlist;
+	libvarlist = v;
+	return v;
+} 
+void LibVarDeAlloc(libvar_t *v)
+{
+	if (v->string) FreeMemory(v->string);
+	FreeMemory(v->name);
+	FreeMemory(v);
+} 
+void LibVarDeAllocAll(void)
+{
+	libvar_t *v;
+
+	for (v = libvarlist; v; v = libvarlist)
+	{
+		libvarlist = libvarlist->next;
+		LibVarDeAlloc(v);
+	} 
+	libvarlist = NULL;
+} 
+libvar_t *LibVarGet(const char *var_name)
+{
+	libvar_t *v;
+
+	for (v = libvarlist; v; v = v->next)
+	{
+		if (!Q_stricmp(v->name, var_name))
+		{
+			return v;
+		} 
+	} 
+	return NULL;
+} 
+char *LibVarGetString(const char *var_name)
+{
+	libvar_t *v;
+
+	v = LibVarGet(var_name);
+	if (v)
+	{
+		return v->string;
+	} 
+	else
+	{
+		return "";
+	} 
+} 
+float LibVarGetValue(const char *var_name)
+{
+	libvar_t *v;
+
+	v = LibVarGet(var_name);
+	if (v)
+	{
+		return v->value;
+	} 
+	else
+	{
+		return 0;
+	} 
+} 
+libvar_t *LibVar(const char *var_name, const char *value)
+{
+	libvar_t *v;
+	v = LibVarGet(var_name);
+	if (v) return v;
+	v = LibVarAlloc(var_name);
+	v->string = (char *) GetMemory(strlen(value) + 1);
+	strcpy(v->string, value);
+	v->value = LibVarStringValue(v->string);
+	v->modified = qtrue;
+	return v;
+} 
+char *LibVarString(const char *var_name, const char *value)
+{
+	libvar_t *v;
+
+	v = LibVar(var_name, value);
+	return v->string;
+} 
+float LibVarValue(const char *var_name, const char *value)
+{
+	libvar_t *v;
+
+	v = LibVar(var_name, value);
+	return v->value;
+} 
+void LibVarSet(const char *var_name, const char *value)
+{
+	libvar_t *v;
+
+	v = LibVarGet(var_name);
+	if (v)
+	{
+		FreeMemory(v->string);
+	} 
+	else
+	{
+		v = LibVarAlloc(var_name);
+	} 
+	v->string = (char *) GetMemory(strlen(value) + 1);
+	strcpy(v->string, value);
+	v->value = LibVarStringValue(v->string);
+	v->modified = qtrue;
+} 
+qboolean LibVarChanged(const char *var_name)
+{
+	libvar_t *v;
+
+	v = LibVarGet(var_name);
+	if (v)
+	{
+		return v->modified;
+	} 
+	else
+	{
+		return qfalse;
+	} 
+} 
+void LibVarSetNotModified(const char *var_name)
+{
+	libvar_t *v;
+
+	v = LibVarGet(var_name);
+	if (v)
+	{
+		v->modified = qfalse;
+	} 
+} 

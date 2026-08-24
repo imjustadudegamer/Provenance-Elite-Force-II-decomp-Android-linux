@@ -1,0 +1,441 @@
+
+#include "ui_local.h"
+
+#define R120_PROBE_GET(r120_n, r120_d, r120_f) ((cvar_t *)0)
+#define R120_PROBE_PRINT                       Com_Printf
+#define R120_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_r120", "1")) != 0)  
+#include "../qcommon/qa_r120.h"
+#define R201_PROBE(tag, ...) R1XX_EMIT("[R201:", tag, __VA_ARGS__)
+
+#include "../qcommon/qa_r202.h"
+
+qboolean UI_FontDBCSIsLeadByte(fontheader_t *font, unsigned short uch);
+int      UI_FontCodeSearch(const fontheader_t *font, unsigned short uch);
+
+UIFont::UIFont()
+{
+    color = UBlack;
+
+    loadDefaultFont();
+
+    setColor(color);
+}
+
+UIFont::UIFont(const char *fn)
+{
+    color = UBlack;
+
+    m_font = uii.Rend_LoadFont(fn);
+    if (m_font) {
+        name = fn;
+    } else {
+        loadDefaultFont();
+    }
+}
+
+void UIFont::setColor(UColor col)
+{
+    color = col;
+}
+
+void UIFont::setAlpha(float alpha)
+{
+    color.a = alpha;
+}
+
+//   0xA9B84  stw r0, 0(r28)                   -> +0  (never written by either ctor)
+void UIFont::copyFrom(const UIFont *src)
+{
+    color  = src->color;
+    m_font = src->m_font;
+    name   = src->name;
+}
+
+void UIFont::loadDefaultFont(void)
+{
+    m_font = uii.Rend_LoadFont("tahoma-10");
+    if (m_font) {
+        name = "tahoma-10";
+    } else {
+        uii.Sys_Error(ERR_DROP, "Couldn't load default font %s\n", "tahoma-10");
+    }
+}
+
+void UIFont::setFont(const char *fontname)
+{
+    m_font = uii.Rend_LoadFont(fontname);
+    if (!m_font) {
+        uii.Sys_Error(ERR_DROP, "Couldn't load font %s\n", fontname);
+    }
+}
+
+// In retail the flag scales the GLYPHS, not the string's origin.  Retail
+void UIFont::Print(float x, float y, const char *text, int maxlen, UColor shadowColor, int virtualScreen)
+{
+    const float *scale = virtualScreen ? uid.scaleRes : NULL;
+    float        vx    = x;
+    float        vy    = y;
+
+    if (scale && uid.scaleRes[0] != 0.0f && uid.scaleRes[1] != 0.0f) {
+        vx = x / uid.scaleRes[0];
+        vy = y / uid.scaleRes[1];
+    }
+
+    if (shadowColor.a != 0.0f) {
+        uii.Rend_SetColor(shadowColor);
+        uii.Rend_DrawString(m_font, text, (int)vx - 1, (int)vy + 1, maxlen, scale);
+    }
+
+    uii.Rend_SetColor(color);
+    uii.Rend_DrawString(m_font, text, (int)vx, (int)vy, maxlen, scale);
+}
+
+// is not recoverable from the shipped binary (Hex-Rays returns no body for
+static void UIFont_WrapLines(UIFont *font, const char *text, float maxWidth, bool virtualScale, Container<str>& lines)
+{
+    str         line;
+    float       penX        = 0.0f;
+    const char *p           = text;
+    bool        atLineStart = true; 
+
+    while (*p) {
+        if (*p == '\n') {
+            lines.AddObject(line);
+            line        = "";
+            penX        = 0.0f;
+            atLineStart = true;
+            p++;
+            continue;
+        }
+
+        const char *start   = p;
+        bool        isSpace = (*p == ' ' || *p == '\t');
+        while (*p && *p != '\n') {
+            bool cs = (*p == ' ' || *p == '\t');
+            if (cs != isSpace) {
+                break;
+            }
+            p++;
+        }
+
+        if (isSpace && atLineStart) {
+            continue;
+        }
+
+        char tok[1024];
+        int  n = (int)(p - start);
+        if (n >= (int)sizeof(tok)) {
+            n = (int)sizeof(tok) - 1;
+        }
+        memcpy(tok, start, n);
+        tok[n] = '\0';
+
+        float tw = font->getFloatWidth(tok, -1, virtualScale);
+
+        if (!isSpace && line.length() && (penX + tw) > maxWidth) {
+            lines.AddObject(line);
+            line        = "";
+            penX        = 0.0f;
+            atLineStart = true;
+            if (isSpace) {
+                continue; 
+            }
+        }
+
+        line += tok;
+        penX += tw;
+        atLineStart = false;
+    }
+
+    if (line.length()) {
+        lines.AddObject(line);
+    }
+}
+
+void UIFont::PrintJustified(
+    const UIRect2D& rect, fonthorzjustify_t horz, fontvertjustify_t vert, const char *text, UColor shadowColor, int
+    virtualScreen
+)
+{
+    float    newx, newy;
+    float    textheight;
+    UIRect2D sizedRect;
+
+    R202_COUNT(R202_FAM_UI, R202_UC_text, 1);
+
+    // flag scales the metrics, not the rect.  Retail @0x0005FE20 reads the rect
+    // off_228198 load at 0x5FE5C feeds one fmuls at 0x5FFE0, never a division).
+    sizedRect = rect;
+
+    textheight = (float)getHeight(text, -1, virtualScreen != 0);
+
+    switch (vert) {
+    case FONT_JUSTVERT_TOP:
+        newy = sizedRect.pos.y;
+        break;
+    case FONT_JUSTVERT_CENTER:
+        newy = sizedRect.pos.y + (sizedRect.size.height - textheight) * 0.5;
+        break;
+    case FONT_JUSTVERT_BOTTOM:
+        newy = sizedRect.pos.y + sizedRect.size.height - textheight;
+        break;
+    default:
+        newy = 0;
+        break;
+    }
+
+    Container<str> lines;
+    UIFont_WrapLines(this, text, sizedRect.size.width, virtualScreen != 0, lines);
+
+    const float hbias = 2.0f * (virtualScreen ? uid.scaleRes[0] : 1.0f);
+
+    for (int li = 1; li <= lines.NumObjects(); li++) {
+        const char *string  = lines.ObjectAt(li).c_str();
+        float       lineLen = (float)(int)getFloatWidth(string, -1, virtualScreen != 0);
+
+        switch (horz) {
+        case FONT_JUSTHORZ_CENTER:
+            newx = sizedRect.pos.x + (sizedRect.size.width - lineLen) * 0.5f;
+            break;
+        case FONT_JUSTHORZ_LEFT:
+            newx = (float)(int)sizedRect.pos.x + hbias;
+            break;
+        case FONT_JUSTHORZ_RIGHT:
+            newx = (float)(int)(sizedRect.pos.x + sizedRect.size.width - lineLen) - hbias;
+            break;
+        default:
+            newx = 0.0;
+            break;
+        }
+
+        Print(newx, newy, string, -1, shadowColor, virtualScreen);
+
+        if (li == 1) {
+            static int r201_textpos;
+
+            if (R120_On() && R120_Throttle(&r201_textpos, 3, 200)) {
+                R201_PROBE(
+                    "uitextpos",
+                    "horz=%d vert=%d rect=(%.1f,%.1f %.1fx%.1f) lines=%d line=1 newx=%.1f newy=%.1f "
+                    "bias=%.2f virtual=%d text='%.32s'\n",
+                    (int)horz,
+                    (int)vert,
+                    (double)sizedRect.pos.x,
+                    (double)sizedRect.pos.y,
+                    (double)sizedRect.size.width,
+                    (double)sizedRect.size.height,
+                    lines.NumObjects(),
+                    (double)newx,
+                    (double)newy,
+                    (double)hbias,
+                    virtualScreen ? 1 : 0,
+                    string
+                );
+            }
+        }
+
+        newy += (float)getHeight(string, -1, virtualScreen != 0);
+    }
+}
+
+// indirection against 0x100 -- it does NOT reject negatives -- and always reads
+float UIFont::getFloatWidth(const char *text, int maxlen, bool virtualScale)
+{
+    float width    = 0.0f;
+    float maxwidth = 0.0f;
+    float scale;
+
+    if (!m_font) {
+        return 0.0f;
+    }
+
+    if (virtualScale) {
+        scale = uid.scaleRes[0];
+    } else {
+        scale = 1.0f;
+    }
+
+    for (int i = 0;; i++) {
+        char c = text[i];
+
+        if (!c || (maxlen != -1 && i >= maxlen)) {
+            break;
+        }
+
+        if (c == '^' && (signed char)text[i + 1] >= 48 && (signed char)text[i + 1] <= 57) {
+            i++;
+            continue;
+        } else if (c == '\t') {
+            int indirected = m_font->sgl[0]->indirection[( unsigned char )'\t'];
+
+            if (indirected < 0x100) {
+                width += 3.0f * m_font->sgl[0]->locations[indirected].size[0] * scale;
+                if (width > maxwidth) {
+                    maxwidth = width;
+                }
+            }
+        } else if (c == '\n') {
+            width = 0.0f;
+        } else {
+            int indirected = m_font->sgl[0]->indirection[(unsigned char)c];
+
+            if (indirected < 0x100) {
+                width += m_font->sgl[0]->locations[indirected].size[0] * scale;
+                if (width > maxwidth) {
+                    maxwidth = width;
+                }
+            }
+        }
+    }
+
+    return maxwidth * 256.0f;
+}
+
+int UIFont::getWidth(const char *text, int maxlen, bool virtualScale)
+{
+    return (int)getFloatWidth(text, maxlen, virtualScale);
+}
+
+int UIFont::getCharWidth(char ch, bool virtualScale)
+{
+    int   indirected;
+    float width;
+
+    if (!m_font) {
+        return 4;
+    }
+
+    if (ch == '\t') {
+        indirected = m_font->sgl[0]->indirection[( unsigned char )'\t'];
+        if (indirected < 0x100) {
+            return (int)(3.0f * 256.0f * m_font->sgl[0]->locations[indirected].size[0]);
+        }
+        return 0;
+    }
+
+    indirected = m_font->sgl[0]->indirection[(unsigned char)ch];
+    if (indirected < 0x100) {
+        width = 256.0f * m_font->sgl[0]->locations[indirected].size[0];
+        if (virtualScale) {
+            width *= uid.scaleRes[0];
+        }
+        return (int)width;
+    }
+
+    return 0;
+}
+
+int UIFont::getHeight(const char *text, int maxlen, bool virtualScale)
+{
+    float height;
+    int   i;
+
+    if (!m_font) {
+        return 0;
+    }
+
+    height = (float)getHeight(virtualScale);
+
+    for (i = 0; text[i] && (maxlen == -1 || i < maxlen); i++) {
+        if (text[i] == '\n') {
+            height += (float)getHeight(virtualScale);
+        }
+    }
+
+    return (int)height;
+}
+
+int UIFont::getHeight(bool virtualScale)
+{
+    if (!m_font) {
+        return 16;
+    }
+
+    if (virtualScale) {
+        return (int)(m_font->sgl[0]->height * uid.scaleRes[1]);
+    }
+
+    return (int)m_font->sgl[0]->height;
+}
+
+qboolean UI_FontDBCSIsLeadByte(fontheader_t *font, unsigned short uch)
+{
+    switch (font->codePage) {
+    case 932:
+        return ((uch >= 0x81) && (uch <= 0x9F)) || ((uch >= 0xE0) && (uch <= 0xFC));
+    case 936:
+        return (uch >= 0x81) && (uch <= 0xFE);
+    case 949:
+        return (uch >= 0x81) && (uch <= 0xFE);
+    case 950:
+        return (uch >= 0x81) && (uch <= 0xFE);
+    case 1361:
+        return ((uch >= 0x84) && (uch <= 0xD3)) || ((uch >= 0xD8) && (uch <= 0xDE)) || ((uch >= 0xE0) && (uch <= 0xF9));
+    }
+    return false;
+}
+
+int UI_FontCodeSearch(const fontheader_t *font, unsigned short uch)
+{
+    int mid;
+    int l, r;
+
+    r = font->charTableLength;
+    l = 0;
+    while (l < r) {
+        mid = (l + r) / 2;
+
+        if (font->charTable[mid].cp > uch) {
+            r = (l + r) / 2;
+            continue;
+        }
+
+        if (uch == font->charTable[mid].cp) {
+            return (l + r) / 2;
+        }
+
+        l = mid + 1;
+    }
+
+    if (uch != font->charTable[l].cp) {
+        return -1;
+    }
+
+    return l;
+}
+
+float UI_FontgetCharWidthf(fontheader_t *font, unsigned short uch)
+{
+    int   index;
+    int   indirected;
+    float widthMul = 1.0f; 
+
+    if (!font) {
+        return 0.f;
+    }
+
+    if (uch == '\t') {
+        uch      = ' ';
+        widthMul = 3.0f;
+    }
+
+    if (font->numPages) {
+        int code = UI_FontCodeSearch(font, uch);
+        if (code < 0) {
+            return 0.f;
+        }
+
+        index      = font->charTable[code].index;
+        indirected = font->charTable[code].loc;
+    } else {
+        indirected = font->sgl[0]->indirection[uch];
+        if (indirected < 0 || indirected > 255) {
+            return 0.f;
+        }
+
+        index = 0;
+    }
+
+    return font->sgl[index]->locations[indirected].size[0] * widthMul;
+}
+

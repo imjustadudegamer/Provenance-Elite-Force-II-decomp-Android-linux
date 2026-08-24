@@ -1,0 +1,43 @@
+///////////////////////////////////////////////////////////////////////////////
+#if !defined(GSI_NO_THREADS)
+#include "gsCommon.h"
+
+
+#if defined(_X360)
+	#include "x360/gsThreadX360.c"
+#elif defined(_XBOX)
+#elif defined(_WIN32)
+	#include "win32/gsThreadWin32.c"
+#elif defined(_MACOSX)
+	#include "macosx/gsThreadMacOSX.c"
+#elif defined(__ANDROID__)
+	#include "android/gsThreadAndroid.c"
+#elif defined (_LINUX)
+	#include "linux/gsThreadLinux.c"
+#elif defined(_NITRO)
+	#include "nitro/gsThreadNitro.c"
+#elif defined(_PS2)
+	#include "ps2/gsThreadPs2.c"
+#elif defined(_PS3)
+#elif defined(_PSP)
+#elif defined(_REVOLUTION)
+	#include "revolution/gsThreadRevoulution.c"
+#else
+	#error "Missing or unsupported platform"
+#endif
+
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+
+
+
+
+
+#if defined(__cplusplus)
+}
+#endif
+
+#endif 
