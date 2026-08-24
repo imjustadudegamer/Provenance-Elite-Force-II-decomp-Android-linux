@@ -111,17 +111,16 @@ void SystemInfo::getCPUTypeInText(str& text)
 
 void SystemInfo::detectSystemInformation(void)
 {
-    str text;
-
     detectCPUFrequency();
     detectCPUType();
 
-    getCPUTypeInText(text);
-    Com_Printf("CPU: %s, Frequency: %d Mhz\n", text.c_str(), (unsigned int)m_frequency);
+    /* The startup identity line: the CPU and the device model, and nothing else. */
+    Com_Printf("CPU: %s\n", Sys_GetCPUModel());
+    if (Sys_GetDeviceModel()[0]) {
+        Com_Printf("Device: %s\n", Sys_GetDeviceModel());
+    }
 
     detectPhysicalRam();
-    Com_Printf("Physical Memory: %d mb\n", m_physicalRamMB);
-
     detectVideoRam();
 }
 

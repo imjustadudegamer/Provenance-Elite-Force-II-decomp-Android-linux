@@ -12,6 +12,7 @@
 
 #ifdef __ANDROID__
 #include <android/log.h>
+#include <sys/system_properties.h>
 #ifdef USE_INTERNAL_SDL_HEADERS
 #include "SDL_system.h"
 #else
@@ -294,6 +295,109 @@ cpuFeatures_t Sys_GetProcessorFeatures( void )
 #endif
 
 	return features;
+}
+
+/*
+ * The device and CPU model for the startup log.  The CPU model comes from the
+ * kernel's own /proc/cpuinfo; the device model from the platform's own
+ * identity source.  Both are best-effort and return "Unknown" when the platform
+ * exposes neither, so the log line never invents a value.
+ */
+#define SYS_MODEL_LEN 256
+
+static const char *Sys_FirstField( const char *path, const char *key, char *out, size_t outlen );
+
+const char *Sys_GetCPUModel( void )
+{
+	static char model[SYS_MODEL_LEN];
+	const char *p;
+
+	if( model[0] )
+		return model;
+
+	model[0] = 0;
+	p = Sys_FirstField( "/proc/cpuinfo", "model name", model, sizeof( model ) );
+	if( !p )
+		p = Sys_FirstField( "/proc/cpuinfo", "Hardware", model, sizeof( model ) );
+	if( !p )
+		p = Sys_FirstField( "/proc/cpuinfo", "Processor", model, sizeof( model ) );
+
+#ifdef __ANDROID__
+	if( !p && __system_property_get( "ro.soc.model", model ) <= 0 )
+		if( __system_property_get( "ro.board.platform", model ) <= 0 )
+			__system_property_get( "ro.hardware", model );
+#endif
+
+	if( !model[0] )
+		Q_strncpyz( model, "Unknown", sizeof( model ) );
+
+	return model;
+}
+
+const char *Sys_GetDeviceModel( void )
+{
+	static char model[SYS_MODEL_LEN];
+
+	if( model[0] )
+		return model;
+
+	model[0] = 0;
+
+#ifdef __ANDROID__
+	__system_property_get( "ro.product.model", model );
+#elif defined( __linux__ )
+	{
+		FILE *fp = fopen( "/sys/devices/virtual/dmi/id/product_name", "r" );
+		if( fp ) {
+			if( fgets( model, sizeof( model ), fp ) ) {
+				size_t n = strlen( model );
+				while( n > 0 && ( model[n - 1] == '\n' || model[n - 1] == '\r' ) )
+					model[--n] = 0;
+			}
+			fclose( fp );
+		}
+	}
+#endif
+
+	return model;
+}
+
+/*
+ * The value after `key` on its own line in a procfs-style file, trimmed; NULL if
+ * the key or the file is absent.  Writes into `out` and returns it.
+ */
+static const char *Sys_FirstField( const char *path, const char *key, char *out, size_t outlen )
+{
+	char  line[512];
+	FILE *fp = fopen( path, "r" );
+	size_t keylen = strlen( key );
+
+	if( !fp )
+		return NULL;
+
+	while( fgets( line, sizeof( line ), fp ) ) {
+		char *colon;
+
+		if( strncmp( line, key, keylen ) != 0 )
+			continue;
+		colon = strchr( line, ':' );
+		if( !colon )
+			continue;
+		colon++;
+		while( *colon == ' ' || *colon == '\t' )
+			colon++;
+		Q_strncpyz( out, colon, (int)outlen );
+		{
+			size_t n = strlen( out );
+			while( n > 0 && ( out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ' || out[n - 1] == '\t' ) )
+				out[--n] = 0;
+		}
+		fclose( fp );
+		return out;
+	}
+
+	fclose( fp );
+	return NULL;
 }
 
 void Sys_Init(void)

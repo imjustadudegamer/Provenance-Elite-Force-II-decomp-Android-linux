@@ -934,6 +934,9 @@ void	*Sys_GetBotLibAPI( void *parms );
 
 char	*Sys_GetCurrentUser( void );
 
+const char *Sys_GetCPUModel( void );
+const char *Sys_GetDeviceModel( void );
+
 void	QDECL Sys_Error( const char *error, ...) Q_NO_RETURN Q_PRINTF_FUNC(1, 2);
 void	Sys_Quit (void) Q_NO_RETURN;
 char	*Sys_GetClipboardData( void );	

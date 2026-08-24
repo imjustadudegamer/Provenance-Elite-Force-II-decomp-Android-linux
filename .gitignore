@@ -1,4 +1,3 @@
-# ---- build output (regenerable) ----
 app/src/main/cpp/build-*/
 app/src/main/cpp/build/
 app/src/main/cpp/Release/
@@ -11,24 +10,10 @@ app/.externalNativeBuild/
 captures/
 *.apk
 *.apk.idsig
-
-# ---- machine-specific ----
 local.properties
-
-# ---- preserved evidence: on disk only, never in the repository ----
-# The Mac PPC decompile corpus, the retail PC binary, the SDK source, the oracle
-# goldens/savegame corpus, the preservation set and the captured device logs are
-# the primary evidence for every reverse-engineering claim.  They are retail-derived
-# and are never published, so the whole tree stays untracked.
 docs/evidence/
 logs/
-
-# the oracle runtime corpora (goldens, saves, captures, the GL1 export, build and
-# wine prefix) are retail-derived evidence: kept on disk, never tracked.  The
-# oracle's own specs and tools inside docs/oracle/ stay tracked.
 docs/oracle/
-
-# ---- IDA databases: regenerable caches, never committed ----
 *.id0
 *.id1
 *.id2
@@ -36,14 +21,9 @@ docs/oracle/
 *.i64
 *.nam
 *.til
-
-# ---- ephemeral ----
 __pycache__/
 *.pyc
 *.swp
 *~
 .DS_Store
-
-# ---- process and provenance material: on disk only, never in the repository ----
 personal/
-
