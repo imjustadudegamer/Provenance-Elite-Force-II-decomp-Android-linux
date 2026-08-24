@@ -1255,7 +1255,7 @@ static void S_OPENAL_Start2DSound(
     pChannel->set_gain_3d(fRealVolume);
 
     SND_SndRow(
-        "start2d", pSfx->name, 0, iEntNum, iEntChannel, fVolume, fMinDistance, 0.0f, fPitch,
+        "start2d", pSfx->name, (int)( pSfx - s_knownSfx ), iEntNum, iEntChannel, fVolume, fMinDistance, 0.0f, fPitch,
         powf(fRealVolume, 5.0f / 3.0f), iFreeChannel, 0
     );
 
@@ -1565,7 +1565,17 @@ void S_OPENAL_AddLoopingSound(
     pLoopSound->iFlags      = 0;
     pLoopSound->iEntNum     = iEntNum;
     pLoopSound->bUseListener = s_entity[iEntNum].use_listener ? true : false;
-    pLoopSound->bCombine     = VectorCompare(vVelocity, vec_zero) == 0;
+    /*
+     * Retail combines a loop's emitters when the caller passes no velocity:
+     * S_MILES_AddLoopingSound @0x001F1EB0 compares each velocity component
+     * against the pool's zero word (`v28 = *(float *)(LODWORD(v10) + 24)', then
+     * `v26[16] = v28 == a2[0] && v28 == a2[1] && v28 == a2[2]'), so combine is
+     * TRUE when velocity IS zero.  The predicate here was inverted, and every
+     * cgame loop call passes vec3_origin, so the combine arm in
+     * S_OPENAL_AddLoopSounds never ran and neither the summed volume nor the
+     * weighted-centroid origin was ever computed.
+     */
+    pLoopSound->bCombine     = ( VectorCompare( vVelocity, vec_zero ) != 0 ) ? true : false;
 
     if (pLoopSound->bCombine) {
         for (i = 0; i < MAX_SOUNDSYSTEM_LOOP_SOUNDS; i++) {
@@ -1695,6 +1705,7 @@ static int S_OPENAL_Start3DLoopSound(
 {
     int             iChannel;
     int             iSoundOffset;
+    float           fLoopPitch;
     openal_channel *pChan3D;
 
     if (!pLoopSound->pSfx->data || !pLoopSound->pSfx->length) {
@@ -1739,8 +1750,21 @@ static int S_OPENAL_Start3DLoopSound(
     pChan3D->set_gain_3d(fVolumeToPlay);
     pChan3D->play();
 
+    /*
+     * A loop has no sfxHandle of its own -- the caller passes the registered
+     * sfx_t -- so `handle' is the loop's index in the known-sfx table, the same
+     * table the handles on the start rows index.  `pitch' is the rate the
+     * channel is actually playing at over its base rate; the loop's own pitch
+     * multiplier is applied later, in the resample pass, and would print as the
+     * never-written zero.  Both fields were call-site constants here, which is
+     * why every loop row read handle=0 pitch=0.000.
+     */
+    fLoopPitch = ( pChan3D->iBaseRate > 0 )
+                     ? (float)pChan3D->sample_playback_rate() / (float)pChan3D->iBaseRate : 1.0f;
+
     SND_SndRow(
-        "startloop", pLoopSound->pSfx->name, 0, 0, CHAN_AUTO, fVolumeToPlay, fMinDistance, fMaxDistance, 0.0f,
+        "startloop", pLoopSound->pSfx->name, (int)( pLoopSound->pSfx - s_knownSfx ), 0, CHAN_AUTO,
+        fVolumeToPlay, fMinDistance, fMaxDistance, fLoopPitch,
         powf(fVolumeToPlay, 5.0f / 3.0f), iChannel, 0
     );
 
@@ -1876,6 +1900,11 @@ void S_OPENAL_AddLoopSounds(const vec3_t vTempAxis)
                         fMaxVolume = fVolumeToPlay;
                     }
                     fTotalVolume += fVolumeToPlay;
+                    /* Retail weights the centroid with each member's own
+                       contribution (`*(float *)(v41 + 80) / v26' in
+                       S_MILES_AddLoopSounds @0x001F2310); without this store the
+                       weight below is a value no arm ever wrote. */
+                    pLoopSound2->fVolume = fVolumeToPlay;
                     bAlreadyAdded[j] = true;
                 }
             }
