@@ -26,7 +26,7 @@ set(DYNAMIC_RENDERER_SOURCES
     ${SOURCE_DIR}/corepp/str.cpp
 )
 
-# r133-mt (docs/r133-mt_design.md T2): the job pool is compiled INTO each
+# uivk-mt (docs/uivk-mt_design.md T2): the job pool is compiled INTO each
 # renderer module, exactly like q_shared.c/q_math.c above -- one private pool
 # instance per module, no refimport_t slot, no cross-.so symbol.  The workers
 # are spawned by the renderer's own R_Init and joined by its own RE_Shutdown.

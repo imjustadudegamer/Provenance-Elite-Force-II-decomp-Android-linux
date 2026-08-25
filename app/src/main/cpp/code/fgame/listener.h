@@ -398,8 +398,8 @@ class Event : public Class
       Event             *prev;               
 
 #ifdef GAME_DLL
-      static void          R132_StampPoolNode( Event *e );
-      static qboolean      R132_NodeIsRecycled( Event *e );
+      static void          EVENT_StampPoolNode( Event *e );
+      static qboolean      EVENT_NodeIsRecycled( Event *e );
 #endif
 
 		void * operator	new( size_t );

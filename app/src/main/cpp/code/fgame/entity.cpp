@@ -6,9 +6,9 @@
 #include "../script/scriptvariable.h"
 #include "sentient.h"
 #include "../qcommon/gameplaymanager.h"
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 #include "misc.h"
 #include "specialfx.h"
 #include "object.h"
@@ -21,7 +21,7 @@
 #include "g_spawn.h"
 #include "g_phys.h"
 #include "debuglines.h"
-#include "r201_spawnstats.h"
+#include "smp_spawnstats.h"
 #include "groupcoordinator.h"
 #include "earthquake.h"  
 #include "usedata.h"     
@@ -1723,7 +1723,7 @@ CLASS_DECLARATION(Listener, Entity, NULL) {
 	}
 ;
 
-static int r133_layout_loadctor_frame = -1;
+static int uivk_layout_loadctor_frame = -1;
 
 Entity::Entity()
 {
@@ -1804,13 +1804,13 @@ Entity::Entity()
 
     lightRadius = 0;
 
-    if (R133_EntTrashOn() && LoadingSavegame) {
-        if (r133_layout_loadctor_frame > level.framenum) {
-            r133_layout_loadctor_frame = -1; 
+    if (UIVK_EntTrashOn() && LoadingSavegame) {
+        if (uivk_layout_loadctor_frame > level.framenum) {
+            uivk_layout_loadctor_frame = -1; 
         }
-        if (r133_layout_loadctor_frame < 0) {
-            r133_layout_loadctor_frame = level.framenum;
-            gi.Printf("[R133:LAYOUT:loadctor] ent=%d class='%s' movetype=%d mass=%d "
+        if (uivk_layout_loadctor_frame < 0) {
+            uivk_layout_loadctor_frame = level.framenum;
+            gi.Printf("[UIVK:LAYOUT:loadctor] ent=%d class='%s' movetype=%d mass=%d "
                       "gravity=%f health=%f flags=%d solid=%d\n",
                       entnum,
                       getClassname() ? getClassname() : "?",
@@ -2285,7 +2285,7 @@ void Entity::setModel(const char *mdl)
 {
     str temp;
 
-    R201_SP_BEGIN( model );
+    SMP_SP_BEGIN( model );
 
     if (LoadingSavegame && (this == world)) {
         return;
@@ -2362,7 +2362,7 @@ void Entity::setModel(const char *mdl)
         player->LoadStateTable();
     }
 
-    R201_SP_END( model );
+    SMP_SP_END( model );
 }
 
 void Entity::setModel(const str& mdl)
@@ -2969,8 +2969,8 @@ void Entity::DamageEvent(Event *ev)
         return;
     }
 
-    if (gi.cvar("qa_r120", "0", 0)->integer && (isSubclassOf(Actor) || isClient())) {
-        gi.Printf("[R133:dmg] tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f wasdead=%d vic=%s\n",
+    if (gi.cvar("qa_probe", "0", 0)->integer && (isSubclassOf(Actor) || isClient())) {
+        gi.Printf("[UIVK:dmg] tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f wasdead=%d vic=%s\n",
                   entnum,
                   attacker->entnum,
                   ev->GetInteger(9),
@@ -3427,9 +3427,9 @@ void Entity::CreateEarthquake(Event *ev)
     earthquake = new Earthquake;
 
     {
-        static int r133_dfx_n;
-        if (R120_On() && R120_Throttle(&r133_dfx_n, 32, 32)) {
-            R120_PROBE("DFX:quake-create", "ent=%d model='%s' mag=%.3f dur=%.3f dist=%.1f org=(%.1f,%.1f,%.1f)\n",
+        static int uivk_dfx_n;
+        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 32, 32)) {
+            PROBE("DFX:quake-create", "ent=%d model='%s' mag=%.3f dur=%.3f dist=%.1f org=(%.1f,%.1f,%.1f)\n",
                        entnum, model.c_str(), magnitude, duration, distance,
                        origin[0], origin[1], origin[2]);
         }
@@ -3456,9 +3456,9 @@ void Entity::CreateEarthquake(Event *ev)
     earthquake->ProcessEvent(EV_Trigger_Effect);
 
     {
-        static int r133_dfx_n;
-        if (R120_On() && R120_Throttle(&r133_dfx_n, 32, 32)) {
-            R120_PROBE("DFX:quake-dispatch", "ent=%d registered_on_level=%d\n",
+        static int uivk_dfx_n;
+        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 32, 32)) {
+            PROBE("DFX:quake-dispatch", "ent=%d registered_on_level=%d\n",
                        entnum, earthquake->EarthquakeActive() ? 1 : 0);
         }
     }
@@ -3529,8 +3529,8 @@ Entity *Entity::SpawnEffect(const str& name, const Vector& spawnOrigin, const Ve
 
     newEntity->animate->RandomAnimate("idle");
 
-    if (R120_On()) {
-        R133_PROBE(
+    if (PROBE_On()) {
+        UIVK_PROBE(
             "BEAMFX:sv-spawn",
             "ent=%d model='%s' mi=%d scale=0x%08x(%.3f) origin=(%.1f,%.1f,%.1f) remove=%.3f "
             "parent=%d\n",
@@ -4223,7 +4223,7 @@ void Entity::DisplayEffect(Event *ev)
 
                 currentEffectPos = effectPos;
 
-                R133_PROBE(
+                UIVK_PROBE(
                     "BEAMFX:disp-in",
                     "obj='%s' fx='%s' pos='%s' nfx=%d attach=%d etime=%.3f ttime=%.3f "
                     "host=%d hostscale=0x%08x(%.3f) hostorg=(%.1f,%.1f,%.1f)\n",
@@ -4866,7 +4866,7 @@ void Entity::LoopSound(const str &sound_name, float volume, float min_dist)
             name = sound_name.c_str();
         }
 
-        // r133-soundmix.  THE VOLUME/MINDIST PASS-THROUGH IS RETAIL-EXACT AND MUST NOT
+        // uivk-soundmix.  THE VOLUME/MINDIST PASS-THROUGH IS RETAIL-EXACT AND MUST NOT
 
 
         edict->s.loopSound        = gi.soundindex(name);
@@ -7097,7 +7097,7 @@ void Entity::Contents(Event *ev)
     link();
 }
 
-// shipped ones, not the header's guess.  See docs/agent_reports/r132-los-mask_2026-09-25.md.
+// shipped ones, not the header's guess.  See docs/agent_reports/event-los-mask_2026-09-25.md.
 void Entity::setMask(Event *ev)
 {
     if (!ev) {

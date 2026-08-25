@@ -2,10 +2,10 @@
 #include "ui_local.h"
 #include "../qcommon/stringresource.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) ((cvar_t *)0)
-#define R120_PROBE_PRINT                       Com_Printf
-#define R120_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_r120", "1")) != 0)  
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
+#include "../qcommon/qa_probe.h"
 
 Event EV_UILabel_LinkString
 (
@@ -206,10 +206,10 @@ void UILabel::Draw(void)
     }
 
     if (!strcmp(getName(), "prologueText") || !strcmp(getName(), "prologueText2")) {
-        static int r127_lbl;
+        static int paint_lbl;
 
-        if (R120_On() && R120_Throttle(&r127_lbl, 4, 300)) {
-            R127_PROBE(
+        if (PROBE_On() && PROBE_Throttle(&paint_lbl, 4, 300)) {
+            PAINT_PROBE(
                 "text:label",
                 "label='%s' labelLen=%d titleLen=%d labeltextLen=%d cvarnameLen=%d "
                 "srcLen=%d frame=(%.1f,%.1f %.1fx%.1f) virtual=%d keyframes=%d mwcIndex=%d",

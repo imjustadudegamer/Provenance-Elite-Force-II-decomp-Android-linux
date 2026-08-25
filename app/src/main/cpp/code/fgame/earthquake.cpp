@@ -3,9 +3,9 @@
 #include "weapon.h"
 #include "sentient.h"
 #include "level.h"
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
 Event EV_Earthquake_Deactivate (	"earthquake_deactivate",
 	EV_SCRIPTONLY,
@@ -122,9 +122,9 @@ void Earthquake::Activate(Event *ev)
     turnThinkOn();
 
     {
-        static int r133_dfx_n;
-        if (R120_On() && R120_Throttle(&r133_dfx_n, 32, 32)) {
-            R120_PROBE("DFX:quake-activate", "ent=%d mag=%.3f dur=%.3f dist=%.1f org=(%.1f,%.1f,%.1f) think=%d\n",
+        static int uivk_dfx_n;
+        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 32, 32)) {
+            PROBE("DFX:quake-activate", "ent=%d mag=%.3f dur=%.3f dist=%.1f org=(%.1f,%.1f,%.1f) think=%d\n",
                        entnum, _magnitude, _duration, _distance,
                        origin[0], origin[1], origin[2], isSubclassOf(Entity) && (flags & FL_THINK) ? 1 : 0);
         }

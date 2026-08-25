@@ -83,7 +83,7 @@ void CG_RegisterCvars(void)
     cg_viewposy                   = cgi.Cvar_Get("viewposy", "0", CVAR_ARCHIVE);
     cg_viewsizewidth              = cgi.Cvar_Get("viewsizewidth", "-1", CVAR_ARCHIVE);
     cg_viewsizeheight             = cgi.Cvar_Get("viewsizeheight", "-1", CVAR_ARCHIVE);
-    // r135-aspect3d: port-only cvar (retail has no Android renderer); the client
+    // aspect-aspect3d: port-only cvar (retail has no Android renderer); the client
     cg_android_aspect             = cgi.Cvar_Get("android_aspect", "0", CVAR_ARCHIVE);
     zoomfov                       = cgi.Cvar_Get("zoomfov", "90", 0);
     cg_relativeyaw                = cgi.Cvar_Get("relativeyaw", "0", 0);

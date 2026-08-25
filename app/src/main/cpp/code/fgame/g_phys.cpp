@@ -10,9 +10,9 @@
 #include "mp_manager.hpp"
 #include "debuglines.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
 
 
 pushed_t  pushed[MAX_GENTITIES];
@@ -75,23 +75,23 @@ Entity *G_TestEntityPosition(Entity *ent)
     return NULL;
 }
 
-#define R133_KB_FRAMES 40
+#define UIVK_KB_FRAMES 40
 
-static int r133_kb_frame[MAX_GENTITIES];
-static int r133_kb_left[MAX_GENTITIES];
+static int uivk_kb_frame[MAX_GENTITIES];
+static int uivk_kb_left[MAX_GENTITIES];
 
-void R133_KB_Arm(int entnum)
+void UIVK_KB_Arm(int entnum)
 {
     if (entnum < 0 || entnum >= MAX_GENTITIES) {
         return;
     }
 
-    if (r133_kb_frame[entnum] > level.framenum) {
-        r133_kb_left[entnum] = 0;
+    if (uivk_kb_frame[entnum] > level.framenum) {
+        uivk_kb_left[entnum] = 0;
     }
 
-    r133_kb_frame[entnum] = level.framenum;
-    r133_kb_left[entnum]  = R133_KB_FRAMES;
+    uivk_kb_frame[entnum] = level.framenum;
+    uivk_kb_left[entnum]  = UIVK_KB_FRAMES;
 }
 
 void G_CheckVelocity(Entity *ent)
@@ -873,24 +873,24 @@ void G_Physics_Step(Entity *ent)
 
     {
         if (ent->entnum >= 0 && ent->entnum < MAX_GENTITIES) {
-            if (r133_kb_frame[ent->entnum] > level.framenum) {
-                r133_kb_left[ent->entnum] = 0;
+            if (uivk_kb_frame[ent->entnum] > level.framenum) {
+                uivk_kb_left[ent->entnum] = 0;
             }
-            r133_kb_frame[ent->entnum] = level.framenum;
+            uivk_kb_frame[ent->entnum] = level.framenum;
 
-            if (r133_kb_left[ent->entnum] > 0 && getenv("EF2_KNOCKBACK") && R120_On()) {
-                int r133_kb_ge = -1;
+            if (uivk_kb_left[ent->entnum] > 0 && getenv("EF2_KNOCKBACK") && PROBE_On()) {
+                int uivk_kb_ge = -1;
 
                 if (ent->groundentity) {
-                    r133_kb_ge = ent->groundentity - g_entities;
+                    uivk_kb_ge = ent->groundentity - g_entities;
                 }
 
-                gi.Printf("[R133:kbflight] "
+                gi.Printf("[UIVK:kbflight] "
                           "ent=%d f=%d ge=%d vel=(%.1f,%.1f,%.1f) spd=%.1f "
                           "org=(%.1f,%.1f,%.1f) mv=%d df=%d mb=%d svtime=%d\n",
                           ent->entnum,
-                          R133_KB_FRAMES - r133_kb_left[ent->entnum] + 1,
-                          r133_kb_ge,
+                          UIVK_KB_FRAMES - uivk_kb_left[ent->entnum] + 1,
+                          uivk_kb_ge,
                           ent->velocity[0], ent->velocity[1], ent->velocity[2],
                           ent->velocity.length(),
                           ent->origin[0], ent->origin[1], ent->origin[2],
@@ -899,7 +899,7 @@ void G_Physics_Step(Entity *ent)
                           (int)M_CheckBottom(ent),
                           level.inttime);
 
-                r133_kb_left[ent->entnum]--;
+                uivk_kb_left[ent->entnum]--;
             }
         }
     }
@@ -1130,7 +1130,7 @@ static void G_EntTrash_Record( Entity *ent, int movetype )
 	g_enttrash_movetype[ entnum ] = movetype;
 	g_enttrash_frame[ entnum ] = level.framenum;
 
-	gi.Printf( "[R133:enttrash] movetype ent=%d class='%s' old=%d new=0x%08x(%d)"
+	gi.Printf( "[UIVK:enttrash] movetype ent=%d class='%s' old=%d new=0x%08x(%d)"
 			   " size=%08x,%08x,%08x mass=0x%08x gravity=0x%08x"
 			   " inuse=%d linked=%d freetime=%.3f spawntime=%.3f"
 			   " frame=%d ltime=%.3f\n",
@@ -1179,7 +1179,7 @@ static void G_EntTrash_Scale( Entity *ent )
 
 	g_enttrash_scale[ entnum ] = bits;
 
-	gi.Printf( "[R133:enttrash] scale ent=%d class='%s' scale=0x%08x alpha=0x%08x"
+	gi.Printf( "[UIVK:enttrash] scale ent=%d class='%s' scale=0x%08x alpha=0x%08x"
 			   " renderfx=0x%08x solid=%d modelindex=%d parent=%d"
 			   " frame=%d ltime=%.3f\n",
 			   entnum,
@@ -1207,7 +1207,7 @@ void G_EntTrash_Pointer(const char *where, Entity *player, void *pheur)
 	int entnum;
 	int flip;
 
-	if (!R133_EntTrashOn()) {
+	if (!UIVK_EntTrashOn()) {
 		return;
 	}
 
@@ -1224,7 +1224,7 @@ void G_EntTrash_Pointer(const char *where, Entity *player, void *pheur)
 	g_enttrash_ph_lastframe = level.framenum;
 	g_enttrash_ph_valid     = qtrue;
 
-	gi.Printf("[R133:enttrash] %s ent=%d class='%s' p_heuristics=%p movetype=%d%s"
+	gi.Printf("[UIVK:enttrash] %s ent=%d class='%s' p_heuristics=%p movetype=%d%s"
 			  " frame=%d ltime=%.3f\n",
 			  where,
 			  entnum,
@@ -1238,11 +1238,11 @@ void G_EntTrash_Pointer(const char *where, Entity *player, void *pheur)
 
 void G_EntTrash_KilledEntry(Entity *victim, Entity *attacker, float damage)
 {
-	if (!R133_EntTrashOn()) {
+	if (!UIVK_EntTrashOn()) {
 		return;
 	}
 
-	gi.Printf("[R133:enttrash] Killed ent=%d class='%s' attacker=%p aent=%d"
+	gi.Printf("[UIVK:enttrash] Killed ent=%d class='%s' attacker=%p aent=%d"
 			  " damage=%.1f frame=%d ltime=%.3f\n",
 			  victim ? victim->entnum : -1,
 			  (victim && victim->getClassname()) ? victim->getClassname() : "?",
@@ -1261,7 +1261,7 @@ void G_EntTrash_Tick(void)
 	int        i;
 	int        previous;
 
-	if (!R133_EntTrashOn()) {
+	if (!UIVK_EntTrashOn()) {
 		return;
 	}
 
@@ -1297,7 +1297,7 @@ void G_EntTrash_Tick(void)
 		g_enttrash_mt_frame[i] = level.framenum;
 		g_enttrash_mt_valid[i] = qtrue;
 
-		gi.Printf("[R133:enttrash] sweep ent=%d class='%s' movetype=%d old=%d%s"
+		gi.Printf("[UIVK:enttrash] sweep ent=%d class='%s' movetype=%d old=%d%s"
 				  " health=%.1f deadflag=%d frame=%d ltime=%.3f\n",
 				  i,
 				  ent->getClassname() ? ent->getClassname() : "?",
@@ -1321,38 +1321,38 @@ void G_RunEntity(Entity *ent)
         return;
     }
 
-    if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_r120", "0", 0)->integer) {
-        static int  r133_nf_reported[MAX_GENTITIES];
-        static vec3_t r133_nf_lastorg[MAX_GENTITIES];
-        static vec3_t r133_nf_lastvel[MAX_GENTITIES];
-        int         r133_nf_e = edict - g_entities;
+    if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "0", 0)->integer) {
+        static int  uivk_nf_reported[MAX_GENTITIES];
+        static vec3_t uivk_nf_lastorg[MAX_GENTITIES];
+        static vec3_t uivk_nf_lastvel[MAX_GENTITIES];
+        int         uivk_nf_e = edict - g_entities;
 
-        if (r133_nf_e >= 0 && r133_nf_e < MAX_GENTITIES) {
-            int r133_nf_bad = 0;
+        if (uivk_nf_e >= 0 && uivk_nf_e < MAX_GENTITIES) {
+            int uivk_nf_bad = 0;
 
-            for (int r133_nf_i = 0; r133_nf_i < 3; r133_nf_i++) {
-                if (!(ent->origin[r133_nf_i] == ent->origin[r133_nf_i])
-                    || (ent->origin[r133_nf_i] > 1e12f) || (ent->origin[r133_nf_i] < -1e12f)) {
-                    r133_nf_bad |= 1;
+            for (int uivk_nf_i = 0; uivk_nf_i < 3; uivk_nf_i++) {
+                if (!(ent->origin[uivk_nf_i] == ent->origin[uivk_nf_i])
+                    || (ent->origin[uivk_nf_i] > 1e12f) || (ent->origin[uivk_nf_i] < -1e12f)) {
+                    uivk_nf_bad |= 1;
                 }
-                if (!(ent->velocity[r133_nf_i] == ent->velocity[r133_nf_i])
-                    || (ent->velocity[r133_nf_i] > 1e12f) || (ent->velocity[r133_nf_i] < -1e12f)) {
-                    r133_nf_bad |= 2;
+                if (!(ent->velocity[uivk_nf_i] == ent->velocity[uivk_nf_i])
+                    || (ent->velocity[uivk_nf_i] > 1e12f) || (ent->velocity[uivk_nf_i] < -1e12f)) {
+                    uivk_nf_bad |= 2;
                 }
             }
 
-            if (r133_nf_bad) {
-                if (!r133_nf_reported[r133_nf_e]) {
-                    r133_nf_reported[r133_nf_e] = 1;
-                    gi.Printf("[R133:nanfirst] ent=%d cls='%s' m='%s' bad=%d svtime=%d "
+            if (uivk_nf_bad) {
+                if (!uivk_nf_reported[uivk_nf_e]) {
+                    uivk_nf_reported[uivk_nf_e] = 1;
+                    gi.Printf("[UIVK:nanfirst] ent=%d cls='%s' m='%s' bad=%d svtime=%d "
                               "mv=%d ge=%d fl=%d scale=%.6g mass=%d "
                               "org=(%.1f,%.1f,%.1f) vel=(%.1f,%.1f,%.1f) "
                               "lastorg=(%.1f,%.1f,%.1f) lastvel=(%.1f,%.1f,%.1f) "
                               "td=(%.2f,%.2f,%.2f) df=%d\n",
-                              r133_nf_e,
+                              uivk_nf_e,
                               ent->getClassname(),
                               ent->model.c_str(),
-                              r133_nf_bad,
+                              uivk_nf_bad,
                               level.inttime,
                               (int)ent->movetype,
                               ent->groundentity ? (int)(ent->groundentity - g_entities) : -1,
@@ -1361,19 +1361,19 @@ void G_RunEntity(Entity *ent)
                               ent->mass,
                               ent->origin[0], ent->origin[1], ent->origin[2],
                               ent->velocity[0], ent->velocity[1], ent->velocity[2],
-                              r133_nf_lastorg[r133_nf_e][0],
-                              r133_nf_lastorg[r133_nf_e][1],
-                              r133_nf_lastorg[r133_nf_e][2],
-                              r133_nf_lastvel[r133_nf_e][0],
-                              r133_nf_lastvel[r133_nf_e][1],
-                              r133_nf_lastvel[r133_nf_e][2],
+                              uivk_nf_lastorg[uivk_nf_e][0],
+                              uivk_nf_lastorg[uivk_nf_e][1],
+                              uivk_nf_lastorg[uivk_nf_e][2],
+                              uivk_nf_lastvel[uivk_nf_e][0],
+                              uivk_nf_lastvel[uivk_nf_e][1],
+                              uivk_nf_lastvel[uivk_nf_e][2],
                               ent->total_delta[0], ent->total_delta[1], ent->total_delta[2],
                               (int)ent->deadflag);
                 }
             } else {
-                for (int r133_nf_i = 0; r133_nf_i < 3; r133_nf_i++) {
-                    r133_nf_lastorg[r133_nf_e][r133_nf_i] = ent->origin[r133_nf_i];
-                    r133_nf_lastvel[r133_nf_e][r133_nf_i] = ent->velocity[r133_nf_i];
+                for (int uivk_nf_i = 0; uivk_nf_i < 3; uivk_nf_i++) {
+                    uivk_nf_lastorg[uivk_nf_e][uivk_nf_i] = ent->origin[uivk_nf_i];
+                    uivk_nf_lastvel[uivk_nf_e][uivk_nf_i] = ent->velocity[uivk_nf_i];
                 }
             }
         }
@@ -1410,14 +1410,14 @@ void G_RunEntity(Entity *ent)
             G_Physics_Toss(ent);
             break;
         default:
-            if (R133_EntTrashOn()) {
+            if (UIVK_EntTrashOn()) {
                 G_EntTrash_Record(ent, (int)ent->movetype);
             }
             gi.Error(ERR_DROP, "G_Physics: bad movetype %i", (int)ent->movetype);
         }
     }
 
-    if (R133_EntTrashOn()) {
+    if (UIVK_EntTrashOn()) {
         G_EntTrash_Scale(ent);
     }
 

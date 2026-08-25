@@ -1,5 +1,5 @@
-#ifndef R200_QGL_GLES3_PROCS_H
-#define R200_QGL_GLES3_PROCS_H
+#ifndef GLES3_QGL_GLES3_PROCS_H
+#define GLES3_QGL_GLES3_PROCS_H
 
 #define QGL_GLES3_CORE_PROCS \
 	GLE(void, BeginTransformFeedback, GLenum primitiveMode) \

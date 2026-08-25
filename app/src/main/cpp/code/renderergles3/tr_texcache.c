@@ -35,7 +35,7 @@ static unsigned long long rc_fnv( unsigned long long h, const void *data, int by
 	return h;
 }
 
-void R201_TexCache_Hash64( const void *data, int bytes, unsigned int *lo, unsigned int *hi )
+void SMP_TexCache_Hash64( const void *data, int bytes, unsigned int *lo, unsigned int *hi )
 {
 	unsigned long long h;
 
@@ -48,7 +48,7 @@ void R201_TexCache_Hash64( const void *data, int bytes, unsigned int *lo, unsign
 }
 
 
-int R201_TexCache_StoredBytes( int width, int height, int iMipmapsAvailable, int srcDxt )
+int SMP_TexCache_StoredBytes( int width, int height, int iMipmapsAvailable, int srcDxt )
 {
 	int blockBytes = ( srcDxt == 1  ) ? 8 : 16;
 	int baseSize   = ( ( width + 3 ) / 4 ) * ( ( height + 3 ) / 4 ) * blockBytes;
@@ -65,16 +65,16 @@ int R201_TexCache_StoredBytes( int width, int height, int iMipmapsAvailable, int
 	return ( total < baseSize ) ? baseSize : total;
 }
 
-void R201_TexCache_SourceHash( const unsigned char *dxt, int width, int height,
+void SMP_TexCache_SourceHash( const unsigned char *dxt, int width, int height,
 							   int iMipmapsAvailable, int srcDxt,
 							   unsigned int *lo, unsigned int *hi, int *storedBytes )
 {
-	int bytes = R201_TexCache_StoredBytes( width, height, iMipmapsAvailable, srcDxt );
+	int bytes = SMP_TexCache_StoredBytes( width, height, iMipmapsAvailable, srcDxt );
 
 	if ( storedBytes ) {
 		*storedBytes = bytes;
 	}
-	R201_TexCache_Hash64( dxt, bytes, lo, hi );
+	SMP_TexCache_Hash64( dxt, bytes, lo, hi );
 }
 
 static int rc_level_bytes( int upW, int upH, int levels )
@@ -92,7 +92,7 @@ static int rc_level_bytes( int upW, int upH, int levels )
 	return total;
 }
 
-static void rc_key_hash( const r201TexCacheKey_t *k, unsigned int *lo, unsigned int *hi )
+static void rc_key_hash( const smpTexCacheKey_t *k, unsigned int *lo, unsigned int *hi )
 {
 	unsigned long long h = RC_FNV_OFFSET;
 	unsigned char b[4];
@@ -100,7 +100,7 @@ static void rc_key_hash( const r201TexCacheKey_t *k, unsigned int *lo, unsigned 
 
 #define RC_H32(v) do { rc_put32( b, (unsigned int)(v) ); h = rc_fnv( h, b, 4 ); } while ( 0 )
 
-	RC_H32( R201_TEXCACHE_MAGIC );
+	RC_H32( SMP_TEXCACHE_MAGIC );
 	RC_H32( k->version );
 	RC_H32( k->target );
 	RC_H32( k->srcDxt );
@@ -124,7 +124,7 @@ static void rc_key_hash( const r201TexCacheKey_t *k, unsigned int *lo, unsigned 
 	*hi = (unsigned int)(h >> 32);
 }
 
-void R201_TexCache_FillKey( r201TexCacheKey_t *key, const char *name,
+void SMP_TexCache_FillKey( smpTexCacheKey_t *key, const char *name,
 							int width, int height, int numMipmaps, int picmip,
 							int maxTextureSize, int srcDxt, int target,
 							int base, int upW, int upH, int levels,
@@ -134,7 +134,7 @@ void R201_TexCache_FillKey( r201TexCacheKey_t *key, const char *name,
 	int i, n;
 
 	memset( key, 0, sizeof( *key ) );
-	key->version        = R201_TEXCACHE_ENC_VERSION;
+	key->version        = SMP_TEXCACHE_ENC_VERSION;
 	key->target         = (unsigned int)target;
 	key->srcDxt         = (unsigned int)srcDxt;
 	key->width          = width;
@@ -151,24 +151,24 @@ void R201_TexCache_FillKey( r201TexCacheKey_t *key, const char *name,
 	key->srcHashHi      = srcHashHi;
 
 	n = name ? (int)strlen( name ) : 0;
-	if ( n > R201_TEXCACHE_NAME_MAX - 1 ) {
-		n = R201_TEXCACHE_NAME_MAX - 1;
+	if ( n > SMP_TEXCACHE_NAME_MAX - 1 ) {
+		n = SMP_TEXCACHE_NAME_MAX - 1;
 	}
 	for ( i = 0; i < n; i++ ) {
 		key->name[i] = name[i];
 	}
 }
 
-void R201_TexCache_Path( const r201TexCacheKey_t *key, char *out, int outSize )
+void SMP_TexCache_Path( const smpTexCacheKey_t *key, char *out, int outSize )
 {
 	unsigned int lo, hi;
 
 	rc_key_hash( key, &lo, &hi );
 	snprintf( out, (size_t)outSize, "%s/%08x%08x_%u_%u.%s",
-			  R201_TEXCACHE_DIR, hi, lo, key->target, key->version, R201_TEXCACHE_EXT );
+			  SMP_TEXCACHE_DIR, hi, lo, key->target, key->version, SMP_TEXCACHE_EXT );
 }
 
-static int rc_serialize_header( const r201TexCacheKey_t *key,
+static int rc_serialize_header( const smpTexCacheKey_t *key,
 								unsigned int payloadLo, unsigned int payloadHi,
 								unsigned int seqLo, unsigned int seqHi,
 								unsigned char *out, int outSize )
@@ -177,11 +177,11 @@ static int rc_serialize_header( const r201TexCacheKey_t *key,
 	int nameLen = (int)strlen( key->name );
 	int pad, nameEnd, hdrLen, payloadBytes;
 
-	if ( nameLen > R201_TEXCACHE_NAME_MAX - 1 ) {
-		nameLen = R201_TEXCACHE_NAME_MAX - 1;
+	if ( nameLen > SMP_TEXCACHE_NAME_MAX - 1 ) {
+		nameLen = SMP_TEXCACHE_NAME_MAX - 1;
 	}
 	pad = ( 4 - ( nameLen & 3 ) ) & 3;
-	nameEnd = R201_TEXCACHE_HDR_FIXED + nameLen + pad;
+	nameEnd = SMP_TEXCACHE_HDR_FIXED + nameLen + pad;
 	hdrLen = nameEnd + 8;
 	payloadBytes = rc_level_bytes( key->upW, key->upH, key->levels );
 	if ( outSize < hdrLen || payloadBytes <= 0 ) {
@@ -191,7 +191,7 @@ static int rc_serialize_header( const r201TexCacheKey_t *key,
 	rc_key_hash( key, &klo, &khi );
 	memset( out, 0, (size_t)hdrLen );
 
-	rc_put32( out + 0,  R201_TEXCACHE_MAGIC );
+	rc_put32( out + 0,  SMP_TEXCACHE_MAGIC );
 	rc_put32( out + 4,  key->version );
 	rc_put32( out + 8,  (unsigned int)hdrLen );
 	rc_put32( out + 12, key->target );
@@ -217,9 +217,9 @@ static int rc_serialize_header( const r201TexCacheKey_t *key,
 	rc_put32( out + 92, seqLo );
 	rc_put32( out + 96, seqHi );
 
-	memcpy( out + R201_TEXCACHE_HDR_FIXED, key->name, (size_t)nameLen );
+	memcpy( out + SMP_TEXCACHE_HDR_FIXED, key->name, (size_t)nameLen );
 
-	R201_TexCache_Hash64( out, nameEnd, &hlo, &hhi );
+	SMP_TexCache_Hash64( out, nameEnd, &hlo, &hhi );
 	rc_put32( out + nameEnd, hlo );
 	rc_put32( out + nameEnd + 4, hhi );
 	return hdrLen;
@@ -231,11 +231,11 @@ typedef struct {
 	char			name[80];	
 } rc_entry_t;
 
-static const r201TexCacheIO_t	*s_io;
+static const smpTexCacheIO_t	*s_io;
 static int						 s_enabled;
 static int						 s_maxBytes;
 static long long				 s_totalBytes;
-static rc_entry_t				 s_entries[R201_TEXCACHE_MAX_ENTRIES];
+static rc_entry_t				 s_entries[SMP_TEXCACHE_MAX_ENTRIES];
 static int						 s_entryCount;
 static unsigned int				 s_seqLo, s_seqHi;
 
@@ -247,11 +247,11 @@ static int rc_seq_newer( unsigned int aLo, unsigned int aHi, unsigned int bLo, u
 	return aLo > bLo;
 }
 
-static int rc_evict_for( int need, r201TexCacheResult_t *res )
+static int rc_evict_for( int need, smpTexCacheResult_t *res )
 {
 	while ( s_totalBytes + need > s_maxBytes && s_entryCount > 0 ) {
 		int oldest = 0, i;
-		char path[R201_TEXCACHE_PATH_MAX];
+		char path[SMP_TEXCACHE_PATH_MAX];
 
 		for ( i = 1; i < s_entryCount; i++ ) {
 			if ( rc_seq_newer( s_entries[oldest].seqLo, s_entries[oldest].seqHi,
@@ -259,7 +259,7 @@ static int rc_evict_for( int need, r201TexCacheResult_t *res )
 				oldest = i;
 			}
 		}
-		snprintf( path, sizeof( path ), "%s/%s", R201_TEXCACHE_DIR, s_entries[oldest].name );
+		snprintf( path, sizeof( path ), "%s/%s", SMP_TEXCACHE_DIR, s_entries[oldest].name );
 		if ( s_io && s_io->removeFile ) {
 			s_io->removeFile( s_io->ud, path );
 		}
@@ -289,7 +289,7 @@ static void rc_ledger_forget( const char *basename )
 
 static void rc_ledger_add( const char *basename, unsigned int seqLo, unsigned int seqHi, int bytes )
 {
-	if ( s_entryCount >= R201_TEXCACHE_MAX_ENTRIES ) {
+	if ( s_entryCount >= SMP_TEXCACHE_MAX_ENTRIES ) {
 		return;
 	}
 	/* One ledger row per file: a re-store (or a corrupt entry rewritten after
@@ -304,7 +304,7 @@ static void rc_ledger_add( const char *basename, unsigned int seqLo, unsigned in
 	s_totalBytes += bytes;
 }
 
-void R201_TexCache_Begin( const r201TexCacheIO_t *io, int enabled, int maxBytes )
+void SMP_TexCache_Begin( const smpTexCacheIO_t *io, int enabled, int maxBytes )
 {
 	char **names;
 	int count = 0, i;
@@ -327,23 +327,23 @@ void R201_TexCache_Begin( const r201TexCacheIO_t *io, int enabled, int maxBytes 
 	names = s_io->list ? s_io->list( s_io->ud, &count ) : NULL;
 	for ( i = 0; names && i < count; i++ ) {
 		const char *bn = names[i];
-		char path[R201_TEXCACHE_PATH_MAX];
-		unsigned char hdr[R201_TEXCACHE_HDR_FIXED];
-		r201TexCacheFile_t fh;
+		char path[SMP_TEXCACHE_PATH_MAX];
+		unsigned char hdr[SMP_TEXCACHE_HDR_FIXED];
+		smpTexCacheFile_t fh;
 		long len;
 		int got;
 
-		snprintf( path, sizeof( path ), "%s/%s", R201_TEXCACHE_DIR, bn );
+		snprintf( path, sizeof( path ), "%s/%s", SMP_TEXCACHE_DIR, bn );
 		len = s_io->openRead( s_io->ud, path, &fh );
 		if ( len < 0 ) {
 			continue;
 		}
-		got = s_io->read( s_io->ud, fh, hdr, R201_TEXCACHE_HDR_FIXED );
+		got = s_io->read( s_io->ud, fh, hdr, SMP_TEXCACHE_HDR_FIXED );
 		s_io->closeRead( s_io->ud, fh );
 
-		if ( len < R201_TEXCACHE_HDR_FIXED + 8 || got != R201_TEXCACHE_HDR_FIXED ||
-			 rc_get32( hdr + 0 ) != R201_TEXCACHE_MAGIC ||
-			 rc_get32( hdr + 4 ) != R201_TEXCACHE_ENC_VERSION ) {
+		if ( len < SMP_TEXCACHE_HDR_FIXED + 8 || got != SMP_TEXCACHE_HDR_FIXED ||
+			 rc_get32( hdr + 0 ) != SMP_TEXCACHE_MAGIC ||
+			 rc_get32( hdr + 4 ) != SMP_TEXCACHE_ENC_VERSION ) {
 			if ( s_io->removeFile ) {
 				s_io->removeFile( s_io->ud, path );
 			}
@@ -357,7 +357,7 @@ void R201_TexCache_Begin( const r201TexCacheIO_t *io, int enabled, int maxBytes 
 	rc_evict_for( 0, NULL );
 }
 
-void R201_TexCache_Shutdown( void )
+void SMP_TexCache_Shutdown( void )
 {
 	s_enabled = 0;
 	s_io = NULL;
@@ -365,7 +365,7 @@ void R201_TexCache_Shutdown( void )
 	s_totalBytes = 0;
 }
 
-int R201_TexCache_Enabled( void )
+int SMP_TexCache_Enabled( void )
 {
 	return s_enabled;
 }
@@ -382,16 +382,16 @@ static void rc_delete_ours( const char *path )
 	}
 }
 
-int R201_TexCache_Load( const r201TexCacheKey_t *key,
+int SMP_TexCache_Load( const smpTexCacheKey_t *key,
 						unsigned char **blocks, int *bytes,
 						void *(*alloc)( int ), void (*dealloc)( void * ),
-						r201TexCacheResult_t *res )
+						smpTexCacheResult_t *res )
 {
-	unsigned char hdr[R201_TEXCACHE_HDR_FIXED];
-	unsigned char nameBuf[R201_TEXCACHE_NAME_MAX];
+	unsigned char hdr[SMP_TEXCACHE_HDR_FIXED];
+	unsigned char nameBuf[SMP_TEXCACHE_NAME_MAX];
 	unsigned char tail[8];
-	r201TexCacheFile_t fh;
-	char path[R201_TEXCACHE_PATH_MAX];
+	smpTexCacheFile_t fh;
+	char path[SMP_TEXCACHE_PATH_MAX];
 	long len;
 	int got, nameLen, pad, nameEnd, hdrLen, payloadBytes, i;
 
@@ -401,44 +401,44 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 		memset( res, 0, sizeof( *res ) );
 	}
 	if ( !s_enabled || !key ) {
-		if ( res ) res->stat = R201_TEXCACHE_STAT_DISABLED;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_DISABLED;
 		return 0;
 	}
-	R201_TexCache_Path( key, path, (int)sizeof( path ) );
+	SMP_TexCache_Path( key, path, (int)sizeof( path ) );
 	if ( res ) {
 		snprintf( res->path, sizeof( res->path ), "%s", path );
 	}
 
 	len = s_io->openRead( s_io->ud, path, &fh );
 	if ( len < 0 ) {
-		if ( res ) res->stat = R201_TEXCACHE_STAT_MISS;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_MISS;
 		return 0;
 	}
-	if ( len < R201_TEXCACHE_HDR_FIXED + 8 ) {
+	if ( len < SMP_TEXCACHE_HDR_FIXED + 8 ) {
 		s_io->closeRead( s_io->ud, fh );
 		rc_delete_ours( path );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 		return 0;
 	}
-	got = s_io->read( s_io->ud, fh, hdr, R201_TEXCACHE_HDR_FIXED );
-	if ( got != R201_TEXCACHE_HDR_FIXED ||
-		 rc_get32( hdr + 0 ) != R201_TEXCACHE_MAGIC ||
-		 rc_get32( hdr + 4 ) != R201_TEXCACHE_ENC_VERSION ) {
+	got = s_io->read( s_io->ud, fh, hdr, SMP_TEXCACHE_HDR_FIXED );
+	if ( got != SMP_TEXCACHE_HDR_FIXED ||
+		 rc_get32( hdr + 0 ) != SMP_TEXCACHE_MAGIC ||
+		 rc_get32( hdr + 4 ) != SMP_TEXCACHE_ENC_VERSION ) {
 		s_io->closeRead( s_io->ud, fh );
 		rc_delete_ours( path );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 		return 0;
 	}
 
 	nameLen = (int)rc_get32( hdr + 80 );
-	if ( nameLen < 0 || nameLen >= R201_TEXCACHE_NAME_MAX ) {
+	if ( nameLen < 0 || nameLen >= SMP_TEXCACHE_NAME_MAX ) {
 		s_io->closeRead( s_io->ud, fh );
 		rc_delete_ours( path );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 		return 0;
 	}
 	pad = ( 4 - ( nameLen & 3 ) ) & 3;
-	nameEnd = R201_TEXCACHE_HDR_FIXED + nameLen + pad;
+	nameEnd = SMP_TEXCACHE_HDR_FIXED + nameLen + pad;
 	hdrLen = nameEnd + 8;
 
 	memset( nameBuf, 0, sizeof( nameBuf ) );
@@ -446,20 +446,20 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 	if ( got != nameLen + pad ) {
 		s_io->closeRead( s_io->ud, fh );
 		rc_delete_ours( path );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 		return 0;
 	}
 	got = s_io->read( s_io->ud, fh, tail, 8 );
 	if ( got != 8 ) {
 		s_io->closeRead( s_io->ud, fh );
 		rc_delete_ours( path );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 		return 0;
 	}
 
 	{
 		unsigned int hlo, hhi;
-		unsigned long long h = rc_fnv( RC_FNV_OFFSET, hdr, R201_TEXCACHE_HDR_FIXED );
+		unsigned long long h = rc_fnv( RC_FNV_OFFSET, hdr, SMP_TEXCACHE_HDR_FIXED );
 
 		h = rc_fnv( h, nameBuf, nameLen + pad );
 		hlo = (unsigned int)(h & 0xFFFFFFFFULL);
@@ -467,7 +467,7 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 		if ( rc_get32( tail ) != hlo || rc_get32( tail + 4 ) != hhi ) {
 			s_io->closeRead( s_io->ud, fh );
 			rc_delete_ours( path );
-			if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+			if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 			return 0;
 		}
 	}
@@ -475,10 +475,10 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 	payloadBytes = (int)rc_get32( hdr + 68 );
 	{
 		unsigned int klo, khi;
-		char name[R201_TEXCACHE_NAME_MAX];
+		char name[SMP_TEXCACHE_NAME_MAX];
 
 		rc_key_hash( key, &klo, &khi );
-		memcpy( name, nameBuf, (size_t)R201_TEXCACHE_NAME_MAX );
+		memcpy( name, nameBuf, (size_t)SMP_TEXCACHE_NAME_MAX );
 
 		if ( rc_get32( hdr + 12 ) != key->target ||
 			 rc_get32( hdr + 16 ) != key->srcDxt ||
@@ -496,9 +496,9 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 			 rc_get32( hdr + 64 ) != key->srcHashHi ||
 			 rc_get32( hdr + 84 ) != klo ||
 			 rc_get32( hdr + 88 ) != khi ||
-			 memcmp( name, key->name, R201_TEXCACHE_NAME_MAX ) != 0 ) {
+			 memcmp( name, key->name, SMP_TEXCACHE_NAME_MAX ) != 0 ) {
 			s_io->closeRead( s_io->ud, fh );
-			if ( res ) res->stat = R201_TEXCACHE_STAT_MISS;
+			if ( res ) res->stat = SMP_TEXCACHE_STAT_MISS;
 			return 0;
 		}
 	}
@@ -509,13 +509,13 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 		 len != (long)hdrLen + (long)payloadBytes ) {
 		s_io->closeRead( s_io->ud, fh );
 		rc_delete_ours( path );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 		return 0;
 	}
 
 	if ( !alloc ) {
 		s_io->closeRead( s_io->ud, fh );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_MISS;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_MISS;
 		return 0;
 	}
 	{
@@ -524,7 +524,7 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 
 		if ( !buf ) {
 			s_io->closeRead( s_io->ud, fh );
-			if ( res ) res->stat = R201_TEXCACHE_STAT_MISS;
+			if ( res ) res->stat = SMP_TEXCACHE_STAT_MISS;
 			return 0;
 		}
 		for ( i = 0; i < payloadBytes; ) {
@@ -535,63 +535,63 @@ int R201_TexCache_Load( const r201TexCacheKey_t *key,
 				s_io->closeRead( s_io->ud, fh );
 				if ( dealloc ) dealloc( buf );
 				rc_delete_ours( path );
-				if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+				if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 				return 0;
 			}
 			i += chunk;
 		}
 		s_io->closeRead( s_io->ud, fh );
 
-		R201_TexCache_Hash64( buf, payloadBytes, &plo, &phi );
+		SMP_TexCache_Hash64( buf, payloadBytes, &plo, &phi );
 		if ( plo != rc_get32( hdr + 72 ) || phi != rc_get32( hdr + 76 ) ) {
 			if ( dealloc ) dealloc( buf );
 			rc_delete_ours( path );
-			if ( res ) res->stat = R201_TEXCACHE_STAT_CORRUPT;
+			if ( res ) res->stat = SMP_TEXCACHE_STAT_CORRUPT;
 			return 0;
 		}
 
 		if ( blocks ) *blocks = buf;
 		else if ( dealloc ) dealloc( buf );
 		if ( bytes ) *bytes = payloadBytes;
-		if ( res ) res->stat = R201_TEXCACHE_STAT_HIT;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_HIT;
 		return 1;
 	}
 }
 
-int R201_TexCache_Store( const r201TexCacheKey_t *key,
+int SMP_TexCache_Store( const smpTexCacheKey_t *key,
 						 const unsigned char *blocks, int bytes,
-						 r201TexCacheResult_t *res )
+						 smpTexCacheResult_t *res )
 {
 	unsigned char *hdr = NULL, *whole = NULL;
 	unsigned int plo, phi;
-	char path[R201_TEXCACHE_PATH_MAX];
+	char path[SMP_TEXCACHE_PATH_MAX];
 	int hdrLen, total, maxHdr;
 
 	if ( res ) {
 		memset( res, 0, sizeof( *res ) );
 	}
 	if ( !s_enabled || !key || !blocks || bytes <= 0 ) {
-		if ( res ) res->stat = R201_TEXCACHE_STAT_DISABLED;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_DISABLED;
 		return 0;
 	}
-	R201_TexCache_Path( key, path, (int)sizeof( path ) );
+	SMP_TexCache_Path( key, path, (int)sizeof( path ) );
 	if ( res ) {
 		snprintf( res->path, sizeof( res->path ), "%s", path );
 	}
 	if ( bytes != rc_level_bytes( key->upW, key->upH, key->levels ) ) {
-		if ( res ) res->stat = R201_TEXCACHE_STAT_SKIP;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_SKIP;
 		return 0;
 	}
 	if ( bytes > s_maxBytes ) {
-		if ( res ) res->stat = R201_TEXCACHE_STAT_SKIP;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_SKIP;
 		return 0;
 	}
-	R201_TexCache_Hash64( blocks, bytes, &plo, &phi );
+	SMP_TexCache_Hash64( blocks, bytes, &plo, &phi );
 
-	maxHdr = R201_TEXCACHE_HDR_FIXED + R201_TEXCACHE_NAME_MAX + 8;
+	maxHdr = SMP_TEXCACHE_HDR_FIXED + SMP_TEXCACHE_NAME_MAX + 8;
 	hdr = (unsigned char *)malloc( (size_t)maxHdr );
 	if ( !hdr ) {
-		if ( res ) res->stat = R201_TEXCACHE_STAT_WRITE_FAIL;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_WRITE_FAIL;
 		return 0;
 	}
 
@@ -602,13 +602,13 @@ int R201_TexCache_Store( const r201TexCacheKey_t *key,
 	hdrLen = rc_serialize_header( key, plo, phi, s_seqLo, s_seqHi, hdr, maxHdr );
 	if ( hdrLen <= 0 ) {
 		free( hdr );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_WRITE_FAIL;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_WRITE_FAIL;
 		return 0;
 	}
 
 	if ( !rc_evict_for( hdrLen + bytes, res ) ) {
 		free( hdr );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_SKIP;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_SKIP;
 		return 0;
 	}
 
@@ -616,7 +616,7 @@ int R201_TexCache_Store( const r201TexCacheKey_t *key,
 	whole = (unsigned char *)malloc( (size_t)total );
 	if ( !whole ) {
 		free( hdr );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_WRITE_FAIL;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_WRITE_FAIL;
 		return 0;
 	}
 	memcpy( whole, hdr, (size_t)hdrLen );
@@ -626,7 +626,7 @@ int R201_TexCache_Store( const r201TexCacheKey_t *key,
 	if ( !s_io->writeAll( s_io->ud, path, whole, total ) ) {
 		free( whole );
 		rc_delete_ours( path );
-		if ( res ) res->stat = R201_TEXCACHE_STAT_WRITE_FAIL;
+		if ( res ) res->stat = SMP_TEXCACHE_STAT_WRITE_FAIL;
 		return 0;
 	}
 	free( whole );
@@ -636,14 +636,14 @@ int R201_TexCache_Store( const r201TexCacheKey_t *key,
 
 		rc_ledger_add( base ? base + 1 : path, s_seqLo, s_seqHi, total );
 	}
-	if ( res ) res->stat = R201_TEXCACHE_STAT_STORED;
+	if ( res ) res->stat = SMP_TEXCACHE_STAT_STORED;
 	return 1;
 }
 
-#ifndef R201_TEXCACHE_STANDALONE
+#ifndef SMP_TEXCACHE_STANDALONE
 #include "tr_local.h"
 
-static long rc_ri_open( void *ud, const char *qpath, r201TexCacheFile_t *fh )
+static long rc_ri_open( void *ud, const char *qpath, smpTexCacheFile_t *fh )
 {
 	fileHandle_t h = 0;
 	long len;
@@ -653,17 +653,17 @@ static long rc_ri_open( void *ud, const char *qpath, r201TexCacheFile_t *fh )
 	if ( len < 0 || h == 0 ) {
 		return -1;
 	}
-	*fh = (r201TexCacheFile_t)(intptr_t)h;
+	*fh = (smpTexCacheFile_t)(intptr_t)h;
 	return len;
 }
 
-static int rc_ri_read( void *ud, r201TexCacheFile_t fh, void *buf, int len )
+static int rc_ri_read( void *ud, smpTexCacheFile_t fh, void *buf, int len )
 {
 	(void)ud;
 	return (int)ri.FS_Read( buf, (size_t)len, (fileHandle_t)(intptr_t)fh );
 }
 
-static void rc_ri_close( void *ud, r201TexCacheFile_t fh )
+static void rc_ri_close( void *ud, smpTexCacheFile_t fh )
 {
 	(void)ud;
 	ri.FS_CloseFile( (fileHandle_t)(intptr_t)fh );
@@ -696,7 +696,7 @@ static int rc_ri_remove( void *ud, const char *qpath )
 static char **rc_ri_list( void *ud, int *count )
 {
 	(void)ud;
-	return ri.FS_ListFiles( R201_TEXCACHE_DIR, R201_TEXCACHE_EXT, count );
+	return ri.FS_ListFiles( SMP_TEXCACHE_DIR, SMP_TEXCACHE_EXT, count );
 }
 
 static void rc_ri_freelist( void *ud, char **names )
@@ -705,13 +705,13 @@ static void rc_ri_freelist( void *ud, char **names )
 	ri.FS_FreeFileList( names );
 }
 
-static const r201TexCacheIO_t s_ri_io = {
+static const smpTexCacheIO_t s_ri_io = {
 	rc_ri_open, rc_ri_read, rc_ri_close,
 	rc_ri_write, rc_ri_remove, rc_ri_list, rc_ri_freelist, NULL
 };
 
-void R201_TexCache_InitEngine( int enabled, int maxBytes )
+void SMP_TexCache_InitEngine( int enabled, int maxBytes )
 {
-	R201_TexCache_Begin( &s_ri_io, enabled, maxBytes );
+	SMP_TexCache_Begin( &s_ri_io, enabled, maxBytes );
 }
 #endif 

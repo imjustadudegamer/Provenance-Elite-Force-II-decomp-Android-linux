@@ -2182,17 +2182,17 @@ void CThread::RemoveClass( Event * ev )
 }
 
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
 
 void CThread::doesEntityExist( Event *ev )
 {
-	if ( R120_On() ) {
-		static int r131_exists;
+	if ( PROBE_On() ) {
+		static int widget_exists;
 
-		R120_Throttle( &r131_exists, 60, 1 );
-		R131_PROBE(
+		PROBE_Throttle( &widget_exists, 60, 1 );
+		WIDGET_PROBE(
 			"dlg:exists",
 			"arg='%s' found=%d\n",
 			ev->GetString( 1 ),

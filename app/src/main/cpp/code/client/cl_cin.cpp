@@ -8,9 +8,9 @@
 #include "cl_cin.h"
 #include "../qcommon/q_jobs.h" 
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
 #define MAXSIZE				8
 #define MINSIZE				4
@@ -1515,9 +1515,9 @@ void StartCinematic( const char *a1 ) {
 
 void StopCinematic( void ) {
 	int			h;
-	qboolean	r133_decoderClosed;
+	qboolean	uivk_decoderClosed;
 
-	r133_decoderClosed = qfalse;
+	uivk_decoderClosed = qfalse;
 
 	h = CL_handle;
 	if ( h >= 0 && h < MAX_VIDEO_HANDLES && cinTable[h].status != FMV_EOF ) {
@@ -1528,18 +1528,18 @@ void StopCinematic( void ) {
 			if ( !cinTable[currentHandle].alterGameState || cls.state == CA_CINEMATIC ) {
 				cinTable[currentHandle].status = FMV_EOF;
 				RoQShutdown();
-				r133_decoderClosed = qtrue;
+				uivk_decoderClosed = qtrue;
 			}
 		}
 	}
 
-	R133_PROBE( "cine:stop",
+	UIVK_PROBE( "cine:stop",
 		"StopCinematic handle=%d alter=%d buf=%d state=%d decoderClosed=%d pending='%s'",
 		h,
 		( h >= 0 && h < MAX_VIDEO_HANDLES ) ? ( cinTable[h].alterGameState ? 1 : 0 ) : -1,
 		( h >= 0 && h < MAX_VIDEO_HANDLES ) ? ( cinTable[h].buf ? 1 : 0 ) : -1,
 		cls.state,
-		r133_decoderClosed ? 1 : 0,
+		uivk_decoderClosed ? 1 : 0,
 		s_pending );
 
 	s_active = 0;

@@ -31,7 +31,7 @@
     },
     {
       "name": "linux-gles3",
-      "displayName": "Linux x86-64, GLES 3.0 backend (the r200-gles3 gate)",
+      "displayName": "Linux x86-64, GLES 3.0 backend (the gles3-gles3 gate)",
       "inherits": "base",
       "cacheVariables": {
         "EF2_PLATFORM": "linux",

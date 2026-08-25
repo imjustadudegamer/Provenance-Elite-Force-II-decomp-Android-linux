@@ -3,14 +3,14 @@
 #include "../qcommon/stringresource.h"
 #include "../qcommon/gameplaymanager.h"
 
-#define R120_PROBE_GET(name, def, flags) ((cvar_t *)0)
-#define R120_PROBE_PRINT                 Com_Printf
-#define R120_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_r120", "1")) != 0)  
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) ((cvar_t *)0)
+#define PROBE_PRINT                 Com_Printf
+#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
+#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_r202.h"
+#include "../qcommon/qa_ui.h"
 
-#include "r203_uiprobe.h"
+#include "limit_uiprobe.h"
 
 static UBorderColor DeriveBorderColor(const UColor& color)
 {
@@ -1353,7 +1353,7 @@ void UIWidget::PropogateCoordinateSystem(void)
 
 void UIWidget::set2D(void)
 {
-    int r203_subT0 = R203_SubT0();
+    int limit_subT0 = LIMIT_SubT0();
 
     uii.Rend_Set2D(
         uid.originX + (int)m_screenframe.pos.x,
@@ -1368,7 +1368,7 @@ void UIWidget::set2D(void)
         1.0
     );
 
-    R203_SubPushEnd(r203_subT0);
+    LIMIT_SubPushEnd(limit_subT0);
 
     uii.Rend_Scissor(
         uid.originX + (int)m_clippedframe.pos.x,
@@ -1382,7 +1382,7 @@ void UIWidget::set2D(void)
 //      EV_Widget_Hide, not draw_widget (that one is slot 0x2287F8).  The delivered
 void UIWidget::Draw(void)
 {
-    R202_COUNT(R202_FAM_UI, R202_UC_draw, 1);
+    UI_COUNT(UI_FAM_UI, UI_UC_draw, 1);
 
     if (m_mover) {
         m_mover->Motion();
@@ -1769,18 +1769,18 @@ void UIWidget::LayoutBgColor(Event *ev)
     setBackgroundColor(UColor(ev->GetFloat(1), ev->GetFloat(2), ev->GetFloat(3), ev->GetFloat(4)), WIDGET_STATE_NORMAL, true);
 
     {
-        static cvar_t *r208_inv = NULL;
-        static int     r208_invRows;
+        static cvar_t *shadow_inv = NULL;
+        static int     shadow_invRows;
 
-        if (!r208_inv) {
-            r208_inv = Cvar_Get("r208_invStats", "1", 0);
+        if (!shadow_inv) {
+            shadow_inv = Cvar_Get("shadow_invStats", "1", 0);
         }
-        if (r208_inv && r208_inv->integer && r208_invRows < 8
+        if (shadow_inv && shadow_inv->integer && shadow_invRows < 8
             && getName() && !Q_stricmp(getName(), "InventoryBar")) {
             UColor c = getBackgroundColor();
-            Com_Printf("[R208:inv] bgcolor= event on '%s' -> bg=(%.3f,%.3f,%.3f,%.3f)\n",
+            Com_Printf("[SHADOW:inv] bgcolor= event on '%s' -> bg=(%.3f,%.3f,%.3f,%.3f)\n",
                        getName(), c.r, c.g, c.b, c.a);
-            r208_invRows++;
+            shadow_invRows++;
         }
     }
 }
@@ -2135,18 +2135,18 @@ bool UIWidget::IsDisabled(void)
     return false;
 }
 
-void UIWidget::R140DumpTextColor(const char *accessor)
+void UIWidget::UITEXTDumpTextColor(const char *accessor)
 {
-    static int r140_text;
+    static int uitext_text;
     char       table[5 * 40];
     int        used;
     int        i;
 
-    if (!R120_On() || atoi(CvarGetForUI("r_2dTrace", "0")) == 0) {
+    if (!PROBE_On() || atoi(CvarGetForUI("r_2dTrace", "0")) == 0) {
         return;
     }
 
-    if (!R120_Throttle(&r140_text, 40, 400)) {
+    if (!PROBE_Throttle(&uitext_text, 40, 400)) {
         return;
     }
 
@@ -2175,7 +2175,7 @@ void UIWidget::R140DumpTextColor(const char *accessor)
     }
 
     Com_Printf(
-        "[R140:uitext] accessor=%s class='%s' name='%s' state=%d fg=%d,%d,%d,%d "
+        "[UITEXT:uitext] accessor=%s class='%s' name='%s' state=%d fg=%d,%d,%d,%d "
         "src=e%d(%s) table=[%s ]\n",
         accessor,
         getClassname(),
@@ -2203,7 +2203,7 @@ UColor UIWidget::getStateForegroundColor(void)
 {
     WidgetState state = m_widgetState;
 
-    R140DumpTextColor("getStateForegroundColor");
+    UITEXTDumpTextColor("getStateForegroundColor");
 
     return m_foregroundColors[UIWidgetStateIndex(state, m_foregroundColors[state].set)].color;
 }
@@ -2888,15 +2888,15 @@ void UIWidget::ChangeResolution(void)
     }
 }
 
-// R127 TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  One line per widget: name,
-void UIWidget::R127DumpState(int index, const char *menuName)
+// PAINT TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  One line per widget: name,
+void UIWidget::PAINTDumpState(int index, const char *menuName)
 {
-    if (!R120_On()) {
+    if (!PROBE_On()) {
         return;
     }
 
     Com_Printf(
-        "[R127:menu:widgets]   [%d] menu='%s' name='%s' class='%s' enabled=%d visible=%d "
+        "[PAINT:menu:widgets]   [%d] menu='%s' name='%s' class='%s' enabled=%d visible=%d "
         "depth=%.3f frame=(%.1f,%.1f %.1fx%.1f) children=%d\n",
         index,
         menuName,
@@ -2958,19 +2958,19 @@ void UIWidget::update(void)
 {
     int i;
 
-    int r203_t0 = R203_VW_UpdEnter();
-    int r203_self;
+    int limit_t0 = LIMIT_VW_UpdEnter();
+    int limit_self;
 
-    R202_COUNT(R202_FAM_UI, R202_UC_upd, 1);
+    UI_COUNT(UI_FAM_UI, UI_UC_upd, 1);
 
     updateVisibility();
     updateCvarVisibility();
     updateStatVisibility();
 
-    r203_self = R203_VW_UpdSelf(r203_t0, getClassname(), getName());
+    limit_self = LIMIT_VW_UpdSelf(limit_t0, getClassname(), getName());
 
     if (!m_visible) {
-        R203_VW_UpdExit(r203_self);
+        LIMIT_VW_UpdExit(limit_self);
         return;
     }
 
@@ -2994,7 +2994,7 @@ void UIWidget::update(void)
         m_children.ObjectAt(i)->update();
     }
 
-    R203_VW_UpdExit(r203_self);
+    LIMIT_VW_UpdExit(limit_self);
 }
 
 void UIWidget::updateVisibility(void)
@@ -3192,7 +3192,7 @@ UColor UIWidget::getForegroundColor(void)
 {
     WidgetState state = m_widgetState;
 
-    R140DumpTextColor("getForegroundColor");
+    UITEXTDumpTextColor("getForegroundColor");
 
     if (!m_foregroundColors[state].set) {
         state = WIDGET_STATE_NORMAL;
@@ -3567,7 +3567,7 @@ void UIWidget::PasteFromWindowsClipboard(void) {}
 
 void UIWidget::setData(const str& data)
 {
-    // [R131:B1:whitegrid] Retail's sentinel is the LITERAL "EMPTY", not the empty
+    // [WIDGET:B1:whitegrid] Retail's sentinel is the LITERAL "EMPTY", not the empty
     //   0xA53B8  clrlwi. r0, r0, 0x18 / beq 0xA53CC    ; NOT equal -> register
     // sentinel: Scoreboard::addIcons @0x001CE490 appends the literal `"EMPTY" `
     // NOTE the sentinel arm writes the slot DIRECTLY and does not call
@@ -3750,21 +3750,21 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
     int    i;
     vec4_t col = {1, 1, 1, 1};
 
-    int    r203_t0 = R203_VW_Enter();
-    int    r203_self;
+    int    limit_t0 = LIMIT_VW_Enter();
+    int    limit_self;
 
-    R202_COUNT(R202_FAM_UI, R202_UC_disp, 1);
-    R202_COUNT(R202_FAM_DISP, R202_DC_disps, 1);
+    UI_COUNT(UI_FAM_UI, UI_UC_disp, 1);
+    UI_COUNT(UI_FAM_DISP, UI_DC_disps, 1);
 
     // shown but disabled draws in retail and did not draw here.  Nothing depends on it
     if (!getShow()) {
-        R203_VW_Exit(R203_VW_Self(r203_t0, getClassname(), getName()));
+        LIMIT_VW_Exit(LIMIT_VW_Self(limit_t0, getClassname(), getName()));
         return;
     }
 
     // 16 shipped .urc files use it, all HUD/overlay menus that must not draw over the
     if (m_hideDuringLoad && menuManager.getLoading()) {
-        R203_VW_Exit(R203_VW_Self(r203_t0, getClassname(), getName()));
+        LIMIT_VW_Exit(LIMIT_VW_Self(limit_t0, getClassname(), getName()));
         return;
     }
 
@@ -3859,7 +3859,7 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
 
     Draw();
 
-    r203_self = R203_VW_Self(r203_t0, getClassname(), getName());
+    limit_self = LIMIT_VW_Self(limit_t0, getClassname(), getName());
 
     for (i = 1; i <= m_children.NumObjects(); i++) {
         UIWidget *child = m_children.ObjectAt(i);
@@ -3869,7 +3869,7 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
         }
     }
 
-    R203_VW_Exit(r203_self);
+    LIMIT_VW_Exit(limit_self);
 }
 
 qboolean UIWidget::KeyEvent(int key, unsigned int time)
@@ -4246,30 +4246,30 @@ void UIWidget::BringToFrontPropogated(void)
 
     uWinMan.sortWidgetContainers();
 
-    UIWidget *r127top = this;
+    UIWidget *painttop = this;
 
-    while (r127top->getParent() != NULL && r127top->getParent() != &uWinMan) {
-        r127top = r127top->getParent();
+    while (painttop->getParent() != NULL && painttop->getParent() != &uWinMan) {
+        painttop = painttop->getParent();
     }
 
-    int r127index = 0;
-    int r127total = uWinMan.GetChildCount();
+    int paintindex = 0;
+    int painttotal = uWinMan.GetChildCount();
 
-    for (int r127i = 1; r127i <= r127total; r127i++) {
-        if (uWinMan.GetChild(r127i) == r127top) {
-            r127index = r127i;
+    for (int painti = 1; painti <= painttotal; painti++) {
+        if (uWinMan.GetChild(painti) == painttop) {
+            paintindex = painti;
             break;
         }
     }
 
-    R127_PROBE("raise:order",
+    PAINT_PROBE("raise:order",
                "name='%s' class='%s' depth=%.3f top='%s' managerIndex=%d of=%d\n",
                getName() ? getName() : "?",
                getClassname() ? getClassname() : "?",
                (double)m_depth,
-               r127top->getName() ? r127top->getName() : "?",
-               r127index,
-               r127total);
+               painttop->getName() ? painttop->getName() : "?",
+               paintindex,
+               painttotal);
 }
 
 UIWidget *UIWidget::IsThisOrChildActive(void)
@@ -4414,8 +4414,8 @@ bool UIWidget::PassEventToWidget(str name, Event *ev, qboolean deleteOnFail)
 
     // NOTE: do NOT early-out on !isEnabled() here. This function delivers a NAMED
     if (!str::cmp(name, m_name)) {
-        R120_PROBE("inv:deliver", "widget='%s' event='%s' HIT", name.c_str(), ev->getName());
-        R121_PROBE("sb:owner",
+        PROBE("inv:deliver", "widget='%s' event='%s' HIT", name.c_str(), ev->getName());
+        BOT_PROBE("sb:owner",
                    "widget='%s' event='%s' parent='%s' iscontainer=%d enabled=%d visible=%d numchildren=%d",
                    name.c_str(), ev->getName(),
                    m_parent ? m_parent->getName() : "(root)", m_parent ? 0 : 1,

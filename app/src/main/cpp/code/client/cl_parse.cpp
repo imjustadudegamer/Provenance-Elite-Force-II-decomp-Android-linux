@@ -1,9 +1,9 @@
 
 #include "client.h"
 #include "cl_ui.h"
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
 const char *svc_strings[256] = {
 	"svc_bad",
@@ -257,11 +257,11 @@ void CL_CommitSnapshot( clSnapshot_t *newSnap ) {
 	cl.snapshots[cl.snap.messageNum & PACKET_MASK] = cl.snap;
 
 	{
-		static int r131_m1_lastFlags = -1;
+		static int widget_m1_lastFlags = -1;
 
-		if ( (int)newSnap->snapFlags != r131_m1_lastFlags ) {
-			r131_m1_lastFlags = newSnap->snapFlags;
-			R131M1_PROBE( "commit", "state=%d snapFlags=%d msgNum=%d snapTime=%d cmdNum=%d serverCmdSeq=%d",
+		if ( (int)newSnap->snapFlags != widget_m1_lastFlags ) {
+			widget_m1_lastFlags = newSnap->snapFlags;
+			WIDGETM1_PROBE( "commit", "state=%d snapFlags=%d msgNum=%d snapTime=%d cmdNum=%d serverCmdSeq=%d",
 				cls.state, newSnap->snapFlags, newSnap->messageNum, newSnap->serverTime,
 				newSnap->cmdNum, newSnap->serverCommandNum );
 		}
@@ -356,9 +356,9 @@ void CL_ParseGamestate( msg_t *msg ) {
 	int				cmd;
 	char			*s;
 
-	R131M1_PROBE( "gs", "PREV state=%d serverId=%d checksumFeed=%d", cls.state, cl.serverId, clc.checksumFeed );
+	WIDGETM1_PROBE( "gs", "PREV state=%d serverId=%d checksumFeed=%d", cls.state, cl.serverId, clc.checksumFeed );
 
-	R223_PROBE( "gsparse", "state=%d serverId=%d checksumFeed=%d realtime=%d\n",
+	LOADHANG_PROBE( "gsparse", "state=%d serverId=%d checksumFeed=%d realtime=%d\n",
 	            cls.state, cl.serverId, clc.checksumFeed, cls.realtime );
 
 	clc.connectPacketCount = 0;

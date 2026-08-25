@@ -5,16 +5,16 @@
 #include <stdio.h>
 #include <string.h>
 
-static void (*r200_logger)(const char *line) = NULL;
+static void (*gles3_logger)(const char *line) = NULL;
 
 void QGL_GLES3_SetLogger(void (*fn)(const char *line))
 {
-	r200_logger = fn;
+	gles3_logger = fn;
 }
 
-static void R200_Log(const char *fmt, ...) R200_PRINTF_FUNC(1, 2);
+static void GLES3_Log(const char *fmt, ...) GLES3_PRINTF_FUNC(1, 2);
 
-static void R200_Log(const char *fmt, ...)
+static void GLES3_Log(const char *fmt, ...)
 {
 	char buf[1024];
 	va_list ap;
@@ -23,34 +23,34 @@ static void R200_Log(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (r200_logger) {
-		r200_logger(buf);
+	if (gles3_logger) {
+		gles3_logger(buf);
 	} else {
 		fputs(buf, stderr);
 	}
 }
 
-static QGL_GLES3_GetProcAddress_t r200_getproc = NULL;
+static QGL_GLES3_GetProcAddress_t gles3_getproc = NULL;
 
 void QGL_GLES3_SetGetProcAddress(QGL_GLES3_GetProcAddress_t fn)
 {
-	r200_getproc = fn;
+	gles3_getproc = fn;
 }
 
 int qglMajorVersion = 0, qglMinorVersion = 0;
 int qglesMajorVersion = 0, qglesMinorVersion = 0;
 
-static int r200_core_missing = 0;
-static int r200_staged_traps = 0;
-static int r200_cap_drops = 0;
+static int gles3_core_missing = 0;
+static int gles3_staged_traps = 0;
+static int gles3_cap_drops = 0;
 
-#define R200_MAX_MISSING 512
-static char r200_core_missing_names[R200_MAX_MISSING][40];
-static int r200_core_missing_stored = 0;
-static char r200_staged_names[R200_MAX_MISSING][40];
-static int r200_staged_stored = 0;
+#define GLES3_MAX_MISSING 512
+static char gles3_core_missing_names[GLES3_MAX_MISSING][40];
+static int gles3_core_missing_stored = 0;
+static char gles3_staged_names[GLES3_MAX_MISSING][40];
+static int gles3_staged_stored = 0;
 
-static int R200_SeenBefore(char (*tab)[40], int n, const char *row)
+static int GLES3_SeenBefore(char (*tab)[40], int n, const char *row)
 {
 	int i;
 
@@ -62,42 +62,42 @@ static int R200_SeenBefore(char (*tab)[40], int n, const char *row)
 	return 0;
 }
 
-static void R200_RecordMissing(const char *name, int core)
+static void GLES3_RecordMissing(const char *name, int core)
 {
 	char row[40];
 
 	snprintf(row, sizeof(row), "gl%s", name);
 
 	if (core) {
-		r200_core_missing++;
-		if (r200_core_missing_stored < R200_MAX_MISSING) {
-			snprintf(r200_core_missing_names[r200_core_missing_stored],
-					 sizeof(r200_core_missing_names[0]), "%s", row);
-			r200_core_missing_stored++;
+		gles3_core_missing++;
+		if (gles3_core_missing_stored < GLES3_MAX_MISSING) {
+			snprintf(gles3_core_missing_names[gles3_core_missing_stored],
+					 sizeof(gles3_core_missing_names[0]), "%s", row);
+			gles3_core_missing_stored++;
 		}
-		if (R200_SeenBefore(r200_core_missing_names, r200_core_missing_stored - 1, row)) {
+		if (GLES3_SeenBefore(gles3_core_missing_names, gles3_core_missing_stored - 1, row)) {
 			return;
 		}
-		R200_Log("[R200:glmissing] name=%s\n", row);
+		GLES3_Log("[GLES3:glmissing] name=%s\n", row);
 		return;
 	}
 
-	r200_staged_traps++;
-	if (r200_staged_stored < R200_MAX_MISSING) {
-		snprintf(r200_staged_names[r200_staged_stored],
-				 sizeof(r200_staged_names[0]), "%s", row);
-		r200_staged_stored++;
+	gles3_staged_traps++;
+	if (gles3_staged_stored < GLES3_MAX_MISSING) {
+		snprintf(gles3_staged_names[gles3_staged_stored],
+				 sizeof(gles3_staged_names[0]), "%s", row);
+		gles3_staged_stored++;
 	}
-	if (R200_SeenBefore(r200_staged_names, r200_staged_stored - 1, row)) {
+	if (GLES3_SeenBefore(gles3_staged_names, gles3_staged_stored - 1, row)) {
 		return;
 	}
-	R200_Log("[R200:glfixed] name=%s\n", row);
+	GLES3_Log("[GLES3:glfixed] name=%s\n", row);
 }
 
 #define GLE(ret, name, ...) \
-	static ret APIENTRY R200_trap_##name(__VA_ARGS__) \
+	static ret APIENTRY GLES3_trap_##name(__VA_ARGS__) \
 	{ \
-		R200_RecordMissing(#name, 0); \
+		GLES3_RecordMissing(#name, 0); \
 		return (ret)0; \
 	}
 QGL_1_1_PROCS;
@@ -117,37 +117,37 @@ QGL_EXT_direct_state_access_PROCS;
 #undef GLE
 
 #define GLE(ret, name, ...) \
-	static ret APIENTRY R200_trap_##name(__VA_ARGS__) \
+	static ret APIENTRY GLES3_trap_##name(__VA_ARGS__) \
 	{ \
-		R200_RecordMissing(#name, 1); \
+		GLES3_RecordMissing(#name, 1); \
 		return (ret)0; \
 	}
 QGL_GLES3_CORE_PROCS;
 #undef GLE
 
-static void APIENTRY R200_trap_ActiveTextureARB(GLenum texture)
+static void APIENTRY GLES3_trap_ActiveTextureARB(GLenum texture)
 {
 	(void)texture;
-	R200_RecordMissing("ActiveTextureARB", 0);
+	GLES3_RecordMissing("ActiveTextureARB", 0);
 }
-static void APIENTRY R200_trap_ClientActiveTextureARB(GLenum texture)
+static void APIENTRY GLES3_trap_ClientActiveTextureARB(GLenum texture)
 {
 	(void)texture;
-	R200_RecordMissing("ClientActiveTextureARB", 0);
+	GLES3_RecordMissing("ClientActiveTextureARB", 0);
 }
-static void APIENTRY R200_trap_MultiTexCoord2fARB(GLenum target, GLfloat s, GLfloat t)
+static void APIENTRY GLES3_trap_MultiTexCoord2fARB(GLenum target, GLfloat s, GLfloat t)
 {
 	(void)target; (void)s; (void)t;
-	R200_RecordMissing("MultiTexCoord2fARB", 0);
+	GLES3_RecordMissing("MultiTexCoord2fARB", 0);
 }
-static void APIENTRY R200_trap_LockArraysEXT(GLint first, GLsizei count)
+static void APIENTRY GLES3_trap_LockArraysEXT(GLint first, GLsizei count)
 {
 	(void)first; (void)count;
-	R200_RecordMissing("LockArraysEXT", 0);
+	GLES3_RecordMissing("LockArraysEXT", 0);
 }
-static void APIENTRY R200_trap_UnlockArraysEXT(void)
+static void APIENTRY GLES3_trap_UnlockArraysEXT(void)
 {
-	R200_RecordMissing("UnlockArraysEXT", 0);
+	GLES3_RecordMissing("UnlockArraysEXT", 0);
 }
 
 #define GLE(ret, name, ...) ret (APIENTRYP qgl##name)(__VA_ARGS__) = NULL;
@@ -175,7 +175,7 @@ void (APIENTRYP qglLockArraysEXT)(GLint first, GLsizei count) = NULL;
 void (APIENTRYP qglUnlockArraysEXT)(void) = NULL;
 
 #define GLE(ret, name, ...) + 1
-static const int r200_proc_total = 0
+static const int gles3_proc_total = 0
 QGL_1_1_PROCS
 QGL_1_1_FIXED_FUNCTION_PROCS
 QGL_DESKTOP_1_1_PROCS
@@ -194,44 +194,44 @@ QGL_EXT_direct_state_access_PROCS
 #undef GLE
 
 #define GLE(ret, name, ...) + 1
-static const int r200_proc_core = 0
+static const int gles3_proc_core = 0
 QGL_GLES3_CORE_PROCS
 ;
 #undef GLE
 
-int QGL_GLES3_TotalProcs(void) { return r200_proc_total + 5; }
-int QGL_GLES3_CoreProcs(void) { return r200_proc_core; }
-int QGL_GLES3_CoreMissing(void) { return r200_core_missing; }
-int QGL_GLES3_StagedTraps(void) { return r200_staged_traps; }
-int QGL_GLES3_StagedCapDrops(void) { return r200_cap_drops; }
+int QGL_GLES3_TotalProcs(void) { return gles3_proc_total + 5; }
+int QGL_GLES3_CoreProcs(void) { return gles3_proc_core; }
+int QGL_GLES3_CoreMissing(void) { return gles3_core_missing; }
+int QGL_GLES3_StagedTraps(void) { return gles3_staged_traps; }
+int QGL_GLES3_StagedCapDrops(void) { return gles3_cap_drops; }
 
 const char *QGL_GLES3_CoreMissingList(void)
 {
-	static char list[R200_MAX_MISSING * 44];
+	static char list[GLES3_MAX_MISSING * 44];
 	size_t used = 0;
 	int i;
 
 	list[0] = '\0';
-	for (i = 0; i < r200_core_missing_stored; i++) {
+	for (i = 0; i < gles3_core_missing_stored; i++) {
 		used += (size_t)snprintf(list + used, sizeof(list) - used, "%s%s",
-								 i ? "," : "", r200_core_missing_names[i]);
+								 i ? "," : "", gles3_core_missing_names[i]);
 	}
 	return list;
 }
 
-static void R200_BindOne(const char *name, void **slot, void *trap, int core)
+static void GLES3_BindOne(const char *name, void **slot, void *trap, int core)
 {
-	void *p = r200_getproc ? r200_getproc(name) : NULL;
+	void *p = gles3_getproc ? gles3_getproc(name) : NULL;
 
 	if (p) {
 		*slot = p;
 		return;
 	}
 	*slot = trap;
-	R200_RecordMissing(name + 2, core); 
+	GLES3_RecordMissing(name + 2, core); 
 }
 
-static const char *R200_CapName(GLenum cap)
+static const char *GLES3_CapName(GLenum cap)
 {
 	switch (cap) {
 	case GL_TEXTURE_2D:            return "GL_TEXTURE_2D";
@@ -269,71 +269,71 @@ static const char *R200_CapName(GLenum cap)
 	}
 }
 
-static void (APIENTRYP r200_real_Enable)(GLenum cap) = NULL;
-static void (APIENTRYP r200_real_Disable)(GLenum cap) = NULL;
-static void (APIENTRYP r200_real_GetIntegerv)(GLenum pname, GLint *params) = NULL;
+static void (APIENTRYP gles3_real_Enable)(GLenum cap) = NULL;
+static void (APIENTRYP gles3_real_Disable)(GLenum cap) = NULL;
+static void (APIENTRYP gles3_real_GetIntegerv)(GLenum pname, GLint *params) = NULL;
 
-static void APIENTRY R200_Filter_Enable(GLenum cap)
+static void APIENTRY GLES3_Filter_Enable(GLenum cap)
 {
-	const char *nm = R200_CapName(cap);
+	const char *nm = GLES3_CapName(cap);
 
 	if (nm) {
-		r200_cap_drops++;
-		R200_Log("[R200:glcap] name=glEnable cap=%s action=drop\n", nm);
+		gles3_cap_drops++;
+		GLES3_Log("[GLES3:glcap] name=glEnable cap=%s action=drop\n", nm);
 		return;
 	}
-	if (r200_real_Enable) {
-		r200_real_Enable(cap);
+	if (gles3_real_Enable) {
+		gles3_real_Enable(cap);
 	}
 }
 
-static void APIENTRY R200_Filter_Disable(GLenum cap)
+static void APIENTRY GLES3_Filter_Disable(GLenum cap)
 {
-	const char *nm = R200_CapName(cap);
+	const char *nm = GLES3_CapName(cap);
 
 	if (nm) {
-		r200_cap_drops++;
-		R200_Log("[R200:glcap] name=glDisable cap=%s action=drop\n", nm);
+		gles3_cap_drops++;
+		GLES3_Log("[GLES3:glcap] name=glDisable cap=%s action=drop\n", nm);
 		return;
 	}
-	if (r200_real_Disable) {
-		r200_real_Disable(cap);
+	if (gles3_real_Disable) {
+		gles3_real_Disable(cap);
 	}
 }
 
-static void APIENTRY R200_Filter_GetIntegerv(GLenum pname, GLint *params)
+static void APIENTRY GLES3_Filter_GetIntegerv(GLenum pname, GLint *params)
 {
-	if (pname == R200_GL_MAX_TEXTURE_UNITS_ARB) {
-		if (r200_real_GetIntegerv) {
-			r200_real_GetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, params);
+	if (pname == GLES3_GL_MAX_TEXTURE_UNITS_ARB) {
+		if (gles3_real_GetIntegerv) {
+			gles3_real_GetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, params);
 		}
 		return;
 	}
-	if (r200_real_GetIntegerv) {
-		r200_real_GetIntegerv(pname, params);
+	if (gles3_real_GetIntegerv) {
+		gles3_real_GetIntegerv(pname, params);
 	}
 }
 
-static void APIENTRY R200_ClearDepth(GLclampd depth)
+static void APIENTRY GLES3_ClearDepth(GLclampd depth)
 {
 	if (qglClearDepthf) {
 		qglClearDepthf((GLclampf)depth);
 	}
 }
 
-static void APIENTRY R200_DepthRange(GLclampd near_val, GLclampd far_val)
+static void APIENTRY GLES3_DepthRange(GLclampd near_val, GLclampd far_val)
 {
 	if (qglDepthRangef) {
 		qglDepthRangef((GLclampf)near_val, (GLclampf)far_val);
 	}
 }
 
-static void APIENTRY R200_Noop_DrawBuffer(GLenum mode)
+static void APIENTRY GLES3_Noop_DrawBuffer(GLenum mode)
 {
 	(void)mode; 
 }
 
-static void APIENTRY R200_Noop_PolygonMode(GLenum face, GLenum mode)
+static void APIENTRY GLES3_Noop_PolygonMode(GLenum face, GLenum mode)
 {
 	(void)face; (void)mode; 
 }
@@ -403,27 +403,27 @@ void QGL_GLES3_LogDeviceInfo(void)
 		qglGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &maxUnits);
 	}
 
-	R200_Log("[R200:glinfo] gles=%d.%d vendor=\"%s\" renderer=\"%s\" version=\"%s\"\n",
+	GLES3_Log("[GLES3:glinfo] gles=%d.%d vendor=\"%s\" renderer=\"%s\" version=\"%s\"\n",
 			 qglesMajorVersion, qglesMinorVersion,
 			 vendor ? vendor : "(null)", renderer ? renderer : "(null)",
 			 version ? version : "(null)");
-	R200_Log("[R200:glinfo] max_texture_size=%d max_texture_units=%d extensions=%d\n",
+	GLES3_Log("[GLES3:glinfo] max_texture_size=%d max_texture_units=%d extensions=%d\n",
 			 maxTex, maxUnits, numExt);
 }
 
 int QGL_GLES3_LoadProcs(int *staged)
 {
-	r200_core_missing = 0;
-	r200_core_missing_stored = 0;
-	r200_staged_traps = 0;
-	r200_staged_stored = 0;
-	r200_cap_drops = 0;
+	gles3_core_missing = 0;
+	gles3_core_missing_stored = 0;
+	gles3_staged_traps = 0;
+	gles3_staged_stored = 0;
+	gles3_cap_drops = 0;
 
-#define GLE(ret, name, ...) R200_BindOne("gl" #name, (void **)&qgl##name, (void *)R200_trap_##name, 1);
+#define GLE(ret, name, ...) GLES3_BindOne("gl" #name, (void **)&qgl##name, (void *)GLES3_trap_##name, 1);
 	QGL_GLES3_CORE_PROCS;
 #undef GLE
 
-#define GLE(ret, name, ...) R200_BindOne("gl" #name, (void **)&qgl##name, (void *)R200_trap_##name, 0);
+#define GLE(ret, name, ...) GLES3_BindOne("gl" #name, (void **)&qgl##name, (void *)GLES3_trap_##name, 0);
 	QGL_1_1_PROCS;
 	QGL_1_1_FIXED_FUNCTION_PROCS;
 	QGL_DESKTOP_1_1_PROCS;
@@ -440,33 +440,33 @@ int QGL_GLES3_LoadProcs(int *staged)
 	QGL_EXT_direct_state_access_PROCS;
 #undef GLE
 
-	R200_BindOne("glActiveTextureARB", (void **)&qglActiveTextureARB, (void *)R200_trap_ActiveTextureARB, 0);
-	R200_BindOne("glClientActiveTextureARB", (void **)&qglClientActiveTextureARB, (void *)R200_trap_ClientActiveTextureARB, 0);
-	R200_BindOne("glMultiTexCoord2fARB", (void **)&qglMultiTexCoord2fARB, (void *)R200_trap_MultiTexCoord2fARB, 0);
-	R200_BindOne("glLockArraysEXT", (void **)&qglLockArraysEXT, (void *)R200_trap_LockArraysEXT, 0);
-	R200_BindOne("glUnlockArraysEXT", (void **)&qglUnlockArraysEXT, (void *)R200_trap_UnlockArraysEXT, 0);
+	GLES3_BindOne("glActiveTextureARB", (void **)&qglActiveTextureARB, (void *)GLES3_trap_ActiveTextureARB, 0);
+	GLES3_BindOne("glClientActiveTextureARB", (void **)&qglClientActiveTextureARB, (void *)GLES3_trap_ClientActiveTextureARB, 0);
+	GLES3_BindOne("glMultiTexCoord2fARB", (void **)&qglMultiTexCoord2fARB, (void *)GLES3_trap_MultiTexCoord2fARB, 0);
+	GLES3_BindOne("glLockArraysEXT", (void **)&qglLockArraysEXT, (void *)GLES3_trap_LockArraysEXT, 0);
+	GLES3_BindOne("glUnlockArraysEXT", (void **)&qglUnlockArraysEXT, (void *)GLES3_trap_UnlockArraysEXT, 0);
 
 	if (qglActiveTexture) {
 		qglActiveTextureARB = (void (APIENTRYP)(GLenum))qglActiveTexture;
 	}
 
-	/* The adapters.  r200_real_* remembers the genuine proc (or its trap, in
+	/* The adapters.  gles3_real_* remembers the genuine proc (or its trap, in
 	 * which case the adapter reproduces the loud failure). */
-	r200_real_Enable = qglEnable;
-	r200_real_Disable = qglDisable;
-	r200_real_GetIntegerv = qglGetIntegerv;
-	if (r200_real_Enable) { qglEnable = R200_Filter_Enable; }
-	if (r200_real_Disable) { qglDisable = R200_Filter_Disable; }
-	if (r200_real_GetIntegerv) { qglGetIntegerv = R200_Filter_GetIntegerv; }
-	if (qglClearDepthf) { qglClearDepth = R200_ClearDepth; }
-	if (qglDepthRangef) { qglDepthRange = R200_DepthRange; }
-	qglDrawBuffer = R200_Noop_DrawBuffer;
-	qglPolygonMode = R200_Noop_PolygonMode;
+	gles3_real_Enable = qglEnable;
+	gles3_real_Disable = qglDisable;
+	gles3_real_GetIntegerv = qglGetIntegerv;
+	if (gles3_real_Enable) { qglEnable = GLES3_Filter_Enable; }
+	if (gles3_real_Disable) { qglDisable = GLES3_Filter_Disable; }
+	if (gles3_real_GetIntegerv) { qglGetIntegerv = GLES3_Filter_GetIntegerv; }
+	if (qglClearDepthf) { qglClearDepth = GLES3_ClearDepth; }
+	if (qglDepthRangef) { qglDepthRange = GLES3_DepthRange; }
+	qglDrawBuffer = GLES3_Noop_DrawBuffer;
+	qglPolygonMode = GLES3_Noop_PolygonMode;
 
 	QGL_GLES3_QueryVersion();
 
 	if (staged) {
-		*staged = r200_staged_traps;
+		*staged = gles3_staged_traps;
 	}
-	return r200_core_missing;
+	return gles3_core_missing;
 }

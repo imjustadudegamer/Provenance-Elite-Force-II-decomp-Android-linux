@@ -191,7 +191,7 @@ cvar_t* r_fps;
 cvar_t* r_jobs;
 cvar_t* r_jobsStats;
 
-// PORT-ONLY DIAGNOSTIC (r133-mt), no retail counterpart: the pool's own
+// PORT-ONLY DIAGNOSTIC (uivk-mt), no retail counterpart: the pool's own
 static void R_JobPoolPrint( const char *fmt, ... ) __attribute__((format(printf,1,2)));
 static void R_JobPoolPrint( const char *fmt, ... ) {
 	va_list argptr;
@@ -998,19 +998,19 @@ static void R_FirstLight_f(void)
 
 	if (!tr.registered) {
 		RB_BindVAO(0);
-		ri.Printf(PRINT_ALL, "[R200:firstlight] status=fail reason=renderer-not-registered\n");
+		ri.Printf(PRINT_ALL, "[GLES3:firstlight] status=fail reason=renderer-not-registered\n");
 		return;
 	}
 
-	ri.Printf(PRINT_ALL, "[R200:firstlight] phase=engine vid=%dx%d\n",
+	ri.Printf(PRINT_ALL, "[GLES3:firstlight] phase=engine vid=%dx%d\n",
 			  glConfig.vidWidth, glConfig.vidHeight);
 
-	R200_FirstLight_SetLogger(R_FirstLightLog);
+	GLES3_FirstLight_SetLogger(R_FirstLightLog);
 
 	qglViewport(0, 0, glConfig.vidWidth, glConfig.vidHeight);
 	qglDisable(GL_SCISSOR_TEST);
 
-	passed = R200_FirstLight_ClearAndQuad();
+	passed = GLES3_FirstLight_ClearAndQuad();
 
 	if (tr.world && tr.world->numsurfaces > 0) {
 		int i;
@@ -1046,23 +1046,23 @@ static void R_FirstLight_f(void)
 					tex = (unsigned)img->texnum;
 				}
 			}
-			ri.Printf(PRINT_ALL, "[R200:firstlight] milestone=bsp_face src=world surface=%d "
+			ri.Printf(PRINT_ALL, "[GLES3:firstlight] milestone=bsp_face src=world surface=%d "
 					  "shader=\"%s\" texture=\"%s\" texnum=%u\n",
 					  i, ms->shader ? ms->shader->name : "(none)",
 					  img ? img->imgName : "(white)", tex);
-			passed |= R200_FirstLight_DrawFace(xyz, st, 3, tex);
+			passed |= GLES3_FirstLight_DrawFace(xyz, st, 3, tex);
 			faceDone = qtrue;
 		}
 	}
 	if (!faceDone) {
-		ri.Printf(PRINT_ALL, "[R200:firstlight] milestone=bsp_face status=fail reason=no-world-face "
+		ri.Printf(PRINT_ALL, "[GLES3:firstlight] milestone=bsp_face status=fail reason=no-world-face "
 				  "(load a map first)\n");
 	}
 
-	ri.Printf(PRINT_ALL, "[R200:firstlight] phase=engine clear=%d quad=%d bsp_face=%d\n",
-			  (passed & R200_FL_CLEAR) ? 1 : 0,
-			  (passed & R200_FL_QUAD) ? 1 : 0,
-			  (passed & R200_FL_FACE) ? 1 : 0);
+	ri.Printf(PRINT_ALL, "[GLES3:firstlight] phase=engine clear=%d quad=%d bsp_face=%d\n",
+			  (passed & GLES3_FL_CLEAR) ? 1 : 0,
+			  (passed & GLES3_FL_QUAD) ? 1 : 0,
+			  (passed & GLES3_FL_FACE) ? 1 : 0);
 
 	RB_BindVAO(0);
 }
@@ -1076,7 +1076,7 @@ void R_Register( void )
 	r_ext_gamma_control = ri.Cvar_Get( "r_ext_gamma_control", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_multitexture = ri.Cvar_Get( "r_ext_multitexture", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compiled_vertex_array = ri.Cvar_Get( "r_ext_compiled_vertex_array", "1", CVAR_ARCHIVE | CVAR_LATCH);
-	// R131-E1: the `#ifdef __linux__ "0"' arm was ioq3's, not retail's.  Retail
+	// WIDGET-E1: the `#ifdef __linux__ "0"' arm was ioq3's, not retail's.  Retail
 	r_ext_texture_env_add = ri.Cvar_Get( "r_ext_texture_env_add", "1", CVAR_ARCHIVE | CVAR_LATCH);
 	r_ext_texture_env_combine = ri.Cvar_Get("r_ext_texture_env_combine", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	r_arb_multisample = ri.Cvar_Get( "r_arb_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH );
@@ -1228,7 +1228,7 @@ void R_Register( void )
 	r_debuglines_depthmask = ri.Cvar_Get("r_debuglines_depthmask", "0", CVAR_ARCHIVE);
 	r_fps = ri.Cvar_Get("fps", "0", 0);
 
-	// R156: retail's flag word is CVAR_ARCHIVE alone, not the LATCH pair the ioq3 block
+	// MENUSET: retail's flag word is CVAR_ARCHIVE alone, not the LATCH pair the ioq3 block
 	// vid_restart retail never has, because Menu::CheckRestart only acts on a
 	r_anisotropicFiltering = ri.Cvar_Get("r_anisotropicFiltering", "0", CVAR_ARCHIVE);
 
@@ -1240,9 +1240,9 @@ void R_Register( void )
 	ri.Cmd_AddCommand( "modelist", R_ModeList_f );
 	ri.Cmd_AddCommand( "screenshot", R_ScreenShot_f );
 	ri.Cmd_AddCommand( "gfxinfo", GfxInfo_f );
-	// PORT-ONLY DIAGNOSTIC (r133-mt), no retail counterpart: runs the renderer
+	// PORT-ONLY DIAGNOSTIC (uivk-mt), no retail counterpart: runs the renderer
 	ri.Cmd_AddCommand( "r_jobpooltest", R_JobPoolTest_f );
-	ri.Cmd_AddCommand( "r200_firstlight", R_FirstLight_f );
+	ri.Cmd_AddCommand( "gles3_firstlight", R_FirstLight_f );
 
 
 	r_developer = ri.Cvar_Get("developer", "", 0);
@@ -1319,12 +1319,12 @@ void R_Init( void ) {
 	R_Register();
 
 	{
-		static qboolean s_r201GltexLogged;
+		static qboolean s_smpGltexLogged;
 
-		if ( !s_r201GltexLogged ) {
-			s_r201GltexLogged = qtrue;
+		if ( !s_smpGltexLogged ) {
+			s_smpGltexLogged = qtrue;
 			ri.Printf( PRINT_ALL,
-				"[R200:gltex] r_colorbits=%d r_texturebits=%d r_picmip=%d "
+				"[GLES3:gltex] r_colorbits=%d r_texturebits=%d r_picmip=%d "
 				"r_roundImagesDown=%d r_vertexLight=%d r_lightmap=%d r_fullbright=%d "
 				"-> R_Upload32 samples==3 arm yields %s\n",
 				r_colorbits ? r_colorbits->integer : -1,
@@ -1396,7 +1396,7 @@ void RE_Shutdown( qboolean destroyWindow ) {
 	ri.Cmd_RemoveCommand ("gfxinfo");
 	ri.Cmd_RemoveCommand( "modelist" );
 	ri.Cmd_RemoveCommand( "r_jobpooltest" );
-	ri.Cmd_RemoveCommand( "r200_firstlight" );
+	ri.Cmd_RemoveCommand( "gles3_firstlight" );
 
 	R_ShutdownCommandBuffers();
 
@@ -1447,7 +1447,7 @@ void RE_Shutdown( qboolean destroyWindow ) {
 
 void RE_BeginRegistration(glconfig_t* glconfigOut) {
 
-	R201_RLOAD_BEGIN( reginit );
+	SMP_RLOAD_BEGIN( reginit );
 
 	ri.UI_LoadResource("*123");
 
@@ -1481,15 +1481,15 @@ void RE_BeginRegistration(glconfig_t* glconfigOut) {
 
 	R_ClearWorld();
 
-	R201_RLOAD_BEGIN( setup );
+	SMP_RLOAD_BEGIN( setup );
 	R_SetupShaders();
-	R201_RLOAD_END( setup );
+	SMP_RLOAD_END( setup );
 	R_InitLensFlare();
 	tr.registered = qtrue;
 
 	ri.UI_LoadResource("*124");
 
-	R201_RLOAD_END( reginit );
+	SMP_RLOAD_END( reginit );
 }
 
 void RE_EndRegistration( void ) {

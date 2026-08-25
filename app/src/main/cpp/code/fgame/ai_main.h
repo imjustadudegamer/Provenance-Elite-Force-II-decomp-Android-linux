@@ -42,46 +42,46 @@ typedef enum {
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
 #endif
 
-#define R202_BAIZ_cstate	0
-#define R202_BAIZ_cmsg		1
-#define R202_BAIZ_area		2
-#define R202_BAIZ_dm		3
-#define R202_BAIZ_weap		4
-#define R202_BAIZ_dminv		5
-#define R202_BAIZ_dmteam	6
-#define R202_BAIZ_dmnode	7
-#define R202_BAIZ_dmoth		8
-#define R202_BAIZ_other		9
-#define R202_BAIC_calls		0
-#define R202_BAIC_bots		1
+#define UI_BAIZ_cstate	0
+#define UI_BAIZ_cmsg		1
+#define UI_BAIZ_area		2
+#define UI_BAIZ_dm		3
+#define UI_BAIZ_weap		4
+#define UI_BAIZ_dminv		5
+#define UI_BAIZ_dmteam	6
+#define UI_BAIZ_dmnode	7
+#define UI_BAIZ_dmoth		8
+#define UI_BAIZ_other		9
+#define UI_BAIC_calls		0
+#define UI_BAIC_bots		1
 
-int  R202_BotAIMicro(void);
-void R202_BotAIAdd(int zone, int usec);
-void R202_BotAIBump(int which, int n);
-void R202_BotAIFrame(int totalUsec);
+int  UI_BotAIMicro(void);
+void UI_BotAIAdd(int zone, int usec);
+void UI_BotAIBump(int which, int n);
+void UI_BotAIFrame(int totalUsec);
 
-int  R202_BotAITick(void);
-int  R202_BotAITock(int t0);
+int  UI_BotAITick(void);
+int  UI_BotAITock(int t0);
 
-#define R203_BNODE_MAX		12	
+#define LIMIT_BNODE_MAX		12	
 
-#define R203_BN_intermission	0
-#define R203_BN_observer	1
-#define R203_BN_respawn		2
-#define R203_BN_stand		3
-#define R203_BN_activate	4
-#define R203_BN_seeknbg		5
-#define R203_BN_seekltg		6
-#define R203_BN_battlefight	7
-#define R203_BN_battlechase	8
-#define R203_BN_battleretreat	9
-#define R203_BN_battlenbg	10
-#define R203_BN_unknown		11	
+#define LIMIT_BN_intermission	0
+#define LIMIT_BN_observer	1
+#define LIMIT_BN_respawn		2
+#define LIMIT_BN_stand		3
+#define LIMIT_BN_activate	4
+#define LIMIT_BN_seeknbg		5
+#define LIMIT_BN_seekltg		6
+#define LIMIT_BN_battlefight	7
+#define LIMIT_BN_battlechase	8
+#define LIMIT_BN_battleretreat	9
+#define LIMIT_BN_battlenbg	10
+#define LIMIT_BN_unknown		11	
 
-void R203_BotNodeBegin(struct bot_state_s *bs);
-void R203_BotNodeEnd(void);
-void R203_BotNodeSat(void);
-void R203_BotFrame(void);
+void LIMIT_BotNodeBegin(struct bot_state_s *bs);
+void LIMIT_BotNodeEnd(void);
+void LIMIT_BotNodeSat(void);
+void LIMIT_BotFrame(void);
 
 #define BFL_STRAFERIGHT				1	
 #define BFL_ATTACKED				2	

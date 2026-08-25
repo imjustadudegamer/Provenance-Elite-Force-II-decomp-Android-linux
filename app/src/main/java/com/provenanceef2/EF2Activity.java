@@ -37,7 +37,7 @@ import java.io.OutputStream;
  * mid-write never leaves a truncated file in place.
  *
  * A one-time MIGRATION removes the stale config files older builds left in
- * <obb>/base (r145-effects; see migrateStaleConfigs).  The engine writes exactly
+ * <obb>/base (effects-effects; see migrateStaleConfigs).  The engine writes exactly
  * ONE user-state file now -- <obb>/provenanceef2/base/config.cfg -- and nothing is
  * exec'd from <obb>/base any more, so those leftovers are dead weight.  There is
  * no autoexec asset: a operator's own overrides belong in the one unified config.cfg.
@@ -58,7 +58,7 @@ public class EF2Activity extends SDLActivity {
     private static final String GAME_DIR = "base";
 
     /**
-     * Stale files older builds wrote into <obb>/base (r145-effects migration).
+     * Stale files older builds wrote into <obb>/base (effects-effects migration).
      *
      * <p>History: an older build's home path WAS <obb>/base, so it wrote its
      * user config there as {@code config.cfg} / the OS-user config {@code legacy.cfg};
@@ -72,8 +72,8 @@ public class EF2Activity extends SDLActivity {
             "config.cfg",            // 6,271 B: an older build's home==base config
             "legacy.cfg",              // 3,782 B: the pre-unification OS-user config
             "android_defaults.cfg",  // the retired defaults asset (now in the binary)
-            "autoexec.cfg",          // the retired empty autoexec hook (r145 removed)
-            // r149: the loose RETAIL cfgs.  The operator's rule is ONE loose cfg, so the
+            "autoexec.cfg",          // the retired empty autoexec hook (effects removed)
+            // retailcfg: the loose RETAIL cfgs.  The operator's rule is ONE loose cfg, so the
             // port supplies all three from its own pak (global/default.cfg is the boot
             // baseline retail's FS_InitFilesystem requires, and defaultcontrols.cfg /
             // defaultoptions.cfg are what the menus' "Restore Controls" and "Restore
@@ -101,7 +101,7 @@ public class EF2Activity extends SDLActivity {
                 try {
                     extractAssetsIfNeeded(baseDir);
                 } catch (Exception e) {
-                    // r175-androidport: EXTRACTION FAILURE MUST DEGRADE WHEN THE ASSETS ARE ALREADY
+                    // andport-androidport: EXTRACTION FAILURE MUST DEGRADE WHEN THE ASSETS ARE ALREADY
                     // THERE.  The human installs fresh builds and pushes paks by hand, so a first
                     // boot that aborts because one bundled file could not be (re)written -- while the
                     // working copy from the previous install is still on disk -- is a defect, not a
@@ -209,7 +209,7 @@ public class EF2Activity extends SDLActivity {
         copyAssetDir(getAssets(), GAME_DIR, baseDir);
 
         if (versionCode > 0) {
-            // r175-androidport: the marker is an OPTIMISATION (skip re-extraction next launch), not
+            // andport-androidport: the marker is an OPTIMISATION (skip re-extraction next launch), not
             // a game asset.  A read-only or full filesystem can fail this write after every real
             // asset has been copied; that must not block startup, it only costs one re-extract.
             try {
@@ -224,7 +224,7 @@ public class EF2Activity extends SDLActivity {
     /**
      * The bundled asset the engine cannot start without, or {@code null} when it is present.
      *
-     * <p>r175-androidport: {@code zpak-android.pk3} is the port's own pak. It carries
+     * <p>andport-androidport: {@code zpak-android.pk3} is the port's own pak. It carries
      * {@code global/default.cfg}, which retail's {@code FS_InitFilesystem} hard-requires (a missing
      * one is a {@code Com_Error: FATAL: Couldn't load default.cfg} at boot), plus the on-screen
      * touch art. Everything else the activity extracts is replaceable, so only this file gates
@@ -269,7 +269,7 @@ public class EF2Activity extends SDLActivity {
 
     /**
      * One-time cleanup of the stale config files older builds left in
-     * {@code <obb>/base} (r145-effects; the operator's "delete the old cfgs" order).
+     * {@code <obb>/base} (effects-effects; the operator's "delete the old cfgs" order).
      *
      * <p>The engine writes exactly ONE user-state file today,
      * {@code <obb>/provenanceef2/base/config.cfg}, and it lives OUTSIDE this directory,

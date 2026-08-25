@@ -55,7 +55,7 @@ Event EV_SwitchBox_ClearOptions
     EV_DEFAULT,
     NULL,
     NULL,
-    "r134 D-UI: remove every option from the switchbox"
+    "menu3d D-UI: remove every option from the switchbox"
 );
 Event EV_SwitchBox_ImageOption
 (

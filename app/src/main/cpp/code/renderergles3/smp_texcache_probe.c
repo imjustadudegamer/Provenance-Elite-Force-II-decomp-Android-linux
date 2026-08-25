@@ -12,7 +12,7 @@
 #define PROBE_MAX_FILES 4096
 
 static const char *g_cacheBase = NULL;
-static int         g_target = R201_TEXC_ETC2_RGBA8;
+static int         g_target = SMP_TEXC_ETC2_RGBA8;
 static int         g_picmip = 0;
 static int         g_maxtex = 4096;
 static int         g_mipmaps = 1;
@@ -22,7 +22,7 @@ static void host_join(char *out, int outSize, const char *qpath)
 	snprintf(out, (size_t)outSize, "%s/%s", g_cacheBase, qpath);
 }
 
-static long host_open(void *ud, const char *qpath, r201TexCacheFile_t *fh)
+static long host_open(void *ud, const char *qpath, smpTexCacheFile_t *fh)
 {
 	char path[1024];
 	FILE *f;
@@ -35,17 +35,17 @@ static long host_open(void *ud, const char *qpath, r201TexCacheFile_t *fh)
 	if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
 	len = ftell(f);
 	if (len < 0 || fseek(f, 0, SEEK_SET) != 0) { fclose(f); return -1; }
-	*fh = (r201TexCacheFile_t)f;
+	*fh = (smpTexCacheFile_t)f;
 	return len;
 }
 
-static int host_read(void *ud, r201TexCacheFile_t fh, void *buf, int len)
+static int host_read(void *ud, smpTexCacheFile_t fh, void *buf, int len)
 {
 	(void)ud;
 	return (int)fread(buf, 1, (size_t)len, (FILE *)fh);
 }
 
-static void host_close(void *ud, r201TexCacheFile_t fh)
+static void host_close(void *ud, smpTexCacheFile_t fh)
 {
 	(void)ud;
 	fclose((FILE *)fh);
@@ -86,7 +86,7 @@ static char **host_list(void *ud, int *count)
 
 	(void)ud;
 	*count = 0;
-	snprintf(dir, sizeof(dir), "%s/%s", g_cacheBase, R201_TEXCACHE_DIR);
+	snprintf(dir, sizeof(dir), "%s/%s", g_cacheBase, SMP_TEXCACHE_DIR);
 	d = opendir(dir);
 	if (!d) return NULL;
 	while ((e = readdir(d)) != NULL) {
@@ -118,7 +118,7 @@ static void host_freelist(void *ud, char **names)
 	free(names);
 }
 
-static const r201TexCacheIO_t g_io = {
+static const smpTexCacheIO_t g_io = {
 	host_open, host_read, host_close, host_write, host_remove, host_list, host_freelist, NULL
 };
 
@@ -147,7 +147,7 @@ static int probe_parse_dds(unsigned char *buf, long len, probeDds_t *d)
 	else return 0;
 	if (d->width < 1 || d->height < 1) return 0;
 	d->payload = buf + 128;
-	d->storedBytes = R201_TexCache_StoredBytes(d->width, d->height, d->numMips, d->dxt);
+	d->storedBytes = SMP_TexCache_StoredBytes(d->width, d->height, d->numMips, d->dxt);
 	if (d->storedBytes > len - 128) {
 		d->storedBytes = len - 128;
 	}
@@ -239,8 +239,8 @@ static void probe_one(const char *path, probeStats_t *st)
 	long len;
 	probeDds_t d;
 	int base, upW, upH, levels, total;
-	r201TexCacheKey_t key;
-	r201TexCacheResult_t lres, sres;
+	smpTexCacheKey_t key;
+	smpTexCacheResult_t lres, sres;
 	unsigned int lo, hi;
 	int srcBytes;
 	unsigned char *chain = NULL;
@@ -271,11 +271,11 @@ static void probe_one(const char *path, probeStats_t *st)
 	baseName = baseName ? baseName + 1 : path;
 
 	probe_geometry(&d, &base, &upW, &upH, &levels);
-	total = R201_TranscodeChainBytes(upW, upH, levels);
+	total = SMP_TranscodeChainBytes(upW, upH, levels);
 
 	t0 = clock();
-	R201_TexCache_SourceHash(d.payload, d.width, d.height, d.numMips, d.dxt, &lo, &hi, &srcBytes);
-	R201_TexCache_FillKey(&key, baseName, d.width, d.height, g_mipmaps, g_picmip,
+	SMP_TexCache_SourceHash(d.payload, d.width, d.height, d.numMips, d.dxt, &lo, &hi, &srcBytes);
+	SMP_TexCache_FillKey(&key, baseName, d.width, d.height, g_mipmaps, g_picmip,
 						  g_maxtex, d.dxt, g_target, base, upW, upH, levels, lo, hi, srcBytes);
 	t1 = clock();
 	st->hashMs += ms_since(t0, t1);
@@ -283,7 +283,7 @@ static void probe_one(const char *path, probeStats_t *st)
 	memset(&lres, 0, sizeof(lres));
 	memset(&sres, 0, sizeof(sres));
 	t0 = clock();
-	if (R201_TexCache_Load(&key, &cached, &loadedBytes, probe_alloc, probe_free, &lres) &&
+	if (SMP_TexCache_Load(&key, &cached, &loadedBytes, probe_alloc, probe_free, &lres) &&
 		cached && loadedBytes == total) {
 		t1 = clock();
 		st->loadMs += ms_since(t0, t1);
@@ -296,34 +296,34 @@ static void probe_one(const char *path, probeStats_t *st)
 			free(cached);
 			cached = NULL;
 		}
-		if (lres.stat == R201_TEXCACHE_STAT_CORRUPT) st->corrupt++;
-		else if (lres.stat == R201_TEXCACHE_STAT_DISABLED) st->disabled++;
+		if (lres.stat == SMP_TEXCACHE_STAT_CORRUPT) st->corrupt++;
+		else if (lres.stat == SMP_TEXCACHE_STAT_DISABLED) st->disabled++;
 		else st->misses++;
 
 		chain = (unsigned char *)malloc((size_t)total);
 		if (!chain) { free(buf); return; }
 
 		t0 = clock();
-		R201_TranscodeChain(d.payload, d.dxt, d.width, d.height, d.numMips, base,
+		SMP_TranscodeChain(d.payload, d.dxt, d.width, d.height, d.numMips, base,
 							upW, upH, levels, g_target, chain, probe_alloc, probe_free, NULL, NULL);
 		t1 = clock();
 		st->buildMs += ms_since(t0, t1);
 
 		t0 = clock();
-		R201_TexCache_Store(&key, chain, total, &sres);
+		SMP_TexCache_Store(&key, chain, total, &sres);
 		t1 = clock();
 		st->storeMs += ms_since(t0, t1);
-		if (sres.stat == R201_TEXCACHE_STAT_STORED) st->storeOk++;
-		else if (sres.stat == R201_TEXCACHE_STAT_SKIP) st->storeSkip++;
+		if (sres.stat == SMP_TEXCACHE_STAT_STORED) st->storeOk++;
+		else if (sres.stat == SMP_TEXCACHE_STAT_SKIP) st->storeSkip++;
 		else st->storeFail++;
 		st->evicted += sres.evicted + lres.evicted;
 	}
 
 	if (!st->firstPathShown) {
-		printf("[R201:texcache-probe] path=%s name=%s target=%s base=%d levels=%d bytes=%d load=%s\n",
-			   lres.path, baseName, (g_target == R201_TEXC_ASTC_4x4) ? "astc" : "etc2",
+		printf("[SMP:texcache-probe] path=%s name=%s target=%s base=%d levels=%d bytes=%d load=%s\n",
+			   lres.path, baseName, (g_target == SMP_TEXC_ASTC_4x4) ? "astc" : "etc2",
 			   base, levels, total,
-			   (lres.stat == R201_TEXCACHE_STAT_HIT) ? "hit" : "miss");
+			   (lres.stat == SMP_TEXCACHE_STAT_HIT) ? "hit" : "miss");
 		st->firstPathShown = 1;
 	}
 
@@ -347,7 +347,7 @@ static void probe_ensure_cache_dir(void)
 	char p[1024];
 
 	mkdir(g_cacheBase, 0777);
-	snprintf(p, sizeof(p), "%s/%s", g_cacheBase, R201_TEXCACHE_DIR);
+	snprintf(p, sizeof(p), "%s/%s", g_cacheBase, SMP_TEXCACHE_DIR);
 	mkdir(p, 0777);
 }
 
@@ -374,7 +374,7 @@ static int collect_dir(const char *dir, char **files, int max)
 int main(int argc, char **argv)
 {
 	const char *dds = NULL, *ddsdir = NULL, *out = NULL;
-	int maxmb = R201_TEXCACHE_DEFAULT_MAX_MB;
+	int maxmb = SMP_TEXCACHE_DEFAULT_MAX_MB;
 	char **files;
 	int nfiles = 0, i;
 	probeStats_t st;
@@ -392,15 +392,15 @@ int main(int argc, char **argv)
 		else if (!strncmp(argv[i], "--maxtex=", 9)) g_maxtex = atoi(argv[i] + 9);
 		else if (!strncmp(argv[i], "--mipmaps=", 10)) g_mipmaps = atoi(argv[i] + 10);
 		else if (!strncmp(argv[i], "--target=", 9)) {
-			if (!strcmp(argv[i] + 9, "astc")) g_target = R201_TEXC_ASTC_4x4;
-			else g_target = R201_TEXC_ETC2_RGBA8;
+			if (!strcmp(argv[i] + 9, "astc")) g_target = SMP_TEXC_ASTC_4x4;
+			else g_target = SMP_TEXC_ETC2_RGBA8;
 		}
 	}
 	if (!g_cacheBase || (!dds && !ddsdir)) {
 		fprintf(stderr, "usage: %s --cache-base=DIR (--dds=FILE|--ddsdir=DIR) [--target=etc2|astc] [--out=FILE]\n", argv[0]);
 		return 2;
 	}
-	if (maxmb < 1) maxmb = R201_TEXCACHE_DEFAULT_MAX_MB;
+	if (maxmb < 1) maxmb = SMP_TEXCACHE_DEFAULT_MAX_MB;
 
 	files = (char **)calloc(PROBE_MAX_FILES, sizeof(char *));
 	if (single) {
@@ -414,21 +414,21 @@ int main(int argc, char **argv)
 
 	memset(&st, 0, sizeof(st));
 	probe_ensure_cache_dir();
-	R201_TexCache_Begin(&g_io, 1, maxmb * 1024 * 1024);
+	SMP_TexCache_Begin(&g_io, 1, maxmb * 1024 * 1024);
 
 	for (i = 0; i < nfiles; i++) {
 		probe_one(files[i], &st);
 	}
 
-	printf("[R201:texcache-probe] summary files=%d hits=%d misses=%d corrupt=%d disabled=%d "
+	printf("[SMP:texcache-probe] summary files=%d hits=%d misses=%d corrupt=%d disabled=%d "
 		   "store_ok=%d store_fail=%d store_skip=%d evicted=%d bytes=%lld "
 		   "cpu_hash_ms=%.1f cpu_load_ms=%.1f cpu_build_ms=%.1f cpu_store_ms=%.1f cpu_total_ms=%.1f\n",
 		   st.files, st.hits, st.misses, st.corrupt, st.disabled,
 		   st.storeOk, st.storeFail, st.storeSkip, st.evicted, st.bytes,
 		   st.hashMs, st.loadMs, st.buildMs, st.storeMs,
 		   st.hashMs + st.loadMs + st.buildMs + st.storeMs);
-	printf("[R201:texcache-probe] cache-base=%s target=%s maxmb=%d picmip=%d maxtex=%d mipmaps=%d\n",
-		   g_cacheBase, (g_target == R201_TEXC_ASTC_4x4) ? "astc" : "etc2",
+	printf("[SMP:texcache-probe] cache-base=%s target=%s maxmb=%d picmip=%d maxtex=%d mipmaps=%d\n",
+		   g_cacheBase, (g_target == SMP_TEXC_ASTC_4x4) ? "astc" : "etc2",
 		   maxmb, g_picmip, g_maxtex, g_mipmaps);
 
 	if (out) {
@@ -438,10 +438,10 @@ int main(int argc, char **argv)
 			return 2;
 		}
 		fclose(of);
-		printf("[R201:texcache-probe] wrote %ld bytes to %s\n", g_outLen, out);
+		printf("[SMP:texcache-probe] wrote %ld bytes to %s\n", g_outLen, out);
 	}
 	free(g_out);
 	free(files);
-	printf("[R201:texcache-probe] result: PASS\n");
+	printf("[SMP:texcache-probe] result: PASS\n");
 	return 0;
 }

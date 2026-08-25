@@ -136,8 +136,8 @@ void UILayout::ProcessCommands(void)
                         token = m_script->GetToken(true);
                     }
 
-                    // R122: the port-only rect-less Disable() is GONE.  Retail
-                    // R122 FIX) -- which is what fixes the widgets that are NEVER passed
+                    // LAYOUT: the port-only rect-less Disable() is GONE.  Retail
+                    // LAYOUT FIX) -- which is what fixes the widgets that are NEVER passed
                 }
             } else {
                 if (ValidEvent(token)) {

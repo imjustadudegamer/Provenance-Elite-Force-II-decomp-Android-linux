@@ -2,9 +2,9 @@
 #include "cl_ui.h"
 #include "../qcommon/gameplaymanager.h"
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 #include "../qcommon/stringresource.h"
 #include "../corepp/tiki.h" 
 
@@ -2486,22 +2486,22 @@ UIInventoryBar::UIInventoryBar()
     m_selectedTypeWidget->setForegroundColor(getForegroundColor());
     m_selectedTypeWidget->setBackgroundColor(getBackgroundColor(), WIDGET_STATE_NORMAL, false);
     {
-        static cvar_t *r208_inv = NULL;
-        static int     r208_invRows;
+        static cvar_t *shadow_inv = NULL;
+        static int     shadow_invRows;
 
-        if (!r208_inv) {
-            r208_inv = Cvar_Get("r208_invStats", "1", 0);
+        if (!shadow_inv) {
+            shadow_inv = Cvar_Get("shadow_invStats", "1", 0);
         }
-        if (r208_inv && r208_inv->integer && r208_invRows < 8) {
+        if (shadow_inv && shadow_inv->integer && shadow_invRows < 8) {
             UColor c = getBackgroundColor();
-            Com_Printf("[R208:inv] ctor bar.bg=(%.3f,%.3f,%.3f,%.3f) "
+            Com_Printf("[SHADOW:inv] ctor bar.bg=(%.3f,%.3f,%.3f,%.3f) "
                        "selWidget.bg=(%.3f,%.3f,%.3f,%.3f) typeWidget.bg=(%.3f,%.3f,%.3f,%.3f)\n",
                        c.r, c.g, c.b, c.a,
                        m_selectedWidget->getBackgroundColor().r, m_selectedWidget->getBackgroundColor().g,
                        m_selectedWidget->getBackgroundColor().b, m_selectedWidget->getBackgroundColor().a,
                        m_selectedTypeWidget->getBackgroundColor().r, m_selectedTypeWidget->getBackgroundColor().g,
                        m_selectedTypeWidget->getBackgroundColor().b, m_selectedTypeWidget->getBackgroundColor().a);
-            r208_invRows++;
+            shadow_invRows++;
         }
     }
     inventoryBar = this;
@@ -3122,7 +3122,7 @@ void UIInventoryBar::previousItem(Event *ev)
 void UIInventoryBar::warpToItem(Event *ev)
 {
 
-    R120_PROBE(
+    PROBE(
         "inv:bar",
         "warpToItem: event='%s' enabled=%d view3d=%d isActive=%d types=%d",
         ev->getName(),
@@ -3133,12 +3133,12 @@ void UIInventoryBar::warpToItem(Event *ev)
     );
 
     if (!m_enabled) {
-        R120_PROBE("inv:bar", "GATE m_enabled==0 -- bar dead, nothing will happen");
+        PROBE("inv:bar", "GATE m_enabled==0 -- bar dead, nothing will happen");
         return;
     }
 
     if (!UI_IsView3DActive() && !IsActive()) {
-        R120_PROBE("inv:bar", "GATE view3d+focus -- event dropped, nothing will happen");
+        PROBE("inv:bar", "GATE view3d+focus -- event dropped, nothing will happen");
         return;
     }
 
@@ -3150,7 +3150,7 @@ void UIInventoryBar::warpToItem(Event *ev)
     int idx = getTypeIndex(name);
 
     if (idx < 1 || idx > m_types.NumObjects()) {
-        R120_PROBE(
+        PROBE(
             "inv:bar",
             "REJECT type '%s' not found (types=%d) -- client inventory mirror empty",
             name.c_str(),
@@ -3339,12 +3339,12 @@ void UIDialogTextConsole::PrintDialog(const str& name, const str& text, float li
     }
 }
 
-static int s_r201PrintDialogCalls;
-static int s_r201ResetDialogCalls;
+static int s_smpPrintDialogCalls;
+static int s_smpResetDialogCalls;
 
 void UIDialogTextConsole::PrintDialog(unsigned char level, const str& text, bool useAlpha)
 {
-    s_r201PrintDialogCalls++;
+    s_smpPrintDialogCalls++;
 
     str       line;
     int       lineWidth;
@@ -3414,7 +3414,7 @@ void UIDialogTextConsole::PrintDialog(unsigned char level, const str& text, bool
 
 void UIDialogTextConsole::ResetDialog(Event *ev)
 {
-    s_r201ResetDialogCalls++;
+    s_smpResetDialogCalls++;
     m_currentText = "";
     m_currentName = "";
 }
@@ -3504,22 +3504,22 @@ void UIDialogTextConsole::Draw(void)
             m_firstLine = firstLine;
             m_scrollDelay -= cls.frametime;
 
-#define R201_DIALOG_MAX 48
+#define SMP_DIALOG_MAX 48
             {
-                static int s_r201DialogRows;
-                static int s_r201DialogLastMs = -100000;
+                static int s_smpDialogRows;
+                static int s_smpDialogLastMs = -100000;
 
-                if (s_r201DialogRows < R201_DIALOG_MAX
-                    && cls.realtime - s_r201DialogLastMs >= 500) {
-                    s_r201DialogLastMs = cls.realtime;
-                    s_r201DialogRows++;
+                if (s_smpDialogRows < SMP_DIALOG_MAX
+                    && cls.realtime - s_smpDialogLastMs >= 500) {
+                    s_smpDialogLastMs = cls.realtime;
+                    s_smpDialogRows++;
 
                     int longest = 0;
                     for (int k = 1; k <= numLines; k++) {
                         int L = (int)strlen(m_lines.ObjectAt(k).c_str());
                         if (L > longest) longest = L;
                     }
-                    Com_Printf("[R201:dialog] page el=%d hold=%.0f alpha=%.3f lines=%d "
+                    Com_Printf("[SMP:dialog] page el=%d hold=%.0f alpha=%.3f lines=%d "
                                "maxLines=%d maxWidth=%d first=%d last=%d nominal=%d "
                                "lastFirst=%d delay=%d level=%d useAlpha=%d "
                                "cwSpace=%d cwA=%d h=%d longest=%d "
@@ -3530,8 +3530,8 @@ void UIDialogTextConsole::Draw(void)
                                m_useAlpha ? 1 : 0,
                                m_font->getCharWidth(' ', 0), m_font->getCharWidth('a', 0),
                                m_font->getHeight(false), longest,
-                               s_r201PrintDialogCalls,
-                               s_r201ResetDialogCalls);
+                               s_smpPrintDialogCalls,
+                               s_smpResetDialogCalls);
                 }
             }
         } else {
@@ -3539,20 +3539,20 @@ void UIDialogTextConsole::Draw(void)
             int   n = m_lines.NumObjects();
 
             {
-                static int s_r201DialogFitRows;
-                static int s_r201DialogFitLastMs = -100000;
+                static int s_smpDialogFitRows;
+                static int s_smpDialogFitLastMs = -100000;
 
-                if (s_r201DialogFitRows < R201_DIALOG_MAX
-                    && cls.realtime - s_r201DialogFitLastMs >= 500) {
-                    s_r201DialogFitLastMs = cls.realtime;
-                    s_r201DialogFitRows++;
+                if (s_smpDialogFitRows < SMP_DIALOG_MAX
+                    && cls.realtime - s_smpDialogFitLastMs >= 500) {
+                    s_smpDialogFitLastMs = cls.realtime;
+                    s_smpDialogFitRows++;
 
                     int longest = 0;
                     for (int k = 1; k <= n; k++) {
                         int L = (int)strlen(m_lines.ObjectAt(k).c_str());
                         if (L > longest) longest = L;
                     }
-                    Com_Printf("[R201:dialog] fits el=%d hold=%.0f alpha=%.3f lines=%d "
+                    Com_Printf("[SMP:dialog] fits el=%d hold=%.0f alpha=%.3f lines=%d "
                                "maxLines=%d maxWidth=%d nominal=%d delay=%d level=%d useAlpha=%d "
                                "cwSpace=%d cwA=%d h=%d longest=%d "
                                "printCalls=%d resetCalls=%d\n",
@@ -3561,8 +3561,8 @@ void UIDialogTextConsole::Draw(void)
                                (int)m_displayLevel, m_useAlpha ? 1 : 0,
                                m_font->getCharWidth(' ', 0), m_font->getCharWidth('a', 0),
                                m_font->getHeight(false), longest,
-                               s_r201PrintDialogCalls,
-                               s_r201ResetDialogCalls);
+                               s_smpPrintDialogCalls,
+                               s_smpResetDialogCalls);
                 }
             }
 
@@ -4285,10 +4285,10 @@ void UIRadarDialog::Draw(void)
     refdef.time   = cl.serverTime;
 
     {
-        static int r138uivp3d_radar;
-        if ((uid.originX || uid.originY) && R120_Throttle(&r138uivp3d_radar, 2, 120)) {
+        static int uiparityuivp3d_radar;
+        if ((uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d_radar, 2, 120)) {
             Com_Printf(
-                "[R138:uivp3d] radar refdef %d,%d %dx%d | origin %d,%d rect %dx%d\n",
+                "[UIPARITY:uivp3d] radar refdef %d,%d %dx%d | origin %d,%d rect %dx%d\n",
                 refdef.x, refdef.y, refdef.width, refdef.height,
                 uid.originX, uid.originY, uid.vidWidth, uid.vidHeight
             );

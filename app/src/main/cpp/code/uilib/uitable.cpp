@@ -4,10 +4,10 @@
 #include "../qcommon/stringresource.h"
 #include "uiwidgets_ef2.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) ((cvar_t *)0)
-#define R120_PROBE_PRINT                       Com_Printf
-#define R120_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_r120", "1")) != 0)  
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
+#include "../qcommon/qa_probe.h"
 
 
 
@@ -66,7 +66,7 @@ UIRow *UIRowColumn::createRow(void)
     }
 
     UIRect2D frame = getFrame();
-    // R129: the y argument is retail's second pool float (0x00218988 = 0.0f), NOT the
+    // UIROWS: the y argument is retail's second pool float (0x00218988 = 0.0f), NOT the
     row->InitFrame(this, 0.0f, 0.0f, frame.size.width - getScrollBarWidth(), getItemHeight(), -1, "tahoma-8");
     row->setBackgroundColor(UColor(0, 0, 0, 0), WIDGET_STATE_NORMAL, true);
     row->setBorderStyle(border_none);
@@ -404,15 +404,15 @@ void UIRowColumn::Draw(void)
         }
     }
 
-    static int r129_rows;
-    static int r130_sb;
-    if (R120_On()
-        && (!strcmp(getName(), "dmscore") ? R120_Throttle(&r130_sb, 8, 200) : R120_Throttle(&r129_rows, 4, 400))) {
+    static int uirows_rows;
+    static int uirect_sb;
+    if (PROBE_On()
+        && (!strcmp(getName(), "dmscore") ? PROBE_Throttle(&uirect_sb, 8, 200) : PROBE_Throttle(&uirows_rows, 4, 400))) {
         UIRow    *row1  = m_rows.NumObjects() >= 1 ? m_rows.ObjectAt(1) : NULL;
         UIWidget *cell  = row1 ? row1->getWidget(1) : NULL;
         UIVertScroll *sb = getScrollBar();
 
-        R130_PROBE(
+        UIRECT_PROBE(
             "sb:rowrender",
             "rc='%s' rows=%d cols=%d itemh=%.1f top=%d bottom=%d sb=%d sbnum=%d sbpage=%d sbtop=%d "
             "fr=(%.0f,%.0f %.0fx%.0f) "
@@ -441,37 +441,37 @@ void UIRowColumn::Draw(void)
             row1 ? row1->getFrame().pos.y : 0.0f,
             row1 ? row1->getFrame().size.width : 0.0f,
             row1 ? row1->getFrame().size.height : 0.0f,
-            row1 ? row1->R130ProbeScreenOrigin().x : 0.0f,
-            row1 ? row1->R130ProbeScreenOrigin().y : 0.0f,
-            row1 ? row1->R130ProbeClippedFrame().pos.x : 0.0f,
-            row1 ? row1->R130ProbeClippedFrame().pos.y : 0.0f,
-            row1 ? row1->R130ProbeClippedFrame().size.width : 0.0f,
-            row1 ? row1->R130ProbeClippedFrame().size.height : 0.0f,
+            row1 ? row1->UIRECTProbeScreenOrigin().x : 0.0f,
+            row1 ? row1->UIRECTProbeScreenOrigin().y : 0.0f,
+            row1 ? row1->UIRECTProbeClippedFrame().pos.x : 0.0f,
+            row1 ? row1->UIRECTProbeClippedFrame().pos.y : 0.0f,
+            row1 ? row1->UIRECTProbeClippedFrame().size.width : 0.0f,
+            row1 ? row1->UIRECTProbeClippedFrame().size.height : 0.0f,
             cell ? cell->getClassname() : "(none)",
             (cell && cell->getShow()) ? 1 : 0,
             cell ? cell->getFrame().pos.x : 0.0f,
             cell ? cell->getFrame().pos.y : 0.0f,
             cell ? cell->getFrame().size.width : 0.0f,
             cell ? cell->getFrame().size.height : 0.0f,
-            cell ? cell->R130ProbeScreenOrigin().x : 0.0f,
-            cell ? cell->R130ProbeScreenOrigin().y : 0.0f,
-            cell ? cell->R130ProbeClippedFrame().pos.x : 0.0f,
-            cell ? cell->R130ProbeClippedFrame().pos.y : 0.0f,
-            cell ? cell->R130ProbeClippedFrame().size.width : 0.0f,
-            cell ? cell->R130ProbeClippedFrame().size.height : 0.0f,
+            cell ? cell->UIRECTProbeScreenOrigin().x : 0.0f,
+            cell ? cell->UIRECTProbeScreenOrigin().y : 0.0f,
+            cell ? cell->UIRECTProbeClippedFrame().pos.x : 0.0f,
+            cell ? cell->UIRECTProbeClippedFrame().pos.y : 0.0f,
+            cell ? cell->UIRECTProbeClippedFrame().size.width : 0.0f,
+            cell ? cell->UIRECTProbeClippedFrame().size.height : 0.0f,
             (cell && cell->getFont()) ? 1 : 0,
-            cell ? (cell->R130ProbeVirtual() ? 1 : 0) : 0,
+            cell ? (cell->UIRECTProbeVirtual() ? 1 : 0) : 0,
             cell ? cell->getData() : ""
         );
     }
 
-    if (R120_On() && !strcmp(getName(), "dmscore") && m_rows.NumObjects()) {
-        static int r131_cells;
+    if (PROBE_On() && !strcmp(getName(), "dmscore") && m_rows.NumObjects()) {
+        static int widget_cells;
 
-        if (R120_Throttle(&r131_cells, 4, 200)) {
+        if (PROBE_Throttle(&widget_cells, 4, 200)) {
             UIRow *row1 = m_rows.ObjectAt(1);
 
-            R131_PROBE(
+            WIDGET_PROBE(
                 "sb:cells",
                 "rows=%d cols=%d itemh=%.1f top=%d bottom=%d\n",
                 m_rows.NumObjects(),
@@ -484,17 +484,17 @@ void UIRowColumn::Draw(void)
                 UIWidget *cell = row1->getWidget(c);
 
                 if (!cell) {
-                    R131_PROBE("sb:cells", "  col%d=(none)\n", c);
+                    WIDGET_PROBE("sb:cells", "  col%d=(none)\n", c);
                     continue;
                 }
 
-                R131_PROBE(
+                WIDGET_PROBE(
                     "sb:cells",
                     "  col%d class=%s w=%.0f mat='%s' data='%s' vis=%d\n",
                     c,
                     cell->getClassname(),
                     m_columns.ObjectAt(c)->width,
-                    cell->R131ProbeMaterialName(),
+                    cell->WIDGETProbeMaterialName(),
                     cell->getData(),
                     cell->getShow() ? 1 : 0);
             }

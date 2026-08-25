@@ -1,9 +1,9 @@
 
 #include "tr_local.h"
 
-#define R120_PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
 
 static int s_markVisited;       
 static int s_markRejFlags;      
@@ -18,7 +18,7 @@ static int s_markFaceTri, s_markFaceAcc, s_markFaceRejNormal;
 static int s_markAddCalls, s_markAddChopOverflow, s_markAddChopEmpty, s_markAddNoSpace, s_markAddOk;
 static int s_markBailCount;
 
-#define R133_MARK_RESET() do { \
+#define UIVK_MARK_RESET() do { \
     s_markVisited = s_markRejFlags = s_markRejPlane = s_markRejAABB = s_markRejType = 0; \
     s_markListFull = s_markAdded = 0; \
     s_markGridTri = s_markGridAcc = s_markTerrTri = s_markTerrAcc = 0; \
@@ -139,7 +139,7 @@ void R_BoxSurfaces_r(mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **li
 		}
 	}
 
-	// [R133:DO] retail R_BoxSurfaces_r @0x0001F640 is FOUR gates, not five:
+	// [UIVK:DO] retail R_BoxSurfaces_r @0x0001F640 is FOUR gates, not five:
 	// angles with the projection direction' normal test is NOT here in retail -- it
 	mark = node->firstmarksurface;
 	c = node->nummarksurfaces;
@@ -390,7 +390,7 @@ int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projectio
 	vec3_t v1, v2;
 
 	tr.viewCount++;
-	R133_MARK_RESET();
+	UIVK_MARK_RESET();
 
 	VectorNormalize2( projection, projectionDir );
 	ClearBounds( mins, maxs );
@@ -426,8 +426,8 @@ int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projectio
 	R_BoxSurfaces_r(tr.world->nodes, mins, maxs, surfaces, MAX_MARK_SURFACES, &numsurfaces, projectionDir);
 
 	if (!numsurfaces) {
-		if (R120_On()) {
-			R133_PROBE(
+		if (PROBE_On()) {
+			UIVK_PROBE(
 				"MARK:bail",
 				"%d EMPTY-LIST np=%d proj=(%.2f,%.2f,%.2f) pdir=(%.3f,%.3f,%.3f)"
 				" push=%.2f mins=(%.1f,%.1f,%.1f) maxs=(%.1f,%.1f,%.1f)"
@@ -460,8 +460,8 @@ int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projectio
         fragmentBuffer
 	);
 
-	if (R120_On()) {
-		R133_PROBE(
+	if (PROBE_On()) {
+		UIVK_PROBE(
 			"MARK:bail",
 			"%d np=%d proj=(%.2f,%.2f,%.2f) pdir=(%.3f,%.3f,%.3f) push=%.2f"
 			" vis=%d add=%d listfull=%d rejflag=%d rejplane=%d rejaabb=%d rejtype=%d"

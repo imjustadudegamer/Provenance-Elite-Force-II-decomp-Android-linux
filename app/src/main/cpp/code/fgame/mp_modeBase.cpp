@@ -9,9 +9,9 @@
 #include "weaputils.h"
 extern Event EV_Player_DeadBody;  
 
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
 const float	MultiplayerModeBase::_defaultStartinghealth = 100.0f;
 const int	MultiplayerModeBase::_defaultPointsPerKill = 1;
@@ -856,8 +856,8 @@ bool MultiplayerModeBase::shouldStartMatch( void )
 	{
 		{
 			static int n = 0;
-			if (R120_Throttle(&n, 4, 500)) {
-				R120_PROBE(
+			if (PROBE_Throttle(&n, 4, 500)) {
+				PROBE(
 					"npc:warmup",
 					"BLOCKED minPlayers: numPlayers=%d mp_minPlayers=%d warmupElapsed=%d",
 					numPlayers,
@@ -869,7 +869,7 @@ bool MultiplayerModeBase::shouldStartMatch( void )
 		return false;
 	}
 
-	R120_PROBE(
+	PROBE(
 		"npc:warmup",
 		"WARMUP DONE -> startMatch: numPlayers=%d maxPlayers=%d",
 		numPlayers,
@@ -926,7 +926,7 @@ void MultiplayerModeBase::startMatch( void )
 	_gameStarted = true;
 	multiplayerManager.allowFighting( true );
 
-	R120_PROBE("npc:matchstart", "startMatch: _maxPlayers=%d", (int)_maxPlayers);
+	PROBE("npc:matchstart", "startMatch: _maxPlayers=%d", (int)_maxPlayers);
 
 
 	for ( i = 0 ; i < ( int )_maxPlayers ; i++ )

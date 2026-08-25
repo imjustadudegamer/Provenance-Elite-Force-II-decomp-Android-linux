@@ -4,9 +4,9 @@
 #include "../uilib/uiwinman.h"     
 #include "../uilib/uipopupmenu.h"  
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
 //     is one plain word the ctor zeroes and no retail code reads.  (Retail never
 
@@ -156,7 +156,7 @@ void GameInventory::Timeout(Event *ev)
 {
     if (gameInventory && !gameInventory->IsDying()) {
         delete (GameInventory *)gameInventory.Pointer();
-        R133_PROBE("focus", "caller=GameInventory::Timeout State=%d", cls.state);
+        UIVK_PROBE("focus", "caller=GameInventory::Timeout State=%d", cls.state);
         UI_FocusMenuIfExists();
     }
 }
@@ -265,14 +265,14 @@ void CL_Draw3DModel(
         }
 
         {
-            static int r134mvk_cl3d;
-            if (R120_Throttle(&r134mvk_cl3d, 4, 120)) {
-                R133_PROBE(
+            static int menu3dmvk_cl3d;
+            if (PROBE_Throttle(&menu3dmvk_cl3d, 4, 120)) {
+                UIVK_PROBE(
                     "menu3d",
                     "cl3d model=%d anim='%s' animnum=%d frames=%d animtime=%.3f frame=%d xf=%.0f yf=%.0f wf=%.0f hf=%.0f fov=%.0fx%.0f idx=%d",
                     model, anim.c_str(), animnum, numframes, (double)animtime, (int)ent->frame,
                     (double)x, (double)y, (double)w, (double)h, (double)fov_x, (double)fov_y,
-                    r134mvk_cl3d
+                    menu3dmvk_cl3d
                 );
             }
         }
@@ -305,10 +305,10 @@ void CL_Draw3DModel(
     ent->actionWeight = 1.0f;
 
     {
-        static int r138uivp3d;
-        if ((uid.originX || uid.originY) && R120_Throttle(&r138uivp3d, 2, 120)) {
+        static int uiparityuivp3d;
+        if ((uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d, 2, 120)) {
             Com_Printf(
-                "[R138:uivp3d] cl3d model=%d refdef %d,%d %dx%d | origin %d,%d rect %dx%d surface %dx%d\n",
+                "[UIPARITY:uivp3d] cl3d model=%d refdef %d,%d %dx%d | origin %d,%d rect %dx%d surface %dx%d\n",
                 model, inv_refdef.x, inv_refdef.y, inv_refdef.width, inv_refdef.height,
                 uid.originX, uid.originY, uid.vidWidth, uid.vidHeight, uid.surfaceWidth, uid.surfaceHeight
             );
@@ -329,13 +329,13 @@ bool CL_DoIHaveThisItem(const char *name)
 
 void UI_NextInventory_f(void)
 {
-    R120_PROBE("inv:cmd", "nextinv -> InventoryBar inventorynextitem");
+    PROBE("inv:cmd", "nextinv -> InventoryBar inventorynextitem");
     Cbuf_AddText("globalwidgetcommand InventoryBar inventorynextitem\n");
 }
 
 void UI_PrevInventory_f(void)
 {
-    R120_PROBE("inv:cmd", "previnv -> InventoryBar inventorypreviousitem");
+    PROBE("inv:cmd", "previnv -> InventoryBar inventorypreviousitem");
     Cbuf_AddText("globalwidgetcommand InventoryBar inventorypreviousitem\n");
 }
 
@@ -347,7 +347,7 @@ void UI_WarpInventory_f(void)
         Com_WPrintf("Usage: warpinv <slot_name>");
     }
 
-    R120_PROBE("inv:cmd", "warpinv slot='%s'", Cmd_Argv(1));
+    PROBE("inv:cmd", "warpinv slot='%s'", Cmd_Argv(1));
 
     sCommand = "globalwidgetcommand InventoryBar inventorywarpitem ";
     sCommand += Cmd_Argv(1);

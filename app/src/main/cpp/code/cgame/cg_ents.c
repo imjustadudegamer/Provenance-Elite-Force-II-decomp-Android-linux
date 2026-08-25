@@ -3,13 +3,13 @@
 #include "cg_local.h"
 #include "cg_radar.h"
 
-#define R131_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R131_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_r131.h"
+#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define WIDGET_PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_widget.h"
 
-#define R120_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_probe.h"
 
 
 void CG_SetEntitySoundPosition(centity_t *cent)
@@ -201,7 +201,7 @@ void CG_Item(centity_t *cent)
     radius = cgi.R_ModelRadius(handle);
     cgi.R_ModelBounds(handle, mins, maxs);
 
-    //   [R132:K2:halfspan] The fmuls ORDER is load-bearing, not cosmetic: 0x2F02C
+    //   [EVENT:K2:halfspan] The fmuls ORDER is load-bearing, not cosmetic: 0x2F02C
     halfSpan = s1->scale * (0.5f * radius);
 
     amount = 0.2f * halfSpan;
@@ -280,10 +280,10 @@ void CG_Sprite(centity_t *cent)
             cgi.Com_WDPrintf("CG_Sprite: Could not find parent entity\n");
 
             {
-                static int r131_orphan;
+                static int widget_orphan;
 
-                if (R131_On() && R131_Throttle(&r131_orphan, 4, 32)) {
-                    R131_A1_PROBE(
+                if (WIDGET_On() && WIDGET_Throttle(&widget_orphan, 4, 32)) {
+                    WIDGET_A1_PROBE(
                         "tag:orphan",
                         "child=%d etype=%d modelindex=%d parent=%d tagnum=%d use_angles=%d cg.time=%d\n",
                         cent->currentState.number,
@@ -299,28 +299,28 @@ void CG_Sprite(centity_t *cent)
         }
 
         {
-            static int r131_att;
+            static int widget_att;
 
-            if (R131_On() && R131_Throttle(&r131_att, 4, 64)) {
-                orientation_t r131_or;
-                int           r131_lerp = r_lerpmodels->integer;
+            if (WIDGET_On() && WIDGET_Throttle(&widget_att, 4, 64)) {
+                orientation_t widget_or;
+                int           widget_lerp = r_lerpmodels->integer;
 
-                if (r131_lerp) {
-                    cgi.TIKI_Tag_LerpOrientation(&r131_or, cgi.R_Model_GetHandle(parent->hModel), parent,
+                if (widget_lerp) {
+                    cgi.TIKI_Tag_LerpOrientation(&widget_or, cgi.R_Model_GetHandle(parent->hModel), parent,
                                                  s1->tag_num & 0x3FF);
                 } else {
-                    VectorClear(r131_or.origin);
+                    VectorClear(widget_or.origin);
                 }
 
-                R131_A1_PROBE(
+                WIDGET_A1_PROBE(
                     "tag:attach",
                     "child=%d parent=%d tagnum=%d lerp=%d or=(%.1f,%.1f,%.1f) "
                     "porg=(%.1f,%.1f,%.1f) corg=(%.1f,%.1f,%.1f) plegslive=%d ptorsolive=%d\n",
                     cent->currentState.number,
                     s1->parent,
                     s1->tag_num & 0x3FF,
-                    r131_lerp,
-                    r131_or.origin[0], r131_or.origin[1], r131_or.origin[2],
+                    widget_lerp,
+                    widget_or.origin[0], widget_or.origin[1], widget_or.origin[2],
                     parent->origin[0], parent->origin[1], parent->origin[2],
                     cent->lerpOrigin[0], cent->lerpOrigin[1], cent->lerpOrigin[2],
                     parent->legsLive,
@@ -402,7 +402,7 @@ void CG_General(centity_t *cent)
         return;
     }
 
-    // NOTE (r161): there is deliberately NO `if (s1->renderfx & RF_DONTDRAW) return;'
+    // NOTE (borg): there is deliberately NO `if (s1->renderfx & RF_DONTDRAW) return;'
     memset(&ent, 0, sizeof(ent));
 
 
@@ -589,7 +589,7 @@ void CG_Decal(centity_t *cent)
     shader = cgi.R_RegisterShader(CG_ConfigString(CS_IMAGES + s1->tag_num));
     ByteToDir(s1->surfaces[0], dir);
 
-    R133_PROBE(
+    UIVK_PROBE(
         "DOCC:decal",
         "ent=%d org=(%.1f,%.1f,%.1f) dirbyte=%d dir=(%.3f,%.3f,%.3f) scale=%f (0x%08x) roll=%.1f shader='%s'\n",
         cent->currentState.number,
@@ -734,11 +734,11 @@ void CG_CalcEntityLerpPositions(centity_t *cent)
     }
 
     {
-        static int r131_k1_postype[ENTITYNUM_MAX_NORMAL];
-        static int r131_k1_apostype[ENTITYNUM_MAX_NORMAL];
-        static int r131_k1_nets[ENTITYNUM_MAX_NORMAL];
-        static int r131_k1_angs[ENTITYNUM_MAX_NORMAL];
-        static int r131_k1_ctr[8];
+        static int widget_k1_postype[ENTITYNUM_MAX_NORMAL];
+        static int widget_k1_apostype[ENTITYNUM_MAX_NORMAL];
+        static int widget_k1_nets[ENTITYNUM_MAX_NORMAL];
+        static int widget_k1_angs[ENTITYNUM_MAX_NORMAL];
+        static int widget_k1_ctr[8];
         int        slot = cent->currentState.number;
         int        nets, angs;
 
@@ -748,16 +748,16 @@ void CG_CalcEntityLerpPositions(centity_t *cent)
             angs = (int)(cent->currentState.angles[0] * 4.0f) ^ (int)(cent->currentState.angles[1] * 4.0f)
                  ^ (int)(cent->currentState.angles[2] * 4.0f);
 
-            if (cent->currentState.pos.trType != r131_k1_postype[slot]
-                || cent->currentState.apos.trType != r131_k1_apostype[slot] || nets != r131_k1_nets[slot]
-                || angs != r131_k1_angs[slot]) {
-                r131_k1_postype[slot] = cent->currentState.pos.trType;
-                r131_k1_apostype[slot] = cent->currentState.apos.trType;
-                r131_k1_nets[slot]  = nets;
-                r131_k1_angs[slot]  = angs;
+            if (cent->currentState.pos.trType != widget_k1_postype[slot]
+                || cent->currentState.apos.trType != widget_k1_apostype[slot] || nets != widget_k1_nets[slot]
+                || angs != widget_k1_angs[slot]) {
+                widget_k1_postype[slot] = cent->currentState.pos.trType;
+                widget_k1_apostype[slot] = cent->currentState.apos.trType;
+                widget_k1_nets[slot]  = nets;
+                widget_k1_angs[slot]  = angs;
 
-                if (R131_On() && R131_Throttle(&r131_k1_ctr[cent->currentState.number & 7], 40, 128)) {
-                    R131_K1_PROBE(
+                if (WIDGET_On() && WIDGET_Throttle(&widget_k1_ctr[cent->currentState.number & 7], 40, 128)) {
+                    WIDGET_K1_PROBE(
                         "lerp",
                         "ent=%d etype=%d interp=%d pos{t=%d tm=%d dur=%d base=(%.1f,%.1f,%.1f) d=(%.1f,%.1f,%.1f)}"
                         " apos{t=%d tm=%d dur=%d base=(%.1f,%.1f,%.1f) d=(%.1f,%.1f,%.1f)}"

@@ -178,7 +178,7 @@ public:
     friend bool operator==(const PathNode& node1, const PathNode& node2) { return (node1.origin == node2.origin) != 0; }
     friend bool operator!=(const PathNode& node1, const PathNode& node2) { return !(node1 == node2); }
 
-    int                   r201_nodeIndex;
+    int                   smp_nodeIndex;
 
     int                   NumberOfConnections(void) const { return _connections.NumObjects(); }
     PathNodeConnection&   GetConnection(const int index) const { return *_connections[index]; }

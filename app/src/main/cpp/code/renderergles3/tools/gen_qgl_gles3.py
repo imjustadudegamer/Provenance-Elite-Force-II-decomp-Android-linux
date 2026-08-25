@@ -100,11 +100,11 @@ def main():
     print(" *")
     print(" * Every name here is loaded by qgl_gles3.c through SDL_GL_GetProcAddress")
     print(" * and, when the context does not provide it, replaced by a trap that")
-    print(" * prints `[R200:glmissing] name=<name>` -- never a NULL call, never a")
+    print(" * prints `[GLES3:glmissing] name=<name>` -- never a NULL call, never a")
     print(" * silent wrong render.")
     print(" */")
-    print("#ifndef R200_QGL_GLES3_PROCS_H")
-    print("#define R200_QGL_GLES3_PROCS_H")
+    print("#ifndef GLES3_QGL_GLES3_PROCS_H")
+    print("#define GLES3_QGL_GLES3_PROCS_H")
     print()
     print("#define QGL_GLES3_CORE_PROCS \\")
     for ret, name, arg in core:
@@ -112,7 +112,7 @@ def main():
     # terminate the macro with a final line with no backslash
     print("\t/* end QGL_GLES3_CORE_PROCS */")
     print()
-    print("#endif /* R200_QGL_GLES3_PROCS_H */")
+    print("#endif /* GLES3_QGL_GLES3_PROCS_H */")
     return 0
 
 

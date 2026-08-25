@@ -3,11 +3,11 @@
 #include "decals.h"
 #include "level.h"
 
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
-static int r133_decnorm_n = 0;
+static int uivk_decnorm_n = 0;
 
 CLASS_DECLARATION( Entity, Decal, NULL )
 	{
@@ -30,9 +30,9 @@ void Decal::setDirection
    )
 
    {
-   if (R120_On() && R120_Throttle(&r133_decnorm_n, 1, 32)) {
+   if (PROBE_On() && PROBE_Throttle(&uivk_decnorm_n, 1, 32)) {
        trace_t *t = &level.impact_trace;
-       R133_PROBE(
+       UIVK_PROBE(
            "DECNORM",
            "ent=%d shader='%s' raw=(%.4f,%.4f,%.4f) |raw|=%.4f byte=%d "
            "tsolid=%d tstart=%d tfrac=%.4f tent=%d tend=(%.1f,%.1f,%.1f) tplane=(%.4f,%.4f,%.4f)\n",

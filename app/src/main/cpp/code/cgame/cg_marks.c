@@ -2,9 +2,9 @@
 
 #include "cg_local.h"
 
-#define R120_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_probe.h"
 
 
 #define MAX_MARK_FRAGMENTS 128
@@ -378,15 +378,15 @@ qboolean CG_ImpactMark_PerPolyCallback(const vec3_t *markPoints, markFragment_t 
         }
 
         {
-            static int r209MarkPlaceRows;
+            static int faultMarkPlaceRows;
 
-            if (R120_On() && R120_Throttle(&r209MarkPlaceRows, 24, 400)) {
-                R133_PROBE(
+            if (PROBE_On() && PROBE_Throttle(&faultMarkPlaceRows, 24, 400)) {
+                UIVK_PROBE(
                     "MARK:place",
                     "n=%d sh=? iIndex=%d npts=%d temp=%d org=(%.2f,%.2f,%.2f) "
                     "dir=(%.3f,%.3f,%.3f) radius=%.4f "
                     "poly0=(%.2f,%.2f,%.2f) poly1=(%.2f,%.2f,%.2f) polyN=(%.2f,%.2f,%.2f)\n",
-                    r209MarkPlaceRows, mf->iIndex, mf->numPoints, pInfo->temporary,
+                    faultMarkPlaceRows, mf->iIndex, mf->numPoints, pInfo->temporary,
                     pInfo->origin[0], pInfo->origin[1], pInfo->origin[2],
                     pInfo->dir[0], pInfo->dir[1], pInfo->dir[2], pInfo->radius,
                     verts[0].xyz[0], verts[0].xyz[1], verts[0].xyz[2],
@@ -494,11 +494,11 @@ void CG_ImpactMark(
 
     VectorScale(dir, -32, projection);
 
-    if (R120_On()) {
+    if (PROBE_On()) {
         static int s_iMarkQuadCount = 0;
 
-        if (R120_Throttle(&s_iMarkQuadCount, 24, 400)) {
-            R133_PROBE(
+        if (PROBE_Throttle(&s_iMarkQuadCount, 24, 400)) {
+            UIVK_PROBE(
                 "MARK:quad",
                 "n=%d sh=%d org=(%.2f,%.2f,%.2f) r=%.4f proj=(%.2f,%.2f,%.2f)"
                 " a1=(%.3f,%.3f,%.3f) a2=(%.3f,%.3f,%.3f)"
@@ -518,7 +518,7 @@ void CG_ImpactMark(
 
     numFragments = CG_GetMarkFragments(4, originalPoints, projection, markPoints, markFragments, 20.0f);
 
-    if (R120_On()) {
+    if (PROBE_On()) {
         static int s_iDoccNewRows = 0;
         int        iPts = 0;
 
@@ -526,8 +526,8 @@ void CG_ImpactMark(
             iPts += mf->numPoints;
         }
 
-        if (R120_Throttle(&s_iDoccNewRows, 24, 400)) {
-            R133_PROBE(
+        if (PROBE_Throttle(&s_iDoccNewRows, 24, 400)) {
+            UIVK_PROBE(
                 "DOCC:new",
                 "sh=%d org=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f) radius=%.4f nfrag=%d npts=%d temp=%d\n",
                 markShader,
@@ -830,7 +830,7 @@ void CG_AddMarks(void)
                 pVert = pPoly->verts;
             }
 
-            if (R120_On() && pPoly->numVerts > 0 && cg.time - pMark->lastProbeTime > 1000) {
+            if (PROBE_On() && pPoly->numVerts > 0 && cg.time - pMark->lastProbeTime > 1000) {
                 vec3_t  vMarkPos;
                 vec3_t  vToView;
                 trace_t trace;
@@ -849,7 +849,7 @@ void CG_AddMarks(void)
                 fDist = VectorNormalize(vToView);
                 cgi.CM_BoxTrace(&trace, vMarkPos, cg.refdef.vieworg, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse);
 
-                R133_PROBE(
+                UIVK_PROBE(
                     "DOCC:mark",
                     "polys=%d iIndex=%d pos=(%.1f,%.1f,%.1f) viewdist=%.1f frac=%.3f startsolid=%d leaf=%d radius=%.1f\n",
                     pPoly->numVerts,

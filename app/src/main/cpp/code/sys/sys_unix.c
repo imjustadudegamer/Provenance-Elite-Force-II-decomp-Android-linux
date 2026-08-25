@@ -845,12 +845,12 @@ void Sys_FreeFileList( char **list )
 
 void Sys_Sleep( int msec )
 {
-	int r201SleepStart;
+	int smpSleepStart;
 
 	if( msec == 0 )
 		return;
 
-	r201SleepStart = Sys_Milliseconds();
+	smpSleepStart = Sys_Milliseconds();
 
 	if( stdinIsATTY )
 	{
@@ -883,7 +883,7 @@ void Sys_Sleep( int msec )
 		nanosleep(&req, NULL);
 	}
 
-	R201_BudgetAdd( R201_ZONE_SLEEP, Sys_Milliseconds() - r201SleepStart );
+	SMP_BudgetAdd( SMP_ZONE_SLEEP, Sys_Milliseconds() - smpSleepStart );
 }
 
 void Sys_ErrorDialog( const char *error )

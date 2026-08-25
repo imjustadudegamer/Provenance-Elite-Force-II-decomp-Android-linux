@@ -91,7 +91,7 @@ void R_RenderShadowEdges( void ) {
 			}
 
 			if ( hit[ 1 ] == 0 ) {
-				R204_Bump( R204_FAM_DS, R204_DSC_edges, 1 );
+				BE_Bump( BE_FAM_DS, BE_DSC_edges, 1 );
 				RB_ImmBegin( GL_TRIANGLE_STRIP );
 				RB_ImmVertex3fv( tess.xyz[ i ] );
 				RB_ImmVertex3fv( tess.xyz[ i + tess.numVertexes ] );
@@ -110,7 +110,7 @@ void R_RenderShadowEdges( void ) {
 void RB_ShadowTessEnd( void ) {
 	int		i;
 	int		numTris;
-	int		r208BuildT0;
+	int		shadowBuildT0;
 	vec3_t	lightDir;
 
 	if ( tess.numVertexes >= SHADER_MAX_VERTEXES / 2 ) {
@@ -130,7 +130,7 @@ void RB_ShadowTessEnd( void ) {
 	Com_Memset( numEdgeDefs, 0, 4 * tess.numVertexes );
 
 	numTris = tess.numIndexes / 3;
-	r208BuildT0 = R204_On() ? R204_Microseconds() : 0;
+	shadowBuildT0 = BE_On() ? BE_Microseconds() : 0;
 	for ( i = 0 ; i < numTris ; i++ ) {
 		int		i1, i2, i3;
 		vec3_t	d1, d2, normal;
@@ -197,8 +197,8 @@ void RB_ShadowTessEnd( void ) {
 
 	qglColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
 
-	if ( R204_On() ) {
-		R204_Sub( R204_FAM_DS, R204_DSZ_sub_shadow, R204_Microseconds() - r208BuildT0 );
+	if ( BE_On() ) {
+		BE_Sub( BE_FAM_DS, BE_DSZ_sub_shadow, BE_Microseconds() - shadowBuildT0 );
 	}
 }
 

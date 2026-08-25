@@ -3,7 +3,7 @@
 
 static const char gles3_glsl_gles3_2d_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -43,7 +43,7 @@ static const char gles3_glsl_gles3_2d_frag[] =
 
 static const char gles3_glsl_gles3_2d_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -54,7 +54,7 @@ static const char gles3_glsl_gles3_2d_vert[] =
 "precision highp sampler2D;\n"
 "\n"
 "/*\n"
-"ProvenanceEF2 GLES3 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 GLES3 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_2d.vert -- the 2D / HUD / font program.\n"
 "\n"
 "the deleted oracle drives 2D through the SAME stage iterator with backEnd.in2D set:\n"
@@ -89,7 +89,7 @@ static const char gles3_glsl_gles3_2d_vert[] =
 
 static const char gles3_glsl_gles3_dlight_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -109,7 +109,7 @@ static const char gles3_glsl_gles3_dlight_frag[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -208,7 +208,7 @@ static const char gles3_glsl_gles3_dlight_frag[] =
 
 static const char gles3_glsl_gles3_dlight_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -239,7 +239,7 @@ static const char gles3_glsl_gles3_dlight_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -336,7 +336,7 @@ static const char gles3_glsl_gles3_dlight_vert[] =
 
 static const char gles3_glsl_gles3_shadow_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -351,11 +351,11 @@ static const char gles3_glsl_gles3_shadow_frag[] =
 "   only the depth/stencil test matters), so the fragment shader is empty; it\n"
 "   exists because GLES 3.0 core has no fixed-function pipeline and a program\n"
 "   must be bound. */\n"
-"precision highp float;	/* r200: must match the vertex stage's default (see build_glsl.py) */\n"
+"precision highp float;	/* gles3: must match the vertex stage's default (see build_glsl.py) */\n"
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -447,7 +447,7 @@ static const char gles3_glsl_gles3_shadow_frag[] =
 
 static const char gles3_glsl_gles3_shadow_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -478,7 +478,7 @@ static const char gles3_glsl_gles3_shadow_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -569,7 +569,7 @@ static const char gles3_glsl_gles3_shadow_vert[] =
 
 static const char gles3_glsl_gles3_sky_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -583,7 +583,7 @@ static const char gles3_glsl_gles3_sky_frag[] =
 "precision highp sampler2D;\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -678,7 +678,7 @@ static const char gles3_glsl_gles3_sky_frag[] =
 
 static const char gles3_glsl_gles3_sky_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -708,7 +708,7 @@ static const char gles3_glsl_gles3_sky_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -810,7 +810,7 @@ static const char gles3_glsl_gles3_sky_vert[] =
 
 static const char gles3_glsl_gles3_sprite_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -824,7 +824,7 @@ static const char gles3_glsl_gles3_sprite_frag[] =
 "precision highp sampler2D;\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -925,7 +925,7 @@ static const char gles3_glsl_gles3_sprite_frag[] =
 
 static const char gles3_glsl_gles3_sprite_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -953,7 +953,7 @@ static const char gles3_glsl_gles3_sprite_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -1048,7 +1048,7 @@ static const char gles3_glsl_gles3_sprite_vert[] =
 
 static const char gles3_glsl_gles3_stage_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -1060,7 +1060,7 @@ static const char gles3_glsl_gles3_stage_frag[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_stage.frag -- the generic-stage fragment program.\n"
 "\n"
 "Replaces fixed-function texture env + alpha test + (per-vertex) fog output.\n"
@@ -1096,7 +1096,7 @@ static const char gles3_glsl_gles3_stage_frag[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_common.inc.glsl -- shared GLSL ES 3.00 library, concatenated at\n"
 "//@@GLES3_COMMON@@ by glsl/build_glsl.py.\n"
 "\n"
@@ -1430,7 +1430,7 @@ static const char gles3_glsl_gles3_stage_frag[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -1581,7 +1581,7 @@ static const char gles3_glsl_gles3_stage_frag[] =
 
 static const char gles3_glsl_gles3_stage_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -1593,7 +1593,7 @@ static const char gles3_glsl_gles3_stage_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_stage.vert -- the generic-stage vertex program.\n"
 "\n"
 "This ONE source is compiled once per distinct GLP_* bitmask\n"
@@ -1633,7 +1633,7 @@ static const char gles3_glsl_gles3_stage_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_common.inc.glsl -- shared GLSL ES 3.00 library, concatenated at\n"
 "//@@GLES3_COMMON@@ by glsl/build_glsl.py.\n"
 "\n"
@@ -1967,7 +1967,7 @@ static const char gles3_glsl_gles3_stage_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -2601,7 +2601,7 @@ static const char gles3_glsl_gles3_stage_vert[] =
 
 static const char gles3_glsl_gles3_sunflare_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -2615,7 +2615,7 @@ static const char gles3_glsl_gles3_sunflare_frag[] =
 "precision highp sampler2D;\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -2710,7 +2710,7 @@ static const char gles3_glsl_gles3_sunflare_frag[] =
 
 static const char gles3_glsl_gles3_sunflare_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -2737,7 +2737,7 @@ static const char gles3_glsl_gles3_sunflare_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -2832,7 +2832,7 @@ static const char gles3_glsl_gles3_sunflare_vert[] =
 
 static const char gles3_glsl_gles3_wire_frag[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -2842,10 +2842,10 @@ static const char gles3_glsl_gles3_wire_frag[] =
 "precision highp float;\n"
 "precision highp sampler2D;\n"
 "\n"
-"precision highp float;	/* r200: v_Color is a shared varying; the vertex default is highp */\n"
+"precision highp float;	/* gles3: v_Color is a shared varying; the vertex default is highp */\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"
@@ -2938,7 +2938,7 @@ static const char gles3_glsl_gles3_wire_frag[] =
 
 static const char gles3_glsl_gles3_wire_vert[] =
 "#version 300 es\n"
-"/* r200: stage-matched default precision (see build_glsl.py); int and\n"
+"/* gles3: stage-matched default precision (see build_glsl.py); int and\n"
 "   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n"
 "   varying must match or the pair is a LINK error on a strict driver.\n"
 "   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n"
@@ -2964,7 +2964,7 @@ static const char gles3_glsl_gles3_wire_vert[] =
 "\n"
 "/*\n"
 "===========================================================================\n"
-"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)\n"
+"ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)\n"
 "gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that\n"
 "can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`\n"
 "marker by glsl/build_glsl.py, so the uniform names cannot drift from\n"

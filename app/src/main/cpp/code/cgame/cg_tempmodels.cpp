@@ -4,12 +4,12 @@
 #include "cg_commands.h"
 #include "../corepp/tiki.h"
 
-#define R120_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 cgi.Printf
-#define R131_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R131_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_r120.h"
-#include "../qcommon/qa_r131.h"
+#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 cgi.Printf
+#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define WIDGET_PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_probe.h"
+#include "../qcommon/qa_widget.h"
 
 
 cvar_t *cg_showtempmodels;
@@ -243,11 +243,11 @@ void ClientGameCommandManager::AnimateTempModel(ctempmodel_t *p, Vector origin, 
 
     if (!p->addedOnce) {
         {
-            static int r133_dfx_n;
-            const char *r133_tn = cgi.TIKI_Name(p->cgd.tiki);
-            if (R120_On() && r133_tn && Q_stristr(r133_tn, "fx") && R120_Throttle(&r133_dfx_n, 32, 64)) {
-                R120_PROBE("DFX:fxentry", "tiki=%d '%s' anim=%d nf=%d ft=%d\n",
-                           p->cgd.tiki, r133_tn, p->ent.anim, numframes, frametime);
+            static int uivk_dfx_n;
+            const char *uivk_tn = cgi.TIKI_Name(p->cgd.tiki);
+            if (PROBE_On() && uivk_tn && Q_stristr(uivk_tn, "fx") && PROBE_Throttle(&uivk_dfx_n, 32, 64)) {
+                PROBE("DFX:fxentry", "tiki=%d '%s' anim=%d nf=%d ft=%d\n",
+                           p->cgd.tiki, uivk_tn, p->ent.anim, numframes, frametime);
             }
         }
         CG_ProcessEntityCommands(p->cgd.tiki, TIKI_FRAME_ENTRY, p->ent.anim, -1, &p->ent, NULL);
@@ -589,28 +589,28 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
     if (p->cgd.flags2 & (T2_MOVE | T2_ACCEL)) {
         p->cgd.origin += p->cgd.velocity * ftime * scale + p->cgd.accel * ftimeSquared;
 
-        // r221-beamstep -- THE GATE WAS UNREACHABLE, SO THE PROBE NEVER FIRED.  It required
+        // lifecycle-beamstep -- THE GATE WAS UNREACHABLE, SO THE PROBE NEVER FIRED.  It required
         {
-            static int r196_beamstep_reports = 0;
-            const char *r196_step_model = p->modelname.c_str();
+            static int bones_beamstep_reports = 0;
+            const char *bones_step_model = p->modelname.c_str();
 
-            if (r196_step_model && r196_step_model[0]
-                && (Q_stristr(r196_step_model, "fx")
-                    || Q_stristr(r196_step_model, "spark")
-                    || Q_stristr(r196_step_model, "beam")
-                    || Q_stristr(r196_step_model, "cylinder")
-                    || Q_stristr(r196_step_model, "lines"))) {
-                Vector r196_step = p->cgd.velocity * ftime * scale + p->cgd.accel * ftimeSquared;
+            if (bones_step_model && bones_step_model[0]
+                && (Q_stristr(bones_step_model, "fx")
+                    || Q_stristr(bones_step_model, "spark")
+                    || Q_stristr(bones_step_model, "beam")
+                    || Q_stristr(bones_step_model, "cylinder")
+                    || Q_stristr(bones_step_model, "lines"))) {
+                Vector bones_step = p->cgd.velocity * ftime * scale + p->cgd.accel * ftimeSquared;
 
-                if (r196_beamstep_reports < 24) {
-                    r196_beamstep_reports++;
+                if (bones_beamstep_reports < 24) {
+                    bones_beamstep_reports++;
                     cgi.Printf(
-                        "[R196:beamstep] n=%d model='%s' step=(%.2f,%.2f,%.2f) ftime=%.5f "
+                        "[BONES:beamstep] n=%d model='%s' step=(%.2f,%.2f,%.2f) ftime=%.5f "
                         "ftimeSq=%.6f scale=%.4f vel=(%.2f,%.2f,%.2f) accel=(%.2f,%.2f,%.2f) "
                         "life=%d alive=%.3f physRate=%d reType=%d org=(%.2f,%.2f,%.2f) "
                         "oldorg=(%.2f,%.2f,%.2f)\n",
-                        r196_beamstep_reports, r196_step_model,
-                        r196_step[0], r196_step[1], r196_step[2],
+                        bones_beamstep_reports, bones_step_model,
+                        bones_step[0], bones_step[1], bones_step[2],
                         ftime, ftimeSquared, scale,
                         p->cgd.velocity[0], p->cgd.velocity[1], p->cgd.velocity[2],
                         p->cgd.accel[0], p->cgd.accel[1], p->cgd.accel[2],
@@ -618,9 +618,9 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
                         p->cgd.origin[0], p->cgd.origin[1], p->cgd.origin[2],
                         p->cgd.oldorigin[0], p->cgd.oldorigin[1], p->cgd.oldorigin[2]
                     );
-                } else if (r196_beamstep_reports == 24) {
-                    r196_beamstep_reports++;
-                    cgi.Printf("[R196:beamstep] capped at 24 rows for this run; no further "
+                } else if (bones_beamstep_reports == 24) {
+                    bones_beamstep_reports++;
+                    cgi.Printf("[BONES:beamstep] capped at 24 rows for this run; no further "
                                "rows\n");
                 }
             }
@@ -775,8 +775,8 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
         {
             static int l1_flash;
 
-            if (R131_On() && R131_Throttle(&l1_flash, 8, 64)) {
-                R131_A1_PROBE(
+            if (WIDGET_On() && WIDGET_Throttle(&l1_flash, 8, 64)) {
+                WIDGET_A1_PROBE(
                     "flash:phys",
                     "parent=%d porg=(%.1f,%.1f,%.1f) cgdorg=(%.1f,%.1f,%.1f) org=(%.1f,%.1f,%.1f) "
                     "sh='%s' life=%d age=%d scale=%.4f pla=(%.1f,%.1f,%.1f)\n",
@@ -863,7 +863,7 @@ void CG_AddTempModels(void)
 
 #define TOO_MUCH_TIME_PASSED 500
 
-static int r133_beamfx_cyl_live = 0;
+static int uivk_beamfx_cyl_live = 0;
 
 void ClientGameCommandManager::AddTempModels(void)
 {
@@ -916,17 +916,17 @@ void ClientGameCommandManager::AddTempModels(void)
     old_tiki = current_tiki;
     old_num  = current_entity_number;
 
-    r133_beamfx_cyl_live = 0;
+    uivk_beamfx_cyl_live = 0;
 
     p = m_active_tempmodels.prev;
     for (; p != &m_active_tempmodels; p = next) {
         next = p->prev;
 
-        if (R120_On()) {
-            const char *r133_cn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
+        if (PROBE_On()) {
+            const char *uivk_cn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
 
-            if (r133_cn && Q_stristr(r133_cn, "cylinder")) {
-                r133_beamfx_cyl_live++;
+            if (uivk_cn && Q_stristr(uivk_cn, "cylinder")) {
+                uivk_beamfx_cyl_live++;
             }
         }
 
@@ -1020,15 +1020,15 @@ void ClientGameCommandManager::AddTempModels(void)
         AnimateTempModel(p, newEnt.origin, &newEnt);
 
         {
-            static int r133_beamfx_add_n;
-            const char *r133_tn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
+            static int uivk_beamfx_add_n;
+            const char *uivk_tn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
 
-            if (R120_On() && r133_tn && Q_stristr(r133_tn, "cylinder") && R120_Throttle(&r133_beamfx_add_n, 6, 256)) {
-                R133_PROBE(
+            if (PROBE_On() && uivk_tn && Q_stristr(uivk_tn, "cylinder") && PROBE_Throttle(&uivk_beamfx_add_n, 6, 256)) {
+                UIVK_PROBE(
                     "BEAMFX:tm-add",
                     "tiki='%s' scale=%.4f alive=%d frame=%d oldframe=%d anim=%d "
                     "org=(%.1f,%.1f,%.1f)\n",
-                    r133_tn,
+                    uivk_tn,
                     newEnt.scale,
                     p->aliveTime,
                     newEnt.frame,
@@ -1071,9 +1071,9 @@ void ClientGameCommandManager::AddTempModels(void)
         }
 
         {
-            static int r145_tmpsub_n;
-            if (R120_On() && R120_Throttle(&r145_tmpsub_n, 24, 512)) {
-                R120_PROBE(
+            static int effects_tmpsub_n;
+            if (PROBE_On() && PROBE_Throttle(&effects_tmpsub_n, 24, 512)) {
+                PROBE(
                     "tmp:submit",
                     "ent=%d reType=%d model='%s' hModel=%d arm=%s org=(%.1f,%.1f,%.1f) "
                     "scale=%.4f alpha=%d customShader=%d hide=%d\n",
@@ -1105,14 +1105,14 @@ void ClientGameCommandManager::AddTempModels(void)
         cgi.DPrintf("TC:%i\n", count);
     }
 
-    if (R120_On() && r133_beamfx_cyl_live) {
-        static int r133_beamfx_census_n;
+    if (PROBE_On() && uivk_beamfx_cyl_live) {
+        static int uivk_beamfx_census_n;
 
-        if (R120_Throttle(&r133_beamfx_census_n, 8, 128)) {
-            R133_PROBE(
+        if (PROBE_Throttle(&uivk_beamfx_census_n, 8, 128)) {
+            UIVK_PROBE(
                 "BEAMFX:census",
                 "cyl_live=%d tm_added=%d cg.time=%d\n",
-                r133_beamfx_cyl_live,
+                uivk_beamfx_cyl_live,
                 count,
                 cg.time
             );
@@ -1301,29 +1301,29 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         }
 
         {
-            static int r196_beampart_reports = 0;
-            const char *r196_em_model = m_spawnthing->GetModel();
-            Vector      r196_skew;
+            static int bones_beampart_reports = 0;
+            const char *bones_em_model = m_spawnthing->GetModel();
+            Vector      bones_skew;
 
-            r196_skew = p->cgd.origin - m_spawnthing->cgd.origin;
+            bones_skew = p->cgd.origin - m_spawnthing->cgd.origin;
 
-            if (r196_em_model && r196_em_model[0]
-                && (Q_stristr(r196_em_model, "fx")
-                    || Q_stristr(r196_em_model, "spark")
-                    || Q_stristr(r196_em_model, "beam")
-                    || Q_stristr(r196_em_model, "cylinder")
-                    || Q_stristr(r196_em_model, "lines"))
-                && r196_beampart_reports < 24) {
-                r196_beampart_reports++;
+            if (bones_em_model && bones_em_model[0]
+                && (Q_stristr(bones_em_model, "fx")
+                    || Q_stristr(bones_em_model, "spark")
+                    || Q_stristr(bones_em_model, "beam")
+                    || Q_stristr(bones_em_model, "cylinder")
+                    || Q_stristr(bones_em_model, "lines"))
+                && bones_beampart_reports < 24) {
+                bones_beampart_reports++;
                 cgi.Printf(
-                    "[R196:beampart] n=%d em='%s' model='%s' skew=(%.1f,%.1f,%.1f) "
+                    "[BONES:beampart] n=%d em='%s' model='%s' skew=(%.1f,%.1f,%.1f) "
                     "emitorg=(%.1f,%.1f,%.1f) flags=0x%x flags2=0x%x sphereR=%.2f coneH=%.2f "
                     "vel=(%.2f,%.2f,%.2f) rvamp=(%.2f,%.2f,%.2f) life=%d physRate=%d scale=%.4f "
                     "hostscale=%.4f\n",
-                    r196_beampart_reports,
+                    bones_beampart_reports,
                     m_spawnthing->emittername.c_str(),
-                    r196_em_model,
-                    r196_skew[0], r196_skew[1], r196_skew[2],
+                    bones_em_model,
+                    bones_skew[0], bones_skew[1], bones_skew[2],
                     m_spawnthing->cgd.origin[0], m_spawnthing->cgd.origin[1],
                     m_spawnthing->cgd.origin[2],
                     (unsigned)m_spawnthing->cgd.flags, (unsigned)m_spawnthing->cgd.flags2,
@@ -1416,16 +1416,16 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         ent.scale *= current_entity_scale;
 
         {
-            static int r133_beamfx_n;
-            const char *r133_tn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
+            static int uivk_beamfx_n;
+            const char *uivk_tn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
 
-            if (R120_On() && r133_tn && Q_stristr(r133_tn, "cylinder") && R120_Throttle(&r133_beamfx_n, 6, 256)) {
-                R133_PROBE(
+            if (PROBE_On() && uivk_tn && Q_stristr(uivk_tn, "cylinder") && PROBE_Throttle(&uivk_beamfx_n, 6, 256)) {
+                UIVK_PROBE(
                     "BEAMFX:tm-spawn",
                     "em='%s' tiki='%s' cgdscale=%.4f hostscale=%.4f csscale=%.4f spawn=%.4f rate=%.4f "
                     "life=%d hostent=%d\n",
                     m_spawnthing->emittername.c_str(),
-                    r133_tn,
+                    uivk_tn,
                     m_spawnthing->cgd.scale,
                     current_entity ? current_entity->scale : -1.0f,
                     current_scale,

@@ -674,49 +674,49 @@ extern	int		time_game;
 extern	int		time_frontend;
 extern	int		time_backend;		
 
-#define R201_ZONE_AUDIO		0
-#define R201_ZONE_SLEEP		1
-#define R201_ZONE_SWAP		2
+#define SMP_ZONE_AUDIO		0
+#define SMP_ZONE_SLEEP		1
+#define SMP_ZONE_SWAP		2
 
-void	R201_BudgetAdd( int zone, int msec );
+void	SMP_BudgetAdd( int zone, int msec );
 
-#define R201_BUDGET_ZONES	11
-qboolean R201_BudgetLastWindow( int *framesOut, int *mean10Out );
+#define SMP_BUDGET_ZONES	11
+qboolean SMP_BudgetLastWindow( int *framesOut, int *mean10Out );
 
-#define R201_LZ_spawn		0
-#define R201_LZ_cmap		1
-#define R201_LZ_hunkclr		2
-#define R201_LZ_svinit		3
-#define R201_LZ_spawnent	4
-#define R201_LZ_clmap		5
-#define R201_LZ_hunkusr		6
-#define R201_LZ_rendreg		7
-#define R201_LZ_initcg		8
-#define R201_LZ_cginit		9
-#define R201_LZ_fs		10
-#define R201_LZ_sndinit		11
-#define R201_LZ_scr		12
-#define R201_LZ_cgame		13
-#define R201_LZ_ui		14
-#define R201_LZ_COUNT		15
+#define SMP_LZ_spawn		0
+#define SMP_LZ_cmap		1
+#define SMP_LZ_hunkclr		2
+#define SMP_LZ_svinit		3
+#define SMP_LZ_spawnent	4
+#define SMP_LZ_clmap		5
+#define SMP_LZ_hunkusr		6
+#define SMP_LZ_rendreg		7
+#define SMP_LZ_initcg		8
+#define SMP_LZ_cginit		9
+#define SMP_LZ_fs		10
+#define SMP_LZ_sndinit		11
+#define SMP_LZ_scr		12
+#define SMP_LZ_cgame		13
+#define SMP_LZ_ui		14
+#define SMP_LZ_COUNT		15
 
-extern	int		r201_loadOn;
-extern	int		r201_loadInClient;
+extern	int		smp_loadOn;
+extern	int		smp_loadInClient;
 
-void	R201_LoadAdd( int zone, int msec, int depth );
+void	SMP_LoadAdd( int zone, int msec, int depth );
 
-#define R201_LOAD_BEGIN(z) \
-	int r201_ld_##z = ( r201_loadOn ? r201_loadDepth++ : 0 ); \
-	int r201_lt_##z = ( r201_loadOn ? Sys_Milliseconds() : 0 )
-#define R201_LOAD_END(z) \
+#define SMP_LOAD_BEGIN(z) \
+	int smp_ld_##z = ( smp_loadOn ? smp_loadDepth++ : 0 ); \
+	int smp_lt_##z = ( smp_loadOn ? Sys_Milliseconds() : 0 )
+#define SMP_LOAD_END(z) \
 	do { \
-		if ( r201_loadOn ) { \
-			r201_loadDepth--; \
-			R201_LoadAdd( R201_LZ_##z, Sys_Milliseconds() - r201_lt_##z, r201_ld_##z ); \
+		if ( smp_loadOn ) { \
+			smp_loadDepth--; \
+			SMP_LoadAdd( SMP_LZ_##z, Sys_Milliseconds() - smp_lt_##z, smp_ld_##z ); \
 		} \
 	} while ( 0 )
 
-extern	int		r201_loadDepth;
+extern	int		smp_loadDepth;
 
 extern	int		com_frameTime;
 extern	int		com_frameMsec;

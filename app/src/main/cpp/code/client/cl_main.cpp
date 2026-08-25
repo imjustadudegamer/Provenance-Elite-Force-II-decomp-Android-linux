@@ -11,11 +11,11 @@
 #include "../qcommon/stringresource.h" 
 #include "cl_systeminfo.h"
 #include "../qcommon/q_jobs.h" 
-#include "../uilib/r203_uiprobe.h" 
+#include "../uilib/limit_uiprobe.h" 
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
 extern "C" {
 	#include "../sys/sys_loadlib.h"
@@ -548,7 +548,7 @@ void CL_MapLoading( qboolean flush, const char *pszMapName, const char *pszCinem
 		return;
 	}
 
-	R201_LOAD_BEGIN( clmap );
+	SMP_LOAD_BEGIN( clmap );
 
 	if ( cls.state < CA_CONNECTED || Q_stricmp( cls.servername, "localhost" ) ) {
 		Cvar_Set( "nextmap", "" );
@@ -584,7 +584,7 @@ void CL_MapLoading( qboolean flush, const char *pszMapName, const char *pszCinem
 		StartLoadingScreen();
 	}
 
-	R201_LOAD_END( clmap );
+	SMP_LOAD_END( clmap );
 }
 
 void CL_MapLoadingClientOnly( const char *pszMapName ) {
@@ -1592,12 +1592,12 @@ void CL_Frame ( int msec ) {
 	CL_CheckForResend();
 
 	{
-		static int s_r223ParkMs = -100000;
+		static int s_loadhangParkMs = -100000;
 
 		if ( cls.state >= CA_CONNECTED && cls.state != CA_ACTIVE
-		     && cls.realtime >= s_r223ParkMs + 1000 ) {
-			s_r223ParkMs = cls.realtime;
-			R223_PROBE( "park",
+		     && cls.realtime >= s_loadhangParkMs + 1000 ) {
+			s_loadhangParkMs = cls.realtime;
+			LOADHANG_PROBE( "park",
 			            "t=%d cls=%d clSid=%d svSid=%d msgSeq=%d cmdSeq=%d lastPkt=%d txSeq=%d paused=%d\n",
 			            cls.realtime, cls.state, cl.serverId, sv.serverId,
 			            clc.serverMessageSequence, clc.serverCommandSequence, clc.lastPacketTime,
@@ -1619,11 +1619,11 @@ void CL_Frame ( int msec ) {
 	SCR_UpdateScreen();
 
 	{
-		int r201AudioStart = Sys_Milliseconds();
+		int smpAudioStart = Sys_Milliseconds();
 
 		S_Update();
 
-		R201_BudgetAdd( R201_ZONE_AUDIO, Sys_Milliseconds() - r201AudioStart );
+		SMP_BudgetAdd( SMP_ZONE_AUDIO, Sys_Milliseconds() - smpAudioStart );
 	}
 
 	ProcessCinematic();
@@ -1691,7 +1691,7 @@ void CL_StartHunkUsers( qboolean rendererOnly ) {
 		return;
 	}
 
-	R201_LOAD_BEGIN( hunkusr );
+	SMP_LOAD_BEGIN( hunkusr );
 
 	if ( !cls.rendererRegistered ) {
 		cls.rendererRegistered = qtrue;
@@ -1709,7 +1709,7 @@ void CL_StartHunkUsers( qboolean rendererOnly ) {
 		CL_InitializeUI();
 	}
 
-	R201_LOAD_END( hunkusr );
+	SMP_LOAD_END( hunkusr );
 }
 
 void *CL_RefMalloc(int size) {
@@ -1760,7 +1760,7 @@ int CL_ScaledMilliseconds(void) {
 
 extern "C"
 void CL_RefNoteBlockedMsec( int msec ) {
-	R201_BudgetAdd( R201_ZONE_SWAP, msec );
+	SMP_BudgetAdd( SMP_ZONE_SWAP, msec );
 }
 
 void CL_RefFS_WriteFile(const char* qpath, const void* buffer, int size) {
@@ -2335,7 +2335,7 @@ void CL_Init( void ) {
 
 	Cmd_AddCommand ("defaultSoundTrack", setDefaultSoundTrack_f);
 
-	// PORT-ONLY DIAGNOSTIC (r133-mt), no retail counterpart and no game effect:
+	// PORT-ONLY DIAGNOSTIC (uivk-mt), no retail counterpart and no game effect:
 	Cmd_AddCommand ("jobpooltest", CL_JobPoolTest_f);
 	Cmd_AddCommand ("jobpoolstats", CL_JobPoolStats_f);
 
@@ -2896,11 +2896,11 @@ qboolean CL_UpdateServerPings( void ) {
 
 void CL_ServerRefresh( void ) {
 	qboolean emptyList;
-	int	r203_z;
+	int	limit_z;
 
-	r203_z = R203_Leg();
+	limit_z = LIMIT_Leg();
 	if ( !s_serverListNeedsRefresh ) {
-		R203_LegEnd( R203_FAM_UIT, R203_UITZ_srvnone, r203_z );
+		LIMIT_LegEnd( LIMIT_FAM_UIT, LIMIT_UITZ_srvnone, limit_z );
 		return;
 	}
 
@@ -2912,24 +2912,24 @@ void CL_ServerRefresh( void ) {
 	}
 
 	if ( ( float )cls.realtime - ( float )s_lastPingUpdateTime >= s_browserRefreshInterval || !emptyList ) {
-		int			r203_zp;
+		int			limit_zp;
 		qboolean	pinged;
 
-		R203_Count( R203_FAM_UIT, R203_UTC_srvrun, 1 );
+		LIMIT_Count( LIMIT_FAM_UIT, LIMIT_UTC_srvrun, 1 );
 
-		r203_zp = R203_Leg();
+		limit_zp = LIMIT_Leg();
 		pinged  = CL_UpdateServerPings();
 		if ( !pinged && !emptyList ) {
 			s_serverListNeedsRefresh = 0;
 		}
 		s_lastPingUpdateTime = cls.realtime;
-		R203_LegEnd( R203_FAM_UIT, R203_UITZ_srvping, r203_zp );
+		LIMIT_LegEnd( LIMIT_FAM_UIT, LIMIT_UITZ_srvping, limit_zp );
 
-		R203_Count( R203_FAM_UIT, R203_UTC_srvn, CL_GetServerCount() );
+		LIMIT_Count( LIMIT_FAM_UIT, LIMIT_UTC_srvn, CL_GetServerCount() );
 
-		r203_zp = R203_Leg();
+		limit_zp = LIMIT_Leg();
 		UI_UpdateServerList();
-		R203_LegEnd( R203_FAM_UIT, R203_UITZ_srvlist, r203_zp );
+		LIMIT_LegEnd( LIMIT_FAM_UIT, LIMIT_UITZ_srvlist, limit_zp );
 	}
 }
 

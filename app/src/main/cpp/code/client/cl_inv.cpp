@@ -1,9 +1,9 @@
 
 #include "cl_ui.h"
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
 typedef struct {
     const char *string;
@@ -1290,13 +1290,13 @@ qboolean CL_HasInventoryItem(const char *name)
     {
         int    filled = 0;
         static int n = 0;
-        for (int r120_i = 0; r120_i < MAX_INVENTORY; r120_i++) {
-            if (cl.snap.ps.inventory_name_index[r120_i] > 0) {
+        for (int probe_i = 0; probe_i < MAX_INVENTORY; probe_i++) {
+            if (cl.snap.ps.inventory_name_index[probe_i] > 0) {
                 filled++;
             }
         }
-        if (R120_Throttle(&n, 6, 400)) {
-            R120_PROBE(
+        if (PROBE_Throttle(&n, 6, 400)) {
+            PROBE(
                 "inv:mirror",
                 "CL_HasInventoryItem('%s') filled=%d/%d -> %s",
                 name ? name : "(null)",

@@ -28,7 +28,7 @@ add_compile_options(-Wno-format-zero-length -Wno-format-nonliteral)
 
 # -Wstringop-overflow false-positive on botlib's GetClearedMemory (Q3A code;
 # GCC models the calloc'd region as size 0 through one inlined path).
-# r133: GCC-ONLY -- clang has no -Wstringop-overflow at all, and passing an
+# uivk: GCC-ONLY -- clang has no -Wstringop-overflow at all, and passing an
 # unknown -Wno-* to it prints -Wunknown-warning-option in every TU.
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     add_compile_options(-Wno-stringop-overflow)
@@ -106,7 +106,7 @@ if(COMPILER_OUTPUT MATCHES "musl|freebsd|openbsd|netbsd")
     list(APPEND SERVER_LIBRARIES execinfo)
 else()
     if(ANDROID)
-        # r133-android: bionic has clock_gettime in libc and ships no librt, so
+        # uivk-android: bionic has clock_gettime in libc and ships no librt, so
         # the GLIBC-2.34-compat link below would fail to find -lrt.
     else()
         # For when using GLIBC versions older than 2.34

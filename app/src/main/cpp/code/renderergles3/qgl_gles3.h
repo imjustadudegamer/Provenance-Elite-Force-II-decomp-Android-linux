@@ -1,5 +1,5 @@
-#ifndef R200_QGL_GLES3_H
-#define R200_QGL_GLES3_H
+#ifndef GLES3_QGL_GLES3_H
+#define GLES3_QGL_GLES3_H
 
 #include "../renderercommon/qgl.h"
 #include "qgl_gles3_procs.h"
@@ -9,11 +9,11 @@
 extern "C" {
 #endif
 
-#ifndef R200_PRINTF_FUNC
+#ifndef GLES3_PRINTF_FUNC
 #	if defined(__GNUC__)
-#		define R200_PRINTF_FUNC(f, v) __attribute__((format(printf, f, v)))
+#		define GLES3_PRINTF_FUNC(f, v) __attribute__((format(printf, f, v)))
 #	else
-#		define R200_PRINTF_FUNC(f, v)
+#		define GLES3_PRINTF_FUNC(f, v)
 #	endif
 #endif
 
@@ -73,7 +73,7 @@ int QGL_GLES3_HasExtension(const char *ext);
 
 int QGL_GLES3_StagedCapDrops(void);
 
-#define R200_GL_MAX_TEXTURE_UNITS_ARB 0x84E2
+#define GLES3_GL_MAX_TEXTURE_UNITS_ARB 0x84E2
 
 #ifdef __cplusplus
 }

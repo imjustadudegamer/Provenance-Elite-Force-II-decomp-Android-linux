@@ -87,10 +87,10 @@ static int GL_GetBinaryFormatCount( void ) {
 }
 static int GL_GetBinaryFormats( unsigned *out, int max ) {
 	GLint	n = 0, i;
-	GLint	tmp[R207_PROGCACHE_MAX_FORMATS];
+	GLint	tmp[PROGCACHE_PROGCACHE_MAX_FORMATS];
 
 	g_driverCalls++;
-	if ( max <= 0 || max > R207_PROGCACHE_MAX_FORMATS ) { return 0; }
+	if ( max <= 0 || max > PROGCACHE_PROGCACHE_MAX_FORMATS ) { return 0; }
 	glGetIntegerv( GL_NUM_PROGRAM_BINARY_FORMATS, &n );
 	if ( n <= 0 || n > max ) { return 0; }
 	glGetIntegerv( GL_PROGRAM_BINARY_FORMATS, tmp );
@@ -98,7 +98,7 @@ static int GL_GetBinaryFormats( unsigned *out, int max ) {
 	return (int)n;
 }
 
-static const r207ProgCacheGl_t s_gl = {
+static const progcacheProgCacheGl_t s_gl = {
 	GL_GetError, GL_CreateProgram, GL_DeleteProgram, GL_GetProgramiv,
 	GL_GetProgramBinary, GL_ProgramBinary, GL_ProgramParameteri,
 	GL_GetActiveAttrib, GL_GetActiveUniform, GL_GetAttribLocation,
@@ -167,7 +167,7 @@ static int HostMicroseconds( void ) {
 	return (int)( ( ts.tv_sec * 1000000 + ts.tv_nsec / 1000 ) & 0x7fffffff );
 }
 
-static const r207ProgCacheIO_t s_io = {
+static const progcacheProgCacheIO_t s_io = {
 	NULL, HostOpen, HostRead, HostClose, HostWrite, HostMicroseconds
 };
 
@@ -243,7 +243,7 @@ static void SpecBuild( int i, glProgSpec_t *s ) {
 	s->defines = 0x02000000u | (unsigned)i;
 
 	snprintf( s->vs, sizeof( s->vs ),
-			  "#version 300 es\n#define R207_ID %d\nuniform vec4 u_Var0;\n%s"
+			  "#version 300 es\n#define PROGCACHE_ID %d\nuniform vec4 u_Var0;\n%s"
 			  "in vec4 a_Position;\nin vec3 a_Normal;\nin vec4 a_Color;\n"
 			  "in vec2 a_TexCoord0;\nin vec2 a_TexCoord1;\n"
 			  "uniform mat4 u_MVP;\nuniform vec4 u_BaseColor;\n"
@@ -253,10 +253,10 @@ static void SpecBuild( int i, glProgSpec_t *s ) {
 			  "  v_TexCoord0 = a_TexCoord0;\n"
 			  "  gl_Position = u_MVP * a_Position;\n}\n",
 			  i, var, use );
-	snprintf( s->fs, sizeof( s->fs ), "#version 300 es\n#define R207_ID %d\n%s", i, FS_TEMPLATE );
+	snprintf( s->fs, sizeof( s->fs ), "#version 300 es\n#define PROGCACHE_ID %d\n%s", i, FS_TEMPLATE );
 
-	s->vsHash = R207_ProgCache_Hash( s->vs, (int)strlen( s->vs ) );
-	s->fsHash = R207_ProgCache_Hash( s->fs, (int)strlen( s->fs ) );
+	s->vsHash = PROGCACHE_ProgCache_Hash( s->vs, (int)strlen( s->vs ) );
+	s->fsHash = PROGCACHE_ProgCache_Hash( s->fs, (int)strlen( s->fs ) );
 }
 
 static unsigned CompileShader( GLenum type, const char *src, const char *label ) {
@@ -303,7 +303,7 @@ static unsigned CompileProgram( const glProgSpec_t *s ) {
 	glBindAttribLocation( (GLuint)program, 2, "a_Color" );
 	glBindAttribLocation( (GLuint)program, 3, "a_TexCoord0" );
 	glBindAttribLocation( (GLuint)program, 4, "a_TexCoord1" );
-	R207_ProgCache_HintLink( program );
+	PROGCACHE_ProgCache_HintLink( program );
 	glLinkProgram( (GLuint)program );
 	glGetProgramiv( (GLuint)program, GL_LINK_STATUS, &ok );
 	if ( !ok ) {
@@ -321,13 +321,13 @@ static unsigned CompileProgram( const glProgSpec_t *s ) {
 	glDeleteShader( (GLuint)vs );
 	glDeleteShader( (GLuint)fs );
 
-	R207_ProgCache_NoteCompiled( s->name, s->defines, s->vsHash, s->fsHash, program, (unsigned)buildUsec );
+	PROGCACHE_ProgCache_NoteCompiled( s->name, s->defines, s->vsHash, s->fsHash, program, (unsigned)buildUsec );
 	return program;
 }
 
 int main( int argc, char **argv ) {
-	r207ProgCacheKey_t		key;
-	r207ProgCacheStats_t	st;
+	progcacheProgCacheKey_t		key;
+	progcacheProgCacheStats_t	st;
 	glProgSpec_t			specs[GL_PROBE_MAX_PROGRAMS];
 	int						i, restored = 0, compiled = 0, diverged = 0;
 	int						warm, wrote;
@@ -345,11 +345,11 @@ int main( int argc, char **argv ) {
 	warm = ( strcmp( g_phase, "warm" ) == 0 );
 
 	if ( !EGL_Open() ) {
-		printf( "[R207:pc-gl] SKIP no ES3 context on this host\n" );
+		printf( "[PROGCACHE:pc-gl] SKIP no ES3 context on this host\n" );
 		return 77;
 	}
 
-	R207_ProgCache_Init( &s_io, &s_gl, 1 );
+	PROGCACHE_ProgCache_Init( &s_io, &s_gl, 1 );
 	memset( &key, 0, sizeof( key ) );
 	key.glVersion = (const char *)glGetString( GL_VERSION );
 	key.glRenderer = (const char *)glGetString( GL_RENDERER );
@@ -357,20 +357,20 @@ int main( int argc, char **argv ) {
 	key.glesMajor = 3;
 	key.glesMinor = 0;
 	{
-		unsigned	h = R207_ProgCache_HashSeed();
+		unsigned	h = PROGCACHE_ProgCache_HashSeed();
 
 		for ( i = 0; i < g_n; i++ ) {
 			SpecBuild( i, &specs[i] );
-			h = R207_ProgCache_FoldStr( h, specs[i].vs );
-			h = R207_ProgCache_FoldStr( h, specs[i].fs );
+			h = PROGCACHE_ProgCache_FoldStr( h, specs[i].vs );
+			h = PROGCACHE_ProgCache_FoldStr( h, specs[i].fs );
 		}
 		key.sourceHash = h;
 		key.definesHash = 0x207u;
 	}
-	R207_ProgCache_Load( &key );
+	PROGCACHE_ProgCache_Load( &key );
 
-	if ( !R207_ProgCache_On() ) {
-		printf( "[R207:pc-gl] SKIP the driver reports no program-binary format\n" );
+	if ( !PROGCACHE_ProgCache_On() ) {
+		printf( "[PROGCACHE:pc-gl] SKIP the driver reports no program-binary format\n" );
 		return 77;
 	}
 
@@ -378,7 +378,7 @@ int main( int argc, char **argv ) {
 		unsigned	program = 0, savedUsec = 0, restoreUsec = 0;
 
 		if ( warm ) {
-			if ( R207_ProgCache_TryRestore( specs[i].name, specs[i].defines,
+			if ( PROGCACHE_ProgCache_TryRestore( specs[i].name, specs[i].defines,
 											specs[i].vsHash, specs[i].fsHash,
 											&program, &savedUsec, &restoreUsec ) ) {
 				GLint	link = 0;
@@ -389,10 +389,10 @@ int main( int argc, char **argv ) {
 				pos = glGetAttribLocation( (GLuint)program, "a_Position" );
 				if ( !link || pos != 0 ) {
 					diverged++;
-					printf( "[R207:pc-gl] program i=%d result=restored link=%d a_Position=%d DIVERGED\n",
+					printf( "[PROGCACHE:pc-gl] program i=%d result=restored link=%d a_Position=%d DIVERGED\n",
 							i, (int)link, pos );
 				} else {
-					printf( "[R207:pc-gl] program i=%d name=%s result=restored saved=%uus restore=%uus\n",
+					printf( "[PROGCACHE:pc-gl] program i=%d name=%s result=restored saved=%uus restore=%uus\n",
 							i, specs[i].name, savedUsec, restoreUsec );
 				}
 				continue;
@@ -401,16 +401,16 @@ int main( int argc, char **argv ) {
 		compiled++;
 		program = CompileProgram( &specs[i] );
 		if ( !program ) {
-			printf( "[R207:pc-gl] program i=%d result=compile-FAILED\n", i );
+			printf( "[PROGCACHE:pc-gl] program i=%d result=compile-FAILED\n", i );
 			diverged++;
 			continue;
 		}
-		printf( "[R207:pc-gl] program i=%d name=%s result=compiled\n", i, specs[i].name );
+		printf( "[PROGCACHE:pc-gl] program i=%d name=%s result=compiled\n", i, specs[i].name );
 	}
 
-	wrote = R207_ProgCache_Save();
-	R207_ProgCache_Stats( &st );
-	printf( "[R207:pc-gl] summary phase=%s state=%s hits=%u miss=%u bad=%u "
+	wrote = PROGCACHE_ProgCache_Save();
+	PROGCACHE_ProgCache_Stats( &st );
+	printf( "[PROGCACHE:pc-gl] summary phase=%s state=%s hits=%u miss=%u bad=%u "
 			"savedUsec=%u coldUsec=%u restoreUsec=%u restored=%d compiled=%d diverged=%d "
 			"wrote=%d bytes=%u ioOpen=%d ioWrite=%d driver=%d clock=%d glerr=%u\n",
 			g_phase, ( st.state == 3 ) ? "loaded" : ( st.state == 2 ? "nofile" : "other" ),
@@ -418,6 +418,6 @@ int main( int argc, char **argv ) {
 			restored, compiled, diverged, wrote, st.fileBytes,
 			g_ioOpens, g_ioWrites, g_driverCalls, g_clockReads, st.glerr );
 
-	R207_ProgCache_Shutdown();
+	PROGCACHE_ProgCache_Shutdown();
 	return diverged ? 1 : 0;
 }

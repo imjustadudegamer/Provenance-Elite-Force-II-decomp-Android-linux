@@ -1,6 +1,6 @@
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that
 can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`
 marker by glsl/build_glsl.py, so the uniform names cannot drift from

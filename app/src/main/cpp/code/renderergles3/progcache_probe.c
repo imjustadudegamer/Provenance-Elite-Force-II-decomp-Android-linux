@@ -52,17 +52,17 @@ static fakeProg_t	g_progs[FAKE_MAX_PROGRAMS];
 static int			g_errorQueue;
 
 static unsigned FakeHash( const void *data, int len ) {
-	return R207_ProgCache_Hash( data, len );
+	return PROGCACHE_ProgCache_Hash( data, len );
 }
 
 static unsigned FakeIdentity( const char *name, unsigned defines,
 							  unsigned vsHash, unsigned fsHash ) {
-	unsigned	h = R207_ProgCache_HashSeed();
+	unsigned	h = PROGCACHE_ProgCache_HashSeed();
 
-	h = R207_ProgCache_FoldStr( h, name );
-	h = R207_ProgCache_Fold( h, &defines, (int)sizeof( defines ) );
-	h = R207_ProgCache_Fold( h, &vsHash, (int)sizeof( vsHash ) );
-	h = R207_ProgCache_Fold( h, &fsHash, (int)sizeof( fsHash ) );
+	h = PROGCACHE_ProgCache_FoldStr( h, name );
+	h = PROGCACHE_ProgCache_Fold( h, &defines, (int)sizeof( defines ) );
+	h = PROGCACHE_ProgCache_Fold( h, &vsHash, (int)sizeof( vsHash ) );
+	h = PROGCACHE_ProgCache_Fold( h, &fsHash, (int)sizeof( fsHash ) );
 	return h;
 }
 
@@ -147,16 +147,16 @@ static void FakeGetProgramiv( unsigned program, unsigned pname, int *params ) {
 		return;
 	}
 	switch ( pname ) {
-	case R207_GL_LINK_STATUS:
+	case PROGCACHE_GL_LINK_STATUS:
 		*params = p->linkStatus ? 1 : 0;
 		break;
-	case R207_GL_PROGRAM_BINARY_LENGTH:
+	case PROGCACHE_GL_PROGRAM_BINARY_LENGTH:
 		*params = p->linkStatus ? p->blobLen : 0;
 		break;
-	case R207_GL_ACTIVE_ATTRIBUTES:
+	case PROGCACHE_GL_ACTIVE_ATTRIBUTES:
 		*params = p->linkStatus ? FAKE_ATTRS : 0;
 		break;
-	case R207_GL_ACTIVE_UNIFORMS:
+	case PROGCACHE_GL_ACTIVE_UNIFORMS:
 		*params = p->linkStatus ? FakeUniformCount( p->ifaceKey ) : 0;
 		break;
 	default:
@@ -332,7 +332,7 @@ static void FakeProgramParameteri( unsigned program, unsigned pname, int value )
 	(void)program; (void)pname; (void)value;
 }
 
-static const r207ProgCacheGl_t s_fakeGl = {
+static const progcacheProgCacheGl_t s_fakeGl = {
 	FakeGetError,
 	FakeCreateProgram,
 	FakeDeleteProgram,
@@ -428,7 +428,7 @@ static int HostMicroseconds( void ) {
 	return (int)( ( ts.tv_sec * 1000000 + ts.tv_nsec / 1000 ) & 0x7fffffff );
 }
 
-static const r207ProgCacheIO_t s_hostIo = {
+static const progcacheProgCacheIO_t s_hostIo = {
 	NULL, HostOpen, HostRead, HostClose, HostWrite, HostMicroseconds
 };
 
@@ -454,18 +454,18 @@ static void ProgramSpec( int i, progSpec_t *s ) {
 
 static unsigned TheSourceHash( void ) {
 	char	text[128];
-	unsigned	h = R207_ProgCache_HashSeed();
+	unsigned	h = PROGCACHE_ProgCache_HashSeed();
 
 	snprintf( text, sizeof( text ), "corpus salt %u", g_sourceSalt );
-	h = R207_ProgCache_FoldStr( h, text );
+	h = PROGCACHE_ProgCache_FoldStr( h, text );
 	return h;
 }
 
 static unsigned TheDefinesHash( void ) {
-	unsigned	h = R207_ProgCache_HashSeed();
+	unsigned	h = PROGCACHE_ProgCache_HashSeed();
 	unsigned	salt = g_definesSalt;
 
-	h = R207_ProgCache_Fold( h, &salt, (int)sizeof( salt ) );
+	h = PROGCACHE_ProgCache_Fold( h, &salt, (int)sizeof( salt ) );
 	return h;
 }
 
@@ -484,19 +484,19 @@ static unsigned CompileProgram( const progSpec_t *s, unsigned buildUsec ) {
 	p->format = g_fakeFormat;
 	FakeBuildBlob( p, identity );
 
-	R207_ProgCache_NoteCompiled( s->name, s->defines, s->vsHash, s->fsHash,
+	PROGCACHE_ProgCache_NoteCompiled( s->name, s->defines, s->vsHash, s->fsHash,
 								 program, buildUsec );
 	return program;
 }
 
 static const char *StateName( int state ) {
 	switch ( state ) {
-	case R207_PC_UNSUPPORTED:	return "unsupported";
-	case R207_PC_NOFILE:		return "nofile";
-	case R207_PC_LOADED:		return "loaded";
-	case R207_PC_FOREIGN:		return "foreign";
-	case R207_PC_CORRUPT:		return "corrupt";
-	case R207_PC_WRITEFAIL:		return "writefail";
+	case PROGCACHE_PC_UNSUPPORTED:	return "unsupported";
+	case PROGCACHE_PC_NOFILE:		return "nofile";
+	case PROGCACHE_PC_LOADED:		return "loaded";
+	case PROGCACHE_PC_FOREIGN:		return "foreign";
+	case PROGCACHE_PC_CORRUPT:		return "corrupt";
+	case PROGCACHE_PC_WRITEFAIL:		return "writefail";
 	default:					return "off";
 	}
 }
@@ -536,8 +536,8 @@ static int ParseArgs( int argc, char **argv ) {
 }
 
 int main( int argc, char **argv ) {
-	r207ProgCacheKey_t		key;
-	r207ProgCacheStats_t	st;
+	progcacheProgCacheKey_t		key;
+	progcacheProgCacheStats_t	st;
 	progSpec_t				specs[FAKE_MAX_PROGRAMS];
 	int						i, restored = 0, compiled = 0, mismatches = 0;
 	int						warm;
@@ -549,7 +549,7 @@ int main( int argc, char **argv ) {
 	warm = ( strcmp( g_phase, "warm" ) == 0 );
 
 	mark = g_driverQueries;
-	R207_ProgCache_Init( &s_hostIo, &s_fakeGl, g_disable ? 0 : 1 );
+	PROGCACHE_ProgCache_Init( &s_hostIo, &s_fakeGl, g_disable ? 0 : 1 );
 
 	memset( &key, 0, sizeof( key ) );
 	key.glVersion = g_version;
@@ -561,7 +561,7 @@ int main( int argc, char **argv ) {
 	key.definesHash = TheDefinesHash();
 
 	if ( !g_disable ) {
-		R207_ProgCache_Load( &key );
+		PROGCACHE_ProgCache_Load( &key );
 	}
 	g_cacheDriver += g_driverQueries - mark;
 
@@ -574,8 +574,8 @@ int main( int argc, char **argv ) {
 		ProgramSpec( i, &specs[i] );
 
 		mark = g_driverQueries;
-		if ( warm && R207_ProgCache_On()
-			 && R207_ProgCache_TryRestore( specs[i].name, specs[i].defines,
+		if ( warm && PROGCACHE_ProgCache_On()
+			 && PROGCACHE_ProgCache_TryRestore( specs[i].name, specs[i].defines,
 										   specs[i].vsHash, specs[i].fsHash,
 										   &program, &savedUsec, &restoreUsec ) ) {
 			g_cacheDriver += g_driverQueries - mark;
@@ -591,7 +591,7 @@ int main( int argc, char **argv ) {
 			if ( !p || p->ifaceKey != wantIface ) {
 				mismatches++;
 			}
-			printf( "[R207:pc-probe] program i=%d name=%s defines=0x%08x result=restored iface=%08x saved=%uus restore=%uus\n",
+			printf( "[PROGCACHE:pc-probe] program i=%d name=%s defines=0x%08x result=restored iface=%08x saved=%uus restore=%uus\n",
 					i, specs[i].name, specs[i].defines,
 					p ? p->ifaceKey : 0u, savedUsec, restoreUsec );
 		} else {
@@ -602,18 +602,18 @@ int main( int argc, char **argv ) {
 			program = CompileProgram( &specs[i], 1000u + (unsigned)i );
 			identity = FakeIdentity( specs[i].name, specs[i].defines,
 									 specs[i].vsHash, specs[i].fsHash );
-			printf( "[R207:pc-probe] program i=%d name=%s defines=0x%08x result=compiled iface=%08x\n",
+			printf( "[PROGCACHE:pc-probe] program i=%d name=%s defines=0x%08x result=compiled iface=%08x\n",
 					i, specs[i].name, specs[i].defines, identity );
 		}
 		(void)ok;
 	}
 
 	mark = g_driverQueries;
-	wrote = R207_ProgCache_Save();
+	wrote = PROGCACHE_ProgCache_Save();
 	g_cacheDriver += g_driverQueries - mark;
-	R207_ProgCache_Stats( &st );
+	PROGCACHE_ProgCache_Stats( &st );
 
-	printf( "[R207:pc-probe] summary phase=%s state=%s stateId=%d engaged=%d loaded=%d "
+	printf( "[PROGCACHE:pc-probe] summary phase=%s state=%s stateId=%d engaged=%d loaded=%d "
 			"entries=%u hits=%u miss=%u bad=%u savedUsec=%u restoreUsec=%u coldUsec=%u "
 			"restored=%d compiled=%d mismatches=%d wrote=%d bytes=%u "
 			"loadState=%s loadStateId=%d "
@@ -625,6 +625,6 @@ int main( int argc, char **argv ) {
 			g_ioOpens, g_ioReads, g_ioWrites, g_driverQueries, g_cacheDriver,
 			g_clockReads, st.glerr );
 
-	R207_ProgCache_Shutdown();
+	PROGCACHE_ProgCache_Shutdown();
 	return mismatches ? 1 : 0;
 }

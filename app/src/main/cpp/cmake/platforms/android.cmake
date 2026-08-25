@@ -1,4 +1,4 @@
-# Android (r133-android) -- the device target: arm64-v8a, the GLES 3.0
+# Android (uivk-android) -- the device target: arm64-v8a, the GLES 3.0
 # backend, the engine built as libmain.so and driven by SDL2-for-Android.
 #
 # Everything here is the accepted-divergence platform layer (the operator's

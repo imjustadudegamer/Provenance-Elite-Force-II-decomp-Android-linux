@@ -3,9 +3,9 @@
 #include "../client/client.h"
 #include "../corepp/tiki.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       Com_Printf
+#include "../qcommon/qa_probe.h"
 
 static char last_mapname[ MAX_QPATH ];
 static int g_iSvsTimeFixupCount;
@@ -333,7 +333,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	differentmap = qtrue;
 
-	R201_LOAD_BEGIN( spawn );
+	SMP_LOAD_BEGIN( spawn );
 
 	hash = strchr( server, '#' );
 	if ( hash ) {
@@ -395,10 +395,10 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	}
 
 	if ( differentmap ) {
-		R201_LOAD_BEGIN( hunkclr );
+		SMP_LOAD_BEGIN( hunkclr );
 		Hunk_Clear();
 		CM_ClearMap();
-		R201_LOAD_END( hunkclr );
+		SMP_LOAD_END( hunkclr );
 
 		svs.snapshotEntities = Hunk_Alloc( sizeof( entityState_t ) * svs.numSnapshotEntities, h_dontcare );
 
@@ -418,9 +418,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		SV_ClearGameInterface();
 
 		Com_sprintf( filename, sizeof( filename ), "maps/%s.bsp", map );
-		R201_LOAD_BEGIN( cmap );
+		SMP_LOAD_BEGIN( cmap );
 		CM_LoadMap( filename, qfalse, &checksum );
-		R201_LOAD_END( cmap );
+		SMP_LOAD_END( cmap );
 
 		Cvar_Set( "sv_mapChecksum", va( "%i", checksum ) );
 		Cvar_Set( "mapname", svs.rawServerName );
@@ -464,7 +464,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	sv.restarting = restart;
 
 	if ( loadgame ) {
-		R131_PROBE("svstime", "pre-archive: svs.time=%d map=%s\n", svs.time, svs.mapName);
+		WIDGET_PROBE("svstime", "pre-archive: svs.time=%d map=%s\n", svs.time, svs.mapName);
 
 		if ( sublevelLoad ) {
 			Q_strncpyz( levelExt, "sub", sizeof( levelExt ) );
@@ -479,7 +479,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 			sv.restarting = qfalse;
 		}
 
-		R131_PROBE("svstime", "after archive restore: svs.time=%d map=%s loadgame=%d\n",
+		WIDGET_PROBE("svstime", "after archive restore: svs.time=%d map=%s loadgame=%d\n",
 		           svs.time, svs.mapName, loadgame);
 
 		if ( sublevelLoad ) {
@@ -492,9 +492,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	}
 
 	if ( !ge ) {
-		R201_LOAD_BEGIN( svinit );
+		SMP_LOAD_BEGIN( svinit );
 		SV_InitGameProgs();
-		R201_LOAD_END( svinit );
+		SMP_LOAD_END( svinit );
 	}
 
 	// argument, so a load NEVER zeroes it.  The whole branch reads:
@@ -502,9 +502,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	if ( !loadgame ) {
 		svs.time = 0;
 
-		R201_LOAD_BEGIN( spawnent );
+		SMP_LOAD_BEGIN( spawnent );
 		ge->SpawnEntities( map, CM_EntityString(), svs.time );
-		R201_LOAD_END( spawnent );
+		SMP_LOAD_END( spawnent );
 
 		p = ge->error_message;
 		if ( p ) {
@@ -644,7 +644,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	Com_Printf( "-----------------------------------\n" );
 
-	R201_LOAD_END( spawn );
+	SMP_LOAD_END( spawn );
 }
 
 qboolean SV_DoneLoading( void ) {

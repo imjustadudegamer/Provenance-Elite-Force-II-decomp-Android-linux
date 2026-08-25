@@ -4,11 +4,11 @@
 #include "../qcommon/gameplaymanager.h" 
 #include "../corepp/tiki.h"
 
-// R134 MENU3D TEMP PROBE (workstream r134-menu3d, worktree-only, NEVER merge): one
-#define R120_PROBE_GET(name, def, flags) ((cvar_t *)0)
-#define R120_PROBE_PRINT                 Com_Printf
-#define R120_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_r120", "1")) != 0)
-#include "../qcommon/qa_r120.h"
+// MENU3D MENU3D TEMP PROBE (workstream menu3d-menu3d, worktree-only, NEVER merge): one
+#define PROBE_GET(name, def, flags) ((cvar_t *)0)
+#define PROBE_PRINT                 Com_Printf
+#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "1")) != 0)
+#include "../qcommon/qa_probe.h"
 
 
 Event EV_RMWidget_RenderModel
@@ -305,9 +305,9 @@ void UIRenderModel::Draw(void)
     UIWidget::Draw();
 
     {
-        static int r134mvk_draw;
-        if (R120_Throttle(&r134mvk_draw, 4, 120)) {
-            R133_PROBE(
+        static int menu3dmvk_draw;
+        if (PROBE_Throttle(&menu3dmvk_draw, 4, 120)) {
+            UIVK_PROBE(
                 "menu3d",
                 "rm_draw state=%d vis=%d alpha=%.3f screen=%.0f,%.0f %.0fx%.0f static='%s' cvar='%s' cv='%s'",
                 (int)m_widgetState,
@@ -335,9 +335,9 @@ void UIRenderModel::Draw(void)
         modelName = m_modelName.c_str();
     } else {
         {
-            static int r134mvk_noname;
-            if (R120_Throttle(&r134mvk_noname, 4, 300)) {
-                R133_PROBE("menu3d", "rm_early return=noname static='%s' cvar='%s'",
+            static int menu3dmvk_noname;
+            if (PROBE_Throttle(&menu3dmvk_noname, 4, 300)) {
+                UIVK_PROBE("menu3d", "rm_early return=noname static='%s' cvar='%s'",
                            m_modelName.c_str(), m_cvarname.c_str());
             }
         }
@@ -347,9 +347,9 @@ void UIRenderModel::Draw(void)
     handle = re.RegisterModel(modelName);
     if (!handle) {
         {
-            static int r134mvk_nohandle;
-            if (R120_Throttle(&r134mvk_nohandle, 4, 300)) {
-                R133_PROBE("menu3d", "rm_early return=nohandle model='%s'", modelName);
+            static int menu3dmvk_nohandle;
+            if (PROBE_Throttle(&menu3dmvk_nohandle, 4, 300)) {
+                UIVK_PROBE("menu3d", "rm_early return=nohandle model='%s'", modelName);
             }
         }
         return;
@@ -358,9 +358,9 @@ void UIRenderModel::Draw(void)
     tiki = re.R_Model_GetHandle(handle);
     if (!tiki) {
         {
-            static int r134mvk_notiki;
-            if (R120_Throttle(&r134mvk_notiki, 4, 300)) {
-                R133_PROBE("menu3d", "rm_early return=notiki model='%s' handle=%d", modelName, handle);
+            static int menu3dmvk_notiki;
+            if (PROBE_Throttle(&menu3dmvk_notiki, 4, 300)) {
+                UIVK_PROBE("menu3d", "rm_early return=notiki model='%s' handle=%d", modelName, handle);
             }
         }
         return;
@@ -382,9 +382,9 @@ void UIRenderModel::Draw(void)
     }
 
     {
-        static int r134mvk_submit;
-        if (R120_Throttle(&r134mvk_submit, 4, 120)) {
-            R133_PROBE(
+        static int menu3dmvk_submit;
+        if (PROBE_Throttle(&menu3dmvk_submit, 4, 120)) {
+            UIVK_PROBE(
                 "menu3d",
                 "rm_submit model='%s' handle=%d tiki=%p state=%d anim='%s' fov=%.0fx%.0f rect=%.0f,%.0f %.0fx%.0f realtime=%d",
                 modelName,

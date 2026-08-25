@@ -1,7 +1,7 @@
 #version 300 es
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_stage.vert -- the generic-stage vertex program.
 
 This ONE source is compiled once per distinct GLP_* bitmask

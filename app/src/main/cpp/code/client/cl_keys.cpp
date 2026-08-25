@@ -1,8 +1,8 @@
 #include "client.h"
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 #include "cl_ui.h"
 #include "cl_cin.h"
 #include "../uilib/ui_public.h"
@@ -835,7 +835,7 @@ void CL_AddKeyUpCommands(int key, char *kb, unsigned time)
             *buttonPtr = '\0';
             if (button[0] == '+') {
                 Com_sprintf(cmd, sizeof(cmd), "-%s %i %i\n", button + 1, key, time);
-                R120_PROBE("input:bindexec", "key=%d executed(-arm)='-%s'", key, button + 1);
+                PROBE("input:bindexec", "key=%d executed(-arm)='-%s'", key, button + 1);
                 Cbuf_AddText(cmd);
                 keyevent = qtrue;
             } else {
@@ -890,10 +890,10 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
         }
 
         if (Cvar_VariableIntegerValue("ui_console")) {
-            R133_PROBE("key", "key='`' consumer=UI_ToggleConsole (ui_console=1)");
+            UIVK_PROBE("key", "key='`' consumer=UI_ToggleConsole (ui_console=1)");
             UI_ToggleConsole();
         } else {
-            R133_PROBE("key", "key='`' consumer=none (ui_console=0)");
+            UIVK_PROBE("key", "key='`' consumer=none (ui_console=0)");
         }
         return;
     }
@@ -939,9 +939,9 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
     if (key == K_ESCAPE) {
         if (down) {
             qboolean wasup = UI_MenuUp();
-            char     r133hudbuf[256];
+            char     uivkhudbuf[256];
 
-            R133_PROBE("key",
+            UIVK_PROBE("key",
                        "key='ESCAPE' down=1 State=%d catcher=0x%x menuup=%d hudnoescape=%d cin=%d "
                        "hudcount=%d huds='%s' svloading=%d cinflag=%d",
                        cls.state,
@@ -950,26 +950,26 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
                        UI_IsHudActive() ? 1 : 0,
                        cinematicRunning() ? 1 : 0,
                        UI_HudCount(),
-                       UI_HudNames(r133hudbuf, sizeof(r133hudbuf)),
+                       UI_HudNames(uivkhudbuf, sizeof(uivkhudbuf)),
                        UI_IsServerLoading() ? 1 : 0,
                        (cl.snap.ps.stats[STAT_CINEMATIC] & 1) ? 1 : 0);
             // every UIFloatingWindow/UIPopupMenu on ESC, a state change retail never makes.
 
             if (cinematicRunning()) {
-                R133_PROBE("key", "key='ESCAPE' consumer=StopCinematic (cinematic up)");
+                UIVK_PROBE("key", "key='ESCAPE' consumer=StopCinematic (cinematic up)");
                 StopCinematic();
                 return;
             }
 
-            UIWidget *r133dmcon = uWinMan.ActiveControl();
-            if (r133dmcon && r133dmcon->getName() && !Q_stricmp(r133dmcon->getName(), "dm_console")) {
-                R133_PROBE("key", "key='ESCAPE' consumer=UI_ConsoleEscape (dm_console)");
-                r133dmcon->KeyEvent(K_ESCAPE, time);
+            UIWidget *uivkdmcon = uWinMan.ActiveControl();
+            if (uivkdmcon && uivkdmcon->getName() && !Q_stricmp(uivkdmcon->getName(), "dm_console")) {
+                UIVK_PROBE("key", "key='ESCAPE' consumer=UI_ConsoleEscape (dm_console)");
+                uivkdmcon->KeyEvent(K_ESCAPE, time);
                 return;
             }
 
             if (wasup) {
-                R133_PROBE("key",
+                UIVK_PROBE("key",
                            "key='ESCAPE' consumer=UI_MenuEscape(current menu up, State=%d)",
                            cls.state);
                 UI_MenuEscape("main");
@@ -978,13 +978,13 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
 
             // to the main menu and NEVER skipped a cinematic. Removed that dead check so
             if (cl.snap.ps.stats[STAT_CINEMATIC] & 1 && cls.state == CA_ACTIVE) {
-                R133_PROBE("key", "key='ESCAPE' consumer=skipcinematic (STAT_CINEMATIC)");
+                UIVK_PROBE("key", "key='ESCAPE' consumer=skipcinematic (STAT_CINEMATIC)");
                 Cbuf_AddText("skipcinematic\n");
                 return;
             }
 
             if ((unsigned int)(cls.state - CA_CONNECTING) <= 1 || cls.state == CA_CONNECTED) {
-                R133_PROBE("key",
+                UIVK_PROBE("key",
                            "key='ESCAPE' consumer=CL_Disconnect+UI_MenuEscape (State=%d)",
                            cls.state);
                 CL_Disconnect(1);
@@ -993,12 +993,12 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
             }
 
             if (cls.state <= CA_DISCONNECTED || cls.state == CA_ACTIVE) {
-                R133_PROBE("key",
+                UIVK_PROBE("key",
                            "key='ESCAPE' consumer=UI_MenuEscape(no menu up, State=%d)",
                            cls.state);
                 UI_MenuEscape("main");
             } else {
-                R133_PROBE("key",
+                UIVK_PROBE("key",
                            "key='ESCAPE' consumer=none (State=%d, no retail arm)",
                            cls.state);
             }
@@ -1008,7 +1008,7 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
         // The chat-input gate below is the KEY CATCHER, not cls.loading.  Retail,
         if ((Key_GetCatcher() & KEYCATCH_UI && !menubound[key]) || UI_BindActive()) {
             // instead of the binding executor.  Digits are NOT menubound in retail's
-            R120_PROBE(
+            PROBE(
                 "input:swallowed",
                 "key=%d catcher=0x%x menubound=%d bindActive=%d bind='%s'",
                 key,
@@ -1051,7 +1051,7 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
                         *buttonPtr = '\0';
                         if (button[0] == '+') {
                             Com_sprintf(cmd, sizeof(cmd), "%s %i %i\n", button, key, time);
-                            R120_PROBE("input:bindexec", "key=%d executed(+arm)='%s'", key, button);
+                            PROBE("input:bindexec", "key=%d executed(+arm)='%s'", key, button);
                             Cbuf_AddText(cmd);
                         } else {
                             Cbuf_AddText(button);
@@ -1068,7 +1068,7 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
                     }
                 }
             } else {
-                R120_PROBE("input:bindexec", "key=%d executed='%s'", key, kb);
+                PROBE("input:bindexec", "key=%d executed='%s'", key, kb);
                 Cbuf_AddText(kb);
                 Cbuf_AddText("\n");
             }

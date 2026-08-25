@@ -29,7 +29,7 @@ if(USE_INTERNAL_MAD)
     #
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID MATCHES "^(Apple)?Clang$")
         include(CheckCCompilerFlag)
-        # r133: +format (minimad.c example's %x/long); r138: +format-security --
+        # uivk: +format (minimad.c example's %x/long); uiparity: +format-security --
         # the project's own flags carry -Wformat-security, and with -Wno-format on
         # this target GCC/clang report that combination itself ("'-Wformat-security'
         # ignored without '-Wformat'") once per vendored TU.  Disabling it here
@@ -42,7 +42,7 @@ if(USE_INTERNAL_MAD)
             endif()
         endforeach()
 
-    # r133: the minimad EXAMPLE binary ships an upstream %x/long mismatch; the
+    # uivk: the minimad EXAMPLE binary ships an upstream %x/long mismatch; the
     # example is not shipped, silence instead of editing upstream.
     if(CMAKE_C_COMPILER_ID MATCHES "Clang")
         target_compile_options(mad_example PRIVATE -Wno-format)

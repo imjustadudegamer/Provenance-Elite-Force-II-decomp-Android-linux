@@ -368,11 +368,11 @@ static void ComputeColors( shaderStage_t *pStage )
 			RB_CalcColorFromOneMinusEntity((unsigned char*)tess.svars.colors);
 			break;
 		case CGEN_EXACT_VERTEX:
-			// r135-2dcolor ORACLE CORRECTION (retail, not this file).  Retail's
+			// aspect-2dcolor ORACLE CORRECTION (retail, not this file).  Retail's
 			Com_Memcpy( tess.svars.colors, tess.vertexColors, tess.numVertexes * sizeof( tess.vertexColors[0] ) );
 			break;
 		case CGEN_VERTEX:
-			// r135-2dcolor ORACLE CORRECTION (retail, not this file).  Retail case 6 tests
+			// aspect-2dcolor ORACLE CORRECTION (retail, not this file).  Retail case 6 tests
 			if (!tess.vertexColorValid) {
 				static qboolean bWarned = qfalse;
 
@@ -1300,11 +1300,11 @@ void RB_EndSurface( void ) {
 	backEnd.pc.c_indexes += tess.numIndexes;
 	backEnd.pc.c_totalIndexes += tess.numIndexes * tess.numPasses;
 
-	R204_Bump( R204_FAM_DS, R204_DSC_batches, 1 );
-	R204_Bump( R204_FAM_DS, R204_DSC_verts, tess.numVertexes );
+	BE_Bump( BE_FAM_DS, BE_DSC_batches, 1 );
+	BE_Bump( BE_FAM_DS, BE_DSC_verts, tess.numVertexes );
 
-	R204_Bump( R204_FAM_DS, R204_DSC_stages, 1 );
-	R204_SUB( R204_FAM_DS, R204_DSZ_sub_stage, tess.currentStageIteratorFunc() );
+	BE_Bump( BE_FAM_DS, BE_DSC_stages, 1 );
+	BE_SUB( BE_FAM_DS, BE_DSZ_sub_stage, tess.currentStageIteratorFunc() );
 
 	if (!(tr.refdef.rdflags & RDF_NOWORLDMODEL) && !backEnd.in2D)
 	{

@@ -12,7 +12,7 @@ endif()
 set(INTERNAL_SDL_DIR ${SOURCE_DIR}/thirdparty/SDL2-2.32.8)
 
 # ---------------------------------------------------------------------------
-# ANDROID (r133-android): build the vendored SDL2 in-tree as libSDL2.so.
+# ANDROID (uivk-android): build the vendored SDL2 in-tree as libSDL2.so.
 #
 # SDL2 is the whole Android platform surface for this port -- the activity
 # (org.libsdl.app.SDLActivity, driven by the app's own subclass), the window,
@@ -26,7 +26,7 @@ set(INTERNAL_SDL_DIR ${SOURCE_DIR}/thirdparty/SDL2-2.32.8)
 # no static lib, no test lib, no SDL_Renderer (the engine renders through its own
 # backend, not SDL's 2D renderer).
 #
-# r200-gles3 ROOT FIX -- SDL_OPENGLES must be ON.  The GLES 3.0 renderer creates
+# gles3-gles3 ROOT FIX -- SDL_OPENGLES must be ON.  The GLES 3.0 renderer creates
 # its context through SDL (gl_gles3_platform.c: SDL_CreateWindow(SDL_WINDOW_OPENGL)
 # + SDL_GL_CreateContext), and SDL's Android video driver installs its GL entry
 # points -- GL_LoadLibrary/GL_GetProcAddress/GL_CreateContext/GL_MakeCurrent/
@@ -61,9 +61,9 @@ if(ANDROID)
     # this switch.
     set(SDL_CLOCK_GETTIME OFF CACHE BOOL "" FORCE)
     add_subdirectory(${SDL2_ANDROID_DIR} ${CMAKE_BINARY_DIR}/sdl2 EXCLUDE_FROM_ALL)
-    # r133: keep the upstream tree pristine -- two clang-only unused-variable warnings
+    # uivk: keep the upstream tree pristine -- two clang-only unused-variable warnings
     # in SDL's own android video/core backends are silenced at the target level.
-    # r138: +deprecated-declarations -- SDL 2.30.9's android sensor backend calls
+    # uiparity: +deprecated-declarations -- SDL 2.30.9's android sensor backend calls
     # ASensorManager_getInstance, deprecated in NDK r25 for API >= 26 while upstream
     # still supports older levels.  Vendored, so silenced at the target, not patched.
     if(CMAKE_C_COMPILER_ID MATCHES "Clang")

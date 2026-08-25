@@ -66,22 +66,22 @@ int main(void)
 	int			staged = 0;
 	unsigned	passed;
 
-	printf("[R200:firstlight] phase=probe start version=%s\n", "EGL/GLES3");
+	printf("[GLES3:firstlight] phase=probe start version=%s\n", "EGL/GLES3");
 
 	dpy = probe_display();
 	if (dpy == EGL_NO_DISPLAY) {
-		printf("[R200:firstlight] phase=probe status=fail stage=eglGetDisplay/eglInitialize\n");
+		printf("[GLES3:firstlight] phase=probe status=fail stage=eglGetDisplay/eglInitialize\n");
 		return 2;
 	}
 	eglQueryString(dpy, EGL_VERSION);
-	printf("[R200:firstlight] phase=probe egl_version=\"%s\" vendor=\"%s\"\n",
+	printf("[GLES3:firstlight] phase=probe egl_version=\"%s\" vendor=\"%s\"\n",
 		   eglQueryString(dpy, EGL_VERSION) ? eglQueryString(dpy, EGL_VERSION) : "(null)",
 		   eglQueryString(dpy, EGL_VENDOR) ? eglQueryString(dpy, EGL_VENDOR) : "(null)");
 
 	if (!eglChooseConfig(dpy, cfgAttrs, &cfg, 1, &numCfg) || numCfg < 1) {
 		cfgAttrs[10] = EGL_NONE; 
 		if (!eglChooseConfig(dpy, cfgAttrs, &cfg, 1, &numCfg) || numCfg < 1) {
-			printf("[R200:firstlight] phase=probe status=fail stage=eglChooseConfig\n");
+			printf("[GLES3:firstlight] phase=probe status=fail stage=eglChooseConfig\n");
 			return 2;
 		}
 	}
@@ -90,53 +90,53 @@ int main(void)
 	if (ctx == EGL_NO_CONTEXT) {
 		ctxAttrs[1] = 2;
 		ctx = eglCreateContext(dpy, cfg, EGL_NO_CONTEXT, ctxAttrs);
-		printf("[R200:firstlight] phase=probe note=es3-context-refused trying=es2\n");
+		printf("[GLES3:firstlight] phase=probe note=es3-context-refused trying=es2\n");
 	}
 	if (ctx == EGL_NO_CONTEXT) {
-		printf("[R200:firstlight] phase=probe status=fail stage=eglCreateContext\n");
+		printf("[GLES3:firstlight] phase=probe status=fail stage=eglCreateContext\n");
 		return 2;
 	}
 
 	surf = eglCreatePbufferSurface(dpy, cfg, pbufAttrs);
 	if (surf == EGL_NO_SURFACE) {
-		printf("[R200:firstlight] phase=probe status=fail stage=eglCreatePbufferSurface\n");
+		printf("[GLES3:firstlight] phase=probe status=fail stage=eglCreatePbufferSurface\n");
 		return 2;
 	}
 	if (!eglMakeCurrent(dpy, surf, surf, ctx)) {
-		printf("[R200:firstlight] phase=probe status=fail stage=eglMakeCurrent\n");
+		printf("[GLES3:firstlight] phase=probe status=fail stage=eglMakeCurrent\n");
 		return 2;
 	}
 
 	QGL_GLES3_SetGetProcAddress(probe_getproc);
 	QGL_GLES3_SetLogger(probe_log);
-	R200_FirstLight_SetLogger(probe_log);
+	GLES3_FirstLight_SetLogger(probe_log);
 
 	missing = QGL_GLES3_LoadProcs(&staged);
 	QGL_GLES3_LogDeviceInfo();
-	printf("[R200:firstlight] phase=probe procs=%d core=%d core_missing=%d staged_desktop_traps=%d\n",
+	printf("[GLES3:firstlight] phase=probe procs=%d core=%d core_missing=%d staged_desktop_traps=%d\n",
 		   QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), missing, staged);
 	if (missing > 0) {
-		printf("[R200:firstlight] phase=probe core_list=%s\n", QGL_GLES3_CoreMissingList());
+		printf("[GLES3:firstlight] phase=probe core_list=%s\n", QGL_GLES3_CoreMissingList());
 	}
 
-	passed = R200_FirstLight_ClearAndQuad();
-	printf("[R200:firstlight] phase=probe clear=%d quad=%d bsp_face=engine-only\n",
-		   (passed & R200_FL_CLEAR) ? 1 : 0, (passed & R200_FL_QUAD) ? 1 : 0);
+	passed = GLES3_FirstLight_ClearAndQuad();
+	printf("[GLES3:firstlight] phase=probe clear=%d quad=%d bsp_face=engine-only\n",
+		   (passed & GLES3_FL_CLEAR) ? 1 : 0, (passed & GLES3_FL_QUAD) ? 1 : 0);
 
-	R200_FirstLight_Shutdown();
+	GLES3_FirstLight_Shutdown();
 	eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	eglDestroySurface(dpy, surf);
 	eglDestroyContext(dpy, ctx);
 	eglTerminate(dpy);
 
 	if (missing > 0) {
-		printf("[R200:firstlight] phase=probe status=fail reason=core-missing\n");
+		printf("[GLES3:firstlight] phase=probe status=fail reason=core-missing\n");
 		return 3;
 	}
-	if (passed != (R200_FL_CLEAR | R200_FL_QUAD)) {
-		printf("[R200:firstlight] phase=probe status=fail reason=milestone\n");
+	if (passed != (GLES3_FL_CLEAR | GLES3_FL_QUAD)) {
+		printf("[GLES3:firstlight] phase=probe status=fail reason=milestone\n");
 		return 4;
 	}
-	printf("[R200:firstlight] phase=probe status=pass\n");
+	printf("[GLES3:firstlight] phase=probe status=pass\n");
 	return 0;
 }

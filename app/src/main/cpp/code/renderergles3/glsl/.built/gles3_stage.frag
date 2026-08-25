@@ -1,5 +1,5 @@
 #version 300 es
-/* r200: stage-matched default precision (see build_glsl.py); int and
+/* gles3: stage-matched default precision (see build_glsl.py); int and
    sampler2D defaults differ per stage in ES 3.00, and a shared uniform or
    varying must match or the pair is a LINK error on a strict driver.
    sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an
@@ -11,7 +11,7 @@ precision highp sampler2D;
 
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_stage.frag -- the generic-stage fragment program.
 
 Replaces fixed-function texture env + alpha test + (per-vertex) fog output.
@@ -47,7 +47,7 @@ precision highp sampler2D;
 
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_common.inc.glsl -- shared GLSL ES 3.00 library, concatenated at
 //@@GLES3_COMMON@@ by glsl/build_glsl.py.
 
@@ -381,7 +381,7 @@ vec3 GLES3_FixedFog(vec3 rgb, float depth)
 
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_clip.inc.glsl -- the PORTAL CLIP PLANE, shared by every program that
 can be bound while the plane is enabled.  Substituted at the `//@@GLES3_CLIP@@`
 marker by glsl/build_glsl.py, so the uniform names cannot drift from

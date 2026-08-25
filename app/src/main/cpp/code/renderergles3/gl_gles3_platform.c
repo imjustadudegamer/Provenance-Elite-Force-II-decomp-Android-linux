@@ -13,10 +13,10 @@
 SDL_Window *SDL_window = NULL;
 static SDL_GLContext sdl_gl_context = NULL;
 
-int      r201_texTranscode = R201_TEXC_NONE;
-qboolean r201_hasAstcLdr = qfalse;
-qboolean r201_hasAstcSliced3d = qfalse;
-qboolean r201_hasEtc2Core = qfalse;
+int      smp_texTranscode = SMP_TEXC_NONE;
+qboolean smp_hasAstcLdr = qfalse;
+qboolean smp_hasAstcSliced3d = qfalse;
+qboolean smp_hasEtc2Core = qfalse;
 
 static cvar_t *r_allowSoftwareGL;
 static cvar_t *r_allowResize;
@@ -24,8 +24,8 @@ static cvar_t *r_centerWindow;
 static cvar_t *r_sdlDriver;
 static cvar_t *r_preferOpenGLES;
 
-cvar_t *r200_gles3_allow_missing_core;	
-cvar_t *r200_gles3_require_position;	
+cvar_t *gles3_gles3_allow_missing_core;	
+cvar_t *gles3_gles3_require_position;	
 
 typedef enum {
 	RSERR_OK,
@@ -124,18 +124,18 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		SDL_GL_SetAttribute(SDL_GL_STEREO, 0);
 	}
 
-	ri.Printf(PRINT_ALL, "[R200:gles3] context attempt %s (%dx%d depth=%d stencil=%d)\n",
+	ri.Printf(PRINT_ALL, "[GLES3:gles3] context attempt %s (%dx%d depth=%d stencil=%d)\n",
 			  what, width, height, depthBits, stencilBits);
 
 	SDL_window = SDL_CreateWindow(CLIENT_WINDOW_TITLE, x, y, width, height, flags);
 	if (!SDL_window) {
-		ri.Printf(PRINT_ALL, "[R200:gles3] SDL_CreateWindow failed: %s\n", SDL_GetError());
+		ri.Printf(PRINT_ALL, "[GLES3:gles3] SDL_CreateWindow failed: %s\n", SDL_GetError());
 		return qfalse;
 	}
 
 	sdl_gl_context = SDL_GL_CreateContext(SDL_window);
 	if (!sdl_gl_context) {
-		ri.Printf(PRINT_ALL, "[R200:gles3] SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+		ri.Printf(PRINT_ALL, "[GLES3:gles3] SDL_GL_CreateContext failed: %s\n", SDL_GetError());
 		GLES3_FreeContext();
 		return qfalse;
 	}
@@ -147,15 +147,15 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		int missingCore = QGL_GLES3_LoadProcs(&staged);
 
 		QGL_GLES3_LogDeviceInfo();
-		ri.Printf(PRINT_ALL, "[R200:gles3] procs=%d core=%d core_missing=%d staged_desktop_traps=%d\n",
+		ri.Printf(PRINT_ALL, "[GLES3:gles3] procs=%d core=%d core_missing=%d staged_desktop_traps=%d\n",
 				  QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), missingCore, staged);
 		if (missingCore > 0) {
-			ri.Printf(PRINT_ALL, "[R200:glmissing] core_list=%s\n",
+			ri.Printf(PRINT_ALL, "[GLES3:glmissing] core_list=%s\n",
 					  QGL_GLES3_CoreMissingList());
-			if (!r200_gles3_allow_missing_core->integer) {
+			if (!gles3_gles3_allow_missing_core->integer) {
 				ri.Error(ERR_FATAL,
 						 "GLES3: %d required GLES 3.0 core entry point(s) missing: %s "
-						 "(set r200_gles3_allow_missing_core 1 to continue for triage)",
+						 "(set gles3_gles3_allow_missing_core 1 to continue for triage)",
 						 missingCore, QGL_GLES3_CoreMissingList());
 			}
 		}
@@ -356,26 +356,26 @@ static void GLES3_InitExtensions(void)
 		ri.Printf(PRINT_ALL, "...GL_EXT_texture_compression_s3tc not found\n");
 	}
 
-	r201_hasEtc2Core = coreEtc2;
-	r201_hasAstcLdr = astc;
-	r201_hasAstcSliced3d = astcSliced3d;
-	r201_texTranscode = R201_SelectTexTranscode(
+	smp_hasEtc2Core = coreEtc2;
+	smp_hasAstcLdr = astc;
+	smp_hasAstcSliced3d = astcSliced3d;
+	smp_texTranscode = SMP_SelectTexTranscode(
 		qglesMajorVersion, qglesMinorVersion,
 		s3tc ? 1 : 0, etc2 ? 1 : 0,
 		QGL_GLES3_HasExtension("GL_ARB_ES3_compatibility") ? 1 : 0,
 		astc ? 1 : 0, r_ext_compress_textures->value ? 1 : 0);
 
 	ri.Printf(PRINT_ALL,
-			  "[R200:gltex] s3tc=%d etc1=%d etc2=%d etc2_core=%d astc_ldr=%d astc_sliced_3d=%d "
+			  "[GLES3:gltex] s3tc=%d etc1=%d etc2=%d etc2_core=%d astc_ldr=%d astc_sliced_3d=%d "
 			  "-> compressed_path=%s transcode=%s software_decode=%s\n",
 			  s3tc ? 1 : 0, etc1 ? 1 : 0, etc2 ? 1 : 0, coreEtc2 ? 1 : 0,
 			  astc ? 1 : 0, astcSliced3d ? 1 : 0,
 			  (glConfig.textureCompression != TC_NONE) ? "glCompressedTexImage2D" : "none",
-			  (r201_texTranscode == R201_TEXC_ASTC_4x4) ? "glCompressedTexImage2D/ASTC_4x4"
-			  : (r201_texTranscode == R201_TEXC_ETC2_RGBA8) ? "glCompressedTexImage2D/ETC2_RGBA8"
+			  (smp_texTranscode == SMP_TEXC_ASTC_4x4) ? "glCompressedTexImage2D/ASTC_4x4"
+			  : (smp_texTranscode == SMP_TEXC_ETC2_RGBA8) ? "glCompressedTexImage2D/ETC2_RGBA8"
 															: "none",
 			  (glConfig.textureCompression == TC_NONE &&
-			   r201_texTranscode == R201_TEXC_NONE) ? "yes" : "no");
+			   smp_texTranscode == SMP_TEXC_NONE) ? "yes" : "no");
 
 	glConfig.textureEnvAddAvailable = (envAdd && r_ext_texture_env_add->integer) ? qtrue : qfalse;
 	glConfig.textureEnvCombineAvailable = envCombine ? qtrue : qfalse;
@@ -397,7 +397,7 @@ static void GLES3_InitExtensions(void)
 	ri.Printf(PRINT_ALL, "...using GL_EXT_texture_filter_anisotropic (max: %i)\n",
 			  maxAnisotropy);
 
-	ri.Printf(PRINT_ALL, "[R200:glcaps] env_add=%d env_combine=%d cube_map=1\n",
+	ri.Printf(PRINT_ALL, "[GLES3:glcaps] env_add=%d env_combine=%d cube_map=1\n",
 			  glConfig.textureEnvAddAvailable ? 1 : 0,
 			  glConfig.textureEnvCombineAvailable ? 1 : 0);
 }
@@ -405,7 +405,7 @@ static void GLES3_InitExtensions(void)
 void GLimp_Init(qboolean fixedFunction)
 {
 	if (fixedFunction) {
-		ri.Printf(PRINT_ALL, "[R200:gles3] GLimp_Init(fixedFunction=1) -- GLES 3.0 "
+		ri.Printf(PRINT_ALL, "[GLES3:gles3] GLimp_Init(fixedFunction=1) -- GLES 3.0 "
 							 "has no fixed-function pipeline; GLSL ES 3.0 programs "
 							 "replace it (G2)\n");
 	}
@@ -417,8 +417,8 @@ void GLimp_Init(qboolean fixedFunction)
 	r_preferOpenGLES = ri.Cvar_Get("r_preferOpenGLES", "1", CVAR_ARCHIVE | CVAR_LATCH);
 	(void)r_allowSoftwareGL;
 	(void)r_preferOpenGLES;
-	r200_gles3_allow_missing_core =
-		ri.Cvar_Get("r200_gles3_allow_missing_core", "0", CVAR_TEMP);
+	gles3_gles3_allow_missing_core =
+		ri.Cvar_Get("gles3_gles3_allow_missing_core", "0", CVAR_TEMP);
 
 	r_ati_fsaa_samples = ri.Cvar_Get("r_ati_fsaa_samples", "0", CVAR_ARCHIVE);
 	r_nv_fsaa_samples = ri.Cvar_Get("r_nv_fsaa_samples", "4", CVAR_ARCHIVE | CVAR_LATCH);
@@ -460,9 +460,9 @@ success:
 
 void GLimp_Shutdown(void)
 {
-	R200_FirstLight_Shutdown();
+	GLES3_FirstLight_Shutdown();
 	QGL_GLES3_SetLogger(NULL);
-	R200_FirstLight_SetLogger(NULL);
+	GLES3_FirstLight_SetLogger(NULL);
 	GLES3_FreeContext();
 	ri.IN_Shutdown();
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -478,7 +478,7 @@ void GLimp_LogComment(char *comment)
 	(void)comment;
 }
 
-#define R201_CTX_PROBE_CAP 8
+#define SMP_CTX_PROBE_CAP 8
 
 static void GLES3_ContextAttest(void)
 {
@@ -491,12 +491,12 @@ static void GLES3_ContextAttest(void)
 	minimized = ri.Cvar_VariableIntegerValue("com_minimized");
 
 	if (lastMinimized < 0 || (lastMinimized && !minimized)) {
-		if (rows < R201_CTX_PROBE_CAP + 1) {
+		if (rows < SMP_CTX_PROBE_CAP + 1) {
 			qglGetIntegerv(GL_CURRENT_PROGRAM, &prog);
 			err = qglGetError();
 			rows++;
 			ri.Printf(PRINT_ALL,
-					  "[R201:ctx] row=%d edge=%s minimized=%d white=%d scratch=%d dlight=%d "
+					  "[SMP:ctx] row=%d edge=%s minimized=%d white=%d scratch=%d dlight=%d "
 					  "prog=%d isprog=%d glerr=0x%x\n",
 					  rows, (lastMinimized < 0) ? "baseline" : "resume", minimized,
 					  (int)qglIsTexture(tr.whiteImage ? tr.whiteImage->texnum : 0),
@@ -543,11 +543,11 @@ void GLimp_EndFrame(void)
 	}
 
 	if (Q_stricmp(r_drawBuffer->string, "GL_FRONT") != 0) {
-		Uint32 r201SwapStart = SDL_GetTicks();
+		Uint32 smpSwapStart = SDL_GetTicks();
 
 		SDL_GL_SwapWindow(SDL_window);
 
-		ri.NoteBlockedMsec( (int)( SDL_GetTicks() - r201SwapStart ) );
+		ri.NoteBlockedMsec( (int)( SDL_GetTicks() - smpSwapStart ) );
 	}
 
 	if (r_fullscreen->modified) {
@@ -574,30 +574,30 @@ void GLimp_EndFrame(void)
 	}
 }
 
-#define R201_RLOAD_WINDOW_MS	1000
-#define R201_RLOAD_MIN_MS		30	
-#define R201_RLOAD_MAX_ROWS		720
+#define SMP_RLOAD_WINDOW_MS	1000
+#define SMP_RLOAD_MIN_MS		30	
+#define SMP_RLOAD_MAX_ROWS		720
 
-cvar_t	*r201_rloadStats = NULL;
-int		r201_rloadDepth = 0;
+cvar_t	*smp_rloadStats = NULL;
+int		smp_rloadDepth = 0;
 
-static int	r201_rloadRows;
-static int	r201_rloadStopped;
-static int	r201_rloadWindowStart;
-static unsigned int	r201_rloadWindowFrames;
-static int	r201_rloadSums[R201_RLZ_COUNT], r201_rloadMaxs[R201_RLZ_COUNT];
-static int	r201_rloadWorldBrackets;	
-static int	r201_rloadRegBrackets;
+static int	smp_rloadRows;
+static int	smp_rloadStopped;
+static int	smp_rloadWindowStart;
+static unsigned int	smp_rloadWindowFrames;
+static int	smp_rloadSums[SMP_RLZ_COUNT], smp_rloadMaxs[SMP_RLZ_COUNT];
+static int	smp_rloadWorldBrackets;	
+static int	smp_rloadRegBrackets;
 
-int R201_RLoadNow( void ) {
-	if ( !r201_rloadStats ) {
-		r201_rloadStats = ri.Cvar_Get( "r201_loadStats", "1", 0 );
+int SMP_RLoadNow( void ) {
+	if ( !smp_rloadStats ) {
+		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "1", 0 );
 	}
 	return (int)SDL_GetTicks();
 }
 
-static void R201_RLoadFlush( int window ) {
-	static const char *zoneName[R201_RLZ_COUNT] = {
+static void SMP_RLoadFlush( int window ) {
+	static const char *zoneName[SMP_RLZ_COUNT] = {
 		"world", "bspread", "shaders", "lightmap", "lods",
 		"reginit", "imginit", "setup", "findimg", "decode",
 		"transcode", "upload", "modelreg"
@@ -605,113 +605,113 @@ static void R201_RLoadFlush( int window ) {
 	char	line[1024], part[64];
 	int		i, mean10, frames, unacctW;
 
-	if ( r201_rloadStopped ) {
+	if ( smp_rloadStopped ) {
 		return;
 	}
 
-	unacctW = r201_rloadSums[R201_RLZ_world]
-			- r201_rloadSums[R201_RLZ_bspread]
-			- r201_rloadSums[R201_RLZ_shaders]
-			- r201_rloadSums[R201_RLZ_lightmap]
-			- r201_rloadSums[R201_RLZ_lods];
+	unacctW = smp_rloadSums[SMP_RLZ_world]
+			- smp_rloadSums[SMP_RLZ_bspread]
+			- smp_rloadSums[SMP_RLZ_shaders]
+			- smp_rloadSums[SMP_RLZ_lightmap]
+			- smp_rloadSums[SMP_RLZ_lods];
 	if ( unacctW < 0 ) unacctW = 0;
 
-	frames = (int)r201_rloadWindowFrames;
+	frames = (int)smp_rloadWindowFrames;
 	if ( frames < 1 ) frames = 1;
 
 	line[0] = '\0';
-	for ( i = 0; i < R201_RLZ_COUNT; i++ ) {
-		mean10 = (int)( ( (long long)r201_rloadSums[i] * 10 + frames / 2 ) / frames );
+	for ( i = 0; i < SMP_RLZ_COUNT; i++ ) {
+		mean10 = (int)( ( (long long)smp_rloadSums[i] * 10 + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
-					 zoneName[i], mean10 / 10, mean10 % 10, r201_rloadMaxs[i] );
+					 zoneName[i], mean10 / 10, mean10 % 10, smp_rloadMaxs[i] );
 		Q_strcat( line, sizeof( line ), part );
 	}
 	Com_sprintf( part, sizeof( part ), " unacctWsum=%d", unacctW );
 	Q_strcat( line, sizeof( line ), part );
 
-	ri.Printf( PRINT_ALL, "[R201:rload] window=%dms worldN=%d regN=%d%s\n",
-			   window, r201_rloadWorldBrackets, r201_rloadRegBrackets, line );
+	ri.Printf( PRINT_ALL, "[SMP:rload] window=%dms worldN=%d regN=%d%s\n",
+			   window, smp_rloadWorldBrackets, smp_rloadRegBrackets, line );
 
-	r201_rloadRows++;
-	if ( r201_rloadRows >= R201_RLOAD_MAX_ROWS ) {
-		r201_rloadStopped = 1;
-		ri.Printf( PRINT_ALL, "[R201:rload] capped at %d rows; no further [R201:rload] lines\n",
-				   R201_RLOAD_MAX_ROWS );
+	smp_rloadRows++;
+	if ( smp_rloadRows >= SMP_RLOAD_MAX_ROWS ) {
+		smp_rloadStopped = 1;
+		ri.Printf( PRINT_ALL, "[SMP:rload] capped at %d rows; no further [SMP:rload] lines\n",
+				   SMP_RLOAD_MAX_ROWS );
 	}
 
-	for ( i = 0; i < R201_RLZ_COUNT; i++ ) {
-		r201_rloadSums[i] = r201_rloadMaxs[i] = 0;
+	for ( i = 0; i < SMP_RLZ_COUNT; i++ ) {
+		smp_rloadSums[i] = smp_rloadMaxs[i] = 0;
 	}
-	r201_rloadWindowFrames = 0;
-	r201_rloadWorldBrackets = 0;
-	r201_rloadRegBrackets = 0;
-	r201_rloadWindowStart = R201_RLoadNow();
+	smp_rloadWindowFrames = 0;
+	smp_rloadWorldBrackets = 0;
+	smp_rloadRegBrackets = 0;
+	smp_rloadWindowStart = SMP_RLoadNow();
 }
 
-void R201_RLoadAdd( int zone, int msec, int depth ) {
+void SMP_RLoadAdd( int zone, int msec, int depth ) {
 	int	now;
 
-	if ( zone < 0 || zone >= R201_RLZ_COUNT ) {
+	if ( zone < 0 || zone >= SMP_RLZ_COUNT ) {
 		return;
 	}
 	if ( msec < 0 ) {
 		msec = 0;
 	}
 
-	if ( !r201_rloadWindowStart ) {
-		r201_rloadWindowStart = R201_RLoadNow();
+	if ( !smp_rloadWindowStart ) {
+		smp_rloadWindowStart = SMP_RLoadNow();
 	}
-	r201_rloadSums[zone] += msec;
-	if ( msec > r201_rloadMaxs[zone] ) {
-		r201_rloadMaxs[zone] = msec;
+	smp_rloadSums[zone] += msec;
+	if ( msec > smp_rloadMaxs[zone] ) {
+		smp_rloadMaxs[zone] = msec;
 	}
 
 	if ( depth != 0 ) {
 		return;
 	}
 
-	r201_rloadWindowFrames++;
-	if ( zone == R201_RLZ_world ) {
-		r201_rloadWorldBrackets++;
-	} else if ( zone == R201_RLZ_reginit ) {
-		r201_rloadRegBrackets++;
+	smp_rloadWindowFrames++;
+	if ( zone == SMP_RLZ_world ) {
+		smp_rloadWorldBrackets++;
+	} else if ( zone == SMP_RLZ_reginit ) {
+		smp_rloadRegBrackets++;
 	}
 
-	now = R201_RLoadNow();
-	if ( msec >= R201_RLOAD_MIN_MS || ( now - r201_rloadWindowStart ) >= R201_RLOAD_WINDOW_MS ) {
-		R201_RLoadFlush( now - r201_rloadWindowStart );
+	now = SMP_RLoadNow();
+	if ( msec >= SMP_RLOAD_MIN_MS || ( now - smp_rloadWindowStart ) >= SMP_RLOAD_WINDOW_MS ) {
+		SMP_RLoadFlush( now - smp_rloadWindowStart );
 	}
 }
 
-static cvar_t	*s_r204Stats = NULL;
-static Uint64	s_r204Freq = 0;
-static Uint64	s_r204PerUs = 1;
+static cvar_t	*s_beStats = NULL;
+static Uint64	s_beFreq = 0;
+static Uint64	s_bePerUs = 1;
 
-int R204_Armed( void ) {
-	if ( !s_r204Stats ) {
-		s_r204Stats = ri.Cvar_Get( "r204_stats", "1", 0 );
+int BE_Armed( void ) {
+	if ( !s_beStats ) {
+		s_beStats = ri.Cvar_Get( "be_stats", "1", 0 );
 	}
-	return ( s_r204Stats && s_r204Stats->integer ) ? 1 : 0;
+	return ( s_beStats && s_beStats->integer ) ? 1 : 0;
 }
 
-int R204_Microseconds( void ) {
+int BE_Microseconds( void ) {
 	Uint64	now;
 
-	if ( !s_r204Freq ) {
-		s_r204Freq = SDL_GetPerformanceFrequency();
-		if ( !s_r204Freq ) {
-			s_r204Freq = 1000000;
+	if ( !s_beFreq ) {
+		s_beFreq = SDL_GetPerformanceFrequency();
+		if ( !s_beFreq ) {
+			s_beFreq = 1000000;
 		}
-		s_r204PerUs = s_r204Freq / 1000000;
-		if ( !s_r204PerUs ) {
-			s_r204PerUs = 1;
+		s_bePerUs = s_beFreq / 1000000;
+		if ( !s_bePerUs ) {
+			s_bePerUs = 1;
 		}
 	}
 
 	now = SDL_GetPerformanceCounter();
 
-	if ( s_r204Freq >= 1000000 ) {
-		return (int)( now / s_r204PerUs );
+	if ( s_beFreq >= 1000000 ) {
+		return (int)( now / s_bePerUs );
 	}
-	return (int)( ( now * 1000000ULL ) / s_r204Freq );
+	return (int)( ( now * 1000000ULL ) / s_beFreq );
 }

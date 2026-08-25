@@ -6,9 +6,9 @@ void AAS_FreeRoutingCaches(void);
 unsigned short int AAS_AreaTravelTime(int areanum, vec3_t start, vec3_t end);
 void AAS_CreateAllRoutingCache(void);
 void AAS_WriteRouteCache(void);
-void R203_RouteFrame(void);
-void R203_RouteCount(int which, int n);
-void R203_RouteBusec(int usec);
+void LIMIT_RouteFrame(void);
+void LIMIT_RouteCount(int which, int n);
+void LIMIT_RouteBusec(int usec);
 void AAS_RoutingInfo(void);
 #endif 
 

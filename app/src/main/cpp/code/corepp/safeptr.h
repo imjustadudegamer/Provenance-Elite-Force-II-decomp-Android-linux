@@ -23,19 +23,19 @@ public:
     void   Clear(void);
 
 public:
-    static int R131P1_HeadPrevNull(Class *c);
+    static int WIDGETP1_HeadPrevNull(Class *c);
 
-    typedef struct R131F3_HeadInfo_st {
+    typedef struct WIDGETF3_HeadInfo_st {
         void *head;   
         void *prev;   
         void *next;   
         void *target; 
         void *vtword;  
-    } R131F3_HeadInfo;
+    } WIDGETF3_HeadInfo;
 
-    static void R131F3_FillHead(Class *c, R131F3_HeadInfo *out);
+    static void WIDGETF3_FillHead(Class *c, WIDGETF3_HeadInfo *out);
 
-    static void R131F3_FillNode(SafePtrBase *n, void **prev, void **next, void **target);
+    static void WIDGETF3_FillNode(SafePtrBase *n, void **prev, void **next, void **target);
 };
 
 inline void SafePtrBase::AddReference(Class *newptr)
@@ -87,12 +87,12 @@ inline Class *SafePtrBase::Pointer(void)
     return ptr;
 }
 
-inline int SafePtrBase::R131P1_HeadPrevNull(Class *c)
+inline int SafePtrBase::WIDGETP1_HeadPrevNull(Class *c)
 {
     return c->SafePtrList && c->SafePtrList->prev == NULL;
 }
 
-inline void SafePtrBase::R131F3_FillHead(Class *c, R131F3_HeadInfo *out)
+inline void SafePtrBase::WIDGETF3_FillHead(Class *c, WIDGETF3_HeadInfo *out)
 {
     if (!c || !c->SafePtrList) {
         out->head   = NULL;
@@ -111,7 +111,7 @@ inline void SafePtrBase::R131F3_FillHead(Class *c, R131F3_HeadInfo *out)
     out->vtword = *(void **)h;
 }
 
-inline void SafePtrBase::R131F3_FillNode(SafePtrBase *n, void **prev, void **next, void **target)
+inline void SafePtrBase::WIDGETF3_FillNode(SafePtrBase *n, void **prev, void **next, void **target)
 {
     if (!n) {
         *prev   = NULL;

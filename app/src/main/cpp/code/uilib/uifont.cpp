@@ -1,13 +1,13 @@
 
 #include "ui_local.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) ((cvar_t *)0)
-#define R120_PROBE_PRINT                       Com_Printf
-#define R120_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_r120", "1")) != 0)  
-#include "../qcommon/qa_r120.h"
-#define R201_PROBE(tag, ...) R1XX_EMIT("[R201:", tag, __VA_ARGS__)
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
+#include "../qcommon/qa_probe.h"
+#define SMP_PROBE(tag, ...) PROBE_EMIT("[SMP:", tag, __VA_ARGS__)
 
-#include "../qcommon/qa_r202.h"
+#include "../qcommon/qa_ui.h"
 
 qboolean UI_FontDBCSIsLeadByte(fontheader_t *font, unsigned short uch);
 int      UI_FontCodeSearch(const fontheader_t *font, unsigned short uch);
@@ -161,7 +161,7 @@ void UIFont::PrintJustified(
     float    textheight;
     UIRect2D sizedRect;
 
-    R202_COUNT(R202_FAM_UI, R202_UC_text, 1);
+    UI_COUNT(UI_FAM_UI, UI_UC_text, 1);
 
     // flag scales the metrics, not the rect.  Retail @0x0005FE20 reads the rect
     // off_228198 load at 0x5FE5C feeds one fmuls at 0x5FFE0, never a division).
@@ -211,10 +211,10 @@ void UIFont::PrintJustified(
         Print(newx, newy, string, -1, shadowColor, virtualScreen);
 
         if (li == 1) {
-            static int r201_textpos;
+            static int smp_textpos;
 
-            if (R120_On() && R120_Throttle(&r201_textpos, 3, 200)) {
-                R201_PROBE(
+            if (PROBE_On() && PROBE_Throttle(&smp_textpos, 3, 200)) {
+                SMP_PROBE(
                     "uitextpos",
                     "horz=%d vert=%d rect=(%.1f,%.1f %.1fx%.1f) lines=%d line=1 newx=%.1f newy=%.1f "
                     "bias=%.2f virtual=%d text='%.32s'\n",

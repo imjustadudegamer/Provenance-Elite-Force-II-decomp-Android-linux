@@ -2,9 +2,9 @@
 
 #include "g_local.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
 
 #include "scriptvariable.h"
 #include "g_spawn.h"
@@ -451,7 +451,7 @@ extern "C" void G_RunFrame(int levelTime, int frameTime)
             }
         }
 
-        if (R120_On()) {
+        if (PROBE_On()) {
             static const int r1_marks[11]  = { 500,   2000,   8000,   20000,  40000,
                                                60000, 90000,  120000, 180000, 300000,
                                                600000 };
@@ -465,7 +465,7 @@ extern "C" void G_RunFrame(int levelTime, int frameTime)
                 int nact = 0, nthink = 0, nai = 0, nsmap = 0, nmmap = 0, nenemy = 0;
                 int nsleep = 0, nlist_none = 0;
 
-                R131_PROBE("R1:ai", "SWEEP %d inttime=%d map=%s nents=%d -- BEGIN\n",
+                WIDGET_PROBE("R1:ai", "SWEEP %d inttime=%d map=%s nents=%d -- BEGIN\n",
                            r1_sweeps, level.inttime, level.mapname.c_str(),
                            globals.num_entities);
 
@@ -557,7 +557,7 @@ extern "C" void G_RunFrame(int levelTime, int frameTime)
 
                     Entity *r1_hwt = r1_a->headWatcher ? r1_a->headWatcher->GetWatchTarget() : NULL;
 
-                    R131_PROBE("R1:ai",
+                    WIDGET_PROBE("R1:ai",
                                "e=%d t=%d type=%d mode=%d think=%d immob=%d notgt=%d "
                                "started=%d strat=%d sm=%d msm=%d st='%s' mst='%s' enm=%d "
                                "pkg='%s' bhv='%s' anim='%s' edist=%.1f "
@@ -616,7 +616,7 @@ extern "C" void G_RunFrame(int levelTime, int frameTime)
                                r1_a->model.c_str());
                 }
 
-                R131_PROBE("R1:ai",
+                WIDGET_PROBE("R1:ai",
                            "SWEEP %d SUMMARY actors=%d think_on=%d mode_AI=%d statemap=%d "
                            "masterstatemap=%d with_enemy=%d on_SleepList=%d on_NO_list=%d "
                            "SleepList_total=%d\n",
@@ -1091,14 +1091,14 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
         arc.ArchiveObject(&level);
 
         if (arc.Loading()) {
-            R131_PROBE("archive", "stage: level done, inttime=%d\n", level.inttime);
+            WIDGET_PROBE("archive", "stage: level done, inttime=%d\n", level.inttime);
         }
         if (arc.Loading()) {
             thePathManager.Init(level.mapname.c_str());
         }
 
         arc.ArchiveObject(&ScriptLib);
-        R131_PROBE("archive", "stage: ScriptLib done\n");
+        WIDGET_PROBE("archive", "stage: ScriptLib done\n");
 
         arc.ArchiveObject(&gravPathManager);
 
@@ -1149,38 +1149,38 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
                 arc.ReadObject();
             }
 
-            R131_PROBE("archive", "stage: entity run done (%d entities)\n", num);
+            WIDGET_PROBE("archive", "stage: entity run done (%d entities)\n", num);
         }
 
         // BELOW the retail tail.  That is not cosmetic: it extends the stretch of the
         if (arc.Loading()) {
-            R131_PROBE("archive", "tail: program.FreeData()\n");
+            WIDGET_PROBE("archive", "tail: program.FreeData()\n");
             program.FreeData();
-            R131_PROBE("archive", "tail: program.FreeData() done\n");
+            WIDGET_PROBE("archive", "tail: program.FreeData() done\n");
         }
 
-        R131_PROBE("archive", "tail: ArchiveObject(Program)\n");
+        WIDGET_PROBE("archive", "tail: ArchiveObject(Program)\n");
         arc.ArchiveObject(&program);
-        R131_PROBE("archive", "tail: ArchiveObject(Program) done\n");
+        WIDGET_PROBE("archive", "tail: ArchiveObject(Program) done\n");
 
-        R131_PROBE("archive", "tail: ArchiveAliases\n");
+        WIDGET_PROBE("archive", "tail: ArchiveAliases\n");
         ArchiveAliases(arc);
-        R131_PROBE("archive", "tail: ArchiveAliases done\n");
+        WIDGET_PROBE("archive", "tail: ArchiveAliases done\n");
 
-        R131_PROBE("archive", "tail: TeammateRoster\n");
+        WIDGET_PROBE("archive", "tail: TeammateRoster\n");
         TeammateRoster::getInstance()->Archive(arc);
-        R131_PROBE("archive", "tail: TeammateRoster done\n");
+        WIDGET_PROBE("archive", "tail: TeammateRoster done\n");
 
         // call must not trap.  This was the ONE call in the archive tail that dereferenced
-        R131_PROBE("archive", "tail: GameplayManager at arc pos=%lu\n",
+        WIDGET_PROBE("archive", "tail: GameplayManager at arc pos=%lu\n",
                    (unsigned long)arc.Pos());
         GameplayManager *gpmArchive = GameplayManager::getTheGameplayManager();
         if (gpmArchive) {
             gpmArchive->Archive(arc);
-            R131_PROBE("archive", "tail: GameplayManager done at arc pos=%lu\n",
+            WIDGET_PROBE("archive", "tail: GameplayManager done at arc pos=%lu\n",
                        (unsigned long)arc.Pos());
         } else {
-            R131_PROBE("archive",
+            WIDGET_PROBE("archive",
                        "tail: GameplayManager SINGLETON IS NULL -- create() has not run\n");
         }
 
@@ -1188,13 +1188,13 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
 
         arc.Close();
 
-        R131_PROBE("archive", "stage: arc.Close() done (fixups resolved)\n");
+        WIDGET_PROBE("archive", "stage: arc.Close() done (fixups resolved)\n");
 
         if (arc.Loading()) {
             LoadingSavegame = false;
 
             level.Precache();
-            R131_PROBE("archive", "stage: level.Precache() done\n");
+            WIDGET_PROBE("archive", "stage: level.Precache() done\n");
         } else {
             gi.centerprintf(&g_entities[0], CENTERPRINT_IMPORTANCE_NORMAL,
                             "@textures/menu/gamesaved");
@@ -1210,7 +1210,7 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
                     player->Loaded();
                 }
             }
-            R131_PROBE("archive", "stage: player->Loaded() done, G_ArchiveLevel complete\n");
+            WIDGET_PROBE("archive", "stage: player->Loaded() done, G_ArchiveLevel complete\n");
         }
 
         return qtrue;

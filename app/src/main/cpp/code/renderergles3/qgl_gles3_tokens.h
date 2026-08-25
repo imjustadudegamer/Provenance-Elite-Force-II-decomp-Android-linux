@@ -1,5 +1,5 @@
-#ifndef R200_QGL_GLES3_TOKENS_H
-#define R200_QGL_GLES3_TOKENS_H
+#ifndef GLES3_QGL_GLES3_TOKENS_H
+#define GLES3_QGL_GLES3_TOKENS_H
 
 #if defined( EF2_GLES3 )
 

@@ -6,7 +6,7 @@
 #include <string.h>
 #include <math.h>
 
-static const char *R200_QUAD_VS =
+static const char *GLES3_QUAD_VS =
 	"#version 300 es\n"
 	"in vec2 a_Position;\n"
 	"in vec2 a_TexCoord;\n"
@@ -17,7 +17,7 @@ static const char *R200_QUAD_VS =
 	"    gl_Position = u_MVP * vec4(a_Position, 0.0, 1.0);\n"
 	"}\n";
 
-static const char *R200_QUAD_FS =
+static const char *GLES3_QUAD_FS =
 	"#version 300 es\n"
 	"precision mediump float;\n"
 	"in vec2 v_TexCoord;\n"
@@ -27,8 +27,8 @@ static const char *R200_QUAD_FS =
 	"    o_Color = texture(u_Texture, v_TexCoord);\n"
 	"}\n";
 
-#define R200_ATTR_POS 0
-#define R200_ATTR_ST  1
+#define GLES3_ATTR_POS 0
+#define GLES3_ATTR_ST  1
 
 typedef struct {
 	int			ready;
@@ -38,20 +38,20 @@ typedef struct {
 	unsigned	vao;
 	unsigned	vbo;
 	unsigned	white;
-} r200FirstLight_t;
+} gles3FirstLight_t;
 
-static r200FirstLight_t r200_fl;
+static gles3FirstLight_t gles3_fl;
 
-static void (*r200_fl_logger)(const char *line) = NULL;
+static void (*gles3_fl_logger)(const char *line) = NULL;
 
-void R200_FirstLight_SetLogger(void (*fn)(const char *line))
+void GLES3_FirstLight_SetLogger(void (*fn)(const char *line))
 {
-	r200_fl_logger = fn;
+	gles3_fl_logger = fn;
 }
 
-static void R200_FL_Log(const char *fmt, ...) R200_PRINTF_FUNC(1, 2);
+static void GLES3_FL_Log(const char *fmt, ...) GLES3_PRINTF_FUNC(1, 2);
 
-static void R200_FL_Log(const char *fmt, ...)
+static void GLES3_FL_Log(const char *fmt, ...)
 {
 	char	buf[1024];
 	va_list	ap;
@@ -60,27 +60,27 @@ static void R200_FL_Log(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (r200_fl_logger) {
-		r200_fl_logger(buf);
+	if (gles3_fl_logger) {
+		gles3_fl_logger(buf);
 	} else {
 		fputs(buf, stderr);
 	}
 }
 
-static unsigned R200_FL_Compile(GLenum type, const char *src, const char *what)
+static unsigned GLES3_FL_Compile(GLenum type, const char *src, const char *what)
 {
 	GLuint	sh;
 	GLint	ok = 0;
 	char	log[1024];
 
 	if (!qglCreateShader || !qglShaderSource || !qglCompileShader) {
-		R200_FL_Log("[R200:firstlight] milestone=%s stage=compile status=fail reason=proc-missing\n", what);
+		GLES3_FL_Log("[GLES3:firstlight] milestone=%s stage=compile status=fail reason=proc-missing\n", what);
 		return 0;
 	}
 
 	sh = qglCreateShader(type);
 	if (!sh) {
-		R200_FL_Log("[R200:firstlight] milestone=%s stage=compile status=fail reason=CreateShader-0\n", what);
+		GLES3_FL_Log("[GLES3:firstlight] milestone=%s stage=compile status=fail reason=CreateShader-0\n", what);
 		return 0;
 	}
 	qglShaderSource(sh, 1, &src, NULL);
@@ -91,28 +91,28 @@ static unsigned R200_FL_Compile(GLenum type, const char *src, const char *what)
 		if (qglGetShaderInfoLog) {
 			qglGetShaderInfoLog(sh, sizeof(log) - 1, NULL, log);
 		}
-		R200_FL_Log("[R200:firstlight] milestone=%s stage=compile status=fail log=\"%s\"\n", what, log);
+		GLES3_FL_Log("[GLES3:firstlight] milestone=%s stage=compile status=fail log=\"%s\"\n", what, log);
 		qglDeleteShader(sh);
 		return 0;
 	}
 	return sh;
 }
 
-static int R200_FL_BuildProgram(void)
+static int GLES3_FL_BuildProgram(void)
 {
 	GLuint	vs, fs, prog;
 	GLint	ok = 0;
 	char	log[1024];
 
-	if (r200_fl.program) {
+	if (gles3_fl.program) {
 		return 1;
 	}
 
-	vs = R200_FL_Compile(GL_VERTEX_SHADER, R200_QUAD_VS, "firstlight-program");
+	vs = GLES3_FL_Compile(GL_VERTEX_SHADER, GLES3_QUAD_VS, "firstlight-program");
 	if (!vs) {
 		return 0;
 	}
-	fs = R200_FL_Compile(GL_FRAGMENT_SHADER, R200_QUAD_FS, "firstlight-program");
+	fs = GLES3_FL_Compile(GL_FRAGMENT_SHADER, GLES3_QUAD_FS, "firstlight-program");
 	if (!fs) {
 		qglDeleteShader(vs);
 		return 0;
@@ -121,8 +121,8 @@ static int R200_FL_BuildProgram(void)
 	prog = qglCreateProgram();
 	qglAttachShader(prog, vs);
 	qglAttachShader(prog, fs);
-	qglBindAttribLocation(prog, R200_ATTR_POS, "a_Position");
-	qglBindAttribLocation(prog, R200_ATTR_ST, "a_TexCoord");
+	qglBindAttribLocation(prog, GLES3_ATTR_POS, "a_Position");
+	qglBindAttribLocation(prog, GLES3_ATTR_ST, "a_TexCoord");
 	qglLinkProgram(prog);
 	qglGetProgramiv(prog, GL_LINK_STATUS, &ok);
 	qglDeleteShader(vs);
@@ -132,41 +132,41 @@ static int R200_FL_BuildProgram(void)
 		if (qglGetProgramInfoLog) {
 			qglGetProgramInfoLog(prog, sizeof(log) - 1, NULL, log);
 		}
-		R200_FL_Log("[R200:firstlight] milestone=firstlight-program stage=link status=fail log=\"%s\"\n", log);
+		GLES3_FL_Log("[GLES3:firstlight] milestone=firstlight-program stage=link status=fail log=\"%s\"\n", log);
 		qglDeleteProgram(prog);
 		return 0;
 	}
 
-	r200_fl.program = prog;
-	r200_fl.u_mvp = qglGetUniformLocation(prog, "u_MVP");
-	r200_fl.u_tex = qglGetUniformLocation(prog, "u_Texture");
+	gles3_fl.program = prog;
+	gles3_fl.u_mvp = qglGetUniformLocation(prog, "u_MVP");
+	gles3_fl.u_tex = qglGetUniformLocation(prog, "u_Texture");
 
 	{
 		const unsigned char texels[2 * 2 * 4] = {
 			255, 0,   0, 255,   0, 255,   0, 255,   
 			0,   0, 255, 255,   255, 255, 255, 255   
 		};
-		r200_fl.white = R200_FirstLight_UploadRGBA8(2, 2, texels);
-		if (!r200_fl.white) {
-			R200_FL_Log("[R200:firstlight] milestone=firstlight-texture status=fail reason=upload-failed\n");
+		gles3_fl.white = GLES3_FirstLight_UploadRGBA8(2, 2, texels);
+		if (!gles3_fl.white) {
+			GLES3_FL_Log("[GLES3:firstlight] milestone=firstlight-texture status=fail reason=upload-failed\n");
 			return 0;
 		}
 	}
 
 	if (qglGenVertexArrays && qglBindVertexArray) {
-		qglGenVertexArrays(1, &r200_fl.vao);
+		qglGenVertexArrays(1, &gles3_fl.vao);
 	}
-	qglGenBuffers(1, &r200_fl.vbo);
-	if (!r200_fl.vbo) {
-		R200_FL_Log("[R200:firstlight] milestone=firstlight-buffers status=fail reason=GenBuffers-0\n");
+	qglGenBuffers(1, &gles3_fl.vbo);
+	if (!gles3_fl.vbo) {
+		GLES3_FL_Log("[GLES3:firstlight] milestone=firstlight-buffers status=fail reason=GenBuffers-0\n");
 		return 0;
 	}
 
-	r200_fl.ready = 1;
+	gles3_fl.ready = 1;
 	return 1;
 }
 
-static void R200_FL_ScreenSize(int *w, int *h)
+static void GLES3_FL_ScreenSize(int *w, int *h)
 {
 	GLint	vp[4] = { 0, 0, 0, 0 };
 
@@ -177,7 +177,7 @@ static void R200_FL_ScreenSize(int *w, int *h)
 	*h = vp[3] > 0 ? vp[3] : 1;
 }
 
-static int R200_FL_ReadPixel(int x, int y, unsigned char out[4])
+static int GLES3_FL_ReadPixel(int x, int y, unsigned char out[4])
 {
 	out[0] = out[1] = out[2] = out[3] = 0;
 	if (!qglReadPixels) {
@@ -187,19 +187,19 @@ static int R200_FL_ReadPixel(int x, int y, unsigned char out[4])
 	return 1;
 }
 
-static int R200_FL_ColorNear(const unsigned char got[4], int r, int g, int b, int tol)
+static int GLES3_FL_ColorNear(const unsigned char got[4], int r, int g, int b, int tol)
 {
 	return abs((int)got[0] - r) <= tol && abs((int)got[1] - g) <= tol &&
 		   abs((int)got[2] - b) <= tol;
 }
 
-static void R200_FL_Identity(float m[16])
+static void GLES3_FL_Identity(float m[16])
 {
 	memset(m, 0, sizeof(float) * 16);
 	m[0] = m[5] = m[10] = m[15] = 1.0f;
 }
 
-unsigned R200_FirstLight_ClearAndQuad(void)
+unsigned GLES3_FirstLight_ClearAndQuad(void)
 {
 	unsigned	result = 0;
 	unsigned char	px[4];
@@ -213,29 +213,29 @@ unsigned R200_FirstLight_ClearAndQuad(void)
 	};
 	int	i;
 
-	if (!R200_FL_BuildProgram()) {
-		R200_FL_Log("[R200:firstlight] milestone=clear status=fail reason=program\n");
-		R200_FL_Log("[R200:firstlight] milestone=quad status=fail reason=program\n");
+	if (!GLES3_FL_BuildProgram()) {
+		GLES3_FL_Log("[GLES3:firstlight] milestone=clear status=fail reason=program\n");
+		GLES3_FL_Log("[GLES3:firstlight] milestone=quad status=fail reason=program\n");
 		return 0;
 	}
 
-	R200_FL_ScreenSize(&w, &h);
+	GLES3_FL_ScreenSize(&w, &h);
 
 	if (qglClearColor && qglClear) {
 		qglDisable(GL_SCISSOR_TEST);
 		qglClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		qglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		R200_FL_ReadPixel(w / 2, h / 2, px);
-		if (R200_FL_ColorNear(px, 0, 0, 0, 2)) {
-			result |= R200_FL_CLEAR;
-			R200_FL_Log("[R200:firstlight] milestone=clear expected=000000 got=%02x%02x%02x status=pass\n",
+		GLES3_FL_ReadPixel(w / 2, h / 2, px);
+		if (GLES3_FL_ColorNear(px, 0, 0, 0, 2)) {
+			result |= GLES3_FL_CLEAR;
+			GLES3_FL_Log("[GLES3:firstlight] milestone=clear expected=000000 got=%02x%02x%02x status=pass\n",
 						px[0], px[1], px[2]);
 		} else {
-			R200_FL_Log("[R200:firstlight] milestone=clear expected=000000 got=%02x%02x%02x status=fail\n",
+			GLES3_FL_Log("[GLES3:firstlight] milestone=clear expected=000000 got=%02x%02x%02x status=fail\n",
 						px[0], px[1], px[2]);
 		}
 	} else {
-		R200_FL_Log("[R200:firstlight] milestone=clear status=fail reason=proc-missing\n");
+		GLES3_FL_Log("[GLES3:firstlight] milestone=clear status=fail reason=proc-missing\n");
 	}
 
 	{
@@ -248,43 +248,43 @@ unsigned R200_FirstLight_ClearAndQuad(void)
 		float	mvp[16];
 		int	pass = 1;
 
-		R200_FL_Identity(mvp);
+		GLES3_FL_Identity(mvp);
 		qglDisable(GL_BLEND);
 		qglDisable(GL_DEPTH_TEST);
 		qglDisable(GL_CULL_FACE);
-		qglUseProgram(r200_fl.program);
-		if (r200_fl.u_mvp >= 0) {
-			qglUniformMatrix4fv(r200_fl.u_mvp, 1, GL_FALSE, mvp);
+		qglUseProgram(gles3_fl.program);
+		if (gles3_fl.u_mvp >= 0) {
+			qglUniformMatrix4fv(gles3_fl.u_mvp, 1, GL_FALSE, mvp);
 		}
-		if (r200_fl.u_tex >= 0) {
-			qglUniform1i(r200_fl.u_tex, 0);
+		if (gles3_fl.u_tex >= 0) {
+			qglUniform1i(gles3_fl.u_tex, 0);
 		}
 		qglActiveTexture(GL_TEXTURE0);
-		qglBindTexture(GL_TEXTURE_2D, r200_fl.white);
+		qglBindTexture(GL_TEXTURE_2D, gles3_fl.white);
 		qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-		if (r200_fl.vao) {
-			qglBindVertexArray(r200_fl.vao);
+		if (gles3_fl.vao) {
+			qglBindVertexArray(gles3_fl.vao);
 		}
-		qglBindBuffer(GL_ARRAY_BUFFER, r200_fl.vbo);
+		qglBindBuffer(GL_ARRAY_BUFFER, gles3_fl.vbo);
 		qglBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-		qglEnableVertexAttribArray(R200_ATTR_POS);
-		qglVertexAttribPointer(R200_ATTR_POS, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+		qglEnableVertexAttribArray(GLES3_ATTR_POS);
+		qglVertexAttribPointer(GLES3_ATTR_POS, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
 							   (const void *)0);
-		qglEnableVertexAttribArray(R200_ATTR_ST);
-		qglVertexAttribPointer(R200_ATTR_ST, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+		qglEnableVertexAttribArray(GLES3_ATTR_ST);
+		qglVertexAttribPointer(GLES3_ATTR_ST, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
 							   (const void *)(2 * sizeof(float)));
 
 		err = qglGetError ? qglGetError() : GL_NO_ERROR;
 		if (err != GL_NO_ERROR) {
-			R200_FL_Log("[R200:firstlight] milestone=quad stage=setup status=fail glerror=0x%x\n", err);
+			GLES3_FL_Log("[GLES3:firstlight] milestone=quad stage=setup status=fail glerror=0x%x\n", err);
 			pass = 0;
 		} else {
 			qglDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 			err = qglGetError ? qglGetError() : GL_NO_ERROR;
 			if (err != GL_NO_ERROR) {
-				R200_FL_Log("[R200:firstlight] milestone=quad stage=draw status=fail glerror=0x%x\n", err);
+				GLES3_FL_Log("[GLES3:firstlight] milestone=quad stage=draw status=fail glerror=0x%x\n", err);
 				pass = 0;
 			}
 		}
@@ -296,23 +296,23 @@ unsigned R200_FirstLight_ClearAndQuad(void)
 
 				if (x >= w) { x = w - 1; }
 				if (y >= h) { y = h - 1; }
-				R200_FL_ReadPixel(x, y, px);
-				if (!R200_FL_ColorNear(px, quad[i].r, quad[i].g, quad[i].b, 2)) {
+				GLES3_FL_ReadPixel(x, y, px);
+				if (!GLES3_FL_ColorNear(px, quad[i].r, quad[i].g, quad[i].b, 2)) {
 					pass = 0;
-					R200_FL_Log("[R200:firstlight] milestone=quad quadrant=%s expected=%02x%02x%02x got=%02x%02x%02x status=fail\n",
+					GLES3_FL_Log("[GLES3:firstlight] milestone=quad quadrant=%s expected=%02x%02x%02x got=%02x%02x%02x status=fail\n",
 								quad[i].name, quad[i].r, quad[i].g, quad[i].b, px[0], px[1], px[2]);
 				}
 			}
 		}
 
 		if (pass) {
-			result |= R200_FL_QUAD;
-			R200_FL_Log("[R200:firstlight] milestone=quad texels=4 status=pass\n");
-		} else if (!(result & R200_FL_QUAD)) {
-			R200_FL_Log("[R200:firstlight] milestone=quad status=fail\n");
+			result |= GLES3_FL_QUAD;
+			GLES3_FL_Log("[GLES3:firstlight] milestone=quad texels=4 status=pass\n");
+		} else if (!(result & GLES3_FL_QUAD)) {
+			GLES3_FL_Log("[GLES3:firstlight] milestone=quad status=fail\n");
 		}
 
-		if (r200_fl.vao) {
+		if (gles3_fl.vao) {
 			qglBindVertexArray(0);
 		}
 		qglUseProgram(0);
@@ -321,7 +321,7 @@ unsigned R200_FirstLight_ClearAndQuad(void)
 	return result;
 }
 
-unsigned R200_FirstLight_DrawFace(const float *xyz, const float *st, int numVerts,
+unsigned GLES3_FirstLight_DrawFace(const float *xyz, const float *st, int numVerts,
 								  unsigned tex)
 {
 	float	mvp[16];
@@ -332,8 +332,8 @@ unsigned R200_FirstLight_DrawFace(const float *xyz, const float *st, int numVert
 	unsigned char	before[4], after[4];
 	int	w = 0, h = 0;
 
-	if (!R200_FL_BuildProgram() || numVerts < 3 || numVerts > 64) {
-		R200_FL_Log("[R200:firstlight] milestone=bsp_face status=fail reason=setup numVerts=%d\n", numVerts);
+	if (!GLES3_FL_BuildProgram() || numVerts < 3 || numVerts > 64) {
+		GLES3_FL_Log("[GLES3:firstlight] milestone=bsp_face status=fail reason=setup numVerts=%d\n", numVerts);
 		return 0;
 	}
 
@@ -358,60 +358,60 @@ unsigned R200_FirstLight_DrawFace(const float *xyz, const float *st, int numVert
 		verts[i][4] = 0.0f;
 	}
 
-	R200_FL_Identity(mvp);
-	R200_FL_ScreenSize(&w, &h);
-	R200_FL_ReadPixel(w / 2, h / 2, before);
+	GLES3_FL_Identity(mvp);
+	GLES3_FL_ScreenSize(&w, &h);
+	GLES3_FL_ReadPixel(w / 2, h / 2, before);
 
 	qglDisable(GL_BLEND);
 	qglDisable(GL_DEPTH_TEST);
 	qglDisable(GL_CULL_FACE);
-	qglUseProgram(r200_fl.program);
-	if (r200_fl.u_mvp >= 0) {
-		qglUniformMatrix4fv(r200_fl.u_mvp, 1, GL_FALSE, mvp);
+	qglUseProgram(gles3_fl.program);
+	if (gles3_fl.u_mvp >= 0) {
+		qglUniformMatrix4fv(gles3_fl.u_mvp, 1, GL_FALSE, mvp);
 	}
-	if (r200_fl.u_tex >= 0) {
-		qglUniform1i(r200_fl.u_tex, 0);
+	if (gles3_fl.u_tex >= 0) {
+		qglUniform1i(gles3_fl.u_tex, 0);
 	}
 	qglActiveTexture(GL_TEXTURE0);
-	qglBindTexture(GL_TEXTURE_2D, tex ? tex : r200_fl.white);
+	qglBindTexture(GL_TEXTURE_2D, tex ? tex : gles3_fl.white);
 
-	if (r200_fl.vao) {
-		qglBindVertexArray(r200_fl.vao);
+	if (gles3_fl.vao) {
+		qglBindVertexArray(gles3_fl.vao);
 	}
-	qglBindBuffer(GL_ARRAY_BUFFER, r200_fl.vbo);
+	qglBindBuffer(GL_ARRAY_BUFFER, gles3_fl.vbo);
 	qglBufferData(GL_ARRAY_BUFFER, sizeof(float) * 5 * numVerts, verts, GL_STATIC_DRAW);
-	qglEnableVertexAttribArray(R200_ATTR_POS);
-	qglVertexAttribPointer(R200_ATTR_POS, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+	qglEnableVertexAttribArray(GLES3_ATTR_POS);
+	qglVertexAttribPointer(GLES3_ATTR_POS, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
 						   (const void *)0);
-	qglEnableVertexAttribArray(R200_ATTR_ST);
-	qglVertexAttribPointer(R200_ATTR_ST, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+	qglEnableVertexAttribArray(GLES3_ATTR_ST);
+	qglVertexAttribPointer(GLES3_ATTR_ST, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
 						   (const void *)(2 * sizeof(float)));
 	qglDrawArrays(GL_TRIANGLES, 0, numVerts - (numVerts % 3));
 
 	{
 		GLenum err = qglGetError ? qglGetError() : GL_NO_ERROR;
 		if (err != GL_NO_ERROR) {
-			R200_FL_Log("[R200:firstlight] milestone=bsp_face status=fail glerror=0x%x verts=%d\n",
+			GLES3_FL_Log("[GLES3:firstlight] milestone=bsp_face status=fail glerror=0x%x verts=%d\n",
 						err, numVerts);
-			if (r200_fl.vao) { qglBindVertexArray(0); }
+			if (gles3_fl.vao) { qglBindVertexArray(0); }
 			qglUseProgram(0);
 			return 0;
 		}
 	}
 
-	R200_FL_ReadPixel(w / 2, h / 2, after);
-	if (r200_fl.vao) {
+	GLES3_FL_ReadPixel(w / 2, h / 2, after);
+	if (gles3_fl.vao) {
 		qglBindVertexArray(0);
 	}
 	qglUseProgram(0);
 
-	R200_FL_Log("[R200:firstlight] milestone=bsp_face verts=%d drew=1 centre_before=%02x%02x%02x "
+	GLES3_FL_Log("[GLES3:firstlight] milestone=bsp_face verts=%d drew=1 centre_before=%02x%02x%02x "
 				"centre_after=%02x%02x%02x status=pass\n",
 				numVerts, before[0], before[1], before[2], after[0], after[1], after[2]);
-	return R200_FL_FACE;
+	return GLES3_FL_FACE;
 }
 
-unsigned R200_FirstLight_UploadRGBA8(int w, int h, const unsigned char *pixels)
+unsigned GLES3_FirstLight_UploadRGBA8(int w, int h, const unsigned char *pixels)
 {
 	GLuint	tex = 0;
 
@@ -428,7 +428,7 @@ unsigned R200_FirstLight_UploadRGBA8(int w, int h, const unsigned char *pixels)
 	return tex;
 }
 
-void R200_FirstLight_DeleteTexture(unsigned tex)
+void GLES3_FirstLight_DeleteTexture(unsigned tex)
 {
 	if (tex) {
 		GLuint t = tex;
@@ -436,28 +436,28 @@ void R200_FirstLight_DeleteTexture(unsigned tex)
 	}
 }
 
-void R200_FirstLight_Shutdown(void)
+void GLES3_FirstLight_Shutdown(void)
 {
-	if (r200_fl.vbo) {
-		qglDeleteBuffers(1, &r200_fl.vbo);
-		r200_fl.vbo = 0;
+	if (gles3_fl.vbo) {
+		qglDeleteBuffers(1, &gles3_fl.vbo);
+		gles3_fl.vbo = 0;
 	}
-	if (r200_fl.vao) {
-		qglDeleteVertexArrays(1, &r200_fl.vao);
-		r200_fl.vao = 0;
+	if (gles3_fl.vao) {
+		qglDeleteVertexArrays(1, &gles3_fl.vao);
+		gles3_fl.vao = 0;
 	}
-	if (r200_fl.white) {
-		R200_FirstLight_DeleteTexture(r200_fl.white);
-		r200_fl.white = 0;
+	if (gles3_fl.white) {
+		GLES3_FirstLight_DeleteTexture(gles3_fl.white);
+		gles3_fl.white = 0;
 	}
-	if (r200_fl.program) {
-		qglDeleteProgram(r200_fl.program);
-		r200_fl.program = 0;
+	if (gles3_fl.program) {
+		qglDeleteProgram(gles3_fl.program);
+		gles3_fl.program = 0;
 	}
-	r200_fl.ready = 0;
+	gles3_fl.ready = 0;
 }
 
-int R200_FirstLight_Ready(void)
+int GLES3_FirstLight_Ready(void)
 {
-	return r200_fl.ready;
+	return gles3_fl.ready;
 }

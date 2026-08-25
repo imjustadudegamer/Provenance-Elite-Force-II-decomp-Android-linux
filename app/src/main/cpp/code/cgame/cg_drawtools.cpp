@@ -114,7 +114,7 @@ void CG_DrawDisconnect(void)
     }
 
     // The box is CONSTANT virtual 640x480 geometry, not the shader's own size:
-    // R124-C: retail's path, not MOHAA's.  "gfx/2d/net.tga" is the Q3/MOHAA phone-jack
+    // TIKIANIM-C: retail's path, not MOHAA's.  "gfx/2d/net.tga" is the Q3/MOHAA phone-jack
     handle = cgi.R_RegisterShader("sysimg/2d/disconnected");
     x      = 544.0f * cgs.screenXScale;
     y      = 216.0f * cgs.screenYScale;

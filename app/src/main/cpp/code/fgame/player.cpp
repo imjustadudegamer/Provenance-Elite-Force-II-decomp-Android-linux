@@ -1,14 +1,14 @@
 
 #include "g_local.h"
 
-// R120 TEMP PROBE (worktree-only, never merge): server-side inventory-mirror fill.
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
-/* [R131:A1:infra] workstream A1 probe net (port-only, merge-safe: silent unless qa_r120 is on). */
-#define R131_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R131_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r131.h"
+// PROBE TEMP PROBE (worktree-only, never merge): server-side inventory-mirror fill.
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
+/* [WIDGET:A1:infra] workstream A1 probe net (port-only, merge-safe: silent unless qa_probe is on). */
+#define WIDGET_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define WIDGET_PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_widget.h"
 
 #define PUSH_OBJECT_DISTANCE 16.0f
 #include "mp_manager.hpp"
@@ -1495,9 +1495,9 @@ Player::~Player()
 {
     Sentient *player;
 
-    if (R133_EntTrashOn()) {
+    if (UIVK_EntTrashOn()) {
         gi.Printf(
-            "[R133:enttrash] ~Player ent=%d class='%s' p_heuristics=%p"
+            "[UIVK:enttrash] ~Player ent=%d class='%s' p_heuristics=%p"
             " low32=0x%08x high32=0x%08x frame=%d ltime=%.3f\n",
             entnum,
             getClassname() ? getClassname() : "?",
@@ -2255,11 +2255,11 @@ void Player::Dead(Event *ev)
     }
 
     if (multiplayerManager.inMultiplayer()) {
-        R124_PROBE("dead:mp", "ent=%d -> playerDead (DeadBody+hideModel), STAT_DEATHS=%d",
+        TIKIANIM_PROBE("dead:mp", "ent=%d -> playerDead (DeadBody+hideModel), STAT_DEATHS=%d",
                    entnum, client->ps.stats[STAT_DEATHS]);
         multiplayerManager.playerDead(this);
     } else {
-        R124_PROBE("dead:sp", "ent=%d -> G_MissionFailed (SINGLE-PLAYER arm taken)", entnum);
+        TIKIANIM_PROBE("dead:sp", "ent=%d -> G_MissionFailed (SINGLE-PLAYER arm taken)", entnum);
         int i            = (rand() % 10) + 1;
         str playerKilled = "PlayerKilled";
         playerKilled += i;
@@ -2311,7 +2311,7 @@ void Player::Killed(Event *ev)
     // i.e. respawn_time = level.time + 1.0f.  This port never wrote it, so respawn_time
     respawn_time = level.time + 1.0f;
 
-    R124_PROBE("die", "ent=%d mp=%d attackerIsPlayer=%d attackerEnt=%d mod=%d respawn_time=%.2f deadflag=DYING",
+    TIKIANIM_PROBE("die", "ent=%d mp=%d attackerIsPlayer=%d attackerEnt=%d mod=%d respawn_time=%.2f deadflag=DYING",
                entnum, multiplayerManager.inMultiplayer() ? 1 : 0,
                (attacker && attacker->isSubclassOf(Player)) ? 1 : 0,
                attacker ? attacker->entnum : -1,
@@ -3746,13 +3746,13 @@ void Player::ClientThink(Event *ev)
     old_v_angle = v_angle;
 
     if (deadflag == DEAD_DEAD && (level.time > respawn_time)) {
-        R124_PROBE("respawn:gate", "ent=%d DEAD_DEAD t=%.2f respawn_time=%.2f buttons=0x%x frozen=%d",
+        TIKIANIM_PROBE("respawn:gate", "ent=%d DEAD_DEAD t=%.2f respawn_time=%.2f buttons=0x%x frozen=%d",
                    entnum, (float)level.time, (float)respawn_time, new_buttons,
                    level.playerfrozen ? 1 : 0);
         if ((new_buttons & BUTTON_ATTACKRIGHT) || (new_buttons & BUTTON_ATTACKLEFT)
             || (multiplayerManager.inMultiplayer() && multiplayerManager.checkFlag(MP_FLAG_FORCE_RESPAWN))) {
             if (multiplayerManager.inMultiplayer()) {
-                R124_PROBE("respawn:fire", "ent=%d -> multiplayerManager.respawnPlayer(forced=false)", entnum);
+                TIKIANIM_PROBE("respawn:fire", "ent=%d -> multiplayerManager.respawnPlayer(forced=false)", entnum);
                 multiplayerManager.respawnPlayer(this, false);
             } else {
                 G_RestartLevelWithDelay(1.0f);
@@ -4237,12 +4237,12 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
                 SetAnim(torsoAnim.c_str(), torso);
             }
 
-            // R129 TEMP PROBE (branch-only, never merge): the DM-bot anim-selection leg.
+            // UIROWS TEMP PROBE (branch-only, never merge): the DM-bot anim-selection leg.
             //                    block and no movetype, so movecontrol never lands on LEGS)
-            static int r129_botanim;
-            if (R120_On() && R120_Throttle(&r129_botanim, 24, 400)) {
-                Weapon *r129_w = GetActiveWeapon(WEAPON_DUAL);
-                R129_PROBE(
+            static int uirows_botanim;
+            if (PROBE_On() && PROBE_Throttle(&uirows_botanim, 24, 400)) {
+                Weapon *uirows_w = GetActiveWeapon(WEAPON_DUAL);
+                UIROWS_PROBE(
                     "bot:anim",
                     "ent=%d model='%s' state='%s' move=%d movecontrol=%d wname='%s' "
                     "legsAnim='%s' has=%d torsoAnim='%s' has=%d\n",
@@ -4251,7 +4251,7 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
                     currentState_Torso ? currentState_Torso->getName() : "(null)",
                     move,
                     movecontrol,
-                    r129_w ? r129_w->item_name.c_str() : "(none)",
+                    uirows_w ? uirows_w->item_name.c_str() : "(none)",
                     legsAnim.c_str(),
                     animate->HasAnim(legsAnim) ? 1 : 0,
                     torsoAnim.c_str(),
@@ -4332,10 +4332,10 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
                 }
 
                 {
-                    static int r131_legs;
+                    static int widget_legs;
 
-                    if (R131_On() && R131_Throttle(&r131_legs, 12, 48)) {
-                        R131_A1_PROBE(
+                    if (WIDGET_On() && WIDGET_Throttle(&widget_legs, 12, 48)) {
+                        WIDGET_A1_PROBE(
                             "legs:loop",
                             "ent=%d move=%d movecontrol=%d state='%s' anim='%s' has=%d "
                             "clear=%d curlegs='%s' ucmdfwd=%d ucmdright=%d\n",
@@ -5438,14 +5438,14 @@ void Player::PlayerAngles(void)
     setAngles(angles);
 
     {
-        static int r131_sv[MAX_GENTITIES];
+        static int widget_sv[MAX_GENTITIES];
 
-        if (R131_On() && entnum < MAX_GENTITIES && R131_Throttle(&r131_sv[entnum], 6, 20)) {
-            vec3_t r131_velYawVec;
+        if (WIDGET_On() && entnum < MAX_GENTITIES && WIDGET_Throttle(&widget_sv[entnum], 6, 20)) {
+            vec3_t widget_velYawVec;
 
-            VectorCopy(velocity, r131_velYawVec);
+            VectorCopy(velocity, widget_velYawVec);
 
-            R131_A1_PROBE(
+            WIDGET_A1_PROBE(
                 "bot:svangles",
                 "ent=%d isbot=%d sv=(%.1f,%.1f) body=%.1f v_angle=(%.1f,%.1f) "
                 "ps=(%.1f,%.1f) speed=%.0f velyaw=%.1f ucmdyaw=%.1f movecontrol=%d\n",
@@ -5456,7 +5456,7 @@ void Player::PlayerAngles(void)
                 v_angle.x, v_angle.y,
                 client->ps.viewangles[0], client->ps.viewangles[1],
                 VectorLength(velocity),
-                (VectorLengthSquared(velocity) > 1.0f) ? vectoyaw(r131_velYawVec) : 0.0f,
+                (VectorLengthSquared(velocity) > 1.0f) ? vectoyaw(widget_velYawVec) : 0.0f,
                 last_ucmd.angles[YAW] != 0 ? AngleMod(SHORT2ANGLE(last_ucmd.angles[YAW]) + SHORT2ANGLE(client->ps.delta_angles[YAW])) : -999.0f,
                 movecontrol);
         }
@@ -6161,15 +6161,15 @@ void Player::UpdateStats( void )
 			client->ps.inventory_name_index[i-1] = item->getIndex();
 			// client would mean the transport leg, not the fill leg.
 			{
-				static int r120_n = 0;
-				if (R120_Throttle(&r120_n, 24, 200)) {
-					str r120_name = item->getName();
-					R120_PROBE(
+				static int probe_n = 0;
+				if (PROBE_Throttle(&probe_n, 24, 200)) {
+					str probe_name = item->getName();
+					PROBE(
 						"inv:mirror-sv",
 						"client=%d slot=%d item='%s' csindex=%d",
 						client->ps.clientNum,
 						i - 1,
-						r120_name.c_str(),
+						probe_name.c_str(),
 						item->getIndex()
 					);
 				}
@@ -9423,9 +9423,9 @@ void Player::ShakeCamera( void )
 	if ( earthquakeMagnitude > 0.0f )
 	{
 		{
-			static int r133_dfx_n;
-			if (R120_On() && R120_Throttle(&r133_dfx_n, 48, 48)) {
-				R120_PROBE("DFX:shake", "ent=%d mag=%.3f ps_dmgang=(%.2f,%.2f,%.2f)\n",
+			static int uivk_dfx_n;
+			if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 48, 48)) {
+				PROBE("DFX:shake", "ent=%d mag=%.3f ps_dmgang=(%.2f,%.2f,%.2f)\n",
 						   entnum, earthquakeMagnitude,
 						   client->ps.damage_angles[0], client->ps.damage_angles[1],
 						   client->ps.damage_angles[2]);

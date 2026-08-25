@@ -1842,9 +1842,9 @@ void Weapon::Shoot( Event *ev )
 			projectileModelName = projectileModel[mode];
 		}
 
-		// and read as "actor never fires".  Same verdict shape, same qa_r120 gate.
-		if (gi.cvar("qa_r120", "0", 0)->integer) {
-			gi.Printf("[R133:shootpj] own=%d proj='%s' pos=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f)\n",
+		// and read as "actor never fires".  Same verdict shape, same qa_probe gate.
+		if (gi.cvar("qa_probe", "0", 0)->integer) {
+			gi.Printf("[UIVK:shootpj] own=%d proj='%s' pos=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f)\n",
 				  owner_shadow4 ? owner_shadow4->entnum : -1,
 				  projectileModelName.c_str(),
 				  pos.x,

@@ -3,12 +3,12 @@
 #include "cg_local.h"
 #include "../tiki/tiki_shared.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) cgi.Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       cgi.Printf
-#include "../qcommon/qa_r120.h"
-#define R131_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R131_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_r131.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) cgi.Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       cgi.Printf
+#include "../qcommon/qa_probe.h"
+#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define WIDGET_PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_widget.h"
 
 
 
@@ -119,7 +119,7 @@ static void CG_SetModelAnimation(
         VectorNormalize(state->frame_delta);
 
         if (state->frame_distance < 0.1f) {
-            R128_PROBE(
+            CHAN_PROBE(
                 "anim:nodelta",
                 "ent=%d anim=%d '%s' numframes=%d frame_distance=%.4f -> time-driven clamp\n",
                 entnum,
@@ -144,9 +144,9 @@ static void CG_SetModelAnimation(
     state->next_evaluate_time = (int)((float)time + state->time_per_frame);
 
     {
-        static int r128_set;
-        if (R120_Throttle(&r128_set, 200, 100)) {
-            R128_PROBE(
+        static int chan_set;
+        if (PROBE_Throttle(&chan_set, 200, 100)) {
+            CHAN_PROBE(
                 "anim:set",
                 "ent=%d anim=%d(%d) '%s' numframes=%d rate=%.2f tpf=%.2f driven=%d "
                 "frame_distance=%.4f bNoDeltaDrive=%d\n",
@@ -522,16 +522,16 @@ static qboolean CG_EF2ModelAnim(centity_t *cent, refEntity_t *model)
     }
 
     {
-        static int r128_lastanim[256];
-        static int r128_lasttorso[256];
-        static int r128_chan[8];
+        static int chan_lastanim[256];
+        static int chan_lasttorso[256];
+        static int chan_chan[8];
         int        slot = s1->number & 255;
 
-        if ((s1->anim != r128_lastanim[slot]) || (s1->torso_anim != r128_lasttorso[slot])) {
-            r128_lastanim[slot]  = s1->anim;
-            r128_lasttorso[slot] = s1->torso_anim;
-            if (R120_Throttle(&r128_chan[s1->number & 7], 60, 25)) {
-                R128_PROBE(
+        if ((s1->anim != chan_lastanim[slot]) || (s1->torso_anim != chan_lasttorso[slot])) {
+            chan_lastanim[slot]  = s1->anim;
+            chan_lasttorso[slot] = s1->torso_anim;
+            if (PROBE_Throttle(&chan_chan[s1->number & 7], 60, 25)) {
+                CHAN_PROBE(
                     "anim:chan",
                     "ent=%d anim=%d(%d) torso=%d(%d) blendL=%d blendT=%d legsLive=%d torsoLive=%d "
                     "frame=%d oldframe=%d lerp=%.2f cblerp=%.2f tiki=%d\n",
@@ -896,10 +896,10 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
             cgi.Com_WDPrintf("CG_ModelAnim: Could not find parent entity\n");
 
             {
-                static int r131_orphanm;
+                static int widget_orphanm;
 
-                if (R131_On() && R131_Throttle(&r131_orphanm, 4, 32)) {
-                    R131_A1_PROBE(
+                if (WIDGET_On() && WIDGET_Throttle(&widget_orphanm, 4, 32)) {
+                    WIDGET_A1_PROBE(
                         "tag:orphan",
                         "MODEL child=%d etype=%d modelindex=%d parent=%d tagnum=%d cg.time=%d\n",
                         s1->number,

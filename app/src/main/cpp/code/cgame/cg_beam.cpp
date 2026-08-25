@@ -5,13 +5,13 @@
 #include "../corepp/container.h"
 #include "cg_commands.h"
 
-#define R120_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_probe.h"
 
-#define R131_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define R131_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_r131.h"
+#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define WIDGET_PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_widget.h"
 
 class beam_t : public Class
 {
@@ -280,8 +280,8 @@ void RenderSegment(Vector pt1a, Vector pt1b, Vector pt2a, Vector pt2b, byte modu
 
     {
         static int n = 0;
-        if (R120_Throttle(&n, 32, 2000)) {
-            R120_PROBE(
+        if (PROBE_Throttle(&n, 32, 2000)) {
+            PROBE(
                 "beam:addpoly",
                 "RenderSegment shader=%d rf=0x%x v0=(%.1f,%.1f,%.1f) v1=(%.1f,%.1f,%.1f)",
                 beamshader,
@@ -808,8 +808,8 @@ void CG_AddBeams(void)
 
         {
             static int n = 0;
-            if (R120_Throttle(&n, 32, 2000)) {
-                R120_PROBE(
+            if (PROBE_Throttle(&n, 32, 2000)) {
+                PROBE(
                     "beam:slot",
                     "slot=%d ent=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) shader=%d "
                     "flags=0x%x",
@@ -832,15 +832,15 @@ void CG_AddBeams(void)
         }
 
         {
-            static int r131_zl = 0;
+            static int widget_zl = 0;
 
-            if (R131_On() && R131_Throttle(&r131_zl, 8, 64)) {
-                float r131_dx = b->end[0] - b->start[0];
-                float r131_dy = b->end[1] - b->start[1];
-                float r131_dz = b->end[2] - b->start[2];
+            if (WIDGET_On() && WIDGET_Throttle(&widget_zl, 8, 64)) {
+                float widget_dx = b->end[0] - b->start[0];
+                float widget_dy = b->end[1] - b->start[1];
+                float widget_dz = b->end[2] - b->start[2];
 
-                if (r131_dx * r131_dx + r131_dy * r131_dy + r131_dz * r131_dz < 0.01f) {
-                    R131_A1_PROBE(
+                if (widget_dx * widget_dx + widget_dy * widget_dy + widget_dz * widget_dz < 0.01f) {
+                    WIDGET_A1_PROBE(
                         "beam:zerolen",
                         "slot=%d owner=%d name='%s' shader=%d start=(%.1f,%.1f,%.1f) "
                         "flags=0x%x subdiv=%d\n",
@@ -1003,8 +1003,8 @@ void CG_CreateBeam(
 
     {
         static int n = 0;
-        if (R120_Throttle(&n, 24, 400)) {
-            R120_PROBE(
+        if (PROBE_Throttle(&n, 24, 400)) {
+            PROBE(
                 "beam:create",
                 "owner=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) len=%.1f shader='%s' "
                 "flags=0x%x create=%d name='%s'",

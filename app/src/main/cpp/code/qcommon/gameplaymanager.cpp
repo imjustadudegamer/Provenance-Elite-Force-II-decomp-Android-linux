@@ -4,13 +4,13 @@
 
 // the two launchers (where it does not and `Cvar_Get` is not exported), so the wiring is
 #ifdef GAME_DLL
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
 #else
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       Com_Printf
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       Com_Printf
 #endif
-#include "../qcommon/qa_r120.h"
+#include "../qcommon/qa_probe.h"
 
 GameplayManager *GameplayManager::_theGameplayManager = 0; 
 
@@ -270,9 +270,9 @@ void GameplayManager::processPendingMessages( void )
 void GameplayManager::Archive(Archiver &arc)
 {
 	// ("tail: GameplayManager" printed, "done" never did).  Static analysis REFUTED the
-	R131_PROBE("archive", "gpm: manager archive enter (%s)\n", arc.Saving() ? "SAVE" : "LOAD");
+	WIDGET_PROBE("archive", "gpm: manager archive enter (%s)\n", arc.Saving() ? "SAVE" : "LOAD");
 	_gameplayDatabase.Archive(arc);
-	R131_PROBE("archive", "gpm: manager archive done\n");
+	WIDGET_PROBE("archive", "gpm: manager archive done\n");
 }
 
 

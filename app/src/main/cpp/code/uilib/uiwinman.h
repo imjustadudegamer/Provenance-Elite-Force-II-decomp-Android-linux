@@ -56,7 +56,7 @@ public:
     virtual qboolean  KeyEvent(int key, unsigned int time) override;
     void              CreateMenus(void);
     void              sortWidgetContainers(void);
-    // R127 TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  The paint-order
+    // PAINT TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  The paint-order
     int               GetChildCount(void);
     UIWidget         *GetChild(int index);
     UIReggedMaterial *RegisterShader(const str& name);

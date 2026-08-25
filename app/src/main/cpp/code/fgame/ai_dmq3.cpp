@@ -3644,8 +3644,8 @@ void BotDeathmatchAI(bot_state_t *bs, float thinktime) {
 	char gender[144], name[144], buf[144];
 	char userinfo[MAX_INFO_STRING];
 	int i;
-	int r202_t0 = R202_BotAITick();
-	int r202_t, r202_inv, r202_team, r202_node = 0;
+	int ui_t0 = UI_BotAITick();
+	int ui_t, ui_inv, ui_team, ui_node = 0;
 
 	if (bs->setupcount > 0) {
 		bs->setupcount--;
@@ -3668,7 +3668,7 @@ void BotDeathmatchAI(bot_state_t *bs, float thinktime) {
 		BotSetupAlternativeRouteGoals();
 	}
 	bs->flags &= ~BFL_IDEALVIEWSET;
-	r202_t = R202_BotAITick();
+	ui_t = UI_BotAITick();
 	if (!BotIntermission(bs)) {
 		BotSetTeleportTime(bs);
 		BotUpdateInventory(bs);
@@ -3676,14 +3676,14 @@ void BotDeathmatchAI(bot_state_t *bs, float thinktime) {
 		BotCheckAir(bs);
 	}
 	BotCheckConsoleMessages(bs);
-	R202_BotAIAdd( R202_BAIZ_dminv, R202_BotAITock( r202_t ) );
-	r202_inv = R202_BotAITock( r202_t );
-	r202_t = R202_BotAITick();
+	UI_BotAIAdd( UI_BAIZ_dminv, UI_BotAITock( ui_t ) );
+	ui_inv = UI_BotAITock( ui_t );
+	ui_t = UI_BotAITick();
 	if (!BotIntermission(bs) && !BotIsObserver(bs)) {
 		BotTeamAI(bs);
 	}
-	R202_BotAIAdd( R202_BAIZ_dmteam, R202_BotAITock( r202_t ) );
-	r202_team = R202_BotAITock( r202_t );
+	UI_BotAIAdd( UI_BAIZ_dmteam, UI_BotAITock( ui_t ) );
+	ui_team = UI_BotAITock( ui_t );
 	if (!bs->ainode) {
 		AIEnter_Seek_LTG(bs, "BotDeathmatchAI: no ai node");
 	}
@@ -3695,20 +3695,20 @@ void BotDeathmatchAI(bot_state_t *bs, float thinktime) {
 		bs->entergamechat = qtrue;
 	}
 	BotResetNodeSwitches();
-	r202_t = R202_BotAITick();
+	ui_t = UI_BotAITick();
 	for (i = 0; i < MAX_NODESWITCHES; i++) {
-		qboolean r203_done;
+		qboolean limit_done;
 
-		R203_BotNodeBegin(bs);
-		r203_done = bs->ainode(bs) ? qtrue : qfalse;
-		R203_BotNodeEnd();
-		if (r203_done) break;
+		LIMIT_BotNodeBegin(bs);
+		limit_done = bs->ainode(bs) ? qtrue : qfalse;
+		LIMIT_BotNodeEnd();
+		if (limit_done) break;
 	}
 	if (i >= MAX_NODESWITCHES) {
-		R203_BotNodeSat();	 
+		LIMIT_BotNodeSat();	 
 	}
-	r202_node = R202_BotAITock( r202_t );
-	R202_BotAIAdd( R202_BAIZ_dmnode, r202_node );
+	ui_node = UI_BotAITock( ui_t );
+	UI_BotAIAdd( UI_BAIZ_dmnode, ui_node );
 	if (!bs->inuse) return;
 	if (i >= MAX_NODESWITCHES) {
 		gi.BotDumpGoalStack(bs->gs);
@@ -3720,12 +3720,12 @@ void BotDeathmatchAI(bot_state_t *bs, float thinktime) {
 	bs->lastframe_health = bs->inventory[INVENTORY_HEALTH];
 
 	{
-		int r202_oth = ( R202_BotAITock( r202_t0 ) ) - ( r202_inv + r202_team + r202_node );
+		int ui_oth = ( UI_BotAITock( ui_t0 ) ) - ( ui_inv + ui_team + ui_node );
 
-		if ( r202_oth < 0 ) {
-			r202_oth = 0;
+		if ( ui_oth < 0 ) {
+			ui_oth = 0;
 		}
-		R202_BotAIAdd( R202_BAIZ_dmoth, r202_oth );
+		UI_BotAIAdd( UI_BAIZ_dmoth, ui_oth );
 	}
 }
 

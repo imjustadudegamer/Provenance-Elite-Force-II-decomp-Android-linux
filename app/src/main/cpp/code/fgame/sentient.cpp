@@ -303,19 +303,19 @@ void Sentient::freeConditionals(Container<Conditional *> &conditionalsToDelete)
 // the corollary that is retail's own design and must NOT be "fixed": an I-MOD hit prints
 void Sentient::ArmorDamage(::Damage &damage)
 {
-    if (gi.cvar("qa_r120", "0", 0)->integer) {
-        int         r133_stateflags = 0;
-        const char *r133_arm       = "-";
+    if (gi.cvar("qa_probe", "0", 0)->integer) {
+        int         uivk_stateflags = 0;
+        const char *uivk_arm       = "-";
 
         if (isSubclassOf(Actor)) {
-            r133_stateflags = (int)((Actor *)this)->state_flags;
+            uivk_stateflags = (int)((Actor *)this)->state_flags;
         }
 
         if (currentBaseArmor) {
-            r133_arm = currentBaseArmor->getClassname();
+            uivk_arm = currentBaseArmor->getClassname();
         }
 
-        gi.Printf("[R133:dmg] step=enter tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d sflags=%d dead=%d df=%d arm=%s\n",
+        gi.Printf("[UIVK:dmg] step=enter tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d sflags=%d dead=%d df=%d arm=%s\n",
                   entnum,
                   damage.attacker ? damage.attacker->entnum : -1,
                   damage.meansofdeath,
@@ -324,10 +324,10 @@ void Sentient::ArmorDamage(::Damage &damage)
                   health,
                   damage_type,
                   (int)takedamage,
-                  r133_stateflags,
+                  uivk_stateflags,
                   (int)deadflag,
                   damage.dflags,
-                  r133_arm);
+                  uivk_arm);
     }
 
     CheckDamageThreshold(damage.damage);
@@ -335,8 +335,8 @@ void Sentient::ArmorDamage(::Damage &damage)
     if (damageModSystem) {
         damageModSystem->resolveDamage(damage);
 
-        if (gi.cvar("qa_r120", "0", 0)->integer) {
-            gi.Printf("[R133:dmg] step=resolve tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d dead=%d df=%d\n",
+        if (gi.cvar("qa_probe", "0", 0)->integer) {
+            gi.Printf("[UIVK:dmg] step=resolve tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d dead=%d df=%d\n",
                       entnum,
                       damage.attacker ? damage.attacker->entnum : -1,
                       damage.meansofdeath,
@@ -1114,8 +1114,8 @@ void Sentient::ArmorDamage(float damage, Entity *inflictor, Entity *attacker, co
     }
 
     if (Immune(meansofdeath)) {
-        if (gi.cvar("qa_r120", "0", 0)->integer) {
-            gi.Printf("[R133:dmg] step=immune tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d dead=%d EARLY-OUT\n",
+        if (gi.cvar("qa_probe", "0", 0)->integer) {
+            gi.Printf("[UIVK:dmg] step=immune tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d dead=%d EARLY-OUT\n",
                       entnum,
                       attacker ? attacker->entnum : -1,
                       meansofdeath,

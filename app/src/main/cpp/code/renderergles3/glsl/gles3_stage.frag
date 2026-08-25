@@ -1,7 +1,7 @@
 #version 300 es
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_stage.frag -- the generic-stage fragment program.
 
 Replaces fixed-function texture env + alpha test + (per-vertex) fog output.

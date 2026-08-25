@@ -9,8 +9,8 @@
 #include "player.h"
 #include "debuglines.h"
 #include "gamecmds.h"
-#include "r201_spawnstats.h"
-#include "r201_pathpair.h"
+#include "smp_spawnstats.h"
+#include "smp_pathpair.h"
 
 
 
@@ -152,7 +152,7 @@ PathNode *PathManager::GetNode(int num)
 void PathManager::AddNode(PathNode *node)
 {
     _pathNodes.AddObject(node);
-    node->r201_nodeIndex = _pathNodes.NumObjects() - 1;
+    node->smp_nodeIndex = _pathNodes.NumObjects() - 1;
 }
 
 void PathManager::RemoveNode(PathNode *node)
@@ -300,7 +300,7 @@ PathNode::PathNode()
     Parent   = NULL;
     NextNode = NULL;
 
-    r201_nodeIndex = -1;   
+    smp_nodeIndex = -1;   
 }
 
 PathNode::~PathNode()
@@ -1041,48 +1041,48 @@ PathManager::~PathManager()
     thePathManager.ResetNodes();
 }
 
-#define R201_PAIRMEMO_SIZE_KEYS R201_PAIRMEMO_SIZE
-static unsigned	r201_pairMemo[R201_PAIRMEMO_SIZE_KEYS];
+#define SMP_PAIRMEMO_SIZE_KEYS SMP_PAIRMEMO_SIZE
+static unsigned	smp_pairMemo[SMP_PAIRMEMO_SIZE_KEYS];
 
-static void R201_PathPairMemoClear(void)
+static void SMP_PathPairMemoClear(void)
 {
-	memset(r201_pairMemo, 0, sizeof(r201_pairMemo));
+	memset(smp_pairMemo, 0, sizeof(smp_pairMemo));
 }
 
-static qboolean R201_PathPairMemoUsable(const PathNode *a, const PathNode *b)
+static qboolean SMP_PathPairMemoUsable(const PathNode *a, const PathNode *b)
 {
-	return (a->r201_nodeIndex >= 0 && b->r201_nodeIndex >= 0
-			&& a->r201_nodeIndex <= R201_PAIRMEMO_MAXNODE
-			&& b->r201_nodeIndex <= R201_PAIRMEMO_MAXNODE) ? qtrue : qfalse;
+	return (a->smp_nodeIndex >= 0 && b->smp_nodeIndex >= 0
+			&& a->smp_nodeIndex <= SMP_PAIRMEMO_MAXNODE
+			&& b->smp_nodeIndex <= SMP_PAIRMEMO_MAXNODE) ? qtrue : qfalse;
 }
 
-static unsigned R201_PathPairMemoKey(const PathNode *a, const PathNode *b)
+static unsigned SMP_PathPairMemoKey(const PathNode *a, const PathNode *b)
 {
-	return R201_PathPairKey((unsigned)a->r201_nodeIndex, (unsigned)b->r201_nodeIndex);
+	return SMP_PathPairKey((unsigned)a->smp_nodeIndex, (unsigned)b->smp_nodeIndex);
 }
 
-static qboolean R201_PathPairSkip(PathNode *a, PathNode *b)
+static qboolean SMP_PathPairSkip(PathNode *a, PathNode *b)
 {
-	if (R201_PathPairTooFar(&a->origin.x, &b->origin.x)) {
+	if (SMP_PathPairTooFar(&a->origin.x, &b->origin.x)) {
 		if (!((a->nodeflags & AI_LADDER) && (b->nodeflags & AI_LADDER))) {
-			R201_SpawnCounter(R201_SPC_skipped, 1);
+			SMP_SpawnCounter(SMP_SPC_skipped, 1);
 			return qtrue;
 		}
 	}
 
-	if (R201_PathPairMemoUsable(a, b)) {
-		unsigned key = R201_PathPairMemoKey(a, b);
+	if (SMP_PathPairMemoUsable(a, b)) {
+		unsigned key = SMP_PathPairMemoKey(a, b);
 
-		if (R201_PathPairMemoHit(r201_pairMemo, key)) {
-			if (r201_spawnOn >= 2) {
+		if (SMP_PathPairMemoHit(smp_pairMemo, key)) {
+			if (smp_spawnOn >= 2) {
 				byte mh[NUM_WIDTH_VALUES];
 				if (a->ClearPathTo(b, mh) || a->LadderTo(b, mh)) {
-					R201_SpawnCounter(R201_SPC_equivbad, 1);
+					SMP_SpawnCounter(SMP_SPC_equivbad, 1);
 				} else {
-					R201_SpawnCounter(R201_SPC_equivok, 1);
+					SMP_SpawnCounter(SMP_SPC_equivok, 1);
 				}
 			}
-			R201_SpawnCounter(R201_SPC_memohit, 1);
+			SMP_SpawnCounter(SMP_SPC_memohit, 1);
 			return qtrue;
 		}
 	}
@@ -1090,11 +1090,11 @@ static qboolean R201_PathPairSkip(PathNode *a, PathNode *b)
 	return qfalse;
 }
 
-static void R201_PathPairFailed(PathNode *a, PathNode *b)
+static void SMP_PathPairFailed(PathNode *a, PathNode *b)
 {
-	if (R201_PathPairMemoUsable(a, b)) {
-		R201_PathPairMemoAdd(r201_pairMemo, R201_PathPairMemoKey(a, b));
-		R201_SpawnCounter(R201_SPC_memomiss, 1);
+	if (SMP_PathPairMemoUsable(a, b)) {
+		SMP_PathPairMemoAdd(smp_pairMemo, SMP_PathPairMemoKey(a, b));
+		SMP_SpawnCounter(SMP_SPC_memomiss, 1);
 	}
 }
 
@@ -1142,21 +1142,21 @@ void PathManager::AddToGrid(PathNode *node, int x, int y)
                 continue;
             }
 
-            if (!node->ConnectedTo(node2) && !R201_PathPairSkip(node, node2)) {
-                R201_SpawnCounter(R201_SPC_clear, 1);
+            if (!node->ConnectedTo(node2) && !SMP_PathPairSkip(node, node2)) {
+                SMP_SpawnCounter(SMP_SPC_clear, 1);
                 if (node->ClearPathTo(node2, maxheight) || node->LadderTo(node2, maxheight)) {
                     node->ConnectTo(node2, maxheight);
                 } else {
-                    R201_PathPairFailed(node, node2);
+                    SMP_PathPairFailed(node, node2);
                 }
             }
 
-            if (!node2->ConnectedTo(node) && !R201_PathPairSkip(node2, node)) {
-                R201_SpawnCounter(R201_SPC_clear, 1);
+            if (!node2->ConnectedTo(node) && !SMP_PathPairSkip(node2, node)) {
+                SMP_SpawnCounter(SMP_SPC_clear, 1);
                 if (node2->ClearPathTo(node, maxheight) || node2->LadderTo(node, maxheight)) {
                     node2->ConnectTo(node, maxheight);
                 } else {
-                    R201_PathPairFailed(node2, node);
+                    SMP_PathPairFailed(node2, node);
                 }
             }
         }
@@ -1231,7 +1231,7 @@ void PathManager::UpdateNode(PathNode *node)
 
     assert(node);
 
-    R201_PathPairMemoClear();
+    SMP_PathPairMemoClear();
 
     x = NodeCoordinate(node->origin[0]);
     y = NodeCoordinate(node->origin[1]);
@@ -1411,7 +1411,7 @@ void PathManager::Archive(Archiver& arc)
 
         thePathManager.ResetNodes();
 
-        R201_PathPairMemoClear();
+        SMP_PathPairMemoClear();
 
         CancelEventsOfType(EV_AI_CalcAllPaths);
 
@@ -1637,7 +1637,7 @@ void PathManager::OptimizeNodes(Event *ev)
 {
     gi.ProcessLoadingScreen("$$OptimizingPathnodeConnections$$");
 
-    R201_SP_BEGIN( pathopt );
+    SMP_SP_BEGIN( pathopt );
 
     for (int i = 0; i < _pathNodes.NumObjects(); i++) {
         if (_pathNodes[i]) {
@@ -1652,7 +1652,7 @@ void PathManager::OptimizeNodes(Event *ev)
         }
     }
 
-    R201_SP_END( pathopt );
+    SMP_SP_END( pathopt );
 
 
     _pathNodesCalculated = true;
@@ -1731,9 +1731,9 @@ void PathManager::SaveNodes(Event *ev)
     gi.Printf("Archiving\n");
 
     {
-        R201_SP_BEGIN( pathsave );
+        SMP_SP_BEGIN( pathsave );
         ArchiveNodes(name, true);
-        R201_SP_END( pathsave );
+        SMP_SP_END( pathsave );
     }
 
     gi.Printf("done.\n");
@@ -1755,7 +1755,7 @@ void PathManager::LoadNodes(Event *ev)
 
     name = ev->GetString(1);
 
-    R201_SP_BEGIN( pathload );
+    SMP_SP_BEGIN( pathload );
 
     rebuild = !ArchiveNodes(name, false);
 
@@ -1777,7 +1777,7 @@ void PathManager::LoadNodes(Event *ev)
                    "***********************************\n");
     }
 
-    R201_SP_END( pathload );
+    SMP_SP_END( pathload );
 }
 
 void PathManager::SavePaths(void)
@@ -1847,7 +1847,7 @@ void PathManager::Init(const char *mapname)
 
     thePathManager.ResetNodes();
 
-    R201_PathPairMemoClear();
+    SMP_PathPairMemoClear();
 
     for (x = 0; x < PATHMAP_GRIDSIZE; x++) {
         for (y = 0; y < PATHMAP_GRIDSIZE; y++) {
@@ -1882,7 +1882,7 @@ void PathManager::Init(const char *mapname)
 
 void PathManager::FindAllTargets(void)
 {
-    R201_SP_BEGIN( findtgt );
+    SMP_SP_BEGIN( findtgt );
 
     for (int i = 0; i < _pathNodes.NumObjects(); i++) {
         PathNode *node = _pathNodes[i];
@@ -1902,17 +1902,17 @@ void PathManager::FindAllTargets(void)
         }
     }
 
-    R201_SP_END( findtgt );
+    SMP_SP_END( findtgt );
 }
 
 void PathManager::CalcAllPaths(Event *ev)
 {
-    int r201_traces0 = sv_numtraces;
+    int smp_traces0 = sv_numtraces;
 
-    R201_PathPairMemoClear();
+    SMP_PathPairMemoClear();
 
     {
-        R201_SP_BEGIN( pathcalc );
+        SMP_SP_BEGIN( pathcalc );
 
         for (int i = 0; i < _pathNodes.NumObjects(); i++) {
             PathNode *node = _pathNodes[i];
@@ -1929,10 +1929,10 @@ void PathManager::CalcAllPaths(Event *ev)
             }
         }
 
-        R201_SP_END( pathcalc );
+        SMP_SP_END( pathcalc );
     }
 
-    R201_SpawnCounter(R201_SPC_traces, sv_numtraces - r201_traces0);
+    SMP_SpawnCounter(SMP_SPC_traces, sv_numtraces - smp_traces0);
 }
 
 int PathManager::NumberOfSpecialNodes(void) const

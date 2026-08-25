@@ -3,7 +3,7 @@
 #include "cl_ui.h"
 #include "cl_cin.h"
 
-#include "../uilib/r203_uiprobe.h"
+#include "../uilib/limit_uiprobe.h"
 
 qboolean	scr_initialized;		
 stereoFrame_t	s_scr_stereoFrame;
@@ -76,14 +76,14 @@ void SCR_DrawAndroidBars( void ) {
 	bottom = dy + dh;
 
 	// never reaches this line (the guard above returns), so the desktop oracle
-	int r203_subT0 = R203_SubT0();
+	int limit_subT0 = LIMIT_SubT0();
 
 	re.Set2DWindow(
 		0, 0, cls.glconfig.vidWidth, cls.glconfig.vidHeight,
 		0, cls.glconfig.vidWidth, cls.glconfig.vidHeight, 0,
 		-1, 1 );
 
-	R203_SubPushEnd( r203_subT0 );
+	LIMIT_SubPushEnd( limit_subT0 );
 
 	re.SetColor( g_color_table[0] );   
 	if ( dy > 0 ) {
@@ -217,11 +217,11 @@ static void SCR_DrawFPS( void ) {
 	SCR_DrawStringFont( fpsFont, x, y, scale, white, line );
 
 	if ( cl_drawFPS->integer >= 2 ) {
-		int	frames = 0, mean10[R201_BUDGET_ZONES];
+		int	frames = 0, mean10[SMP_BUDGET_ZONES];
 
 		y += re.GetFontHeight( fpsFont ) * scale + 2.0f * scale;
 
-		if ( R201_BudgetLastWindow( &frames, mean10 ) ) {
+		if ( SMP_BudgetLastWindow( &frames, mean10 ) ) {
 			Com_sprintf( line, sizeof( line ),
 				"srv=%d.%d cli=%d.%d ren=%d.%d/%d.%d aud=%d.%d swp=%d.%d spin=%d.%d tot=%d.%d n=%d",
 				mean10[0] / 10, mean10[0] % 10, mean10[1] / 10, mean10[1] % 10,
@@ -372,7 +372,7 @@ static void CL_DrawTouchPill( float ncx, float ncy, float nhw, float nhh, qboole
 
 void CL_TouchRegisterShaders( void )
 {
-	// r133-android: the names MUST carry the real extension.  Retail's R_LoadImage
+	// uivk-android: the names MUST carry the real extension.  Retail's R_LoadImage
 	tc_circleShader = re.RegisterShaderNoMip( "gfx/touch/circle.tga" );
 	tc_ringShader   = re.RegisterShaderNoMip( "gfx/touch/ring.tga" );
 	tc_pillShader   = re.RegisterShaderNoMip( "gfx/touch/pill.tga" );
@@ -491,17 +491,17 @@ void SCR_DrawScreenField( void ) {
 	case CA_PRIMED:
 	case CA_ACTIVE:
 		{
-			R201_LOAD_BEGIN( cgame );
+			SMP_LOAD_BEGIN( cgame );
 			CL_CGameRendering(s_scr_stereoFrame);
-			R201_LOAD_END( cgame );
+			SMP_LOAD_END( cgame );
 		}
-		R203_SubArm();
+		LIMIT_SubArm();
 		{
-			int r203_subT0 = R203_SubT0();
+			int limit_subT0 = LIMIT_SubT0();
 
 			SCR_DrawAndroidBars();
 
-			R203_SubZoneEnd( R203_SUBZ_abars, r203_subT0 );
+			LIMIT_SubZoneEnd( LIMIT_SUBZ_abars, limit_subT0 );
 		}
 		break;
 	case CA_CINEMATIC:
@@ -518,9 +518,9 @@ void UpdateStereoSide( stereoFrame_t s ) {
 	if (cls.state == CA_CINEMATIC || GetBackgroundMode() == 2 || cinematicRunning()) {
 		SCR_DrawScreenField();
 	} else {
-		R201_LOAD_BEGIN( ui );
+		SMP_LOAD_BEGIN( ui );
 		UI_Update();
-		R201_LOAD_END( ui );
+		SMP_LOAD_END( ui );
 	}
 
 #ifdef __ANDROID__
@@ -533,7 +533,7 @@ void UpdateStereoSide( stereoFrame_t s ) {
 }
 
 void SCR_SimpleUpdateScreen( void ) {
-	// r206-fixes: DO NOT TOUCH GL WHILE THE APP IS BACKGROUNDED.
+	// landed-fixes: DO NOT TOUCH GL WHILE THE APP IS BACKGROUNDED.
 	if ( Cvar_VariableIntegerValue( "com_minimized" ) ) {
 		return;
 	}
@@ -546,7 +546,7 @@ void SCR_SimpleUpdateScreen( void ) {
 		UpdateStereoSide( STEREO_CENTER );
 	}
 
-	if( com_speeds->integer || Cvar_VariableIntegerValue( "r201_frameStats" ) ) {
+	if( com_speeds->integer || Cvar_VariableIntegerValue( "smp_frameStats" ) ) {
 		re.EndFrame( &time_frontend, &time_backend );
 	}
 	else {
@@ -571,7 +571,7 @@ void SCR_UpdateScreen( void ) {
 
 	scr_update_recursive = qtrue;
 
-	R201_LOAD_BEGIN( scr );
+	SMP_LOAD_BEGIN( scr );
 
 	CL_StartHunkUsers(qfalse);
 	SCR_SimpleUpdateScreen();
@@ -596,7 +596,7 @@ void SCR_UpdateScreen( void ) {
 
 	scr_update_recursive = qfalse;
 
-	R201_LOAD_END( scr );
+	SMP_LOAD_END( scr );
 }
 
 int cl_loadingScreenStage = 0;

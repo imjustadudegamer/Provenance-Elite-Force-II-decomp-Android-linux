@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-int R201_SelectTexTranscode(int glesMajor, int glesMinor,
+int SMP_SelectTexTranscode(int glesMajor, int glesMinor,
 							int hasS3tc, int hasEtc2Ext, int hasArbEs3,
 							int hasAstcLdr, int compressAllowed)
 {
@@ -11,21 +11,21 @@ int R201_SelectTexTranscode(int glesMajor, int glesMinor,
 	(void)hasS3tc;
 
 	if (!compressAllowed) {
-		return R201_TEXC_NONE;
+		return SMP_TEXC_NONE;
 	}
 
 	coreEtc2 = (glesMajor > 3 || (glesMajor == 3 && glesMinor >= 0)) ? 1 : 0;
 
 	if (hasAstcLdr) {
-		return R201_TEXC_ASTC_4x4;
+		return SMP_TEXC_ASTC_4x4;
 	}
 	if (coreEtc2 || hasEtc2Ext || hasArbEs3) {
-		return R201_TEXC_ETC2_RGBA8;
+		return SMP_TEXC_ETC2_RGBA8;
 	}
-	return R201_TEXC_NONE;
+	return SMP_TEXC_NONE;
 }
 
-static void R201_DXTExpand565(unsigned short c, unsigned char *out)
+static void SMP_DXTExpand565(unsigned short c, unsigned char *out)
 {
 	out[0] = (unsigned char)((((c >> 11) & 0x1F) * 255 + 15) / 31);
 	out[1] = (unsigned char)((((c >> 5) & 0x3F) * 255 + 31) / 63);
@@ -33,7 +33,7 @@ static void R201_DXTExpand565(unsigned short c, unsigned char *out)
 	out[3] = 255;
 }
 
-static void R201_DXTDecodeColorBlock(const unsigned char *b, unsigned char out[64], int dxt1)
+static void SMP_DXTDecodeColorBlock(const unsigned char *b, unsigned char out[64], int dxt1)
 {
 	unsigned short c0 = (unsigned short)(b[0] | (b[1] << 8));
 	unsigned short c1 = (unsigned short)(b[2] | (b[3] << 8));
@@ -41,8 +41,8 @@ static void R201_DXTDecodeColorBlock(const unsigned char *b, unsigned char out[6
 	unsigned int   bits;
 	int            i, k;
 
-	R201_DXTExpand565(c0, pal[0]);
-	R201_DXTExpand565(c1, pal[1]);
+	SMP_DXTExpand565(c0, pal[0]);
+	SMP_DXTExpand565(c1, pal[1]);
 
 	if (!dxt1 || c0 > c1) {
 		for (k = 0; k < 3; k++) {
@@ -71,21 +71,21 @@ static void R201_DXTDecodeColorBlock(const unsigned char *b, unsigned char out[6
 	}
 }
 
-void R201_DXTDecodeBlock(int dxt, const unsigned char *block, unsigned char rgba[64])
+void SMP_DXTDecodeBlock(int dxt, const unsigned char *block, unsigned char rgba[64])
 {
-	const unsigned char *colorBlock = (dxt == R201_DXT1) ? block : block + 8;
+	const unsigned char *colorBlock = (dxt == SMP_DXT1) ? block : block + 8;
 	unsigned char       alpha[16];
 	int                 i;
 
-	R201_DXTDecodeColorBlock(colorBlock, rgba, (dxt == R201_DXT1) ? 1 : 0);
+	SMP_DXTDecodeColorBlock(colorBlock, rgba, (dxt == SMP_DXT1) ? 1 : 0);
 
-	if (dxt == R201_DXT3) {
+	if (dxt == SMP_DXT3) {
 		for (i = 0; i < 16; i++) {
 			int a = (block[i >> 1] >> ((i & 1) * 4)) & 0xF;
 
 			alpha[i] = (unsigned char)(a * 255 / 15);
 		}
-	} else if (dxt == R201_DXT5) {
+	} else if (dxt == SMP_DXT5) {
 		unsigned char      ac[8];
 		unsigned long long abits = 0;
 		unsigned char      a0 = block[0];
@@ -187,12 +187,12 @@ static int etc2Extend5(int v)
 	return (v << 3) | (v >> 2); 
 }
 
-#define R201_ETC2_S_RANGE 1531
-static unsigned char s_etc2BestJ[8][R201_ETC2_S_RANGE];
-static signed char   s_etc2BestMod[8][R201_ETC2_S_RANGE];
+#define SMP_ETC2_S_RANGE 1531
+static unsigned char s_etc2BestJ[8][SMP_ETC2_S_RANGE];
+static signed char   s_etc2BestMod[8][SMP_ETC2_S_RANGE];
 static int           s_etc2TablesReady = 0;
 
-void R201_InitCodecTables(void)
+void SMP_InitCodecTables(void)
 {
 	int t, i;
 
@@ -200,7 +200,7 @@ void R201_InitCodecTables(void)
 		return;
 	}
 	for (t = 0; t < 8; t++) {
-		for (i = 0; i < R201_ETC2_S_RANGE; i++) {
+		for (i = 0; i < SMP_ETC2_S_RANGE; i++) {
 			int S = i - 765, j, bj = 0, bc = 0x7fffffff;
 
 			for (j = 0; j < 4; j++) {
@@ -235,7 +235,7 @@ static int etc2TableCost(const int px[8][3], const int base[3], int t,
 		int m;
 
 		if (si < 0) si = 0;
-		if (si >= R201_ETC2_S_RANGE) si = R201_ETC2_S_RANGE - 1;
+		if (si >= SMP_ETC2_S_RANGE) si = SMP_ETC2_S_RANGE - 1;
 		m = mTab[si];
 		if (modOut) modOut[p] = m;
 		if (idxOut) idxOut[p] = jTab[si];
@@ -389,7 +389,7 @@ static void etc2PutBits(unsigned long long *lo, unsigned long long *hi,
 	}
 }
 
-static void r201PutBitsDown(unsigned long long *lo, unsigned long long *hi,
+static void smpPutBitsDown(unsigned long long *lo, unsigned long long *hi,
 							int pos, unsigned long long val, int nbits)
 {
 	int i;
@@ -721,7 +721,7 @@ static void etc2EncodeAlpha(const unsigned char rgba[64], unsigned char out[8])
 	}
 }
 
-#define R201_ASTC_MODE_2BIT 0x42u	
+#define SMP_ASTC_MODE_2BIT 0x42u	
 
 static const int s_astcLvl2[4] = { 0, 21, 43, 64 };
 
@@ -909,7 +909,7 @@ static int astcEncodeCem12(const unsigned char rgba[64], unsigned char out[16])
 		unsigned long long lo = 0, hi = 0;
 		int                vals[8];
 
-		etc2PutBits(&lo, &hi, 0, (unsigned long long)R201_ASTC_MODE_2BIT | (12ull << 13), 17);
+		etc2PutBits(&lo, &hi, 0, (unsigned long long)SMP_ASTC_MODE_2BIT | (12ull << 13), 17);
 		vals[0] = e0i[0]; vals[1] = e1i[0];
 		vals[2] = e0i[1]; vals[3] = e1i[1];
 		vals[4] = e0i[2]; vals[5] = e1i[2];
@@ -918,7 +918,7 @@ static int astcEncodeCem12(const unsigned char rgba[64], unsigned char out[16])
 			etc2PutBits(&lo, &hi, 17 + 8 * i, (unsigned long long)(vals[i] & 0xFF), 8);
 		}
 		for (i = 0; i < 16; i++) {
-			r201PutBitsDown(&lo, &hi, 127 - 2 * i, (unsigned long long)(wIdx[i] & 3), 2);
+			smpPutBitsDown(&lo, &hi, 127 - 2 * i, (unsigned long long)(wIdx[i] & 3), 2);
 		}
 		for (i = 0; i < 8; i++) {
 			out[i] = (unsigned char)((lo >> (8 * i)) & 0xFF);
@@ -933,29 +933,29 @@ static void astcEncode(const unsigned char rgba[64], unsigned char out[16])
 	(void)astcEncodeCem12(rgba, out);
 }
 
-void R201_TranscodeRGBA(const unsigned char rgba[64], int target, unsigned char *dst)
+void SMP_TranscodeRGBA(const unsigned char rgba[64], int target, unsigned char *dst)
 {
-	if (target == R201_TEXC_ASTC_4x4) {
+	if (target == SMP_TEXC_ASTC_4x4) {
 		astcEncode(rgba, dst);
-	} else if (target == R201_TEXC_ETC2_RGBA8) {
+	} else if (target == SMP_TEXC_ETC2_RGBA8) {
 		etc2EncodeAlpha(rgba, dst);
 		etc2EncodeColor(rgba, dst + 8);
 	} else {
-		memset(dst, 0, R201_TEXC_BLOCK_BYTES);
+		memset(dst, 0, SMP_TEXC_BLOCK_BYTES);
 	}
 }
 
-void R201_TranscodeBlock(int dxt, const unsigned char *src, int target, unsigned char *dst)
+void SMP_TranscodeBlock(int dxt, const unsigned char *src, int target, unsigned char *dst)
 {
 	unsigned char rgba[64];
 
-	R201_DXTDecodeBlock(dxt, src, rgba);
-	R201_TranscodeRGBA(rgba, target, dst);
+	SMP_DXTDecodeBlock(dxt, src, rgba);
+	SMP_TranscodeRGBA(rgba, target, dst);
 }
 
-void R201_TranscodeRows(void *vctx, int begin, int end)
+void SMP_TranscodeRows(void *vctx, int begin, int end)
 {
-	const r201TranscodeRows_t *c = (const r201TranscodeRows_t *)vctx;
+	const smpTranscodeRows_t *c = (const smpTranscodeRows_t *)vctx;
 	int                        by;
 
 	for (by = begin; by < end; by++) {
@@ -964,14 +964,14 @@ void R201_TranscodeRows(void *vctx, int begin, int end)
 		for (bx = 0; bx < c->bw; bx++) {
 			int i = by * c->bw + bx;
 
-			R201_TranscodeBlock(c->dxt, c->src + i * (c->dxt == R201_DXT1 ? 8 : 16),
-								c->target, c->dst + i * R201_TEXC_BLOCK_BYTES);
+			SMP_TranscodeBlock(c->dxt, c->src + i * (c->dxt == SMP_DXT1 ? 8 : 16),
+								c->target, c->dst + i * SMP_TEXC_BLOCK_BYTES);
 		}
 	}
 }
 
 
-void R201_MipMap(unsigned char *in, int width, int height)
+void SMP_MipMap(unsigned char *in, int width, int height)
 {
 	int   i, j;
 	unsigned char *out;
@@ -1007,19 +1007,19 @@ void R201_MipMap(unsigned char *in, int width, int height)
 	}
 }
 
-static void R201_DecodeLevelToRGBA(const unsigned char *src, int dxt, int w, int h,
+static void SMP_DecodeLevelToRGBA(const unsigned char *src, int dxt, int w, int h,
 								   unsigned char *rgba)
 {
 	int bw = (w + 3) / 4;
 	int bh = (h + 3) / 4;
-	int blockBytes = (dxt == R201_DXT1) ? 8 : 16;
+	int blockBytes = (dxt == SMP_DXT1) ? 8 : 16;
 	int bx, by, x, y, k;
 
 	for (by = 0; by < bh; by++) {
 		for (bx = 0; bx < bw; bx++) {
 			unsigned char blockRGBA[64];
 
-			R201_DXTDecodeBlock(dxt, src + (by * bw + bx) * blockBytes, blockRGBA);
+			SMP_DXTDecodeBlock(dxt, src + (by * bw + bx) * blockBytes, blockRGBA);
 			for (y = 0; y < 4; y++) {
 				for (x = 0; x < 4; x++) {
 					int tx = bx * 4 + x;
@@ -1037,7 +1037,7 @@ static void R201_DecodeLevelToRGBA(const unsigned char *src, int dxt, int w, int
 	}
 }
 
-static void R201_EncodeLevelToBlocks(const unsigned char *rgba, int w, int h, int target,
+static void SMP_EncodeLevelToBlocks(const unsigned char *rgba, int w, int h, int target,
 									 unsigned char *out)
 {
 	int bw = (w + 3) / 4;
@@ -1060,12 +1060,12 @@ static void R201_EncodeLevelToBlocks(const unsigned char *rgba, int w, int h, in
 					}
 				}
 			}
-			R201_TranscodeRGBA(blockRGBA, target, out + (by * bw + bx) * R201_TEXC_BLOCK_BYTES);
+			SMP_TranscodeRGBA(blockRGBA, target, out + (by * bw + bx) * SMP_TEXC_BLOCK_BYTES);
 		}
 	}
 }
 
-int R201_TranscodeChainBytes(int upW, int upH, int levels)
+int SMP_TranscodeChainBytes(int upW, int upH, int levels)
 {
 	int w = upW, h = upH, lvl, total = 0;
 
@@ -1073,25 +1073,25 @@ int R201_TranscodeChainBytes(int upW, int upH, int levels)
 		return 0;
 	}
 	for (lvl = 0; lvl < levels; lvl++) {
-		total += ((w + 3) / 4) * ((h + 3) / 4) * R201_TEXC_BLOCK_BYTES;
+		total += ((w + 3) / 4) * ((h + 3) / 4) * SMP_TEXC_BLOCK_BYTES;
 		if (w > 1) w >>= 1;
 		if (h > 1) h >>= 1;
 	}
 	return total;
 }
 
-int R201_TranscodeChain(const unsigned char *data, int srcDxt, int width, int height,
+int SMP_TranscodeChain(const unsigned char *data, int srcDxt, int width, int height,
 						int iMipmapsAvailable, int base,
 						int upW, int upH, int levels, int target,
 						unsigned char *out,
 						void *(*alloc)(int), void (*dealloc)(void *),
-						r201TranscodeRunner_t runRows, void *runUd)
+						smpTranscodeRunner_t runRows, void *runUd)
 {
-	int				blockBytes = (srcDxt == R201_DXT1) ? 8 : 16;
+	int				blockBytes = (srcDxt == SMP_DXT1) ? 8 : 16;
 	int				storedLevels, needRGBA, srcOffset = 0;
 	int				w, h, pw, ph, lvl, off = 0, i, tw, th;
 	unsigned char	*rgba = NULL;
-	r201TranscodeRows_t ctx;
+	smpTranscodeRows_t ctx;
 
 	if (!data || !out || levels < 1 || upW < 1 || upH < 1) {
 		return 0;
@@ -1130,7 +1130,7 @@ int R201_TranscodeChain(const unsigned char *data, int srcDxt, int width, int he
 	for (lvl = 0; lvl < levels; lvl++) {
 		int bw = (w + 3) / 4;
 		int bh = (h + 3) / 4;
-		int size = bw * bh * R201_TEXC_BLOCK_BYTES;
+		int size = bw * bh * SMP_TEXC_BLOCK_BYTES;
 
 		ctx.dst = out + off;
 		if (lvl < storedLevels) {
@@ -1139,16 +1139,16 @@ int R201_TranscodeChain(const unsigned char *data, int srcDxt, int width, int he
 			if (runRows) {
 				runRows(runUd, &ctx, bh, bw);
 			} else {
-				R201_TranscodeRows(&ctx, 0, bh);
+				SMP_TranscodeRows(&ctx, 0, bh);
 			}
 
 			if (needRGBA && lvl == storedLevels - 1) {
-				R201_DecodeLevelToRGBA(data + srcOffset, srcDxt, w, h, rgba);
+				SMP_DecodeLevelToRGBA(data + srcOffset, srcDxt, w, h, rgba);
 			}
 			srcOffset += bw * bh * blockBytes;
 		} else {
-			R201_MipMap(rgba, pw, ph);
-			R201_EncodeLevelToBlocks(rgba, w, h, target, out + off);
+			SMP_MipMap(rgba, pw, ph);
+			SMP_EncodeLevelToBlocks(rgba, w, h, target, out + off);
 		}
 		pw = w;
 		ph = h;

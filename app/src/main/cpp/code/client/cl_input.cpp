@@ -2,9 +2,9 @@
 #include "client.h"
 
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       Com_Printf
+#include "../qcommon/qa_probe.h"
 #include "cl_ui.h"
 
 unsigned	frame_msec;
@@ -81,7 +81,7 @@ int		in_scoreboardShown;
 int		in_missionStatus;		 
 
 void IN_Objectives_ScoreDown( void ) {
-	R120_PROBE(
+	PROBE(
 		"score:down",
 		"cg_gametype=%d -> %s",
 		cg_gametype->integer,

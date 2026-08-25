@@ -9,13 +9,13 @@
 #include "cl_ui.h"
 #include "cl_savemanager.h"
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_r202.h"
+#include "../qcommon/qa_ui.h"
 
-#include "../uilib/r203_uiprobe.h"
+#include "../uilib/limit_uiprobe.h"
 
 #include "../corepp/listener.h"
 #include "../corepp/script.h"
@@ -472,95 +472,95 @@ void UI_FocusMenuIfExists(void)
         // focus pass must perform exactly what retail's ActivateMenu does -- one
         currentMenu->ActivateMenu();
 
-        if (R120_On() && view3d) {
-            int    r127total = uWinMan.GetChildCount();
-            int    r127v3d = 0;
-            int    r127menu = 0;
-            int    r127tie = 0;   
-            int    r127tieNC = 0; 
-            int    r127con_ = 0;  
-            UIWidget *r127con = currentMenu->GetContainerWidget();
+        if (PROBE_On() && view3d) {
+            int    painttotal = uWinMan.GetChildCount();
+            int    paintv3d = 0;
+            int    paintmenu = 0;
+            int    painttie = 0;   
+            int    painttieNC = 0; 
+            int    paintcon_ = 0;  
+            UIWidget *paintcon = currentMenu->GetContainerWidget();
 
-            for (int r127i = 1; r127i <= r127total; r127i++) {
-                UIWidget *r127w = uWinMan.GetChild(r127i);
+            for (int painti = 1; painti <= painttotal; painti++) {
+                UIWidget *paintw = uWinMan.GetChild(painti);
 
-                if (r127w == view3d) {
-                    r127v3d = r127i;
+                if (paintw == view3d) {
+                    paintv3d = painti;
                 }
-                if (r127con && r127w == r127con) {
-                    r127menu = r127i;
+                if (paintcon && paintw == paintcon) {
+                    paintmenu = painti;
                 }
-                if (!r127w->isSubclassOf(UIWidgetContainer) && r127w != view3d) {
-                    r127con_++;
+                if (!paintw->isSubclassOf(UIWidgetContainer) && paintw != view3d) {
+                    paintcon_++;
                 }
                 // the shipped data does not produce.  tieNC splits them by class: retail's
-                if (r127w->getDepth() >= 1.0f) {
-                    r127tie++;
-                    if (!r127w->isSubclassOf(UIWidgetContainer)) {
-                        r127tieNC++;
+                if (paintw->getDepth() >= 1.0f) {
+                    painttie++;
+                    if (!paintw->isSubclassOf(UIWidgetContainer)) {
+                        painttieNC++;
                     }
                 }
             }
 
-            char r127front[512];
-            r127front[0] = 0;
-            for (int r127f = 1; r127f <= 8 && r127f <= r127total; r127f++) {
-                UIWidget *r127w = uWinMan.GetChild(r127f);
-                const char *r127nm = r127w ? r127w->getName() : "(null)";
+            char paintfront[512];
+            paintfront[0] = 0;
+            for (int paintf = 1; paintf <= 8 && paintf <= painttotal; paintf++) {
+                UIWidget *paintw = uWinMan.GetChild(paintf);
+                const char *paintnm = paintw ? paintw->getName() : "(null)";
 
-                Q_strcat(r127front, sizeof(r127front), va("%d:%s/%.2f ", r127f, r127nm ? r127nm : "?", (double)(r127w ? r127w->getDepth() : -1.0f)));
+                Q_strcat(paintfront, sizeof(paintfront), va("%d:%s/%.2f ", paintf, paintnm ? paintnm : "?", (double)(paintw ? paintw->getDepth() : -1.0f)));
             }
 
-            char r127tieNames[2048];
-            r127tieNames[0] = 0;
-            for (int r127t = 1; r127t <= r127total && strlen(r127tieNames) < 1800; r127t++) {
-                UIWidget *r127w = uWinMan.GetChild(r127t);
+            char painttieNames[2048];
+            painttieNames[0] = 0;
+            for (int paintt = 1; paintt <= painttotal && strlen(painttieNames) < 1800; paintt++) {
+                UIWidget *paintw = uWinMan.GetChild(paintt);
 
-                if (r127w && r127w->getDepth() >= 1.0f) {
-                    const char *r127nm = r127w->getName();
+                if (paintw && paintw->getDepth() >= 1.0f) {
+                    const char *paintnm = paintw->getName();
 
-                    Q_strcat(r127tieNames, sizeof(r127tieNames), va("%s/%.2f ", r127nm ? r127nm : "?", (double)r127w->getDepth()));
+                    Q_strcat(painttieNames, sizeof(painttieNames), va("%s/%.2f ", paintnm ? paintnm : "?", (double)paintw->getDepth()));
                 }
             }
 
-            static int r133_prevv3d;
-            static int r133_prevmenu;
-            int        r133_flip = 0;
+            static int uivk_prevv3d;
+            static int uivk_prevmenu;
+            int        uivk_flip = 0;
 
-            if (r133_prevmenu && r127menu && r127v3d) {
-                int wasOver = (r133_prevmenu < r133_prevv3d);
-                int isOver  = (r127menu < r127v3d);
+            if (uivk_prevmenu && paintmenu && paintv3d) {
+                int wasOver = (uivk_prevmenu < uivk_prevv3d);
+                int isOver  = (paintmenu < paintv3d);
 
-                r133_flip = (wasOver != isOver) ? 1 : 0;
+                uivk_flip = (wasOver != isOver) ? 1 : 0;
             }
-            r133_prevv3d = r127v3d;
-            r133_prevmenu = r127menu;
+            uivk_prevv3d = paintv3d;
+            uivk_prevmenu = paintmenu;
 
-            int r133_gap = (r127menu && r127v3d) ? (r127v3d - r127menu) : 0;
+            int uivk_gap = (paintmenu && paintv3d) ? (paintv3d - paintmenu) : 0;
 
-            R127_PROBE("paint:order",
+            PAINT_PROBE("paint:order",
                        "menu='%s' children=%d containerIndex=%d depth=%.3f visible=%d | "
                        "view3dIndex=%d depth=%.3f visible=%d cls.state=%d tie=%d tieNC=%d nonurc=%d flip=%d prev3d=%d gap=%d | %s| front=%s| tieNames=%s guimouse=%d",
                        currentMenu->m_name.c_str(),
-                       r127total,
-                       r127menu,
-                       r127con ? (double)r127con->getDepth() : -1.0,
+                       painttotal,
+                       paintmenu,
+                       paintcon ? (double)paintcon->getDepth() : -1.0,
                        (currentMenu->isVisible()) ? 1 : 0,
-                       r127v3d,
+                       paintv3d,
                        (double)view3d->getDepth(),
                        view3d->getShow() ? 1 : 0,
                        cls.state,
-                       r127tie,
-                       r127tieNC,
-                       r127con_,
-                       r133_flip,
-                       r133_prevv3d,
-                       r133_gap,
-                       (r127menu && r127v3d && r127menu < r127v3d)
+                       painttie,
+                       painttieNC,
+                       paintcon_,
+                       uivk_flip,
+                       uivk_prevv3d,
+                       uivk_gap,
+                       (paintmenu && paintv3d && paintmenu < paintv3d)
                            ? "VIEW3D PAINTS OVER THE MENU"
                            : "menu paints over view3d",
-                       r127front,
-                       r127tieNames,
+                       paintfront,
+                       painttieNames,
                        in_guimouse ? 1 : 0);
         }
     }
@@ -598,7 +598,7 @@ void UI_CloseConsole(void)
     if (fakk_console && fakk_console->getShow()) {
         fakk_console->setShow(false);
     }
-    R133_PROBE("focus", "caller=UI_CloseConsole State=%d", cls.state);
+    UIVK_PROBE("focus", "caller=UI_CloseConsole State=%d", cls.state);
     UI_FocusMenuIfExists();
 }
 
@@ -613,7 +613,7 @@ void UI_ToggleConsole(void)
             fakk_console->setShow(false);
         }
 
-        R133_PROBE("focus", "caller=UI_ToggleConsole hide State=%d", cls.state);
+        UIVK_PROBE("focus", "caller=UI_ToggleConsole hide State=%d", cls.state);
         UI_FocusMenuIfExists();
     } else {
         fakk_console->setShow(true);
@@ -854,24 +854,24 @@ void CL_ServerRefresh(void);
 
 static void UI_Update_Impl(void);
 
-#define R202_UI_STATE_END() \
+#define UI_UI_STATE_END() \
     do { \
-        if ( r202_statsOn && r202_stateT0 >= 0 ) { \
-            R202_Add( R202_FAM_UI, R202_UIZ_state, R202_Microseconds() - r202_stateT0 ); \
-            r202_stateT0 = -1; \
-            R203_StateEnd(); \
+        if ( ui_statsOn && ui_stateT0 >= 0 ) { \
+            UI_Add( UI_FAM_UI, UI_UIZ_state, UI_Microseconds() - ui_stateT0 ); \
+            ui_stateT0 = -1; \
+            LIMIT_StateEnd(); \
         } \
     } while ( 0 )
 
 void UI_Update(void)
 {
-    R202_ROOT_BEGIN(R202_FAM_UI);
+    UI_ROOT_BEGIN(UI_FAM_UI);
 
     UI_Update_Impl();
 
-    R202_ROOT_END(R202_FAM_UI);
+    UI_ROOT_END(UI_FAM_UI);
 
-    R203_UiFrameEnd();
+    LIMIT_UiFrameEnd();
 }
 
 static void UI_Update_Impl(void)
@@ -883,32 +883,32 @@ static void UI_Update_Impl(void)
     int          ammoIdx;
     str          menuName;
 
-    int          r202_z0, r202_z1, r202_z2, r202_z3;
-    int          r202_stateT0 = -1;
+    int          ui_z0, ui_z1, ui_z2, ui_z3;
+    int          ui_stateT0 = -1;
 
-    r202_z0 = ( r202_statsOn ? R202_Microseconds() : 0 );
+    ui_z0 = ( ui_statsOn ? UI_Microseconds() : 0 );
     re.SetRenderTime(cls.realtime);                       
-    if ( r202_statsOn ) { R202_Add( R202_FAM_UI, R202_UIZ_setrt, R202_Microseconds() - r202_z0 ); }
+    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_setrt, UI_Microseconds() - ui_z0 ); }
 
     {
         int dx, dy, dw, dh;
 
-        int r203_uit_aspect = R203_Leg();
+        int limit_uit_aspect = LIMIT_Leg();
 
         SCR_AndroidDisplayRect(cls.glconfig.vidWidth, cls.glconfig.vidHeight, &dx, &dy, &dw, &dh);
         if (dx != uid.originX || dy != uid.originY || dw != uid.vidWidth || dh != uid.vidHeight) {
             UI_ResolutionChange();
         }
 
-        R203_LegEnd(R203_FAM_UIT, R203_UITZ_aspect, r203_uit_aspect);
+        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_aspect, limit_uit_aspect);
     }
 
-    r202_z1 = ( r202_statsOn ? R202_Microseconds() : 0 );
+    ui_z1 = ( ui_statsOn ? UI_Microseconds() : 0 );
     CL_FillUIDef();
-    if ( r202_statsOn ) { R202_Add( R202_FAM_UI, R202_UIZ_filluid, R202_Microseconds() - r202_z1 ); }
+    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_filluid, UI_Microseconds() - ui_z1 ); }
 
     if (cl.snap.ps.stats[STAT_CINEMATIC] & 1) {
-        int r203_uit_cine = R203_Leg();
+        int limit_uit_cine = LIMIT_Leg();
 
         Cbuf_AddText("globalwidgetcommand InventoryBar inventoryhide\n"); 
         if (!hudListHidden) {
@@ -916,26 +916,26 @@ static void UI_Update_Impl(void)
             hudListHidden = qtrue;
         }
 
-        R203_LegEnd(R203_FAM_UIT, R203_UITZ_cine, r203_uit_cine);
+        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_cine, limit_uit_cine);
     }
 
-    r202_z2 = ( r202_statsOn ? R202_Microseconds() : 0 );
+    ui_z2 = ( ui_statsOn ? UI_Microseconds() : 0 );
     uWinMan.ServiceEvents();
-    if ( r202_statsOn ) { R202_Add( R202_FAM_UI, R202_UIZ_service, R202_Microseconds() - r202_z2 ); }
+    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_service, UI_Microseconds() - ui_z2 ); }
 
-    r202_z3 = ( r202_statsOn ? R202_Microseconds() : 0 );
+    ui_z3 = ( ui_statsOn ? UI_Microseconds() : 0 );
     UI_SetupConsoles();
-    if ( r202_statsOn ) { R202_Add( R202_FAM_UI, R202_UIZ_consoles, R202_Microseconds() - r202_z3 ); }
+    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_consoles, UI_Microseconds() - ui_z3 ); }
 
-    r202_stateT0 = ( r202_statsOn ? R202_Microseconds() : 0 );
-    R203_StateBegin();
+    ui_stateT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
+    LIMIT_StateBegin();
 
     if (cls.no_menus && cls.state == CA_ACTIVE) {
-        int r203_uis_nomenu = R203_Leg();
+        int limit_uis_nomenu = LIMIT_Leg();
 
         view3d->setShow(true);
         frame = uWinMan.getFrame();
-        R202_ZONE(R202_FAM_UI, R202_UIZ_views, view3d->Display(frame, 1.0));
+        UI_ZONE(UI_FAM_UI, UI_UIZ_views, view3d->Display(frame, 1.0));
 
         if (ui_hud && !view3d->LetterboxActive()) {
             weapHud = NULL;
@@ -962,12 +962,12 @@ static void UI_Update_Impl(void)
             }
         }
 
-        R203_LegEnd(R203_FAM_UIS, R203_UISZ_nomenu, r203_uis_nomenu);
-        R202_UI_STATE_END();
+        LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_nomenu, limit_uis_nomenu);
+        UI_UI_STATE_END();
         return;
     }
 
-    int r203_uis_machine = R203_Leg();
+    int limit_uis_machine = LIMIT_Leg();
 
     currentMenu = menuManager.CurrentMenu();              
 
@@ -1056,11 +1056,11 @@ static void UI_Update_Impl(void)
         }
     }
 
-    R203_LegEnd(R203_FAM_UIS, R203_UISZ_machine, r203_uis_machine);
+    LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_machine, limit_uis_machine);
 
 
     if (!ui_hud || cls.state != CA_ACTIVE || view3d->LetterboxActive() || (currentMenu && currentMenu->isFullscreen())) {
-        int r203_uis_hudhide = R203_Leg();
+        int limit_uis_hudhide = LIMIT_Leg();
         // statics that retail never writes, so the branch is live only while
         if (server_loading) {
             if (headhud && headhud->isVisible()) {
@@ -1110,9 +1110,9 @@ static void UI_Update_Impl(void)
         if (hud_targetName) {
             hud_targetName->ForceHide();                  
         }
-        R203_LegEnd(R203_FAM_UIS, R203_UISZ_hudhide, r203_uis_hudhide);
+        LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_hudhide, limit_uis_hudhide);
     } else {
-        int r203_uis_hudshow = R203_Leg();
+        int limit_uis_hudshow = LIMIT_Leg();
         if (cl.snap.ps.stats[STAT_HEALTH] > 0) {
             lastScoreboardTime = cls.realtime;
         }
@@ -1121,9 +1121,9 @@ static void UI_Update_Impl(void)
             && ((cl.snap.ps.pm_flags & PMF_INTERMISSION)
                 || (cl.snap.ps.stats[STAT_HEALTH] <= 0 && cg_gametype->integer
                     && cls.realtime > lastScoreboardTime + 1000))) {
-            static int r124_sb_arm;
-            if (R120_Throttle(&r124_sb_arm, 1, 20)) {
-                R124_PROBE("sb:deadarmlive",
+            static int tikanim_sb_arm;
+            if (PROBE_Throttle(&tikanim_sb_arm, 1, 20)) {
+                TIKIANIM_PROBE("sb:deadarmlive",
                            "health=%d gametype=%d intermission=%d realtime=%d lastScore=%d",
                            cl.snap.ps.stats[STAT_HEALTH], cg_gametype->integer,
                            (cl.snap.ps.pm_flags & PMF_INTERMISSION) ? 1 : 0,
@@ -1139,17 +1139,17 @@ static void UI_Update_Impl(void)
                 CL_ServerRefresh();                       
             }
 
-            R202_UI_STATE_END();
-            R202_ZONE(R202_FAM_UI, R202_UIZ_menus, menuManager.UpdateAllMenus());
-            R202_ZONE(R202_FAM_UI, R202_UIZ_views, uWinMan.UpdateViews());
+            UI_UI_STATE_END();
+            UI_ZONE(UI_FAM_UI, UI_UIZ_menus, menuManager.UpdateAllMenus());
+            UI_ZONE(UI_FAM_UI, UI_UIZ_views, uWinMan.UpdateViews());
             return;
         }
 
         if (cg_gametype->integer) {
             if (!in_scoreboardShown) {
-                static int r124_sb_uhide;
-                if (R120_Throttle(&r124_sb_uhide, 1, 20)) {
-                    R124_PROBE("sb:uihide", "cg_gametype=%d in_scoreboardShown=0 -> UI_HideScoreboard_f", cg_gametype->integer);
+                static int tikanim_sb_uhide;
+                if (PROBE_Throttle(&tikanim_sb_uhide, 1, 20)) {
+                    TIKIANIM_PROBE("sb:uihide", "cg_gametype=%d in_scoreboardShown=0 -> UI_HideScoreboard_f", cg_gametype->integer);
                 }
                 UI_HideScoreboard_f();
             }
@@ -1175,8 +1175,8 @@ static void UI_Update_Impl(void)
 
         if (cl.snap.ps.missionStatus & 1) {
             UI_ShowMissionFailed(true);
-            R202_UI_STATE_END();
-            R202_ZONE(R202_FAM_UI, R202_UIZ_views, uWinMan.UpdateViews());
+            UI_UI_STATE_END();
+            UI_ZONE(UI_FAM_UI, UI_UIZ_views, uWinMan.UpdateViews());
             return;
         }
         UI_ShowMissionFailed(false);
@@ -1257,21 +1257,21 @@ static void UI_Update_Impl(void)
             UI_ShowHudList();
             hudListHidden = qfalse;
         }
-        R203_LegEnd(R203_FAM_UIS, R203_UISZ_hudshow, r203_uis_hudshow);
+        LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_hudshow, limit_uis_hudshow);
     }
 
-    R202_UI_STATE_END();
+    UI_UI_STATE_END();
 
     {
-        int r203_uit_srvref = R203_Leg();
+        int limit_uit_srvref = LIMIT_Leg();
 
         CL_ServerRefresh();
 
-        R203_LegEnd(R203_FAM_UIT, R203_UITZ_srvref, r203_uit_srvref);
+        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_srvref, limit_uit_srvref);
     }
 
     {
-        int r203_uit_print = R203_Leg();
+        int limit_uit_print = LIMIT_Leg();
 
         if (ui_printStrings.NumObjects()) {
             str s = ui_printStrings.ObjectAt(1);
@@ -1279,11 +1279,11 @@ static void UI_Update_Impl(void)
             ui_printStrings.RemoveObjectAt(1);
         }
 
-        R203_LegEnd(R203_FAM_UIT, R203_UITZ_printpop, r203_uit_print);
+        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_printpop, limit_uit_print);
     }
 
-    R202_ZONE(R202_FAM_UI, R202_UIZ_menus, menuManager.UpdateAllMenus());
-    R202_ZONE(R202_FAM_UI, R202_UIZ_views, uWinMan.UpdateViews());
+    UI_ZONE(UI_FAM_UI, UI_UIZ_menus, menuManager.UpdateAllMenus());
+    UI_ZONE(UI_FAM_UI, UI_UIZ_views, uWinMan.UpdateViews());
 }
 
 void UI_ToggleMenu(str name)
@@ -1321,7 +1321,7 @@ void UI_PopMenu(qboolean restore_cvars)
         menuManager.PopMenu(restore_cvars);
     }
 
-    R133_PROBE("focus", "caller=UI_PopMenu State=%d", cls.state);
+    UIVK_PROBE("focus", "caller=UI_PopMenu State=%d", cls.state);
     UI_FocusMenuIfExists();
 }
 
@@ -1339,7 +1339,7 @@ void UI_PushMenu(const char *name)
         menuManager.PushMenu(name);
     }
 
-    R133_PROBE("focus",
+    UIVK_PROBE("focus",
                "caller=UI_PushMenu name='%s' pushed=%d State=%d",
                name,
                bDiff ? 1 : 0,
@@ -1387,7 +1387,7 @@ void UI_ShowMenu(const char *name, qboolean bForce)
     //    widgetContainerCompare (@0x000B4450), which NEVER answers 0 -- a tie
     menuManager.ShowMenu(name);
 
-    R133_PROBE("focus", "caller=UI_ShowMenu name='%s' State=%d", name, cls.state);
+    UIVK_PROBE("focus", "caller=UI_ShowMenu name='%s' State=%d", name, cls.state);
     UI_FocusMenuIfExists();
 }
 
@@ -1494,7 +1494,7 @@ void UI_GlobalWidgetCommand_f(void)
     commandstring = Cmd_Argv(2);
     Event *event  = new Event(commandstring);
 
-    R120_PROBE("inv:gwc", "widget='%s' event='%s' argc=%d", name.c_str(), commandstring.c_str(), Cmd_Argc());
+    PROBE("inv:gwc", "widget='%s' event='%s' argc=%d", name.c_str(), commandstring.c_str(), Cmd_Argc());
 
     for (int i = 3; i < Cmd_Argc(); i++) {
         event->AddToken(Cmd_Argv(i));
@@ -1531,13 +1531,13 @@ extern "C" qboolean UI_IsHudActive_C(void)
 void UI_MenuEscape(const char *name)
 {
     if (uWinMan.BindActive()) {
-        R133_PROBE("key", "key='ESCAPE' MenuEscape arm=BindActive");
+        UIVK_PROBE("key", "key='ESCAPE' MenuEscape arm=BindActive");
         UI_KeyEvent(K_ESCAPE, qfalse);
         return;
     }
 
     if (server_loading) {
-        R133_PROBE("key", "key='ESCAPE' MenuEscape arm=server_loading State=%d", cls.state);
+        UIVK_PROBE("key", "key='ESCAPE' MenuEscape arm=server_loading State=%d", cls.state);
         return;
     }
 
@@ -1553,7 +1553,7 @@ void UI_MenuEscape(const char *name)
         Menu *hud = hudList.ObjectAt(i);
 
         if (hud && hud->isNoEscape()) {
-            R133_PROBE("key",
+            UIVK_PROBE("key",
                        "key='ESCAPE' MenuEscape arm=noEscape-hud-scan -> return (hud '%s')",
                        hud->m_name.c_str());
             return;
@@ -1564,13 +1564,13 @@ void UI_MenuEscape(const char *name)
         Menu *cur = menuManager.CurrentMenu();
 
         if (!cur->isNoEscape()) {
-            R133_PROBE("key",
+            UIVK_PROBE("key",
                        "key='ESCAPE' MenuEscape arm=PopMenu '%s' State=%d",
                        cur->m_name.c_str(),
                        cls.state);
             menuManager.PopMenu(qtrue);
         } else {
-            R133_PROBE("key",
+            UIVK_PROBE("key",
                        "key='ESCAPE' MenuEscape arm=noEscape '%s' -> focus pass only State=%d",
                        cur->m_name.c_str(),
                        cls.state);
@@ -1579,7 +1579,7 @@ void UI_MenuEscape(const char *name)
         UI_FocusMenuIfExists();
         return;
     } else if (!Q_stricmp(name, "main") && cls.state == CA_ACTIVE && cg_gametype->integer == 0) {
-        R133_PROBE("key",
+        UIVK_PROBE("key",
                    "key='ESCAPE' MenuEscape arm=PushMenu ingame_singleplayer State=%d",
                    cls.state);
         UI_PushMenu("ingame_singleplayer");
@@ -2087,7 +2087,7 @@ void CL_FillUIImports(void)
 
 void CL_BeginRegistration(void)
 {
-    R201_LOAD_BEGIN( rendreg );
+    SMP_LOAD_BEGIN( rendreg );
     re.BeginRegistration(&cls.glconfig);
 #ifdef __ANDROID__
     {
@@ -2098,7 +2098,7 @@ void CL_BeginRegistration(void)
     uWinMan.CleanupShadersFromList();
     // Models have no lazy path: retail re-registers them eagerly, and they MUST be
     uWinMan.RegisterModelsFromList();
-    R201_LOAD_END( rendreg );
+    SMP_LOAD_END( rendreg );
 }
 
 void CL_EndRegistration(void)
@@ -2207,7 +2207,7 @@ void UI_ServerLoaded(void)
 {
     cvar_t *pMaxClients;
 
-    R131M1_PROBE( "svloaded", "state=%d svrun=%d paused=%d serverLoading=%d", cls.state,
+    WIDGETM1_PROBE( "svloaded", "state=%d svrun=%d paused=%d serverLoading=%d", cls.state,
         com_sv_running->integer, paused ? paused->integer : -1, UI_IsServerLoading() );
 
     CL_UpdateSnapFlags();
@@ -4697,7 +4697,7 @@ void UI_StopLoading(void)
     menuManager.setLoading(false);
     menuManager.Unlock(NULL);
     menuManager.ClearMenus(true);
-    R133_PROBE("focus", "caller=UI_StopLoading State=%d", cls.state);
+    UIVK_PROBE("focus", "caller=UI_StopLoading State=%d", cls.state);
     UI_FocusMenuIfExists();
     StopLoadingScreen();
 }
@@ -5572,48 +5572,48 @@ void CL_InitializeUI(void)
     }
 
     // retail's widgetContainerCompare @0x000B4450 never answers 0.  R4's replay over the
-    static char r133_creation[24576];
-    r133_creation[0] = 0;
+    static char uivk_creation[24576];
+    uivk_creation[0] = 0;
     {
-        int r133n = uWinMan.GetChildCount();
+        int uivkn = uWinMan.GetChildCount();
 
-        R133_PROBE("creation", "children=%d", r133n);
+        UIVK_PROBE("creation", "children=%d", uivkn);
 
-        for (int r133i = 1; r133i <= r133n && strlen(r133_creation) < 24000; r133i++) {
-            UIWidget *r133w = uWinMan.GetChild(r133i);
+        for (int uivki = 1; uivki <= uivkn && strlen(uivk_creation) < 24000; uivki++) {
+            UIWidget *uivkw = uWinMan.GetChild(uivki);
 
-            Q_strcat(r133_creation, sizeof(r133_creation),
-                     va("%s/%.2f ", r133w ? r133w->getName() : "?", (double)(r133w ? r133w->getDepth() : -1.0f)));
+            Q_strcat(uivk_creation, sizeof(uivk_creation),
+                     va("%s/%.2f ", uivkw ? uivkw->getName() : "?", (double)(uivkw ? uivkw->getDepth() : -1.0f)));
         }
     }
 
     uWinMan.CreateMenus();
     uWinMan.sortWidgetContainers();
 
-    if (R120_On()) {
-        static const char *r127_ids[3] = {"$$Prologue$$", "$$Prologue2$$", "$$SkipPrologue$$"};
-        int                 r127i;
+    if (PROBE_On()) {
+        static const char *paint_ids[3] = {"$$Prologue$$", "$$Prologue2$$", "$$SkipPrologue$$"};
+        int                 painti;
 
-        R127_PROBE("loc:resource", "local_language='%s'", CvarGetForUI("local_language", "Eng"));
+        PAINT_PROBE("loc:resource", "local_language='%s'", CvarGetForUI("local_language", "Eng"));
 
-        for (r127i = 0; r127i < 3; r127i++) {
-            const char *r127_id = r127_ids[r127i];
-            const char *r127_val = isStringResource(r127_id) ? getStringResource(r127_id) : NULL;
+        for (painti = 0; painti < 3; painti++) {
+            const char *paint_id = paint_ids[painti];
+            const char *paint_val = isStringResource(paint_id) ? getStringResource(paint_id) : NULL;
 
-            R127_PROBE("loc:resource",
+            PAINT_PROBE("loc:resource",
                        "id='%s' isResource=%d valueLen=%d%s",
-                       r127_id,
-                       isStringResource(r127_id) ? 1 : 0,
-                       r127_val ? (int)strlen(r127_val) : -1,
-                       (r127_val && !strlen(r127_val)) ? "  <-- EMPTY LOOKUP: the crawl text is blank"
+                       paint_id,
+                       isStringResource(paint_id) ? 1 : 0,
+                       paint_val ? (int)strlen(paint_val) : -1,
+                       (paint_val && !strlen(paint_val)) ? "  <-- EMPTY LOOKUP: the crawl text is blank"
                                                        : "");
         }
 
-        R127_PROBE("loc:resource",
+        PAINT_PROBE("loc:resource",
                    "menu 'prologue' %s; ui_addhud list=%d creation=%s",
                    menuManager.FindMenu(str("prologue")) ? "FOUND" : "MISSING",
                    (int)hudList.NumObjects(),
-                   r133_creation);
+                   uivk_creation);
     }
 
     getAllWeaponHuds();

@@ -9,7 +9,7 @@ endif()
 set(INTERNAL_OPENAL_DIR ${SOURCE_DIR}/thirdparty/openal-soft-1.24.3)
 
 # ---------------------------------------------------------------------------
-# ANDROID (r133-android): the audio backend is a platform layer, and on the
+# ANDROID (uivk-android): the audio backend is a platform layer, and on the
 # device that layer is OpenAL Soft (it speaks AAudio/OpenSL ES on Android, so
 # the engine's OpenAL path is untouched above it).  There is no system OpenAL
 # to find_package() under the NDK, so the 1.24.3 source is carried in-tree --

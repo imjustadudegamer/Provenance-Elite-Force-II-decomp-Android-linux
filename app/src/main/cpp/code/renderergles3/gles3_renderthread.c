@@ -27,8 +27,8 @@ static int			glimp_handshakeViolations = 0;
 static int			glimp_wakeRows = 0;
 static int			glimp_sleepRows = 0;
 
-#define R201_MCORE_PROBE_HEAD  8
-#define R201_MCORE_PROBE_EVERY 600
+#define SMP_MCORE_PROBE_HEAD  8
+#define SMP_MCORE_PROBE_EVERY 600
 
 extern qboolean	GLimp_GLContextMakeCurrent( qboolean makeCurrent );
 
@@ -140,9 +140,9 @@ void *GLimp_RendererSleep( void )
 		if ( data != NULL ) {
 			GLimp_GLSetOwner( GLIMP_GL_RENDER );
 
-			if ( glimp_sleepRows < R201_MCORE_PROBE_HEAD || ( glimp_sleepRows % R201_MCORE_PROBE_EVERY ) == 0 ) {
+			if ( glimp_sleepRows < SMP_MCORE_PROBE_HEAD || ( glimp_sleepRows % SMP_MCORE_PROBE_EVERY ) == 0 ) {
 				ri.Printf( PRINT_ALL,
-						   "[R201:glhandoff] side=render wake=%d owner=%d violations=%d\n",
+						   "[SMP:glhandoff] side=render wake=%d owner=%d violations=%d\n",
 						   glimp_sleepRows, glimp_glOwner, glimp_handshakeViolations );
 			}
 			glimp_sleepRows++;
@@ -183,9 +183,9 @@ void GLimp_WakeRenderer( void *data )
 		glimp_smpData = data;
 		SDL_CondSignal( glimp_renderCommandsEvent );
 
-		if ( glimp_wakeRows < R201_MCORE_PROBE_HEAD || ( glimp_wakeRows % R201_MCORE_PROBE_EVERY ) == 0 ) {
+		if ( glimp_wakeRows < SMP_MCORE_PROBE_HEAD || ( glimp_wakeRows % SMP_MCORE_PROBE_EVERY ) == 0 ) {
 			ri.Printf( PRINT_ALL,
-					   "[R201:glhandoff] side=main hand=%d owner=%d violations=%d\n",
+					   "[SMP:glhandoff] side=main hand=%d owner=%d violations=%d\n",
 					   glimp_wakeRows, glimp_glOwner, glimp_handshakeViolations );
 		}
 		glimp_wakeRows++;

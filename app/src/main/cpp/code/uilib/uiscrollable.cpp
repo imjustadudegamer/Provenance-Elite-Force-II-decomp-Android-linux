@@ -41,7 +41,7 @@ UIScrollable::UIScrollable()
     AllowActivate(false);
 }
 
-// R129: retail UIScrollable::Draw @0x0008AD50 (192 B) -- the body the port never had
+// UIROWS: retail UIScrollable::Draw @0x0008AD50 (192 B) -- the body the port never had
 void UIScrollable::Draw(void)
 {
     int visible;

@@ -1100,7 +1100,7 @@ void R_AddEntitySurfaces (void) {
 
 			tr.currentModel = R_GetModelByHandle( ent->e.hModel );
 			if (!tr.currentModel) {
-				R201_ShaderDefaultProbe( "entity-nomodel", "-", "R_AddEntitySurfaces/null-model",
+				SMP_ShaderDefaultProbe( "entity-nomodel", "-", "R_AddEntitySurfaces/null-model",
 										 ent->e.entityNumber, ent->e.hModel );
 				R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0 );
 			} else {
@@ -1120,7 +1120,7 @@ void R_AddEntitySurfaces (void) {
 						break;
 					}
 					shader = R_GetShaderByHandle( ent->e.customShader );
-					R201_ShaderDefaultProbe( "entity-nomodel", tr.currentModel->name, "R_AddEntitySurfaces/MOD_BAD",
+					SMP_ShaderDefaultProbe( "entity-nomodel", tr.currentModel->name, "R_AddEntitySurfaces/MOD_BAD",
 											 ent->e.entityNumber, ent->e.hModel );
 					R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0 );
 					break;

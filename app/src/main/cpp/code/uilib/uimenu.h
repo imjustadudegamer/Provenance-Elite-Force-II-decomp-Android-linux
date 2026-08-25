@@ -24,7 +24,7 @@ public:
 
     void      AddMenuItem(UIWidget *item);
     void      DeleteMenuItem(UIWidget *item);
-    // R127 TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  MenuManager::
+    // PAINT TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  MenuManager::
     int       GetWidgetCount(void);
     UIWidget *GetWidget(int index);
     void      setName(str name);

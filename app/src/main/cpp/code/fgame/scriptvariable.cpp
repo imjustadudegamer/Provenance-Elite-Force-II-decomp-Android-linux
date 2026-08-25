@@ -4,7 +4,7 @@
 #include "scriptvariable.h"
 #include "scriptmaster.h"
 
-// delete, do not re-enable.  R124-C blocked on "the shipped .scr corpus isn't in
+// delete, do not re-enable.  TIKIANIM-C blocked on "the shipped .scr corpus isn't in
 //    nothing and would add registrations retail's own binary does not carry.
 
 CLASS_DECLARATION( Listener, ScriptVariable, NULL )

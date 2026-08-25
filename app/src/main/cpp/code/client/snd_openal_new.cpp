@@ -345,7 +345,7 @@ static bool S_OPENAL_InitContext()
     case 3:
         attrlist[5] = ALC_QUAD_SOFT;
         break;
-    // r152-audio.  The shipped menu authors SIX speaker types, not four:
+    // audio-audio.  The shipped menu authors SIX speaker types, not four:
     case 4:
         attrlist[5] = ALC_SURROUND_5_1_SOFT;
         break;
@@ -1133,7 +1133,7 @@ static int S_OPENAL_PickChannel3D(sfx_t *pSfx, int iEntNum, int iEntChannel)
     return S_OPENAL_PickChannelBase(pSfx, iEntNum, iEntChannel, 0, s_iNumChannels3D - 1);
 }
 
-static void R222_SndRow(
+static void SND_SndRow(
     const char *stage, const char *name, int handle, int iEntNum, int iEntChannel, float fVol, float fMin, float fMax,
     float fPitch, float gain, int iPick, int iStolen
 );
@@ -1237,7 +1237,7 @@ static void S_OPENAL_Start2DSound(
     pChannel->set_sample_pan(64); 
     pChannel->set_gain_3d(fRealVolume);
 
-    R222_SndRow(
+    SND_SndRow(
         "start2d", pSfx->name, 0, iEntNum, iEntChannel, fVolume, fMinDistance, 0.0f, fPitch,
         powf(fRealVolume, 5.0f / 3.0f), iFreeChannel, 0
     );
@@ -1282,20 +1282,20 @@ static void S_EF2_ArmSampleLoop(openal_channel *pChannel, sfx_t *pSfx, const sfx
     }
 }
 
-static void R222_SndRow(
+static void SND_SndRow(
     const char *stage, const char *name, int handle, int iEntNum, int iEntChannel, float fVol, float fMin, float fMax,
     float fPitch, float gain, int iPick, int iStolen
 )
 {
-    static cvar_t *r222 = NULL;
+    static cvar_t *snd = NULL;
     static int     rows;
     static int     capped;
 
-    if (!r222) {
-        r222 = Cvar_Get("qa_r222", "1", 0);
+    if (!snd) {
+        snd = Cvar_Get("qa_snd", "1", 0);
     }
 
-    if (!r222->integer) {
+    if (!snd->integer) {
         return;
     }
 
@@ -1303,7 +1303,7 @@ static void R222_SndRow(
 
     if (rows == 97 && !capped) {
         capped = 1;
-        Com_Printf("[R222:snd] row budget 96 spent -- one in 16 from here; `qa_r222 0' silences\n");
+        Com_Printf("[SND:snd] row budget 96 spent -- one in 16 from here; `qa_snd 0' silences\n");
     }
 
     if (rows > 96 && (rows % 16) != 0) {
@@ -1321,7 +1321,7 @@ static void R222_SndRow(
     }
 
     Com_Printf(
-        "[R222:snd] stage=%s name='%s' handle=%d ent=%d echan=%d vol=%.3f min=%.2f max=%.2f pitch=%.3f "
+        "[SND:snd] stage=%s name='%s' handle=%d ent=%d echan=%d vol=%.3f min=%.2f max=%.2f pitch=%.3f "
         "bus=%.4f gain=%.4f ref=%.2f maxd=%.2f roll=%.1f rel=%d pick=%d stolen=%d\n",
         stage, name, handle, iEntNum, iEntChannel, fVol, fMin, fMax, fPitch,
         S_EF2_ChannelVolume(iEntChannel), gain, fRef, fMaxd, fRoll, fRel, iPick, iStolen
@@ -1353,7 +1353,7 @@ void S_OPENAL_StartSound(
 
     if (!S_OPENAL_ShouldPlay(pSfx)) {
         Com_DPrintf("OpenAL: ^~^~^ Not playing sound '%s'\n", pSfx->name);
-        R222_SndRow("reject=maxnumber", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
+        SND_SndRow("reject=maxnumber", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
         return;
     }
 
@@ -1374,7 +1374,7 @@ void S_OPENAL_StartSound(
             iEntNum,
             S_ChannelNumToName(iEntChannel)
         );
-        R222_SndRow("reject=nochannel", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
+        SND_SndRow("reject=nochannel", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
         return;
     }
 
@@ -1388,7 +1388,7 @@ void S_OPENAL_StartSound(
     pChannel->iEntChannel   = iEntChannel;
     if (!pChannel->set_sfx(pSfx)) {
         Com_DPrintf("Set sample error - %s for %s\n", pSfx->name, pSfx->name);
-        R222_SndRow("reject=setfx", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, iChannel, iStolen);
+        SND_SndRow("reject=setfx", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, iChannel, iStolen);
         return;
     }
 
@@ -1415,7 +1415,7 @@ void S_OPENAL_StartSound(
     pChannel->fDistGain    = 1.0f; 
     pChannel->set_gain_3d(S_EF2_ChannelVolume(iEntChannel) * pChannel->fVolume);
 
-    R222_SndRow(
+    SND_SndRow(
         "start", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch,
         powf(S_EF2_ChannelVolume(iEntChannel) * pChannel->fVolume, 5.0f / 3.0f), iChannel, iStolen
     );
@@ -1719,7 +1719,7 @@ static int S_OPENAL_Start3DLoopSound(
     pChan3D->set_gain_3d(fVolumeToPlay);
     pChan3D->play();
 
-    R222_SndRow(
+    SND_SndRow(
         "startloop", pLoopSound->pSfx->name, 0, 0, CHAN_AUTO, fVolumeToPlay, fMinDistance, fMaxDistance, 0.0f,
         powf(fVolumeToPlay, 5.0f / 3.0f), iChannel, 0
     );
@@ -2063,7 +2063,7 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
             }
             pChannel->set_position(vOrigin[0], vOrigin[1], vOrigin[2]);
         } else if (pChannel->iFlags & CHANNEL_FLAG_LOCAL_LISTENER) {
-            // N13 tail (r133-sound3d): retail does NOT put a localsound 3D sample ON the
+            // N13 tail (uivk-sound3d): retail does NOT put a localsound 3D sample ON the
             vOrigin[0] = vListenerOrigin[0] + 16.0f * vAxis[0][0];
             vOrigin[1] = vListenerOrigin[1] + 16.0f * vAxis[1][0];
             vOrigin[2] = vListenerOrigin[2] + 16.0f * vAxis[2][0];
@@ -3892,7 +3892,7 @@ void S_RawSamples(
         if (queuedNow == 0 && s_rawSamplesFed > s_rawSamplesPlayed) {
             s_rawUnderruns++;
             if (s_rawUnderruns <= 20) {
-                Com_Printf("[R200:snd] raw stream underrun #%d (fed=%u played=%u rate=%d)\n",
+                Com_Printf("[GLES3:snd] raw stream underrun #%d (fed=%u played=%u rate=%d)\n",
                            s_rawUnderruns, s_rawSamplesFed, s_rawSamplesPlayed, s_rawRate);
             }
         }

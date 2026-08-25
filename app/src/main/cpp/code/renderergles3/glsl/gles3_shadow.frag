@@ -4,7 +4,7 @@
    only the depth/stencil test matters), so the fragment shader is empty; it
    exists because GLES 3.0 core has no fixed-function pipeline and a program
    must be bound. */
-precision highp float;	/* r200: must match the vertex stage's default (see build_glsl.py) */
+precision highp float;	/* gles3: must match the vertex stage's default (see build_glsl.py) */
 
 //@@GLES3_CLIP@@
 in highp float v_ClipDist;

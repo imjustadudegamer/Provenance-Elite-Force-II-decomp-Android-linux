@@ -1,11 +1,11 @@
 
 #include "cg_local.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) cgi.Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       cgi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) cgi.Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       cgi.Printf
+#include "../qcommon/qa_probe.h"
 
-#include "r204_cgprobe.h"
+#include "be_cgprobe.h"
 
 
 void CG_AndroidDisplayRect( int surfaceW, int surfaceH, int *outX, int *outY, int *outW, int *outH )
@@ -757,23 +757,23 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 {
     (void)serverTime;
 
-    int r204_cgFrame = R204_CgFrameOpen();
+    int be_cgFrame = BE_CgFrameOpen();
 
     cg.demoPlayback = demoPlayback;
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
         cgi.S_ClearLoopingSounds();
 
         cgi.R_ClearScene();
 
-        R204_CG_ZONE_END(R204_CGZ_clear, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_clear, be_z);
     }
 
     if (!cg.snap || (cg.snap->snapFlags & SNAPFLAG_NOT_ACTIVE)) {
         CG_DrawActive(stereoView);
-        R204_CgFrameEnd(r204_cgFrame);
+        BE_CgFrameEnd(be_cgFrame);
         return;
     }
 
@@ -796,32 +796,32 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     }
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
         CG_PredictPlayerState();
 
-        R204_CG_ZONE_END(R204_CGZ_predict, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_predict, be_z);
     }
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
         CG_CalcViewValues();
 
-        R204_CG_ZONE_END(R204_CGZ_calcview, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_calcview, be_z);
     }
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
         if (!cg.hyperspace) {
             CG_AddPacketEntities(); 
             CG_AddMarks();
         }
 
-        R204_CG_COUNT(R204_CGC_snapents, cg.snap->numEntities);
+        BE_CG_COUNT(BE_CGC_snapents, cg.snap->numEntities);
 
-        R204_CG_ZONE_END(R204_CGZ_ents, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_ents, be_z);
     }
 
     cg.refdef.time = cg.time;
@@ -837,11 +837,11 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     }
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
         cgi.S_Respatialize(cg.snap->ps.clientNum, cg.SoundOrg, cg.SoundAxis);
 
-        R204_CG_ZONE_END(R204_CGZ_audio, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_audio, be_z);
     }
 
     if (stereoView != STEREO_RIGHT) {
@@ -855,7 +855,7 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     }
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
         CG_UpdateTestEmitter();
 
@@ -869,11 +869,11 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 
         CG_UpdateSwipes();
 
-        R204_CG_ZONE_END(R204_CGZ_fx, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_fx, be_z);
     }
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
     {
         unsigned int viewMode = cg.snap->ps.viewMode;
@@ -895,10 +895,10 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
             const char *hudName = NULL;
 
             if (cgi.GetViewModeHud(viewMode, &hudName)) {
-                R120_PROBE("vm:add", "viewMode=%u '%s' -> ui_addhud", viewMode, hudName);
+                PROBE("vm:add", "viewMode=%u '%s' -> ui_addhud", viewMode, hudName);
                 cgi.Cmd_Execute(EXEC_NOW, va("ui_addhud %s\n", hudName));
             } else {
-                R120_PROBE("vm:add", "viewMode=%u GetViewModeHud=FALSE (table n=%d)",
+                PROBE("vm:add", "viewMode=%u GetViewModeHud=FALSE (table n=%d)",
                            viewMode, cgi.GetNumViewModes());
             }
         }
@@ -907,7 +907,7 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
             const char *hudName = NULL;
 
             if (cgi.GetViewModeHud(cg.cachedViewMode, &hudName)) {
-                R120_PROBE("vm:rem", "viewMode=%u cached=%d '%s' -> ui_removehud",
+                PROBE("vm:rem", "viewMode=%u cached=%d '%s' -> ui_removehud",
                            viewMode, cg.cachedViewMode, hudName);
                 cgi.Cmd_Execute(EXEC_NOW, va("ui_removehud %s\n", hudName));
             }
@@ -924,11 +924,11 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 
     CG_AddTargetName();
 
-        R204_CG_ZONE_END(R204_CGZ_viewmode, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_viewmode, be_z);
     }
 
     {
-        int r204_z = R204_CG_T0();
+        int be_z = BE_CG_T0();
 
     CG_DrawActive(stereoView);
 
@@ -936,8 +936,8 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
         cgi.Printf("cg.clientFrame:%i\n", cg.clientFrame);
     }
 
-        R204_CG_ZONE_END(R204_CGZ_draw, r204_z);
+        BE_CG_ZONE_END(BE_CGZ_draw, be_z);
     }
 
-    R204_CgFrameEnd(r204_cgFrame);
+    BE_CgFrameEnd(be_cgFrame);
 }

@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define R201_TOL_MEAN 16.0
-#define R201_TOL_P99  128
+#define SMP_TOL_MEAN 16.0
+#define SMP_TOL_P99  128
 
 static int g_fail = 0;
 static int g_fault = 0;
@@ -148,9 +148,9 @@ static void report(const char *tag, const unsigned char *imgref, const unsigned 
 		   bmax[0], bmax[1], bmax[2], bmax[3]);
 	free(hist);
 
-	if ((double)sum / n > R201_TOL_MEAN || p99 > R201_TOL_P99) {
+	if ((double)sum / n > SMP_TOL_MEAN || p99 > SMP_TOL_P99) {
 		printf("    -> OUT OF TOLERANCE (mean %.2f > %.2f or p99 %d > %d)\n",
-			   (double)sum / n, R201_TOL_MEAN, p99, R201_TOL_P99);
+			   (double)sum / n, SMP_TOL_MEAN, p99, SMP_TOL_P99);
 		g_fail++;
 	}
 }
@@ -242,7 +242,7 @@ int main(void)
 	int			   W = 0, H = 0, bw = 0, bh = 0, nb = 0;
 	unsigned char  synth[64 * 16];
 
-	if (getenv("R201_HWTEX_FAULT")) {
+	if (getenv("SMP_HWTEX_FAULT")) {
 		g_fault = 1;
 	}
 
@@ -280,33 +280,33 @@ int main(void)
 			if (!strcmp(e, "GL_ARB_ES3_compatibility")) hasArbEs3 = 1;
 		}
 	}
-	printf("[R201:hwtex] GL_VERSION=%s astc_ldr=%d s3tc=%d etc2_ext=%d arb_es3=%d\n",
+	printf("[SMP:hwtex] GL_VERSION=%s astc_ldr=%d s3tc=%d etc2_ext=%d arb_es3=%d\n",
 		   vstr ? vstr : "?", hasAstc, hasS3tc, hasEtc2Ext, hasArbEs3);
 
 	printf("-- detection selection (simulated capability sets) --\n");
-	chk(R201_SelectTexTranscode(3, 2, 0, 0, 0, 0, 1) == R201_TEXC_ETC2_RGBA8,
+	chk(SMP_SelectTexTranscode(3, 2, 0, 0, 0, 0, 1) == SMP_TEXC_ETC2_RGBA8,
 		"ES 3.2, s3tc=0 etc2_ext=0 astc=0 -> ETC2 (the Mali-G715 false negative)");
-	chk(R201_SelectTexTranscode(3, 0, 0, 0, 0, 0, 1) == R201_TEXC_ETC2_RGBA8,
+	chk(SMP_SelectTexTranscode(3, 0, 0, 0, 0, 0, 1) == SMP_TEXC_ETC2_RGBA8,
 		"ES 3.0 core -> ETC2");
-	chk(R201_SelectTexTranscode(3, 2, 0, 0, 0, 1, 1) == R201_TEXC_ASTC_4x4,
+	chk(SMP_SelectTexTranscode(3, 2, 0, 0, 0, 1, 1) == SMP_TEXC_ASTC_4x4,
 		"ES 3.2 + astc_ldr -> ASTC 4x4 (preferred)");
-	chk(R201_SelectTexTranscode(3, 2, 1, 0, 0, 1, 1) == R201_TEXC_ASTC_4x4,
+	chk(SMP_SelectTexTranscode(3, 2, 1, 0, 0, 1, 1) == SMP_TEXC_ASTC_4x4,
 		"ES 3.2 + s3tc + astc -> ASTC (transcode preferred over direct S3TC)");
-	chk(R201_SelectTexTranscode(2, 0, 0, 1, 0, 0, 1) == R201_TEXC_ETC2_RGBA8,
+	chk(SMP_SelectTexTranscode(2, 0, 0, 1, 0, 0, 1) == SMP_TEXC_ETC2_RGBA8,
 		"ES 2.0 + GL_EXT_texture_compression_etc2 backport -> ETC2");
-	chk(R201_SelectTexTranscode(2, 0, 0, 0, 1, 0, 1) == R201_TEXC_ETC2_RGBA8,
+	chk(SMP_SelectTexTranscode(2, 0, 0, 0, 1, 0, 1) == SMP_TEXC_ETC2_RGBA8,
 		"ES 2.0 + GL_ARB_ES3_compatibility backport -> ETC2");
-	chk(R201_SelectTexTranscode(2, 0, 1, 0, 0, 0, 1) == R201_TEXC_NONE,
+	chk(SMP_SelectTexTranscode(2, 0, 1, 0, 0, 0, 1) == SMP_TEXC_NONE,
 		"ES 2.0, s3tc only -> software DXT decode (no ETC2 backport)");
-	chk(R201_SelectTexTranscode(1, 1, 0, 0, 0, 0, 1) == R201_TEXC_NONE,
+	chk(SMP_SelectTexTranscode(1, 1, 0, 0, 0, 0, 1) == SMP_TEXC_NONE,
 		"ES 1.1 / no compressed support -> software DXT decode");
-	chk(R201_SelectTexTranscode(3, 2, 1, 0, 0, 0, 0) == R201_TEXC_NONE,
+	chk(SMP_SelectTexTranscode(3, 2, 1, 0, 0, 0, 0) == SMP_TEXC_NONE,
 		"r_ext_compress_textures 0 -> software DXT decode");
-	chk(R201_SelectTexTranscode(3, 2, 1, 0, 0, 1, 0) == R201_TEXC_NONE,
+	chk(SMP_SelectTexTranscode(3, 2, 1, 0, 0, 1, 0) == SMP_TEXC_NONE,
 		"r_ext_compress_textures 0 blocks even ASTC");
 
 	{
-		const char *ddsPath = getenv("R201_HWTEX_DDS");
+		const char *ddsPath = getenv("SMP_HWTEX_DDS");
 
 		if (ddsPath && !ddsPath[0]) {
 			ddsPath = NULL;
@@ -396,10 +396,10 @@ int main(void)
 		}
 	}
 	printf("-- transcode test image: %dx%d (%d DXT3 blocks)%s --\n", W, H, nb,
-		   getenv("R201_HWTEX_DDS") ? " [real shipped level]" : " [synthetic]");
+		   getenv("SMP_HWTEX_DDS") ? " [real shipped level]" : " [synthetic]");
 
 	ref = (unsigned char *)malloc((size_t)W * H * 4);
-	enc = (unsigned char *)malloc((size_t)nb * R201_TEXC_BLOCK_BYTES);
+	enc = (unsigned char *)malloc((size_t)nb * SMP_TEXC_BLOCK_BYTES);
 	got = (unsigned char *)malloc((size_t)W * H * 4);
 
 	for (i = 0; i < nb; i++) {
@@ -407,7 +407,7 @@ int main(void)
 		unsigned char blockRGBA[64];
 		int x, y, k;
 
-		R201_DXTDecodeBlock(R201_DXT3, dxt + i * 16, blockRGBA);
+		SMP_DXTDecodeBlock(SMP_DXT3, dxt + i * 16, blockRGBA);
 		for (y = 0; y < 4; y++) {
 			for (x = 0; x < 4; x++) {
 				size_t pi = ((size_t)(by * 4 + y) * W + (bx * 4 + x)) * 4;
@@ -420,7 +420,7 @@ int main(void)
 	}
 
 	for (t = 0; t < 2; t++) {
-		int		   target = (t == 0) ? R201_TEXC_ETC2_RGBA8 : R201_TEXC_ASTC_4x4;
+		int		   target = (t == 0) ? SMP_TEXC_ETC2_RGBA8 : SMP_TEXC_ASTC_4x4;
 		GLenum	   fmt = (t == 0) ? GL_COMPRESSED_RGBA8_ETC2_EAC : GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
 		const char *tag = (t == 0) ? "ETC2_RGBA8" : "ASTC_4x4";
 
@@ -436,15 +436,15 @@ int main(void)
 				unsigned char bad[16];
 
 				memset(bad, 0xA5, 16); 
-				R201_TranscodeBlock(R201_DXT3, bad, target, enc + i * 16);
+				SMP_TranscodeBlock(SMP_DXT3, bad, target, enc + i * 16);
 			} else {
-				R201_TranscodeBlock(R201_DXT3, src, target, enc + i * 16);
+				SMP_TranscodeBlock(SMP_DXT3, src, target, enc + i * 16);
 			}
 		}
 		if (g_fault) {
 			printf("  [self-check: encoder input corrupted, comparison must FAIL]\n");
 		}
-		if (gpu_decode(W, H, fmt, enc, nb * R201_TEXC_BLOCK_BYTES, got) == 0) {
+		if (gpu_decode(W, H, fmt, enc, nb * SMP_TEXC_BLOCK_BYTES, got) == 0) {
 			report(tag, ref, got, W, H);
 		} else {
 			chk(0, "driver rejected the transcoded blocks");
@@ -462,7 +462,7 @@ int main(void)
 					size_t		 bi = (size_t)((y >> 2) * bw + (x >> 2)) * 16;
 					size_t		 pi = ((size_t)y * W + x) * 4;
 
-					R201_DXTDecodeBlock(R201_DXT3, dxt + bi, blockRGBA);
+					SMP_DXTDecodeBlock(SMP_DXT3, dxt + bi, blockRGBA);
 					for (k = 0; k < 4; k++) {
 						int d = (int)blockRGBA[((y & 3) * 4 + (x & 3)) * 4 + k] -
 								(int)got[pi + k];

@@ -1,5 +1,5 @@
 #version 300 es
-/* r200: stage-matched default precision (see build_glsl.py); int and
+/* gles3: stage-matched default precision (see build_glsl.py); int and
    sampler2D defaults differ per stage in ES 3.00, and a shared uniform or
    varying must match or the pair is a LINK error on a strict driver.
    sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an

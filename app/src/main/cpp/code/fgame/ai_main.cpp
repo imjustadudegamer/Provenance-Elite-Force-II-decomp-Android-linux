@@ -26,10 +26,10 @@
 
 #include "player.h"
 
-// R121 TEMP PROBE (port-only, worktree-only): the bot-think leg.  Symptom 1 is
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+// BOT TEMP PROBE (port-only, worktree-only): the bot-think leg.  Symptom 1 is
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
 #define MAX_PATH		144
 
@@ -736,8 +736,8 @@ int BotAI(int client, float thinktime) {
 	char buf[1024], *args,cmd[1024], *ptr, *ptr2;
 	int j;
 	vec3_t tmpv;
-	int r202_t0 = R202_BotAITick();
-	int r202_t;
+	int ui_t0 = UI_BotAITick();
+	int ui_t;
 
 
 	if ( !g_entities[ client ].inuse || !g_entities[ client ].entity || !g_entities[ client ].client )
@@ -753,11 +753,11 @@ int BotAI(int client, float thinktime) {
 		return qfalse;
 	}
 
-	r202_t = R202_BotAITick();
+	ui_t = UI_BotAITick();
 	BotAI_GetClientState( client, &bs->cur_ps );
-	R202_BotAIAdd( R202_BAIZ_cstate, R202_BotAITock( r202_t ) );
+	UI_BotAIAdd( UI_BAIZ_cstate, UI_BotAITock( ui_t ) );
 
-	r202_t = R202_BotAITick();
+	ui_t = UI_BotAITick();
 	while( gi.BotGetConsoleMessage(client, buf, sizeof(buf)) ) {
 		args = strchr( buf, ':');
 		if (!args) continue;
@@ -816,7 +816,7 @@ int BotAI(int client, float thinktime) {
 			i++;
 		}
 	}
-	R202_BotAIAdd( R202_BAIZ_cmsg, R202_BotAITock( r202_t ) );
+	UI_BotAIAdd( UI_BAIZ_cmsg, UI_BotAITock( ui_t ) );
 	for (j = 0; j < 3; j++) {
 		bs->viewangles[j] = AngleMod(bs->viewangles[j] + SHORT2ANGLE(bs->cur_ps.delta_angles[j]));
 	}
@@ -827,22 +827,22 @@ int BotAI(int client, float thinktime) {
 	bs->eye[2] += (bs->cur_ps.viewheight);
 	VectorCopy(bs->origin,tmpv);
 	tmpv[2] += 20;
-	r202_t = R202_BotAITick();
+	ui_t = UI_BotAITick();
 	bs->areanum = BotPointAreaNum(bs->origin);
-	R202_BotAIAdd( R202_BAIZ_area, R202_BotAITock( r202_t ) );
-	r202_t = R202_BotAITick();
+	UI_BotAIAdd( UI_BAIZ_area, UI_BotAITock( ui_t ) );
+	ui_t = UI_BotAITick();
 	BotDeathmatchAI(bs, thinktime);
-	R202_BotAIAdd( R202_BAIZ_dm, R202_BotAITock( r202_t ) );
-	r202_t = R202_BotAITick();
+	UI_BotAIAdd( UI_BAIZ_dm, UI_BotAITock( ui_t ) );
+	ui_t = UI_BotAITick();
 	gi.EA_SelectWeapon(bs->client, bs->weaponnum);
-	R202_BotAIAdd( R202_BAIZ_weap, R202_BotAITock( r202_t ) );
+	UI_BotAIAdd( UI_BAIZ_weap, UI_BotAITock( ui_t ) );
 	for (j = 0; j < 3; j++) {
 		bs->viewangles[j] = AngleMod(bs->viewangles[j] - SHORT2ANGLE(bs->cur_ps.delta_angles[j]));
 	}
 
-	R202_BotAIBump( R202_BAIC_calls, 1 );
-	R202_BotAIFrame( R202_BotAITock( r202_t0 ) );
-	R203_BotFrame();
+	UI_BotAIBump( UI_BAIC_calls, 1 );
+	UI_BotAIFrame( UI_BotAITock( ui_t0 ) );
+	LIMIT_BotFrame();
 
 	return qtrue;
 }
@@ -1125,51 +1125,51 @@ void G_CheckBotSpawn( void );
 
 extern Event EV_Player_UseItem;
 
-#define R201_BOT_WINDOW_MS   1000
-#define R201_BOT_MAX_FRAMES  3600
-#define R201_BOT_MAX_ZONES   9
+#define SMP_BOT_WINDOW_MS   1000
+#define SMP_BOT_MAX_FRAMES  3600
+#define SMP_BOT_MAX_ZONES   9
 
-static int		r201_bEntRuns;
+static int		smp_bEntRuns;
 
-static void R201_BotBudget( int totalMsec, int spawnMsec, int libstartMsec, int updentMsec,
+static void SMP_BotBudget( int totalMsec, int spawnMsec, int libstartMsec, int updentMsec,
 							int regularMsec, int thinkMsec, int inputMsec,
 							int botCount, int entCount )
 {
-	static cvar_t	*r201_botStats;
-	static int		r201_bTotal, r201_bTotalMax;
-	static int		r201_bSpawn, r201_bSpawnMax;
-	static int		r201_bLib,   r201_bLibMax;
-	static int		r201_bUpd,   r201_bUpdMax;
-	static int		r201_bReg,   r201_bRegMax;
-	static int		r201_bThink, r201_bThinkMax;
-	static int		r201_bInput, r201_bInputMax;
-	static int		r201_bOther, r201_bOtherMax;
-	static int		r201_bBots,  r201_bBotsMax;
-	static int		r201_bEnts,  r201_bEntsMax;
-	static int		r201_bFrames, r201_bWindowStart;
+	static cvar_t	*smp_botStats;
+	static int		smp_bTotal, smp_bTotalMax;
+	static int		smp_bSpawn, smp_bSpawnMax;
+	static int		smp_bLib,   smp_bLibMax;
+	static int		smp_bUpd,   smp_bUpdMax;
+	static int		smp_bReg,   smp_bRegMax;
+	static int		smp_bThink, smp_bThinkMax;
+	static int		smp_bInput, smp_bInputMax;
+	static int		smp_bOther, smp_bOtherMax;
+	static int		smp_bBots,  smp_bBotsMax;
+	static int		smp_bEnts,  smp_bEntsMax;
+	static int		smp_bFrames, smp_bWindowStart;
 
 	int		otherMsec, window, frames, i, mean10;
 	char	line[1024], part[64];
-	struct { const char *name; int sum; int max; } zone[R201_BOT_MAX_ZONES];
+	struct { const char *name; int sum; int max; } zone[SMP_BOT_MAX_ZONES];
 
-	if ( !r201_botStats ) {
-		r201_botStats = gi.cvar( "r201_botStats", "1", 0 );
+	if ( !smp_botStats ) {
+		smp_botStats = gi.cvar( "smp_botStats", "1", 0 );
 	}
 
-	if ( !r201_botStats || !r201_botStats->integer ) {
-		r201_bFrames = 0;
-		r201_bWindowStart = 0;
-		r201_bTotal = r201_bTotalMax = 0;
-		r201_bSpawn = r201_bSpawnMax = 0;
-		r201_bLib   = r201_bLibMax   = 0;
-		r201_bUpd   = r201_bUpdMax   = 0;
-		r201_bReg   = r201_bRegMax   = 0;
-		r201_bThink = r201_bThinkMax = 0;
-		r201_bInput = r201_bInputMax = 0;
-		r201_bOther = r201_bOtherMax = 0;
-		r201_bBots  = r201_bBotsMax  = 0;
-		r201_bEnts  = r201_bEntsMax  = 0;
-		r201_bEntRuns = 0;
+	if ( !smp_botStats || !smp_botStats->integer ) {
+		smp_bFrames = 0;
+		smp_bWindowStart = 0;
+		smp_bTotal = smp_bTotalMax = 0;
+		smp_bSpawn = smp_bSpawnMax = 0;
+		smp_bLib   = smp_bLibMax   = 0;
+		smp_bUpd   = smp_bUpdMax   = 0;
+		smp_bReg   = smp_bRegMax   = 0;
+		smp_bThink = smp_bThinkMax = 0;
+		smp_bInput = smp_bInputMax = 0;
+		smp_bOther = smp_bOtherMax = 0;
+		smp_bBots  = smp_bBotsMax  = 0;
+		smp_bEnts  = smp_bEntsMax  = 0;
+		smp_bEntRuns = 0;
 		return;
 	}
 
@@ -1187,104 +1187,104 @@ static void R201_BotBudget( int totalMsec, int spawnMsec, int libstartMsec, int 
 		otherMsec = 0;
 	}
 
-	r201_bTotal += totalMsec;	if ( totalMsec  > r201_bTotalMax ) r201_bTotalMax = totalMsec;
-	r201_bSpawn += spawnMsec;	if ( spawnMsec  > r201_bSpawnMax ) r201_bSpawnMax = spawnMsec;
-	r201_bLib   += libstartMsec;if ( libstartMsec> r201_bLibMax  ) r201_bLibMax   = libstartMsec;
-	r201_bUpd   += updentMsec;	if ( updentMsec > r201_bUpdMax  ) r201_bUpdMax   = updentMsec;
-	r201_bReg   += regularMsec;	if ( regularMsec> r201_bRegMax  ) r201_bRegMax   = regularMsec;
-	r201_bThink += thinkMsec;	if ( thinkMsec  > r201_bThinkMax) r201_bThinkMax = thinkMsec;
-	r201_bInput += inputMsec;	if ( inputMsec  > r201_bInputMax) r201_bInputMax = inputMsec;
-	r201_bOther += otherMsec;	if ( otherMsec  > r201_bOtherMax) r201_bOtherMax = otherMsec;
-	r201_bBots  += botCount;	if ( botCount   > r201_bBotsMax ) r201_bBotsMax  = botCount;
-	r201_bEnts  += entCount;	if ( entCount   > r201_bEntsMax ) r201_bEntsMax  = entCount;
+	smp_bTotal += totalMsec;	if ( totalMsec  > smp_bTotalMax ) smp_bTotalMax = totalMsec;
+	smp_bSpawn += spawnMsec;	if ( spawnMsec  > smp_bSpawnMax ) smp_bSpawnMax = spawnMsec;
+	smp_bLib   += libstartMsec;if ( libstartMsec> smp_bLibMax  ) smp_bLibMax   = libstartMsec;
+	smp_bUpd   += updentMsec;	if ( updentMsec > smp_bUpdMax  ) smp_bUpdMax   = updentMsec;
+	smp_bReg   += regularMsec;	if ( regularMsec> smp_bRegMax  ) smp_bRegMax   = regularMsec;
+	smp_bThink += thinkMsec;	if ( thinkMsec  > smp_bThinkMax) smp_bThinkMax = thinkMsec;
+	smp_bInput += inputMsec;	if ( inputMsec  > smp_bInputMax) smp_bInputMax = inputMsec;
+	smp_bOther += otherMsec;	if ( otherMsec  > smp_bOtherMax) smp_bOtherMax = otherMsec;
+	smp_bBots  += botCount;	if ( botCount   > smp_bBotsMax ) smp_bBotsMax  = botCount;
+	smp_bEnts  += entCount;	if ( entCount   > smp_bEntsMax ) smp_bEntsMax  = entCount;
 
-	r201_bFrames++;
+	smp_bFrames++;
 
-	if ( !r201_bWindowStart ) {
-		r201_bWindowStart = gi.Milliseconds();
+	if ( !smp_bWindowStart ) {
+		smp_bWindowStart = gi.Milliseconds();
 	}
 
-	window = gi.Milliseconds() - r201_bWindowStart;
-	if ( window < R201_BOT_WINDOW_MS && r201_bFrames < R201_BOT_MAX_FRAMES ) {
+	window = gi.Milliseconds() - smp_bWindowStart;
+	if ( window < SMP_BOT_WINDOW_MS && smp_bFrames < SMP_BOT_MAX_FRAMES ) {
 		return;
 	}
 
-	frames = r201_bFrames;
+	frames = smp_bFrames;
 	if ( frames < 1 ) {
 		frames = 1;
 	}
 
-	zone[0].name = "spawn";		zone[0].sum = r201_bSpawn;	zone[0].max = r201_bSpawnMax;
-	zone[1].name = "libstart";	zone[1].sum = r201_bLib;	zone[1].max = r201_bLibMax;
-	zone[2].name = "updent";	zone[2].sum = r201_bUpd;	zone[2].max = r201_bUpdMax;
-	zone[3].name = "regular";	zone[3].sum = r201_bReg;	zone[3].max = r201_bRegMax;
-	zone[4].name = "think";		zone[4].sum = r201_bThink;	zone[4].max = r201_bThinkMax;
-	zone[5].name = "input";		zone[5].sum = r201_bInput;	zone[5].max = r201_bInputMax;
-	zone[6].name = "other";		zone[6].sum = r201_bOther;	zone[6].max = r201_bOtherMax;
-	zone[7].name = "total";		zone[7].sum = r201_bTotal;	zone[7].max = r201_bTotalMax;
-	zone[8].name = "bots";		zone[8].sum = r201_bBots;	zone[8].max = r201_bBotsMax;
+	zone[0].name = "spawn";		zone[0].sum = smp_bSpawn;	zone[0].max = smp_bSpawnMax;
+	zone[1].name = "libstart";	zone[1].sum = smp_bLib;	zone[1].max = smp_bLibMax;
+	zone[2].name = "updent";	zone[2].sum = smp_bUpd;	zone[2].max = smp_bUpdMax;
+	zone[3].name = "regular";	zone[3].sum = smp_bReg;	zone[3].max = smp_bRegMax;
+	zone[4].name = "think";		zone[4].sum = smp_bThink;	zone[4].max = smp_bThinkMax;
+	zone[5].name = "input";		zone[5].sum = smp_bInput;	zone[5].max = smp_bInputMax;
+	zone[6].name = "other";		zone[6].sum = smp_bOther;	zone[6].max = smp_bOtherMax;
+	zone[7].name = "total";		zone[7].sum = smp_bTotal;	zone[7].max = smp_bTotalMax;
+	zone[8].name = "bots";		zone[8].sum = smp_bBots;	zone[8].max = smp_bBotsMax;
 
 	line[0] = '\0';
-	for ( i = 0; i < R201_BOT_MAX_ZONES; i++ ) {
+	for ( i = 0; i < SMP_BOT_MAX_ZONES; i++ ) {
 		mean10 = (int)( ( (long long)zone[i].sum * 10 + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
 					 zone[i].name, mean10 / 10, mean10 % 10, zone[i].max );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	gi.Printf( "[R201:bot] frames=%d runs=%d window=%dms ents=%d/%d%s\n",
-			   frames, r201_bEntRuns, window,
-			   r201_bEntRuns ? ( r201_bEnts / r201_bEntRuns ) : 0, r201_bEntsMax, line );
+	gi.Printf( "[SMP:bot] frames=%d runs=%d window=%dms ents=%d/%d%s\n",
+			   frames, smp_bEntRuns, window,
+			   smp_bEntRuns ? ( smp_bEnts / smp_bEntRuns ) : 0, smp_bEntsMax, line );
 
-	r201_bFrames = 0;
-	r201_bWindowStart = gi.Milliseconds();
-	r201_bTotal = r201_bTotalMax = 0;
-	r201_bSpawn = r201_bSpawnMax = 0;
-	r201_bLib   = r201_bLibMax   = 0;
-	r201_bUpd   = r201_bUpdMax   = 0;
-	r201_bReg   = r201_bRegMax   = 0;
-	r201_bThink = r201_bThinkMax = 0;
-	r201_bInput = r201_bInputMax = 0;
-	r201_bOther = r201_bOtherMax = 0;
-	r201_bBots  = r201_bBotsMax  = 0;
-	r201_bEnts  = r201_bEntsMax  = 0;
-	r201_bEntRuns = 0;
+	smp_bFrames = 0;
+	smp_bWindowStart = gi.Milliseconds();
+	smp_bTotal = smp_bTotalMax = 0;
+	smp_bSpawn = smp_bSpawnMax = 0;
+	smp_bLib   = smp_bLibMax   = 0;
+	smp_bUpd   = smp_bUpdMax   = 0;
+	smp_bReg   = smp_bRegMax   = 0;
+	smp_bThink = smp_bThinkMax = 0;
+	smp_bInput = smp_bInputMax = 0;
+	smp_bOther = smp_bOtherMax = 0;
+	smp_bBots  = smp_bBotsMax  = 0;
+	smp_bEnts  = smp_bEntsMax  = 0;
+	smp_bEntRuns = 0;
 }
 
-#define R202_BAI_WINDOW_MS   1000
-#define R202_BAI_MAX_FRAMES  3600
-#define R202_BAI_ZONES       10
-#define R202_BAI_COUNTERS    2
+#define UI_BAI_WINDOW_MS   1000
+#define UI_BAI_MAX_FRAMES  3600
+#define UI_BAI_ZONES       10
+#define UI_BAI_COUNTERS    2
 
-static int	r202_baiOn = -1;	
-static int	r202_baiZones[R202_BAI_ZONES];
-static int	r202_baiZoneMax[R202_BAI_ZONES];
-static int	r202_baiCnt[R202_BAI_COUNTERS];
-static int	r202_baiCntMax[R202_BAI_COUNTERS];
-static int	r202_baiCallNamed;
-static int	r202_baiFrames;
-static int	r202_baiWindowStart;
-static int	r202_baiTotal, r202_baiTotalMax;
+static int	ui_baiOn = -1;	
+static int	ui_baiZones[UI_BAI_ZONES];
+static int	ui_baiZoneMax[UI_BAI_ZONES];
+static int	ui_baiCnt[UI_BAI_COUNTERS];
+static int	ui_baiCntMax[UI_BAI_COUNTERS];
+static int	ui_baiCallNamed;
+static int	ui_baiFrames;
+static int	ui_baiWindowStart;
+static int	ui_baiTotal, ui_baiTotalMax;
 
-static const char *r202_baiZoneName[R202_BAI_ZONES] = {
+static const char *ui_baiZoneName[UI_BAI_ZONES] = {
 	"cstate", "cmsg", "area", "dm", "weap", "dminv", "dmteam", "dmnode", "dmoth",
 	"other"
 };
 
-static const char *r202_baiCntName[R202_BAI_COUNTERS] = { "calls", "bots" };
+static const char *ui_baiCntName[UI_BAI_COUNTERS] = { "calls", "bots" };
 
-static int R202_BotAIOn( void ) {
+static int UI_BotAIOn( void ) {
 	cvar_t *v;
 
-	if ( r202_baiOn < 0 ) {
-		v = gi.cvar( "r202_stats", "1", 0 );
-		r202_baiOn = ( v && v->integer ) ? 1 : 0;
+	if ( ui_baiOn < 0 ) {
+		v = gi.cvar( "ui_stats", "1", 0 );
+		ui_baiOn = ( v && v->integer ) ? 1 : 0;
 	}
 
-	return r202_baiOn;
+	return ui_baiOn;
 }
 
-int R202_BotAIMicro( void ) {
+int UI_BotAIMicro( void ) {
 #ifndef _WIN32
 	struct timespec ts;
 
@@ -1295,79 +1295,79 @@ int R202_BotAIMicro( void ) {
 #endif
 }
 
-int R202_BotAITick( void ) {
-	return R202_BotAIOn() ? R202_BotAIMicro() : 0;
+int UI_BotAITick( void ) {
+	return UI_BotAIOn() ? UI_BotAIMicro() : 0;
 }
 
-int R202_BotAITock( int t0 ) {
-	return R202_BotAIOn() ? ( R202_BotAIMicro() - t0 ) : 0;
+int UI_BotAITock( int t0 ) {
+	return UI_BotAIOn() ? ( UI_BotAIMicro() - t0 ) : 0;
 }
 
-void R202_BotAIAdd( int zone, int usec ) {
+void UI_BotAIAdd( int zone, int usec ) {
 	int tenths;
 
-	if ( !R202_BotAIOn() ) {
+	if ( !UI_BotAIOn() ) {
 		return;
 	}
 	if ( usec <= 0 ) {
 		return;
 	}
 
-	r202_baiCallNamed += usec;
+	ui_baiCallNamed += usec;
 	tenths = usec / 100;
 	if ( tenths < 0 ) {
 		tenths = 0;
 	}
 
-	if ( zone >= 0 && zone < R202_BAI_ZONES ) {
-		r202_baiZones[zone] += tenths;
-		if ( tenths > r202_baiZoneMax[zone] ) {
-			r202_baiZoneMax[zone] = tenths;
+	if ( zone >= 0 && zone < UI_BAI_ZONES ) {
+		ui_baiZones[zone] += tenths;
+		if ( tenths > ui_baiZoneMax[zone] ) {
+			ui_baiZoneMax[zone] = tenths;
 		}
 	}
 }
 
-void R202_BotAIBump( int which, int n ) {
-	if ( !R202_BotAIOn() || n <= 0 || which < 0 || which >= R202_BAI_COUNTERS ) {
+void UI_BotAIBump( int which, int n ) {
+	if ( !UI_BotAIOn() || n <= 0 || which < 0 || which >= UI_BAI_COUNTERS ) {
 		return;
 	}
 
-	r202_baiCnt[which] += n;
-	if ( n > r202_baiCntMax[which] ) {
-		r202_baiCntMax[which] = n;
+	ui_baiCnt[which] += n;
+	if ( n > ui_baiCntMax[which] ) {
+		ui_baiCntMax[which] = n;
 	}
 }
 
-void R202_BotAIFrame( int totalUsec ) {
+void UI_BotAIFrame( int totalUsec ) {
 	int window, frames, i, mean10, other;
 
-	if ( !R202_BotAIOn() ) {
+	if ( !UI_BotAIOn() ) {
 		return;
 	}
 
-	other = totalUsec - r202_baiCallNamed;
+	other = totalUsec - ui_baiCallNamed;
 	if ( other < 0 ) {
 		other = 0;
 	}
-	R202_BotAIAdd( R202_BAIZ_other, other );	
+	UI_BotAIAdd( UI_BAIZ_other, other );	
 
-	r202_baiTotal += totalUsec / 100;
-	if ( totalUsec / 100 > r202_baiTotalMax ) {
-		r202_baiTotalMax = totalUsec / 100;
+	ui_baiTotal += totalUsec / 100;
+	if ( totalUsec / 100 > ui_baiTotalMax ) {
+		ui_baiTotalMax = totalUsec / 100;
 	}
-	r202_baiCallNamed = 0;
-	r202_baiFrames++;
+	ui_baiCallNamed = 0;
+	ui_baiFrames++;
 
-	if ( !r202_baiWindowStart ) {
-		r202_baiWindowStart = gi.Milliseconds();
+	if ( !ui_baiWindowStart ) {
+		ui_baiWindowStart = gi.Milliseconds();
 	}
 
-	window = gi.Milliseconds() - r202_baiWindowStart;
-	if ( window < R202_BAI_WINDOW_MS && r202_baiFrames < R202_BAI_MAX_FRAMES ) {
+	window = gi.Milliseconds() - ui_baiWindowStart;
+	if ( window < UI_BAI_WINDOW_MS && ui_baiFrames < UI_BAI_MAX_FRAMES ) {
 		return;
 	}
 
-	frames = r202_baiFrames;
+	frames = ui_baiFrames;
 	if ( frames < 1 ) {
 		frames = 1;
 	}
@@ -1376,48 +1376,48 @@ void R202_BotAIFrame( int totalUsec ) {
 		char line[1024], part[64];
 
 		line[0] = '\0';
-		for ( i = 0; i < R202_BAI_ZONES; i++ ) {
-			mean10 = (int)( ( (long long)r202_baiZones[i] + frames / 2 ) / frames );
+		for ( i = 0; i < UI_BAI_ZONES; i++ ) {
+			mean10 = (int)( ( (long long)ui_baiZones[i] + frames / 2 ) / frames );
 			Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d.%d",
-						 r202_baiZoneName[i], mean10 / 10, mean10 % 10,
-						 r202_baiZoneMax[i] / 10, r202_baiZoneMax[i] % 10 );
+						 ui_baiZoneName[i], mean10 / 10, mean10 % 10,
+						 ui_baiZoneMax[i] / 10, ui_baiZoneMax[i] % 10 );
 			Q_strcat( line, sizeof( line ), part );
 		}
-		for ( i = 0; i < R202_BAI_COUNTERS; i++ ) {
-			mean10 = (int)( ( (long long)r202_baiCnt[i] * 10 + frames / 2 ) / frames );
+		for ( i = 0; i < UI_BAI_COUNTERS; i++ ) {
+			mean10 = (int)( ( (long long)ui_baiCnt[i] * 10 + frames / 2 ) / frames );
 			Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
-						 r202_baiCntName[i], mean10 / 10, mean10 % 10, r202_baiCntMax[i] );
+						 ui_baiCntName[i], mean10 / 10, mean10 % 10, ui_baiCntMax[i] );
 			Q_strcat( line, sizeof( line ), part );
 		}
-		mean10 = (int)( ( (long long)r202_baiTotal + frames / 2 ) / frames );
+		mean10 = (int)( ( (long long)ui_baiTotal + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " total=%d.%d/%d.%d",
 					 mean10 / 10, mean10 % 10,
-					 r202_baiTotalMax / 10, r202_baiTotalMax % 10 );
+					 ui_baiTotalMax / 10, ui_baiTotalMax % 10 );
 		Q_strcat( line, sizeof( line ), part );
 
-		gi.Printf( "[R202:botai] calls=%d window=%dms%s\n", frames, window, line );
+		gi.Printf( "[UI:botai] calls=%d window=%dms%s\n", frames, window, line );
 	}
 
-	r202_baiFrames = 0;
-	r202_baiWindowStart = gi.Milliseconds();
-	r202_baiTotal = r202_baiTotalMax = 0;
-	for ( i = 0; i < R202_BAI_ZONES; i++ ) {
-		r202_baiZones[i] = r202_baiZoneMax[i] = 0;
+	ui_baiFrames = 0;
+	ui_baiWindowStart = gi.Milliseconds();
+	ui_baiTotal = ui_baiTotalMax = 0;
+	for ( i = 0; i < UI_BAI_ZONES; i++ ) {
+		ui_baiZones[i] = ui_baiZoneMax[i] = 0;
 	}
-	for ( i = 0; i < R202_BAI_COUNTERS; i++ ) {
-		r202_baiCnt[i] = r202_baiCntMax[i] = 0;
+	for ( i = 0; i < UI_BAI_COUNTERS; i++ ) {
+		ui_baiCnt[i] = ui_baiCntMax[i] = 0;
 	}
 }
 
-#define R203_BN_WINDOW_MS	1000
-#define R203_BN_MAX_FRAMES	3600
+#define LIMIT_BN_WINDOW_MS	1000
+#define LIMIT_BN_MAX_FRAMES	3600
 
 typedef struct {
 	const char	*name;
 	int			(*fn)(bot_state_t *bs);
-} r203_bnode_t;
+} limit_bnode_t;
 
-static const r203_bnode_t r203_bNodeTab[R203_BNODE_MAX] = {
+static const limit_bnode_t limit_bNodeTab[LIMIT_BNODE_MAX] = {
 	{ "intermission", AINode_Intermission },
 	{ "observer",     AINode_Observer },
 	{ "respawn",      AINode_Respawn },
@@ -1432,127 +1432,127 @@ static const r203_bnode_t r203_bNodeTab[R203_BNODE_MAX] = {
 	{ "unknown",      NULL }
 };
 
-static cvar_t	*r203_bStats;
-static int		r203_bStatsLast = -1;
-static int		r203_bNodeCalls[R203_BNODE_MAX];
-static int		r203_bNodeUsec[R203_BNODE_MAX];
-static int		r203_bNodeMax[R203_BNODE_MAX];
-static int		r203_bLoops, r203_bSat, r203_bOther;
-static int		r203_bCurNode;
-static int		r203_bCurT0;
-static int		r203_bWindowStart, r203_bFrames;
+static cvar_t	*limit_bStats;
+static int		limit_bStatsLast = -1;
+static int		limit_bNodeCalls[LIMIT_BNODE_MAX];
+static int		limit_bNodeUsec[LIMIT_BNODE_MAX];
+static int		limit_bNodeMax[LIMIT_BNODE_MAX];
+static int		limit_bLoops, limit_bSat, limit_bOther;
+static int		limit_bCurNode;
+static int		limit_bCurT0;
+static int		limit_bWindowStart, limit_bFrames;
 
-static int R203_BotOn( void ) {
-	return ( r203_bStats && r203_bStats->integer ) ? 1 : 0;
+static int LIMIT_BotOn( void ) {
+	return ( limit_bStats && limit_bStats->integer ) ? 1 : 0;
 }
 
-static void R203_BotSyncSwitch( void ) {
-	if ( !r203_bStats ) {
-		r203_bStats = gi.cvar( "r203_stats", "1", 0 );
+static void LIMIT_BotSyncSwitch( void ) {
+	if ( !limit_bStats ) {
+		limit_bStats = gi.cvar( "limit_stats", "1", 0 );
 	}
-	if ( r203_bStats && r203_bStats->integer != r203_bStatsLast ) {
+	if ( limit_bStats && limit_bStats->integer != limit_bStatsLast ) {
 		char v[2];
 
-		r203_bStatsLast = r203_bStats->integer;
-		v[0] = r203_bStatsLast ? '1' : '0';
+		limit_bStatsLast = limit_bStats->integer;
+		v[0] = limit_bStatsLast ? '1' : '0';
 		v[1] = '\0';
-		gi.BotLibVarSet( "r203_stats", v );
+		gi.BotLibVarSet( "limit_stats", v );
 	}
 }
 
-static int R203_BotTick( void ) {
-	return R203_BotOn() ? R202_BotAIMicro() : 0;
+static int LIMIT_BotTick( void ) {
+	return LIMIT_BotOn() ? UI_BotAIMicro() : 0;
 }
 
-static int R203_BotTock( int t0 ) {
-	return R203_BotOn() ? ( R202_BotAIMicro() - t0 ) : 0;
+static int LIMIT_BotTock( int t0 ) {
+	return LIMIT_BotOn() ? ( UI_BotAIMicro() - t0 ) : 0;
 }
 
-void R203_BotNodeBegin( bot_state_t *bs ) {
+void LIMIT_BotNodeBegin( bot_state_t *bs ) {
 	int i;
 
-	if ( !R203_BotOn() ) {
+	if ( !LIMIT_BotOn() ) {
 		return;
 	}
 
-	r203_bCurNode = R203_BN_unknown;
-	for ( i = 0; i < R203_BNODE_MAX; i++ ) {
-		if ( r203_bNodeTab[i].fn && r203_bNodeTab[i].fn == bs->ainode ) {
-			r203_bCurNode = i;
+	limit_bCurNode = LIMIT_BN_unknown;
+	for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
+		if ( limit_bNodeTab[i].fn && limit_bNodeTab[i].fn == bs->ainode ) {
+			limit_bCurNode = i;
 			break;
 		}
 	}
-	r203_bCurT0 = R203_BotTick();
+	limit_bCurT0 = LIMIT_BotTick();
 }
 
-void R203_BotNodeEnd( void ) {
+void LIMIT_BotNodeEnd( void ) {
 	int usec;
 
-	if ( !R203_BotOn() ) {
+	if ( !LIMIT_BotOn() ) {
 		return;
 	}
 
-	usec = R203_BotTock( r203_bCurT0 );
-	r203_bLoops++;
-	if ( r203_bCurNode < 0 || r203_bCurNode >= R203_BNODE_MAX ) {
-		r203_bOther++;
+	usec = LIMIT_BotTock( limit_bCurT0 );
+	limit_bLoops++;
+	if ( limit_bCurNode < 0 || limit_bCurNode >= LIMIT_BNODE_MAX ) {
+		limit_bOther++;
 		return;
 	}
-	r203_bNodeCalls[r203_bCurNode]++;
-	r203_bNodeUsec[r203_bCurNode] += usec;
-	if ( usec > r203_bNodeMax[r203_bCurNode] ) {
-		r203_bNodeMax[r203_bCurNode] = usec;
+	limit_bNodeCalls[limit_bCurNode]++;
+	limit_bNodeUsec[limit_bCurNode] += usec;
+	if ( usec > limit_bNodeMax[limit_bCurNode] ) {
+		limit_bNodeMax[limit_bCurNode] = usec;
 	}
 }
 
-void R203_BotNodeSat( void ) {
-	if ( !R203_BotOn() ) {
+void LIMIT_BotNodeSat( void ) {
+	if ( !LIMIT_BotOn() ) {
 		return;
 	}
-	r203_bSat++;
+	limit_bSat++;
 }
 
-void R203_BotFrame( void ) {
+void LIMIT_BotFrame( void ) {
 	int window, i;
 	char line[1024], part[64];
 
-	if ( !R203_BotOn() ) {
-		r203_bLoops = r203_bSat = r203_bOther = 0;
-		r203_bWindowStart = r203_bFrames = 0;
-		for ( i = 0; i < R203_BNODE_MAX; i++ ) {
-			r203_bNodeCalls[i] = r203_bNodeUsec[i] = r203_bNodeMax[i] = 0;
+	if ( !LIMIT_BotOn() ) {
+		limit_bLoops = limit_bSat = limit_bOther = 0;
+		limit_bWindowStart = limit_bFrames = 0;
+		for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
+			limit_bNodeCalls[i] = limit_bNodeUsec[i] = limit_bNodeMax[i] = 0;
 		}
 		return;
 	}
 
-	if ( !r203_bWindowStart ) {
-		r203_bWindowStart = gi.Milliseconds();
+	if ( !limit_bWindowStart ) {
+		limit_bWindowStart = gi.Milliseconds();
 	}
 
-	window = gi.Milliseconds() - r203_bWindowStart;
-	r203_bFrames++;
-	if ( window < R203_BN_WINDOW_MS && r203_bFrames < R203_BN_MAX_FRAMES ) {
+	window = gi.Milliseconds() - limit_bWindowStart;
+	limit_bFrames++;
+	if ( window < LIMIT_BN_WINDOW_MS && limit_bFrames < LIMIT_BN_MAX_FRAMES ) {
 		return;
 	}
 
 	line[0] = '\0';
 	Com_sprintf( part, sizeof( part ), " loops=%d sat=%d other=%d",
-				 r203_bLoops, r203_bSat, r203_bOther );
+				 limit_bLoops, limit_bSat, limit_bOther );
 	Q_strcat( line, sizeof( line ), part );
-	for ( i = 0; i < R203_BNODE_MAX; i++ ) {
-		int mean = r203_bNodeCalls[i] ? ( r203_bNodeUsec[i] / r203_bNodeCalls[i] ) : 0;
+	for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
+		int mean = limit_bNodeCalls[i] ? ( limit_bNodeUsec[i] / limit_bNodeCalls[i] ) : 0;
 
 		Com_sprintf( part, sizeof( part ), " %s=%d/%d/%d",
-					 r203_bNodeTab[i].name, r203_bNodeCalls[i], mean, r203_bNodeMax[i] );
+					 limit_bNodeTab[i].name, limit_bNodeCalls[i], mean, limit_bNodeMax[i] );
 		Q_strcat( line, sizeof( line ), part );
 	}
-	gi.Printf( "[R203:bot] window=%dms%s\n", window, line );
+	gi.Printf( "[LIMIT:bot] window=%dms%s\n", window, line );
 
-	r203_bWindowStart = gi.Milliseconds();
-	r203_bFrames = 0;
-	r203_bLoops = r203_bSat = r203_bOther = 0;
-	for ( i = 0; i < R203_BNODE_MAX; i++ ) {
-		r203_bNodeCalls[i] = r203_bNodeUsec[i] = r203_bNodeMax[i] = 0;
+	limit_bWindowStart = gi.Milliseconds();
+	limit_bFrames = 0;
+	limit_bLoops = limit_bSat = limit_bOther = 0;
+	for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
+		limit_bNodeCalls[i] = limit_bNodeUsec[i] = limit_bNodeMax[i] = 0;
 	}
 }
 
@@ -1566,12 +1566,12 @@ int BotAIStartFrame(int time) {
 	gentity_t	*ent;
 	bot_entitystate_t state;
 	int elapsed_time, thinktime;
-	int r201_t0, r201_tspawn, r201_tlib, r201_tupd, r201_treg, r201_tthink, r201_tend;
-	int r201_bots = 0, r201_ents = 0;
+	int smp_t0, smp_tspawn, smp_tlib, smp_tupd, smp_treg, smp_tthink, smp_tend;
+	int smp_bots = 0, smp_ents = 0;
 
-	r201_t0 = gi.Milliseconds();
+	smp_t0 = gi.Milliseconds();
 
-	R203_BotSyncSwitch();
+	LIMIT_BotSyncSwitch();
 
 	G_CheckBotSpawn();
 
@@ -1591,7 +1591,7 @@ int BotAIStartFrame(int time) {
 	}
 
 	if (bot_pause.integer) {
-		R121_PROBE("bot:pause", "bot_pause=%d -- the WHOLE think leg is parked, ucmds still sent\n",
+		BOT_PROBE("bot:pause", "bot_pause=%d -- the WHOLE think leg is parked, ucmds still sent\n",
 		           bot_pause.integer);
 		for( i = 0; i < MAX_CLIENTS; i++ ) {
 			if( !botstates[i] || !botstates[i]->inuse ) {
@@ -1628,8 +1628,8 @@ int BotAIStartFrame(int time) {
 	}
 
 	// default to zero-cost when the think budget does not fire this frame.
-	r201_tspawn = gi.Milliseconds();
-	r201_tlib = r201_tupd = r201_treg = r201_tspawn;
+	smp_tspawn = gi.Milliseconds();
+	smp_tlib = smp_tupd = smp_treg = smp_tspawn;
 
 	elapsed_time = time - local_time;
 	local_time = time;
@@ -1645,19 +1645,19 @@ int BotAIStartFrame(int time) {
 		gi.BotLibStartFrame((float) time / 1000);
 
 		if (!gi.AAS_Initialized()) {
-			static int r121_aas;
-			R121_PROBE("bot:aasdead", "AAS NOT initialized at BotLibStartFrame, returning qfalse (call %d)\n",
-			           ++r121_aas);
+			static int bot_aas;
+			BOT_PROBE("bot:aasdead", "AAS NOT initialized at BotLibStartFrame, returning qfalse (call %d)\n",
+			           ++bot_aas);
 			return qfalse;
 		}
 
-		r201_tlib = gi.Milliseconds();
+		smp_tlib = gi.Milliseconds();
 
-		r201_bEntRuns++;	
+		smp_bEntRuns++;	
 
 		for (i = 0; i < MAX_GENTITIES; i++) {
 			ent = &g_entities[i];
-			r201_ents++;
+			smp_ents++;
 			if (!ent->inuse) {
 				gi.BotLibUpdateEntity(i, NULL);
 				continue;
@@ -1705,11 +1705,11 @@ int BotAIStartFrame(int time) {
 			gi.BotLibUpdateEntity(i, &state);
 		}
 
-		r201_tupd = gi.Milliseconds();
+		smp_tupd = gi.Milliseconds();
 
 		BotAIRegularUpdate();
 
-		r201_treg = gi.Milliseconds();
+		smp_treg = gi.Milliseconds();
 	}
 
 	floattime = gi.AAS_Time();
@@ -1718,30 +1718,30 @@ int BotAIStartFrame(int time) {
 		if( !botstates[i] || !botstates[i]->inuse ) {
 			continue;
 		}
-		r201_bots++;
+		smp_bots++;
 		botstates[i]->botthink_residual += elapsed_time;
 		if ( botstates[i]->botthink_residual >= thinktime ) {
 			botstates[i]->botthink_residual -= thinktime;
 
 			if (!gi.AAS_Initialized()) {
-				static int r121_aas2;
-				R121_PROBE("bot:aasdead2", "AAS NOT initialized before BotAI(%d), returning qfalse (call %d)\n",
-				           i, ++r121_aas2);
+				static int bot_aas2;
+				BOT_PROBE("bot:aasdead2", "AAS NOT initialized before BotAI(%d), returning qfalse (call %d)\n",
+				           i, ++bot_aas2);
 				return qfalse;
 			}
 
 			if (g_entities[i].client->pers.enterTime) { 
-				static int r121_think;
-				if (R120_Throttle(&r121_think, 4, 200)) {
-					R121_PROBE("bot:think", "BotAI(%d) thinktime=%d residual_budget=%d enterTime=%.0f level.time=%.0f\n",
+				static int bot_think;
+				if (PROBE_Throttle(&bot_think, 4, 200)) {
+					BOT_PROBE("bot:think", "BotAI(%d) thinktime=%d residual_budget=%d enterTime=%.0f level.time=%.0f\n",
 					           i, thinktime, botstates[i]->botthink_residual,
 					           g_entities[i].client->pers.enterTime, level.time);
 				}
 				BotAI(i, (float) thinktime / 1000);
 			} else {
-				static int r121_skip;
-				if (R120_Throttle(&r121_skip, 4, 200)) {
-					R121_PROBE("bot:skipthink", "bot %d SKIPPED by enterTime==0 gate (retail ai_main.cpp:1587) level.time=%.0f\n",
+				static int bot_skip;
+				if (PROBE_Throttle(&bot_skip, 4, 200)) {
+					BOT_PROBE("bot:skipthink", "bot %d SKIPPED by enterTime==0 gate (retail ai_main.cpp:1587) level.time=%.0f\n",
 					           i, level.time);
 				}
 			}
@@ -1749,7 +1749,7 @@ int BotAIStartFrame(int time) {
 	}
 
 
-	r201_tthink = gi.Milliseconds();
+	smp_tthink = gi.Milliseconds();
 
 	for( i = 0; i < MAX_CLIENTS; i++ ) {
 		if( !botstates[i] || !botstates[i]->inuse ) {
@@ -1761,9 +1761,9 @@ int BotAIStartFrame(int time) {
 
 		BotUpdateInput(botstates[i], time, elapsed_time);
 		{
-			static int r121_ucmd;
-			if (R120_Throttle(&r121_ucmd, 8, 400)) {
-				R121_PROBE("bot:ucmd", "BotUserCommand(%d) fwd=%d right=%d up=%d buttons=%d weapon=%d "
+			static int bot_ucmd;
+			if (PROBE_Throttle(&bot_ucmd, 8, 400)) {
+				BOT_PROBE("bot:ucmd", "BotUserCommand(%d) fwd=%d right=%d up=%d buttons=%d weapon=%d "
 				                       "ucmdYaw=%.1f ucmdPitch=%.1f botYaw=%.1f botPitch=%.1f velYaw=%.1f\n",
 				           i, botstates[i]->lastucmd.forwardmove, botstates[i]->lastucmd.rightmove,
 				           botstates[i]->lastucmd.upmove, botstates[i]->lastucmd.buttons,
@@ -1778,15 +1778,15 @@ int BotAIStartFrame(int time) {
 		gi.BotUserCommand(botstates[i]->client, &botstates[i]->lastucmd);
 	}
 
-	r201_tend = gi.Milliseconds();
-	R201_BotBudget( r201_tend - r201_t0,
-					r201_tspawn - r201_t0,
-					r201_tlib   - r201_tspawn,
-					r201_tupd   - r201_tlib,
-					r201_treg   - r201_tupd,
-					r201_tthink - r201_treg,
-					r201_tend   - r201_tthink,
-					r201_bots, r201_ents );
+	smp_tend = gi.Milliseconds();
+	SMP_BotBudget( smp_tend - smp_t0,
+					smp_tspawn - smp_t0,
+					smp_tlib   - smp_tspawn,
+					smp_tupd   - smp_tlib,
+					smp_treg   - smp_tupd,
+					smp_tthink - smp_treg,
+					smp_tend   - smp_tthink,
+					smp_bots, smp_ents );
 
 	return qtrue;
 }

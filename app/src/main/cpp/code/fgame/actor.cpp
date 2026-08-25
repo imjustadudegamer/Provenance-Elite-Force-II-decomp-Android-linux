@@ -5421,8 +5421,8 @@ void Actor::Killed(Event *ev)
             || means_of_death == MOD_PLASMASHOTGUN)) {
         float chance = G_Random();
 
-        if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_r120", "0", 0)->integer) {
-            gi.Printf("[R133:nanseed] ent=%d mod=%d(%s) roll=%.3f take=%d "
+        if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "0", 0)->integer) {
+            gi.Printf("[UIVK:nanseed] ent=%d mod=%d(%s) roll=%.3f take=%d "
                       "org=(%.1f,%.1f,%.1f) vel=(%.1f,%.1f,%.1f) atk=%d "
                       "atkorg=(%.1f,%.1f,%.1f) mass=%d scale=%.6g mv=%d ge=%d "
                       "dkv=%.1f dkh=%.1f hp=%.1f df=%d\n",
@@ -5454,15 +5454,15 @@ void Actor::Killed(Event *ev)
             attackerToSelf *= deathKnockbackHorizontalValue;
             velocity = attackerToSelf;
 
-            if (getenv("EF2_KNOCKBACK") && gi.cvar("qa_r120", "0", 0)->integer) {
-                Vector r133_kb_raw = origin - attacker->origin;
-                int    r133_kb_ge  = -1;
+            if (getenv("EF2_KNOCKBACK") && gi.cvar("qa_probe", "0", 0)->integer) {
+                Vector uivk_kb_raw = origin - attacker->origin;
+                int    uivk_kb_ge  = -1;
 
                 if (groundentity) {
-                    r133_kb_ge = groundentity - g_entities;
+                    uivk_kb_ge = groundentity - g_entities;
                 }
 
-                gi.Printf("[R133:knockback] "
+                gi.Printf("[UIVK:knockback] "
                           "ent=%d mod=%d(%s) roll=%.4f fire=1 "
                           "imp=(%.1f,%.1f,%.1f) spd=%.1f "
                           "raw=(%.1f,%.1f,%.1f) dkh=%.1f dkv=%.1f "
@@ -5474,19 +5474,19 @@ void Actor::Killed(Event *ev)
                           chance,
                           velocity[0], velocity[1], velocity[2],
                           velocity.length(),
-                          r133_kb_raw[0], r133_kb_raw[1], r133_kb_raw[2],
+                          uivk_kb_raw[0], uivk_kb_raw[1], uivk_kb_raw[2],
                           deathKnockbackHorizontalValue,
                           deathKnockbackVerticalValue,
                           attacker->entnum,
                           attacker->origin[0], attacker->origin[1], attacker->origin[2],
                           origin[0], origin[1], origin[2],
                           mass,
-                          r133_kb_ge,
+                          uivk_kb_ge,
                           (int)movetype,
                           level.inttime);
             }
 
-            R133_KB_Arm(entnum);
+            UIVK_KB_Arm(entnum);
         }
     }
 
@@ -5741,13 +5741,13 @@ qboolean Actor::SetAnim(const str& anim, Event *ev, bodypart_t part, const float
 
     if (num != -1) {
         // state never ran" from "the state ran and the hand box missed".  Silent without
-        if (gi.cvar("qa_r120", "0", 0)->integer && !strncmp(anim.c_str(), "assimilate", 10)) {
-            Entity *r169_enemy = enemyManager ? enemyManager->GetCurrentEnemy() : NULL;
-            float   r169_dist  = (r169_enemy ? (r169_enemy->centroid - centroid).length() : -1.0f);
+        if (gi.cvar("qa_probe", "0", 0)->integer && !strncmp(anim.c_str(), "assimilate", 10)) {
+            Entity *gameplay_enemy = enemyManager ? enemyManager->GetCurrentEnemy() : NULL;
+            float   gameplay_dist  = (gameplay_enemy ? (gameplay_enemy->centroid - centroid).length() : -1.0f);
 
-            gi.Printf("[R169:asml] ent=%d '%s' anim='%s' num=%d part=%d enemy=%d edist=%.1f hp=%.0f\n",
+            gi.Printf("[GAMEPLAY:asml] ent=%d '%s' anim='%s' num=%d part=%d enemy=%d edist=%.1f hp=%.0f\n",
                       entnum, model.c_str(), anim.c_str(), num, (int)part,
-                      r169_enemy ? r169_enemy->entnum : -1, r169_dist, health);
+                      gameplay_enemy ? gameplay_enemy->entnum : -1, gameplay_dist, health);
         }
 
         if (part == legs) {
@@ -6112,27 +6112,27 @@ void Actor::SetTurretMode(Event *ev)
 void Actor::Dead(Event *ev)
 {
     {
-        static int    r133_dw_calls[MAX_GENTITIES];
-        static int    r133_dw_frame[MAX_GENTITIES];
-        static Vector r133_dw_org[MAX_GENTITIES];
+        static int    uivk_dw_calls[MAX_GENTITIES];
+        static int    uivk_dw_frame[MAX_GENTITIES];
+        static Vector uivk_dw_org[MAX_GENTITIES];
 
         if (getenv("EF2_DEADWEDGE") && entnum >= 0 && entnum < MAX_GENTITIES) {
-            int r133_dw_n;
+            int uivk_dw_n;
 
-            if (r133_dw_frame[entnum] > level.framenum) {
-                r133_dw_calls[entnum] = 0;
+            if (uivk_dw_frame[entnum] > level.framenum) {
+                uivk_dw_calls[entnum] = 0;
             }
 
-            r133_dw_n = r133_dw_calls[entnum]++;
+            uivk_dw_n = uivk_dw_calls[entnum]++;
 
-            if (r133_dw_n > 0 && gi.cvar("qa_r120", "0", 0)->integer) {
-                int r133_dw_ge = -1;
+            if (uivk_dw_n > 0 && gi.cvar("qa_probe", "0", 0)->integer) {
+                int uivk_dw_ge = -1;
 
                 if (groundentity) {
-                    r133_dw_ge = groundentity - g_entities;
+                    uivk_dw_ge = groundentity - g_entities;
                 }
 
-                gi.Printf("[R133:deadwedge] "
+                gi.Printf("[UIVK:deadwedge] "
                           "ent=%d n=%d ge=%d vel=(%.1f,%.1f,%.1f) mv=%d "
                           "org=(%.1f,%.1f,%.1f) porg=(%.1f,%.1f,%.1f) "
                           "td=(%.2f,%.2f,%.2f) mb=%d fl=%d par=%d imm=%d "
@@ -6140,14 +6140,14 @@ void Actor::Dead(Event *ev)
                           "mt=%d "
                           "svtime=%d\n",
                           entnum,
-                          r133_dw_n,
-                          r133_dw_ge,
+                          uivk_dw_n,
+                          uivk_dw_ge,
                           velocity[0], velocity[1], velocity[2],
                           (int)movetype,
                           origin[0], origin[1], origin[2],
-                          r133_dw_org[entnum][0],
-                          r133_dw_org[entnum][1],
-                          r133_dw_org[entnum][2],
+                          uivk_dw_org[entnum][0],
+                          uivk_dw_org[entnum][1],
+                          uivk_dw_org[entnum][2],
                           total_delta[0], total_delta[1], total_delta[2],
                           (int)M_CheckBottom(this),
                           (int)flags,
@@ -6160,8 +6160,8 @@ void Actor::Dead(Event *ev)
                           level.inttime);
             }
 
-            r133_dw_frame[entnum] = level.framenum;
-            r133_dw_org[entnum]   = origin;
+            uivk_dw_frame[entnum] = level.framenum;
+            uivk_dw_org[entnum]   = origin;
         }
     }
 
@@ -8181,7 +8181,7 @@ void Actor::RunCustomThread( const str& threadType )
 }
 
 // decompile corpus.  The port never called them either, so the transcriptions were
-// unverifiable dead weight.  DELETED r133-smartgen R2, verdict PORT-ONLY-DEAD.  Their SDK
+// unverifiable dead weight.  DELETED uivk-smartgen R2, verdict PORT-ONLY-DEAD.  Their SDK
 
 
 void Actor::SaveMode( void )
@@ -14735,8 +14735,8 @@ void Actor::MeleeEvent( Event *ev )
 	if ( GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_ON ) && GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_DAMAGED ) )
 		{
 		// row a gate early-out is indistinguishable from the tiki never dispatching the
-		if ( gi.cvar("qa_r120", "0", 0)->integer )
-			gi.Printf( "[R169:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_once_already_damaged\n",
+		if ( gi.cvar("qa_probe", "0", 0)->integer )
+			gi.Printf( "[GAMEPLAY:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_once_already_damaged\n",
 					   entnum, model.c_str(), ( ev->NumArgs() > 2 ) ? ev->GetString( 3 ) : "-",
 					   ( ev->NumArgs() > 0 ) ? ev->GetFloat( 1 ) : 0.0f );
 		return;
@@ -14744,8 +14744,8 @@ void Actor::MeleeEvent( Event *ev )
 
 	if ( !GetActorFlag( ACTOR_FLAG_DAMAGE_ALLOWED ) )
 		{
-		if ( gi.cvar("qa_r120", "0", 0)->integer )
-			gi.Printf( "[R169:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_not_allowed\n",
+		if ( gi.cvar("qa_probe", "0", 0)->integer )
+			gi.Printf( "[GAMEPLAY:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_not_allowed\n",
 					   entnum, model.c_str(), ( ev->NumArgs() > 2 ) ? ev->GetString( 3 ) : "-",
 					   ( ev->NumArgs() > 0 ) ? ev->GetFloat( 1 ) : 0.0f );
 		return;
@@ -16758,9 +16758,9 @@ void Actor::_notifyGroupSpottedEnemy()
    }
 
 // an empty localized path is exactly "the line never plays and the subtitle never draws".
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
 
 void Actor::PlayDialog( Sentient *user, float volume, float min_dist, const char *dialog_name, const char *state_name, qboolean headDisplay , bool useTalk , bool important )
 {
@@ -16802,11 +16802,11 @@ void Actor::PlayDialog( Sentient *user, float volume, float min_dist, const char
 		dialog_anim = dialogAnim;
 
 	// `actor='Tuvok' ... anim=''`) are therefore the probe's own ordering, not a
-	if ( R120_On() ) {
-		static int r131_dlg;
+	if ( PROBE_On() ) {
+		static int widget_dlg;
 
-		R120_Throttle( &r131_dlg, 40, 1 );
-		R131_PROBE(
+		PROBE_Throttle( &widget_dlg, 40, 1 );
+		WIDGET_PROBE(
 			"dlg:play",
 			"actor='%s' raw='%s' loc='%s' len=%.2f anim='%s' loop=%d\n",
 			name.c_str(),

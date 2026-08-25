@@ -1,12 +1,12 @@
 
 #include "ui_local.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) ((cvar_t *)0)
-#define R120_PROBE_PRINT                       Com_Printf
-#define R120_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_r120", "1")) != 0)  
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
+#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_r202.h"
+#include "../qcommon/qa_ui.h"
 
 MenuManager menuManager;
 
@@ -115,7 +115,7 @@ void Menu::ShowMenu(Event *ev)
             wid->ExecuteShowCommands();
             wid->CancelEventsOfType(EV_Widget_Hide);
         } else {
-            R120_PROBE(
+            PROBE(
                 "inv:showmenu",
                 "SKIPPED disabled widget: menu='%s' widget='%s' enabled=0 visible=%d",
                 m_name.c_str(),
@@ -131,13 +131,13 @@ void Menu::ShowMenu(Event *ev)
         activate = qtrue;
     }
 
-    if (R120_On() && !strcmp(m_name.c_str(), "dm_scoreboard")) {
-        static int r130_sbmenu;
+    if (PROBE_On() && !strcmp(m_name.c_str(), "dm_scoreboard")) {
+        static int uirect_sbmenu;
 
-        if (R120_Throttle(&r130_sbmenu, 6, 20)) {
-            R130_PROBE("sb:menuwidgets", "menu='%s' widgets=%d", m_name.c_str(), n);
-            for (int r130i = 1; r130i <= n; r130i++) {
-                m_itemlist.ObjectAt(r130i)->R127DumpState(r130i, m_name.c_str());
+        if (PROBE_Throttle(&uirect_sbmenu, 6, 20)) {
+            UIRECT_PROBE("sb:menuwidgets", "menu='%s' widgets=%d", m_name.c_str(), n);
+            for (int uirecti = 1; uirecti <= n; uirecti++) {
+                m_itemlist.ObjectAt(uirecti)->PAINTDumpState(uirecti, m_name.c_str());
             }
         }
     }
@@ -227,7 +227,7 @@ UIWidget *Menu::GetContainerWidget(void)
     }
 }
 
-// R127 TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  MenuManager::ShowMenu's
+// PAINT TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  MenuManager::ShowMenu's
 int Menu::GetWidgetCount(void)
 {
     return m_itemlist.NumObjects();
@@ -644,68 +644,68 @@ Menu *MenuManager::FindMenu(str name)
 
 #ifdef __ANDROID__
 // never executed it -- the shipped six-resolution SwitchBox plus the `reslist`
-static void R134AndroidVideoMenuFixup(Menu *menu)
+static void MENU3DAndroidVideoMenuFixup(Menu *menu)
 {
-    UIWidget *r134cont;
-    UIWidget *r134w;
+    UIWidget *menu3dcont;
+    UIWidget *menu3dw;
 
     if (!menu || Q_stricmp(menu->m_name.c_str(), "video")) {
         return;
     }
 
-    r134cont = menu->GetContainerWidget();
-    if (!r134cont) {
+    menu3dcont = menu->GetContainerWidget();
+    if (!menu3dcont) {
         return;
     }
 
-    r134w = r134cont->getFirstChild();
+    menu3dw = menu3dcont->getFirstChild();
 
-    while (r134w) {
-        const char *r134cvar  = r134w->getCvarName();
-        const char *r134title = r134w->getTitle();
-        const char *r134name  = r134w->getName();
+    while (menu3dw) {
+        const char *menu3dcvar  = menu3dw->getCvarName();
+        const char *menu3dtitle = menu3dw->getTitle();
+        const char *menu3dname  = menu3dw->getName();
 
-        if (r134cvar && r134cvar[0] && !Q_stricmp(r134cvar, "r_mode")
-            && (!r134title || strcmp(r134title, "$$Hidden$$"))) {
-            static const char *r134labels[3] = { "Fill", "16:9", "4:3" };
-            static const char *r134cmds[3]   = {
+        if (menu3dcvar && menu3dcvar[0] && !Q_stricmp(menu3dcvar, "r_mode")
+            && (!menu3dtitle || strcmp(menu3dtitle, "$$Hidden$$"))) {
+            static const char *menu3dlabels[3] = { "Fill", "16:9", "4:3" };
+            static const char *menu3dcmds[3]   = {
                 "set android_aspect 0", "set android_aspect 1", "set android_aspect 2"
             };
-            Event *r134link;
-            int    r134i;
+            Event *menu3dlink;
+            int    menu3di;
 
-            r134w->ProcessEvent(new Event("clearoptions"));
+            menu3dw->ProcessEvent(new Event("clearoptions"));
 
-            r134link = new Event(EV_Layout_LinkCvar);
-            r134link->AddString("android_aspect");
-            r134w->ProcessEvent(r134link);
+            menu3dlink = new Event(EV_Layout_LinkCvar);
+            menu3dlink->AddString("android_aspect");
+            menu3dw->ProcessEvent(menu3dlink);
 
-            for (r134i = 0; r134i < 3; r134i++) {
-                Event *r134ev = new Event("option");
+            for (menu3di = 0; menu3di < 3; menu3di++) {
+                Event *menu3dev = new Event("option");
 
-                r134ev->AddString(r134labels[r134i]);
-                r134ev->AddString(r134cmds[r134i]);
-                r134ev->AddString(va("%d", r134i));
-                r134w->ProcessEvent(r134ev);
+                menu3dev->AddString(menu3dlabels[menu3di]);
+                menu3dev->AddString(menu3dcmds[menu3di]);
+                menu3dev->AddString(va("%d", menu3di));
+                menu3dw->ProcessEvent(menu3dev);
             }
-        } else if (r134title && !strcmp(r134title, "$$VideoMode$$")) {
-            r134w->setTitle("Aspect");     
-        } else if (r134name && !Q_stricmp(r134name, "reslist")) {
-            r134w->ProcessEvent(new Event(EV_Widget_Hide));   
+        } else if (menu3dtitle && !strcmp(menu3dtitle, "$$VideoMode$$")) {
+            menu3dw->setTitle("Aspect");     
+        } else if (menu3dname && !Q_stricmp(menu3dname, "reslist")) {
+            menu3dw->ProcessEvent(new Event(EV_Widget_Hide));   
         }
 
-        r134w = r134w->getNextSibling();
+        menu3dw = menu3dw->getNextSibling();
     }
 }
 #endif
 
-static const char *const r152RetailOnlyAudioCvars[] = {
+static const char *const audioRetailOnlyAudioCvars[] = {
     "s_milesdriver",   
     "s_reverb",        
     NULL
 };
 
-static qboolean R152RetailOnlyAudioCvar(const char *name)
+static qboolean AUDIORetailOnlyAudioCvar(const char *name)
 {
     int i;
 
@@ -713,8 +713,8 @@ static qboolean R152RetailOnlyAudioCvar(const char *name)
         return qfalse;
     }
 
-    for (i = 0; r152RetailOnlyAudioCvars[i]; i++) {
-        if (!Q_stricmp(name, r152RetailOnlyAudioCvars[i])) {
+    for (i = 0; audioRetailOnlyAudioCvars[i]; i++) {
+        if (!Q_stricmp(name, audioRetailOnlyAudioCvars[i])) {
             return qtrue;
         }
     }
@@ -722,36 +722,36 @@ static qboolean R152RetailOnlyAudioCvar(const char *name)
     return qfalse;
 }
 
-static void R152AudioMenuFixup(Menu *menu)
+static void AUDIOAudioMenuFixup(Menu *menu)
 {
-    UIWidget *r152cont;
-    UIWidget *r152w;
+    UIWidget *audiocont;
+    UIWidget *audiow;
 
     if (!menu || Q_stricmp(menu->m_name.c_str(), "audio")) {
         return;
     }
 
-    r152cont = menu->GetContainerWidget();
-    if (!r152cont) {
+    audiocont = menu->GetContainerWidget();
+    if (!audiocont) {
         return;
     }
 
-    r152w = r152cont->getFirstChild();
+    audiow = audiocont->getFirstChild();
 
-    while (r152w) {
-        const char *r152cvar  = r152w->getCvarName();
-        const char *r152title = r152w->getTitle();
-        const char *r152name  = r152w->getName();
+    while (audiow) {
+        const char *audiocvar  = audiow->getCvarName();
+        const char *audiotitle = audiow->getTitle();
+        const char *audioname  = audiow->getName();
 
-        if (R152RetailOnlyAudioCvar(r152cvar)) {
-            r152w->ProcessEvent(new Event(EV_Widget_Hide));
-        } else if (r152title && !strcmp(r152title, "$$SoundDriver$$")) {
-            r152w->ProcessEvent(new Event(EV_Widget_Hide));
-        } else if (r152name && !Q_stricmp(r152name, "sounddriver")) {
-            r152w->ProcessEvent(new Event(EV_Widget_Hide));
+        if (AUDIORetailOnlyAudioCvar(audiocvar)) {
+            audiow->ProcessEvent(new Event(EV_Widget_Hide));
+        } else if (audiotitle && !strcmp(audiotitle, "$$SoundDriver$$")) {
+            audiow->ProcessEvent(new Event(EV_Widget_Hide));
+        } else if (audioname && !Q_stricmp(audioname, "sounddriver")) {
+            audiow->ProcessEvent(new Event(EV_Widget_Hide));
         }
 
-        r152w = r152w->getNextSibling();
+        audiow = audiow->getNextSibling();
     }
 }
 
@@ -778,10 +778,10 @@ bool MenuManager::PushMenu(str name)
         return false;
     }
 
-    R152AudioMenuFixup(m);
+    AUDIOAudioMenuFixup(m);
 
 #ifdef __ANDROID__
-    R134AndroidVideoMenuFixup(m);
+    MENU3DAndroidVideoMenuFixup(m);
 #endif
 
     m->SaveCVars();
@@ -837,10 +837,10 @@ bool MenuManager::TransitionMenu(str name)
         head->ProcessEvent(Event("hidemenu"));
     }
 
-    R152AudioMenuFixup(m);
+    AUDIOAudioMenuFixup(m);
 
 #ifdef __ANDROID__
-    R134AndroidVideoMenuFixup(m);
+    MENU3DAndroidVideoMenuFixup(m);
 #endif
 
     m->SaveCVars();
@@ -868,7 +868,7 @@ bool MenuManager::ShowMenu(str name)
     Menu *m;
     float maxintime;
 
-    R127_PROBE("menu:show", "name='%s' lock=%d", name.c_str(), m_lock ? 1 : 0);
+    PAINT_PROBE("menu:show", "name='%s' lock=%d", name.c_str(), m_lock ? 1 : 0);
 
     if (m_lock) {
         return false;
@@ -877,26 +877,26 @@ bool MenuManager::ShowMenu(str name)
     m = FindMenu(name);
     if (!m) {
         uii.Sys_Printf("Couldn't find menu %s\n", name.c_str());
-        R127_PROBE("menu:show", "MISS name='%s'", name.c_str());
+        PAINT_PROBE("menu:show", "MISS name='%s'", name.c_str());
         return false;
     }
 
-    R152AudioMenuFixup(m);
+    AUDIOAudioMenuFixup(m);
 
 #ifdef __ANDROID__
-    R134AndroidVideoMenuFixup(m);
+    MENU3DAndroidVideoMenuFixup(m);
 #endif
 
     m->SaveCVars();
     m->ProcessEvent(new Event("showmenu"));
 
     {
-        int r127i;
-        int r127n = m->GetWidgetCount();
+        int painti;
+        int paintn = m->GetWidgetCount();
 
-        R127_PROBE("menu:widgets", "menu='%s' widgets=%d", name.c_str(), r127n);
-        for (r127i = 1; r127i <= r127n; r127i++) {
-            m->GetWidget(r127i)->R127DumpState(r127i, name.c_str());
+        PAINT_PROBE("menu:widgets", "menu='%s' widgets=%d", name.c_str(), paintn);
+        for (painti = 1; painti <= paintn; painti++) {
+            m->GetWidget(painti)->PAINTDumpState(painti, name.c_str());
         }
     }
 
@@ -1108,27 +1108,27 @@ void MenuManager::UpdateAllMenus(void)
     int i;
     int num;
 
-    R202_ROOT_BEGIN(R202_FAM_WALK);
+    UI_ROOT_BEGIN(UI_FAM_WALK);
 
     num = m_menulist.NumObjects();
-    R202_COUNT(R202_FAM_WALK, R202_WC_menus, num);
+    UI_COUNT(UI_FAM_WALK, UI_WC_menus, num);
 
     for (i = 1; i <= num; i++) {
         Menu     *menu = m_menulist.ObjectAt(i);
         UIWidget *cont = menu ? menu->GetContainerWidget() : NULL;
-        int       r202_vis = ( cont && cont->IsVisible() ) ? 1 : 0;
-        int       r202_t   = ( r202_statsOn ? R202_Microseconds() : 0 );
+        int       ui_vis = ( cont && cont->IsVisible() ) ? 1 : 0;
+        int       ui_t   = ( ui_statsOn ? UI_Microseconds() : 0 );
 
         menu->Update();
 
-        if ( r202_statsOn ) {
-            R202_Add( R202_FAM_WALK, r202_vis ? R202_WZ_vis : R202_WZ_hid,
-                      R202_Microseconds() - r202_t );
-            R202_Bump( R202_FAM_WALK, r202_vis ? R202_WC_visw : R202_WC_hidw, 1 );
+        if ( ui_statsOn ) {
+            UI_Add( UI_FAM_WALK, ui_vis ? UI_WZ_vis : UI_WZ_hid,
+                      UI_Microseconds() - ui_t );
+            UI_Bump( UI_FAM_WALK, ui_vis ? UI_WC_visw : UI_WC_hidw, 1 );
         }
     }
 
-    R202_ROOT_END(R202_FAM_WALK);
+    UI_ROOT_END(UI_FAM_WALK);
 }
 
 void MenuManager::Lock(Event *ev)

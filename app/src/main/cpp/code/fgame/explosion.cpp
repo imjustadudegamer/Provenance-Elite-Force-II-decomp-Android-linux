@@ -9,9 +9,9 @@
 #include "weaputils.h"
 #include "earthquake.h"
 #include "../qcommon/gameplaymanager.h"
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
 
 
@@ -515,9 +515,9 @@ void ExplodeObject::MakeExplosion(Event *ev)
     other = ev->GetEntity(1);
 
     {
-        static int r133_dfx_n;
-        if (R120_On() && R120_Throttle(&r133_dfx_n, 32, 32)) {
-            R120_PROBE("DFX:explodeobject", "ent=%d targetname='%s' model='%s' explmodel='%s' debris=%d noexpl=%d\n",
+        static int uivk_dfx_n;
+        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 32, 32)) {
+            PROBE("DFX:explodeobject", "ent=%d targetname='%s' model='%s' explmodel='%s' debris=%d noexpl=%d\n",
                        entnum, targetname.c_str(), model.c_str(), explosionmodel.c_str(),
                        debrismodels.NumObjects(), (spawnflags & NO_EXPLOSIONS) ? 1 : 0);
         }

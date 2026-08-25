@@ -113,10 +113,10 @@ set(GAME_MODULE_SHARED_SOURCES
 # corepp/delegate.cpp (MOHAA delegate plumbing), corepp/lz77.cpp (MOHAA archive
 # compression) and corepp/mem_tempalloc.cpp (MOHAA MEM_TempAlloc).  Linking them
 # exported 26 invented symbols that nothing in cgame.so or the engine resolves.
-# R124-C: con_timer.cpp and lz77.cpp are now DELETED from the tree outright (zero
+# TIKIANIM-C: con_timer.cpp and lz77.cpp are now DELETED from the tree outright (zero
 # retail presence in any of the three images, zero in the EF2 SDK; con_timer had no
 # instance and lz77 no caller).
-# R125-F: delegate.cpp is DELETED from the tree outright too -- "delegate" is 0 bytes
+# DELEGATE-F: delegate.cpp is DELETED from the tree outright too -- "delegate" is 0 bytes
 # in all three retail images, 0 lines in every retail symbol table and 0 in the EF2
 # SDK, and its five MulticastDelegate members had no .Add() subscriber tree-wide, so
 # the Entity/Player members, the three Execute() calls and the fgame/entity.h include

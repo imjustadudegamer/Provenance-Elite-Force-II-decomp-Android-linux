@@ -99,7 +99,7 @@ extern "C" {
 
 
 
-// [R133:DO] retail's mark record holds TEN vertices, not eight.  Retail CG_ImpactMark
+// [UIVK:DO] retail's mark record holds TEN vertices, not eight.  Retail CG_ImpactMark
 #define MAX_VERTS_ON_POLY 10
 #define MAX_MARK_POLYS    64
 

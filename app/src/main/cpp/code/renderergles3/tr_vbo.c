@@ -140,7 +140,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		return;
 	}
 
-	R204_SUB( R204_FAM_DS, R204_DSZ_sub_vbo, {
+	BE_SUB( BE_FAM_DS, BE_DSZ_sub_vbo, {
 		dst = s_tessStage;
 		for ( i = 0; i < input->numVertexes; i++, dst++ ) {
 			const float *src;
@@ -199,10 +199,10 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 					   indexes, GL_STREAM_DRAW );
 
 		qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
-		R204_Bump( R204_FAM_BE, R204_BEC_draws, 1 );
-		R204_Bump( R204_FAM_DS, R204_DSC_draws, 1 );
+		BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_draws, 1 );
 		if ( r_spriteListOpen ) {
-			R204_Bump( R204_FAM_BE, R204_BEC_sprDraw, 1 );
+			BE_Bump( BE_FAM_BE, BE_BEC_sprDraw, 1 );
 		}
 	} );
 }
@@ -324,7 +324,7 @@ void RB_ImmFlush( void )
 		}
 
 		qglDrawArrays( rec->mode, rec->first, rec->count );
-		R204_Bump( R204_FAM_BE, R204_BEC_draws, 1 );
+		BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
 	}
 
 

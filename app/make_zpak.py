@@ -29,7 +29,7 @@ into the port's own pak.  The path then resolves from the pak, no retail data is
 shipped or copied, no engine check is weakened, and the only loose cfg left is
 `config.cfg`.  A retail install's LOOSE `global/default.cfg` still wins, because the
 loose base directories are earlier in the search path than the paks (the device's own
-`[R133:pakmount]` list prints slot 0/1 as directories and slot 2 as this pak), so
+`[UIVK:pakmount]` list prints slot 0/1 as directories and slot 2 as this pak), so
 retail behaviour is preserved wherever retail shipped the file.
 
 The pak is DETERMINISTIC: fixed timestamps and sorted entries, so regenerating it
@@ -79,7 +79,7 @@ def collect():
     """Every entry the pak must contain, as (name, bytes)."""
     entries = {}
     # Only the 32-bit .tga touch art plus our defaults cfg.  The .png siblings that
-    # sit in the assets directory are pre-r133 leftovers: retail's image resolver has
+    # sit in the assets directory are pre-uivk leftovers: retail's image resolver has
     # no .png loader (the note in cl_scrn.cpp's CL_TouchRegisterShaders), so shipping
     # them would add dead weight to every install.
     for f in sorted(os.listdir(os.path.join(ASSET_DIR, "gfx/touch"))):

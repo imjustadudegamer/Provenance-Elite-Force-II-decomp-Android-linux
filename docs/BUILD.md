@@ -42,8 +42,8 @@ Artifacts under `build-linux-gles3/Release/`:
 | `cgame.so` | the client-game module, dlopened at run time |
 | `renderer_gles3.so` | the shipping GLES 3.0 backend |
 
-The probe binaries in the same directory (`r200_gles3_firstlight`,
-`r201_hwtex_probe`, `r207_progcache_probe`, …) are offline evidence harnesses.
+The probe binaries in the same directory (`gles3_gles3_firstlight`,
+`smp_hwtex_probe`, `progcache_progcache_probe`, …) are offline evidence harnesses.
 They are built by the `tests` CMake target and never executed.
 
 ## The gate

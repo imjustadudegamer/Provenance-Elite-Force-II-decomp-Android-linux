@@ -1319,10 +1319,10 @@ extern glconfig_t	glConfig;
 extern qboolean  textureFilterAnisotropic;
 extern int       maxAnisotropy;
 
-extern int       r201_texTranscode;		
-extern qboolean  r201_hasAstcLdr;
-extern qboolean  r201_hasAstcSliced3d;
-extern qboolean  r201_hasEtc2Core;
+extern int       smp_texTranscode;		
+extern qboolean  smp_hasAstcLdr;
+extern qboolean  smp_hasAstcSliced3d;
+extern qboolean  smp_hasEtc2Core;
 extern float     displayAspect;
 extern qboolean  haveClampToEdge;
 
@@ -1605,8 +1605,8 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 void Set2DInitialShaderTime(float startTime);
 
 void RE_Scissor(int x, int y, int width, int height);
-void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport );
-void R201_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
+void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport );
+void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);
 void RE_StretchRaw(int x, int y, int w, int h, int cols, int rows, int components, const byte* data, qboolean dirty);
 void	RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty);
@@ -2200,125 +2200,125 @@ void SaveJPG(char * filename, int quality, int image_width, int image_height, un
 
 void UI_LoadResource(const char* name);
 
-#define R201_RLZ_world		0
-#define R201_RLZ_bspread	1
-#define R201_RLZ_shaders	2
-#define R201_RLZ_lightmap	3
-#define R201_RLZ_lods		4
-#define R201_RLZ_reginit	5
-#define R201_RLZ_imginit	6
-#define R201_RLZ_setup		7
-#define R201_RLZ_findimg	8
-#define R201_RLZ_decode		9
-#define R201_RLZ_transcode	10
-#define R201_RLZ_upload		11
-#define R201_RLZ_modelreg	12
-#define R201_RLZ_COUNT		13
+#define SMP_RLZ_world		0
+#define SMP_RLZ_bspread	1
+#define SMP_RLZ_shaders	2
+#define SMP_RLZ_lightmap	3
+#define SMP_RLZ_lods		4
+#define SMP_RLZ_reginit	5
+#define SMP_RLZ_imginit	6
+#define SMP_RLZ_setup		7
+#define SMP_RLZ_findimg	8
+#define SMP_RLZ_decode		9
+#define SMP_RLZ_transcode	10
+#define SMP_RLZ_upload		11
+#define SMP_RLZ_modelreg	12
+#define SMP_RLZ_COUNT		13
 
-extern	int		r201_rloadDepth;	
-extern	cvar_t	*r201_rloadStats;	
+extern	int		smp_rloadDepth;	
+extern	cvar_t	*smp_rloadStats;	
 
-int		R201_RLoadNow( void );
-void	R201_RLoadAdd( int zone, int msec, int depth );
+int		SMP_RLoadNow( void );
+void	SMP_RLoadAdd( int zone, int msec, int depth );
 
-static inline int R201_RLoadArmed( void ) {
-	return r201_rloadStats ? r201_rloadStats->integer : 1;
+static inline int SMP_RLoadArmed( void ) {
+	return smp_rloadStats ? smp_rloadStats->integer : 1;
 }
 
-#define R201_RLOAD_BEGIN(z) \
-	int r201_ra_##z = R201_RLoadArmed(); \
-	int r201_rld_##z = ( r201_ra_##z ? r201_rloadDepth++ : 0 ); \
-	int r201_rlt_##z = ( r201_ra_##z ? R201_RLoadNow() : 0 )
-#define R201_RLOAD_END(z) \
+#define SMP_RLOAD_BEGIN(z) \
+	int smp_ra_##z = SMP_RLoadArmed(); \
+	int smp_rld_##z = ( smp_ra_##z ? smp_rloadDepth++ : 0 ); \
+	int smp_rlt_##z = ( smp_ra_##z ? SMP_RLoadNow() : 0 )
+#define SMP_RLOAD_END(z) \
 	do { \
-		if ( r201_ra_##z ) { \
-			r201_rloadDepth--; \
-			R201_RLoadAdd( R201_RLZ_##z, R201_RLoadNow() - r201_rlt_##z, r201_rld_##z ); \
+		if ( smp_ra_##z ) { \
+			smp_rloadDepth--; \
+			SMP_RLoadAdd( SMP_RLZ_##z, SMP_RLoadNow() - smp_rlt_##z, smp_rld_##z ); \
 		} \
 	} while ( 0 )
 
 typedef enum {
-	R204_FAM_BE = 0,
-	R204_FAM_DS,
-	R204_FAM_PROG,
-	R204_FAM_COUNT
-} r204_family_t;
+	BE_FAM_BE = 0,
+	BE_FAM_DS,
+	BE_FAM_PROG,
+	BE_FAM_COUNT
+} be_family_t;
 
 typedef enum {
-	R204_BEZ_surfs = 0, R204_BEZ_sprites, R204_BEZ_sprwalk, R204_BEZ_pic, R204_BEZ_buf,
-	R204_BEZ_swap, R204_BEZ_color, R204_BEZ_other,
-	R204_BE_ZONES
-} r204_be_zone_t;
+	BE_BEZ_surfs = 0, BE_BEZ_sprites, BE_BEZ_sprwalk, BE_BEZ_pic, BE_BEZ_buf,
+	BE_BEZ_swap, BE_BEZ_color, BE_BEZ_other,
+	BE_BE_ZONES
+} be_be_zone_t;
 
 typedef enum {
-	R204_BEC_lists = 0, R204_BEC_cmds, R204_BEC_surfs, R204_BEC_draws,
-	R204_BEC_empty, R204_BEC_sprN, R204_BEC_sprBatch, R204_BEC_sprDraw,
-	R204_BE_COUNTERS
-} r204_be_counter_t;
+	BE_BEC_lists = 0, BE_BEC_cmds, BE_BEC_surfs, BE_BEC_draws,
+	BE_BEC_empty, BE_BEC_sprN, BE_BEC_sprBatch, BE_BEC_sprDraw,
+	BE_BE_COUNTERS
+} be_be_counter_t;
 
 typedef enum {
-	R204_DSZ_walk = 0, R204_DSZ_end, R204_DSZ_flare, R204_DSZ_shadow,
-	R204_DSZ_other,
-	R204_DS_ZONES
-} r204_ds_zone_t;
+	BE_DSZ_walk = 0, BE_DSZ_end, BE_DSZ_flare, BE_DSZ_shadow,
+	BE_DSZ_other,
+	BE_DS_ZONES
+} be_ds_zone_t;
 
 typedef enum {
-	R204_DSZ_sub_stage = 0, R204_DSZ_sub_vbo, R204_DSZ_sub_unif,
-	R204_DSZ_sub_shadow,
-	R204_DS_SUBS
-} r204_ds_sub_t;
+	BE_DSZ_sub_stage = 0, BE_DSZ_sub_vbo, BE_DSZ_sub_unif,
+	BE_DSZ_sub_shadow,
+	BE_DS_SUBS
+} be_ds_sub_t;
 
 typedef enum {
-	R204_DSC_surfs = 0, R204_DSC_batches, R204_DSC_verts, R204_DSC_stages,
-	R204_DSC_draws, R204_DSC_unifs, R204_DSC_binds, R204_DSC_edges,
-	R204_DS_COUNTERS
-} r204_ds_counter_t;
+	BE_DSC_surfs = 0, BE_DSC_batches, BE_DSC_verts, BE_DSC_stages,
+	BE_DSC_draws, BE_DSC_unifs, BE_DSC_binds, BE_DSC_edges,
+	BE_DS_COUNTERS
+} be_ds_counter_t;
 
 typedef enum {
-	R204_PZ_compile = 0, R204_PZ_link, R204_PZ_other,
-	R204_PROG_ZONES
-} r204_prog_zone_t;
+	BE_PZ_compile = 0, BE_PZ_link, BE_PZ_other,
+	BE_PROG_ZONES
+} be_prog_zone_t;
 
 typedef enum {
-	R204_PC_made = 0,
-	R204_PROG_COUNTERS
-} r204_prog_counter_t;
+	BE_PC_made = 0,
+	BE_PROG_COUNTERS
+} be_prog_counter_t;
 
-int		R204_Microseconds( void );
-int		R204_Armed( void );
+int		BE_Microseconds( void );
+int		BE_Armed( void );
 
-void	R204_RootBegin( int family );
-void	R204_RootEnd( int family );
+void	BE_RootBegin( int family );
+void	BE_RootEnd( int family );
 
-void	R204_Zone( int family, int zone, int usec );
-void	R204_Sub( int family, int sub, int usec );
-void	R204_Bump( int family, int counter, int n );
+void	BE_Zone( int family, int zone, int usec );
+void	BE_Sub( int family, int sub, int usec );
+void	BE_Bump( int family, int counter, int n );
 
-void	R204_Name( int family, const char *name, int usec );
+void	BE_Name( int family, const char *name, int usec );
 
-int		R204_RootUsec( int family );
+int		BE_RootUsec( int family );
 
-static inline int R204_On( void ) {
-	return R204_Armed();
+static inline int BE_On( void ) {
+	return BE_Armed();
 }
 
-#define R204_ZONE(fam, z, stmt) \
+#define BE_ZONE(fam, z, stmt) \
 	do { \
-		if ( R204_On() ) { \
-			int r204_t0 = R204_Microseconds(); \
+		if ( BE_On() ) { \
+			int be_t0 = BE_Microseconds(); \
 			stmt; \
-			R204_Zone( (fam), (z), R204_Microseconds() - r204_t0 ); \
+			BE_Zone( (fam), (z), BE_Microseconds() - be_t0 ); \
 		} else { \
 			stmt; \
 		} \
 	} while ( 0 )
 
-#define R204_SUB(fam, s, stmt) \
+#define BE_SUB(fam, s, stmt) \
 	do { \
-		if ( R204_On() ) { \
-			int r204_t0 = R204_Microseconds(); \
+		if ( BE_On() ) { \
+			int be_t0 = BE_Microseconds(); \
 			stmt; \
-			R204_Sub( (fam), (s), R204_Microseconds() - r204_t0 ); \
+			BE_Sub( (fam), (s), BE_Microseconds() - be_t0 ); \
 		} else { \
 			stmt; \
 		} \

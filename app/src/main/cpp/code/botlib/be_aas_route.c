@@ -36,29 +36,29 @@ int numportalcacheupdates;
 int routingcachesize;
 int max_routingcachesize;
 
-#define R203_RT_WINDOW_MS	1000
-#define R203_RT_MAX_FRAMES	3600
-#define R203_RT_COUNTERS	10
-#define R203_RT_BUSEC		9	
+#define LIMIT_RT_WINDOW_MS	1000
+#define LIMIT_RT_MAX_FRAMES	3600
+#define LIMIT_RT_COUNTERS	10
+#define LIMIT_RT_BUSEC		9	
 
-static int	r203_rtOn = -1;			
-static int	r203_rtCnt[R203_RT_COUNTERS];
-static int	r203_rtStart, r203_rtTicks, r203_rtBmax;
+static int	limit_rtOn = -1;			
+static int	limit_rtCnt[LIMIT_RT_COUNTERS];
+static int	limit_rtStart, limit_rtTicks, limit_rtBmax;
 
-static const char *r203_rtName[R203_RT_COUNTERS] = {
+static const char *limit_rtName[LIMIT_RT_COUNTERS] = {
 	"calls", "same", "oor", "nra", "hit", "miss", "phit", "pmiss", "evict", "busec"
 };
 
-static int R203_RouteOn(void)
+static int LIMIT_RouteOn(void)
 {
-	if (r203_rtOn < 0)
+	if (limit_rtOn < 0)
 	{
-		r203_rtOn = LibVarValue("r203_stats", "1") != 0;
+		limit_rtOn = LibVarValue("limit_stats", "1") != 0;
 	} 
-	return r203_rtOn;
+	return limit_rtOn;
 } 
 
-static int R203_RouteMicro(void)
+static int LIMIT_RouteMicro(void)
 {
 #ifndef _WIN32
 	struct timespec ts;
@@ -70,69 +70,69 @@ static int R203_RouteMicro(void)
 #endif
 } 
 
-void R203_RouteCount(int which, int n)
+void LIMIT_RouteCount(int which, int n)
 {
-	if (!R203_RouteOn() || n <= 0 || which < 0 || which >= R203_RT_COUNTERS)
+	if (!LIMIT_RouteOn() || n <= 0 || which < 0 || which >= LIMIT_RT_COUNTERS)
 	{
 		return;
 	} 
-	r203_rtCnt[which] += n;
+	limit_rtCnt[which] += n;
 } 
 
-void R203_RouteBusec(int usec)
+void LIMIT_RouteBusec(int usec)
 {
-	if (!R203_RouteOn() || usec <= 0)
+	if (!LIMIT_RouteOn() || usec <= 0)
 	{
 		return;
 	} 
-	r203_rtCnt[R203_RT_BUSEC] += usec;
+	limit_rtCnt[LIMIT_RT_BUSEC] += usec;
 } 
 
-void R203_RouteFrame(void)
+void LIMIT_RouteFrame(void)
 {
 	int now, window, i;
 	char line[1024], part[64];
 
-	if (!R203_RouteOn())
+	if (!LIMIT_RouteOn())
 	{
-		for (i = 0; i < R203_RT_COUNTERS; i++)
+		for (i = 0; i < LIMIT_RT_COUNTERS; i++)
 		{
-			r203_rtCnt[i] = 0;
+			limit_rtCnt[i] = 0;
 		} 
-		r203_rtStart = r203_rtTicks = r203_rtBmax = 0;
+		limit_rtStart = limit_rtTicks = limit_rtBmax = 0;
 		return;
 	} 
 
-	if (!r203_rtStart)
+	if (!limit_rtStart)
 	{
-		r203_rtStart = R203_RouteMicro();
+		limit_rtStart = LIMIT_RouteMicro();
 		return;
 	} 
 
-	now = R203_RouteMicro();
-	window = (now - r203_rtStart) / 1000;
-	r203_rtTicks++;
-	if (window < R203_RT_WINDOW_MS && r203_rtTicks < R203_RT_MAX_FRAMES)
+	now = LIMIT_RouteMicro();
+	window = (now - limit_rtStart) / 1000;
+	limit_rtTicks++;
+	if (window < LIMIT_RT_WINDOW_MS && limit_rtTicks < LIMIT_RT_MAX_FRAMES)
 	{
 		return;
 	} 
 
 	line[0] = '\0';
-	for (i = 0; i < R203_RT_COUNTERS; i++)
+	for (i = 0; i < LIMIT_RT_COUNTERS; i++)
 	{
-		Com_sprintf(part, sizeof(part), " %s=%d", r203_rtName[i], r203_rtCnt[i]);
+		Com_sprintf(part, sizeof(part), " %s=%d", limit_rtName[i], limit_rtCnt[i]);
 		Q_strcat(line, sizeof(line), part);
 	} 
-	Com_sprintf(part, sizeof(part), " bmax=%d", r203_rtBmax);
+	Com_sprintf(part, sizeof(part), " bmax=%d", limit_rtBmax);
 	Q_strcat(line, sizeof(line), part);
-	botimport.Print(PRT_MESSAGE, "[R203:route] window=%dms%s\n", window, line);
+	botimport.Print(PRT_MESSAGE, "[LIMIT:route] window=%dms%s\n", window, line);
 
-	for (i = 0; i < R203_RT_COUNTERS; i++)
+	for (i = 0; i < LIMIT_RT_COUNTERS; i++)
 	{
-		r203_rtCnt[i] = 0;
+		limit_rtCnt[i] = 0;
 	} 
-	r203_rtStart = R203_RouteMicro();
-	r203_rtTicks = r203_rtBmax = 0;
+	limit_rtStart = LIMIT_RouteMicro();
+	limit_rtTicks = limit_rtBmax = 0;
 } 
 
 #ifdef ROUTING_DEBUG
@@ -511,7 +511,7 @@ int AAS_FreeOldestCache(void)
 			if (cache->next) cache->next->prev = cache->prev;
 		}
 		AAS_FreeRoutingCache(cache);
-		R203_RouteCount(8, 1);		
+		LIMIT_RouteCount(8, 1);		
 		return qtrue;
 	}
 	return qfalse;
@@ -525,9 +525,9 @@ aas_routingcache_t *AAS_AllocRoutingCache(int numtraveltimes)
 						+ numtraveltimes * sizeof(unsigned short int)
 						+ numtraveltimes * sizeof(unsigned char);
 	routingcachesize += size;
-	if (R203_RouteOn() && routingcachesize > r203_rtBmax)	
+	if (LIMIT_RouteOn() && routingcachesize > limit_rtBmax)	
 	{
-		r203_rtBmax = routingcachesize;
+		limit_rtBmax = routingcachesize;
 	} 
 	cache = (aas_routingcache_t *) GetClearedMemory(size);
 	cache->reachabilities = (unsigned char *) cache + sizeof(aas_routingcache_t)
@@ -917,7 +917,7 @@ void AAS_UpdateAreaRoutingCache(aas_routingcache_t *areacache)
 	aas_reachability_t *reach;
 	aas_reversedreachability_t *revreach;
 	aas_reversedlink_t *revlink;
-	int r203_t0 = R203_RouteOn() ? R203_RouteMicro() : 0;
+	int limit_t0 = LIMIT_RouteOn() ? LIMIT_RouteMicro() : 0;
 
 #ifdef ROUTING_DEBUG
 	numareacacheupdates++;
@@ -982,7 +982,7 @@ void AAS_UpdateAreaRoutingCache(aas_routingcache_t *areacache)
 			} 
 		} 
 	} 
-	R203_RouteBusec(R203_RouteOn() ? (R203_RouteMicro() - r203_t0) : 0);
+	LIMIT_RouteBusec(LIMIT_RouteOn() ? (LIMIT_RouteMicro() - limit_t0) : 0);
 } 
 aas_routingcache_t *AAS_GetAreaRoutingCache(int clusternum, int areanum, int travelflags)
 {
@@ -1008,12 +1008,12 @@ aas_routingcache_t *AAS_GetAreaRoutingCache(int clusternum, int areanum, int tra
 		if (clustercache) clustercache->prev = cache;
 		aasworld.clusterareacache[clusternum][clusterareanum] = cache;
 		AAS_UpdateAreaRoutingCache(cache);
-		R203_RouteCount(5, 1);		
+		LIMIT_RouteCount(5, 1);		
 	} 
 	else
 	{
 		AAS_UnlinkCache(cache);
-		R203_RouteCount(4, 1);		
+		LIMIT_RouteCount(4, 1);		
 	} 
 	cache->time = AAS_RoutingTime();
 	cache->type = CACHETYPE_AREA;
@@ -1114,12 +1114,12 @@ aas_routingcache_t *AAS_GetPortalRoutingCache(int clusternum, int areanum, int t
 		if (aasworld.portalcache[areanum]) aasworld.portalcache[areanum]->prev = cache;
 		aasworld.portalcache[areanum] = cache;
 		AAS_UpdatePortalRoutingCache(cache);
-		R203_RouteCount(7, 1);		
+		LIMIT_RouteCount(7, 1);		
 	} 
 	else
 	{
 		AAS_UnlinkCache(cache);
-		R203_RouteCount(6, 1);		
+		LIMIT_RouteCount(6, 1);		
 	} 
 	cache->time = AAS_RoutingTime();
 	cache->type = CACHETYPE_PORTAL;
@@ -1135,7 +1135,7 @@ int AAS_AreaRouteToGoalArea(int areanum, vec3_t origin, int goalareanum, int tra
 	aas_routingcache_t *areacache, *portalcache;
 	aas_reachability_t *reach;
 
-	R203_RouteCount(0, 1);		
+	LIMIT_RouteCount(0, 1);		
 
 	if (!aasworld.initialized) return qfalse;
 
@@ -1143,7 +1143,7 @@ int AAS_AreaRouteToGoalArea(int areanum, vec3_t origin, int goalareanum, int tra
 	{
 		*traveltime = 1;
 		*reachnum = 0;
-		R203_RouteCount(1, 1);	
+		LIMIT_RouteCount(1, 1);	
 		return qtrue;
 	}
 	if (areanum <= 0 || areanum >= aasworld.numareas)
@@ -1152,7 +1152,7 @@ int AAS_AreaRouteToGoalArea(int areanum, vec3_t origin, int goalareanum, int tra
 		{
 			botimport.Print(PRT_ERROR, "AAS_AreaTravelTimeToGoalArea: areanum %d out of range\n", areanum);
 		} 
-		R203_RouteCount(2, 1);	
+		LIMIT_RouteCount(2, 1);	
 		return qfalse;
 	} 
 	if (goalareanum <= 0 || goalareanum >= aasworld.numareas)
@@ -1161,13 +1161,13 @@ int AAS_AreaRouteToGoalArea(int areanum, vec3_t origin, int goalareanum, int tra
 		{
 			botimport.Print(PRT_ERROR, "AAS_AreaTravelTimeToGoalArea: goalareanum %d out of range\n", goalareanum);
 		} 
-		R203_RouteCount(2, 1);	
+		LIMIT_RouteCount(2, 1);	
 		return qfalse;
 	} 
 	if ( !aasworld.areasettings[areanum].numreachableareas
 		|| !aasworld.areasettings[goalareanum].numreachableareas )
 	{
-		R203_RouteCount(3, 1);
+		LIMIT_RouteCount(3, 1);
 	}
 	if (AAS_AreaDoNotEnter(areanum) || AAS_AreaDoNotEnter(goalareanum))
 	{

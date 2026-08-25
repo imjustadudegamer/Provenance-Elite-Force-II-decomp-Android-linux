@@ -24,7 +24,7 @@ include(identity)
 project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C CXX)
 
 # ---------------------------------------------------------------------------
-# THE RENDERER / PLATFORM SWITCH (r133-renderer -> r200-gles3)
+# THE RENDERER / PLATFORM SWITCH (uivk-renderer -> gles3-gles3)
 #
 # ONE source tree, ONE build-time switch.  Everything above the substrate
 # (engine front-end, game DLL, cgame, tiki, skeletor, uilib) is common; the
@@ -39,7 +39,7 @@ project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C CXX)
 #
 #   EF2_RENDERER   gles3 (the ONLY renderer)
 #       Which renderer .so gets built and which one `cl_renderer` defaults to.
-#       `gles3` is the shipping substrate on Android AND desktop.  The r198
+#       `gles3` is the shipping substrate on Android AND desktop.  The depth
 #       Vulkan renderer and the OpenGL 1.x fixed-function renderer (retail's
 #       Mac substrate, this project's former behaviour oracle) are both deleted
 #       by decision; `gles3` is the only value left, and the switch is kept
@@ -62,7 +62,7 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# THE MULTITHREADING SWITCH (r133-mt, docs/r133-mt_design.md T4).
+# THE MULTITHREADING SWITCH (uivk-mt, docs/uivk-mt_design.md T4).
 #
 # EF2_MULTITHREAD (default ON) builds the worker-pool layer (code/qcommon/
 # q_jobs.c) into the client and into each renderer module and turns the
@@ -77,7 +77,7 @@ endif()
 # script interpreter and the server frame stay on the main thread
 # unconditionally (the parity law, design doc S0).
 # ---------------------------------------------------------------------------
-option(EF2_MULTITHREAD "Build the worker-pool threading layer (r133-mt)" ON)
+option(EF2_MULTITHREAD "Build the worker-pool threading layer (uivk-mt)" ON)
 
 if(EF2_MULTITHREAD)
     add_compile_definitions(EF2_MULTITHREAD=1)
@@ -87,13 +87,13 @@ endif()
 
 option(BUILD_SERVER "Build dedicated server" ON)
 option(BUILD_CLIENT "Build client" ON)
-# GLES 3.0 renderer (r200-gles3).  This is the programme's shipping substrate
+# GLES 3.0 renderer (gles3-gles3).  This is the programme's shipping substrate
 # and, since the operator-ordered deletion of the fixed-function renderer, the
 # ONLY one: it is the fork of that renderer's sources with the substrate
 # swapped to GLES 3.0 + GLSL ES 3.0 (see cmake/renderer_gles3.cmake).  It is
 # driven by EF2_RENDERER (now a one-value switch), so no existing invocation
 # changes.
-option(BUILD_RENDERER_GLES3 "Build GLES 3.0 renderer (r200-gles3)" ${_EF2_BUILD_GLES3})
+option(BUILD_RENDERER_GLES3 "Build GLES 3.0 renderer (gles3-gles3)" ${_EF2_BUILD_GLES3})
 option(BUILD_GAME_LIBRARIES "Build game module libraries" ON)
 option(BUILD_GAME_QVMS "Build game module qvms" ON)
 option(BUILD_STANDALONE "Build binaries for standalone games" OFF)

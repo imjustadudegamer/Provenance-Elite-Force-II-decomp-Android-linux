@@ -848,7 +848,7 @@ static shader_t *ShaderForShaderNum( int shaderNum, int lightmapNum ) {
     shader = R_FindShader( dsh->shader, lightmapNum, qtrue, qtrue, qtrue, qtrue);
 
     if ( shader->defaultShader ) {
-        R201_ShaderDefaultProbe( "bsp-surface", dsh->shader, s_worldData.name, shaderNum, lightmapNum );
+        SMP_ShaderDefaultProbe( "bsp-surface", dsh->shader, s_worldData.name, shaderNum, lightmapNum );
         return tr.defaultShader;
     }
 
@@ -1671,7 +1671,7 @@ void RE_LoadWorldMap( const char *name ) {
     vDefSundir[1] = 0.3f;
     vDefSundir[2] = 0.9f;
 
-    R201_RLOAD_BEGIN( world );
+    SMP_RLOAD_BEGIN( world );
 
     _R(52);
 
@@ -1681,9 +1681,9 @@ void RE_LoadWorldMap( const char *name ) {
     tr.worldMapLoaded = qtrue;
 
     {
-        R201_RLOAD_BEGIN( bspread );
+        SMP_RLOAD_BEGIN( bspread );
         length = ri.FS_ReadFile(name, (void **)&r_bspFileBuffer);
-        R201_RLOAD_END( bspread );
+        SMP_RLOAD_END( bspread );
     }
     if (length <= 0 || !r_bspFileBuffer) {
         r_bspFileBuffer = NULL;
@@ -1726,9 +1726,9 @@ void RE_LoadWorldMap( const char *name ) {
     _R(53);
         numShaders = R_LoadLump(h, &header.lumps[LUMP_SHADERS], &lump, sizeof(dshader_t));
     _R(54);
-    R201_RLOAD_BEGIN( shaders );
+    SMP_RLOAD_BEGIN( shaders );
     R_LoadShaders(&lump);
-    R201_RLOAD_END( shaders );
+    SMP_RLOAD_END( shaders );
     _R(55);
     R_FreeLump(&lump);
     _R(56);
@@ -1739,7 +1739,7 @@ void RE_LoadWorldMap( const char *name ) {
     _R(58);
     numLightBytes = R_LoadLump(h, &header.lumps[LUMP_LIGHTMAPS], &lump, sizeof(byte));
     _R(59);
-    R201_RLOAD_BEGIN( lightmap );
+    SMP_RLOAD_BEGIN( lightmap );
     R_LoadLightmaps(&lump);
     _R(60);
     R_FreeLump(&lump);
@@ -1749,7 +1749,7 @@ void RE_LoadWorldMap( const char *name ) {
     R_LoadLump(h, &header.lumps[LUMP_CONTLIGHTMAPS], &lump, sizeof(byte));
     R_LoadContLightmaps(&lump);
     R_FreeLump(&lump);
-    R201_RLOAD_END( lightmap );
+    SMP_RLOAD_END( lightmap );
     _R(61);
         numDrawSurfaces = R_LoadLump(h, &header.lumps[LUMP_SURFACES], &lump, sizeof(dsurface_t));
     _R(62);
@@ -1839,9 +1839,9 @@ void RE_LoadWorldMap( const char *name ) {
     _R(96);
     R_LoadLump(h, &header.lumps[LUMP_STATIC_LOD_MODELS], &lump, sizeof(staticLodModel_t));
     _R(97);
-    R201_RLOAD_BEGIN( lods );
+    SMP_RLOAD_BEGIN( lods );
     R_LoadStaticLodModels(&lump);
-    R201_RLOAD_END( lods );
+    SMP_RLOAD_END( lods );
     _R(98);
     R_FreeLump(&lump);
     _R(99);
@@ -1859,7 +1859,7 @@ void RE_LoadWorldMap( const char *name ) {
     ri.UI_LoadResource("*115");
     ri.UI_LoadResource("*116");
 
-    R201_RLOAD_END( world );
+    SMP_RLOAD_END( world );
 }
 
 int RE_MapVersion(void)

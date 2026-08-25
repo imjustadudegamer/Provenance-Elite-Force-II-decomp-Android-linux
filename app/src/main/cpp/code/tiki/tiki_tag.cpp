@@ -10,14 +10,14 @@
 #include "tiki_skel.h"
 #include "tiki_tag.h"
 
-static qboolean R128_TagProbeOn(void)
+static qboolean CHAN_TagProbeOn(void)
 {
-	static cvar_t *r128_qa;
+	static cvar_t *chan_qa;
 
-	if (!r128_qa) {
-		r128_qa = Cvar_Get("qa_r120", "0", 0);
+	if (!chan_qa) {
+		chan_qa = Cvar_Get("qa_probe", "0", 0);
 	}
-	return (r128_qa && r128_qa->integer) ? qtrue : qfalse;
+	return (chan_qa && chan_qa->integer) ? qtrue : qfalse;
 }
 
 static int TIKI_Tag_BoneChannelOfTag(const dtiki_t *tiki, int tagnum)
@@ -35,7 +35,7 @@ static int TIKI_Tag_BoneChannelOfTag(const dtiki_t *tiki, int tagnum)
 
 int TIKI_Tag_NameToNum(dtiki_t *pmdl, const char *name)
 {
-    // R131-E1: retail has a SECOND arm this port never carried.  After the prologue it
+    // WIDGET-E1: retail has a SECOND arm this port never carried.  After the prologue it
     // which retail never turns into a skeleton -- walks the tiki's FIRST animation
     int         i, count;
     skelAnimDataGameHeader_t *animData;
@@ -1131,11 +1131,11 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
     out->origin[2] = origin[2] * (ent->scale * tiki->load_scale);
     memcpy(out->axis, mat.val, sizeof(out->axis));
 
-    if (developer->integer || R128_TagProbeOn()) {
-        static int r126_tag;
-        if (++r126_tag % 240 == 1) {
+    if (developer->integer || CHAN_TagProbeOn()) {
+        static int lerpskel_tag;
+        if (++lerpskel_tag % 240 == 1) {
             Com_Printf(
-                "[R126:tag:lerpskel] tiki=%s tag=%d ent=%d skel=1 modeL=%d modeT=%d "
+                "[LERPSKEL:tag:lerpskel] tiki=%s tag=%d ent=%d skel=1 modeL=%d modeT=%d "
                 "lerp=%.3f crosslerp=%.3f legs=%d torso=%d anim=%d frame=%d oldanim=%d oldframe=%d "
                 "off=(%.2f,%.2f,%.2f) axis0=(%.3f,%.3f,%.3f) zero=%d\n",
                 tiki->name,
@@ -1208,12 +1208,12 @@ void TIKI_Tag_LerpOrientation(orientation_t *out, int handle, const refEntity_t 
 
     animData = TIKI_Tag_ResolveAnim(tiki, anim, ent->frame, qfalse);
     if (!animData) {
-        static int r124_lerp_null;
-        if (++r124_lerp_null % 600 == 1) {
+        static int tikanim_lerp_null;
+        if (++tikanim_lerp_null % 600 == 1) {
             int alias = (tiki->a && anim < tiki->a->num_anims) ? tiki->a->m_aliases[anim] : -0x7fff;
 
             Com_DPrintf(
-                "[R124:tag:lerp:noanimdata] tiki=%s anim=%d alias=%d frame=%d tagnum=%d ent=%d -> %s; posing from "
+                "[TIKIANIM:tag:lerp:noanimdata] tiki=%s anim=%d alias=%d frame=%d tagnum=%d ent=%d -> %s; posing from "
                 "the skeleton, NOT zeroing\n",
                 tiki->name,
                 anim,
@@ -1245,11 +1245,11 @@ void TIKI_Tag_LerpOrientation(orientation_t *out, int handle, const refEntity_t 
         }
 
         {
-            static int r126_fall;
-            if ((developer->integer || R128_TagProbeOn()) && ++r126_fall % 240 == 1) {
+            static int lerpskel_fall;
+            if ((developer->integer || CHAN_TagProbeOn()) && ++lerpskel_fall % 240 == 1) {
                 Com_Printf(
-                    "[R126:tag:lerpfall] tiki=%s anim=%d tagnum=%d ent=%d -> %s; posing from the "
-                    "skeleton (R130: no retail arm left to take -- port-only miss)\n",
+                    "[LERPSKEL:tag:lerpfall] tiki=%s anim=%d tagnum=%d ent=%d -> %s; posing from the "
+                    "skeleton (UIRECT: no retail arm left to take -- port-only miss)\n",
                     tiki->name,
                     anim,
                     tagnum,
@@ -1278,7 +1278,7 @@ static const float *TIKI_Tag_TanTagRecord(
         return NULL;
     }
 
-    // R131-E1: retail indexes the table, it does not look the name up.
+    // WIDGET-E1: retail indexes the table, it does not look the name up.
     if (tagnum < 0 || tagnum >= animData->numTanTags) {
         return NULL;
     }
@@ -1453,9 +1453,9 @@ orientation_t TIKI_OrientationInternal(dtiki_t *tiki, int entnum, int tagnum, fl
 
     const skeletor_c *skeletor = (skeletor_c *)TIKI_GetSkeletor(tiki, entnum);
     if (!skeletor) {
-        static int r124_noskel;
-        if (++r124_noskel % 600 == 1) {
-            Com_DPrintf("[R124:tag:orient:noskel] tiki=%s entnum=%d tagnum=%d -> no skeletor instance\n", tiki ? tiki->name : "(null)", entnum, tagnum);
+        static int tikanim_noskel;
+        if (++tikanim_noskel % 600 == 1) {
+            Com_DPrintf("[TIKIANIM:tag:orient:noskel] tiki=%s entnum=%d tagnum=%d -> no skeletor instance\n", tiki ? tiki->name : "(null)", entnum, tagnum);
         }
         return fail;
     }

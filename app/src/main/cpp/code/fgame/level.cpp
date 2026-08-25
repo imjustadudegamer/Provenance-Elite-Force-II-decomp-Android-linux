@@ -2,16 +2,16 @@
 
 #include "g_local.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
 
 #include "g_spawn.h"
 #include "level.h"
 #include "earthquake.h" 
 #include "armor.h"       
 #include "navigate.h"
-#include "r201_spawnstats.h"
+#include "smp_spawnstats.h"
 #include "helper_node.h"
 #include "gravpath.h"
 #include "entity.h"
@@ -358,13 +358,13 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
     SpawnArgs   args;
     const char *spawnpos;
 
-    R201_SpawnEnter( themapname, 0 );
-    R201_SP_BEGIN( ents );
+    SMP_SpawnEnter( themapname, 0 );
+    SMP_SP_BEGIN( ents );
 
     {
-        R201_SP_BEGIN( init );
+        SMP_SP_BEGIN( init );
         Init();
-        R201_SP_END( init );
+        SMP_SP_END( init );
     }
 
     spawnpos = strchr(themapname, '$');
@@ -386,16 +386,16 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
     sv_numtraces = 0;
 
     if (!LoadingServer) {
-        R201_SP_BEGIN( pinit );
+        SMP_SP_BEGIN( pinit );
         thePathManager.Init(mapname.c_str());
-        R201_SP_END( pinit );
+        SMP_SP_END( pinit );
     }
 
-    R201_SP_BEGIN( wparse );
+    SMP_SP_BEGIN( wparse );
     entities     = args.Parse((char *)entities);
     spawn_entnum = ENTITYNUM_WORLD;
     args.Spawn();
-    R201_SP_END( wparse );
+    SMP_SP_END( wparse );
 
     if (!world) {
         Com_Error(ERR_FATAL, "No world\n");
@@ -409,7 +409,7 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
 
     inhibit = 0;
 
-    R201_SP_BEGIN( loop );
+    SMP_SP_BEGIN( loop );
     for (entities = args.Parse((char *)entities); entities != NULL; entities = args.Parse((char *)entities)) {
         spawnflags = 0;
         value      = args.getArg("spawnflags");
@@ -423,32 +423,32 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
         }
 
         {
-            const char *r201_cn = NULL;
-            int         r201_t0 = 0;
+            const char *smp_cn = NULL;
+            int         smp_t0 = 0;
 
-            if ( r201_spawnOn ) {
-                r201_cn = args.getArg( "classname" );
-                r201_t0 = R201_SpawnNow();
+            if ( smp_spawnOn ) {
+                smp_cn = args.getArg( "classname" );
+                smp_t0 = SMP_SpawnNow();
             }
 
             args.Spawn();
 
-            if ( r201_spawnOn ) {
-                R201_SpawnClass( r201_cn, R201_SpawnNow() - r201_t0 );
+            if ( smp_spawnOn ) {
+                SMP_SpawnClass( smp_cn, SMP_SpawnNow() - smp_t0 );
             }
         }
         count++;
 
         gi.ProcessLoadingScreen("$$SpawningEntities$$");
     }
-    R201_SP_END( loop );
+    SMP_SP_END( loop );
 
     gi.DPrintf("%i entities spawned\n", count);
     gi.DPrintf("%i entities inhibited\n", inhibit);
 
-    R201_SP_BEGIN( drain );
+    SMP_SP_BEGIN( drain );
     L_ProcessPendingEvents();
-    R201_SP_END( drain );
+    SMP_SP_END( drain );
 
     if (multiplayerManager.inMultiplayer()) {
         multiplayerManager.initItems();
@@ -456,15 +456,15 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
 
 
     if (!LoadingServer || game.autosaved) {
-        R201_SP_BEGIN( start );
+        SMP_SP_BEGIN( start );
         Start();
-        R201_SP_END( start );
+        SMP_SP_END( start );
     }
 
     {
-        R201_SP_BEGIN( postload );
+        SMP_SP_BEGIN( postload );
         postLoad();
-        R201_SP_END( postload );
+        SMP_SP_END( postload );
     }
 
     hNodeController = new HelperNodeController;
@@ -473,14 +473,14 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
     }
 
     if (game.maxclients == 1) {
-        R201_SP_BEGIN( player );
+        SMP_SP_BEGIN( player );
         spawn_entnum = 0;
         new Player;
-        R201_SP_END( player );
+        SMP_SP_END( player );
     }
 
-    R201_SP_END( ents );
-    R201_SpawnLeave( count, inhibit );
+    SMP_SP_END( ents );
+    SMP_SpawnLeave( count, inhibit );
 }
 
 
@@ -501,14 +501,14 @@ void Level::Precache(void)
 
         if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
             if (consoleThread) {
-                R131_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+                WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
                 consoleThread->Parse(filename.c_str());
             }
         } else {
             break;
         }
     }
-    R131_PROBE("archive", "precache: global.scr chain done (%d files)\n", i);
+    WIDGET_PROBE("archive", "precache: global.scr chain done (%d files)\n", i);
 
     if (!mapname.length()) {
         return;
@@ -548,7 +548,7 @@ void Level::Precache(void)
 
             if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
                 if (consoleThread) {
-                    R131_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+                    WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
                     consoleThread->Parse(filename.c_str());
                 }
             } else {
@@ -567,7 +567,7 @@ void Level::Precache(void)
 
             if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
                 if (consoleThread) {
-                    R131_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+                    WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
                     consoleThread->Parse(filename.c_str());
                 }
             } else {
@@ -586,7 +586,7 @@ void Level::Precache(void)
 
             if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
                 if (consoleThread) {
-                    R131_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+                    WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
                     consoleThread->Parse(filename.c_str());
                 }
             } else {
@@ -830,9 +830,9 @@ float Level::getEarthquakeMagnitudeAtPosition(const Vector& pos)
     }
 
     {
-        static int r133_dfx_n;
-        if (R120_On() && R120_Throttle(&r133_dfx_n, 48, 48)) {
-            R120_PROBE("DFX:quake-lookup", "nquakes=%d total=%.3f\n",
+        static int uivk_dfx_n;
+        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 48, 48)) {
+            PROBE("DFX:quake-lookup", "nquakes=%d total=%.3f\n",
                        _earthquakes.NumObjects(), totalMagnitude);
         }
     }
@@ -1062,9 +1062,9 @@ void Level::Start( void )
 
 	
 	{
-		R201_SP_BEGIN( precache );
+		SMP_SP_BEGIN( precache );
 		Precache();
-		R201_SP_END( precache );
+		SMP_SP_END( precache );
 	}
 
 

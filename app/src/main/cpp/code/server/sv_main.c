@@ -496,43 +496,43 @@ int SV_FrameMsec(void)
 		return 1;
 }
 
-#define R201_SV_WINDOW_MS   1000
-#define R201_SV_MAX_FRAMES  3600
-#define R201_SV_MAX_ZONES   8
+#define SMP_SV_WINDOW_MS   1000
+#define SMP_SV_MAX_FRAMES  3600
+#define SMP_SV_MAX_ZONES   8
 
-static void R201_SVFrameBudget( int totalMsec, int botMsec, int pingMsec, int gameMsec,
+static void SMP_SVFrameBudget( int totalMsec, int botMsec, int pingMsec, int gameMsec,
 								int timeoutMsec, int sendMsec, int hbMsec ) {
-	static cvar_t	*r201_serverStats;
-	static int		r201_svTotal, r201_svTotalMax;
-	static int		r201_svBot,   r201_svBotMax;
-	static int		r201_svPing,  r201_svPingMax;
-	static int		r201_svGame,  r201_svGameMax;
-	static int		r201_svTmo,   r201_svTmoMax;
-	static int		r201_svSend,  r201_svSendMax;
-	static int		r201_svHb,    r201_svHbMax;
-	static int		r201_svOther, r201_svOtherMax;
-	static int		r201_svFrames;
-	static int		r201_svWindowStart;
+	static cvar_t	*smp_serverStats;
+	static int		smp_svTotal, smp_svTotalMax;
+	static int		smp_svBot,   smp_svBotMax;
+	static int		smp_svPing,  smp_svPingMax;
+	static int		smp_svGame,  smp_svGameMax;
+	static int		smp_svTmo,   smp_svTmoMax;
+	static int		smp_svSend,  smp_svSendMax;
+	static int		smp_svHb,    smp_svHbMax;
+	static int		smp_svOther, smp_svOtherMax;
+	static int		smp_svFrames;
+	static int		smp_svWindowStart;
 
 	int		otherMsec, window, frames, i, mean10;
 	char	line[1024], part[64];
-	struct { const char *name; int sum; int max; } zone[R201_SV_MAX_ZONES];
+	struct { const char *name; int sum; int max; } zone[SMP_SV_MAX_ZONES];
 
-	if ( !r201_serverStats ) {
-		r201_serverStats = Cvar_Get( "r201_serverStats", "1", 0 );
+	if ( !smp_serverStats ) {
+		smp_serverStats = Cvar_Get( "smp_serverStats", "1", 0 );
 	}
 
-	if ( !r201_serverStats->integer ) {
-		r201_svFrames = 0;
-		r201_svWindowStart = 0;
-		r201_svTotal = r201_svTotalMax = 0;
-		r201_svBot   = r201_svBotMax   = 0;
-		r201_svPing  = r201_svPingMax  = 0;
-		r201_svGame  = r201_svGameMax  = 0;
-		r201_svTmo   = r201_svTmoMax   = 0;
-		r201_svSend  = r201_svSendMax  = 0;
-		r201_svHb    = r201_svHbMax    = 0;
-		r201_svOther = r201_svOtherMax = 0;
+	if ( !smp_serverStats->integer ) {
+		smp_svFrames = 0;
+		smp_svWindowStart = 0;
+		smp_svTotal = smp_svTotalMax = 0;
+		smp_svBot   = smp_svBotMax   = 0;
+		smp_svPing  = smp_svPingMax  = 0;
+		smp_svGame  = smp_svGameMax  = 0;
+		smp_svTmo   = smp_svTmoMax   = 0;
+		smp_svSend  = smp_svSendMax  = 0;
+		smp_svHb    = smp_svHbMax    = 0;
+		smp_svOther = smp_svOtherMax = 0;
 		return;
 	}
 
@@ -549,67 +549,67 @@ static void R201_SVFrameBudget( int totalMsec, int botMsec, int pingMsec, int ga
 		otherMsec = 0;
 	}
 
-	r201_svTotal += totalMsec;	if ( totalMsec  > r201_svTotalMax ) r201_svTotalMax = totalMsec;
-	r201_svBot   += botMsec;	if ( botMsec    > r201_svBotMax   ) r201_svBotMax   = botMsec;
-	r201_svPing  += pingMsec;	if ( pingMsec   > r201_svPingMax  ) r201_svPingMax  = pingMsec;
-	r201_svGame  += gameMsec;	if ( gameMsec   > r201_svGameMax  ) r201_svGameMax  = gameMsec;
-	r201_svTmo   += timeoutMsec;if ( timeoutMsec> r201_svTmoMax   ) r201_svTmoMax   = timeoutMsec;
-	r201_svSend  += sendMsec;	if ( sendMsec   > r201_svSendMax  ) r201_svSendMax  = sendMsec;
-	r201_svHb    += hbMsec;		if ( hbMsec     > r201_svHbMax    ) r201_svHbMax    = hbMsec;
-	r201_svOther += otherMsec;	if ( otherMsec  > r201_svOtherMax ) r201_svOtherMax = otherMsec;
+	smp_svTotal += totalMsec;	if ( totalMsec  > smp_svTotalMax ) smp_svTotalMax = totalMsec;
+	smp_svBot   += botMsec;	if ( botMsec    > smp_svBotMax   ) smp_svBotMax   = botMsec;
+	smp_svPing  += pingMsec;	if ( pingMsec   > smp_svPingMax  ) smp_svPingMax  = pingMsec;
+	smp_svGame  += gameMsec;	if ( gameMsec   > smp_svGameMax  ) smp_svGameMax  = gameMsec;
+	smp_svTmo   += timeoutMsec;if ( timeoutMsec> smp_svTmoMax   ) smp_svTmoMax   = timeoutMsec;
+	smp_svSend  += sendMsec;	if ( sendMsec   > smp_svSendMax  ) smp_svSendMax  = sendMsec;
+	smp_svHb    += hbMsec;		if ( hbMsec     > smp_svHbMax    ) smp_svHbMax    = hbMsec;
+	smp_svOther += otherMsec;	if ( otherMsec  > smp_svOtherMax ) smp_svOtherMax = otherMsec;
 
-	r201_svFrames++;
+	smp_svFrames++;
 
-	if ( !r201_svWindowStart ) {
-		r201_svWindowStart = Sys_Milliseconds();
+	if ( !smp_svWindowStart ) {
+		smp_svWindowStart = Sys_Milliseconds();
 	}
 
-	window = Sys_Milliseconds() - r201_svWindowStart;
-	if ( window < R201_SV_WINDOW_MS && r201_svFrames < R201_SV_MAX_FRAMES ) {
+	window = Sys_Milliseconds() - smp_svWindowStart;
+	if ( window < SMP_SV_WINDOW_MS && smp_svFrames < SMP_SV_MAX_FRAMES ) {
 		return;
 	}
 
-	frames = r201_svFrames;
+	frames = smp_svFrames;
 	if ( frames < 1 ) {
 		frames = 1;
 	}
 
-	zone[0].name = "bot";		zone[0].sum = r201_svBot;	zone[0].max = r201_svBotMax;
-	zone[1].name = "ping";		zone[1].sum = r201_svPing;	zone[1].max = r201_svPingMax;
-	zone[2].name = "game";		zone[2].sum = r201_svGame;	zone[2].max = r201_svGameMax;
-	zone[3].name = "timeouts";	zone[3].sum = r201_svTmo;	zone[3].max = r201_svTmoMax;
-	zone[4].name = "send";		zone[4].sum = r201_svSend;	zone[4].max = r201_svSendMax;
-	zone[5].name = "hb";		zone[5].sum = r201_svHb;	zone[5].max = r201_svHbMax;
-	zone[6].name = "other";		zone[6].sum = r201_svOther;	zone[6].max = r201_svOtherMax;
-	zone[7].name = "total";		zone[7].sum = r201_svTotal;	zone[7].max = r201_svTotalMax;
+	zone[0].name = "bot";		zone[0].sum = smp_svBot;	zone[0].max = smp_svBotMax;
+	zone[1].name = "ping";		zone[1].sum = smp_svPing;	zone[1].max = smp_svPingMax;
+	zone[2].name = "game";		zone[2].sum = smp_svGame;	zone[2].max = smp_svGameMax;
+	zone[3].name = "timeouts";	zone[3].sum = smp_svTmo;	zone[3].max = smp_svTmoMax;
+	zone[4].name = "send";		zone[4].sum = smp_svSend;	zone[4].max = smp_svSendMax;
+	zone[5].name = "hb";		zone[5].sum = smp_svHb;	zone[5].max = smp_svHbMax;
+	zone[6].name = "other";		zone[6].sum = smp_svOther;	zone[6].max = smp_svOtherMax;
+	zone[7].name = "total";		zone[7].sum = smp_svTotal;	zone[7].max = smp_svTotalMax;
 
 	line[0] = '\0';
-	for ( i = 0; i < R201_SV_MAX_ZONES; i++ ) {
+	for ( i = 0; i < SMP_SV_MAX_ZONES; i++ ) {
 		mean10 = (int)( ( (long long)zone[i].sum * 10 + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
 					 zone[i].name, mean10 / 10, mean10 % 10, zone[i].max );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	Com_Printf( "[R201:server] frames=%d window=%dms%s\n", frames, window, line );
+	Com_Printf( "[SMP:server] frames=%d window=%dms%s\n", frames, window, line );
 
-	r201_svFrames = 0;
-	r201_svWindowStart = Sys_Milliseconds();
-	r201_svTotal = r201_svTotalMax = 0;
-	r201_svBot   = r201_svBotMax   = 0;
-	r201_svPing  = r201_svPingMax  = 0;
-	r201_svGame  = r201_svGameMax  = 0;
-	r201_svTmo   = r201_svTmoMax   = 0;
-	r201_svSend  = r201_svSendMax  = 0;
-	r201_svHb    = r201_svHbMax    = 0;
-	r201_svOther = r201_svOtherMax = 0;
+	smp_svFrames = 0;
+	smp_svWindowStart = Sys_Milliseconds();
+	smp_svTotal = smp_svTotalMax = 0;
+	smp_svBot   = smp_svBotMax   = 0;
+	smp_svPing  = smp_svPingMax  = 0;
+	smp_svGame  = smp_svGameMax  = 0;
+	smp_svTmo   = smp_svTmoMax   = 0;
+	smp_svSend  = smp_svSendMax  = 0;
+	smp_svHb    = smp_svHbMax    = 0;
+	smp_svOther = smp_svOtherMax = 0;
 }
 
 void SV_Frame( int msec ) {
 	int		frameMsec;
 	int		startTime;
-	int		r201_frameStart, r201_t0;
-	int		r201_bot = 0, r201_ping = 0, r201_game = 0, r201_tmo = 0, r201_send = 0, r201_hb = 0;
+	int		smp_frameStart, smp_t0;
+	int		smp_bot = 0, smp_ping = 0, smp_game = 0, smp_tmo = 0, smp_send = 0, smp_hb = 0;
 
 	if ( sv_killserver->integer ) {
 		SV_Shutdown( "Server was killed.\n" );
@@ -631,7 +631,7 @@ void SV_Frame( int msec ) {
 		return;
 	}
 
-	r201_frameStart = Sys_Milliseconds();
+	smp_frameStart = Sys_Milliseconds();
 
 	if ( sv_bAutoSaveRequested && com_canAutoSaveNow->integer ) {
 		Cbuf_AddText( "pause ; ui_autosavegame ; pause\n" );
@@ -646,11 +646,11 @@ void SV_Frame( int msec ) {
 
 	sv.timeResidual = (int)( (float)msec * sv.worldState.time_scale + (float)sv.timeResidual );
 
-	// frames, sv_init.c) and then NEVER AGAIN -- which is exactly the R121 run:
+	// frames, sv_init.c) and then NEVER AGAIN -- which is exactly the BOT run:
 	if ( !com_dedicated->integer ) {
-		r201_t0 = Sys_Milliseconds();
+		smp_t0 = Sys_Milliseconds();
 		SV_BotFrame( svs.time );
-		r201_bot += Sys_Milliseconds() - r201_t0;
+		smp_bot += Sys_Milliseconds() - smp_t0;
 	}
 
 	// Retail 0x001E1194: a dedicated server that has not accumulated a full
@@ -683,17 +683,17 @@ void SV_Frame( int msec ) {
 		startTime = 0;	
 	}
 
-	r201_t0 = Sys_Milliseconds();
+	smp_t0 = Sys_Milliseconds();
 	SV_CalcPings();
-	r201_ping += Sys_Milliseconds() - r201_t0;
+	smp_ping += Sys_Milliseconds() - smp_t0;
 
 	if ( com_dedicated->integer ) {
-		r201_t0 = Sys_Milliseconds();
+		smp_t0 = Sys_Milliseconds();
 		SV_BotFrame( svs.time );
-		r201_bot += Sys_Milliseconds() - r201_t0;
+		smp_bot += Sys_Milliseconds() - smp_t0;
 	}
 
-	r201_t0 = Sys_Milliseconds();
+	smp_t0 = Sys_Milliseconds();
 	while ( sv.timeResidual >= frameMsec ) {
 		sv.timeResidual -= frameMsec;
 		svs.time += frameMsec;
@@ -707,26 +707,26 @@ void SV_Frame( int msec ) {
 			Com_Error( ERR_DROP, "%s", err );
 		}
 	}
-	r201_game += Sys_Milliseconds() - r201_t0;
+	smp_game += Sys_Milliseconds() - smp_t0;
 
 	if ( com_speeds->integer ) {
 		time_game = Sys_Milliseconds() - startTime;
 	}
 
-	r201_t0 = Sys_Milliseconds();
+	smp_t0 = Sys_Milliseconds();
 	SV_CheckTimeouts();
-	r201_tmo += Sys_Milliseconds() - r201_t0;
+	smp_tmo += Sys_Milliseconds() - smp_t0;
 
-	r201_t0 = Sys_Milliseconds();
+	smp_t0 = Sys_Milliseconds();
 	SV_SendClientMessages();
-	r201_send += Sys_Milliseconds() - r201_t0;
+	smp_send += Sys_Milliseconds() - smp_t0;
 
-	r201_t0 = Sys_Milliseconds();
+	smp_t0 = Sys_Milliseconds();
 	SV_MasterHeartbeat( "TikiServer-1" );
-	r201_hb += Sys_Milliseconds() - r201_t0;
+	smp_hb += Sys_Milliseconds() - smp_t0;
 
-	R201_SVFrameBudget( Sys_Milliseconds() - r201_frameStart,
-						r201_bot, r201_ping, r201_game, r201_tmo, r201_send, r201_hb );
+	SMP_SVFrameBudget( Sys_Milliseconds() - smp_frameStart,
+						smp_bot, smp_ping, smp_game, smp_tmo, smp_send, smp_hb );
 }
 
 void Com_Pause(void)

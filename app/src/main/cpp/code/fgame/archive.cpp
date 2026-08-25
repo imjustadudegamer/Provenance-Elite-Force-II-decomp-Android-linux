@@ -4,9 +4,9 @@
 #include "entity.h"
 #include <new>
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
 
 enum
 {
@@ -229,9 +229,9 @@ void Archiver::Close( void )
 		file = 0;
 	}
 	
-	R131_PROBE("archive", "close: enter (read mode)\n");
+	WIDGET_PROBE("archive", "close: enter (read mode)\n");
 	readfile.Close();
-	R131_PROBE("archive", "close: readfile closed\n");
+	WIDGET_PROBE("archive", "close: readfile closed\n");
 
 	if ( archivemode == ARCHIVE_READ )
 	{
@@ -240,7 +240,7 @@ void Archiver::Close( void )
 		pointer_fixup_t *fixup;
 
 		num = fixupList.NumObjects();
-		R131_PROBE("archive", "close: %d fixups, %d classpointers\n", num,
+		WIDGET_PROBE("archive", "close: %d fixups, %d classpointers\n", num,
 		           classpointerList.NumObjects());
 		for( i = 1; i <= num; i++ )
 		{
@@ -264,10 +264,10 @@ void Archiver::Close( void )
 			delete fixup;
 
 			if ( ( i % 4096 ) == 0 ) {
-				R131_PROBE("archive", "close: fixup %d of %d\n", i, num);
+				WIDGET_PROBE("archive", "close: fixup %d of %d\n", i, num);
 			}
 		}
-		R131_PROBE("archive", "close: fixups resolved (%d)\n", num);
+		WIDGET_PROBE("archive", "close: fixups resolved (%d)\n", num);
 
 		{
 			int             ei;
@@ -285,7 +285,7 @@ void Archiver::Close( void )
 					continue;
 				}
 				ents++;
-				if ( SafePtrBase::R131P1_HeadPrevNull( L ) ) {
+				if ( SafePtrBase::WIDGETP1_HeadPrevNull( L ) ) {
 					if ( firstBad < 0 ) {
 						firstBad = ei;
 					}
@@ -295,11 +295,11 @@ void Archiver::Close( void )
 			for ( w = EventQueue->next; w != EventQueue; w = w->next ) {
 				L = w->GetSourceObject();
 				evs++;
-				if ( L && SafePtrBase::R131P1_HeadPrevNull( L ) ) {
+				if ( L && SafePtrBase::WIDGETP1_HeadPrevNull( L ) ) {
 					badSrc++;
 				}
 			}
-			R131_PROBE(
+			WIDGET_PROBE(
 				"archive",
 				"closeresweep: entities=%d badHead=%d firstBadEnt=%d "
 				"queueEvents=%d badSrcHead=%d\n",
@@ -309,7 +309,7 @@ void Archiver::Close( void )
 		fixupList.FreeObjectList();
 		classpointerList.FreeObjectList();
 	}
-	R131_PROBE("archive", "close: done\n");
+	WIDGET_PROBE("archive", "close: done\n");
 }
 
 size_t Archiver::Pos( void )
@@ -876,7 +876,7 @@ Class * Archiver::ReadObject( void )
 	ArchiveInteger( &index );
 	objstart = readfile.Pos();
 
-	R131_PROBE("archive", "obj [%d] %s size=%u @0x%lx type=%s\n", index, classname.c_str(),
+	WIDGET_PROBE("archive", "obj [%d] %s size=%u @0x%lx type=%s\n", index, classname.c_str(),
 	           (unsigned)size, (unsigned long)objstart, (type == ARC_Entity) ? "Entity" : "Object");
 	
 	
@@ -903,7 +903,7 @@ Class * Archiver::ReadObject( void )
 		}
 	}
 
-	R131_PROBE("archive", "obj done %s [%d] (%u bytes)\n", classname.c_str(), index,
+	WIDGET_PROBE("archive", "obj done %s [%d] (%u bytes)\n", classname.c_str(), index,
 	           (unsigned)size);
 	
 	classpointerList.AddObjectAt( index, obj );

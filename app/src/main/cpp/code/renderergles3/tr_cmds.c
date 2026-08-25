@@ -148,15 +148,15 @@ void RB_RenderThread( void ) {
 		rb_lastExecuted = frame;
 
 		{
-			static int r201_mcore_render_rows = 0;
+			static int smp_mcore_render_rows = 0;
 
-			if ( r201_mcore_render_rows < 8 || ( r201_mcore_render_rows % 600 ) == 0 ) {
+			if ( smp_mcore_render_rows < 8 || ( smp_mcore_render_rows % 600 ) == 0 ) {
 				ri.Printf( PRINT_ALL,
-						   "[R201:smphandoff] side=render back=%d front=%d arena=%d owner=%d\n",
+						   "[SMP:smphandoff] side=render back=%d front=%d arena=%d owner=%d\n",
 						   frame->smpFrame, tr.smpFrame, frame->boneArena,
 						   GLimp_HandshakeViolations() );
 			}
-			r201_mcore_render_rows++;
+			smp_mcore_render_rows++;
 		}
 
 		data = GLimp_RendererSleep();

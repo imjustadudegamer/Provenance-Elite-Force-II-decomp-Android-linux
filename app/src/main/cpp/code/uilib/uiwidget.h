@@ -251,16 +251,16 @@ public:
 
     void (*m_commandhandler)(const char *, void *);
 
-    // R127 TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Prints this
-    void R127DumpState(int index, const char *menuName);
+    // PAINT TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Prints this
+    void PAINTDumpState(int index, const char *menuName);
 
-    // R140 TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  ONE probe for the
-    void R140DumpTextColor(const char *accessor);
+    // UITEXT TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  ONE probe for the
+    void UITEXTDumpTextColor(const char *accessor);
 
-    // R130 TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read-only view of
-    UIPoint2D R130ProbeScreenOrigin(void) const { return m_screenorigin; }
-    UIRect2D  R130ProbeClippedFrame(void) const { return m_clippedframe; }
-    bool      R130ProbeVirtual(void) const { return m_bVirtual; }
+    // UIRECT TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read-only view of
+    UIPoint2D UIRECTProbeScreenOrigin(void) const { return m_screenorigin; }
+    UIRect2D  UIRECTProbeClippedFrame(void) const { return m_clippedframe; }
+    bool      UIRECTProbeVirtual(void) const { return m_bVirtual; }
 
 protected:
     bool         addChild(UIWidget *widget);
@@ -387,7 +387,7 @@ public:
     bool               getShow(void);
     class UColor       getBackgroundColor(void);
 
-    /* r212-crashaudit: the child container, read-only, for the stale-raw-pointer
+    /* craudit-crashaudit: the child container, read-only, for the stale-raw-pointer
        membership check in UIWindowManager::UpdateViews (uiwinman.cpp).  Port-only
        accessor; it exposes what retail's own Container<P8UIWidget> already is. */
     Container<UIWidget *>& getChildren(void) { return m_children; }
@@ -413,8 +413,8 @@ public:
     class UISize2D     getSize(void);
     void               setSize(const UISize2D& newsize);
     class UIRect2D     getFrame(void);
-    // [R131:B1:whitegrid] TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.
-    const char *R131ProbeMaterialName(void) const
+    // [WIDGET:B1:whitegrid] TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.
+    const char *WIDGETProbeMaterialName(void) const
     {
         return m_material ? m_material->GetName().c_str() : "(null)";
     }
@@ -531,7 +531,7 @@ public:
     void  NoResize(Event *ev);
     void  setHideDuringLoad(Event *ev);
     void  setDepth(float depth) { m_depth = depth; }
-    // R127 TEMP PROBE read side of the same accessor -- PORT-ONLY, TEMPORARY, NEVER
+    // PAINT TEMP PROBE read side of the same accessor -- PORT-ONLY, TEMPORARY, NEVER
     float getDepth(void) const { return m_depth; }
     static int DepthCompare(const void *elem1, const void *elem2);
 

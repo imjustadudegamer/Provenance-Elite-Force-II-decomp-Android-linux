@@ -1,9 +1,9 @@
 
 #include "server.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       Com_Printf
+#include "../qcommon/qa_probe.h"
 
 
 // exact retail buffer length is not recoverable from the 0x470 frame, so this
@@ -875,7 +875,7 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 			}
 			else if ( serverId != sv.restartedServerId ) {
 				if ( !cl->gamestateTime || cl->gamestateTime + 5000 < svs.time ) {
-					R223_PROBE( "gssend",
+					LOADHANG_PROBE( "gssend",
 					            "num=%d serverId=%d svSid=%d rsSid=%d gsTime=%d svs.time=%d cs=%d\n",
 					            (int)( cl - svs.clients ), serverId, sv.serverId, sv.restartedServerId,
 					            cl->gamestateTime, svs.time, cl->state );
@@ -891,7 +891,7 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 					SV_AddServerCommand( cl, "" );
 					SV_SendClientGameState( cl );
 				} else {
-					R223_PROBE( "gate",
+					LOADHANG_PROBE( "gate",
 					            "BLOCKED num=%d serverId=%d svSid=%d rsSid=%d gsTime=%d svs.time=%d shutms=%d cs=%d\n",
 					            (int)( cl - svs.clients ), serverId, sv.serverId, sv.restartedServerId,
 					            cl->gamestateTime, svs.time,

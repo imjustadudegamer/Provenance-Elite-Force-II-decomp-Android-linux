@@ -14,9 +14,9 @@
 #include "../client/cl_cin.h"
 #include "../sys/sys_local.h"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       Com_Printf
+#include "../qcommon/qa_probe.h"
 
 extern qboolean UI_BindActive_C( void );
 extern qboolean UI_MenuActive_C( void );
@@ -40,8 +40,8 @@ static volatile int in_androidBackgrounded;
 static int          in_androidApplied = 0;       
 static qboolean     in_androidPauseOwned = qfalse; 
 
-#define R201_LIFECYCLE_PROBE_CAP 24
-static int r201_lifecycle_probe = 0;
+#define SMP_LIFECYCLE_PROBE_CAP 24
+static int smp_lifecycle_probe = 0;
 
 static int SDLCALL IN_AndroidLifecycleFilter( void *userdata, SDL_Event *e )
 {
@@ -482,7 +482,7 @@ static void IN_InitJoystick( void )
 	SDL_JoystickEventState(SDL_QUERY);
 	SDL_GameControllerEventState(SDL_QUERY);
 
-	R120_PROBE( "input:pad", "opened joystick %d '%s' gamepad=%d",
+	PROBE( "input:pad", "opened joystick %d '%s' gamepad=%d",
 		in_joystickNo->integer, SDL_JoystickNameForIndex( in_joystickNo->integer ),
 		gamepad ? 1 : 0 );
 }
@@ -676,7 +676,7 @@ static void IN_GamepadMove( void )
 
 			Com_QueueEvent(in_eventTime, SE_KEY, key, pressed, 0, NULL);
 			stick_state.buttons[i] = pressed;
-			R120_PROBE("input:pad", "button %d -> key %d (%s) %s",
+			PROBE("input:pad", "button %d -> key %d (%s) %s",
 				(int)sdlButton, key, Key_KeynumToString( key ), pressed ? "down" : "up");
 		}
 	}
@@ -1028,13 +1028,13 @@ static void IN_TouchSetMove( int newState )
 		if ( ( newState & bit ) && !( tc_moveState & bit ) )
 		{
 			Com_QueueEvent( in_eventTime, SE_KEY, stickKeys[i], qtrue, 0, NULL );
-			R120_PROBE( "input:touch", "stick %s down (dir=%d) -> key %d (%s)",
+			PROBE( "input:touch", "stick %s down (dir=%d) -> key %d (%s)",
 				dirs[i], newState, stickKeys[i], Key_KeynumToString( stickKeys[i] ) );
 		}
 		else if ( !( newState & bit ) && ( tc_moveState & bit ) )
 		{
 			Com_QueueEvent( in_eventTime, SE_KEY, stickKeys[i], qfalse, 0, NULL );
-			R120_PROBE( "input:touch", "stick %s up (dir=%d)", dirs[i], newState );
+			PROBE( "input:touch", "stick %s up (dir=%d)", dirs[i], newState );
 		}
 	}
 	tc_moveState = newState;
@@ -1074,7 +1074,7 @@ static void IN_TouchReleaseStale( SDL_TouchID touchId )
 
 		if ( tc_moveId != (SDL_FingerID)-1 && !live )
 		{
-			R120_PROBE( "input:touch", "stale stick finger %lld released (no FINGERUP)",
+			PROBE( "input:touch", "stale stick finger %lld released (no FINGERUP)",
 				(long long)tc_moveId );
 			IN_TouchSetMove( 0 );
 			tc_moveId = (SDL_FingerID)-1;
@@ -1086,7 +1086,7 @@ static void IN_TouchReleaseStale( SDL_TouchID touchId )
 			if ( ids[i] == tc_lookId ) { live = 1; break; }
 		if ( tc_lookId != (SDL_FingerID)-1 && !live )
 		{
-			R120_PROBE( "input:touch", "stale look finger %lld released (no FINGERUP)",
+			PROBE( "input:touch", "stale look finger %lld released (no FINGERUP)",
 				(long long)tc_lookId );
 			tc_lookId = (SDL_FingerID)-1;
 		}
@@ -1101,7 +1101,7 @@ static void IN_TouchReleaseStale( SDL_TouchID touchId )
 				if ( ids[k] == tc_actionFinger[i] ) { still = 1; break; }
 			if ( still )
 				continue;
-			R120_PROBE( "input:touch", "stale pill finger %lld released (no FINGERUP)",
+			PROBE( "input:touch", "stale pill finger %lld released (no FINGERUP)",
 				(long long)tc_actionFinger[i] );
 			if ( !tcActionButtons[i].tap )
 				Com_QueueEvent( in_eventTime, SE_KEY, tcActionButtons[i].key, qfalse, 0, NULL );
@@ -1137,11 +1137,11 @@ static void IN_TouchReset( void )
 	touchControl.actionPressed = 0;
 }
 
-#define R201_HOLDFIX_PROBE_CAP 8
-static int r201_holdfix_probe = 0;
+#define SMP_HOLDFIX_PROBE_CAP 8
+static int smp_holdfix_probe = 0;
 
-#define R201_TAPCLICK_PROBE_CAP 8
-static int r201_tapclick_probe = 0;
+#define SMP_TAPCLICK_PROBE_CAP 8
+static int smp_tapclick_probe = 0;
 
 static void IN_TouchReleaseGone( void )
 {
@@ -1161,12 +1161,12 @@ static void IN_TouchReleaseGone( void )
 			if ( tc_actionFinger[i] != (SDL_FingerID)-1 ) heldAfter++;
 	}
 
-	if ( ( heldBefore || tc_crouchToggled ) && r201_holdfix_probe < R201_HOLDFIX_PROBE_CAP )
+	if ( ( heldBefore || tc_crouchToggled ) && smp_holdfix_probe < SMP_HOLDFIX_PROBE_CAP )
 	{
-		r201_holdfix_probe++;
-		Com_Printf( "[R201:holdfix] %d overlay-off held_before=%d held_after=%d crouch=%d "
+		smp_holdfix_probe++;
+		Com_Printf( "[SMP:holdfix] %d overlay-off held_before=%d held_after=%d crouch=%d "
 					"menus=%d\n",
-					r201_holdfix_probe, heldBefore, heldAfter, tc_crouchToggled ? 1 : 0,
+					smp_holdfix_probe, heldBefore, heldAfter, tc_crouchToggled ? 1 : 0,
 					UI_MenuActive_C() ? 1 : 0 );
 	}
 
@@ -1191,10 +1191,10 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 	{
 		int ww = 0, wh = 0;
 		int sx, sy;
-		SDL_Window *r159win = SDL_GetWindowFromID( f->windowID );
+		SDL_Window *touchwin = SDL_GetWindowFromID( f->windowID );
 
-		if ( r159win )
-			SDL_GetWindowSize( r159win, &ww, &wh );
+		if ( touchwin )
+			SDL_GetWindowSize( touchwin, &ww, &wh );
 
 		sx = (int)( f->x * ( ( ww > 0 ) ? (float)ww : (float)cls.glconfig.vidWidth ) );
 		sy = (int)( f->y * ( ( wh > 0 ) ? (float)wh : (float)cls.glconfig.vidHeight ) );
@@ -1212,7 +1212,7 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 	// stays false, so cls.state is NEVER set to CA_CINEMATIC (cl_cin.cpp:1715,
 	if ( cinematicRunning( ) || cls.state == CA_CINEMATIC ) {
 		if ( phase == 0 ) {
-			R133_PROBE( "cine:skip",
+			UIVK_PROBE( "cine:skip",
 				"tap movie: cin=%d state=%d statcin=%d -> inject ESC (StopCinematic)",
 				cinematicRunning( ) ? 1 : 0, cls.state,
 				( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0 );
@@ -1223,7 +1223,7 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 	}
 	if ( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) {
 		if ( phase == 0 ) {
-			R133_PROBE( "cine:skip",
+			UIVK_PROBE( "cine:skip",
 				"tap cutscene: cin=%d state=%d statcin=1 -> skipcinematic",
 				cinematicRunning( ) ? 1 : 0, cls.state );
 			Cbuf_AddText( "skipcinematic\n" );
@@ -1233,9 +1233,9 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 
 	if ( !IN_TouchControlsActive( ) )
 	{
-		static int r133_touchgate;
-		if ( phase == 0 && R120_Throttle( &r133_touchgate, 4, 16 ) )
-			R133_PROBE( "cine:swallow",
+		static int uivk_touchgate;
+		if ( phase == 0 && PROBE_Throttle( &uivk_touchgate, 4, 16 ) )
+			UIVK_PROBE( "cine:swallow",
 				"tap at overlay gate: cin=%d state=%d statcin=%d catcher=0x%x menus=%d",
 				cinematicRunning( ) ? 1 : 0, cls.state,
 				( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0,
@@ -1271,7 +1271,7 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 				touchControl.actionPressed |= ( 1 << bi );
 				touchControl.actionFingerHeld = qtrue;   
 				Com_QueueEvent( in_eventTime, SE_KEY, ab->key, qtrue, 0, NULL );
-				R120_PROBE( "input:touch", "pill '%s' -> key %d (%s)",
+				PROBE( "input:touch", "pill '%s' -> key %d (%s)",
 					ab->label, ab->key, Key_KeynumToString( ab->key ) );
 				if ( ab->tap )   
 					Com_QueueEvent( in_eventTime, SE_KEY, ab->key, qfalse, 0, NULL );
@@ -1287,7 +1287,7 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 			touchControl.padCx = f->x; touchControl.padCy = f->y;
 			touchControl.thumbX = f->x; touchControl.thumbY = f->y;
 			IN_TouchSetMove( 0 );
-			R120_PROBE( "input:touch", "stick acquired at %.3f,%.3f (finger %lld)",
+			PROBE( "input:touch", "stick acquired at %.3f,%.3f (finger %lld)",
 				f->x, f->y, (long long)f->fingerId );
 		}
 		else if ( tc_lookId == (SDL_FingerID)-1 )
@@ -1462,10 +1462,10 @@ static void IN_ProcessEvents( void )
 					int sx = e.motion.x;
 					int sy = e.motion.y;
 					int ww = 0, wh = 0;
-					SDL_Window *r137win = SDL_GetWindowFromID( e.motion.windowID );
+					SDL_Window *hoverwin = SDL_GetWindowFromID( e.motion.windowID );
 
-					if ( r137win )
-						SDL_GetWindowSize( r137win, &ww, &wh );
+					if ( hoverwin )
+						SDL_GetWindowSize( hoverwin, &ww, &wh );
 
 					if ( ww > 0 && wh > 0
 					     && ( ww != cls.glconfig.vidWidth || wh != cls.glconfig.vidHeight ) )
@@ -1509,11 +1509,11 @@ static void IN_ProcessEvents( void )
 						if ( in_guimouse && e.type == SDL_MOUSEBUTTONDOWN
 						     && ( cinematicRunning( ) || cls.state == CA_CINEMATIC
 						          || ( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) )
-						     && r201_tapclick_probe < R201_TAPCLICK_PROBE_CAP ) {
-							r201_tapclick_probe++;
-							Com_Printf( "[R201:tapclick] %d delivered to the UI (cutscene up, "
+						     && smp_tapclick_probe < SMP_TAPCLICK_PROBE_CAP ) {
+							smp_tapclick_probe++;
+							Com_Printf( "[SMP:tapclick] %d delivered to the UI (cutscene up, "
 										"ui owns the pointer) cin=%d state=%d statcin=%d catcher=0x%x\n",
-										r201_tapclick_probe, cinematicRunning( ) ? 1 : 0, cls.state,
+										smp_tapclick_probe, cinematicRunning( ) ? 1 : 0, cls.state,
 										( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0,
 										Key_GetCatcher( ) );
 						}
@@ -1523,7 +1523,7 @@ static void IN_ProcessEvents( void )
 						     && ( cinematicRunning( ) || cls.state == CA_CINEMATIC
 						          || ( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ) ) {
 							tc_skipClickSuppress++;
-							R120_PROBE( "tap:swallow",
+							PROBE( "tap:swallow",
 								"tap click consumed with the cinematic skip: cin=%d state=%d statcin=%d catcher=0x%x",
 								cinematicRunning( ) ? 1 : 0, cls.state,
 								( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0,
@@ -1663,18 +1663,18 @@ void Sys_SendKeyEvents( void )
 				action = "unpause";
 			}
 
-			R120_PROBE( "input:touch", "foreground: released held touch state" );
+			PROBE( "input:touch", "foreground: released held touch state" );
 			IN_TouchReset();
 
 			ownedAfter = in_androidPauseOwned ? 1 : 0;
 		}
 
-		if ( r201_lifecycle_probe < R201_LIFECYCLE_PROBE_CAP )
+		if ( smp_lifecycle_probe < SMP_LIFECYCLE_PROBE_CAP )
 		{
-			r201_lifecycle_probe++;
-			Com_Printf( "[R201:lifecycle] %d edge=%s applied=%d com_minimized=%d state=%d "
+			smp_lifecycle_probe++;
+			Com_Printf( "[SMP:lifecycle] %d edge=%s applied=%d com_minimized=%d state=%d "
 						"svrun=%d paused=%d action=%s owned_after=%d\n",
-						r201_lifecycle_probe,
+						smp_lifecycle_probe,
 						in_androidApplied ? "background" : "foreground",
 						in_androidApplied,
 						Cvar_VariableIntegerValue( "com_minimized" ), cls.state,

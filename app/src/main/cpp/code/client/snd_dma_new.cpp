@@ -59,7 +59,7 @@ void S_Init(qboolean full_startup)
 {
     cvar_t *cv;
 
-    R201_LOAD_BEGIN( sndinit );
+    SMP_LOAD_BEGIN( sndinit );
 
     Com_Printf("\n------- sound initialization -------\n");
 
@@ -101,7 +101,7 @@ void S_Init(qboolean full_startup)
         Com_Printf(S_SOUND_SEPARATOR);
         s_bSoundStarted = 0;
     }
-    R201_LOAD_END( sndinit );
+    SMP_LOAD_END( sndinit );
 }
 
 void S_Shutdown(qboolean full_shutdown)
@@ -219,14 +219,14 @@ sfx_t *S_FindName(const char *name, int sequenceNumber)
 
 void S_BeginRegistration()
 {
-    R201_LOAD_BEGIN( sndinit );
+    SMP_LOAD_BEGIN( sndinit );
     s_inRegistration = true;
 
     s_registrationSequence++;
     s_knownSfx[0].registration_sequence = s_registrationSequence;
 
     S_StopAllSounds(true);
-    R201_LOAD_END( sndinit );
+    SMP_LOAD_END( sndinit );
 }
 
 void S_DefaultSound(sfx_t *sfx)
@@ -322,7 +322,7 @@ void S_EndRegistration()
     int    i;
     sfx_t *sfx;
 
-    R201_LOAD_BEGIN( sndinit );
+    SMP_LOAD_BEGIN( sndinit );
 
     s_inRegistration = qfalse;
 
@@ -341,7 +341,7 @@ void S_EndRegistration()
             *sfx = {};
         }
     }
-    R201_LOAD_END( sndinit );
+    SMP_LOAD_END( sndinit );
 }
 
 void S_UpdateEntity(int entityNum, const vec3_t origin, const vec3_t vel, qboolean use_listener)

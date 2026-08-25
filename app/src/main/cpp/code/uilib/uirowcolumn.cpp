@@ -466,7 +466,7 @@ int UIRow::getHoveredWidgetIndex(void)
 // AllowActivate(true) here made it take focus retail would not give it.
 UIRowColumn::UIRowColumn()
 {
-    // R129: retail's own ctor (@0x00084840, 252 B) does NOT touch +1728/+1732/+1736/
+    // UIROWS: retail's own ctor (@0x00084840, 252 B) does NOT touch +1728/+1732/+1736/
     m_firstDrawnY                  = 0.0f;
     m_selectedRow                  = NULL;
     m_sortColumn                   = -1;

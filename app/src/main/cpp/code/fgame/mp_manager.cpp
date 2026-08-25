@@ -10,9 +10,9 @@
 #include "powerups.h"
 #include "../corepp/tiki.h" 
 
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
 
 extern int gametype;
@@ -352,7 +352,7 @@ void MultiplayerManager::addBots( void )
 
 	if ( !dedicated->integer && ( !g_entities[ 0 ].inuse || !g_entities[ 0 ].client || !g_entities[ 0 ].entity ) )
 	{
-		R120_PROBE(
+		PROBE(
 			"npc:addbots-gate",
 			"waiting: dedicated=%d inuse=%d client=%d entity=%p",
 			dedicated->integer,
@@ -366,7 +366,7 @@ void MultiplayerManager::addBots( void )
 
 	mp_botcommands = gi.cvar( "mp_botcommands", "", 0 );
 
-	R120_PROBE("npc:addbots", "mp_botcommands='%s' len=%d", mp_botcommands->string, (int)strlen(mp_botcommands->string));
+	PROBE("npc:addbots", "mp_botcommands='%s' len=%d", mp_botcommands->string, (int)strlen(mp_botcommands->string));
 
 	if ( strlen( mp_botcommands->string ) > 0 )
 	{
@@ -382,7 +382,7 @@ void MultiplayerManager::initMultiplayerGame( void )
 	cvar_t *mp_modifier_Destruction;
 	int i;
 
-	R120_PROBE(
+	PROBE(
 		"npc:initmp",
 		"mp_gametype=%d mp_botcommands-present=%d warmUpTime=%g minPlayers=%d",
 		mp_gametype->integer,
@@ -1005,7 +1005,7 @@ void MultiplayerManager::playerDead( Player *player )
 	if ( !player )
 		return;
 
-	R124_PROBE("playerdead", "ent=%d -> mode->playerDead", player->entnum);
+	TIKIANIM_PROBE("playerdead", "ent=%d -> mode->playerDead", player->entnum);
 
 
 	_multiplayerGame->playerDead( player );
@@ -1158,7 +1158,7 @@ void MultiplayerManager::respawnPlayer( Player *player, bool forced )
 
 	if ( getRespawnTime() > 0.0f && !forced )
 	{
-		R124_PROBE("respawn:deferred", "ent=%d mp_respawnTime=%.2f -> _waitingForRespawn=true, respawn at %.2f",
+		TIKIANIM_PROBE("respawn:deferred", "ent=%d mp_respawnTime=%.2f -> _waitingForRespawn=true, respawn at %.2f",
 		           player->entnum, getRespawnTime(), (float)(getTime() + getRespawnTime()));
 		if ( !_playerData[ player->entnum ]._waitingForRespawn )
 		{
@@ -1168,7 +1168,7 @@ void MultiplayerManager::respawnPlayer( Player *player, bool forced )
 	}
 	else
 	{
-		R124_PROBE("respawn:immediate", "ent=%d forced=%d mp_respawnTime=%.2f -> mode->respawnPlayer",
+		TIKIANIM_PROBE("respawn:immediate", "ent=%d forced=%d mp_respawnTime=%.2f -> mode->respawnPlayer",
 		           player->entnum, forced ? 1 : 0, getRespawnTime());
 		_playerData[ player->entnum ]._waitingForRespawn = false;
 		_multiplayerGame->respawnPlayer( player );

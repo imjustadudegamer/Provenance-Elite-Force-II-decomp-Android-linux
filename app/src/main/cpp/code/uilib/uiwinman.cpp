@@ -1,12 +1,12 @@
 
 #include "ui_local.h"
 
-#define R120_PROBE_GET(name, def, flags) ((cvar_t *)0)
-#define R120_PROBE_PRINT                 Com_Printf
-#define R120_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_r120", "1")) != 0)  
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) ((cvar_t *)0)
+#define PROBE_PRINT                 Com_Printf
+#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
+#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_r202.h"
+#include "../qcommon/qa_ui.h"
 
 Event W_MouseExited
 (
@@ -216,78 +216,78 @@ void UIWindowManager::setBackgroundWidget(UIWidget *widget)
 }
 
 typedef enum {
-    R212_WALK_FOUND = 0,
-    R212_WALK_NOT_FOUND,
-    R212_WALK_TRUNCATED
-} r212Walk_t;
+    CRAUDIT_WALK_FOUND = 0,
+    CRAUDIT_WALK_NOT_FOUND,
+    CRAUDIT_WALK_TRUNCATED
+} crauditWalk_t;
 
-static r212Walk_t R212_InTree(UIWidget *root, UIWidget *want, int depth, int *budget)
+static crauditWalk_t CRAUDIT_InTree(UIWidget *root, UIWidget *want, int depth, int *budget)
 {
     int i;
 
     if (!root || !want || !budget || *budget <= 0 || depth > 64) {
-        return R212_WALK_TRUNCATED;     
+        return CRAUDIT_WALK_TRUNCATED;     
     }
     if (root == want) {
-        return R212_WALK_FOUND;
+        return CRAUDIT_WALK_FOUND;
     }
 
     for (i = 1; i <= root->getChildren().NumObjects(); i++) {
-        r212Walk_t r;
+        crauditWalk_t r;
 
         if (--(*budget) <= 0) {
-            return R212_WALK_TRUNCATED;
+            return CRAUDIT_WALK_TRUNCATED;
         }
-        r = R212_InTree(root->getChildren().ObjectAt(i), want, depth + 1, budget);
-        if (r == R212_WALK_FOUND) {
-            return R212_WALK_FOUND;
+        r = CRAUDIT_InTree(root->getChildren().ObjectAt(i), want, depth + 1, budget);
+        if (r == CRAUDIT_WALK_FOUND) {
+            return CRAUDIT_WALK_FOUND;
         }
-        if (r == R212_WALK_TRUNCATED) {
-            return R212_WALK_TRUNCATED; 
+        if (r == CRAUDIT_WALK_TRUNCATED) {
+            return CRAUDIT_WALK_TRUNCATED; 
         }
     }
-    return R212_WALK_NOT_FOUND;
+    return CRAUDIT_WALK_NOT_FOUND;
 }
 
-static void R212_CheckRawWidgetPointers(UIWidget **p, const char *name)
+static void CRAUDIT_CheckRawWidgetPointers(UIWidget **p, const char *name)
 {
     static int    s_rows;
     static int    s_truncRows;
     static cvar_t *s_cvar;
     int           budget;
-    r212Walk_t    r;
+    crauditWalk_t    r;
 
     if (!p || !*p) {
         return;
     }
     if (!s_cvar) {
-        s_cvar = Cvar_Get("r212_focusStats", "1", 0);
+        s_cvar = Cvar_Get("craudit_focusStats", "1", 0);
     }
     if (s_cvar && !s_cvar->integer) {
         return;
     }
 
     budget = 4096;
-    r = R212_InTree(&uWinMan, *p, 0, &budget);
+    r = CRAUDIT_InTree(&uWinMan, *p, 0, &budget);
 
-    if (r == R212_WALK_TRUNCATED) {
+    if (r == CRAUDIT_WALK_TRUNCATED) {
         if (s_truncRows < 8) {
-            Com_Printf("[R212:focus] WALK-TRUNCATED %s=%p budget|depth -> not cleared\n",
+            Com_Printf("[CRAUDIT:focus] WALK-TRUNCATED %s=%p budget|depth -> not cleared\n",
                        name, (void *)*p);
         } else if (s_truncRows == 8) {
-            Com_Printf("[R212:focus] capped at 8 truncation rows; further truncations are silent "
+            Com_Printf("[CRAUDIT:focus] capped at 8 truncation rows; further truncations are silent "
                        "(nothing is ever cleared on a truncated walk)\n");
         }
         s_truncRows++;
         return;
     }
 
-    if (r == R212_WALK_NOT_FOUND) {
+    if (r == CRAUDIT_WALK_NOT_FOUND) {
         if (s_rows < 8) {
-            Com_Printf("[R212:focus] STALE %s=%p is not in the widget tree -> cleared\n",
+            Com_Printf("[CRAUDIT:focus] STALE %s=%p is not in the widget tree -> cleared\n",
                        name, (void *)*p);
         } else if (s_rows == 8) {
-            Com_Printf("[R212:focus] capped at 8 rows; further stale pointers are cleared silently\n");
+            Com_Printf("[CRAUDIT:focus] capped at 8 rows; further stale pointers are cleared silently\n");
         }
         s_rows++;
         *p = NULL;
@@ -300,36 +300,36 @@ void UIWindowManager::UpdateViews(void)
     int n;
     int x, y;
 
-    R212_CheckRawWidgetPointers(&m_activeControl, "m_activeControl");
-    R212_CheckRawWidgetPointers(&m_backgroundwidget, "m_backgroundwidget");
-    R212_CheckRawWidgetPointers(&m_bindactive, "m_bindactive");
+    CRAUDIT_CheckRawWidgetPointers(&m_activeControl, "m_activeControl");
+    CRAUDIT_CheckRawWidgetPointers(&m_backgroundwidget, "m_backgroundwidget");
+    CRAUDIT_CheckRawWidgetPointers(&m_bindactive, "m_bindactive");
 
-    R202_ROOT_BEGIN(R202_FAM_DISP);
+    UI_ROOT_BEGIN(UI_FAM_DISP);
 
-    R202_ZONE_BEGIN(R202_DZ_walkup);
+    UI_ZONE_BEGIN(UI_DZ_walkup);
 
     update();
 
-    R202_ZONE_END(R202_FAM_DISP, R202_DZ_walkup);
-    R202_ZONE_BEGIN(R202_DZ_disp);
+    UI_ZONE_END(UI_FAM_DISP, UI_DZ_walkup);
+    UI_ZONE_BEGIN(UI_DZ_disp);
 
     if (m_backgroundwidget) {
         m_backgroundwidget->Display(m_frame, 1.0);
 
         n = m_children.NumObjects();
-        R202_COUNT(R202_FAM_DISP, R202_DC_children, n);
+        UI_COUNT(UI_FAM_DISP, UI_DC_children, n);
         for (i = 1; i <= n; i++) {
             if (m_children.ObjectAt(i) != m_backgroundwidget) {
                 m_children.ObjectAt(i)->Display(m_frame, 1.0);
             }
         }
     } else {
-        R202_COUNT(R202_FAM_DISP, R202_DC_children, m_children.NumObjects());
+        UI_COUNT(UI_FAM_DISP, UI_DC_children, m_children.NumObjects());
         Display(m_frame, 1.0);
     }
 
-    R202_ZONE_END(R202_FAM_DISP, R202_DZ_disp);
-    R202_ZONE_BEGIN(R202_DZ_cursor);
+    UI_ZONE_END(UI_FAM_DISP, UI_DZ_disp);
+    UI_ZONE_BEGIN(UI_DZ_cursor);
 
     if (m_cursor && m_showcursor && uid.uiHasMouse) {
         vec4_t col;
@@ -361,18 +361,18 @@ void UIWindowManager::UpdateViews(void)
 
         m_font->setColor(UWhite);
 
-        R202_ZONE_BEGIN(R202_DZ_printstr);
+        UI_ZONE_BEGIN(UI_DZ_printstr);
         if (UI_GetCvarInt("ui_drawcoords", 0)) {
             x = uid.mouseX + 10;
             y = uid.mouseY - 10;
             m_font->Print(x, y, va("%d:%d", uid.mouseX, uid.mouseY), -1, UColor(0.0f, 0.0f, 0.0f, 0.0f), 0);
         }
-        R202_ZONE_END(R202_FAM_DISP, R202_DZ_printstr);
+        UI_ZONE_END(UI_FAM_DISP, UI_DZ_printstr);
     }
 
-    R202_ZONE_END(R202_FAM_DISP, R202_DZ_cursor);
+    UI_ZONE_END(UI_FAM_DISP, UI_DZ_cursor);
 
-    R202_ROOT_END(R202_FAM_DISP);
+    UI_ROOT_END(UI_FAM_DISP);
 }
 
 void UIWindowManager::ChangeResolution(void)
@@ -428,36 +428,36 @@ void UIWindowManager::ServiceEvents(void)
         if (buttons & 1) {
             uii.UI_WantsKeyboard();
 
-            static int r133_press;
-            if (R120_Throttle(&r133_press, 8, 64)) {
-                UIWidget *r133v    = view;
-                UIWidget *r133top  = r133v;
-                int       r133idx  = 0;
-                int       r133total = GetChildCount();
+            static int uivk_press;
+            if (PROBE_Throttle(&uivk_press, 8, 64)) {
+                UIWidget *uivkv    = view;
+                UIWidget *uivktop  = uivkv;
+                int       uivkidx  = 0;
+                int       uivktotal = GetChildCount();
 
-                while (r133top && r133top->getParent() != NULL && r133top->getParent() != this) {
-                    r133top = r133top->getParent();
+                while (uivktop && uivktop->getParent() != NULL && uivktop->getParent() != this) {
+                    uivktop = uivktop->getParent();
                 }
 
-                for (int r133i = 1; r133i <= r133total; r133i++) {
-                    if (GetChild(r133i) == r133top) {
-                        r133idx = r133i;
+                for (int uivki = 1; uivki <= uivktotal; uivki++) {
+                    if (GetChild(uivki) == uivktop) {
+                        uivkidx = uivki;
                         break;
                     }
                 }
 
-                Menu *r133menu = menuManager.CurrentMenu();
+                Menu *uivkmenu = menuManager.CurrentMenu();
 
-                R133_PROBE("press",
+                UIVK_PROBE("press",
                            "widget='%s' class='%s' manager=%d top='%s' walkIndex=%d of=%d menu='%s' gamefocus=%d activeControl='%s' guimouse=%d\n",
-                           (r133v && r133v->getName()) ? r133v->getName() : "(null)",
-                           (r133v && r133v->getClassname()) ? r133v->getClassname() : "(null)",
-                           (r133v == this) ? 1 : 0,
-                           (r133top && r133top->getName()) ? r133top->getName() : "(null)",
-                           r133idx,
-                           r133total,
-                           (r133menu && r133menu->m_name.length()) ? r133menu->m_name.c_str() : "(none)",
-                           (r133menu && r133menu->allowGameFocus()) ? 1 : 0,
+                           (uivkv && uivkv->getName()) ? uivkv->getName() : "(null)",
+                           (uivkv && uivkv->getClassname()) ? uivkv->getClassname() : "(null)",
+                           (uivkv == this) ? 1 : 0,
+                           (uivktop && uivktop->getName()) ? uivktop->getName() : "(null)",
+                           uivkidx,
+                           uivktotal,
+                           (uivkmenu && uivkmenu->m_name.length()) ? uivkmenu->m_name.c_str() : "(none)",
+                           (uivkmenu && uivkmenu->allowGameFocus()) ? 1 : 0,
                            (m_activeControl && m_activeControl->getName()) ? m_activeControl->getName() : "(null)",
                            uid.uiHasMouse ? 1 : 0);
             }
@@ -701,8 +701,8 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 void UIWindowManager::sortWidgetContainers(void)
 {
     // this sort uses never answers 0 on a tie (widgetContainerCompare @0x000B4450: fcmpu /
-    static int r165_sortPass;
-    R120_PROBE("sortpass", "pass=%d children=%d", ++r165_sortPass, m_children.NumObjects());
+    static int gltrace_sortPass;
+    PROBE("sortpass", "pass=%d children=%d", ++gltrace_sortPass, m_children.NumObjects());
 
     {
         int n = m_children.NumObjects();
@@ -722,7 +722,7 @@ void UIWindowManager::sortWidgetContainers(void)
     }
 }
 
-// R127 TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read side of the sorted
+// PAINT TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read side of the sorted
 int UIWindowManager::GetChildCount(void)
 {
     return m_children.NumObjects();

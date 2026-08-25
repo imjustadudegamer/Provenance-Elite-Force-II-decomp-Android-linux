@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GLSL ES 3.00 build + validation for the r200-gles3-shade workstream (G2).
+GLSL ES 3.00 build + validation for the gles3-gles3-shade workstream (G2).
 
 WHAT IT DOES
 ------------
@@ -60,7 +60,7 @@ GLP_NAMES = [
 RE_KEY = re.compile(r'GLES3_PROGRAM_KEY\([^)]*?(0x[0-9a-fA-F]+|\d+)\s*,\s*"([^"]*)"\s*,')
 
 # ---------------------------------------------------------------------------
-# STAGE-MATCHED PRECISION PRELUDE (r200 0.2.79 -- the white-screen root fix).
+# STAGE-MATCHED PRECISION PRELUDE (gles3 0.2.79 -- the white-screen root fix).
 #
 # GLSL ES 3.00 gives int a DIFFERENT default precision per stage: highp in the
 # vertex language, mediump in the fragment language (OpenGL ES 3.0 Programming
@@ -85,7 +85,7 @@ RE_KEY = re.compile(r'GLES3_PROGRAM_KEY\([^)]*?(0x[0-9a-fA-F]+|\d+)\s*,\s*"([^"]
 # the portal clip is a varying + fragment discard in gles3_clip.inc.glsl rather
 # than gl_ClipDistance; that choice already matches the documented guidance.
 PRECISION_PRELUDE = (
-    '/* r200: stage-matched default precision (see build_glsl.py); int and\n'
+    '/* gles3: stage-matched default precision (see build_glsl.py); int and\n'
     '   sampler2D defaults differ per stage in ES 3.00, and a shared uniform or\n'
     '   varying must match or the pair is a LINK error on a strict driver.\n'
     '   sampler2D is pinned highp in BOTH stages on purpose: u_WaveTable is an\n'

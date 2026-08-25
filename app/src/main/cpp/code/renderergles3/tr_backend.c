@@ -1,9 +1,9 @@
 #include "tr_local.h"
 #include "gles3_g1_api.h"
 
-#define R120_PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
 
 backEndData_t	*backEndData;			
 backEndData_t	*backEndDataBuf[SMP_FRAMES];	
@@ -48,63 +48,63 @@ void GL_Bind( image_t *image ) {
 		glState.currenttextures[glState.currenttmu] = texnum;
 		qglBindTexture (GL_TEXTURE_2D, texnum);
 
-#define R201_BIND_MAX   2048
-#define R201_BIND_HASH  8192			
+#define SMP_BIND_MAX   2048
+#define SMP_BIND_HASH  8192			
 		{
 			typedef struct {
 				int				tmu;
 				unsigned		texnum;
 				const char		*name;
 				unsigned		count;
-			} r201Bind_t;
-			static r201Bind_t	*s_r201Bind;
-			static int			*s_r201BindHash;
-			static int			 s_r201BindCount;
-			static qboolean		 s_r201BindNotice;
+			} smpBind_t;
+			static smpBind_t	*s_smpBind;
+			static int			*s_smpBindHash;
+			static int			 s_smpBindCount;
+			static qboolean		 s_smpBindNotice;
 			unsigned			 h;
 			int					 slot;
 			int					 idx;
 
-			if ( !s_r201Bind ) {
-				s_r201Bind = (r201Bind_t *)ri.Malloc( sizeof( r201Bind_t ) * R201_BIND_MAX );
-				s_r201BindHash = (int *)ri.Malloc( sizeof( int ) * R201_BIND_HASH );
-				Com_Memset( s_r201BindHash, 0, sizeof( int ) * R201_BIND_HASH );
+			if ( !s_smpBind ) {
+				s_smpBind = (smpBind_t *)ri.Malloc( sizeof( smpBind_t ) * SMP_BIND_MAX );
+				s_smpBindHash = (int *)ri.Malloc( sizeof( int ) * SMP_BIND_HASH );
+				Com_Memset( s_smpBindHash, 0, sizeof( int ) * SMP_BIND_HASH );
 			}
 
 			h = (unsigned)( glState.currenttmu * 2654435761u ) ^ ( texnum * 2246822519u );
-			slot = (int)( h & ( R201_BIND_HASH - 1 ) );
+			slot = (int)( h & ( SMP_BIND_HASH - 1 ) );
 			for ( ;; ) {
-				idx = s_r201BindHash[slot];
+				idx = s_smpBindHash[slot];
 				if ( !idx ) {
 					break;
 				}
 				idx--;
-				if ( s_r201Bind[idx].tmu == glState.currenttmu
-					 && s_r201Bind[idx].texnum == (unsigned)texnum ) {
-					s_r201Bind[idx].count++;
-					goto r201_bind_done;
+				if ( s_smpBind[idx].tmu == glState.currenttmu
+					 && s_smpBind[idx].texnum == (unsigned)texnum ) {
+					s_smpBind[idx].count++;
+					goto smp_bind_done;
 				}
-				slot = ( slot + 1 ) & ( R201_BIND_HASH - 1 );
+				slot = ( slot + 1 ) & ( SMP_BIND_HASH - 1 );
 			}
 
-			if ( s_r201BindCount >= R201_BIND_MAX ) {
-				if ( !s_r201BindNotice ) {
-					s_r201BindNotice = qtrue;
+			if ( s_smpBindCount >= SMP_BIND_MAX ) {
+				if ( !s_smpBindNotice ) {
+					s_smpBindNotice = qtrue;
 					ri.Printf( PRINT_ALL,
-						"[R200:bind] PAIR BUDGET reached (%d distinct (tmu,tex) pairs recorded); "
-						"further distinct pairs are NOT recorded from here on\n", R201_BIND_MAX );
+						"[GLES3:bind] PAIR BUDGET reached (%d distinct (tmu,tex) pairs recorded); "
+						"further distinct pairs are NOT recorded from here on\n", SMP_BIND_MAX );
 				}
 			} else {
-				idx = s_r201BindCount++;
-				s_r201Bind[idx].tmu = glState.currenttmu;
-				s_r201Bind[idx].texnum = (unsigned)texnum;
-				s_r201Bind[idx].name = image ? image->imgName : "*null-image";
-				s_r201Bind[idx].count = 1;
-				s_r201BindHash[slot] = idx + 1;
-				ri.Printf( PRINT_ALL, "[R200:bind] tmu=%d tex=%d name=%s\n",
-						   glState.currenttmu, texnum, s_r201Bind[idx].name );
+				idx = s_smpBindCount++;
+				s_smpBind[idx].tmu = glState.currenttmu;
+				s_smpBind[idx].texnum = (unsigned)texnum;
+				s_smpBind[idx].name = image ? image->imgName : "*null-image";
+				s_smpBind[idx].count = 1;
+				s_smpBindHash[slot] = idx + 1;
+				ri.Printf( PRINT_ALL, "[GLES3:bind] tmu=%d tex=%d name=%s\n",
+						   glState.currenttmu, texnum, s_smpBind[idx].name );
 			}
-r201_bind_done:;
+smp_bind_done:;
 		}
 	}
 }
@@ -485,10 +485,10 @@ static void RB_Hyperspace( void ) {
 
 
 
-#define R201_VP_ROW_CAP		240
-#define R201_VP_TUPLE_SLOTS	192
-#define R201_VP_QUERY_BUDGET	8
-#define R201_VP_HEARTBEAT	300
+#define SMP_VP_ROW_CAP		240
+#define SMP_VP_TUPLE_SLOTS	192
+#define SMP_VP_QUERY_BUDGET	8
+#define SMP_VP_HEARTBEAT	300
 
 typedef struct {
 	const char	*src;
@@ -500,17 +500,17 @@ typedef struct {
 	int			dx, dy, dw, dh;		
 	int			dvx, dvy, dvw, dvh;	
 	int			dtest;				
-} r201VpTuple_t;
+} smpVpTuple_t;
 
-void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport ) {
-	static r201VpTuple_t	s_tuples[R201_VP_TUPLE_SLOTS];
+void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport ) {
+	static smpVpTuple_t	s_tuples[SMP_VP_TUPLE_SLOTS];
 	static int				s_rows;
 	static int				s_suppressed;
 	static int				s_lastFrame = -1;
 	static int				s_queriesThisFrame;
 	static int				s_fullAnnounced;
 	static cvar_t			*s_cvar;
-	r201VpTuple_t			*t = NULL;
+	smpVpTuple_t			*t = NULL;
 	int						i, slot = -1;
 	int						sc[4] = { 0, 0, 0, 0 };
 	int						vp[4] = { 0, 0, 0, 0 };
@@ -518,7 +518,7 @@ void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h,
 	qboolean				heartbeat, needQuery, disagree;
 
 	if ( !s_cvar ) {
-		s_cvar = ri.Cvar_Get( "r201_vpProbe", "1", 0 );
+		s_cvar = ri.Cvar_Get( "smp_vpProbe", "1", 0 );
 	}
 	if ( !s_cvar || !s_cvar->integer ) {
 		return;
@@ -528,9 +528,9 @@ void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h,
 		s_lastFrame = RB_FrameCount();
 		s_queriesThisFrame = 0;
 	}
-	heartbeat = ( s_lastFrame % R201_VP_HEARTBEAT ) == 0;
+	heartbeat = ( s_lastFrame % SMP_VP_HEARTBEAT ) == 0;
 
-	for ( i = 0; i < R201_VP_TUPLE_SLOTS; i++ ) {
+	for ( i = 0; i < SMP_VP_TUPLE_SLOTS; i++ ) {
 		if ( !s_tuples[i].src ) {
 			continue;
 		}
@@ -541,7 +541,7 @@ void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h,
 		}
 	}
 	if ( slot < 0 ) {
-		for ( i = 0; i < R201_VP_TUPLE_SLOTS; i++ ) {
+		for ( i = 0; i < SMP_VP_TUPLE_SLOTS; i++ ) {
 			if ( !s_tuples[i].src ) {
 				slot = i;
 				break;
@@ -551,8 +551,8 @@ void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h,
 	if ( slot < 0 ) {
 		if ( !s_fullAnnounced ) {
 			s_fullAnnounced = 1;
-			ri.Printf( PRINT_ALL, "[R201:vp] tuple table full (%d keys); further rects untracked\n",
-					   R201_VP_TUPLE_SLOTS );
+			ri.Printf( PRINT_ALL, "[SMP:vp] tuple table full (%d keys); further rects untracked\n",
+					   SMP_VP_TUPLE_SLOTS );
 		}
 		return;
 	}
@@ -568,7 +568,7 @@ void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h,
 	if ( !needQuery ) {
 		return;
 	}
-	if ( !heartbeat && s_queriesThisFrame >= R201_VP_QUERY_BUDGET ) {
+	if ( !heartbeat && s_queriesThisFrame >= SMP_VP_QUERY_BUDGET ) {
 		s_suppressed++;
 		return;
 	}
@@ -597,17 +597,17 @@ void R201_VpProbe( const char *src, const char *why, int x, int y, int w, int h,
 	t->dvx = vp[0]; t->dvy = vp[1]; t->dvw = vp[2]; t->dvh = vp[3];
 	t->dtest = dtest;
 
-	if ( s_rows >= R201_VP_ROW_CAP ) {
-		if ( s_rows == R201_VP_ROW_CAP ) {
+	if ( s_rows >= SMP_VP_ROW_CAP ) {
+		if ( s_rows == SMP_VP_ROW_CAP ) {
 			s_rows++;
-			ri.Printf( PRINT_ALL, "[R201:vp] capped at %d rows (%d queries rate-limited); no further lines\n",
-					   R201_VP_ROW_CAP, s_suppressed );
+			ri.Printf( PRINT_ALL, "[SMP:vp] capped at %d rows (%d queries rate-limited); no further lines\n",
+					   SMP_VP_ROW_CAP, s_suppressed );
 		}
 		return;
 	}
 	s_rows++;
 	ri.Printf( PRINT_ALL,
-		"[R201:vp] src=%s why=%s f=%d int=%d,%d,%dx%d drvSc=%d,%d,%dx%d drvVp=%d,%d,%dx%d scTest=%d %s clear=0x%x"
+		"[SMP:vp] src=%s why=%s f=%d int=%d,%d,%dx%d drvSc=%d,%d,%dx%d drvVp=%d,%d,%dx%d scTest=%d %s clear=0x%x"
 		" refdef=%d,%d,%dx%d vid=%dx%d in2D=%d portal=%d owm=%d far=%.1f sky=%d prt=%d fastsky=%d\n",
 		src, why, RB_FrameCount(), x, y, w, h,
 		sc[0], sc[1], sc[2], sc[3], vp[0], vp[1], vp[2], vp[3], dtest,
@@ -629,7 +629,7 @@ static void SetViewportAndScissor( void ) {
 	qglScissor( backEnd.viewParms.viewportX, backEnd.viewParms.viewportY, 
 		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight );
 
-	R201_VpProbe( "view", "SetViewportAndScissor/viewParms",
+	SMP_VpProbe( "view", "SetViewportAndScissor/viewParms",
 		backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
 		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, qtrue );
 }
@@ -676,7 +676,7 @@ void RB_BeginDrawingView (void) {
 	}
 	qglClear( clearBits );
 
-	R201_VpProbe( "clear", "RB_BeginDrawingView/qglClear",
+	SMP_VpProbe( "clear", "RB_BeginDrawingView/qglClear",
 		backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
 		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, clearBits, qtrue );
 
@@ -722,14 +722,14 @@ void RB_BeginDrawingView (void) {
 	}
 
 	{
-		static int s_r200ViewLogged;
-		if ( s_r200ViewLogged < 200 ) {
+		static int s_gles3ViewLogged;
+		if ( s_gles3ViewLogged < 200 ) {
 			vec4_t		cp;
 			qboolean	clipOn = RB_ClipPlane_Get( cp );
-			ri.Printf( PRINT_ALL, "[R200:view] portal=%d clip=%d in2D=%d fovX=%.1f\n",
+			ri.Printf( PRINT_ALL, "[GLES3:view] portal=%d clip=%d in2D=%d fovX=%.1f\n",
 				backEnd.viewParms.isPortal ? 1 : 0, clipOn ? 1 : 0,
 				backEnd.in2D ? 1 : 0, backEnd.viewParms.fovX );
-			s_r200ViewLogged++;
+			s_gles3ViewLogged++;
 		}
 	}
 }
@@ -786,7 +786,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			|| ( entityNum != oldEntityNum && !shader->entityMergable )
 			|| ( bStaticModel != oldbStaticModel && !shader->entityMergable )) {
 			if (oldShader != NULL) {
-				R204_ZONE( R204_FAM_DS, R204_DSZ_end, RB_EndSurface() );
+				BE_ZONE( BE_FAM_DS, BE_DSZ_end, RB_EndSurface() );
 			}
 			RB_BeginSurface( shader, fogNum );
 			oldShader = shader;
@@ -864,7 +864,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 		}
 
-		if (R120_On() && *drawSurf->surface == SF_POLY) {
+		if (PROBE_On() && *drawSurf->surface == SF_POLY) {
 			static int  s_iFrameCounter = 0;
 			static int  s_iThisFrame = 0;
 			static int  s_iLastFrame = 0;
@@ -882,7 +882,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			}
 			s_iFrameCounter++;
 
-			if (s_iProbeRows <= R1XX_PROBE_ROW_CAP &&
+			if (s_iProbeRows <= PROBE_ROW_CAP &&
 			    s_iThisFrame < 4 && (s_iFrameCounter % 30) == 1) {
 				s_iThisFrame++;
 				s_iProbeRows++;
@@ -892,7 +892,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				qglGetBooleanv( GL_DEPTH_WRITEMASK, &bMask );
 				qglGetFloatv( GL_DEPTH_RANGE, fRange );
 
-				R133_PROBE(
+				UIVK_PROBE(
 					"DOCC:poly",
 					"n=%d sh='%s' sort=%u ent=%d st0=0x%08x dtx=%d eq=%d poff=%d depthtest=%s func=%s mask=%d depthrange=%s(old=%s) drange=%.3f..%.3f proj15=%.0f\n",
 					i,
@@ -918,7 +918,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	}
 
 	if (oldShader != NULL) {
-		R204_ZONE( R204_FAM_DS, R204_DSZ_end, RB_EndSurface() );
+		BE_ZONE( BE_FAM_DS, BE_DSZ_end, RB_EndSurface() );
 	}
 
 	RB_LoadModelViewMatrix(  backEnd.viewParms.world.modelMatrix );
@@ -927,7 +927,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	}
 
 	if (!(backEnd.refdef.rdflags & RDF_HUD)) {
-		R204_ZONE( R204_FAM_DS, R204_DSZ_flare, R_DrawLensFlares() );
+		BE_ZONE( BE_FAM_DS, BE_DSZ_flare, R_DrawLensFlares() );
 	}
 
 	if (g_bInfoworldtris)
@@ -936,7 +936,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		R_PrintInfoWorldtris();
 	}
 
-	R204_ZONE( R204_FAM_DS, R204_DSZ_shadow, RB_ShadowFinish() );
+	BE_ZONE( BE_FAM_DS, BE_DSZ_shadow, RB_ShadowFinish() );
 
 }
 
@@ -946,7 +946,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	qboolean	depthRange;
 	qboolean	oldDepthRange;
 	int			i;
-	int			r208SprT0;
+	int			shadowSprT0;
 	drawSurf_t	*drawSurf;
 
     backEnd.currentEntity = &tr.worldEntity;
@@ -965,8 +965,8 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
         if (!drawSurf->surface) continue;
         refSprite_t *spr = (refSprite_t*)drawSurf->surface;
         if (spr->shaderNum < 0 || spr->shaderNum >= tr.numShaders) continue;
-		R204_Bump( R204_FAM_BE, R204_BEC_sprN, 1 );
-		r208SprT0 = R204_On() ? R204_Microseconds() : 0;
+		BE_Bump( BE_FAM_BE, BE_BEC_sprN, 1 );
+		shadowSprT0 = BE_On() ? BE_Microseconds() : 0;
 		shader = tr.sortedShaders[spr->shaderNum];
 		depthRange = (spr->renderfx & RF_DEPTHHACK) != 0;
 
@@ -974,7 +974,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
         {
 			if (oldShader) {
 				RB_EndSurface();
-				R204_Bump( R204_FAM_BE, R204_BEC_sprBatch, 1 );
+				BE_Bump( BE_FAM_BE, BE_BEC_sprBatch, 1 );
 			}
 
             RB_BeginSurface(shader, spr->fogNum);
@@ -997,14 +997,14 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
         backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 
         rb_surfaceTable[*drawSurf->surface](drawSurf->surface);
-		if ( R204_On() ) {
-			R204_Zone( R204_FAM_BE, R204_BEZ_sprwalk, R204_Microseconds() - r208SprT0 );
+		if ( BE_On() ) {
+			BE_Zone( BE_FAM_BE, BE_BEZ_sprwalk, BE_Microseconds() - shadowSprT0 );
 		}
 	}
 
 	if (oldShader) {
 		RB_EndSurface();
-		R204_Bump( R204_FAM_BE, R204_BEC_sprBatch, 1 );
+		BE_Bump( BE_FAM_BE, BE_BEC_sprBatch, 1 );
 	}
 
 	r_spriteListOpen = 0;
@@ -1022,7 +1022,7 @@ void	RB_SetGL2D (void) {
 }
 
 
-static void R200_DrainGLError( void ) {
+static void GLES3_DrainGLError( void ) {
 	int i;
 	for ( i = 0; i < 8; i++ ) {
 		if ( qglGetError() == GL_NO_ERROR ) {
@@ -1058,7 +1058,7 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 	GL_BindUnit0( tr.scratchImage );
 
 	if ( cols != tr.scratchImage->width || rows != tr.scratchImage->height ) {
-		R200_DrainGLError();
+		GLES3_DrainGLError();
 		qglTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, cols, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
 
 		{
@@ -1067,11 +1067,11 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 				tr.scratchImage->width = tr.scratchImage->uploadWidth = cols;
 				tr.scratchImage->height = tr.scratchImage->uploadHeight = rows;
 			} else {
-				static int s_r200CineErrLogged;
-				if ( s_r200CineErrLogged < 10 ) {
-					ri.Printf( PRINT_ALL, "[R200:glerr] cinematic glTexImage2D %dx%d rejected: 0x%04x\n",
+				static int s_gles3CineErrLogged;
+				if ( s_gles3CineErrLogged < 10 ) {
+					ri.Printf( PRINT_ALL, "[GLES3:glerr] cinematic glTexImage2D %dx%d rejected: 0x%04x\n",
 							   cols, rows, err );
-					s_r200CineErrLogged++;
+					s_gles3CineErrLogged++;
 				}
 			}
 		}
@@ -1080,27 +1080,27 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 		qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
 		qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
 	} else if (dirty) {
-		R200_DrainGLError();
+		GLES3_DrainGLError();
 		qglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cols, rows, GL_RGBA, GL_UNSIGNED_BYTE, data);
 		{
 			GLenum err = qglGetError();
 			if ( err != GL_NO_ERROR ) {
-				static int s_r200CineSubErr;
-				if ( s_r200CineSubErr < 10 ) {
-					ri.Printf( PRINT_ALL, "[R200:glerr] cinematic glTexSubImage2D %dx%d rejected: 0x%04x\n",
+				static int s_gles3CineSubErr;
+				if ( s_gles3CineSubErr < 10 ) {
+					ri.Printf( PRINT_ALL, "[GLES3:glerr] cinematic glTexSubImage2D %dx%d rejected: 0x%04x\n",
 							   cols, rows, err );
-					s_r200CineSubErr++;
+					s_gles3CineSubErr++;
 				}
 			}
 		}
 	}
 
 	{
-		static int s_r200CineLogged;
-		if ( s_r200CineLogged < 200 ) {
+		static int s_gles3CineLogged;
+		if ( s_gles3CineLogged < 200 ) {
 			const byte *d = (const byte *)data;
 			ri.Printf( PRINT_ALL,
-				"[R200:cine] stretch x=%d y=%d w=%d h=%d cols=%d rows=%d comp=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x identityLight=%.3f\n",
+				"[GLES3:cine] stretch x=%d y=%d w=%d h=%d cols=%d rows=%d comp=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x identityLight=%.3f\n",
 				x, y, w, h, cols, rows, components,
 				tr.scratchImage ? tr.scratchImage->texnum : 0u,
 				tr.scratchImage ? tr.scratchImage->width : 0,
@@ -1108,7 +1108,7 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 				dirty ? 1 : 0,
 				d ? d[0] : 0, d ? d[1] : 0, d ? d[2] : 0, d ? d[3] : 0,
 				tr.identityLight );
-			s_r200CineLogged++;
+			s_gles3CineLogged++;
 		}
 	}
 
@@ -1168,7 +1168,7 @@ void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int
 	GL_BindUnit0( scratch );
 
 	if ( cols != scratch->width || rows != scratch->height ) {
-		R200_DrainGLError();
+		GLES3_DrainGLError();
 		qglTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, cols, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
 		if ( qglGetError() == GL_NO_ERROR ) {
 			scratch->width = scratch->uploadWidth = cols;
@@ -1180,16 +1180,16 @@ void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int
 		qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
 	} else {
 		if (dirty) {
-			R200_DrainGLError();
+			GLES3_DrainGLError();
 			qglTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, cols, rows, GL_RGBA, GL_UNSIGNED_BYTE, data );
 			{
 				GLenum err = qglGetError();
 				if ( err != GL_NO_ERROR ) {
-					static int s_r200UpCineSubErr;
-					if ( s_r200UpCineSubErr < 10 ) {
-						ri.Printf( PRINT_ALL, "[R200:glerr] cinematic upload glTexSubImage2D %dx%d rejected: 0x%04x\n",
+					static int s_gles3UpCineSubErr;
+					if ( s_gles3UpCineSubErr < 10 ) {
+						ri.Printf( PRINT_ALL, "[GLES3:glerr] cinematic upload glTexSubImage2D %dx%d rejected: 0x%04x\n",
 								   cols, rows, err );
-						s_r200UpCineSubErr++;
+						s_gles3UpCineSubErr++;
 					}
 				}
 			}
@@ -1197,15 +1197,15 @@ void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int
 	}
 
 	{
-		static int s_r200UpCineLogged;
-		if ( s_r200UpCineLogged < 100 ) {
+		static int s_gles3UpCineLogged;
+		if ( s_gles3UpCineLogged < 100 ) {
 			const byte *d = (const byte *)data;
 			ri.Printf( PRINT_ALL,
-				"[R200:cine] upload w=%d h=%d cols=%d rows=%d client=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x\n",
+				"[GLES3:cine] upload w=%d h=%d cols=%d rows=%d client=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x\n",
 				w, h, cols, rows, client,
 				scratch->texnum, scratch->width, scratch->height,
 				dirty ? 1 : 0, d ? d[0] : 0, d ? d[1] : 0, d ? d[2] : 0, d ? d[3] : 0 );
-			s_r200UpCineLogged++;
+			s_gles3UpCineLogged++;
 		}
 	}
 }
@@ -1316,10 +1316,10 @@ void RB_SetupFog(void) {
 const void	*RB_DrawSurfs( const void *data ) {
 	const drawSurfsCommand_t	*cmd;
 
-	R204_RootBegin( R204_FAM_DS );
+	BE_RootBegin( BE_FAM_DS );
 
 	if ( tess.numIndexes ) {
-		R204_ZONE( R204_FAM_DS, R204_DSZ_end, RB_EndSurface() );
+		BE_ZONE( BE_FAM_DS, BE_DSZ_end, RB_EndSurface() );
 	}
 
 	cmd = (const drawSurfsCommand_t *)data;
@@ -1327,14 +1327,14 @@ const void	*RB_DrawSurfs( const void *data ) {
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
-	R204_Bump( R204_FAM_BE, R204_BEC_surfs, cmd->numDrawSurfs );
-	R204_Bump( R204_FAM_DS, R204_DSC_surfs, cmd->numDrawSurfs );
+	BE_Bump( BE_FAM_BE, BE_BEC_surfs, cmd->numDrawSurfs );
+	BE_Bump( BE_FAM_DS, BE_DSC_surfs, cmd->numDrawSurfs );
 
 	RB_SetupFog();
-	R204_ZONE( R204_FAM_DS, R204_DSZ_walk,
+	BE_ZONE( BE_FAM_DS, BE_DSZ_walk,
 			   RB_RenderDrawSurfList( cmd->drawSurfs, cmd->numDrawSurfs ) );
 
-	R204_RootEnd( R204_FAM_DS );
+	BE_RootEnd( BE_FAM_DS );
 
 	return (const void *)(cmd + 1);
 }
@@ -1507,73 +1507,73 @@ const void	*RB_SwapBuffers( const void *data ) {
 	return (const void *)(cmd + 1);
 }
 
-#define R204_WINDOW_MS		1000
-#define R204_MAX_ROOTS		3600
-#define R204_MAX_ROWS		400
-#define R204_MAX_ZONES		8
-#define R204_MAX_COUNTERS	8
-#define R204_MAX_SUBS		4
-#define R204_TOP_N			3
-#define R204_NAME_LEN		48
+#define BE_WINDOW_MS		1000
+#define BE_MAX_ROOTS		3600
+#define BE_MAX_ROWS		400
+#define BE_MAX_ZONES		8
+#define BE_MAX_COUNTERS	8
+#define BE_MAX_SUBS		4
+#define BE_TOP_N			3
+#define BE_NAME_LEN		48
 
 typedef struct {
-	char	name[R204_NAME_LEN];
+	char	name[BE_NAME_LEN];
 	int		usec;
-} r204Top_t;
+} beTop_t;
 
 typedef struct {
-	int			sums[R204_MAX_ZONES];
-	int			maxs[R204_MAX_ZONES];
-	int			subSums[R204_MAX_SUBS];
-	int			subMaxs[R204_MAX_SUBS];
-	int			cntSum[R204_MAX_COUNTERS];
-	int			cntMax[R204_MAX_COUNTERS];
+	int			sums[BE_MAX_ZONES];
+	int			maxs[BE_MAX_ZONES];
+	int			subSums[BE_MAX_SUBS];
+	int			subMaxs[BE_MAX_SUBS];
+	int			cntSum[BE_MAX_COUNTERS];
+	int			cntMax[BE_MAX_COUNTERS];
 	int			totalSum, totalMax;
 	int			named;			
 	int			roots;			
 	int			rows;
 	int			stopped;
-	r204Top_t	top[R204_TOP_N];
-} r204Fam_t;
+	beTop_t	top[BE_TOP_N];
+} beFam_t;
 
-static r204Fam_t	s_r204[R204_FAM_COUNT];
-static int			s_r204RootT0[R204_FAM_COUNT];
-static int			s_r204RootArmed[R204_FAM_COUNT];
-static int			s_r204WindowStart;
-static qboolean		s_r204WindowSet;
+static beFam_t	s_be[BE_FAM_COUNT];
+static int			s_beRootT0[BE_FAM_COUNT];
+static int			s_beRootArmed[BE_FAM_COUNT];
+static int			s_beWindowStart;
+static qboolean		s_beWindowSet;
 
-static const char *const s_r204FamName[R204_FAM_COUNT] = { "be", "ds", "prog" };
+static const char *const s_beFamName[BE_FAM_COUNT] = { "be", "ds", "prog" };
 
-static const char *const s_r204ZoneName[R204_FAM_COUNT][R204_MAX_ZONES] = {
+static const char *const s_beZoneName[BE_FAM_COUNT][BE_MAX_ZONES] = {
 	{ "surfs", "sprites", "sprwalk", "pic", "buf", "swap", "color", "other" },
 	{ "walk", "end", "flare", "shadow", "other", NULL, NULL, NULL },
 	{ "compile", "link", "other", NULL, NULL, NULL, NULL, NULL }
 };
-static const int s_r204ZoneCount[R204_FAM_COUNT] = {
-	R204_BE_ZONES, R204_DS_ZONES, R204_PROG_ZONES
+static const int s_beZoneCount[BE_FAM_COUNT] = {
+	BE_BE_ZONES, BE_DS_ZONES, BE_PROG_ZONES
 };
 
-static const char *const s_r204SubName[R204_MAX_SUBS] = {
+static const char *const s_beSubName[BE_MAX_SUBS] = {
 	"substage", "subvbo", "subunif", "subshadow"
 };
 
-static const char *const s_r204CntName[R204_FAM_COUNT][R204_MAX_COUNTERS] = {
+static const char *const s_beCntName[BE_FAM_COUNT][BE_MAX_COUNTERS] = {
 	{ "lists", "cmds", "surfN", "drawN", "empty", "sprN", "sprBatch", "sprDraw" },
 	{ "surfsN", "batchN", "vertN", "stageN", "drawN", "unifs", "binds", "edgeN" },
 	{ "made", NULL, NULL, NULL, NULL, NULL, NULL, NULL }
 };
-static const int s_r204CntCount[R204_FAM_COUNT] = {
-	R204_BE_COUNTERS, R204_DS_COUNTERS, R204_PROG_COUNTERS
+static const int s_beCntCount[BE_FAM_COUNT] = {
+	BE_BE_COUNTERS, BE_DS_COUNTERS, BE_PROG_COUNTERS
 };
 
-typedef char r204_tables_agree_enums[
-	( R204_FAM_COUNT == 3 && R204_BE_ZONES == 8 && R204_DS_ZONES == 5
-	  && R204_PROG_ZONES == 3 && R204_BE_COUNTERS == 8 && R204_DS_COUNTERS == 8
-	  && R204_PROG_COUNTERS == 1 && R204_DS_SUBS == 4 ) ? 1 : -1 ];
+typedef char be_tables_agree_enums[
+	( BE_FAM_COUNT == 3 && BE_BE_ZONES == 8 && BE_DS_ZONES == 5
+	  && BE_PROG_ZONES == 3 && BE_BE_COUNTERS == 8 && BE_DS_COUNTERS == 8
+	  && BE_PROG_COUNTERS == 1 && BE_DS_SUBS == 4 ) ? 1 : -1 ];
 
-void R204_Zone( int family, int zone, int usec );
+void BE_Zone( int family, int zone, int usec );
 
-static void R204_FamAdd( r204Fam_t *f, int zone, int usec ) {
+static void BE_FamAdd( beFam_t *f, int zone, int usec ) {
 	f->named += usec;
 	f->sums[zone] += usec;
 	if ( usec > f->maxs[zone] ) {
@@ -1581,30 +1581,30 @@ static void R204_FamAdd( r204Fam_t *f, int zone, int usec ) {
 	}
 }
 
-static void R204_Reset( int family ) {
-	r204Fam_t	*f = &s_r204[family];
+static void BE_Reset( int family ) {
+	beFam_t	*f = &s_be[family];
 	int			i;
 
 	f->named = 0;
 	f->roots = 0;
 	f->totalSum = f->totalMax = 0;
-	for ( i = 0; i < R204_MAX_ZONES; i++ ) {
+	for ( i = 0; i < BE_MAX_ZONES; i++ ) {
 		f->sums[i] = f->maxs[i] = 0;
 	}
-	for ( i = 0; i < R204_MAX_SUBS; i++ ) {
+	for ( i = 0; i < BE_MAX_SUBS; i++ ) {
 		f->subSums[i] = f->subMaxs[i] = 0;
 	}
-	for ( i = 0; i < R204_MAX_COUNTERS; i++ ) {
+	for ( i = 0; i < BE_MAX_COUNTERS; i++ ) {
 		f->cntSum[i] = f->cntMax[i] = 0;
 	}
-	for ( i = 0; i < R204_TOP_N; i++ ) {
+	for ( i = 0; i < BE_TOP_N; i++ ) {
 		f->top[i].name[0] = '\0';
 		f->top[i].usec = 0;
 	}
 }
 
-static void R204_Print( int family, int windowMs ) {
-	const r204Fam_t	*f = &s_r204[family];
+static void BE_Print( int family, int windowMs ) {
+	const beFam_t	*f = &s_be[family];
 	char			line[1024], part[64];
 	int				i, roots, mean10, max10;
 
@@ -1612,38 +1612,38 @@ static void R204_Print( int family, int windowMs ) {
 
 	line[0] = '\0';
 
-	for ( i = 0; i < s_r204ZoneCount[family]; i++ ) {
+	for ( i = 0; i < s_beZoneCount[family]; i++ ) {
 		mean10 = (int)( ( (long long)f->sums[i] + (long long)roots * 50 )
 						/ ( (long long)roots * 100 ) );
 		max10 = f->maxs[i] / 100;
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d.%d",
-					 s_r204ZoneName[family][i],
+					 s_beZoneName[family][i],
 					 mean10 / 10, mean10 % 10, max10 / 10, max10 % 10 );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	for ( i = 0; i < s_r204CntCount[family]; i++ ) {
+	for ( i = 0; i < s_beCntCount[family]; i++ ) {
 		mean10 = (int)( ( (long long)f->cntSum[i] * 10 + roots / 2 ) / roots );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
-					 s_r204CntName[family][i],
+					 s_beCntName[family][i],
 					 mean10 / 10, mean10 % 10, f->cntMax[i] );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	if ( family == R204_FAM_DS ) {
-		for ( i = 0; i < R204_DS_SUBS; i++ ) {
+	if ( family == BE_FAM_DS ) {
+		for ( i = 0; i < BE_DS_SUBS; i++ ) {
 			mean10 = (int)( ( (long long)f->subSums[i] + (long long)roots * 50 )
 							/ ( (long long)roots * 100 ) );
 			max10 = f->subMaxs[i] / 100;
 			Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d.%d",
-						 s_r204SubName[i],
+						 s_beSubName[i],
 						 mean10 / 10, mean10 % 10, max10 / 10, max10 % 10 );
 			Q_strcat( line, sizeof( line ), part );
 		}
 	}
 
-	if ( family == R204_FAM_PROG ) {
-		for ( i = 0; i < R204_TOP_N; i++ ) {
+	if ( family == BE_FAM_PROG ) {
+		for ( i = 0; i < BE_TOP_N; i++ ) {
 			if ( !f->top[i].name[0] ) {
 				break;
 			}
@@ -1662,161 +1662,161 @@ static void R204_Print( int family, int windowMs ) {
 				 mean10 / 10, mean10 % 10, max10 / 10, max10 % 10 );
 	Q_strcat( line, sizeof( line ), part );
 
-	ri.Printf( PRINT_ALL, "[R204:%s] roots=%d window=%dms%s\n",
-			   s_r204FamName[family], f->roots, windowMs, line );
+	ri.Printf( PRINT_ALL, "[BE:%s] roots=%d window=%dms%s\n",
+			   s_beFamName[family], f->roots, windowMs, line );
 }
 
-static void R204_MaybeRoll( void ) {
+static void BE_MaybeRoll( void ) {
 	int	now, window, i;
 
-	if ( !s_r204WindowSet ) {
-		s_r204WindowStart = R201_RLoadNow();
-		s_r204WindowSet = qtrue;
+	if ( !s_beWindowSet ) {
+		s_beWindowStart = SMP_RLoadNow();
+		s_beWindowSet = qtrue;
 		return;
 	}
 
-	now = R201_RLoadNow();
-	window = now - s_r204WindowStart;
-	if ( window < R204_WINDOW_MS && s_r204[R204_FAM_BE].roots < R204_MAX_ROOTS ) {
+	now = SMP_RLoadNow();
+	window = now - s_beWindowStart;
+	if ( window < BE_WINDOW_MS && s_be[BE_FAM_BE].roots < BE_MAX_ROOTS ) {
 		return;
 	}
 
-	for ( i = 0; i < R204_FAM_COUNT; i++ ) {
-		if ( s_r204[i].roots < 1 || s_r204[i].stopped ) {
-			R204_Reset( i );
+	for ( i = 0; i < BE_FAM_COUNT; i++ ) {
+		if ( s_be[i].roots < 1 || s_be[i].stopped ) {
+			BE_Reset( i );
 			continue;
 		}
-		if ( s_r204[i].rows < R204_MAX_ROWS ) {
-			R204_Print( i, window );
-			s_r204[i].rows++;
+		if ( s_be[i].rows < BE_MAX_ROWS ) {
+			BE_Print( i, window );
+			s_be[i].rows++;
 		} else {
-			s_r204[i].stopped = 1;
+			s_be[i].stopped = 1;
 			ri.Printf( PRINT_ALL,
-					   "[R204:%s] capped at %d rows; no further lines\n",
-					   s_r204FamName[i], R204_MAX_ROWS );
+					   "[BE:%s] capped at %d rows; no further lines\n",
+					   s_beFamName[i], BE_MAX_ROWS );
 		}
-		R204_Reset( i );
+		BE_Reset( i );
 	}
 
-	s_r204WindowStart = now;
+	s_beWindowStart = now;
 }
 
-void R204_RootBegin( int family ) {
-	if ( family < 0 || family >= R204_FAM_COUNT ) {
+void BE_RootBegin( int family ) {
+	if ( family < 0 || family >= BE_FAM_COUNT ) {
 		return;
 	}
 
-	s_r204RootArmed[family] = R204_Armed();
-	s_r204RootT0[family] = s_r204RootArmed[family] ? R204_Microseconds() : 0;
-	s_r204[family].named = 0;
+	s_beRootArmed[family] = BE_Armed();
+	s_beRootT0[family] = s_beRootArmed[family] ? BE_Microseconds() : 0;
+	s_be[family].named = 0;
 }
 
-void R204_RootEnd( int family ) {
+void BE_RootEnd( int family ) {
 	int		total, other;
 
-	if ( family < 0 || family >= R204_FAM_COUNT ) {
+	if ( family < 0 || family >= BE_FAM_COUNT ) {
 		return;
 	}
 
-	if ( !s_r204RootArmed[family] ) {
-		s_r204[family].named = 0;
+	if ( !s_beRootArmed[family] ) {
+		s_be[family].named = 0;
 		return;
 	}
-	s_r204RootArmed[family] = 0;
+	s_beRootArmed[family] = 0;
 
-	total = R204_Microseconds() - s_r204RootT0[family];
+	total = BE_Microseconds() - s_beRootT0[family];
 	if ( total < 0 ) {
 		total = 0;
 	}
 
-	other = total - s_r204[family].named;
+	other = total - s_be[family].named;
 	if ( other < 0 ) {
 		other = 0;
 	}
-	R204_FamAdd( &s_r204[family], s_r204ZoneCount[family] - 1, other );
-	s_r204[family].named = 0;
+	BE_FamAdd( &s_be[family], s_beZoneCount[family] - 1, other );
+	s_be[family].named = 0;
 
-	s_r204[family].totalSum += total;
-	if ( total > s_r204[family].totalMax ) {
-		s_r204[family].totalMax = total;
+	s_be[family].totalSum += total;
+	if ( total > s_be[family].totalMax ) {
+		s_be[family].totalMax = total;
 	}
-	s_r204[family].roots++;
+	s_be[family].roots++;
 
-	if ( family == R204_FAM_BE || !s_r204RootArmed[R204_FAM_BE] ) {
-		R204_MaybeRoll();
+	if ( family == BE_FAM_BE || !s_beRootArmed[BE_FAM_BE] ) {
+		BE_MaybeRoll();
 	}
 }
 
-void R204_Zone( int family, int zone, int usec ) {
-	if ( family < 0 || family >= R204_FAM_COUNT || !s_r204RootArmed[family] ) {
+void BE_Zone( int family, int zone, int usec ) {
+	if ( family < 0 || family >= BE_FAM_COUNT || !s_beRootArmed[family] ) {
 		return;
 	}
-	if ( zone < 0 || zone >= s_r204ZoneCount[family] ) {
+	if ( zone < 0 || zone >= s_beZoneCount[family] ) {
 		return;
 	}
 	if ( usec < 0 ) {
 		usec = 0;
 	}
 
-	R204_FamAdd( &s_r204[family], zone, usec );
+	BE_FamAdd( &s_be[family], zone, usec );
 }
 
-void R204_Sub( int family, int sub, int usec ) {
-	r204Fam_t	*f;
+void BE_Sub( int family, int sub, int usec ) {
+	beFam_t	*f;
 
-	if ( family != R204_FAM_DS || !s_r204RootArmed[family] ) {
+	if ( family != BE_FAM_DS || !s_beRootArmed[family] ) {
 		return;
 	}
-	if ( sub < 0 || sub >= R204_DS_SUBS ) {
+	if ( sub < 0 || sub >= BE_DS_SUBS ) {
 		return;
 	}
 	if ( usec < 0 ) {
 		usec = 0;
 	}
 
-	f = &s_r204[family];
+	f = &s_be[family];
 	f->subSums[sub] += usec;
 	if ( usec > f->subMaxs[sub] ) {
 		f->subMaxs[sub] = usec;
 	}
 }
 
-void R204_Bump( int family, int counter, int n ) {
-	r204Fam_t	*f;
+void BE_Bump( int family, int counter, int n ) {
+	beFam_t	*f;
 
-	if ( family < 0 || family >= R204_FAM_COUNT || !s_r204RootArmed[family] ) {
+	if ( family < 0 || family >= BE_FAM_COUNT || !s_beRootArmed[family] ) {
 		return;
 	}
-	if ( counter < 0 || counter >= s_r204CntCount[family] ) {
+	if ( counter < 0 || counter >= s_beCntCount[family] ) {
 		return;
 	}
 
-	f = &s_r204[family];
+	f = &s_be[family];
 	f->cntSum[counter] += n;
 	if ( n > f->cntMax[counter] ) {
 		f->cntMax[counter] = n;
 	}
 }
 
-int R204_RootUsec( int family ) {
-	if ( family < 0 || family >= R204_FAM_COUNT || !s_r204RootArmed[family] ) {
+int BE_RootUsec( int family ) {
+	if ( family < 0 || family >= BE_FAM_COUNT || !s_beRootArmed[family] ) {
 		return 0;
 	}
-	return R204_Microseconds() - s_r204RootT0[family];
+	return BE_Microseconds() - s_beRootT0[family];
 }
 
-void R204_Name( int family, const char *name, int usec ) {
-	r204Fam_t	*f;
+void BE_Name( int family, const char *name, int usec ) {
+	beFam_t	*f;
 	int			i, slot;
 
-	if ( family != R204_FAM_PROG || !s_r204RootArmed[family] || !name ) {
+	if ( family != BE_FAM_PROG || !s_beRootArmed[family] || !name ) {
 		return;
 	}
 
-	f = &s_r204[family];
+	f = &s_be[family];
 
 	slot = -1;
-	for ( i = 0; i < R204_TOP_N; i++ ) {
+	for ( i = 0; i < BE_TOP_N; i++ ) {
 		if ( !f->top[i].name[0] || usec > f->top[i].usec ) {
 			slot = i;
 			break;
@@ -1825,57 +1825,57 @@ void R204_Name( int family, const char *name, int usec ) {
 	if ( slot < 0 ) {
 		return;
 	}
-	for ( i = R204_TOP_N - 1; i > slot; i-- ) {
+	for ( i = BE_TOP_N - 1; i > slot; i-- ) {
 		f->top[i] = f->top[i - 1];
 	}
-	Q_strncpyz( f->top[slot].name, name, R204_NAME_LEN );
+	Q_strncpyz( f->top[slot].name, name, BE_NAME_LEN );
 	f->top[slot].usec = usec;
 }
 
 void RB_ExecuteRenderCommands( const void *data ) {
 	int		t1, t2;
 
-	int		r204Cmds = 0;
+	int		beCmds = 0;
 
 	{
-		static int r201_smpframe_rows = 0;
+		static int smp_smpframe_rows = 0;
 
-		if ( r201_smpframe_rows < 8 || ( r201_smpframe_rows % 600 ) == 0 ) {
+		if ( smp_smpframe_rows < 8 || ( smp_smpframe_rows % 600 ) == 0 ) {
 			ri.Printf( PRINT_ALL,
-					   "[R201:smpframe] back=%d front=%d arena=%d frameCount=%d\n",
+					   "[SMP:smpframe] back=%d front=%d arena=%d frameCount=%d\n",
 					   RB_FrameSmpFrame(), tr.smpFrame, RB_FrameBoneArena(), RB_FrameCount() );
 		}
-		r201_smpframe_rows++;
+		smp_smpframe_rows++;
 	}
 
 	t1 = ri.Milliseconds ();
 
-	R204_RootBegin( R204_FAM_BE );
+	BE_RootBegin( BE_FAM_BE );
 
 	while ( 1 ) {
 		data = PADP(data, sizeof(void *));
 
-		r204Cmds++;
-		R204_Bump( R204_FAM_BE, R204_BEC_cmds, 1 );
+		beCmds++;
+		BE_Bump( BE_FAM_BE, BE_BEC_cmds, 1 );
 
 		switch ( *(const int *)data ) {
 		case RC_SET_COLOR:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_color, data = RB_SetColor( data ) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_color, data = RB_SetColor( data ) );
 			break;
 		case RC_STRETCH_PIC:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_pic, data = RB_StretchPic( data ) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_pic, data = RB_StretchPic( data ) );
 			break;
 		case RC_DRAW_SURFS:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_surfs, data = RB_DrawSurfs( data ) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_surfs, data = RB_DrawSurfs( data ) );
 			break;
 		case RC_SPRITE_SURFS:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_sprites, data = RB_SpriteSurfs( data ) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_sprites, data = RB_SpriteSurfs( data ) );
 			break;
 		case RC_DRAW_BUFFER:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_buf, data = RB_DrawBuffer( data ) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_buf, data = RB_DrawBuffer( data ) );
 			break;
 		case RC_SWAP_BUFFERS:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_swap, data = RB_SwapBuffers( data ) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_swap, data = RB_SwapBuffers( data ) );
 			break;
 		case RC_SCREENSHOT:
 			data = RB_TakeScreenshotCmd( data );
@@ -1884,20 +1884,20 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			data = RB_TakeVideoFrameCmd( data );
 			break;
 		case RC_COLORMASK:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_color, data = RB_ColorMask(data) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_color, data = RB_ColorMask(data) );
 			break;
 		case RC_CLEARDEPTH:
-			R204_ZONE( R204_FAM_BE, R204_BEZ_color, data = RB_ClearDepth(data) );
+			BE_ZONE( BE_FAM_BE, BE_BEZ_color, data = RB_ClearDepth(data) );
 			break;
 		case RC_END_OF_LIST:
 		default:
 			t2 = ri.Milliseconds ();
 			backEnd.pc.msec = t2 - t1;
-			R204_Bump( R204_FAM_BE, R204_BEC_lists, 1 );
-			if ( r204Cmds <= 1 ) {
-				R204_Bump( R204_FAM_BE, R204_BEC_empty, 1 );
+			BE_Bump( BE_FAM_BE, BE_BEC_lists, 1 );
+			if ( beCmds <= 1 ) {
+				BE_Bump( BE_FAM_BE, BE_BEC_empty, 1 );
 			}
-			R204_RootEnd( R204_FAM_BE );
+			BE_RootEnd( BE_FAM_BE );
 			return;
 		}
 	}

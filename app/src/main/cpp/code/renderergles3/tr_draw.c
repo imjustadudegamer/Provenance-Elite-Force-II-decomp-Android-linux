@@ -485,7 +485,7 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 	R_IssuePendingRenderCommands();
 	qglViewport(x, y, w, h);
 	qglScissor(x, y, w, h);
-	R201_VpProbe( "2d", "Set2DWindow/arg", x, y, w, h, 0, qtrue );
+	SMP_VpProbe( "2d", "Set2DWindow/arg", x, y, w, h, 0, qtrue );
 	RB_LoadIdentityProjection();
 	RB_OrthoProjection(left, right, bottom, top, n, f);
 	RB_LoadIdentityModelView();
@@ -507,7 +507,7 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 void RE_Scissor(int x, int y, int width, int height) {
 	qglEnable(GL_SCISSOR_TEST);
 	qglScissor(x, y, width, height);
-	R201_VpProbe( "scissor", "RE_Scissor/arg", x, y, width, height, 0, qfalse );
+	SMP_VpProbe( "scissor", "RE_Scissor/arg", x, y, width, height, 0, qfalse );
 }
 
 void Set2DInitialShaderTime(float startTime)

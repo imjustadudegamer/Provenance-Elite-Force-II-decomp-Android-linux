@@ -29,7 +29,7 @@ void Sys_AndroidLog( int priority, const char *msg );
 
 #include "../qcommon/stringresource.h"  
 
-#include "qa_r202.h"
+#include "qa_ui.h"
 
 #ifndef DEDICATED
 #  include "../uilib/ui_public.h"
@@ -366,10 +366,10 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 	va_end (argptr);
 
 	if ( com_errorMessage[0] == '\0' ) {
-		static int s_r209EmptyErrRows;
+		static int s_faultEmptyErrRows;
 
-		if ( s_r209EmptyErrRows < 4 ) {
-			s_r209EmptyErrRows++;
+		if ( s_faultEmptyErrRows < 4 ) {
+			s_faultEmptyErrRows++;
 			Com_Printf( "Com_Error: code=%d was raised with NO text; the call site follows\n", code );
 #ifdef __ANDROID__
 			Sys_AndroidLog( ANDROID_LOG_ERROR,
@@ -1282,7 +1282,7 @@ static void Com_AndroidAdoptRetailSaveUser( char *configname, int confignameSize
 	if ( adopted ) {
 		Q_strncpyz( configname, adopted, confignameSize );
 		Q_strcat( configname, confignameSize, ".cfg" );
-		Com_Printf( "[R145:saveid] Android has no OS user; adopted the retail save "
+		Com_Printf( "[EFFECTS:saveid] Android has no OS user; adopted the retail save "
 			"profile '%s' so retail's saves resolve\n", adopted );
 	}
 
@@ -1316,7 +1316,7 @@ static void Com_MigrateLegacySaveFolder( void )
 		FS_FreeFile( buf );
 
 		FS_Remove_HomeData( from );
-		Com_Printf( "[R145:saveid] migrated legacy save file '%s' -> '%s'\n", from, to );
+		Com_Printf( "[EFFECTS:saveid] migrated legacy save file '%s' -> '%s'\n", from, to );
 	}
 	FS_FreeFileList( files );
 }
@@ -1549,7 +1549,7 @@ void Com_Init( char *commandLine ) {
 #endif
 
 	com_maxfps = Cvar_Get( "com_maxfps", "85", CVAR_ARCHIVE );
-	/* r203-pace: PORT-ONLY, beyond retail's list above.  Safe defaults and NOT
+	/* limit-pace: PORT-ONLY, beyond retail's list above.  Safe defaults and NOT
 	   archived -- the limiter blocks with a 1 ms spin margin, and any other device
 	   or experiment must opt out explicitly rather than inherit a stored value. */
 	com_frameWait       = Cvar_Get( "com_frameWait", "1", 0 );
@@ -1586,7 +1586,7 @@ void Com_Init( char *commandLine ) {
 		}
 	}
 
-	// r140: the platform token is THIS build's, not the Mac PPC decompile's -- the
+	// uitext: the platform token is THIS build's, not the Mac PPC decompile's -- the
 	// `version' cvar is CVAR_SERVERINFO, so it must not advertise a PPC Mac on a
 	s = va( "%s %s %s %s", "Elite Force II", "1.10", PLATFORM_STRING, "Oct  9 2003");
 	com_version = Cvar_Get( "version", s, CVAR_ROM | CVAR_SERVERINFO );
@@ -1692,7 +1692,7 @@ void Com_WriteConfiguration( void ) {
 	}
 	cvar_modifiedFlags &= ~CVAR_ARCHIVE;
 
-	// r142-mt P5: the ONE unified file, not config->string (retail's OS-operator
+	// cfg-mt P5: the ONE unified file, not config->string (retail's OS-operator
 	Com_WriteConfigToFile( EF2_CONFIG_FILE );
 
 #ifndef DEDICATED
@@ -1753,42 +1753,42 @@ int Com_ModifyMsec( int msec ) {
 	return msec;
 }
 
-#define R201_BUDGET_WINDOW_MS		1000	
-#define R201_BUDGET_MAX_FRAMES		3600	
-#define R201_BUDGET_MAX_ZONES		11		
+#define SMP_BUDGET_WINDOW_MS		1000	
+#define SMP_BUDGET_MAX_FRAMES		3600	
+#define SMP_BUDGET_MAX_ZONES		11		
 
-static int	r201_budgetFrames;
-static int	r201_budgetWindowStart;
-static int	r201_budgetAudio,  r201_budgetAudioMax;
-static int	r201_budgetSleep,  r201_budgetSleepMax;
-static int	r201_budgetSwap,   r201_budgetSwapMax;
+static int	smp_budgetFrames;
+static int	smp_budgetWindowStart;
+static int	smp_budgetAudio,  smp_budgetAudioMax;
+static int	smp_budgetSleep,  smp_budgetSleepMax;
+static int	smp_budgetSwap,   smp_budgetSwapMax;
 
-static qboolean	r201_lastWindowValid;
-static int		r201_lastWindowFrames;
-static int		r201_lastWindowMean10[R201_BUDGET_MAX_ZONES];
+static qboolean	smp_lastWindowValid;
+static int		smp_lastWindowFrames;
+static int		smp_lastWindowMean10[SMP_BUDGET_MAX_ZONES];
 
-void R201_BudgetAdd( int zone, int msec ) {
+void SMP_BudgetAdd( int zone, int msec ) {
 	if ( msec <= 0 ) {
 		return;
 	}
 
 	switch ( zone ) {
-	case R201_ZONE_AUDIO:
-		r201_budgetAudio += msec;
-		if ( msec > r201_budgetAudioMax ) {
-			r201_budgetAudioMax = msec;
+	case SMP_ZONE_AUDIO:
+		smp_budgetAudio += msec;
+		if ( msec > smp_budgetAudioMax ) {
+			smp_budgetAudioMax = msec;
 		}
 		break;
-	case R201_ZONE_SLEEP:
-		r201_budgetSleep += msec;
-		if ( msec > r201_budgetSleepMax ) {
-			r201_budgetSleepMax = msec;
+	case SMP_ZONE_SLEEP:
+		smp_budgetSleep += msec;
+		if ( msec > smp_budgetSleepMax ) {
+			smp_budgetSleepMax = msec;
 		}
 		break;
-	case R201_ZONE_SWAP:
-		r201_budgetSwap += msec;
-		if ( msec > r201_budgetSwapMax ) {
-			r201_budgetSwapMax = msec;
+	case SMP_ZONE_SWAP:
+		smp_budgetSwap += msec;
+		if ( msec > smp_budgetSwapMax ) {
+			smp_budgetSwapMax = msec;
 		}
 		break;
 	default:
@@ -1796,107 +1796,107 @@ void R201_BudgetAdd( int zone, int msec ) {
 	}
 }
 
-qboolean R201_BudgetLastWindow( int *framesOut, int *mean10Out ) {
+qboolean SMP_BudgetLastWindow( int *framesOut, int *mean10Out ) {
 	int i;
 
-	if ( !r201_lastWindowValid ) {
+	if ( !smp_lastWindowValid ) {
 		return qfalse;
 	}
 	if ( framesOut ) {
-		*framesOut = r201_lastWindowFrames;
+		*framesOut = smp_lastWindowFrames;
 	}
 	if ( mean10Out ) {
-		for ( i = 0; i < R201_BUDGET_MAX_ZONES; i++ ) {
-			mean10Out[i] = r201_lastWindowMean10[i];
+		for ( i = 0; i < SMP_BUDGET_MAX_ZONES; i++ ) {
+			mean10Out[i] = smp_lastWindowMean10[i];
 		}
 	}
 	return qtrue;
 }
 
-#define R201_LOAD_MAX_ROWS		720		
+#define SMP_LOAD_MAX_ROWS		720		
 
-int		r201_loadOn = 0;
-int		r201_loadDepth = 0;
-int		r201_loadInClient = 0;
+int		smp_loadOn = 0;
+int		smp_loadDepth = 0;
+int		smp_loadInClient = 0;
 
-static int	r201_loadFrames;
-static int	r201_loadSums[R201_LZ_COUNT], r201_loadMaxs[R201_LZ_COUNT];
-static int	r201_loadOther,   r201_loadOtherMax;
-static int	r201_loadClient,  r201_loadClientMax;
-static int	r201_loadUnacctO, r201_loadUnacctOMax;
-static int	r201_loadUnacctC, r201_loadUnacctCMax;
-static int	r201_loadAttribO, r201_loadAttribC;
-static int	r201_loadRows;
-static int	r201_loadStopped;
+static int	smp_loadFrames;
+static int	smp_loadSums[SMP_LZ_COUNT], smp_loadMaxs[SMP_LZ_COUNT];
+static int	smp_loadOther,   smp_loadOtherMax;
+static int	smp_loadClient,  smp_loadClientMax;
+static int	smp_loadUnacctO, smp_loadUnacctOMax;
+static int	smp_loadUnacctC, smp_loadUnacctCMax;
+static int	smp_loadAttribO, smp_loadAttribC;
+static int	smp_loadRows;
+static int	smp_loadStopped;
 
-void R201_LoadAdd( int zone, int msec, int depth ) {
-	if ( zone < 0 || zone >= R201_LZ_COUNT ) {
+void SMP_LoadAdd( int zone, int msec, int depth ) {
+	if ( zone < 0 || zone >= SMP_LZ_COUNT ) {
 		return;
 	}
 	if ( msec < 0 ) {
 		msec = 0;
 	}
 
-	r201_loadSums[zone] += msec;
-	if ( msec > r201_loadMaxs[zone] ) {
-		r201_loadMaxs[zone] = msec;
+	smp_loadSums[zone] += msec;
+	if ( msec > smp_loadMaxs[zone] ) {
+		smp_loadMaxs[zone] = msec;
 	}
 
 	if ( depth == 0 ) {
-		if ( r201_loadInClient ) {
-			r201_loadAttribC += msec;
+		if ( smp_loadInClient ) {
+			smp_loadAttribC += msec;
 		} else {
-			r201_loadAttribO += msec;
+			smp_loadAttribO += msec;
 		}
 	}
 }
 
-static void R201_LoadFrame( int otherMsec, int clientMsec ) {
+static void SMP_LoadFrame( int otherMsec, int clientMsec ) {
 	int	unacctO, unacctC;
 
-	if ( !r201_loadOn ) {
-		r201_loadAttribO = r201_loadAttribC = 0;
+	if ( !smp_loadOn ) {
+		smp_loadAttribO = smp_loadAttribC = 0;
 		return;
 	}
 
-	unacctO = otherMsec  - r201_loadAttribO;
-	unacctC = clientMsec - r201_loadAttribC;
+	unacctO = otherMsec  - smp_loadAttribO;
+	unacctC = clientMsec - smp_loadAttribC;
 	if ( unacctO < 0 ) unacctO = 0;
 	if ( unacctC < 0 ) unacctC = 0;
 
-	r201_loadOther += otherMsec;	if ( otherMsec  > r201_loadOtherMax  ) r201_loadOtherMax  = otherMsec;
-	r201_loadClient += clientMsec;	if ( clientMsec > r201_loadClientMax ) r201_loadClientMax = clientMsec;
-	r201_loadUnacctO += unacctO;	if ( unacctO    > r201_loadUnacctOMax ) r201_loadUnacctOMax = unacctO;
-	r201_loadUnacctC += unacctC;	if ( unacctC    > r201_loadUnacctCMax ) r201_loadUnacctCMax = unacctC;
+	smp_loadOther += otherMsec;	if ( otherMsec  > smp_loadOtherMax  ) smp_loadOtherMax  = otherMsec;
+	smp_loadClient += clientMsec;	if ( clientMsec > smp_loadClientMax ) smp_loadClientMax = clientMsec;
+	smp_loadUnacctO += unacctO;	if ( unacctO    > smp_loadUnacctOMax ) smp_loadUnacctOMax = unacctO;
+	smp_loadUnacctC += unacctC;	if ( unacctC    > smp_loadUnacctCMax ) smp_loadUnacctCMax = unacctC;
 
-	r201_loadFrames++;
-	r201_loadAttribO = r201_loadAttribC = 0;
+	smp_loadFrames++;
+	smp_loadAttribO = smp_loadAttribC = 0;
 }
 
-static void R201_LoadReset( void ) {
+static void SMP_LoadReset( void ) {
 	int	i;
 
-	for ( i = 0; i < R201_LZ_COUNT; i++ ) {
-		r201_loadSums[i] = r201_loadMaxs[i] = 0;
+	for ( i = 0; i < SMP_LZ_COUNT; i++ ) {
+		smp_loadSums[i] = smp_loadMaxs[i] = 0;
 	}
-	r201_loadFrames  = 0;
-	r201_loadOther   = r201_loadOtherMax   = 0;
-	r201_loadClient  = r201_loadClientMax  = 0;
-	r201_loadUnacctO = r201_loadUnacctOMax = 0;
-	r201_loadUnacctC = r201_loadUnacctCMax = 0;
+	smp_loadFrames  = 0;
+	smp_loadOther   = smp_loadOtherMax   = 0;
+	smp_loadClient  = smp_loadClientMax  = 0;
+	smp_loadUnacctO = smp_loadUnacctOMax = 0;
+	smp_loadUnacctC = smp_loadUnacctCMax = 0;
 }
 
-static void R201_LoadPrint( int frames, int window ) {
-	static const char *zoneName[R201_LZ_COUNT] = {
+static void SMP_LoadPrint( int frames, int window ) {
+	static const char *zoneName[SMP_LZ_COUNT] = {
 		"spawn", "cmap", "hunkclr", "svinit", "spawnent",
 		"clmap", "hunkusr", "rendreg", "initcg", "cginit",
 		"fs", "sndinit", "scr", "cgame", "ui"
 	};
 	char	line[1024], part[64];
 	int		i, mean10;
-	struct { const char *name; int sum; int max; } zone[R201_LZ_COUNT + 4];
+	struct { const char *name; int sum; int max; } zone[SMP_LZ_COUNT + 4];
 
-	if ( r201_loadStopped ) {
+	if ( smp_loadStopped ) {
 		return;
 	}
 
@@ -1904,67 +1904,67 @@ static void R201_LoadPrint( int frames, int window ) {
 		frames = 1;
 	}
 
-	for ( i = 0; i < R201_LZ_COUNT; i++ ) {
+	for ( i = 0; i < SMP_LZ_COUNT; i++ ) {
 		zone[i].name = zoneName[i];
-		zone[i].sum  = r201_loadSums[i];
-		zone[i].max  = r201_loadMaxs[i];
+		zone[i].sum  = smp_loadSums[i];
+		zone[i].max  = smp_loadMaxs[i];
 	}
-	zone[R201_LZ_COUNT+0].name = "other";	zone[R201_LZ_COUNT+0].sum = r201_loadOther;	zone[R201_LZ_COUNT+0].max = r201_loadOtherMax;
-	zone[R201_LZ_COUNT+1].name = "client";	zone[R201_LZ_COUNT+1].sum = r201_loadClient;	zone[R201_LZ_COUNT+1].max = r201_loadClientMax;
-	zone[R201_LZ_COUNT+2].name = "unacctO";	zone[R201_LZ_COUNT+2].sum = r201_loadUnacctO;	zone[R201_LZ_COUNT+2].max = r201_loadUnacctOMax;
-	zone[R201_LZ_COUNT+3].name = "unacctC";	zone[R201_LZ_COUNT+3].sum = r201_loadUnacctC;	zone[R201_LZ_COUNT+3].max = r201_loadUnacctCMax;
+	zone[SMP_LZ_COUNT+0].name = "other";	zone[SMP_LZ_COUNT+0].sum = smp_loadOther;	zone[SMP_LZ_COUNT+0].max = smp_loadOtherMax;
+	zone[SMP_LZ_COUNT+1].name = "client";	zone[SMP_LZ_COUNT+1].sum = smp_loadClient;	zone[SMP_LZ_COUNT+1].max = smp_loadClientMax;
+	zone[SMP_LZ_COUNT+2].name = "unacctO";	zone[SMP_LZ_COUNT+2].sum = smp_loadUnacctO;	zone[SMP_LZ_COUNT+2].max = smp_loadUnacctOMax;
+	zone[SMP_LZ_COUNT+3].name = "unacctC";	zone[SMP_LZ_COUNT+3].sum = smp_loadUnacctC;	zone[SMP_LZ_COUNT+3].max = smp_loadUnacctCMax;
 
 	line[0] = '\0';
-	for ( i = 0; i < R201_LZ_COUNT + 4; i++ ) {
+	for ( i = 0; i < SMP_LZ_COUNT + 4; i++ ) {
 		mean10 = (int)( ( (long long)zone[i].sum * 10 + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
 					 zone[i].name, mean10 / 10, mean10 % 10, zone[i].max );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	Com_Printf( "[R201:load] frames=%d window=%dms%s\n", frames, window, line );
+	Com_Printf( "[SMP:load] frames=%d window=%dms%s\n", frames, window, line );
 
-	r201_loadRows++;
-	if ( r201_loadRows >= R201_LOAD_MAX_ROWS ) {
-		r201_loadStopped = 1;
-		Com_Printf( "[R201:load] capped at %d rows; no further [R201:load] lines\n",
-					R201_LOAD_MAX_ROWS );
+	smp_loadRows++;
+	if ( smp_loadRows >= SMP_LOAD_MAX_ROWS ) {
+		smp_loadStopped = 1;
+		Com_Printf( "[SMP:load] capped at %d rows; no further [SMP:load] lines\n",
+					SMP_LOAD_MAX_ROWS );
 	}
 }
 
-static void R201_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int totalMsec ) {
-	static cvar_t	*r201_frameStats;
-	static cvar_t	*r201_loadStats;
-	static int		r201_server, r201_serverMax;
-	static int		r201_client, r201_clientMax;
-	static int		r201_front,  r201_frontMax;
-	static int		r201_back,   r201_backMax;
-	static int		r201_spin,   r201_spinMax;
-	static int		r201_other,  r201_otherMax;
-	static int		r201_total,  r201_totalMax;
+static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int totalMsec ) {
+	static cvar_t	*smp_frameStats;
+	static cvar_t	*smp_loadStats;
+	static int		smp_server, smp_serverMax;
+	static int		smp_client, smp_clientMax;
+	static int		smp_front,  smp_frontMax;
+	static int		smp_back,   smp_backMax;
+	static int		smp_spin,   smp_spinMax;
+	static int		smp_other,  smp_otherMax;
+	static int		smp_total,  smp_totalMax;
 
 	int		otherMsec, window, frames, i, mean10;
 	char	line[1024], part[64];
-	struct { const char *name; int sum; int max; } zone[R201_BUDGET_MAX_ZONES];
+	struct { const char *name; int sum; int max; } zone[SMP_BUDGET_MAX_ZONES];
 
-	if ( !r201_frameStats ) {
-		r201_frameStats = Cvar_Get( "r201_frameStats", "1", 0 );
+	if ( !smp_frameStats ) {
+		smp_frameStats = Cvar_Get( "smp_frameStats", "1", 0 );
 	}
-	if ( !r201_loadStats ) {
-		r201_loadStats = Cvar_Get( "r201_loadStats", "1", 0 );
+	if ( !smp_loadStats ) {
+		smp_loadStats = Cvar_Get( "smp_loadStats", "1", 0 );
 	}
 
-	r201_loadOn = r201_loadStats->integer;
+	smp_loadOn = smp_loadStats->integer;
 
-	if ( !r201_frameStats->integer ) {
-		r201_budgetFrames = 0;
-		r201_budgetWindowStart = 0;
-		r201_budgetAudio = r201_budgetAudioMax = 0;
-		r201_budgetSleep = r201_budgetSleepMax = 0;
-		r201_budgetSwap  = r201_budgetSwapMax  = 0;
-		r201_loadOn = 0;
-		r201_loadAttribO = r201_loadAttribC = 0;
-		R201_LoadReset();
+	if ( !smp_frameStats->integer ) {
+		smp_budgetFrames = 0;
+		smp_budgetWindowStart = 0;
+		smp_budgetAudio = smp_budgetAudioMax = 0;
+		smp_budgetSleep = smp_budgetSleepMax = 0;
+		smp_budgetSwap  = smp_budgetSwapMax  = 0;
+		smp_loadOn = 0;
+		smp_loadAttribO = smp_loadAttribC = 0;
+		SMP_LoadReset();
 		return;
 	}
 
@@ -1978,81 +1978,81 @@ static void R201_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int 
 		otherMsec = 0;
 	}
 
-	R201_LoadFrame( otherMsec, clientMsec );
+	SMP_LoadFrame( otherMsec, clientMsec );
 
-	r201_server += serverMsec;	if ( serverMsec > r201_serverMax ) r201_serverMax = serverMsec;
-	r201_client += clientMsec;	if ( clientMsec > r201_clientMax ) r201_clientMax = clientMsec;
-	r201_spin   += spinMsec;	if ( spinMsec   > r201_spinMax   ) r201_spinMax   = spinMsec;
-	r201_other  += otherMsec;	if ( otherMsec  > r201_otherMax  ) r201_otherMax  = otherMsec;
-	r201_total  += totalMsec;	if ( totalMsec  > r201_totalMax  ) r201_totalMax  = totalMsec;
+	smp_server += serverMsec;	if ( serverMsec > smp_serverMax ) smp_serverMax = serverMsec;
+	smp_client += clientMsec;	if ( clientMsec > smp_clientMax ) smp_clientMax = clientMsec;
+	smp_spin   += spinMsec;	if ( spinMsec   > smp_spinMax   ) smp_spinMax   = spinMsec;
+	smp_other  += otherMsec;	if ( otherMsec  > smp_otherMax  ) smp_otherMax  = otherMsec;
+	smp_total  += totalMsec;	if ( totalMsec  > smp_totalMax  ) smp_totalMax  = totalMsec;
 
-	r201_front += time_frontend;	if ( time_frontend > r201_frontMax ) r201_frontMax = time_frontend;
-	r201_back  += time_backend;		if ( time_backend  > r201_backMax  ) r201_backMax  = time_backend;
+	smp_front += time_frontend;	if ( time_frontend > smp_frontMax ) smp_frontMax = time_frontend;
+	smp_back  += time_backend;		if ( time_backend  > smp_backMax  ) smp_backMax  = time_backend;
 
-	r201_budgetFrames++;
+	smp_budgetFrames++;
 
-	if ( !r201_budgetWindowStart ) {
-		r201_budgetWindowStart = Sys_Milliseconds();
+	if ( !smp_budgetWindowStart ) {
+		smp_budgetWindowStart = Sys_Milliseconds();
 	}
 
-	window = Sys_Milliseconds() - r201_budgetWindowStart;
-	if ( window < R201_BUDGET_WINDOW_MS && r201_budgetFrames < R201_BUDGET_MAX_FRAMES ) {
+	window = Sys_Milliseconds() - smp_budgetWindowStart;
+	if ( window < SMP_BUDGET_WINDOW_MS && smp_budgetFrames < SMP_BUDGET_MAX_FRAMES ) {
 		return;
 	}
 
-	frames = r201_budgetFrames;
+	frames = smp_budgetFrames;
 	if ( frames < 1 ) {
 		frames = 1;
 	}
 
-	zone[0].name  = "server";			zone[0].sum  = r201_server;	zone[0].max  = r201_serverMax;
-	zone[1].name  = "client";			zone[1].sum  = r201_client;	zone[1].max  = r201_clientMax;
-	zone[2].name  = "renderFront";		zone[2].sum  = r201_front;	zone[2].max  = r201_frontMax;
-	zone[3].name  = "renderBack";		zone[3].sum  = r201_back;	zone[3].max  = r201_backMax;
-	zone[4].name  = "audio";			zone[4].sum  = r201_budgetAudio;	zone[4].max = r201_budgetAudioMax;
-	zone[5].name  = "blocked";			zone[5].sum  = r201_budgetSleep + r201_budgetSwap;
-	zone[5].max   = r201_budgetSleepMax + r201_budgetSwapMax;
-	zone[6].name  = "sleep";			zone[6].sum  = r201_budgetSleep;	zone[6].max = r201_budgetSleepMax;
-	zone[7].name  = "swap";				zone[7].sum  = r201_budgetSwap;		zone[7].max = r201_budgetSwapMax;
-	zone[8].name  = "spin";				zone[8].sum  = r201_spin;	zone[8].max  = r201_spinMax;
-	zone[9].name  = "other";			zone[9].sum  = r201_other;	zone[9].max  = r201_otherMax;
-	zone[10].name = "total";			zone[10].sum = r201_total;	zone[10].max = r201_totalMax;
+	zone[0].name  = "server";			zone[0].sum  = smp_server;	zone[0].max  = smp_serverMax;
+	zone[1].name  = "client";			zone[1].sum  = smp_client;	zone[1].max  = smp_clientMax;
+	zone[2].name  = "renderFront";		zone[2].sum  = smp_front;	zone[2].max  = smp_frontMax;
+	zone[3].name  = "renderBack";		zone[3].sum  = smp_back;	zone[3].max  = smp_backMax;
+	zone[4].name  = "audio";			zone[4].sum  = smp_budgetAudio;	zone[4].max = smp_budgetAudioMax;
+	zone[5].name  = "blocked";			zone[5].sum  = smp_budgetSleep + smp_budgetSwap;
+	zone[5].max   = smp_budgetSleepMax + smp_budgetSwapMax;
+	zone[6].name  = "sleep";			zone[6].sum  = smp_budgetSleep;	zone[6].max = smp_budgetSleepMax;
+	zone[7].name  = "swap";				zone[7].sum  = smp_budgetSwap;		zone[7].max = smp_budgetSwapMax;
+	zone[8].name  = "spin";				zone[8].sum  = smp_spin;	zone[8].max  = smp_spinMax;
+	zone[9].name  = "other";			zone[9].sum  = smp_other;	zone[9].max  = smp_otherMax;
+	zone[10].name = "total";			zone[10].sum = smp_total;	zone[10].max = smp_totalMax;
 
 	line[0] = '\0';
-	for ( i = 0; i < R201_BUDGET_MAX_ZONES; i++ ) {
+	for ( i = 0; i < SMP_BUDGET_MAX_ZONES; i++ ) {
 		mean10 = (int)( ( (long long)zone[i].sum * 10 + frames / 2 ) / frames );
-		r201_lastWindowMean10[i] = mean10;	
+		smp_lastWindowMean10[i] = mean10;	
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
 					 zone[i].name, mean10 / 10, mean10 % 10, zone[i].max );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	r201_lastWindowFrames = frames;
-	r201_lastWindowValid  = qtrue;
+	smp_lastWindowFrames = frames;
+	smp_lastWindowValid  = qtrue;
 
-	Com_Printf( "[R201:frame] frames=%d window=%dms%s\n", frames, window, line );
+	Com_Printf( "[SMP:frame] frames=%d window=%dms%s\n", frames, window, line );
 
-	if ( r201_loadOn ) {
-		R201_LoadPrint( r201_loadFrames, window );
-		R201_LoadReset();
+	if ( smp_loadOn ) {
+		SMP_LoadPrint( smp_loadFrames, window );
+		SMP_LoadReset();
 	}
 
-	r201_budgetFrames = 0;
-	r201_budgetWindowStart = Sys_Milliseconds();
-	r201_budgetAudio = r201_budgetAudioMax = 0;
-	r201_budgetSleep = r201_budgetSleepMax = 0;
-	r201_budgetSwap  = r201_budgetSwapMax  = 0;
-	r201_server = r201_serverMax = 0;
-	r201_client = r201_clientMax = 0;
-	r201_front  = r201_frontMax  = 0;
-	r201_back   = r201_backMax   = 0;
-	r201_spin   = r201_spinMax   = 0;
-	r201_other  = r201_otherMax  = 0;
-	r201_total  = r201_totalMax  = 0;
+	smp_budgetFrames = 0;
+	smp_budgetWindowStart = Sys_Milliseconds();
+	smp_budgetAudio = smp_budgetAudioMax = 0;
+	smp_budgetSleep = smp_budgetSleepMax = 0;
+	smp_budgetSwap  = smp_budgetSwapMax  = 0;
+	smp_server = smp_serverMax = 0;
+	smp_client = smp_clientMax = 0;
+	smp_front  = smp_frontMax  = 0;
+	smp_back   = smp_backMax   = 0;
+	smp_spin   = smp_spinMax   = 0;
+	smp_other  = smp_otherMax  = 0;
+	smp_total  = smp_totalMax  = 0;
 }
 
 
-static int R203_WaitDecision( int minMsec, int elapsed, int margin, int minimized ) {
+static int LIMIT_WaitDecision( int minMsec, int elapsed, int margin, int minimized ) {
 	int remain;
 
 	if ( minMsec <= 0 ) {
@@ -2077,44 +2077,44 @@ static int R203_WaitDecision( int minMsec, int elapsed, int margin, int minimize
 	return remain - margin;
 }
 
-#define R202_WINDOW_MS		1000
-#define R202_MAX_FRAMES		3600
-#define R202_MAX_ZONES		8
-#define R202_MAX_COUNTERS	6
-#define R202_MAX_ROWS		900
+#define UI_WINDOW_MS		1000
+#define UI_MAX_FRAMES		3600
+#define UI_MAX_ZONES		8
+#define UI_MAX_COUNTERS	6
+#define UI_MAX_ROWS		900
 
-int			r202_statsOn;
+int			ui_statsOn;
 
-static int	r202_zoneSum[R202_FAM_COUNT][R202_MAX_ZONES];
-static int	r202_zoneMax[R202_FAM_COUNT][R202_MAX_ZONES];
-static int	r202_cntSum[R202_FAM_COUNT][R202_MAX_COUNTERS];
-static int	r202_cntMax[R202_FAM_COUNT][R202_MAX_COUNTERS];
-static int	r202_totalSum[R202_FAM_COUNT];
-static int	r202_totalMax[R202_FAM_COUNT];
-static int	r202_frames[R202_FAM_COUNT];
-static int	r202_windowStart[R202_FAM_COUNT];
-static int	r202_rowsEmitted[R202_FAM_COUNT];
-static int	r202_frameNamed[R202_FAM_COUNT];
+static int	ui_zoneSum[UI_FAM_COUNT][UI_MAX_ZONES];
+static int	ui_zoneMax[UI_FAM_COUNT][UI_MAX_ZONES];
+static int	ui_cntSum[UI_FAM_COUNT][UI_MAX_COUNTERS];
+static int	ui_cntMax[UI_FAM_COUNT][UI_MAX_COUNTERS];
+static int	ui_totalSum[UI_FAM_COUNT];
+static int	ui_totalMax[UI_FAM_COUNT];
+static int	ui_frames[UI_FAM_COUNT];
+static int	ui_windowStart[UI_FAM_COUNT];
+static int	ui_rowsEmitted[UI_FAM_COUNT];
+static int	ui_frameNamed[UI_FAM_COUNT];
 
-static int	r202_waitSum,   r202_waitMax;
-static int	r202_spinSum,   r202_spinMax;
-static int	r202_periodSum, r202_periodMax;
-static int	r202_minimSum,  r202_minimMax;
-static int	r202_paceLastExitUsec;
+static int	ui_waitSum,   ui_waitMax;
+static int	ui_spinSum,   ui_spinMax;
+static int	ui_periodSum, ui_periodMax;
+static int	ui_minimSum,  ui_minimMax;
+static int	ui_paceLastExitUsec;
 
-static const char *r202_familyName[R202_FAM_COUNT] = {
+static const char *ui_familyName[UI_FAM_COUNT] = {
 	"ui", "disp", "v3d", "walk", "spin"
 };
 
-static const int r202_zoneCount[R202_FAM_COUNT] = {
-	R202_UI_ZONES, R202_DISP_ZONES, R202_V3D_ZONES, R202_WALK_ZONES, R202_SPIN_ZONES
+static const int ui_zoneCount[UI_FAM_COUNT] = {
+	UI_UI_ZONES, UI_DISP_ZONES, UI_V3D_ZONES, UI_WALK_ZONES, UI_SPIN_ZONES
 };
 
-static const int r202_counterCount[R202_FAM_COUNT] = {
-	R202_UI_COUNTERS, R202_DISP_COUNTERS, 0, R202_WALK_COUNTERS, R202_SPIN_COUNTERS
+static const int ui_counterCount[UI_FAM_COUNT] = {
+	UI_UI_COUNTERS, UI_DISP_COUNTERS, 0, UI_WALK_COUNTERS, UI_SPIN_COUNTERS
 };
 
-static const char *r202_zoneName[R202_FAM_COUNT][R202_MAX_ZONES] = {
+static const char *ui_zoneName[UI_FAM_COUNT][UI_MAX_ZONES] = {
 	{ "setrt", "filluid", "service", "consoles", "state", "menus", "views", "other" },
 	{ "walkup", "disp", "cursor", "printstr", "other", NULL, NULL, NULL },
 	{ "scrdraw", "set2d", "draw2d", "cgdraw", "other", NULL, NULL, NULL },
@@ -2122,9 +2122,9 @@ static const char *r202_zoneName[R202_FAM_COUNT][R202_MAX_ZONES] = {
 	{ "cfg", "vlog", "fnum", "evloop", "other", NULL, NULL, NULL }
 };
 
-static int	r202_rootT0[R202_FAM_COUNT];
+static int	ui_rootT0[UI_FAM_COUNT];
 
-static const char *r202_counterName[R202_FAM_COUNT][R202_MAX_COUNTERS] = {
+static const char *ui_counterName[UI_FAM_COUNT][UI_MAX_COUNTERS] = {
 	{ "upd", "disp", "draw", "text", NULL, NULL },
 	{ "children", "disps", NULL, NULL, NULL, NULL },
 	{ NULL, NULL, NULL, NULL, NULL, NULL },
@@ -2132,7 +2132,7 @@ static const char *r202_counterName[R202_FAM_COUNT][R202_MAX_COUNTERS] = {
 	{ "iters", "limited", "min", NULL, NULL, NULL }
 };
 
-int R202_Microseconds( void ) {
+int UI_Microseconds( void ) {
 #ifndef _WIN32
 	struct timespec ts;
 
@@ -2143,139 +2143,139 @@ int R202_Microseconds( void ) {
 #endif
 }
 
-void R202_On( void ) {
+void UI_On( void ) {
 	static cvar_t *v;
 
 	if ( !v ) {
-		v = Cvar_Get( "r202_stats", "1", 0 );
+		v = Cvar_Get( "ui_stats", "1", 0 );
 	}
 
-	r202_statsOn = ( v && v->integer ) ? 1 : 0;
+	ui_statsOn = ( v && v->integer ) ? 1 : 0;
 }
 
-static void R202_Reset( int family );
-static void R202_AddTenths( int family, int zone, int tenths );
+static void UI_Reset( int family );
+static void UI_AddTenths( int family, int zone, int tenths );
 
-void R202_RootBegin( int family ) {
-	R202_On();
+void UI_RootBegin( int family ) {
+	UI_On();
 
-	if ( family < 0 || family >= R202_FAM_COUNT ) {
+	if ( family < 0 || family >= UI_FAM_COUNT ) {
 		return;
 	}
 
-	r202_rootT0[family] = r202_statsOn ? R202_Microseconds() : 0;
+	ui_rootT0[family] = ui_statsOn ? UI_Microseconds() : 0;
 }
 
-void R202_RootEnd( int family ) {
-	if ( family < 0 || family >= R202_FAM_COUNT ) {
+void UI_RootEnd( int family ) {
+	if ( family < 0 || family >= UI_FAM_COUNT ) {
 		return;
 	}
 
-	if ( !r202_statsOn ) {
-		R202_Reset( family );
+	if ( !ui_statsOn ) {
+		UI_Reset( family );
 		return;
 	}
 
-	R202_Frame( family, R202_Microseconds() - r202_rootT0[family] );
+	UI_Frame( family, UI_Microseconds() - ui_rootT0[family] );
 }
 
-static void R202_Reset( int family ) {
+static void UI_Reset( int family ) {
 	int i;
 
-	r202_frames[family] = 0;
-	r202_windowStart[family] = 0;
-	r202_frameNamed[family] = 0;
-	r202_totalSum[family] = r202_totalMax[family] = 0;
+	ui_frames[family] = 0;
+	ui_windowStart[family] = 0;
+	ui_frameNamed[family] = 0;
+	ui_totalSum[family] = ui_totalMax[family] = 0;
 
-	for ( i = 0; i < R202_MAX_ZONES; i++ ) {
-		r202_zoneSum[family][i] = r202_zoneMax[family][i] = 0;
+	for ( i = 0; i < UI_MAX_ZONES; i++ ) {
+		ui_zoneSum[family][i] = ui_zoneMax[family][i] = 0;
 	}
-	for ( i = 0; i < R202_MAX_COUNTERS; i++ ) {
-		r202_cntSum[family][i] = r202_cntMax[family][i] = 0;
+	for ( i = 0; i < UI_MAX_COUNTERS; i++ ) {
+		ui_cntSum[family][i] = ui_cntMax[family][i] = 0;
 	}
 
-	if ( family == R202_FAM_SPIN ) {
-		r202_waitSum = r202_waitMax = 0;
-		r202_spinSum = r202_spinMax = 0;
-		r202_periodSum = r202_periodMax = 0;
-		r202_minimSum = r202_minimMax = 0;
-		r202_paceLastExitUsec = 0;
+	if ( family == UI_FAM_SPIN ) {
+		ui_waitSum = ui_waitMax = 0;
+		ui_spinSum = ui_spinMax = 0;
+		ui_periodSum = ui_periodMax = 0;
+		ui_minimSum = ui_minimMax = 0;
+		ui_paceLastExitUsec = 0;
 	}
 }
 
 
-static void R202_Print( int family, int window ) {
+static void UI_Print( int family, int window ) {
 	int		frames, i, mean10, sum, pmean;
 	char	line[1024], part[64];
 
-	frames = r202_frames[family];
+	frames = ui_frames[family];
 	if ( frames < 1 ) {
 		frames = 1;
 	}
 
 	line[0] = '\0';
 
-	for ( i = 0; i < r202_zoneCount[family]; i++ ) {
-		sum = r202_zoneSum[family][i];
+	for ( i = 0; i < ui_zoneCount[family]; i++ ) {
+		sum = ui_zoneSum[family][i];
 		mean10 = (int)( ( (long long)sum + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d.%d",
-					 r202_zoneName[family][i], mean10 / 10, mean10 % 10,
-					 r202_zoneMax[family][i] / 10, r202_zoneMax[family][i] % 10 );
+					 ui_zoneName[family][i], mean10 / 10, mean10 % 10,
+					 ui_zoneMax[family][i] / 10, ui_zoneMax[family][i] % 10 );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	for ( i = 0; i < r202_counterCount[family]; i++ ) {
-		sum = r202_cntSum[family][i];
+	for ( i = 0; i < ui_counterCount[family]; i++ ) {
+		sum = ui_cntSum[family][i];
 		mean10 = (int)( ( (long long)sum * 10 + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
-					 r202_counterName[family][i], mean10 / 10, mean10 % 10,
-					 r202_cntMax[family][i] );
+					 ui_counterName[family][i], mean10 / 10, mean10 % 10,
+					 ui_cntMax[family][i] );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	if ( family == R202_FAM_SPIN ) {
-		pmean = (int)( ( (long long)r202_waitSum + frames / 2 ) / frames );
+	if ( family == UI_FAM_SPIN ) {
+		pmean = (int)( ( (long long)ui_waitSum + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " yield=%d.%d/%d.%d",
-					 pmean / 10, pmean % 10, r202_waitMax / 10, r202_waitMax % 10 );
+					 pmean / 10, pmean % 10, ui_waitMax / 10, ui_waitMax % 10 );
 		Q_strcat( line, sizeof( line ), part );
 
-		pmean = (int)( ( (long long)r202_spinSum + frames / 2 ) / frames );
+		pmean = (int)( ( (long long)ui_spinSum + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " spun=%d.%d/%d.%d",
-					 pmean / 10, pmean % 10, r202_spinMax / 10, r202_spinMax % 10 );
+					 pmean / 10, pmean % 10, ui_spinMax / 10, ui_spinMax % 10 );
 		Q_strcat( line, sizeof( line ), part );
 
-		pmean = (int)( ( (long long)r202_periodSum + frames / 2 ) / frames );
+		pmean = (int)( ( (long long)ui_periodSum + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " period=%d.%d/%d.%d",
-					 pmean / 10, pmean % 10, r202_periodMax / 10, r202_periodMax % 10 );
+					 pmean / 10, pmean % 10, ui_periodMax / 10, ui_periodMax % 10 );
 		Q_strcat( line, sizeof( line ), part );
 
-		pmean = (int)( ( (long long)r202_minimSum * 10 + frames / 2 ) / frames );
+		pmean = (int)( ( (long long)ui_minimSum * 10 + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " minim=%d.%d/%d",
-					 pmean / 10, pmean % 10, r202_minimMax );
+					 pmean / 10, pmean % 10, ui_minimMax );
 		Q_strcat( line, sizeof( line ), part );
 	}
 
-	mean10 = (int)( ( (long long)r202_totalSum[family] + frames / 2 ) / frames );
+	mean10 = (int)( ( (long long)ui_totalSum[family] + frames / 2 ) / frames );
 	Com_sprintf( part, sizeof( part ), " total=%d.%d/%d.%d",
 				 mean10 / 10, mean10 % 10,
-				 r202_totalMax[family] / 10, r202_totalMax[family] % 10 );
+				 ui_totalMax[family] / 10, ui_totalMax[family] % 10 );
 	Q_strcat( line, sizeof( line ), part );
 
-	Com_Printf( "[R202:%s] frames=%d window=%dms%s\n",
-				r202_familyName[family], frames, window, line );
+	Com_Printf( "[UI:%s] frames=%d window=%dms%s\n",
+				ui_familyName[family], frames, window, line );
 
-	r202_rowsEmitted[family]++;
+	ui_rowsEmitted[family]++;
 }
 
-void R202_Frame( int family, int totalUsec ) {
+void UI_Frame( int family, int totalUsec ) {
 	int window;
 
-	if ( family < 0 || family >= R202_FAM_COUNT ) {
+	if ( family < 0 || family >= UI_FAM_COUNT ) {
 		return;
 	}
 
-	if ( !r202_statsOn ) {
-		R202_Reset( family );
+	if ( !ui_statsOn ) {
+		UI_Reset( family );
 		return;
 	}
 
@@ -2286,46 +2286,46 @@ void R202_Frame( int family, int totalUsec ) {
 	totalUsec /= 100;			
 
 	{
-		int r202_other = totalUsec - r202_frameNamed[family];
+		int ui_other = totalUsec - ui_frameNamed[family];
 
-		if ( r202_other < 0 ) {
-			r202_other = 0;
+		if ( ui_other < 0 ) {
+			ui_other = 0;
 		}
 
-		R202_AddTenths( family, r202_zoneCount[family] - 1, r202_other );
-		r202_frameNamed[family] = 0;
+		UI_AddTenths( family, ui_zoneCount[family] - 1, ui_other );
+		ui_frameNamed[family] = 0;
 	}
 
-	r202_totalSum[family] += totalUsec;
-	if ( totalUsec > r202_totalMax[family] ) {
-		r202_totalMax[family] = totalUsec;
+	ui_totalSum[family] += totalUsec;
+	if ( totalUsec > ui_totalMax[family] ) {
+		ui_totalMax[family] = totalUsec;
 	}
 
-	r202_frames[family]++;
+	ui_frames[family]++;
 
-	if ( !r202_windowStart[family] ) {
-		r202_windowStart[family] = Sys_Milliseconds();
+	if ( !ui_windowStart[family] ) {
+		ui_windowStart[family] = Sys_Milliseconds();
 	}
 
-	window = Sys_Milliseconds() - r202_windowStart[family];
-	if ( window < R202_WINDOW_MS && r202_frames[family] < R202_MAX_FRAMES ) {
+	window = Sys_Milliseconds() - ui_windowStart[family];
+	if ( window < UI_WINDOW_MS && ui_frames[family] < UI_MAX_FRAMES ) {
 		return;
 	}
 
-	if ( r202_rowsEmitted[family] < R202_MAX_ROWS ) {
-		R202_Print( family, window );
-	} else if ( r202_rowsEmitted[family] == R202_MAX_ROWS ) {
-		r202_rowsEmitted[family]++;
-		Com_Printf( "[R202:%s] capped at %d rows; no further lines\n",
-					r202_familyName[family], R202_MAX_ROWS );
+	if ( ui_rowsEmitted[family] < UI_MAX_ROWS ) {
+		UI_Print( family, window );
+	} else if ( ui_rowsEmitted[family] == UI_MAX_ROWS ) {
+		ui_rowsEmitted[family]++;
+		Com_Printf( "[UI:%s] capped at %d rows; no further lines\n",
+					ui_familyName[family], UI_MAX_ROWS );
 	}
 
-	R202_Reset( family );
-	r202_windowStart[family] = Sys_Milliseconds();
+	UI_Reset( family );
+	ui_windowStart[family] = Sys_Milliseconds();
 }
 
-static void R202_AddTenths( int family, int zone, int tenths ) {
-	if ( family < 0 || family >= R202_FAM_COUNT || zone < 0 || zone >= R202_MAX_ZONES ) {
+static void UI_AddTenths( int family, int zone, int tenths ) {
+	if ( family < 0 || family >= UI_FAM_COUNT || zone < 0 || zone >= UI_MAX_ZONES ) {
 		return;
 	}
 	if ( tenths < 0 ) {
@@ -2335,39 +2335,39 @@ static void R202_AddTenths( int family, int zone, int tenths ) {
 		return;
 	}
 
-	r202_zoneSum[family][zone] += tenths;
-	if ( tenths > r202_zoneMax[family][zone] ) {
-		r202_zoneMax[family][zone] = tenths;
+	ui_zoneSum[family][zone] += tenths;
+	if ( tenths > ui_zoneMax[family][zone] ) {
+		ui_zoneMax[family][zone] = tenths;
 	}
 
-	if ( zone != r202_zoneCount[family] - 1 ) {
-		r202_frameNamed[family] += tenths;
+	if ( zone != ui_zoneCount[family] - 1 ) {
+		ui_frameNamed[family] += tenths;
 	}
 }
 
-void R202_Add( int family, int zone, int usec ) {
+void UI_Add( int family, int zone, int usec ) {
 	if ( usec <= 0 ) {
 		return;
 	}
 
-	R202_AddTenths( family, zone, usec / 100 );
+	UI_AddTenths( family, zone, usec / 100 );
 }
 
-void R202_Bump( int family, int counter, int n ) {
-	if ( family < 0 || family >= R202_FAM_COUNT || counter < 0 || counter >= R202_MAX_COUNTERS ) {
+void UI_Bump( int family, int counter, int n ) {
+	if ( family < 0 || family >= UI_FAM_COUNT || counter < 0 || counter >= UI_MAX_COUNTERS ) {
 		return;
 	}
 	if ( n <= 0 ) {
 		return;
 	}
 
-	r202_cntSum[family][counter] += n;
-	if ( n > r202_cntMax[family][counter] ) {
-		r202_cntMax[family][counter] = n;
+	ui_cntSum[family][counter] += n;
+	if ( n > ui_cntMax[family][counter] ) {
+		ui_cntMax[family][counter] = n;
 	}
 }
 
-static void R202_PaceAdd( int *sum, int *max, int units ) {
+static void UI_PaceAdd( int *sum, int *max, int units ) {
 	if ( units <= 0 ) {
 		return;
 	}
@@ -2389,29 +2389,29 @@ void Com_Frame( void ) {
 	int		timeBeforeClient;
 	int		timeAfter;
 
-	int		r201FrameStart, r201SpinStart, r201AfterSpin, r201BeforeServer, r201AfterServer, r201ClientStart, r201FrameEnd;
+	int		smpFrameStart, smpSpinStart, smpAfterSpin, smpBeforeServer, smpAfterServer, smpClientStart, smpFrameEnd;
 
-	int		r202_cfgUsec = 0, r202_vlogUsec = 0, r202_fnumUsec = 0;
-	int		r202_evUsec = 0, r202_spinIters = 0;
+	int		ui_cfgUsec = 0, ui_vlogUsec = 0, ui_fnumUsec = 0;
+	int		ui_evUsec = 0, ui_spinIters = 0;
 
-	int		r202_waitMsec = 0, r202_minimized = 0;
-	int		r202_waitUsec = 0, r202_spinUsec = 0, r202_periodUsec = 0;
+	int		ui_waitMsec = 0, ui_minimized = 0;
+	int		ui_waitUsec = 0, ui_spinUsec = 0, ui_periodUsec = 0;
 
 	if ( setjmp (abortframe) ) {
 		return;			
 	}
 
-	R202_ROOT_BEGIN( R202_FAM_SPIN );
+	UI_ROOT_BEGIN( UI_FAM_SPIN );
 
-	r201FrameStart = Sys_Milliseconds();
+	smpFrameStart = Sys_Milliseconds();
 
 	// game_export_t::SetFrameNumber, which retail's game_export_t has never had, so it
 #ifndef DEDICATED
 	if (!com_dedicated || !com_dedicated->integer)
 	{
-		r202_fnumUsec = ( r202_statsOn ? R202_Microseconds() : 0 );
+		ui_fnumUsec = ( ui_statsOn ? UI_Microseconds() : 0 );
 		CL_SetFrameNumber(com_frameNumber);
-		if ( r202_statsOn ) { r202_fnumUsec = R202_Microseconds() - r202_fnumUsec; }
+		if ( ui_statsOn ) { ui_fnumUsec = UI_Microseconds() - ui_fnumUsec; }
 	}
 #endif
 
@@ -2421,16 +2421,16 @@ void Com_Frame( void ) {
 	timeBeforeClient = 0;
 	timeAfter = 0;
 
-	r202_cfgUsec = ( r202_statsOn ? R202_Microseconds() : 0 );
+	ui_cfgUsec = ( ui_statsOn ? UI_Microseconds() : 0 );
 	Com_WriteConfiguration();
-	if ( r202_statsOn ) { r202_cfgUsec = R202_Microseconds() - r202_cfgUsec; }
+	if ( ui_statsOn ) { ui_cfgUsec = UI_Microseconds() - ui_cfgUsec; }
 
 #ifndef DEDICATED
     if (com_viewlog->modified) {
         if (!com_dedicated || !com_dedicated->integer) {
-            r202_vlogUsec = ( r202_statsOn ? R202_Microseconds() : 0 );
+            ui_vlogUsec = ( ui_statsOn ? UI_Microseconds() : 0 );
             Sys_ShowConsole(com_viewlog->integer, qfalse);
-            if ( r202_statsOn ) { r202_vlogUsec = R202_Microseconds() - r202_vlogUsec; }
+            if ( ui_statsOn ) { ui_vlogUsec = UI_Microseconds() - ui_vlogUsec; }
         }
 
         com_viewlog->modified = qfalse;
@@ -2452,39 +2452,39 @@ void Com_Frame( void ) {
     }
 
     if ( com_frameWait && com_frameWait->integer && !com_dedicated->integer ) {
-        int r203Elapsed;
+        int limitElapsed;
 
         if ( !com_minimizedCvar ) {
             com_minimizedCvar = Cvar_Get( "com_minimized", "0", 0 );
         }
-        r202_minimized = ( com_minimizedCvar && com_minimizedCvar->integer ) ? 1 : 0;
+        ui_minimized = ( com_minimizedCvar && com_minimizedCvar->integer ) ? 1 : 0;
 
-        r203Elapsed = Sys_Milliseconds() - lastTime;
-        r202_waitMsec = R203_WaitDecision( minMsec, r203Elapsed,
+        limitElapsed = Sys_Milliseconds() - lastTime;
+        ui_waitMsec = LIMIT_WaitDecision( minMsec, limitElapsed,
                                            com_frameWaitMargin->integer,
-                                           r202_minimized );
-        if ( r202_waitMsec > 0 ) {
-            int r203T0 = ( r202_statsOn ? R202_Microseconds() : 0 );
+                                           ui_minimized );
+        if ( ui_waitMsec > 0 ) {
+            int limitT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
 
-            Sys_Sleep( r202_waitMsec );
+            Sys_Sleep( ui_waitMsec );
 
-            if ( r202_statsOn ) { r202_waitUsec = R202_Microseconds() - r203T0; }
+            if ( ui_statsOn ) { ui_waitUsec = UI_Microseconds() - limitT0; }
         }
     }
 
-    r201SpinStart = Sys_Milliseconds();
+    smpSpinStart = Sys_Milliseconds();
 
     {
-    int r203SpinT0 = ( r202_statsOn ? R202_Microseconds() : 0 );
+    int limitSpinT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
 
     do
     {
-        int r202_evT = ( r202_statsOn ? R202_Microseconds() : 0 );
+        int ui_evT = ( ui_statsOn ? UI_Microseconds() : 0 );
 
         com_frameTime = Com_EventLoop();
 
-        if ( r202_statsOn ) { r202_evUsec += R202_Microseconds() - r202_evT; }
-        r202_spinIters++;
+        if ( ui_statsOn ) { ui_evUsec += UI_Microseconds() - ui_evT; }
+        ui_spinIters++;
 
         if ( lastTime > com_frameTime ) {
             lastTime = com_frameTime;
@@ -2493,45 +2493,45 @@ void Com_Frame( void ) {
         msec = com_frameTime - lastTime;
     } while ( msec < minMsec );
 
-    if ( r202_statsOn ) { r202_spinUsec = R202_Microseconds() - r203SpinT0; }
+    if ( ui_statsOn ) { ui_spinUsec = UI_Microseconds() - limitSpinT0; }
     }
 
     lastTime = com_frameTime;
 
-	r201AfterSpin = Sys_Milliseconds();
+	smpAfterSpin = Sys_Milliseconds();
 
-	if ( r202_statsOn ) {
-		int r203Now = R202_Microseconds();
+	if ( ui_statsOn ) {
+		int limitNow = UI_Microseconds();
 
-		if ( r202_paceLastExitUsec != 0 ) {
-			r202_periodUsec = r203Now - r202_paceLastExitUsec;
-			if ( r202_periodUsec < 0 ) {
-				r202_periodUsec = 0;
+		if ( ui_paceLastExitUsec != 0 ) {
+			ui_periodUsec = limitNow - ui_paceLastExitUsec;
+			if ( ui_periodUsec < 0 ) {
+				ui_periodUsec = 0;
 			}
 		}
-		r202_paceLastExitUsec = r203Now;
+		ui_paceLastExitUsec = limitNow;
 	} else {
-		r202_paceLastExitUsec = 0;
+		ui_paceLastExitUsec = 0;
 	}
 
-	if ( r202_statsOn ) {
-		R202_Add( R202_FAM_SPIN, R202_SPZ_cfg,    r202_cfgUsec );
-		R202_Add( R202_FAM_SPIN, R202_SPZ_vlog,   r202_vlogUsec );
-		R202_Add( R202_FAM_SPIN, R202_SPZ_fnum,   r202_fnumUsec );
-		R202_Add( R202_FAM_SPIN, R202_SPZ_evloop, r202_evUsec );
+	if ( ui_statsOn ) {
+		UI_Add( UI_FAM_SPIN, UI_SPZ_cfg,    ui_cfgUsec );
+		UI_Add( UI_FAM_SPIN, UI_SPZ_vlog,   ui_vlogUsec );
+		UI_Add( UI_FAM_SPIN, UI_SPZ_fnum,   ui_fnumUsec );
+		UI_Add( UI_FAM_SPIN, UI_SPZ_evloop, ui_evUsec );
 
-		R202_Bump( R202_FAM_SPIN, R202_SC_iters, r202_spinIters );
-		if ( r202_spinIters > 1 ) {
-			R202_Bump( R202_FAM_SPIN, R202_SC_limited, 1 );
+		UI_Bump( UI_FAM_SPIN, UI_SC_iters, ui_spinIters );
+		if ( ui_spinIters > 1 ) {
+			UI_Bump( UI_FAM_SPIN, UI_SC_limited, 1 );
 		}
-		R202_Bump( R202_FAM_SPIN, R202_SC_min, minMsec );
+		UI_Bump( UI_FAM_SPIN, UI_SC_min, minMsec );
 
-		R202_PaceAdd( &r202_waitSum,   &r202_waitMax,   r202_waitUsec / 100 );
-		R202_PaceAdd( &r202_spinSum,   &r202_spinMax,   r202_spinUsec / 100 );
-		R202_PaceAdd( &r202_periodSum, &r202_periodMax, r202_periodUsec / 100 );
-		R202_PaceAdd( &r202_minimSum,  &r202_minimMax,  r202_minimized );
+		UI_PaceAdd( &ui_waitSum,   &ui_waitMax,   ui_waitUsec / 100 );
+		UI_PaceAdd( &ui_spinSum,   &ui_spinMax,   ui_spinUsec / 100 );
+		UI_PaceAdd( &ui_periodSum, &ui_periodMax, ui_periodUsec / 100 );
+		UI_PaceAdd( &ui_minimSum,  &ui_minimMax,  ui_minimized );
 
-		R202_ROOT_END( R202_FAM_SPIN );
+		UI_ROOT_END( UI_FAM_SPIN );
 	}
 
 #ifndef DEDICATED
@@ -2551,11 +2551,11 @@ void Com_Frame( void ) {
 		ToolServerProcessCommands();
 	}
 
-	r201BeforeServer = Sys_Milliseconds();
+	smpBeforeServer = Sys_Milliseconds();
 
 	SV_Frame( msec );
 
-	r201AfterServer = Sys_Milliseconds();
+	smpAfterServer = Sys_Milliseconds();
 
 	if ( com_dedicated->modified ) {
 		Cvar_Get( "dedicated", "0", 0 );
@@ -2585,15 +2585,15 @@ void Com_Frame( void ) {
 
 	time_frontend = 0;
 	time_backend = 0;
-	r201ClientStart = Sys_Milliseconds();
+	smpClientStart = Sys_Milliseconds();
 
-	r201_loadInClient = 1;
+	smp_loadInClient = 1;
 
 	CL_Frame( msec );
 
-	r201_loadInClient = 0;
+	smp_loadInClient = 0;
 
-	r201FrameEnd = Sys_Milliseconds();
+	smpFrameEnd = Sys_Milliseconds();
 
 	if ( com_speeds->integer ) {
 		timeAfter = Sys_Milliseconds ();
@@ -2604,8 +2604,8 @@ void Com_Frame( void ) {
 		timeBeforeEvents = timeAfter;
 		timeBeforeClient = timeAfter;
 	}
-	r201ClientStart = r201AfterServer;
-	r201FrameEnd = Sys_Milliseconds();
+	smpClientStart = smpAfterServer;
+	smpFrameEnd = Sys_Milliseconds();
 #endif
 
 
@@ -2667,10 +2667,10 @@ void Com_Frame( void ) {
 		c_pointcontents = 0;
 	}
 
-	R201_BudgetFrame( r201AfterServer - r201BeforeServer,
-					  r201FrameEnd - r201ClientStart,
-					  r201AfterSpin - r201SpinStart,
-					  r201FrameEnd - r201FrameStart );
+	SMP_BudgetFrame( smpAfterServer - smpBeforeServer,
+					  smpFrameEnd - smpClientStart,
+					  smpAfterSpin - smpSpinStart,
+					  smpFrameEnd - smpFrameStart );
 
 	com_frameNumber++;
 }

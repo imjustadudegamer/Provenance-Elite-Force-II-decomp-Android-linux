@@ -1,6 +1,6 @@
 #version 300 es
 /*
-ProvenanceEF2 GLES3 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 GLES3 shade layer (G2 gles3-gles3-shade)
 gles3_2d.vert -- the 2D / HUD / font program.
 
 the deleted oracle drives 2D through the SAME stage iterator with backEnd.in2D set:

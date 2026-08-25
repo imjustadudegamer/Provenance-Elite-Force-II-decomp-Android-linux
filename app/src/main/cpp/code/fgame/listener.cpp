@@ -10,12 +10,12 @@
 #include "scriptmaster.h"
 #include "mp_manager.hpp"
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) gi.cvar(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       gi.Printf
+#include "../qcommon/qa_probe.h"
 
-static const char *R131F3_ClassOf( Class *c );
-static void        R131F3_Report( Listener *L, const char *where, Event *posting );
+static const char *WIDGETF3_ClassOf( Class *c );
+static void        WIDGETF3_Report( Listener *L, const char *where, Event *posting );
 
 Event EV_Remove (	"immediateremove",
 	EV_DEFAULT,
@@ -808,24 +808,24 @@ static void RealDeallocateEvent( Event * event )
 #if defined( GAME_DLL )
 // ::new char[sizeof(Event)] and NEVER constructs those nodes, so on its first
 // node is a LEGITIMATE retail state, not evidence: it must not be inspected.
-static const unsigned R131F3_POOLSTAMP_BITS = 0xF3EE11EDu; 
+static const unsigned WIDGETF3_POOLSTAMP_BITS = 0xF3EE11EDu; 
 
-void Event::R132_StampPoolNode( Event *e )
+void Event::EVENT_StampPoolNode( Event *e )
 {
-	unsigned bits = R131F3_POOLSTAMP_BITS;
+	unsigned bits = WIDGETF3_POOLSTAMP_BITS;
 
 	memcpy( &e->time, &bits, sizeof( e->time ) );
 }
 
-qboolean Event::R132_NodeIsRecycled( Event *e )
+qboolean Event::EVENT_NodeIsRecycled( Event *e )
 {
 	unsigned bits;
 
 	memcpy( &bits, &e->time, sizeof( bits ) );
-	return bits == R131F3_POOLSTAMP_BITS;
+	return bits == WIDGETF3_POOLSTAMP_BITS;
 }
 
-static int R132_EntityOf( void *p );
+static int EVENT_EntityOf( void *p );
 
 #endif 
 
@@ -849,7 +849,7 @@ void * Event::operator new( size_t s )
 		newevent = FreeEvents->next;
 
 #if defined( GAME_DLL )
-		if ( !Event::R132_NodeIsRecycled( newevent ) )
+		if ( !Event::EVENT_NodeIsRecycled( newevent ) )
 		{
 			static int evnewFirstUse = 0;
 
@@ -857,7 +857,7 @@ void * Event::operator new( size_t s )
 
 			if ( evnewFirstUse == 1 || evnewFirstUse == 6000 )
 			{
-				R131_PROBE(
+				WIDGET_PROBE(
 					"evnew",
 					"pool-firstuse n=%d nF=%d (not inspected: raw memory, no ctor)\n",
 					evnewFirstUse,
@@ -866,9 +866,9 @@ void * Event::operator new( size_t s )
 		}
 		else
 		{
-			int r132_tent;
+			int event_tent;
 
-			SafePtrBase::R131F3_FillNode(
+			SafePtrBase::WIDGETF3_FillNode(
 				( SafePtrBase * )&newevent->m_sourceobject, &nprev, &nnext, &ntgt );
 
 			if ( ntgt != NULL || nprev != ( void * )newevent || nnext != ( void * )newevent )
@@ -880,16 +880,16 @@ void * Event::operator new( size_t s )
 				{
 					evnewPrinted++;
 
-					r132_tent = R132_EntityOf( ntgt );
+					event_tent = EVENT_EntityOf( ntgt );
 
-					R131_PROBE(
+					WIDGET_PROBE(
 						"evnew",
 						"node=%p dirty tgt=%p ent=%d(%s) prev=%p next=%p name=%s nF=%d hit=%d\n",
 						( void * )newevent,
 						ntgt,
-						r132_tent,
-						r132_tent >= 0
-							? R131F3_ClassOf( ( Class * )G_GetEntity( r132_tent ) )
+						event_tent,
+						event_tent >= 0
+							? WIDGETF3_ClassOf( ( Class * )G_GetEntity( event_tent ) )
 							: "no-match",
 						nprev,
 						nnext,
@@ -922,29 +922,29 @@ void Event::operator delete( void *ptr )
 #if defined( GAME_DLL )
 	if ( event->m_sourceobject.Pointer() )
 	{
-		static int r131_evdelPrinted;
+		static int widget_evdelPrinted;
 
-		if (R120_Throttle(&r131_evdelPrinted, 32, 4096))
+		if (PROBE_Throttle(&widget_evdelPrinted, 32, 4096))
 		{
 			void *nprev;
 			void *nnext;
 			void *ntgt;
-			int   r132_tent;
+			int   event_tent;
 
-			SafePtrBase::R131F3_FillNode(
+			SafePtrBase::WIDGETF3_FillNode(
 				( SafePtrBase * )&event->m_sourceobject, &nprev, &nnext, &ntgt );
 
-			r132_tent = R132_EntityOf( ntgt );
+			event_tent = EVENT_EntityOf( ntgt );
 
-			R131_PROBE(
+			WIDGET_PROBE(
 				"evdel",
 				"event=%p ev=%s stillRegistered tgt=%p ent=%d(%s) prev=%p next=%p nQ=%d nF=%d\n",
 				( void * )event,
 				event->getName(),
 				ntgt,
-				r132_tent,
-				r132_tent >= 0
-					? R131F3_ClassOf( ( Class * )G_GetEntity( r132_tent ) )
+				event_tent,
+				event_tent >= 0
+					? WIDGETF3_ClassOf( ( Class * )G_GetEntity( event_tent ) )
 					: "no-match",
 				nprev,
 				nnext,
@@ -958,7 +958,7 @@ void Event::operator delete( void *ptr )
 	LL_Remove( event, next, prev );
 
 #if defined( GAME_DLL )
-	Event::R132_StampPoolNode( event );
+	Event::EVENT_StampPoolNode( event );
 #endif
 
 	LL_Add( FreeEvents, event, next, prev );
@@ -2467,7 +2467,7 @@ qboolean Listener::ProcessEvent( Event *event )
 #if defined( GAME_DLL )
 
 
-static const char *R131F3_ClassOf( Class *c )
+static const char *WIDGETF3_ClassOf( Class *c )
 {
 	const char *n;
 
@@ -2480,7 +2480,7 @@ static const char *R131F3_ClassOf( Class *c )
 	return n ? n : "?";
 }
 
-static int R132_EntityOf( void *p )
+static int EVENT_EntityOf( void *p )
 {
 	int ei;
 
@@ -2501,7 +2501,7 @@ static int R132_EntityOf( void *p )
 }
 
 // vtable word differs is NOT a SafePtrBase, so its target pointer must not be chased.
-static void *R131F3_SafePtrVt( void )
+static void *WIDGETF3_SafePtrVt( void )
 {
 	static void *vt;
 
@@ -2513,9 +2513,9 @@ static void *R131F3_SafePtrVt( void )
 	return vt;
 }
 
-static void R131F3_Report( Listener *L, const char *where, Event *posting )
+static void WIDGETF3_Report( Listener *L, const char *where, Event *posting )
 {
-	SafePtrBase::R131F3_HeadInfo h;
+	SafePtrBase::WIDGETF3_HeadInfo h;
 	Event                       *w;
 	const char                  *cls;
 	const char                  *tgtcls;
@@ -2525,7 +2525,7 @@ static void R131F3_Report( Listener *L, const char *where, Event *posting )
 	Event                       *spanOwner = NULL;
 	static int                   printed = 0;
 	int                          isSafePtr;
-	int                          r132_tent = -1;
+	int                          event_tent = -1;
 	int                          spanOwnerFree = 0;
 	const char                  *spanname;
 
@@ -2534,7 +2534,7 @@ static void R131F3_Report( Listener *L, const char *where, Event *posting )
 		return;
 	}
 
-	SafePtrBase::R131F3_FillHead( L, &h );
+	SafePtrBase::WIDGETF3_FillHead( L, &h );
 
 	if ( !h.head || h.prev )
 	{
@@ -2547,18 +2547,18 @@ static void R131F3_Report( Listener *L, const char *where, Event *posting )
 	}
 	printed++;
 
-	cls = R131F3_ClassOf( L );
+	cls = WIDGETF3_ClassOf( L );
 	if ( L->isSubclassOf( Entity ) )
 	{
 		entnum = ( ( Entity * )L )->entnum;
 	}
 
-	isSafePtr = ( h.vtword == R131F3_SafePtrVt() );
+	isSafePtr = ( h.vtword == WIDGETF3_SafePtrVt() );
 	if ( isSafePtr && h.target )
 	{
-		r132_tent = R132_EntityOf( h.target );
-		tgtcls = r132_tent >= 0
-			     ? R131F3_ClassOf( ( Class * )G_GetEntity( r132_tent ) )
+		event_tent = EVENT_EntityOf( h.target );
+		tgtcls = event_tent >= 0
+			     ? WIDGETF3_ClassOf( ( Class * )G_GetEntity( event_tent ) )
 			     : "no-match";
 	}
 	else if ( !isSafePtr )
@@ -2606,7 +2606,7 @@ static void R131F3_Report( Listener *L, const char *where, Event *posting )
 	spanname = "-";
 	if ( spanOwner )
 	{
-		if ( !spanOwnerFree || Event::R132_NodeIsRecycled( spanOwner ) )
+		if ( !spanOwnerFree || Event::EVENT_NodeIsRecycled( spanOwner ) )
 		{
 			spanname = spanOwner->getName();
 		}
@@ -2616,13 +2616,13 @@ static void R131F3_Report( Listener *L, const char *where, Event *posting )
 		}
 	}
 
-	R131_PROBE(
+	WIDGET_PROBE(
 		"head",
 		"%s this=%p cls=%s ent=%d head=%p prev=NULL next=%p tgt=%p ent=%d(%s) vt=%p isSP=%d | "
 		"Q=%d A=%d F=%d span=%d(spanOwner=%p evtgt=%s) | nQ=%d nF=%d | post=%s\n",
 		where,
 		( void * )L, cls, entnum,
-		h.head, h.next, h.target, r132_tent, tgtcls, h.vtword, isSafePtr,
+		h.head, h.next, h.target, event_tent, tgtcls, h.vtword, isSafePtr,
 		inQ, inA, inF, span,
 		( void * )spanOwner,
 		spanname,
@@ -2630,7 +2630,7 @@ static void R131F3_Report( Listener *L, const char *where, Event *posting )
 		posting ? ( posting->getName() ? posting->getName() : "?" ) : "-" );
 }
 
-static void R131F3_SweepHeads( void )
+static void WIDGETF3_SweepHeads( void )
 {
 	static int  frame = 0;
 	int         ei;
@@ -2648,7 +2648,7 @@ static void R131F3_SweepHeads( void )
 			continue;
 		}
 
-		if ( SafePtrBase::R131P1_HeadPrevNull( L ) )
+		if ( SafePtrBase::WIDGETP1_HeadPrevNull( L ) )
 		{
 			if ( firstBad < 0 )
 			{
@@ -2661,7 +2661,7 @@ static void R131F3_SweepHeads( void )
 	for ( w = EventQueue->next; w != EventQueue; w = w->next )
 	{
 		L = w->GetSourceObject();
-		if ( L && SafePtrBase::R131P1_HeadPrevNull( L ) )
+		if ( L && SafePtrBase::WIDGETP1_HeadPrevNull( L ) )
 		{
 			bad++;
 		}
@@ -2669,10 +2669,10 @@ static void R131F3_SweepHeads( void )
 
 	if ( bad )
 	{
-		R131_PROBE( "sweep", "frame=%d bad=%d firstBadEnt=%d\n", frame, bad, firstBad );
+		WIDGET_PROBE( "sweep", "frame=%d bad=%d firstBadEnt=%d\n", frame, bad, firstBad );
 		if ( firstBad >= 0 )
 		{
-			R131F3_Report( ( Listener * )G_GetEntity( firstBad ), "sweep", NULL );
+			WIDGETF3_Report( ( Listener * )G_GetEntity( firstBad ), "sweep", NULL );
 		}
 	}
 }
@@ -2724,7 +2724,7 @@ void Listener::PostEvent( Event *ev, float time, int flags )
 	
 	LL_Remove( ev, next, prev );
 
-	R131F3_Report( this, "postevent", ev );
+	WIDGETF3_Report( this, "postevent", ev );
 
 	ev->SetSourceObject( this );
 	ev->time		= EVENT_time + time;
@@ -2944,7 +2944,7 @@ void L_ProcessPendingEvents( void )
 	num = 0;
 	t = EVENT_time + 0.001f;
 
-	R131F3_SweepHeads();
+	WIDGETF3_SweepHeads();
 
 	while( !LL_Empty( EventQueue, next, prev ) )
 	{

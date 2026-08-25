@@ -467,7 +467,7 @@ void R_LightScaleTexture (unsigned *in, int inwidth, int inheight, qboolean only
 }
 
 static void R_MipMap (byte *in, int width, int height) {
-	R201_MipMap( (unsigned char *)in, width, height );
+	SMP_MipMap( (unsigned char *)in, width, height );
 }
 
 
@@ -547,32 +547,32 @@ static GLenum R_ES3InternalFormat( int fmt ) {
 
 extern qboolean charSet;
 
-static int	s_r200UploadSamples = 0;
-static int	s_r200UploadFormat  = 0;
+static int	s_gles3UploadSamples = 0;
+static int	s_gles3UploadFormat  = 0;
 
-static int	s_r200PathKind = 0;
-static int	s_r200PathFmt  = 0;
-static int	s_r200PathSrcDxt = R201_DXT3;
+static int	s_gles3PathKind = 0;
+static int	s_gles3PathFmt  = 0;
+static int	s_gles3PathSrcDxt = SMP_DXT3;
 
-static unsigned long	s_r201UploadSum[3] = { 0, 0, 0 };
-static int				s_r201UploadWhite = 0;
-static int				s_r201UploadPixels = 0;
-static qboolean			s_r201WantStats = qfalse;
+static unsigned long	s_smpUploadSum[3] = { 0, 0, 0 };
+static int				s_smpUploadWhite = 0;
+static int				s_smpUploadPixels = 0;
+static qboolean			s_smpWantStats = qfalse;
 
-#define R201_UPLOAD_LEVELS 8
-static int				s_r201UploadLvlW[R201_UPLOAD_LEVELS] = { 0 };
-static int				s_r201UploadLvlH[R201_UPLOAD_LEVELS] = { 0 };
-static int				s_r201UploadLvlN = 0;
+#define SMP_UPLOAD_LEVELS 8
+static int				s_smpUploadLvlW[SMP_UPLOAD_LEVELS] = { 0 };
+static int				s_smpUploadLvlH[SMP_UPLOAD_LEVELS] = { 0 };
+static int				s_smpUploadLvlN = 0;
 
-static void R201_RecordUploadLevel( int level, int w, int h )
+static void SMP_RecordUploadLevel( int level, int w, int h )
 {
-	if ( !s_r201WantStats || level < 0 || level >= R201_UPLOAD_LEVELS ) {
+	if ( !s_smpWantStats || level < 0 || level >= SMP_UPLOAD_LEVELS ) {
 		return;
 	}
-	s_r201UploadLvlW[level] = w;
-	s_r201UploadLvlH[level] = h;
-	if ( level + 1 > s_r201UploadLvlN ) {
-		s_r201UploadLvlN = level + 1;
+	s_smpUploadLvlW[level] = w;
+	s_smpUploadLvlH[level] = h;
+	if ( level + 1 > s_smpUploadLvlN ) {
+		s_smpUploadLvlN = level + 1;
 	}
 }
 
@@ -663,26 +663,26 @@ static void Upload32(
 			}
 		}
 
-		s_r201UploadSum[0] = s_r201UploadSum[1] = s_r201UploadSum[2] = 0;
-		s_r201UploadWhite = 0;
-		s_r201UploadPixels = 0;
+		s_smpUploadSum[0] = s_smpUploadSum[1] = s_smpUploadSum[2] = 0;
+		s_smpUploadWhite = 0;
+		s_smpUploadPixels = 0;
 		{
 			int	lvl;
-			for ( lvl = 0; lvl < R201_UPLOAD_LEVELS; lvl++ ) {
-				s_r201UploadLvlW[lvl] = s_r201UploadLvlH[lvl] = 0;
+			for ( lvl = 0; lvl < SMP_UPLOAD_LEVELS; lvl++ ) {
+				s_smpUploadLvlW[lvl] = s_smpUploadLvlH[lvl] = 0;
 			}
-			s_r201UploadLvlN = 0;
+			s_smpUploadLvlN = 0;
 		}
-		if ( s_r201WantStats ) {
+		if ( s_smpWantStats ) {
 			for ( i = 0; i < c; i++ ) {
-				s_r201UploadSum[0] += scan[i*4+0];
-				s_r201UploadSum[1] += scan[i*4+1];
-				s_r201UploadSum[2] += scan[i*4+2];
+				s_smpUploadSum[0] += scan[i*4+0];
+				s_smpUploadSum[1] += scan[i*4+1];
+				s_smpUploadSum[2] += scan[i*4+2];
 				if ( scan[i*4+0] >= 200 && scan[i*4+1] >= 200 && scan[i*4+2] >= 200 ) {
-					s_r201UploadWhite++;
+					s_smpUploadWhite++;
 				}
 			}
-			s_r201UploadPixels = c;
+			s_smpUploadPixels = c;
 		}
 
 		if ( samples == 3 )
@@ -748,14 +748,14 @@ static void Upload32(
 	} else {
 		internalFormat = GL_RGB;
 	}
-	s_r200UploadSamples = samples;
-	s_r200UploadFormat  = internalFormat;
+	s_gles3UploadSamples = samples;
+	s_gles3UploadFormat  = internalFormat;
 	if ( ( scaled_width == width ) && 
 		( scaled_height == height ) ) {
 		if (!numMipmaps)
 		{
 			qglTexImage2D (GL_TEXTURE_2D, 0, R_ES3InternalFormat( internalFormat ), scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-			R201_RecordUploadLevel( 0, scaled_width, scaled_height );
+			SMP_RecordUploadLevel( 0, scaled_width, scaled_height );
 			*pUploadWidth = scaled_width;
 			*pUploadHeight = scaled_height;
 			*format = internalFormat;
@@ -786,7 +786,7 @@ static void Upload32(
 	*format = internalFormat;
 
 	qglTexImage2D (GL_TEXTURE_2D, 0, R_ES3InternalFormat( internalFormat ), scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
-	R201_RecordUploadLevel( 0, scaled_width, scaled_height );
+	SMP_RecordUploadLevel( 0, scaled_width, scaled_height );
 
 	*bytesUsed = samples * scaled_width * scaled_height;
 
@@ -811,7 +811,7 @@ static void Upload32(
 			}
 
 			qglTexImage2D (GL_TEXTURE_2D, miplevel, R_ES3InternalFormat( internalFormat ), scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
-			R201_RecordUploadLevel( miplevel, scaled_width, scaled_height );
+			SMP_RecordUploadLevel( miplevel, scaled_width, scaled_height );
 		}
 	}
 done:
@@ -959,21 +959,21 @@ static void UploadCompressed(
 	GL_CheckErrors();
 }
 
-static void R201_TranscodeRunJobPool(void* ud, r201TranscodeRows_t* ctx, int bh, int bw)
+static void SMP_TranscodeRunJobPool(void* ud, smpTranscodeRows_t* ctx, int bh, int bw)
 {
 	(void)ud;
-	JobPool_ParallelRange(bh, (2048 / (bw ? bw : 1)) + 1, R201_TranscodeRows, ctx);
+	JobPool_ParallelRange(bh, (2048 / (bw ? bw : 1)) + 1, SMP_TranscodeRows, ctx);
 }
 
-static cvar_t* r201_texCache;
-static cvar_t* r201_texCacheMaxMB;
+static cvar_t* smp_texCache;
+static cvar_t* smp_texCacheMaxMB;
 
-#define R201_TEXCACHE_PROBE_MAX 512
-static void R201_TexCacheProbeRow(const char* imgName, const r201TexCacheResult_t* loadRes,
-								  const r201TexCacheResult_t* storeRes,
+#define SMP_TEXCACHE_PROBE_MAX 512
+static void SMP_TexCacheProbeRow(const char* imgName, const smpTexCacheResult_t* loadRes,
+								  const smpTexCacheResult_t* storeRes,
 								  int target, int base, int levels, int bytes)
 {
-	static char		s_seen[R201_TEXCACHE_PROBE_MAX][64];
+	static char		s_seen[SMP_TEXCACHE_PROBE_MAX][64];
 	static int		s_count;
 	static qboolean	s_notice;
 	const char*		load;
@@ -985,37 +985,37 @@ static void R201_TexCacheProbeRow(const char* imgName, const r201TexCacheResult_
 			return;
 		}
 	}
-	if (s_count >= R201_TEXCACHE_PROBE_MAX) {
+	if (s_count >= SMP_TEXCACHE_PROBE_MAX) {
 		if (!s_notice) {
 			s_notice = qtrue;
-			ri.Printf(PRINT_ALL, "[R201:texcache] rows capped at %d distinct images; the rest are not recorded\n",
-					  R201_TEXCACHE_PROBE_MAX);
+			ri.Printf(PRINT_ALL, "[SMP:texcache] rows capped at %d distinct images; the rest are not recorded\n",
+					  SMP_TEXCACHE_PROBE_MAX);
 		}
 		return;
 	}
 	Q_strncpyz(s_seen[s_count], imgName, sizeof(s_seen[0]));
 	s_count++;
 
-	load = (loadRes && loadRes->stat == R201_TEXCACHE_STAT_HIT) ? "hit"
-		 : (loadRes && loadRes->stat == R201_TEXCACHE_STAT_CORRUPT) ? "corrupt"
-		 : (loadRes && loadRes->stat == R201_TEXCACHE_STAT_MISS) ? "miss"
+	load = (loadRes && loadRes->stat == SMP_TEXCACHE_STAT_HIT) ? "hit"
+		 : (loadRes && loadRes->stat == SMP_TEXCACHE_STAT_CORRUPT) ? "corrupt"
+		 : (loadRes && loadRes->stat == SMP_TEXCACHE_STAT_MISS) ? "miss"
 															      : "disabled";
 	if (!storeRes) {
 		store = "n/a";
-	} else if (storeRes->stat == R201_TEXCACHE_STAT_STORED) {
+	} else if (storeRes->stat == SMP_TEXCACHE_STAT_STORED) {
 		store = "ok";
-	} else if (storeRes->stat == R201_TEXCACHE_STAT_SKIP) {
+	} else if (storeRes->stat == SMP_TEXCACHE_STAT_SKIP) {
 		store = "skip";
-	} else if (storeRes->stat == R201_TEXCACHE_STAT_WRITE_FAIL) {
+	} else if (storeRes->stat == SMP_TEXCACHE_STAT_WRITE_FAIL) {
 		store = "fail";
 	} else {
 		store = "off";
 	}
 
 	ri.Printf(PRINT_ALL,
-			  "[R201:texcache] path=%s name=%s target=%s base=%d levels=%d bytes=%d load=%s store=%s evicted=%d\n",
+			  "[SMP:texcache] path=%s name=%s target=%s base=%d levels=%d bytes=%d load=%s store=%s evicted=%d\n",
 			  loadRes ? loadRes->path : "-", imgName,
-			  (target == R201_TEXC_ASTC_4x4) ? "astc" : "etc2",
+			  (target == SMP_TEXC_ASTC_4x4) ? "astc" : "etc2",
 			  base, levels, bytes, load, store,
 			  (loadRes ? loadRes->evicted : 0) + (storeRes ? storeRes->evicted : 0));
 }
@@ -1038,15 +1038,15 @@ static void UploadTranscoded(
 	int	base, upW, upH, levels, lvl;
 	int	w, h, totalBytes, off;
 	byte*	blocksBuf = NULL;
-	r201TexCacheKey_t key;
-	r201TexCacheResult_t loadRes, storeRes;
+	smpTexCacheKey_t key;
+	smpTexCacheResult_t loadRes, storeRes;
 	unsigned int srcLo, srcHi;
 	int srcBytes;
 	int fromCache = 0;
 
-	R201_RLOAD_BEGIN( transcode );
+	SMP_RLOAD_BEGIN( transcode );
 
-	R201_InitCodecTables(); 
+	SMP_InitCodecTables(); 
 	memset(&loadRes, 0, sizeof(loadRes));
 	memset(&storeRes, 0, sizeof(storeRes));
 
@@ -1075,8 +1075,8 @@ static void UploadTranscoded(
 
 	*pUploadWidth = upW;
 	*pUploadHeight = upH;
-	*format = (srcDxt == R201_DXT1) ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
-			: (srcDxt == R201_DXT5) ? GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+	*format = (srcDxt == SMP_DXT1) ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+			: (srcDxt == SMP_DXT5) ? GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
 									: GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
 
 	levels = 1;
@@ -1090,18 +1090,18 @@ static void UploadTranscoded(
 		}
 	}
 
-	totalBytes = R201_TranscodeChainBytes(upW, upH, levels);
+	totalBytes = SMP_TranscodeChainBytes(upW, upH, levels);
 
-	R201_TexCache_SourceHash((const unsigned char*)data, width, height, iMipmapsAvailable,
+	SMP_TexCache_SourceHash((const unsigned char*)data, width, height, iMipmapsAvailable,
 							 srcDxt, &srcLo, &srcHi, &srcBytes);
-	R201_TexCache_FillKey(&key, name, width, height, numMipmaps, (int)picmip,
+	SMP_TexCache_FillKey(&key, name, width, height, numMipmaps, (int)picmip,
 						  glConfig.maxTextureSize, srcDxt, target,
 						  base, upW, upH, levels, srcLo, srcHi, srcBytes);
 
-	if (R201_TexCache_Enabled()) {
+	if (SMP_TexCache_Enabled()) {
 		int cachedBytes = 0;
 
-		if (R201_TexCache_Load(&key, &blocksBuf, &cachedBytes, ri.Malloc, ri.Free, &loadRes) &&
+		if (SMP_TexCache_Load(&key, &blocksBuf, &cachedBytes, ri.Malloc, ri.Free, &loadRes) &&
 			blocksBuf && cachedBytes == totalBytes) {
 			fromCache = 1;
 		} else if (blocksBuf) {
@@ -1112,12 +1112,12 @@ static void UploadTranscoded(
 
 	if (!fromCache) {
 		blocksBuf = ri.Malloc(totalBytes);
-		R201_TranscodeChain((const unsigned char*)data, srcDxt, width, height,
+		SMP_TranscodeChain((const unsigned char*)data, srcDxt, width, height,
 							iMipmapsAvailable, base, upW, upH, levels, target,
 							(unsigned char*)blocksBuf, ri.Malloc, ri.Free,
-							R201_TranscodeRunJobPool, NULL);
-		if (R201_TexCache_Enabled()) {
-			R201_TexCache_Store(&key, blocksBuf, totalBytes, &storeRes);
+							SMP_TranscodeRunJobPool, NULL);
+		if (SMP_TexCache_Enabled()) {
+			SMP_TexCache_Store(&key, blocksBuf, totalBytes, &storeRes);
 		}
 	}
 
@@ -1128,13 +1128,13 @@ static void UploadTranscoded(
 	for (lvl = 0; lvl < levels; lvl++) {
 		int bw = (w + 3) / 4;
 		int bh = (h + 3) / 4;
-		int size = bw * bh * R201_TEXC_BLOCK_BYTES;
+		int size = bw * bh * SMP_TEXC_BLOCK_BYTES;
 
 		qglCompressedTexImage2D(GL_TEXTURE_2D, lvl,
-								(target == R201_TEXC_ASTC_4x4) ? GL_COMPRESSED_RGBA_ASTC_4x4_KHR
+								(target == SMP_TEXC_ASTC_4x4) ? GL_COMPRESSED_RGBA_ASTC_4x4_KHR
 															   : GL_COMPRESSED_RGBA8_ETC2_EAC,
 								w, h, 0, size, blocksBuf + off);
-		R201_RecordUploadLevel(lvl, w, h);
+		SMP_RecordUploadLevel(lvl, w, h);
 		GL_CheckErrors();
 		*bytesUsed += size;
 		off += size;
@@ -1146,7 +1146,7 @@ static void UploadTranscoded(
 	ri.Free(blocksBuf);
 	blocksBuf = NULL;
 
-	R201_TexCacheProbeRow(name, &loadRes, fromCache ? NULL : &storeRes,
+	SMP_TexCacheProbeRow(name, &loadRes, fromCache ? NULL : &storeRes,
 						  target, base, levels, *bytesUsed);
 
 	if (numMipmaps) {
@@ -1165,7 +1165,7 @@ static void UploadTranscoded(
 
 	GL_CheckErrors();
 
-	R201_RLOAD_END( transcode );
+	SMP_RLOAD_END( transcode );
 }
 
 image_t* R_CreateImageOld(
@@ -1246,17 +1246,17 @@ image_t* R_CreateImageOld(
 		verifyProperTextureSize( name, image->width, image->height );
 	}
 
-	R201_RLOAD_BEGIN( upload );
+	SMP_RLOAD_BEGIN( upload );
 
-	int r204_imgT0 = R204_On() ? R204_Microseconds() : 0;
+	int be_imgT0 = BE_On() ? BE_Microseconds() : 0;
 
 	if (glCompressMode) {
 		if (glConfig.textureCompression != TC_NONE) {
-			s_r200PathKind = 1; 
-			s_r200PathFmt = glCompressMode;
-			s_r200PathSrcDxt = (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) ? R201_DXT1
-							 : (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT5_EXT) ? R201_DXT5
-																					 : R201_DXT3;
+			s_gles3PathKind = 1; 
+			s_gles3PathFmt = glCompressMode;
+			s_gles3PathSrcDxt = (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) ? SMP_DXT1
+							 : (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT5_EXT) ? SMP_DXT5
+																					 : SMP_DXT3;
 			UploadCompressed(
 				(byte*)pic,
 				image->width,
@@ -1270,14 +1270,14 @@ image_t* R_CreateImageOld(
 				&image->uploadHeight,
 				&image->bytesUsed
 			);
-		} else if (r201_texTranscode != R201_TEXC_NONE) {
-			s_r200PathKind = (r201_texTranscode == R201_TEXC_ASTC_4x4) ? 3 : 2;
-			s_r200PathFmt = (r201_texTranscode == R201_TEXC_ASTC_4x4)
+		} else if (smp_texTranscode != SMP_TEXC_NONE) {
+			s_gles3PathKind = (smp_texTranscode == SMP_TEXC_ASTC_4x4) ? 3 : 2;
+			s_gles3PathFmt = (smp_texTranscode == SMP_TEXC_ASTC_4x4)
 								? GL_COMPRESSED_RGBA_ASTC_4x4_KHR
 								: GL_COMPRESSED_RGBA8_ETC2_EAC;
-			s_r200PathSrcDxt = (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) ? R201_DXT1
-							 : (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT5_EXT) ? R201_DXT5
-																					 : R201_DXT3;
+			s_gles3PathSrcDxt = (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) ? SMP_DXT1
+							 : (glCompressMode == GL_COMPRESSED_RGBA_S3TC_DXT5_EXT) ? SMP_DXT5
+																					 : SMP_DXT3;
 			UploadTranscoded(
 				name,
 				(byte*)pic,
@@ -1286,8 +1286,8 @@ image_t* R_CreateImageOld(
 				image->numMipmaps,
 				iMipmapsAvailable,
 				allowPicmip,
-				s_r200PathSrcDxt,
-				r201_texTranscode,
+				s_gles3PathSrcDxt,
+				smp_texTranscode,
 				&image->internalFormat,
 				&image->uploadWidth,
 				&image->uploadHeight,
@@ -1298,8 +1298,8 @@ image_t* R_CreateImageOld(
 		}
 	}
 	else {
-		s_r200PathKind = 0; 
-		s_r201WantStats = ( strstr( name, "common/shadow" ) != NULL ) ? qtrue : qfalse;
+		s_gles3PathKind = 0; 
+		s_smpWantStats = ( strstr( name, "common/shadow" ) != NULL ) ? qtrue : qfalse;
 
 		Upload32(
 			(unsigned int*)pic,
@@ -1317,75 +1317,75 @@ image_t* R_CreateImageOld(
 			isLightmap
 		);
 
-		s_r201WantStats = qfalse;
+		s_smpWantStats = qfalse;
 	}
 
-	R201_RLOAD_END( upload );
+	SMP_RLOAD_END( upload );
 
-#define R201_IMGUP_MAX 512
+#define SMP_IMGUP_MAX 512
 	{
-		static char		*s_r201ImgupSeen[R201_IMGUP_MAX];
-		static int		 s_r201ImgupCount;
-		static qboolean	 s_r201ImgupNotice;
-		static const char *s_r200PathName[4] = { "software", "s3tc", "etc2", "astc" };
+		static char		*s_smpImgupSeen[SMP_IMGUP_MAX];
+		static int		 s_smpImgupCount;
+		static qboolean	 s_smpImgupNotice;
+		static const char *s_gles3PathName[4] = { "software", "s3tc", "etc2", "astc" };
 		GLenum			 err = qglGetError();
 		int				 iSeen;
 		qboolean		 seen = qfalse;
 		int				 rowFmt;
 
-		rowFmt = ( s_r200PathKind == 0 ) ? (int)R_ES3InternalFormat( s_r200UploadFormat )
-										 : s_r200PathFmt;
+		rowFmt = ( s_gles3PathKind == 0 ) ? (int)R_ES3InternalFormat( s_gles3UploadFormat )
+										 : s_gles3PathFmt;
 
-		for ( iSeen = 0; iSeen < s_r201ImgupCount; iSeen++ ) {
-			if ( !strcmp( s_r201ImgupSeen[iSeen], image->imgName ) ) {
+		for ( iSeen = 0; iSeen < s_smpImgupCount; iSeen++ ) {
+			if ( !strcmp( s_smpImgupSeen[iSeen], image->imgName ) ) {
 				seen = qtrue;
 				break;
 			}
 		}
 		if ( !seen ) {
-			if ( s_r201ImgupCount >= R201_IMGUP_MAX ) {
-				if ( !s_r201ImgupNotice ) {
-					s_r201ImgupNotice = qtrue;
+			if ( s_smpImgupCount >= SMP_IMGUP_MAX ) {
+				if ( !s_smpImgupNotice ) {
+					s_smpImgupNotice = qtrue;
 					ri.Printf( PRINT_ALL,
-						"[R200:imgup] NAME BUDGET reached (%d distinct images recorded); "
-						"further uploads are NOT recorded from here on\n", R201_IMGUP_MAX );
+						"[GLES3:imgup] NAME BUDGET reached (%d distinct images recorded); "
+						"further uploads are NOT recorded from here on\n", SMP_IMGUP_MAX );
 				}
 			} else {
-				s_r201ImgupSeen[s_r201ImgupCount] = ri.Malloc( (int)strlen( image->imgName ) + 1 );
-				strcpy( s_r201ImgupSeen[s_r201ImgupCount], image->imgName );
-				s_r201ImgupCount++;
+				s_smpImgupSeen[s_smpImgupCount] = ri.Malloc( (int)strlen( image->imgName ) + 1 );
+				strcpy( s_smpImgupSeen[s_smpImgupCount], image->imgName );
+				s_smpImgupCount++;
 
 				ri.Printf( PRINT_ALL,
-					"[R200:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
+					"[GLES3:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
 					"mips=%d bytes=%d lightmap=%d dynamic=%d err=0x%04x usec=%d\n",
 					image->imgName, image->uploadWidth, image->uploadHeight,
-					s_r200PathName[s_r200PathKind & 3], (unsigned)rowFmt,
-					( s_r200PathKind == 0 ) ? s_r200UploadSamples : 0,
-					( s_r200PathKind == 0 ) ? (unsigned)s_r200UploadFormat : 0u,
+					s_gles3PathName[s_gles3PathKind & 3], (unsigned)rowFmt,
+					( s_gles3PathKind == 0 ) ? s_gles3UploadSamples : 0,
+					( s_gles3PathKind == 0 ) ? (unsigned)s_gles3UploadFormat : 0u,
 					image->numMipmaps, image->bytesUsed, isLightmap ? 1 : 0,
 					image->dynamicallyUpdated ? 1 : 0, (unsigned)err,
-					r204_imgT0 ? ( R204_Microseconds() - r204_imgT0 ) : 0 );
+					be_imgT0 ? ( BE_Microseconds() - be_imgT0 ) : 0 );
 
-				if ( s_r200PathKind == 0 && strstr( image->imgName, "common/shadow" ) != NULL ) {
+				if ( s_gles3PathKind == 0 && strstr( image->imgName, "common/shadow" ) != NULL ) {
 					ri.Printf( PRINT_ALL,
-						"[R201:decalsrc] name=%s px=%d rgb=%lu,%lu,%lu mean=%.1f,%.1f,%.1f"
+						"[SMP:decalsrc] name=%s px=%d rgb=%lu,%lu,%lu mean=%.1f,%.1f,%.1f"
 						" nearwhite=%d (of %d; r,g,b all >= 200)"
 						" issuedLevels=%d lvl0..7=%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d\n",
-						image->imgName, s_r201UploadPixels,
-						s_r201UploadSum[0], s_r201UploadSum[1], s_r201UploadSum[2],
-						s_r201UploadPixels ? (double)s_r201UploadSum[0] / s_r201UploadPixels : 0.0,
-						s_r201UploadPixels ? (double)s_r201UploadSum[1] / s_r201UploadPixels : 0.0,
-						s_r201UploadPixels ? (double)s_r201UploadSum[2] / s_r201UploadPixels : 0.0,
-						s_r201UploadWhite, s_r201UploadPixels,
-						s_r201UploadLvlN,
-						s_r201UploadLvlW[0], s_r201UploadLvlH[0],
-						s_r201UploadLvlW[1], s_r201UploadLvlH[1],
-						s_r201UploadLvlW[2], s_r201UploadLvlH[2],
-						s_r201UploadLvlW[3], s_r201UploadLvlH[3],
-						s_r201UploadLvlW[4], s_r201UploadLvlH[4],
-						s_r201UploadLvlW[5], s_r201UploadLvlH[5],
-						s_r201UploadLvlW[6], s_r201UploadLvlH[6],
-						s_r201UploadLvlW[7], s_r201UploadLvlH[7] );
+						image->imgName, s_smpUploadPixels,
+						s_smpUploadSum[0], s_smpUploadSum[1], s_smpUploadSum[2],
+						s_smpUploadPixels ? (double)s_smpUploadSum[0] / s_smpUploadPixels : 0.0,
+						s_smpUploadPixels ? (double)s_smpUploadSum[1] / s_smpUploadPixels : 0.0,
+						s_smpUploadPixels ? (double)s_smpUploadSum[2] / s_smpUploadPixels : 0.0,
+						s_smpUploadWhite, s_smpUploadPixels,
+						s_smpUploadLvlN,
+						s_smpUploadLvlW[0], s_smpUploadLvlH[0],
+						s_smpUploadLvlW[1], s_smpUploadLvlH[1],
+						s_smpUploadLvlW[2], s_smpUploadLvlH[2],
+						s_smpUploadLvlW[3], s_smpUploadLvlH[3],
+						s_smpUploadLvlW[4], s_smpUploadLvlH[4],
+						s_smpUploadLvlW[5], s_smpUploadLvlH[5],
+						s_smpUploadLvlW[6], s_smpUploadLvlH[6],
+						s_smpUploadLvlW[7], s_smpUploadLvlH[7] );
 				}
 			}
 		}
@@ -1630,7 +1630,7 @@ static void R_DecompressDXTRows(void *vctx, int begin, int end)
             const byte *block = c->src + (by * bw + bx) * blockBytes;
             byte        rgba[16 * 4];
 
-            R201_DXTDecodeBlock(c->dxt, block, rgba);
+            SMP_DXTDecodeBlock(c->dxt, block, rgba);
 
             for (i = 0; i < 16; i++) {
                 int   px = bx * 4 + (i & 3);
@@ -1778,7 +1778,7 @@ static void LoadDDS(const char* name, byte** pic, int* width, int* height, qbool
 		int   baseSize   = ((minWidth + 3) / 4) * ((minHeight + 3) / 4) * blockBytes;
 
 		if (glConfig.textureCompression != TC_NONE ||
-			r201_texTranscode != R201_TEXC_NONE) {
+			smp_texTranscode != SMP_TEXC_NONE) {
 			{
 				int	lw = minWidth, lh = minHeight, lvl, total = 0;
 
@@ -2062,7 +2062,7 @@ static void R_LoadImage(const char* name, byte** pic, int* width, int* height, q
 		return;
 	}
 
-	R201_RLOAD_BEGIN( decode );
+	SMP_RLOAD_BEGIN( decode );
 
 	strcpy(altname, name);
 	len = strlen(altname);
@@ -2091,7 +2091,7 @@ static void R_LoadImage(const char* name, byte** pic, int* width, int* height, q
 		ri.UI_LoadResource(tempName);
 	}
 
-	R201_RLOAD_END( decode );
+	SMP_RLOAD_END( decode );
 }
 
 
@@ -2133,13 +2133,13 @@ image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPic
 		}
 	}
 
-	R201_RLOAD_BEGIN( findimg );
+	SMP_RLOAD_BEGIN( findimg );
 
 	numMipmaps = mipmap;
 	iMipmapsAvailable = 0;
 	R_LoadImage(name, &pic, &width, &height, &hasAlpha, &glCompressMode, &numMipmaps, &iMipmapsAvailable);
 	if (pic == NULL) {
-		R201_RLOAD_END( findimg );
+		SMP_RLOAD_END( findimg );
 		return NULL;
 	}
 
@@ -2162,7 +2162,7 @@ image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPic
     }
 
 	ri.Free(pic);
-	R201_RLOAD_END( findimg );
+	SMP_RLOAD_END( findimg );
 	return image;
 }
 
@@ -2408,31 +2408,31 @@ void R_SetColorMappings( void ) {
 }
 
 void	R_InitImages( void ) {
-	R201_RLOAD_BEGIN( imginit );
+	SMP_RLOAD_BEGIN( imginit );
 
 	Com_Memset(hashTable, 0, sizeof(hashTable));
 	Com_Memset(tr.images, 0, sizeof(tr.images));
 	tr.numImages = 0;
 
-	r201_texCache = ri.Cvar_Get("r201_texCache", "1", CVAR_ARCHIVE);
-	r201_texCacheMaxMB = ri.Cvar_Get("r201_texCacheMaxMB", "96", CVAR_ARCHIVE);
+	smp_texCache = ri.Cvar_Get("smp_texCache", "1", CVAR_ARCHIVE);
+	smp_texCacheMaxMB = ri.Cvar_Get("smp_texCacheMaxMB", "96", CVAR_ARCHIVE);
 	{
-		int mb = r201_texCacheMaxMB->integer;
+		int mb = smp_texCacheMaxMB->integer;
 
 		if (mb < 1) {
-			mb = R201_TEXCACHE_DEFAULT_MAX_MB;
+			mb = SMP_TEXCACHE_DEFAULT_MAX_MB;
 		}
 		if (mb > 2048) {
 			mb = 2048;
 		}
-		R201_TexCache_InitEngine(r201_texCache->integer ? 1 : 0, mb * 1024 * 1024);
+		SMP_TexCache_InitEngine(smp_texCache->integer ? 1 : 0, mb * 1024 * 1024);
 	}
 
 	R_SetColorMappings();
 
 	R_CreateBuiltinImages();
 
-	R201_RLOAD_END( imginit );
+	SMP_RLOAD_END( imginit );
 }
 
 void R_DeleteImageFromHash(image_t* image) {

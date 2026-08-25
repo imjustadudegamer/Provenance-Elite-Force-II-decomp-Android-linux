@@ -1,5 +1,5 @@
-#ifndef R200_GLES3_G1_CPP_API_H
-#define R200_GLES3_G1_CPP_API_H
+#ifndef GLES3_GLES3_G1_CPP_API_H
+#define GLES3_GLES3_G1_CPP_API_H
 
 #include "tr_vbo.h"
 

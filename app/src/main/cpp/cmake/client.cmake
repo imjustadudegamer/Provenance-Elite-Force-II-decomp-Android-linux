@@ -55,7 +55,7 @@ list(APPEND CLIENT_SOURCES
 	${SOURCE_DIR}/gamespy/cl_gamespy.c
 )
 
-# r133-mt (docs/r133-mt_design.md T2/T3): the client module owns its own
+# uivk-mt (docs/uivk-mt_design.md T2/T3): the client module owns its own
 # private job-pool instance (the sound feed and the IO workstream are its consumers).
 # It is deliberately NOT in COMMON_SOURCES: the dedicated server does not link
 # SDL2 and must not grow a threading dependency it never asked for.
@@ -95,7 +95,7 @@ list(APPEND CLIENT_BINARY_SOURCES
     ${CLIENT_LIBRARY_SOURCES})
 
 if(EF2_ANDROID_CLIENT_LIBRARY)
-    # THE DEVICE TARGET (r133-android, cmake/platforms/android.cmake): the engine
+    # THE DEVICE TARGET (uivk-android, cmake/platforms/android.cmake): the engine
     # ships as libmain.so, which SDLActivity loads and calls SDL_main() on -- the
     # EF1 shipping pattern ("Rename sys_main.c's main() to SDL_main so
     # SDLActivity's bootstrap calls it", EF1 app/jni/src/CMakeLists.txt).  The

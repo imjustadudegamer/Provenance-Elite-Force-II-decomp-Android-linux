@@ -358,86 +358,86 @@ static void GLES3_CacheUniforms( gles3Program_t *p )
 
 static void GLES3_SetUniform4fvN( gles3Program_t *p, gles3Uniform_t u, const float *v, int count );
 
-static int	s_r207Rows;			
-static int	s_r207StopLine;
+static int	s_progcacheRows;			
+static int	s_progcacheStopLine;
 
-typedef char r207_gl_enums_agree[
-	( GL_LINK_STATUS == R207_GL_LINK_STATUS
-	  && GL_PROGRAM_BINARY_LENGTH == R207_GL_PROGRAM_BINARY_LENGTH
-	  && GL_PROGRAM_BINARY_RETRIEVABLE_HINT == R207_GL_PROGRAM_BINARY_RETRIEVABLE_HINT
-	  && GL_ACTIVE_ATTRIBUTES == R207_GL_ACTIVE_ATTRIBUTES
-	  && GL_ACTIVE_UNIFORMS == R207_GL_ACTIVE_UNIFORMS
-	  && GL_NUM_PROGRAM_BINARY_FORMATS == R207_GL_NUM_PROGRAM_BINARY_FORMATS ) ? 1 : -1 ];
+typedef char progcache_gl_enums_agree[
+	( GL_LINK_STATUS == PROGCACHE_GL_LINK_STATUS
+	  && GL_PROGRAM_BINARY_LENGTH == PROGCACHE_GL_PROGRAM_BINARY_LENGTH
+	  && GL_PROGRAM_BINARY_RETRIEVABLE_HINT == PROGCACHE_GL_PROGRAM_BINARY_RETRIEVABLE_HINT
+	  && GL_ACTIVE_ATTRIBUTES == PROGCACHE_GL_ACTIVE_ATTRIBUTES
+	  && GL_ACTIVE_UNIFORMS == PROGCACHE_GL_ACTIVE_UNIFORMS
+	  && GL_NUM_PROGRAM_BINARY_FORMATS == PROGCACHE_GL_NUM_PROGRAM_BINARY_FORMATS ) ? 1 : -1 ];
 
 static unsigned GLES3_ProgCacheSourceHash( void )
 {
-	unsigned	h = R207_ProgCache_HashSeed();
+	unsigned	h = PROGCACHE_ProgCache_HashSeed();
 	int			i;
 
 	for ( i = 0; i < GLES3_NUM_GLSL_SOURCES; i++ )
 	{
-		h = R207_ProgCache_FoldStr( h, gles3GlslSources[i].name );
-		h = R207_ProgCache_FoldStr( h, gles3GlslSources[i].src );
+		h = PROGCACHE_ProgCache_FoldStr( h, gles3GlslSources[i].name );
+		h = PROGCACHE_ProgCache_FoldStr( h, gles3GlslSources[i].src );
 	}
 	return h;
 }
 
 static unsigned GLES3_ProgCacheDefinesHash( void )
 {
-	unsigned	h = R207_ProgCache_HashSeed();
+	unsigned	h = PROGCACHE_ProgCache_HashSeed();
 	int			i, n = (int)( sizeof( s_glpNames ) / sizeof( s_glpNames[0] ) );
 
 	for ( i = 0; i < n; i++ )
 	{
-		h = R207_ProgCache_Fold( h, &s_glpNames[i].bit, (int)sizeof( s_glpNames[i].bit ) );
-		h = R207_ProgCache_FoldStr( h, s_glpNames[i].name );
+		h = PROGCACHE_ProgCache_Fold( h, &s_glpNames[i].bit, (int)sizeof( s_glpNames[i].bit ) );
+		h = PROGCACHE_ProgCache_FoldStr( h, s_glpNames[i].name );
 	}
 	return h;
 }
 
 static void GLES3_ProgCacheRow( const char *why )
 {
-	r207ProgCacheStats_t	st;
+	progcacheProgCacheStats_t	st;
 	char					body[384];
 
-	if ( !R207_ProgCache_On() )
+	if ( !PROGCACHE_ProgCache_On() )
 	{
 		return;
 	}
-	if ( s_r207Rows >= R207_PROGCACHE_MAX_ROWS )
+	if ( s_progcacheRows >= PROGCACHE_PROGCACHE_MAX_ROWS )
 	{
-		if ( !s_r207StopLine )
+		if ( !s_progcacheStopLine )
 		{
-			s_r207StopLine = 1;
-			ri.Printf( PRINT_ALL, "[R207:pc] capped at %d rows; no further lines\n",
-					   R207_PROGCACHE_MAX_ROWS );
+			s_progcacheStopLine = 1;
+			ri.Printf( PRINT_ALL, "[PROGCACHE:pc] capped at %d rows; no further lines\n",
+					   PROGCACHE_PROGCACHE_MAX_ROWS );
 		}
 		return;
 	}
-	R207_ProgCache_Stats( &st );
-	R207_ProgCache_Format( &st, body, (int)sizeof( body ) );
-	ri.Printf( PRINT_ALL, "[R207:pc] %s %s late=%d\n",
+	PROGCACHE_ProgCache_Stats( &st );
+	PROGCACHE_ProgCache_Format( &st, body, (int)sizeof( body ) );
+	ri.Printf( PRINT_ALL, "[PROGCACHE:pc] %s %s late=%d\n",
 			   why, body, gles3ProgramsCreatedAfterReg );
-	s_r207Rows++;
+	s_progcacheRows++;
 }
 
 static void GLES3_ProgCacheInitRow( void )
 {
-	r207ProgCacheStats_t	st;
+	progcacheProgCacheStats_t	st;
 	char					body[384];
 	cvar_t					*home;
 
-	if ( !R207_ProgCache_On() || s_r207Rows >= R207_PROGCACHE_MAX_ROWS )
+	if ( !PROGCACHE_ProgCache_On() || s_progcacheRows >= PROGCACHE_PROGCACHE_MAX_ROWS )
 	{
 		return;
 	}
 	home = ri.Cvar_Get( "fs_homedatapath", "", 0 );
-	R207_ProgCache_Stats( &st );
-	R207_ProgCache_Format( &st, body, (int)sizeof( body ) );
-	ri.Printf( PRINT_ALL, "[R207:pc] init %s file=%s home=%s\n",
-			   body, R207_PROGCACHE_FILE,
+	PROGCACHE_ProgCache_Stats( &st );
+	PROGCACHE_ProgCache_Format( &st, body, (int)sizeof( body ) );
+	ri.Printf( PRINT_ALL, "[PROGCACHE:pc] init %s file=%s home=%s\n",
+			   body, PROGCACHE_PROGCACHE_FILE,
 			   ( home && home->string[0] ) ? home->string : "(unset)" );
-	s_r207Rows++;
+	s_progcacheRows++;
 }
 
 static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned defines )
@@ -463,9 +463,9 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 	Q_strncpyz( p->name, def->name, sizeof( p->name ) );
 	p->defines = defines;
 
-	R204_RootBegin( R204_FAM_PROG );
+	BE_RootBegin( BE_FAM_PROG );
 
-	/* r201-mcore (H6): the creation census.  After RE_EndRegistration this must
+	/* smp-mcore (H6): the creation census.  After RE_EndRegistration this must
 	 * stay 0; a non-zero count is a program the pre-build enumeration missed and
 	 * therefore a draw-path compile -- the exact concurrent-compile hazard. */
 	gles3ProgramsCreated++;
@@ -476,7 +476,7 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 		{
 			s_progCreateProbeRows++;
 			ri.Printf( PRINT_WARNING,
-					   "[R201:progcreate] %s defines=0x%06x compiled AFTER RE_EndRegistration (#%d)\n",
+					   "[SMP:progcreate] %s defines=0x%06x compiled AFTER RE_EndRegistration (#%d)\n",
 					   def->name, defines, gles3ProgramsCreatedAfterReg );
 		}
 	}
@@ -484,11 +484,11 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 	vsSource = GLES3_BuildSource( GLES3_GlslSource( def->vsName ), defines );
 	fsSource = GLES3_BuildSource( GLES3_GlslSource( def->fsName ), defines );
 
-	vsHash = R207_ProgCache_Hash( vsSource, (int)strlen( vsSource ) );
-	fsHash = R207_ProgCache_Hash( fsSource, (int)strlen( fsSource ) );
+	vsHash = PROGCACHE_ProgCache_Hash( vsSource, (int)strlen( vsSource ) );
+	fsHash = PROGCACHE_ProgCache_Hash( fsSource, (int)strlen( fsSource ) );
 
-	fromCache = ( R207_ProgCache_On()
-				  && R207_ProgCache_TryRestore( def->name, defines, vsHash, fsHash,
+	fromCache = ( PROGCACHE_ProgCache_On()
+				  && PROGCACHE_ProgCache_TryRestore( def->name, defines, vsHash, fsHash,
 												&restored, &savedUsec, &restoreUsec ) )
 				? qtrue : qfalse;
 
@@ -499,16 +499,16 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 	else
 	{
 
-		buildT0 = R207_ProgCache_Now();
+		buildT0 = PROGCACHE_ProgCache_Now();
 
-		R204_ZONE( R204_FAM_PROG, R204_PZ_compile, {
+		BE_ZONE( BE_FAM_PROG, BE_PZ_compile, {
 			vs = GLES3_CompileShader( GL_VERTEX_SHADER, vsSource,
 									  va( "%s.vs defines=0x%06x", def->name, defines ) );
 			fs = GLES3_CompileShader( GL_FRAGMENT_SHADER, fsSource,
 									  va( "%s.fs defines=0x%06x", def->name, defines ) );
 		} );
 
-		R204_ZONE( R204_FAM_PROG, R204_PZ_link, {
+		BE_ZONE( BE_FAM_PROG, BE_PZ_link, {
 			p->program = qglCreateProgram();
 			qglAttachShader( p->program, vs );
 			qglAttachShader( p->program, fs );
@@ -519,7 +519,7 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 			qglBindAttribLocation( p->program, ATTR_TEXCOORD0, "a_TexCoord0" );
 			qglBindAttribLocation( p->program, ATTR_TEXCOORD1, "a_TexCoord1" );
 
-			R207_ProgCache_HintLink( p->program );
+			PROGCACHE_ProgCache_HintLink( p->program );
 
 			qglLinkProgram( p->program );
 		} );
@@ -533,16 +533,16 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 			return NULL;
 		}
 
-		if ( R207_ProgCache_On() )
+		if ( PROGCACHE_ProgCache_On() )
 		{
-			int		buildNow = R207_ProgCache_Now();
+			int		buildNow = PROGCACHE_ProgCache_Now();
 			int		buildUsec = buildNow - buildT0;
 
 			if ( buildUsec < 0 )
 			{
 				buildUsec = 0;
 			}
-			R207_ProgCache_NoteCompiled( def->name, defines, vsHash, fsHash,
+			PROGCACHE_ProgCache_NoteCompiled( def->name, defines, vsHash, fsHash,
 										 p->program, (unsigned)buildUsec );
 		}
 
@@ -563,12 +563,12 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 	GLES3_SetUniform1i( p, GLES3_U_TEX1, 1 );
 	GLES3_SetUniform1i( p, GLES3_U_WAVETABLE, GLES3_WAVETABLE_UNIT );
 
-	R204_Bump( R204_FAM_PROG, R204_PC_made, 1 );
+	BE_Bump( BE_FAM_PROG, BE_PC_made, 1 );
 	if ( !fromCache )
 	{
-		R204_Name( R204_FAM_PROG, def->name, R204_RootUsec( R204_FAM_PROG ) );
+		BE_Name( BE_FAM_PROG, def->name, BE_RootUsec( BE_FAM_PROG ) );
 	}
-	R204_RootEnd( R204_FAM_PROG );
+	BE_RootEnd( BE_FAM_PROG );
 
 	gles3NumPrograms++;
 	return p;
@@ -586,13 +586,13 @@ void GLES3_ProgramsInit( void )
 	GLES3_CreateWaveTable();
 
 	{
-		r207ProgCacheKey_t	key;
+		progcacheProgCacheKey_t	key;
 		const char			*ver, *ren, *vend;
 		int					mode = ri.Cvar_Get( "r_progCache", "1", CVAR_ARCHIVE )->integer;
 
-		R207_ProgCache_InitEngine( mode );
+		PROGCACHE_ProgCache_InitEngine( mode );
 
-		if ( R207_ProgCache_On() )
+		if ( PROGCACHE_ProgCache_On() )
 		{
 			ver  = (const char *)qglGetString( GL_VERSION );
 			ren  = (const char *)qglGetString( GL_RENDERER );
@@ -606,7 +606,7 @@ void GLES3_ProgramsInit( void )
 			key.sourceHash  = GLES3_ProgCacheSourceHash();
 			key.definesHash = GLES3_ProgCacheDefinesHash();
 
-			R207_ProgCache_Load( &key );
+			PROGCACHE_ProgCache_Load( &key );
 			GLES3_ProgCacheInitRow();
 		}
 	}
@@ -618,9 +618,9 @@ void GLES3_ProgramsShutdown( void )
 {
 	int i;
 
-	if ( R207_ProgCache_On() && gles3ProgramsCreatedAfterReg > 0 )
+	if ( PROGCACHE_ProgCache_On() && gles3ProgramsCreatedAfterReg > 0 )
 	{
-		R207_ProgCache_Save();
+		PROGCACHE_ProgCache_Save();
 		GLES3_ProgCacheRow( "shutdown" );
 	}
 
@@ -635,7 +635,7 @@ void GLES3_ProgramsShutdown( void )
 	Com_Memset( gles3Programs, 0, sizeof( gles3Programs ) );
 	glState.currentProgram = 0;
 	GLES3_DestroyWaveTable();
-	R207_ProgCache_Shutdown();
+	PROGCACHE_ProgCache_Shutdown();
 	s_programsInitialised = qfalse;
 	gles3ProgramsCreated = 0;
 	gles3ProgramsCreatedAfterReg = 0;
@@ -685,9 +685,9 @@ void GLES3_PrebuildPrograms( void )
 		}
 	}
 
-	if ( R207_ProgCache_On() )
+	if ( PROGCACHE_ProgCache_On() )
 	{
-		R207_ProgCache_Save();
+		PROGCACHE_ProgCache_Save();
 		GLES3_ProgCacheRow( "sweep" );
 	}
 }
@@ -967,7 +967,7 @@ void GLES3_SetUniform1i( gles3Program_t *p, gles3Uniform_t u, int v )
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniform1i( p->uniforms[u], v );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -976,7 +976,7 @@ void GLES3_SetUniform1f( gles3Program_t *p, gles3Uniform_t u, float v )
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniform1f( p->uniforms[u], v );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -985,7 +985,7 @@ void GLES3_SetUniform2f( gles3Program_t *p, gles3Uniform_t u, float x, float y )
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniform2f( p->uniforms[u], x, y );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -994,7 +994,7 @@ void GLES3_SetUniform3f( gles3Program_t *p, gles3Uniform_t u, float x, float y, 
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniform3f( p->uniforms[u], x, y, z );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -1003,7 +1003,7 @@ void GLES3_SetUniform4f( gles3Program_t *p, gles3Uniform_t u, float x, float y, 
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniform4f( p->uniforms[u], x, y, z, w );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -1012,7 +1012,7 @@ void GLES3_SetUniformMat4( gles3Program_t *p, gles3Uniform_t u, const float *m )
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniformMatrix4fv( p->uniforms[u], 1, GL_FALSE, m );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -1021,7 +1021,7 @@ void GLES3_SetUniform3fv( gles3Program_t *p, gles3Uniform_t u, const float *v )
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniform3fv( p->uniforms[u], 1, v );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -1030,7 +1030,7 @@ void GLES3_SetUniform4fv( gles3Program_t *p, gles3Uniform_t u, const float *v )
 	if ( p && p->uniforms[u] != -1 )
 	{
 		qglUniform4fv( p->uniforms[u], 1, v );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -1039,7 +1039,7 @@ static void GLES3_SetUniform4fvN( gles3Program_t *p, gles3Uniform_t u, const flo
 	if ( p && p->uniforms[u] != -1 && count > 0 )
 	{
 		qglUniform4fv( p->uniforms[u], count, v );
-		R204_Bump( R204_FAM_DS, R204_DSC_unifs, 1 );
+		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
 	}
 }
 
@@ -1135,7 +1135,7 @@ void GLES3_BindProgram( gles3Program_t *p )
 		{
 			qglUseProgram( p->program );
 			glState.currentProgram = p->program;
-			R204_Bump( R204_FAM_DS, R204_DSC_binds, 1 );
+			BE_Bump( BE_FAM_DS, BE_DSC_binds, 1 );
 		}
 	}
 }
@@ -1580,11 +1580,11 @@ void GLES3_SetupFogUniforms( gles3Program_t *p, int fogNum, qboolean fogDensityA
 	GLES3_SetUniform1i( p, GLES3_U_FOGDENSITYARM, densityArm );
 }
 
-#define R200_CENSUS_MAXKEYS      2048	
-#define R200_CENSUS_KEYLEN       320	
-#define R200_CENSUS_NEW_PER_FRAME 16	
-#define R200_CENSUS_SUMMARY_FRAMES 300	
-#define R200_CENSUS_HASHSIZE     8192	
+#define GLES3_CENSUS_MAXKEYS      2048	
+#define GLES3_CENSUS_KEYLEN       320	
+#define GLES3_CENSUS_NEW_PER_FRAME 16	
+#define GLES3_CENSUS_SUMMARY_FRAMES 300	
+#define GLES3_CENSUS_HASHSIZE     8192	
 
 typedef struct {
 	const char	*shader;
@@ -1600,9 +1600,9 @@ typedef struct {
 	int			 cpuColor;
 	int			 cpuTexCoords;
 	unsigned	 vc0;
-} r200DrawKey_t;
+} gles3DrawKey_t;
 
-static void R200_FormatDrawKey( char *out, int outLen, const r200DrawKey_t *k ) {
+static void GLES3_FormatDrawKey( char *out, int outLen, const gles3DrawKey_t *k ) {
 	Com_sprintf( out, outLen,
 		"shader=%s prog=%s def=0x%06x img0=%s img1=%s rgb=%d alpha=%d tc=%d/%d state=0x%08x cpuC=%d cpuTC=%d vc0=%08x",
 		k->shader, k->prog, k->defines, k->img0, k->img1,
@@ -1610,7 +1610,7 @@ static void R200_FormatDrawKey( char *out, int outLen, const r200DrawKey_t *k ) 
 		k->stateBits, k->cpuColor, k->cpuTexCoords, k->vc0 );
 }
 
-static unsigned R200_CensusHashKey( const r200DrawKey_t *k ) {
+static unsigned GLES3_CensusHashKey( const gles3DrawKey_t *k ) {
 	unsigned	h = 2166136261u;
 	int			i;
 	const char	*parts[4];
@@ -1644,7 +1644,7 @@ static unsigned R200_CensusHashKey( const r200DrawKey_t *k ) {
 	return h;
 }
 
-static qboolean R200_CensusKeyEqual( const r200DrawKey_t *a, const r200DrawKey_t *b ) {
+static qboolean GLES3_CensusKeyEqual( const gles3DrawKey_t *a, const gles3DrawKey_t *b ) {
 	return ( a->defines == b->defines && a->stateBits == b->stateBits
 		  && a->vc0 == b->vc0 && a->rgbGen == b->rgbGen && a->alphaGen == b->alphaGen
 		  && a->tcGen0 == b->tcGen0 && a->tcGen1 == b->tcGen1
@@ -1656,11 +1656,11 @@ static qboolean R200_CensusKeyEqual( const r200DrawKey_t *a, const r200DrawKey_t
 typedef struct {
 	char		*key;			
 	unsigned	count;
-	r200DrawKey_t k;		
-} r200CensusKey_t;
+	gles3DrawKey_t k;		
+} gles3CensusKey_t;
 
 typedef struct {
-	r200CensusKey_t	*keys;			
+	gles3CensusKey_t	*keys;			
 	int				*hash;			
 	int				 numKeys;
 	int				 printedThisFrame;
@@ -1671,18 +1671,18 @@ typedef struct {
 	unsigned		 capacityDropped;	
 	unsigned		 truncatedKeys;
 	qboolean		 noticeDone;
-} r200Census_t;
+} gles3Census_t;
 
-static r200Census_t	s_r200Census3D;
-static r200Census_t	s_r200Census2D;
+static gles3Census_t	s_gles3Census3D;
+static gles3Census_t	s_gles3Census2D;
 
-static void R200_CensusInit( r200Census_t *c ) {
+static void GLES3_CensusInit( gles3Census_t *c ) {
 	if ( c->keys ) {
 		return;
 	}
-	c->keys = (r200CensusKey_t *)ri.Malloc( sizeof( r200CensusKey_t ) * R200_CENSUS_MAXKEYS );
-	c->hash = (int *)ri.Malloc( sizeof( int ) * R200_CENSUS_HASHSIZE );
-	Com_Memset( c->hash, 0, sizeof( int ) * R200_CENSUS_HASHSIZE );
+	c->keys = (gles3CensusKey_t *)ri.Malloc( sizeof( gles3CensusKey_t ) * GLES3_CENSUS_MAXKEYS );
+	c->hash = (int *)ri.Malloc( sizeof( int ) * GLES3_CENSUS_HASHSIZE );
+	Com_Memset( c->hash, 0, sizeof( int ) * GLES3_CENSUS_HASHSIZE );
 	c->numKeys = 0;
 	c->printedThisFrame = 0;
 	c->lastFrame = -1;
@@ -1694,7 +1694,7 @@ static void R200_CensusInit( r200Census_t *c ) {
 	c->noticeDone = qfalse;
 }
 
-static const char *R200_CensusShaderName( const char *key ) {
+static const char *GLES3_CensusShaderName( const char *key ) {
 	static char	name[80];
 	const char	*p = key;
 	int			n = 0;
@@ -1710,7 +1710,7 @@ static const char *R200_CensusShaderName( const char *key ) {
 	return name;
 }
 
-static void R200_CensusSummary( r200Census_t *c, qboolean in2D ) {
+static void GLES3_CensusSummary( gles3Census_t *c, qboolean in2D ) {
 	char		 top[10][80];	
 	unsigned	 topCount[10];
 	int			 i, k;
@@ -1728,7 +1728,7 @@ static void R200_CensusSummary( r200Census_t *c, qboolean in2D ) {
 					Q_strncpyz( top[j], top[j - 1], sizeof( top[j] ) );
 					topCount[j] = topCount[j - 1];
 				}
-				Q_strncpyz( top[k], R200_CensusShaderName( c->keys[i].key ), sizeof( top[k] ) );
+				Q_strncpyz( top[k], GLES3_CensusShaderName( c->keys[i].key ), sizeof( top[k] ) );
 				topCount[k] = v;
 				break;
 			}
@@ -1736,27 +1736,27 @@ static void R200_CensusSummary( r200Census_t *c, qboolean in2D ) {
 	}
 
 	ri.Printf( PRINT_ALL,
-		"[R200:drawsum] %s frame=%d distinct=%d total=%u budgetSuppressed=%u "
+		"[GLES3:drawsum] %s frame=%d distinct=%d total=%u budgetSuppressed=%u "
 		"capacityDropped=%u truncatedKeys=%u\n",
 		in2D ? "2D" : "3D", tr.frameCount, c->numKeys, c->totalDraws,
 		c->budgetSuppressed, c->capacityDropped, c->truncatedKeys );
 	ri.Printf( PRINT_ALL,
-		"[R200:drawsum] %s top:", in2D ? "2D" : "3D" );
+		"[GLES3:drawsum] %s top:", in2D ? "2D" : "3D" );
 	for ( k = 0; k < 10 && top[k][0]; k++ ) {
 		ri.Printf( PRINT_ALL, " %s=%u", top[k], topCount[k] );
 	}
 	ri.Printf( PRINT_ALL, "\n" );
 }
 
-static void R200_DrawCensusKey( const r200DrawKey_t *k, qboolean in2D ) {
-	r200Census_t	*c = in2D ? &s_r200Census2D : &s_r200Census3D;
-	char			 keyBuf[R200_CENSUS_KEYLEN + 64];
+static void GLES3_DrawCensusKey( const gles3DrawKey_t *k, qboolean in2D ) {
+	gles3Census_t	*c = in2D ? &s_gles3Census2D : &s_gles3Census3D;
+	char			 keyBuf[GLES3_CENSUS_KEYLEN + 64];
 	const char		*key = NULL;
 	unsigned		 h;
 	int				 slot;
 	int				 idx;
 
-	R200_CensusInit( c );
+	GLES3_CensusInit( c );
 
 	if ( c->lastFrame != tr.frameCount ) {
 		c->lastFrame = tr.frameCount;
@@ -1765,39 +1765,39 @@ static void R200_DrawCensusKey( const r200DrawKey_t *k, qboolean in2D ) {
 
 	c->totalDraws++;
 
-	h = R200_CensusHashKey( k );
-	slot = (int)( h & ( R200_CENSUS_HASHSIZE - 1 ) );
+	h = GLES3_CensusHashKey( k );
+	slot = (int)( h & ( GLES3_CENSUS_HASHSIZE - 1 ) );
 	while ( c->hash[slot] ) {
 		idx = c->hash[slot] - 1;
-		if ( R200_CensusKeyEqual( &c->keys[idx].k, k ) ) {
+		if ( GLES3_CensusKeyEqual( &c->keys[idx].k, k ) ) {
 			c->keys[idx].count++;			
 			goto summary;
 		}
-		slot = ( slot + 1 ) & ( R200_CENSUS_HASHSIZE - 1 );
+		slot = ( slot + 1 ) & ( GLES3_CENSUS_HASHSIZE - 1 );
 	}
 
-	R200_FormatDrawKey( keyBuf, (int)sizeof( keyBuf ), k );
+	GLES3_FormatDrawKey( keyBuf, (int)sizeof( keyBuf ), k );
 	key = keyBuf;
 
-	if ( c->numKeys >= R200_CENSUS_MAXKEYS ) {
+	if ( c->numKeys >= GLES3_CENSUS_MAXKEYS ) {
 		c->capacityDropped++;
 		if ( !c->noticeDone ) {
 			c->noticeDone = qtrue;
 			ri.Printf( PRINT_ALL,
-				"[R200:draw%s] KEY CAPACITY reached: %d distinct keys recorded; "
+				"[GLES3:draw%s] KEY CAPACITY reached: %d distinct keys recorded; "
 				"further NEW keys are counted but NOT recorded (dropped=%u so far). "
-				"Rows already printed remain valid; [R200:drawsum] keeps counting.\n",
-				in2D ? "2d" : "", R200_CENSUS_MAXKEYS, c->capacityDropped );
+				"Rows already printed remain valid; [GLES3:drawsum] keeps counting.\n",
+				in2D ? "2d" : "", GLES3_CENSUS_MAXKEYS, c->capacityDropped );
 		}
 		goto summary;
 	}
 
 	{
 		int		 len = (int)strlen( key );
-		qboolean trunc = ( len >= R200_CENSUS_KEYLEN ) ? qtrue : qfalse;
+		qboolean trunc = ( len >= GLES3_CENSUS_KEYLEN ) ? qtrue : qfalse;
 
 		if ( trunc ) {
-			len = R200_CENSUS_KEYLEN - 1;
+			len = GLES3_CENSUS_KEYLEN - 1;
 			c->truncatedKeys++;
 		}
 		idx = c->numKeys++;
@@ -1809,9 +1809,9 @@ static void R200_DrawCensusKey( const r200DrawKey_t *k, qboolean in2D ) {
 		c->hash[slot] = idx + 1;
 	}
 
-	if ( c->printedThisFrame < R200_CENSUS_NEW_PER_FRAME ) {
+	if ( c->printedThisFrame < GLES3_CENSUS_NEW_PER_FRAME ) {
 		c->printedThisFrame++;
-		ri.Printf( PRINT_ALL, "[R200:draw%s] n=%u %s\n",
+		ri.Printf( PRINT_ALL, "[GLES3:draw%s] n=%u %s\n",
 				   in2D ? "2d" : "", c->keys[c->numKeys - 1].count, key );
 	} else {
 		c->budgetSuppressed++;
@@ -1820,14 +1820,14 @@ static void R200_DrawCensusKey( const r200DrawKey_t *k, qboolean in2D ) {
 summary:
 	if ( c->lastSummaryFrame < 0 ) {
 		c->lastSummaryFrame = tr.frameCount;
-	} else if ( tr.frameCount - c->lastSummaryFrame >= R200_CENSUS_SUMMARY_FRAMES ) {
+	} else if ( tr.frameCount - c->lastSummaryFrame >= GLES3_CENSUS_SUMMARY_FRAMES ) {
 		c->lastSummaryFrame = tr.frameCount;
-		R200_CensusSummary( c, in2D );
+		GLES3_CensusSummary( c, in2D );
 	}
 }
 
 
-static void R211_NvNote( void )
+static void NVFIX_NvNote( void )
 {
 	static int s_nvSubs;
 	static int s_nvFrame = -1;
@@ -1843,14 +1843,14 @@ static void R211_NvNote( void )
 		s_nvFrame = tr.frameCount;
 		if ( tr.frameCount % 60 == 0 ) {
 			if ( !s_nvCvar ) {
-				s_nvCvar = ri.Cvar_Get( "r210_nvStats", "1", 0 );
+				s_nvCvar = ri.Cvar_Get( "nightvision_nvStats", "1", 0 );
 			}
 			if ( s_nvCvar && s_nvCvar->integer ) {
 				if ( s_nvRows == 200 ) {
-					ri.Printf( PRINT_ALL, "[R210:nv] capped at 200 rows; no further lines\n" );
+					ri.Printf( PRINT_ALL, "[NIGHTVISION:nv] capped at 200 rows; no further lines\n" );
 				} else {
 					ri.Printf( PRINT_ALL,
-						"[R210:nv] row=%d frame=%d beRDF=0x%08x trRDF=0x%08x "
+						"[NIGHTVISION:nv] row=%d frame=%d beRDF=0x%08x trRDF=0x%08x "
 						"HUD=%d subsThisFrame=%d\n",
 						s_nvRows, tr.frameCount,
 						(unsigned)backEnd.refdef.rdflags, (unsigned)tr.refdef.rdflags,
@@ -1874,7 +1874,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	qboolean			cpuColor = GLES3_StageNeedsCPUColor( pStage );
 	qboolean			cpuTexCoords = GLES3_StageNeedsCPUTexCoords( pStage );
 
-	R204_SUB( R204_FAM_DS, R204_DSZ_sub_unif, {
+	BE_SUB( BE_FAM_DS, BE_DSZ_sub_unif, {
 		prog = GLES3_StageProgram( pStage, shader, 0 );
 		GLES3_BindProgram( prog );
 
@@ -1901,7 +1901,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	}
 	else if ( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[0].isLightmap )
 	{
-		R211_NvNote();
+		NVFIX_NvNote();
 		GLES3_SelectTexture( 0 );
 		GL_Bind( tr.whiteImage );
 	}
@@ -1914,7 +1914,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	{
 		if ( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[1].isLightmap )
 		{
-			R211_NvNote();
+			NVFIX_NvNote();
 			GLES3_SelectTexture( 1 );
 			GL_Bind( tr.whiteImage );
 		}
@@ -1936,7 +1936,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		unsigned	w1 = pStage->bundle[1].image[0] ? (unsigned)pStage->bundle[1].image[0]->texnum : 0u;
 
 		if ( !s_surfCvar ) {
-			s_surfCvar = ri.Cvar_Get( "r221_surfStats", "1", 0 );
+			s_surfCvar = ri.Cvar_Get( "lifecycle_surfStats", "1", 0 );
 		}
 
 		for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
@@ -1961,7 +1961,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 				s_surfN++;
 
 				ri.Printf( PRINT_ALL,
-					"[R221:surf] n=%d shader=%s stage=%d rgb=%d lm=%d/%d in2D=%d "
+					"[LIFECYCLE:surf] n=%d shader=%s stage=%d rgb=%d lm=%d/%d in2D=%d "
 					"want0=%u want1=%u u0=%u u1=%u arm0=%d arm1=%d nv=%d\n",
 					s_surfN, shader->name, sIdx, (int)pStage->rgbGen,
 					(int)pStage->bundle[0].isLightmap, (int)pStage->bundle[1].isLightmap,
@@ -1971,7 +1971,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 					(int)( backEnd.refdef.rdflags & RDF_HUD ) );
 			} else if ( s_surfN == 64 ) {
 				s_surfN++;
-				ri.Printf( PRINT_ALL, "[R221:surf] capped at 64 rows; no further rows\n" );
+				ri.Printf( PRINT_ALL, "[LIFECYCLE:surf] capped at 64 rows; no further rows\n" );
 			}
 		}
 	}
@@ -1994,7 +1994,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	(void)stateBits;
 
 	{
-		r200DrawKey_t k;
+		gles3DrawKey_t k;
 
 		k.shader  = shader->name;
 		k.prog    = prog->name;
@@ -2012,25 +2012,25 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		k.cpuTexCoords = cpuTexCoords ? 1 : 0;
 		k.vc0        = *(const unsigned *)&input->vertexColors[0];
 
-		R200_DrawCensusKey( &k, backEnd.in2D ? qtrue : qfalse );
+		GLES3_DrawCensusKey( &k, backEnd.in2D ? qtrue : qfalse );
 	}
 
 	if ( shader == tr.defaultShader )
 	{
-		R201_ShaderDefaultProbe( "draw", "-",
+		SMP_ShaderDefaultProbe( "draw", "-",
 			( backEnd.currentEntity && tr.currentModel ) ? tr.currentModel->name :
 			( tr.currentModel ? tr.currentModel->name : "(no-model)" ),
 			backEnd.currentEntity ? backEnd.currentEntity->e.entityNumber : -1,
 			backEnd.currentEntity ? backEnd.currentEntity->e.hModel : -1 );
 	}
 
-#define R201_DECAL_MAX 16
+#define SMP_DECAL_MAX 16
 	if ( !Q_stricmp( shader->name, "markShadow" ) )
 	{
-		static int		s_r201DecalCount;
-		static qboolean	s_r201DecalNotice;
+		static int		s_smpDecalCount;
+		static qboolean	s_smpDecalNotice;
 
-		if ( s_r201DecalCount < R201_DECAL_MAX )
+		if ( s_smpDecalCount < SMP_DECAL_MAX )
 		{
 			GLint		iLiveTex = -1, iSrc = -1, iDst = -1, iFunc = -1;
 			GLboolean	bMask = 2, bTest = 2;
@@ -2060,11 +2060,11 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 			qglGetBooleanv( GL_DEPTH_WRITEMASK, &bMask );
 			qglGetBooleanv( GL_DEPTH_TEST, &bTest );
 
-			s_r201DecalCount++;
+			s_smpDecalCount++;
 
 			ri.Printf(
 				PRINT_ALL,
-				"[R201:decal] sh=%s prog=%s def=0x%06x state=0x%08x rgb=%d alpha=%d"
+				"[SMP:decal] sh=%s prog=%s def=0x%06x state=0x%08x rgb=%d alpha=%d"
 				" img0=%s tex0=%u cache0=%u"
 				" tmu=%d liveTex=%d blend=%d src=0x%04x dst=0x%04x"
 				" dtest=%d dmask=%d dfunc=0x%04x"
@@ -2078,20 +2078,20 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 				vc0, vc1, s0x, s0y, s1x, s1y
 			);
 		}
-		else if ( !s_r201DecalNotice )
+		else if ( !s_smpDecalNotice )
 		{
-			s_r201DecalNotice = qtrue;
-			ri.Printf( PRINT_ALL, "[R201:decal] capped at %d rows; no further lines\n", R201_DECAL_MAX );
+			s_smpDecalNotice = qtrue;
+			ri.Printf( PRINT_ALL, "[SMP:decal] capped at %d rows; no further lines\n", SMP_DECAL_MAX );
 		}
 	}
-#undef R201_DECAL_MAX
+#undef SMP_DECAL_MAX
 
-#define R201_DECALTX_MAX 4
+#define SMP_DECALTX_MAX 4
 	if ( !Q_stricmp( shader->name, "markShadow" ) )
 	{
-		static int	s_r201DecaltxCount;
+		static int	s_smpDecaltxCount;
 
-		if ( s_r201DecaltxCount < R201_DECALTX_MAX )
+		if ( s_smpDecaltxCount < SMP_DECALTX_MAX )
 		{
 			GLint	iMinF = 0, iMagF = 0, iMaxL = 0, iBaseL = 0, iAniso = 0;
 			GLint	iWrapS = 0, iWrapT = 0;
@@ -2127,10 +2127,10 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 				qglGetUniformiv( prog->program, prog->uniforms[GLES3_U_FOGDENSITYARM], &iFogArm );
 			}
 
-			s_r201DecaltxCount++;
+			s_smpDecaltxCount++;
 
 			ri.Printf( PRINT_ALL,
-				"[R201:decaltx] tex=%d minF=0x%04x magF=0x%04x baseL=%d maxL=%d aniso=%d wrap=%d,%d"
+				"[SMP:decaltx] tex=%d minF=0x%04x magF=0x%04x baseL=%d maxL=%d aniso=%d wrap=%d,%d"
 				" aColor(en=%d size=%d type=0x%04x stride=%d norm=%d ptr=%p)"
 				" u_ColorGen=%d u_AlphaGen=%d u_Acff=%d u_FogNum=%d u_FogArm=%d\n",
 				glState.currenttextures[0],
@@ -2140,12 +2140,12 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 				iCG, iAG, iAcff, iFogNum, iFogArm );
 		}
 	}
-#undef R201_DECALTX_MAX
+#undef SMP_DECALTX_MAX
 
-#define R201_UI2D_MAX 64
+#define SMP_UI2D_MAX 64
 	{
-		static int	s_r201ui2dCount;
-		static char	*s_r201ui2dSeen[R201_UI2D_MAX];
+		static int	s_smpui2dCount;
+		static char	*s_smpui2dSeen[SMP_UI2D_MAX];
 		int			i;
 		qboolean	isUI = backEnd.in2D
 			|| !Q_stricmpn( shader->name, "inv-", 4 )
@@ -2153,19 +2153,19 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 			|| !Q_stricmpn( shader->name, "sysimg/", 7 );
 
 		if ( isUI ) {
-			if ( s_r201ui2dCount >= R201_UI2D_MAX ) {
-				if ( s_r201ui2dCount == R201_UI2D_MAX ) {
-					s_r201ui2dCount++;
-					ri.Printf( PRINT_ALL, "[R201:ui2d] cap %d reached; no further rows\n",
-							   R201_UI2D_MAX );
+			if ( s_smpui2dCount >= SMP_UI2D_MAX ) {
+				if ( s_smpui2dCount == SMP_UI2D_MAX ) {
+					s_smpui2dCount++;
+					ri.Printf( PRINT_ALL, "[SMP:ui2d] cap %d reached; no further rows\n",
+							   SMP_UI2D_MAX );
 				}
 			} else {
-				for ( i = 0; i < s_r201ui2dCount; i++ ) {
-					if ( !Q_stricmp( s_r201ui2dSeen[i], shader->name ) ) {
+				for ( i = 0; i < s_smpui2dCount; i++ ) {
+					if ( !Q_stricmp( s_smpui2dSeen[i], shader->name ) ) {
 						break;
 					}
 				}
-				if ( i == s_r201ui2dCount ) {
+				if ( i == s_smpui2dCount ) {
 					const char *n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
 									 ? pStage->bundle[0].image[0]->imgName : "-";
 					const char *n1 = ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
@@ -2174,13 +2174,13 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 					unsigned tex1 = pStage->bundle[1].image[0] ? pStage->bundle[1].image[0]->texnum : 0;
 					unsigned vc0  = *(const unsigned *)&input->vertexColors[0];
 
-					s_r201ui2dSeen[s_r201ui2dCount] = ri.Malloc( (int)strlen( shader->name ) + 1 );
-					Q_strncpyz( s_r201ui2dSeen[s_r201ui2dCount], shader->name,
+					s_smpui2dSeen[s_smpui2dCount] = ri.Malloc( (int)strlen( shader->name ) + 1 );
+					Q_strncpyz( s_smpui2dSeen[s_smpui2dCount], shader->name,
 								(int)strlen( shader->name ) + 1 );
-					s_r201ui2dCount++;
+					s_smpui2dCount++;
 
 					ri.Printf( PRINT_ALL,
-						"[R201:ui2d] sh=%s def=0x%06x in2D=%d rgb=%d alpha=%d tc=%d/%d st=0x%08x "
+						"[SMP:ui2d] sh=%s def=0x%06x in2D=%d rgb=%d alpha=%d tc=%d/%d st=0x%08x "
 						"const=%d,%d,%d,%d aConst=%d base_a=%.3f c2D=%d,%d,%d,%d vc0=%08x CPUc=%d "
 						"img0=%s(tex=%u) img1=%s(tex=%u) tmu=%d cur0=%u cur1=%u texenv=0x%x atest=%d\n",
 						shader->name, prog->defines, backEnd.in2D ? 1 : 0,
@@ -2278,7 +2278,7 @@ void GLES3_WireEnd( GLenum mode )
 	qglBindBuffer( GL_ARRAY_BUFFER, s_wireVbo );
 	qglBufferData( GL_ARRAY_BUFFER, bytes, s_wireVerts, GL_STREAM_DRAW );
 	qglDrawArrays( mode, 0, s_wireNumVerts );
-	R204_Bump( R204_FAM_BE, R204_BEC_draws, 1 );
+	BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
 	RB_BindVAO( 0 );
 	s_wireNumVerts = 0;
 }
@@ -2291,7 +2291,7 @@ gles3Program_t *GLES3_BeginFamily( unsigned family, int texEnv )
 	GLES3_SetupViewUniforms( p );
 
 	if ( family == GLP_FAMILY_2D && !backEnd.in2D && glConfig.vidWidth > 0 ) {
-		R201_VpProbe( "2dfam", "GLES3_BeginFamily(2D)/in2D=0",
+		SMP_VpProbe( "2dfam", "GLES3_BeginFamily(2D)/in2D=0",
 			0, 0, glConfig.vidWidth, glConfig.vidHeight, 0, qtrue );
 	}
 	GLES3_SetUniform1i( p, GLES3_U_TEX0, 0 );
@@ -2304,11 +2304,11 @@ gles3Program_t *GLES3_BeginFamily( unsigned family, int texEnv )
 	GLES3_SetUniform1i( p, GLES3_U_ACFF, 0 );
 
 	{
-		static int s_r200FamLogged;
-		if ( s_r200FamLogged < 150 ) {
-			ri.Printf( PRINT_ALL, "[R200:fam] family=%u texEnv=%d prog=%s curTMU=%d unit0tex=%d\n",
+		static int s_gles3FamLogged;
+		if ( s_gles3FamLogged < 150 ) {
+			ri.Printf( PRINT_ALL, "[GLES3:fam] family=%u texEnv=%d prog=%s curTMU=%d unit0tex=%d\n",
 				family, texEnv, p->name, glState.currenttmu, glState.currenttextures[0] );
-			s_r200FamLogged++;
+			s_gles3FamLogged++;
 		}
 	}
 	return p;

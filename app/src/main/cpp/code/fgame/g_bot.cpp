@@ -17,9 +17,9 @@
 
 #include "mp_manager.hpp"
 
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
 #define	MAX_ARENAS			1024
 #define	MAX_ARENAS_TEXT		8192
@@ -590,7 +590,7 @@ void SV_AddBot_f( void ) {
 	char			team[MAX_TOKEN_CHARS];
 	char			specialty[MAX_TOKEN_CHARS];
 
-	R120_PROBE(
+	PROBE(
 		"npc:addbot-entry",
 		"argc=%d a1='%s' a2='%s' a3='%s' a4='%s' bot_enable=%d",
 		gi.argc(),
@@ -602,7 +602,7 @@ void SV_AddBot_f( void ) {
 	);
 
 	if ( !gi.Cvar_VariableIntegerValue( "bot_enable" ) ) {
-		R120_PROBE("npc:addbot-blocked", "bot_enable=0 -- bot refused");
+		PROBE("npc:addbot-blocked", "bot_enable=0 -- bot refused");
 		return;
 	}
 

@@ -11,9 +11,9 @@
 extern "C" void Sys_AndroidLog( int priority, const char *msg );
 #endif
 
-#define R120_PROBE_GET(r120_n, r120_d, r120_f) Cvar_Get(r120_n, r120_d, r120_f)
-#define R120_PROBE_PRINT                       Com_Printf
-#include "qa_r120.h"
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                       Com_Printf
+#include "qa_probe.h"
 
 #ifndef _WIN32
 #   include <sys/types.h>
@@ -1392,9 +1392,9 @@ long FS_ReadFileEx( const char *qpath, void **buffer, qboolean quiet ) {
 	}
 
 	{
-		R201_LOAD_BEGIN( fs );
+		SMP_LOAD_BEGIN( fs );
 		len = FS_FOpenFileRead( qpath, &h, qfalse, quiet );
-		R201_LOAD_END( fs );
+		SMP_LOAD_END( fs );
 	}
 	if ( h == 0 ) {
 		if ( buffer ) {
@@ -1426,12 +1426,12 @@ long FS_ReadFileEx( const char *qpath, void **buffer, qboolean quiet ) {
 	*buffer = buf;
 
 	{
-		R201_LOAD_BEGIN( fs );
+		SMP_LOAD_BEGIN( fs );
 		FS_Read (buf, len, h);
 
 		buf[len] = 0;
 		FS_FCloseFile( h );
-		R201_LOAD_END( fs );
+		SMP_LOAD_END( fs );
 	}
 
 	if ( isConfig && com_journal && com_journal->integer == 1 ) {
@@ -2726,18 +2726,18 @@ static void FS_Startup(const char* gameName)
 	FS_ReorderPurePaks();
 
 	{
-		searchpath_t	*r133_sp;
-		int				r133_i = 0;
+		searchpath_t	*uivk_sp;
+		int				uivk_i = 0;
 
-		for ( r133_sp = fs_searchpaths; r133_sp; r133_sp = r133_sp->next ) {
-			if ( r133_sp->pack ) {
-				R133_PROBE( "pakmount", "slot=%d pak=%s files=%d", r133_i,
-							r133_sp->pack->pakBasename, r133_sp->pack->numfiles );
-			} else if ( r133_sp->dir ) {
-				R133_PROBE( "pakmount", "slot=%d dir=%s/%s", r133_i,
-							r133_sp->dir->path, r133_sp->dir->gamedir );
+		for ( uivk_sp = fs_searchpaths; uivk_sp; uivk_sp = uivk_sp->next ) {
+			if ( uivk_sp->pack ) {
+				UIVK_PROBE( "pakmount", "slot=%d pak=%s files=%d", uivk_i,
+							uivk_sp->pack->pakBasename, uivk_sp->pack->numfiles );
+			} else if ( uivk_sp->dir ) {
+				UIVK_PROBE( "pakmount", "slot=%d dir=%s/%s", uivk_i,
+							uivk_sp->dir->path, uivk_sp->dir->gamedir );
 			}
-			r133_i++;
+			uivk_i++;
 		}
 	}
 
@@ -2969,13 +2969,13 @@ void FS_InitFilesystem( void ) {
 void FS_Restart( int checksumFeed ) {
 
 
-	R201_LOAD_BEGIN( fs );
+	SMP_LOAD_BEGIN( fs );
 	FS_Shutdown(qfalse);
 
 	fs_checksumFeed = checksumFeed;
 
 	FS_Startup(BASEGAME);
-	R201_LOAD_END( fs );
+	SMP_LOAD_END( fs );
 
 	if ( FS_ReadFile( "global/default.cfg", NULL ) <= 0 ) {
 		Com_Error( ERR_FATAL, "Couldn't load default.cfg" );

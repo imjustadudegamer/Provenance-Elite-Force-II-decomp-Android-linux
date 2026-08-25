@@ -414,7 +414,7 @@ bool CombatSubsystem::_traceHitTarget(Entity *target, const Vector& startPos)
     Vector attackDir      = targetPos - startPos;
     float  attackDirLength = attackDir.length();
 
-    float r133_cdist = attackDirLength;
+    float uivk_cdist = attackDirLength;
 
     attackDir.normalize();
     attackDir *= attackDirLength + 32.0f;
@@ -424,15 +424,15 @@ bool CombatSubsystem::_traceHitTarget(Entity *target, const Vector& startPos)
     trace = G_FullTrace(startPos, vec_zero, vec_zero, targetPos, act, mask, false,
                         "CombatSubsystem::_traceHitTarget");
 
-    if (gi.cvar("qa_r120", "0", 0)->integer) {
-        gi.Printf("[R132:F7:aimtrace] e=%d target=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) startsolid=%d hitent=%d mask=0x%08x cdist=%.1f\n",
+    if (gi.cvar("qa_probe", "0", 0)->integer) {
+        gi.Printf("[EVENT:F7:aimtrace] e=%d target=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) startsolid=%d hitent=%d mask=0x%08x cdist=%.1f\n",
                   act->entnum, target->entnum,
                   startPos[0], startPos[1], startPos[2],
                   targetPos[0], targetPos[1], targetPos[2],
                   trace.startsolid ? 1 : 0,
                   trace.ent ? trace.ent->s.number : -1,
                   mask,
-                  r133_cdist);
+                  uivk_cdist);
     }
 
     if (trace.startsolid) {

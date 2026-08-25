@@ -1,6 +1,6 @@
 /*
 ===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 r200-gles3-shade)
+ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_common.inc.glsl -- shared GLSL ES 3.00 library, concatenated at
 //@@GLES3_COMMON@@ by glsl/build_glsl.py.
 

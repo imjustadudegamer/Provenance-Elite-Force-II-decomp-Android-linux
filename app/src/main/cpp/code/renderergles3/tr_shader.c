@@ -2886,7 +2886,7 @@ static shader_t *FinishShader( void ) {
 
     if (shader.defaultShader)
     {
-        R201_ShaderDefaultProbe( "finish-default", shader.name, "FinishShader/defaultShader", 0, 0 );
+        SMP_ShaderDefaultProbe( "finish-default", shader.name, "FinishShader/defaultShader", 0, 0 );
         currentShader->shader = tr.defaultShader;
         currentShader = NULL;
         return tr.defaultShader;
@@ -3135,7 +3135,7 @@ shader_t *R_FindShaderByName( const char *name ) {
 		}
 	}
 
-	R201_ShaderDefaultProbe( "byname-miss", strippedName, "R_FindShaderByName", 0, 0 );
+	SMP_ShaderDefaultProbe( "byname-miss", strippedName, "R_FindShaderByName", 0, 0 );
 	return tr.defaultShader;
 }
 
@@ -3148,7 +3148,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 	shader_t	*sh;
 
 	if ( name[0] == 0 ) {
-		R201_ShaderDefaultProbe( "empty-name", name, "R_RealFindShader", lightmapIndex, variant );
+		SMP_ShaderDefaultProbe( "empty-name", name, "R_RealFindShader", lightmapIndex, variant );
 		return tr.defaultShader;
 	}
 
@@ -3171,7 +3171,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 			if (sh == tr.defaultShader ||
 				(sh->lightmapIndex == lightmapIndex && sh->forcedAlphaKey == variant)) {
 				if ( sh == tr.defaultShader ) {
-					R201_ShaderDefaultProbe( "chain-default", strippedName, "R_RealFindShader/chain",
+					SMP_ShaderDefaultProbe( "chain-default", strippedName, "R_RealFindShader/chain",
 											 lightmapIndex, variant );
 				}
 				return sh;
@@ -3214,7 +3214,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		}
 
 		if ( !ParseShader( &shaderText, picmip ) ) {
-			R201_ShaderDefaultProbe( "parse-failed", name, "R_RealFindShader/text", lightmapIndex, variant );
+			SMP_ShaderDefaultProbe( "parse-failed", name, "R_RealFindShader/text", lightmapIndex, variant );
 			shader.defaultShader = qtrue;
 		}
 
@@ -3252,7 +3252,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 
 	if ( !image ) {
 		ri.Printf( PRINT_WARNING, "Couldn't find image for shader %s\n", name );
-		R201_ShaderDefaultProbe( "image-missing", name, "R_RealFindShader/tga", lightmapIndex, variant );
+		SMP_ShaderDefaultProbe( "image-missing", name, "R_RealFindShader/tga", lightmapIndex, variant );
 		shader.defaultShader = qtrue;
 		return FinishShader();
 	}
@@ -3604,24 +3604,24 @@ static void FindShadersInShaderText(void)
     }
 }
 
-#define R201_SHDEF_ROW_CAP		200
-#define R201_SHDEF_KEYS			128
+#define SMP_SHDEF_ROW_CAP		200
+#define SMP_SHDEF_KEYS			128
 
 typedef struct {
 	char	kind[24];
 	char	requested[96];
 	char	source[80];
-} r201ShdefKey_t;
+} smpShdefKey_t;
 
-void R201_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b ) {
-	static r201ShdefKey_t	s_keys[R201_SHDEF_KEYS];
+void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b ) {
+	static smpShdefKey_t	s_keys[SMP_SHDEF_KEYS];
 	static int				s_used;
 	static int				s_rows;
 	static cvar_t			*s_cvar;
 	int						i;
 
 	if ( !s_cvar ) {
-		s_cvar = ri.Cvar_Get( "r201_shaderProbe", "1", 0 );
+		s_cvar = ri.Cvar_Get( "smp_shaderProbe", "1", 0 );
 	}
 	if ( !s_cvar || !s_cvar->integer ) {
 		return;
@@ -3636,11 +3636,11 @@ void R201_ShaderDefaultProbe( const char *kind, const char *requested, const cha
 			return;
 		}
 	}
-	if ( s_used >= R201_SHDEF_KEYS ) {
+	if ( s_used >= SMP_SHDEF_KEYS ) {
 		if ( s_rows >= 0 ) {
 			s_rows = -1;
-			ri.Printf( PRINT_ALL, "[R201:shdef] key table full (%d); further names untracked\n",
-					   R201_SHDEF_KEYS );
+			ri.Printf( PRINT_ALL, "[SMP:shdef] key table full (%d); further names untracked\n",
+					   SMP_SHDEF_KEYS );
 		}
 		return;
 	}
@@ -3652,13 +3652,13 @@ void R201_ShaderDefaultProbe( const char *kind, const char *requested, const cha
 	if ( s_rows < 0 ) {
 		return;
 	}
-	if ( s_rows >= R201_SHDEF_ROW_CAP ) {
+	if ( s_rows >= SMP_SHDEF_ROW_CAP ) {
 		s_rows = -1;
-		ri.Printf( PRINT_ALL, "[R201:shdef] capped at %d rows; no further lines\n", R201_SHDEF_ROW_CAP );
+		ri.Printf( PRINT_ALL, "[SMP:shdef] capped at %d rows; no further lines\n", SMP_SHDEF_ROW_CAP );
 		return;
 	}
 	s_rows++;
-	ri.Printf( PRINT_ALL, "[R201:shdef] kind=%s req='%s' src=%s a=%d b=%d\n",
+	ri.Printf( PRINT_ALL, "[SMP:shdef] kind=%s req='%s' src=%s a=%d b=%d\n",
 			   kind, requested, source, a, b );
 }
 

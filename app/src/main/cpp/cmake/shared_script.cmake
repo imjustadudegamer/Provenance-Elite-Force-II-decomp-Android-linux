@@ -13,7 +13,7 @@ set(SCRIPT_SYSTEM_SOURCES
 	${SOURCE_DIR}/script/scriptvariable.cpp
 )
 
-# R124-C: corepp/con_timer.cpp and corepp/lz77.cpp are GONE from this list and from the
+# TIKIANIM-C: corepp/con_timer.cpp and corepp/lz77.cpp are GONE from this list and from the
 # tree.  Both are MOHAA modules with zero retail presence -- "con_timer" and "lz77"
 # occur in zero mangled names, zero decompile units and zero strings in game_mac.pef,
 # cgamex86-equivalent cgame_mac.pef and EF2_mac_engine.pef, and neither exists in the
@@ -22,7 +22,7 @@ set(SCRIPT_SYSTEM_SOURCES
 # caller was its own [[maybe_unused]] self-test.  They were still being compiled into
 # every target through this list.
 #
-# R125-F: corepp/delegate.cpp and corepp/delegate.h are GONE the same way.  The
+# DELEGATE-F: corepp/delegate.cpp and corepp/delegate.h are GONE the same way.  The
 # MulticastDelegate / DelegateMultiElement / DelegateHandle machinery is OpenMoHAA
 # 2025 plumbing: "delegate" is 0 bytes in game_mac.pef, cgame_mac.pef and
 # EF2_mac_engine.pef, 0 lines in game_dll_symbols.txt / cgame_dll_symbols.txt /

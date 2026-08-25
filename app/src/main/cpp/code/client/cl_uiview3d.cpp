@@ -4,11 +4,11 @@
 
 #include "../server/server.h"
 
-#define R120_PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define R120_PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_r202.h"
+#include "../qcommon/qa_ui.h"
 
 CLASS_DECLARATION(UIWidget, View3D, NULL) {
     {&W_Activated,     &View3D::OnActivate  },
@@ -78,9 +78,9 @@ void View3D::OnActivate(Event *ev)
     Menu *menu = menuManager.CurrentMenu();
 
     if (menu && !menu->allowGameFocus()) {
-        static int r123_skip;
-        if (R120_Throttle(&r123_skip, 2, 200)) {
-            R120_PROBE(
+        static int view3d_skip;
+        if (PROBE_Throttle(&view3d_skip, 2, 200)) {
+            PROBE(
                 "activate:skip",
                 "menu='%s' allowGameFocus=%d firstWidget='%s' catcher=0x%x",
                 menu->m_name.c_str(),
@@ -208,7 +208,7 @@ void View3D::Draw2D(void)
 
     if (!cls.no_menus) {
         if (cge) {
-            R202_ZONE(R202_FAM_V3D, R202_VZ_cgdraw, cge->CG_Draw2D());
+            UI_ZONE(UI_FAM_V3D, UI_VZ_cgdraw, cge->CG_Draw2D());
         }
 
         if (m_locationprint) {
@@ -464,25 +464,25 @@ void View3D::update(void)
 
 void View3D::Draw(void)
 {
-    R202_ROOT_BEGIN(R202_FAM_V3D);
+    UI_ROOT_BEGIN(UI_FAM_V3D);
 
-    R202_ZONE_BEGIN(R202_VZ_scrdraw);
+    UI_ZONE_BEGIN(UI_VZ_scrdraw);
     if (cls.state != CA_DISCONNECTED) {
         SCR_DrawScreenField();
     }
-    R202_ZONE_END(R202_FAM_V3D, R202_VZ_scrdraw);
+    UI_ZONE_END(UI_FAM_V3D, UI_VZ_scrdraw);
 
-    R202_ZONE_BEGIN(R202_VZ_set2d);
+    UI_ZONE_BEGIN(UI_VZ_set2d);
     set2D();
-    R202_ZONE_END(R202_FAM_V3D, R202_VZ_set2d);
+    UI_ZONE_END(UI_FAM_V3D, UI_VZ_set2d);
 
     re.SavePerformanceCounters();
 
-    R202_ZONE_BEGIN(R202_VZ_draw2d);
+    UI_ZONE_BEGIN(UI_VZ_draw2d);
     Draw2D();
-    R202_ZONE_END(R202_FAM_V3D, R202_VZ_draw2d);
+    UI_ZONE_END(UI_FAM_V3D, UI_VZ_draw2d);
 
-    R202_ROOT_END(R202_FAM_V3D);
+    UI_ROOT_END(UI_FAM_V3D);
 }
 
 

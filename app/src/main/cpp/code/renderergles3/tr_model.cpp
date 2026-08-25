@@ -174,7 +174,7 @@ void R_RegisterShaders(model_t *mod)
                 );
                 psurface->hShader[j] = sh->index;
                 if ( sh == tr.defaultShader ) {
-                    R201_ShaderDefaultProbe( "tiki-surface", psurface->shader[j], mod->name, i, j );
+                    SMP_ShaderDefaultProbe( "tiki-surface", psurface->shader[j], mod->name, i, j );
                 }
             } else {
                 psurface->hShader[j] = 0;
@@ -265,9 +265,9 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
             }
             if (mod->type == MOD_TIKI) {
                 dtiki_t *fresh;
-                R201_RLOAD_BEGIN( modelreg );
+                SMP_RLOAD_BEGIN( modelreg );
                 fresh = ri.TIKI_RegisterTikiFlags(name, use);
-                R201_RLOAD_END( modelreg );
+                SMP_RLOAD_END( modelreg );
                 if (!fresh) {
                     return 0;
                 }
@@ -306,9 +306,9 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
                 return mod->index;
             }
         } else if (!stricmp(ptr, "tik")) {
-            R201_RLOAD_BEGIN( modelreg );
+            SMP_RLOAD_BEGIN( modelreg );
             mod->d.tiki = ri.TIKI_RegisterTikiFlags(name, use);
-            R201_RLOAD_END( modelreg );
+            SMP_RLOAD_END( modelreg );
             Q_strncpyz(mod->name, name, sizeof(mod->name));
 
             if (mod->d.tiki) {

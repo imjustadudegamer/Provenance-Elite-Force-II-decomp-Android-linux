@@ -7,9 +7,9 @@
 #include "g_phys.h"
 #include "g_spawn.h"
 #include "entity.h"
-#define R120_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define R120_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_r120.h"
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
 
 
 
@@ -404,9 +404,9 @@ void Spawn::DoSpawn(Event *ev)
     SpawnArgs args;
 
     {
-        static int r133_dfx_n;
-        if (R120_On() && R120_Throttle(&r133_dfx_n, 64, 64)) {
-            R120_PROBE("DFX:spawn", "ent=%d targetname='%s' nmodels=%d first='%s' spawntargetname='%s' displayeffect='%s'\n",
+        static int uivk_dfx_n;
+        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 64, 64)) {
+            PROBE("DFX:spawn", "ent=%d targetname='%s' nmodels=%d first='%s' spawntargetname='%s' displayeffect='%s'\n",
                        entnum,
                        targetname.c_str(),
                        _modelNames.NumObjects(),

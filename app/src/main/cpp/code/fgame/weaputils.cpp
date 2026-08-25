@@ -77,8 +77,8 @@ qboolean MeleeAttack(
     int                 num_traces;
     Vector              end;
 
-    qboolean r169_probe   = gi.cvar("qa_r120", "0", 0)->integer ? qtrue : qfalse;
-    str      r169_damaged = "";
+    qboolean gameplay_probe   = gi.cvar("qa_probe", "0", 0)->integer ? qtrue : qfalse;
+    str      gameplay_damaged = "";
 
     end = original_end;
 
@@ -245,15 +245,15 @@ qboolean MeleeAttack(
 
                 victim->Damage(attacker, attacker, damage, pos, painDir, vec_zero, knockback, 0, means_of_death, -1, -1, weapon);
 
-                if (r169_probe) {
-                    r169_damaged += va(" %d:'%s':td%d:hp%.0f:cls=%d", victim->entnum, victim->model.c_str(),
+                if (gameplay_probe) {
+                    gameplay_damaged += va(" %d:'%s':td%d:hp%.0f:cls=%d", victim->entnum, victim->model.c_str(),
                                        (int)victim->takedamage, victim->health, victim->isClient() ? 1 : 0);
                 }
             }
         }
     }
 
-    if (r169_probe) {
+    if (gameplay_probe) {
         str inbox = "";
 
         for (i = 1; i <= potential_victimlist.NumObjects(); i++) {
@@ -265,12 +265,12 @@ qboolean MeleeAttack(
             }
         }
 
-        gi.Printf("[R169:melee] atk=%d '%s' client=%d mod=%d(%s) dmg=%.2f box=(%.0f w, %.0f minh, %.0f maxh) "
+        gi.Printf("[GAMEPLAY:melee] atk=%d '%s' client=%d mod=%d(%s) dmg=%.2f box=(%.0f w, %.0f minh, %.0f maxh) "
                   "len=%.1f wdist=%.1f ntraces=%d inbox=[%s ] hit=[%s ] ret=%d\n",
                   attacker ? attacker->entnum : -1, attacker ? attacker->model.c_str() : "-",
                   (attacker && attacker->isClient()) ? 1 : 0, means_of_death, MOD_NumToName(means_of_death), damage,
                   attack_width, attack_min_height, attack_max_height, (original_end - pos).length(), world_dist,
-                  num_traces, inbox.c_str(), r169_damaged.c_str(), hit_something ? 1 : 0);
+                  num_traces, inbox.c_str(), gameplay_damaged.c_str(), hit_something ? 1 : 0);
     }
 
     if (hit_something && attacker && attacker->isSubclassOf(Player) && (means_of_death != MOD_FIRE) && (means_of_death != MOD_ON_FIRE)) {
@@ -1929,8 +1929,8 @@ float BulletAttack(
             trace = G_Trace(start, vec_zero, vec_zero, end, owner, MASK_SHOT, false, "BulletAttack");
         }
 
-        if (gi.cvar("qa_r120", "0", 0)->integer) {
-            gi.Printf("[R133:shoot] own=%d i=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) hitent=%d mod=%d(%s) dmg=%.1f\n",
+        if (gi.cvar("qa_probe", "0", 0)->integer) {
+            gi.Printf("[UIVK:shoot] own=%d i=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) hitent=%d mod=%d(%s) dmg=%.1f\n",
                       owner ? owner->entnum : -1,
                       i,
                       start.x,
