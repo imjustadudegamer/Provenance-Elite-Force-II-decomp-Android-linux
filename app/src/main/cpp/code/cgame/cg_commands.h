@@ -253,7 +253,6 @@ public:
 
     void Update(ctempmodel_t *ct);
 
-    // +8 is NOT the manager.  Retail's four SetControllerCommand bodies end with a zero-arg
     TimeBasedCommand *m_command;                           
 };
 
@@ -473,7 +472,6 @@ inline cg_common_data::cg_common_data()
     physicsRate        = 10;
     accelDelay         = 0;
 
-    // (+0x514 and +0x4E8..+0x4F0), so an emitter that never authors the command must not
     wavyDistance     = 0;
     hasColorRange    = qfalse;
     colorRangeTimeMs = 0;
@@ -497,7 +495,6 @@ inline cg_common_data::cg_common_data()
     spinSpeed = 0;
 }
 
-//                                      InitializeSpawnthing does NOT clear (+0x480..0x488
 class ctempmodel_t : public Class
 {
 public:
@@ -907,7 +904,6 @@ public:
 
     qboolean traceImpactSpawn = qfalse;
 
-    // never draws it.  358 shipped .tik carry the verb (mostly as an animation
     qboolean hide;
 
     void (*touchfcn)(ctempmodel_t *ct, trace_t *trace);
@@ -963,7 +959,6 @@ public:
     byte     modulate[4];
 };
 
-// Retail's tempmodel pool is 1024, not MOHAA's 2048: InitializeTempModels stores 1024 into
 #define MAX_TEMPMODELS 1024
 #define MAX_BEAMS      4096
 

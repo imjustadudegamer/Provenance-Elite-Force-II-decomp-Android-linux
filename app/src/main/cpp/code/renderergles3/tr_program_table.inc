@@ -263,7 +263,6 @@ GLES3_PROGRAM_KEY(20, 0, 9, 0, 1, 0, 1, 0, 0x000023, "gles3_stage",
 GLES3_PROGRAM_KEY(21, 18, 1, 0, 1, 0, 2, 0, 0x000023, "gles3_stage",
 	"CONTENT")
 
-/* ---- dead rows: expressible, never reached by shipped content ---- */
 GLES3_PROGRAM_KEY(7, 1, 3, 0, 1, 0, 0, 0, 0x000001, "gles3_stage",
 	"DEAD: rgbGen oneMinusVertex -- no shipped shader carries it")
 GLES3_PROGRAM_KEY(17, 1, 3, 0, 1, 0, 0, 0, 0x004001, "gles3_stage",

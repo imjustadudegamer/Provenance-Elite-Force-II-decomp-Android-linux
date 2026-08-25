@@ -261,7 +261,6 @@ Event EV_ViewThing_Unmorph
 	NULL,
 	"Unmorphs the current morph"
 );
-// SDK viewthing.cpp:361-479.  These 15 were never registered by the port at
 Event EV_ViewSet_Load
 (
 	"viewsetload",

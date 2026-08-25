@@ -4,7 +4,7 @@
 #include "../qcommon/gameplaymanager.h" 
 #include "../corepp/tiki.h"
 
-// MENU3D MENU3D TEMP PROBE (workstream menu3d-menu3d, worktree-only, NEVER merge): one
+// MENU3D MENU3D TEMP PROBE (change menu3d-menu3d, tree-only, NEVER merge): one
 #define PROBE_GET(name, def, flags) ((cvar_t *)0)
 #define PROBE_PRINT                 Com_Printf
 #define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "1")) != 0)
@@ -324,7 +324,6 @@ void UIRenderModel::Draw(void)
         }
     }
 
-    // source and never falls back between them.  Raw PPC of the whole block:
     // empty, i.e. it drew a model retail does not draw.
     if (m_cvarname.length()) {
         modelName = Cvar_VariableString(m_cvarname);

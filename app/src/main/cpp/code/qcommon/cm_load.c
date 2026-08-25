@@ -38,7 +38,6 @@ byte		*cmod_base;
 cvar_t		*cm_noAreas;
 cvar_t		*cm_noCurves;
 cvar_t		*cm_playerCurveClip;
-// Retail never READS this cvar: dword_B38114 has exactly two occurrences in EF2.exe.asm
 cvar_t		*cm_terrainCollision;
 #endif
 
@@ -602,7 +601,6 @@ unsigned CM_Checksum( dheader_t *header ) {
 	return LittleLong(header->checksum);
 }
 
-// loader's lump order is not ascending in fileofs: in maps/ent-training1.bsp the
 static byte       *cm_bspFileBuffer;
 static int         cm_bspFileLength;
 static const char *cm_bspFileName;   

@@ -201,7 +201,6 @@ CLASS_DECLARATION(Entity, HelperNodeController, "helpernodecontroller") {
 
 HelperNodeController::HelperNodeController()
 {
-    // SDK helper_node.cpp:259-262.  A direct member assignment, NOT SetTargetName -- and
     targetname = "nodecontroller";
 }
 
@@ -353,7 +352,6 @@ void HelperNode::SetOrigin(const Vector& pos)
     origin = pos;
 }
 
-// drains _customAnimList and NOTHING else.  Retail never unregisters the node from
 HelperNode::~HelperNode()
 {
     customAnimListEntry_t *checkEntry;
@@ -600,7 +598,6 @@ customAnimListEntry_t *HelperNode::GetCurrentAnimEntryFromList()
     return _customAnimList.ObjectAt(_customAnimListIndex);
 }
 
-// Retail's version does NOT advance the list: it reads the index, CLAMPS a local copy at
 customAnimListEntry_t *HelperNode::GetNextAnimEntryFromList()
 {
     int animCount = _customAnimList.NumObjects();
@@ -626,7 +623,6 @@ bool HelperNode::isAnimListFinished()
     return _customAnimListIndex > _customAnimList.NumObjects();
 }
 
-// label does not exist (SDK interpreter.cpp:1331-1357).  A missing label is a warning,
 // throwing when the label does not resolve -- retail's warn-and-continue.
 
 void HelperNode::RunEntryThread()
@@ -776,7 +772,6 @@ HelperNode *HelperNode::FindClosestHelperNode(
 )
 {
     //   1. the `node_id` ownership gate (retail: `if (nodeID != -1 && nodeID !=
-    //      SDK work.cpp:353) -- the actor must not immediately re-select the node it
     HelperNode      *node;
     HelperNode      *bestNode;
     float            pathLen;
@@ -1533,7 +1528,6 @@ HelperNode *HelperNode::FindHelperNodeClosestToWithoutPathing(Actor& self, Entit
     return bestNode;
 }
 
-// SDK helper_node.cpp:2626-2640, verbatim.  Retail does not run its own loop here --
 bool HelperNode::isHelperNodeInRange(Actor& self, int mask, float range)
 {
     HelperNode *node;

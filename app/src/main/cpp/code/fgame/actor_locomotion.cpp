@@ -239,7 +239,6 @@ void MovementSubsystem::Accelerate(const Vector& original_steering)
     }
 }
 
-// displacements, NOT speeds.  Retail's TryMove traces origin -> origin + _move directly
 void MovementSubsystem::CalcMove(void)
 {
     _totallen = 0;
@@ -290,7 +289,6 @@ qboolean MovementSubsystem::CanWalkTo(const Vector& pos, float bounding_box_extr
     return CanWalkToFrom(act->origin, pos, bounding_box_extra, entnum, mask);
 }
 
-// Retail also builds a local `startPos` (origin with z+15) that it never reads; it has no
 qboolean MovementSubsystem::CanWalkToFrom(
     const Vector& origin, const Vector& pos, float bounding_box_extra, int entnum, const int mask
 )
@@ -981,7 +979,6 @@ float MovementSubsystem::getMoveSpeed()
     return _movespeed;
 }
 
-// SDK actor_locomotion.cpp:1897.  NOT the `!_fliplegs` one-liner this port used to
 void MovementSubsystem::flipLegs(void)
 {
     Vector Angles;
@@ -1069,4 +1066,3 @@ void MovementSubsystem::clearBlockingEntity()
 
 
 
-// DoArchive/Archive/_init -- the 9,025-file decompile corpus never mentions the name, and

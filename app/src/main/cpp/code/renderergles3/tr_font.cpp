@@ -820,7 +820,6 @@ void R_DrawString(fontheader_t* font, const char* text, float x, float y, int ma
             continue;
         }
 
-        // never sees the escape, which is exactly the literal-"^8" defect.  Retail
         if (uch == '^') {
             int next = (signed char)text[i];
 

@@ -59,7 +59,6 @@ static void CG_ServerCommand(void)
         return;
     }
 
-    // this handler never fired and the panel could never draw.  Retail builds that text
 
 
     if (!strcmp(cmd, "print") || !strcmp(cmd, "hudprint") || !strcmp(cmd, "hudsay")) {

@@ -387,12 +387,10 @@ void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
 
                 CreatePosRotBoneData(TIKI_bones[i].name, boneName, &pSkel->pBones[i]);
 
-                // Read RAW, deliberately: TIKI_SwapSkel (corepp/tiki_main.cpp:231) swaps
                 pSkel->pBones[i].ef2BodyPart = (short int)TIKI_bones[i].flags;
 
                 pSkel->pBones[i].skelParent = (short int)TIKI_bones[i].parent;
 
-                // does not carry the ofsBoneBaseFrame lump any more.  TIKI_LoadSKB owns the
             }
         } else {
             boneFileData_t *boneBuffer = (boneFileData_t *)((byte *)pHeader + LongNoSwapPtr(&pHeader->ofsBones));
@@ -1111,7 +1109,6 @@ qboolean TIKI_LoadSKB(const char *path, skelcache_t *cache)
 
     short baseFrameRows[TIKI_MAX_BONES][8];
     int   numSkelBones = 0;
-    // cap -- the bind lump's own length was never tested, so a crafted .skb with a
     if (ef2BaseFrame > 0 && pheader->numBones > 0 && pheader->numBones <= TIKI_MAX_BONES
         && (size_t)ef2BaseFrame + 16 * (size_t)pheader->numBones <= (size_t)length) {
         numSkelBones = pheader->numBones;
@@ -1239,7 +1236,6 @@ qboolean TIKI_LoadSKD(const char *path, skelcache_t *cache)
             return qfalse;
         }
 
-        // SANCTIONED crash-safety cap on the renderer's fixed TIKI_MAX_VERTEXES arrays.
         if (numVerts > TIKI_MAX_VERTEXES) {
             TIKI_Error("TIKI_LoadSKD: %s has more than %i verts on a surface (%i)", path, TIKI_MAX_VERTEXES, numVerts);
             TIKI_FreeFile(pheader);
@@ -1523,7 +1519,6 @@ void TIKI_LoadSKBMorph(skelHeaderGame_t *pSkel, const char *morphFileName)
         return;
     }
 
-    // the count is not otherwise bounded.  SANCTIONED crash-safety hardening on
     if (morphData->numTargets > TIKI_MAX_MORPH_TARGETS) {
         TIKI_Error(
             "TIKI_LoadSKBMorph: %s declares %i morph targets (max %i), ignoring\n",

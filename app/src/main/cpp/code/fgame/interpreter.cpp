@@ -1,5 +1,4 @@
 
-//    the return channel, not decoration (corepp/listener.cpp, SDK listener.cpp:2041-2115).
 
 #include "g_local.h"
 #include "archive.h"

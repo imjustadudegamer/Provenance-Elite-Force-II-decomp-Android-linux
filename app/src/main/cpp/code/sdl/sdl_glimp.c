@@ -423,7 +423,6 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		SDL_DestroyWindow( SDL_window );
 		SDL_window = NULL;
 
-		// SANCTIONED PLATFORM GLUE (SDL window layer).  The two lines above preserve
 		if( r_centerWindow->integer && !fullscreen )
 		{
 			x = ( desktopMode.w / 2 ) - ( glConfig.vidWidth / 2 );

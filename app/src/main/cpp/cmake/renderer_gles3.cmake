@@ -10,7 +10,7 @@
 #
 # Source provenance: every forked file listed below descends from the
 # fixed-function renderer's same-named file at the programme switch commit.
-# That renderer (the former behaviour oracle) is deleted by human order; its
+# That renderer (the former behaviour oracle) is deleted by decision; its
 # sources remain reconstructible from git history at the commit that precedes
 # the deletion.  This target's own platform layer is:
 #   qgl.h / qgl_gles3.[ch] / qgl_gles3_procs.h / qgl_gles3_tokens.h
@@ -19,7 +19,7 @@
 #   tools/gen_qgl_gles3.py -- the loader's generated proc list
 # The coverage matrix in docs/notes/GLES3_CORE_GLES3.md records, per translation
 # unit, whether its arms were already ES3-clean or were replaced by the G2
-# (shade/shader) and G3 (geometry) workstreams.
+# (shade/shader) and G3 (geometry) changes.
 #
 # Configuration (app/src/main/cpp/CMakeLists.txt EF2_RENDERER):
 #   gles3       -> this target; cl_renderer defaults to "gles3"

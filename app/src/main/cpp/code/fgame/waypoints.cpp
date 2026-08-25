@@ -16,7 +16,6 @@ Event EV_WayPoint_SetThread (    "setwaypointthread",
     "thread_name",
     "sets the script thread to be called when the actor reaches this waypoint");
 
-// argument does NOT decide the response table.  Retail's own `__sinit_:waypoints_cpp`
 CLASS_DECLARATION(Entity, WayPointNode, "info_waypointnode_waypointnode") {
     {&EV_WayPoint_SetActorAnim, &WayPointNode::SetActorAnim     },
     {&EV_WayPoint_SetThread,    &WayPointNode::SetWayPointThread},

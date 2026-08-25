@@ -465,9 +465,6 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 
 	BE_RootBegin( BE_FAM_PROG );
 
-	/* smp-mcore (H6): the creation census.  After RE_EndRegistration this must
-	 * stay 0; a non-zero count is a program the pre-build enumeration missed and
-	 * therefore a draw-path compile -- the exact concurrent-compile hazard. */
 	gles3ProgramsCreated++;
 	if ( s_registrationClosed )
 	{
@@ -692,8 +689,6 @@ void GLES3_PrebuildPrograms( void )
 	}
 }
 
-/* Arms the after-registration census.  Called once, immediately after the
- * pre-build above, so the pre-build itself is not counted as a late creation. */
 void GLES3_CloseProgramRegistration( void )
 {
 	s_registrationClosed = qtrue;

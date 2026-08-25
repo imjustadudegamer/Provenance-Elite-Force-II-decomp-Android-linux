@@ -32,7 +32,6 @@ void CL_GetGameState( gameState_t *gs ) {
 	*gs = cl.gameState;
 }
 
-// glConfig`.  Retail moves this struct wholesale everywhere; it never enumerates
 void CL_GetGlconfig( glconfig_t *glconfig ) {
 	*glconfig = cls.glconfig;
 }
@@ -194,7 +193,6 @@ void CL_AddCgameCommand( const char *cmdName ) {
 }
 
 void CL_CgameError( const char *string ) {
-	// Port-only MOHAA residue: the Mac symbol table has no CL_CgameError and
 	Com_Error( ERR_DROP, "%s", string );
 }
 

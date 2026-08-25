@@ -437,7 +437,6 @@ void CG_ServerRestarted(void)
     CG_InitializeWeather();
 }
 
-// r5 = *(clc + 0x13C) and then calls slot +0x00 -- r6 is never written, so there is
 void CG_Init(clientGameImport_t *imported, int serverMessageNum, int serverCommandSequence)
 {
     cgi = *imported;
@@ -562,7 +561,6 @@ void Com_Printf(const char *msg, ...)
 
 void CG_ParseFogInfo(const char *str)
 {
-    // farplaneColorOverride[3].  Retail's cgame never had them: all six names are 0
 
     cg.farplane_bias            = 0.001f;
 

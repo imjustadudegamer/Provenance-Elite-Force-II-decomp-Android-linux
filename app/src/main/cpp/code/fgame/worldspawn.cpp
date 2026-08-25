@@ -67,7 +67,6 @@ Event EV_World_SetFarPlane_Color (    "farplane_color",
     "color_farplane",
     "Set the color of the far clipping plane fog"
 );
-// SDK worldspawn.cpp:172-179.  "b", not MOHAA 2.0's tri-state "i" -- every one of the 26
 Event EV_World_SetFarPlane_Cull (    "farplane_cull",
     EV_SCRIPTONLY,
     "b",
@@ -1123,7 +1122,6 @@ void World::Archive(Archiver& arc)
         arc.ArchiveObject((Class *)targetList);
     }
 
-    // SDK worldspawn.cpp:1575-1606, same order.  _availableViewModes was never archived
     _brokenThings.Archive(arc);
     _availableViewModes.Archive(arc);
 
@@ -1164,7 +1162,6 @@ void World::Archive(Archiver& arc)
         UpdateTerrain();
         UpdateEntityFadeDist();
         UpdateSky();
-        // SDK worldspawn.cpp:1608-1618: the server-side worldState_t is not archived, so
         UpdateDynamicLights();
         UpdateWindDirection();
         UpdateWindIntensity();
@@ -1399,7 +1396,6 @@ void TargetList::AddEntity(Listener *ent)
     }
 }
 
-// SetTargetName("HelperNodeController") (SDK level.cpp:659-661) -- was never added
 // i.e. once per map, which retail never prints.
 void TargetList::RemoveEntity(Listener *ent)
 {

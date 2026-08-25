@@ -1236,7 +1236,7 @@ FMT_INLINE decimal_fp<T> shorter_interval_case(int exponent) noexcept {
     return ret_value;
   }
 
-  // Otherwise, compute the round-up of y
+  // Otherwise, compute the change-up of y
   ret_value.significand =
       cache_accessor<T>::compute_round_up_for_shorter_interval_case(cache,
                                                                     beta);

@@ -1,13 +1,11 @@
 #version 300 es
 /* ProvenanceEF2 GLES3 shade layer -- dynamic-light fragment program.
    GL_Bind(tr.dlightImage) then R_DrawElements (tr_shade.c:786-795); the blend
-   is ONE/ONE or DST_COLOR/ONE with GLS_DEPTHFUNC_EQUAL, all render-state.
    The texel is modulated by the per-vertex colour, which is what
    fixed-function GL_MODULATE did. */
 precision highp float;
 precision highp sampler2D;
 
-//@@GLES3_CLIP@@
 in highp float v_ClipDist;
 
 in vec4 v_Color;

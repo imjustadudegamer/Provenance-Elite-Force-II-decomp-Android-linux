@@ -56,7 +56,7 @@ list(APPEND CLIENT_SOURCES
 )
 
 # uivk-mt (docs/uivk-mt_design.md T2/T3): the client module owns its own
-# private job-pool instance (the sound feed and the IO workstream are its consumers).
+# private job-pool instance (the sound feed and the IO change are its consumers).
 # It is deliberately NOT in COMMON_SOURCES: the dedicated server does not link
 # SDL2 and must not grow a threading dependency it never asked for.
 list(APPEND CLIENT_SOURCES ${SOURCE_DIR}/qcommon/q_jobs.c)

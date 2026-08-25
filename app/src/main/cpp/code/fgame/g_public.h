@@ -17,7 +17,6 @@
 #define SVF_DEADMONSTER                 (1<<6)	 
 #define SVF_MONSTER                     (1<<7)	
 #define SVF_USEBBOX                     (1<<9)	
-// all.  Retail's own name for the bit is restored.  Retail declares it once and never
 #define SVF_ONLYPARENT                  (1<<10)	 
 #define SVF_HIDEOWNER                   (1<<11)	
 #define SVF_MONSTERCLIP                 (1<<12)	

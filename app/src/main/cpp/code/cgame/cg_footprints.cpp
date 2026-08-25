@@ -293,8 +293,6 @@ void CG_PlaySurfaceSound(centity_t *cent, const char *prefix, int channel, float
     }
 }
 
-//   1. walk footprintMaps BACKWARDS for `creaturetype'.  Retail does not reset
-// `r23` is `r1 + 0xDB0`, and there is NOT ONE store into `r1+0xDA0..0xDD0`
 
 extern refEntity_t *current_entity;
 extern int current_tiki;
@@ -428,7 +426,6 @@ void CG_PlaySurfaceFX(const trace_t  *trace,
 
     qhandle_t handle = cgi.R_RegisterShader(shader.c_str());
 
-    // `r23` is `r1 + 0xDB0`, and NOT ONE store in the body writes into
     float roll = 0.0f;
 
     CG_ImpactMark(handle,

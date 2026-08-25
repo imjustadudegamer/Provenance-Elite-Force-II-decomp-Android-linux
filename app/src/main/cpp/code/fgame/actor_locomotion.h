@@ -12,7 +12,6 @@ class Archiver;
 class PathNode;
 
 // drop defines its ten members in actor_locomotion.cpp:21-190 -- but RETAIL NEVER EMITS
-// actor_locomotion.h/.cpp mention it).  Retail dead-stripped the class.  The port never
 
 #define TURN_SPEED 60
 
@@ -130,7 +129,6 @@ public:
     Entity *getBlockingEntity();
     void    clearBlockingEntity();
 
-    // PORT-ONLY, NOT ARCHIVED.  Retail's _movedir has exactly one writer --
 
 
 protected:

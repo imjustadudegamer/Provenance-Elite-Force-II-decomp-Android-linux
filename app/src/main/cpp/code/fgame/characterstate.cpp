@@ -6,7 +6,6 @@
 #include "scriptmaster.h"
 
 static const char *MoveControl_Names[] = {
-    // SDK characterstate.cpp:25-47.  Order must match movecontrol_t exactly -- this
     "user",         
     "legs",         
     "anim",         
@@ -664,8 +663,6 @@ void State::readCommands(Script& script, Container<str>& container)
     }
 }
 
-// state `FindState` could not resolve.  Retail's callers turn that into a dead machine:
-// map, `setmasterstate` is authored 16 times across the 537 shipped scripts and never
 // So the Klingon rig arm does NOT freeze on first contact in retail -- it never enters
 State *State::Evaluate(Entity& ent, Container<Conditional *> *sent_conditionals)
 {
@@ -827,7 +824,6 @@ void State::CheckStates(void)
     const char *value;
     int         i;
 
-    // UNREACHABLE on shipped content and that was measured, not assumed: `nextstate` occurs
     if (!statemap.FindState(nextState.c_str())) {
         gi.Error(
             ERR_DROP, "Unknown next state '%s' referenced in state '%s'.\n", nextState.c_str(), getName());

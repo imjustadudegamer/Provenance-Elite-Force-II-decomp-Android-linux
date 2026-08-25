@@ -4,7 +4,6 @@
 #include "container.h"
 #include "script.h"
 
-// therefore the decompile's, not alphabetical.
 
 #define MAX_FOOTPRINT_MATERIALS 12
 

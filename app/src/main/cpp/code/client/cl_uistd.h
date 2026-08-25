@@ -487,7 +487,6 @@ public:
     void SetEntityNum(Event *ev);
 };
 
-// from the Mac PPC build (which is not stripped).  Retail addresses quoted in the
 
 #define RADAR_MAX_BLIPS 256
 #define RADAR_MAX_OBJECTIVE_BLIPS 5

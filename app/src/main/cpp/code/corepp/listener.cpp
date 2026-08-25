@@ -2801,7 +2801,6 @@ Listener::~Listener()
 
 void Listener::Archive(Archiver& arc)
 {
-    // Retail simply does not persist notify lists, wait-for lists, listener script
     Class::Archive(arc);
 }
 

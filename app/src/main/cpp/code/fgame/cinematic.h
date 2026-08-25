@@ -57,7 +57,6 @@ public:
         CINEMATIC_ACTOR_STATE_FINISHED
     } CinematicActorState;
 
-    // and the parser's *default* is KILL, not LEAVE (SDK .cpp:440-467).
     typedef enum {
         CINEMATIC_ACTOR_AFTER_BEHAVIOR_REMOVE_FROM_GAME,
         CINEMATIC_ACTOR_AFTER_BEHAVIOR_LEAVE_WITH_AI,

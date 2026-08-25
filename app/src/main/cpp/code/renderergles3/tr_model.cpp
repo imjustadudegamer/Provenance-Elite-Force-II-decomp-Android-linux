@@ -1119,7 +1119,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
         surface = skelmodel->pSurfaces;
         for (i = 0; i < skelmodel->numSurfaces; i++, dsurf++, bsurf++, surface = surface->pNext) {
-            // the per-entity byte from ent->surfaces[] (:2953).  Retail never skips a
             drawnSurface = surface;
             if (tiki->replacedSurfaces) {
                 int dsurfIndex = (int)(dsurf - tiki->surfaces);
@@ -1589,7 +1588,6 @@ void RB_SkelMesh(skelSurfaceGame_t *sf)
 
     bones = &TIKI_Skel_Bones_Arena[RB_FrameBoneArena()][backEnd.currentEntity->e.bonestart];
 
-    // section 2), so that loop body never runs on shipped content.  Point it at the
     morphs = &skeletorMorphCache[0];
 
     static vec3_t s_extMorph[TIKI_MAX_VERTEXES];
@@ -2066,7 +2064,6 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
         return;
     }
 
-    // THE FADE GATE IS NOT HERE.  Retail tests `if ( v25 != *(float *)(a1 + 436) )' --
 
     // 0x26B2C for the frame -- and this arm does NOT bail on its qfalse: the clamped
     {
@@ -2479,7 +2476,6 @@ static int R_CullSkelModel(dtiki_t *tiki, refEntity_t *e, skelFrame_t *nf, skelF
             b = of->bounds[0][i] * fScale + vLocalOrg[i];
             bounds[0][i] = (b < a) ? b : a;
 
-            // (extra draws, never a wrongly-dropped model), but it is a divergence.
             a = of->bounds[1][i] * fScale + vLocalOrg[i];
             b = nf->bounds[1][i] * fScale + vLocalOrg[i];
             bounds[1][i] = (a < b) ? a : b;

@@ -1,7 +1,6 @@
 
 
 
-// does not pull class.h in by itself (class.cpp:32-50 includes it explicitly), so
 #include <fgame/g_local.h>
 #include <fgame/listener.h>
 #include <fgame/class.h>

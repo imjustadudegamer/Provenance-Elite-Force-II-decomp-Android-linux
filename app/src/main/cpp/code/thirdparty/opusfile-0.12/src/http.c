@@ -2634,7 +2634,7 @@ static int op_http_stream_open(OpusHTTPStream *_stream,const char *_url,
            of resource characteristics and location(s)," but not an Opus file.
           202 Accepted: the response "SHOULD include an indication of request's
            current status and either a pointer to a status monitor or some
-           estimate of when the operator can expect the request to be fulfilled,"
+           estimate of when one can expect the request to be fulfilled,"
            but not an Opus file.
           205 Reset Content: this "MUST NOT include an entity," meaning no Opus
            file.

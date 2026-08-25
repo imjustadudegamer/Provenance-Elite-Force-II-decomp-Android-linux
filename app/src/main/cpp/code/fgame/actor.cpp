@@ -1,4 +1,3 @@
-// SDK Actor.  Spawn does not derive through Actor, so these never shadowed the real
 
 
 #include "g_local.h"
@@ -2793,7 +2792,6 @@ void Actor::NotifyOthersAtDeath(Event *ev)
     SetActorFlag(ACTOR_FLAG_NOTIFY_OTHERS_AT_DEATH, true);
 }
 
-// records directly into m_convEntries, so this allocator is not called by the
 DialogNode_t *Actor::NewDialogNode(void)
 {
     DialogNode_t *dialog_node;
@@ -3430,7 +3428,6 @@ Actor::Actor()
     , lastMasterState(NULL)
     , fuzzyEngine(NULL)
     , fuzzyEngine_active(qfalse)
-    // Measured, not assumed: `actortype` in the 2003 corpus is IS_ENEMY 1038 /
     // IS_INANIMATE in ZERO of them -- retail never ships an actor of type 0.
     , actortype(IS_ENEMY)
     , state_flags(0)       
@@ -3456,7 +3453,6 @@ Actor::Actor()
     , _nextContextTime(0.0f)
     , _contextInterval(15.0f)
 {
-    // is why scripted actors (Tuvok) never animated.
     actor_flags1 = 0;
     actor_flags2 = 0;
     actor_flags3 = 0;
@@ -3571,7 +3567,6 @@ Actor::Actor()
     ignoreHelperNode.mask   = 0;
     ignoreHelperNode.nodeID = 0;
 
-    // the subsystem would never be allocated.
     thinkStrategy     = NULL;
     gameComponent     = NULL;
     sensoryPerception = NULL;
@@ -3583,8 +3578,6 @@ Actor::Actor()
     movementSubsystem = NULL;
     combatSubsystem   = NULL;
 
-    // never called InitMovementSubsystem()/InitCombatSubsystem() at all; both exist
-    // if (!ptr) gi.Error(ERR_FATAL, ...)`).  These must exist BEFORE LoadingSavegame
     InitThinkStrategy();
     InitGameComponent();
     InitSensoryPerception();
@@ -3607,10 +3600,7 @@ Actor::Actor()
         return;
     }
 
-    // its only code in the tree -- the bank was write-only (zeroed here, never read, never
 
-    // scripts, but EF2 does not ship them and drives pain/death/attack/sniper entirely
-    // "Script 'anim/pain.scr' was not properly loaded" for EVERY spawned actor (leaving
 
 
 
@@ -3633,7 +3623,6 @@ Actor::Actor()
         flags |= FL_DIE_GIBS;
     }
 
-    // from this port entirely -- the immunity event was never constructed, so every NPC
     {
         Event *immunity_event = new Event(EV_Sentient_AddImmunity);
         immunity_event->AddString("falling");
@@ -3692,7 +3681,6 @@ Actor::Actor()
 
 
 
-    // must start at the actor's forward vector. Re-seeded from the real spawn angles in
     setAngles(angles);
     movementSubsystem->setAnimDir(orientation[0]);
     movementSubsystem->setMoveDir(orientation[0]);
@@ -3708,7 +3696,6 @@ Actor::Actor()
     preferredMin = 50.0f;
     preferredMax = 175.0f;
 
-    // SDK actor.cpp:2966-2967.  The port never initialised these, so a death by
     deathKnockbackVerticalValue   = 300;
     deathKnockbackHorizontalValue = 500;
 
@@ -3735,7 +3722,6 @@ Actor::Actor()
     air_finished    = level.time + 5.0f;
     bullet_hits     = 0;
 
-    // SDK actor.cpp:2944 / :2950 -- both state clocks start at LEVEL TIME, not zero.
     state_time             = level.time;
     masterstate_time       = level.time;
     times_done             = 0;
@@ -3760,7 +3746,6 @@ Actor::Actor()
 
     emotion = "none";
 
-    // SDK assigns "" to each, so the port matches by construction:
 
     gunoffset   = Vector(0, 0, 44);
     eyeoffset   = Vector(0, 0, 0);
@@ -3833,7 +3818,6 @@ Actor::Actor()
 
     showModel();
 
-    // constructor.  The port omitted it, so EV_Actor_Start was never posted
     if (!LoadingSavegame) {
         PostEvent(EV_Actor_Start, EV_POSTSPAWN);
     }
@@ -3846,7 +3830,6 @@ bool Actor::IsEntityAlive(const Entity *ent)
 
 Actor::~Actor()
 {
-    // both drained here, so a deleted actor can never leave a stale entry behind.
     if (groupcoordinator) {
         groupcoordinator->RemoveEntityFromGroup(this, GetGroupID());
     }
@@ -3922,7 +3905,6 @@ Actor::~Actor()
         postureController = NULL;
     }
 
-    // pointing at objects that were never released.
     for (int i = stateVarList.NumObjects(); i > 0; i--) {
         StateVar *var = stateVarList.ObjectAt(i);
         delete var;
@@ -3982,7 +3964,6 @@ void Actor::setSize(Vector min, Vector max)
 
 void Actor::Start(Event *ev)
 {
-    // never registered itself as a part of that entity: RegisterSelf is the only
     if (target.length() > 0) {
         PostEvent(EV_ActorRegisterSelf, FRAMETIME);
     }
@@ -3990,12 +3971,8 @@ void Actor::Start(Event *ev)
     // printed "stuck in world" that retail does not print -- 116 tall does not fit where
 
     // called below at retail's own position in Start), never with an unbounded drop.
-    // A port-only droptofloor(16384) used to sit here, and it is observable in the fgame
-    // passEntityNum-0xb6 drop trace is NOT followed by the WDPrintf.  See
 
-    // angles as the "torso" angles, while the head bone itself never got a controller and
 
-    // The one thing the repeat could have been papering over does not need it: _init's
 
 
     {
@@ -4008,11 +3985,9 @@ void Actor::Start(Event *ev)
 
     _dropActorToGround();
 
-    // can never reach this actor's group.
     Wakeup();
     enemyManager->TrySleep();
 
-    // Nothing in this port set this flag, so Actor::AttackEntity's "not started yet,
     SetActorFlag(ACTOR_FLAG_STARTED, qtrue);
 
     if (!statemap) {
@@ -4070,7 +4045,6 @@ bool Actor::IsFinishable(void)
 
 bool Actor::IsImmortal(void)
 {
-    // path so the actor can be hurt but never killed.
     return GetActorFlag(ACTOR_FLAG_IMMORTAL) != 0;
 }
 
@@ -4193,7 +4167,6 @@ void Actor::StrictlyFollowPath(Event *ev)
     SetActorFlag(ACTOR_FLAG_STRICTLY_FOLLOW_PATHS, ev->GetBoolean(1));
 }
 
-// because STEER_BEST was never implemented.
 void Actor::SetSteeringDirectionPreference(Event *ev)
 {
     str preference = ev->GetString(1);
@@ -4516,7 +4489,6 @@ void Actor::Archive(Archiver& arc)
     ArchiveEnum(talkMode, talkModeStates_t);    
     arc.ArchiveBool(&useConvAnims);             
 
-    // Retail does NOT archive `conditionals`, `master_conditionals` or
 
     arc.ArchiveString(&fuzzyengine_name);      
     arc.ArchiveBoolean(&fuzzyEngine_active);   
@@ -4801,8 +4773,6 @@ void Actor::Archive(Archiver& arc)
     strategos->DoArchive(arc, this);         
     enemyManager->DoArchive(arc, this);      
     packageManager->DoArchive(arc, this);    
-    // :4717 cite both of these but the calls themselves were never written, and
-    // not merely drop bytes -- it desynchronised the whole stream that follows.
     movementSubsystem->DoArchive(arc, this); 
     personality->DoArchive(arc, this);       
     combatSubsystem->DoArchive(arc, this);   
@@ -4831,7 +4801,6 @@ void Actor::WarpTo(Event *ev)
 
     if (!ModeAllowed(ACTOR_MODE_SCRIPT)) {
         if (mode == ACTOR_MODE_TALK) {
-            // SDK actor.cpp:4276 -- repost under the *warpto* event, not under whatever
             RepostEvent(ev, EV_Actor_WarpTo);
         }
         return;
@@ -5199,8 +5168,6 @@ void Actor::SetEyeAngles(Event *ev)
 
 
 
-//              Retail's turntowards* commands are an IMMEDIATE snap, not MOHAA's
-//              gradual TurnTo()/m_pTurnEntity steering (which statemap actors never
 void Actor::turnTowardsEntity(Entity *ent, float extraYaw)
 {
     Vector dir;
@@ -5250,7 +5217,6 @@ void Actor::TurnTowardsPlayer(Event *ev)
 {
     float   extraYaw;
     // SDK actor.cpp:3648 -- retail uses GetPlayer(0), not G_GetEntity(0).
-    // gi.Error(ERR_DROP)s outside max_entities and never tests inuse, so it
     Player *player = GetPlayer(0);
 
     if (!player || (player->flags & FL_NOTARGET)) {
@@ -5266,12 +5232,10 @@ void Actor::TurnTowardsPlayer(Event *ev)
     turnTowardsEntity(player, extraYaw);
 }
 
-// DELIBERATELY NOT A SNAP.  Unlike its two siblings, SDK Actor::TurnTowardsEntity
 // steering is the faithful shape here; do not "unify" it with the other two.
 void Actor::TurnTowardsEntity(Event *ev)
 {
     // return retail does not have.  Consequence: `turntowardsentity` issued while the
-    // reposted, and the issuing script thread was never told the move finished.
     TurnTo *turnTo;
 
     if (!ModeAllowed(ACTOR_MODE_SCRIPT)) {
@@ -5304,9 +5268,6 @@ void Actor::TurnTowardsEntity(Event *ev)
 
 void Actor::Killed(Event *ev)
 {
-    // after the kill-thread label: it never set DEAD_DYING, never raised
-    // SVF_DEADMONSTER, never reset the five bone controllers, never walked the
-    // statemap's DEATH state, and never played the death animation -- so an
     ClassDef *cls;
     str        deathanim;
     str        newdeathanim;
@@ -5355,7 +5316,6 @@ void Actor::Killed(Event *ev)
 
         G_EntTrash_Pointer("Killed", player, player->p_heuristics);
 
-        // Calculate the number of points for this kill (0, if we're not using,
         float            points = 0.0f;
         GameplayManager *gpm    = GameplayManager::getTheGameplayManager();
         GameplayFormulaData fd(player, this, weapon, player->getAttackType());
@@ -5740,7 +5700,6 @@ qboolean Actor::SetAnim(const str& anim, Event *ev, bodypart_t part, const float
 
 
     if (num != -1) {
-        // state never ran" from "the state ran and the hand box missed".  Silent without
         if (gi.cvar("qa_probe", "0", 0)->integer && !strncmp(anim.c_str(), "assimilate", 10)) {
             Entity *gameplay_enemy = enemyManager ? enemyManager->GetCurrentEnemy() : NULL;
             float   gameplay_dist  = (gameplay_enemy ? (gameplay_enemy->centroid - centroid).length() : -1.0f);
@@ -5825,7 +5784,6 @@ void Actor::ChangeAnim(void)
 
     if (newTorsoAnimNum != -1) {
         if ((newTorsoAnimNum == CurrentAnim(torso)) && (TorsoAnimName == newTorsoAnim) && !(edict->s.torso_frame & FRAME_EXPLICIT)) {
-            // already playing must still re-arm the anim-done event, otherwise
             animate->SetAnimDoneEvent(newTorsoAnimEvent, torso);
         } else {
             TorsoAnimName = newTorsoAnim;
@@ -5839,8 +5797,6 @@ void Actor::ChangeAnim(void)
 
     if (newanimnum != -1) {
         if ((newanimnum == CurrentAnim(legs)) && (animname == newanim) && !(edict->s.frame & FRAME_EXPLICIT)) {
-            // is only ever set on edict->s.frame (animate.cpp), never on s.anim, so the
-            // legs slot could never be restarted.
             animate->SetAnimDoneEvent(newanimevent);
         } else {
             animname = newanim;
@@ -5857,8 +5813,6 @@ void Actor::ChangeAnim(void)
 
 
 
-// in this order: the PlayerReady gate (a sleeping actor must not think while the player
-// TrySleep does not immediately re-sleep it once the player is back); the think
 void Actor::Think(void)
 {
     if (!Director.PlayerReady()) {
@@ -6348,7 +6302,6 @@ void Actor::AttachCurrentEnemy( Event *ev	)
 	}
 
 
-// IDA: NOT FOUND
 void Actor::AttachModelToTag(const str &modelName, const str &tagName)
 {
     Event *attach_event = new Event(EV_AttachModel);
@@ -6551,7 +6504,6 @@ void Actor::DebugStates( Event *ev )
 	}
 
 
-// IDA: NOT FOUND
 void Actor::DetachModelFromTag(const str &tagName)
 {
     Event *detach_event = new Event(EV_RemoveAttachedModel);
@@ -6560,7 +6512,6 @@ void Actor::DetachModelFromTag(const str &tagName)
 }
 
 
-// IDA: NOT FOUND
 void Actor::EndAllBehaviors( void )
 	{
 	EndBehavior();
@@ -6902,7 +6853,6 @@ void Actor::GroupActorType( Event *ev )
 	typeEvent->AddString( ev->GetString( 1 ) );
 	
 	// overload, which takes ownership of the event and deletes it.  Going
-	// the freshly-new'd Event leaked on every call whether or not the group
 	groupcoordinator->SendEventToGroup(typeEvent, GetGroupID());
 
 }
@@ -6941,7 +6891,6 @@ void Actor::GroupMemberInjured( Event *ev )
 }
 
 
-// IDA: NOT FOUND
 void Actor::HandleGameSpecificEvent( Event *ev )
 	{
 	if ( gameComponent )
@@ -7854,7 +7803,6 @@ void Actor::RealSpawnGib( qboolean use_tag, Event *ev	)
 	if ( trace.allsolid || trace.startsolid )
 		return;
 
-	// Make sure at least one of the surfaces is not hidden
 
 	for( current_arg = 5 ; current_arg <= ev->NumArgs() ; current_arg++ )
 		{
@@ -8180,8 +8128,6 @@ void Actor::RunCustomThread( const str& threadType )
 		}
 }
 
-// decompile corpus.  The port never called them either, so the transcriptions were
-// unverifiable dead weight.  DELETED uivk-smartgen R2, verdict PORT-ONLY-DEAD.  Their SDK
 
 
 void Actor::SaveMode( void )
@@ -8363,7 +8309,6 @@ void Actor::SetActorType( Event *ev )
       TeamMateList.AddUniqueObject(this);
       actortype = IS_TEAMMATE;
 
-      // Teammates Never Go To Sleep
       max_inactive_time = -1.0f;
 
 		edict->s.eFlags |= EF_FRIEND;
@@ -8449,7 +8394,6 @@ void Actor::SetBleedAfterDeath( Event *ev	)
 	}
 
 
-// IDA: NOT FOUND
 void Actor::SetBounceOffVelocity( Event *ev )
 {
 	bounce_off_velocity = ev->GetFloat( 1 );
@@ -8754,7 +8698,6 @@ void Actor::SetHeadWatchMaxDistance( Event *ev )
 }
 
 
-// IDA: NOT FOUND
 void Actor::SetHeadWatchSpeed( Event *ev )
    {
    float speed = ev->GetFloat( 1 );
@@ -9117,7 +9060,6 @@ void Actor::SetState( const char *state_name )
 	}
 
 
-// IDA: NOT FOUND
 void Actor::SetTakeDamage ( Event *ev )
 	{
 	qboolean damage = true;
@@ -9905,7 +9847,6 @@ void Actor::UnreserveCurrentHelperNode( Event *ev )
 }
 
 
-// $chell/$chang/$telsia/$intro_munro_final, so those NPCs never drew a weapon.)
 void Actor::UseActorWeapon( Event *ev )
 	{
 	str weaponName;
@@ -9974,7 +9915,6 @@ void Actor::Wakeup( void )
 
    turnThinkOn();
 
-   // here the last_time_active must be updated!
    last_time_active = level.time;
    }
 
@@ -10158,10 +10098,8 @@ qboolean Actor::GetClosestTag( const str &tag_name, int number_of_tags, const Ve
 
 
 
-// IDA: NOT FOUND
 qboolean Actor::RespondToHitscan( void )
 	{
-	//First Check our response chance value, we may not need to do anything at all
 	if( G_Random() > hitscan_response_chance )
 		{
 		SetActorFlag( ACTOR_FLAG_INCOMING_HITSCAN , false );
@@ -10322,7 +10260,6 @@ qboolean Actor::_WorkNodeInDistance( float dist )
    }
 
 
-// IDA: NOT FOUND
 qboolean Actor::_isWorkNodeValid( PathNode *node )
    {
    WorkTrigger *target_shadow1 = NULL;
@@ -10335,7 +10272,6 @@ qboolean Actor::_isWorkNodeValid( PathNode *node )
 		   {
 			target_shadow1 = (WorkTrigger*)entity;
          
-         //If it's not reserved, but still marked as occupied -- Don't go
          if ( node->occupiedTime > level.time && !target_shadow1->isReserved() )
             return false;
 
@@ -10653,7 +10589,6 @@ qboolean Actor::checkForwardDirectionClear( Conditional &condition )
    }
 
 
-// IDA: NOT FOUND
 qboolean Actor::checkGameSpecific( Conditional &condition )
 	{
 	if (!gameComponent)
@@ -11026,7 +10961,6 @@ qboolean Actor::checkRegionDamaged( Conditional &condition )
 	else if ( region_name == "front" )
 		region_bit = REGIONAL_DAMAGE_FRONT;
 
-	// Return whether or not this region has been hit
 	
 	return ( last_region_hit & region_bit );
 	}
@@ -11391,7 +11325,6 @@ qboolean Actor::checkchance( Conditional &condition )
 
 	percent_chance = (float)atof( condition.getParm( 1 ) );
 
-	//Stupid crazy conversion here, not because I am stupid, but becaus"e the 
 	if ( condition.numParms() > 1 )
 		{
 		int value = atoi( condition.getParm( 2 ) );
@@ -12049,7 +11982,6 @@ qboolean Actor::checkmovingactorrange( Conditional &condition )
 
 qboolean Actor::checkname( Conditional &condition )
 	{
-	// `name` (its aidata/type name), not its BSP targetname.
 	return ( name == condition.getParm( 1 ) );
 	}
 
@@ -12418,7 +12350,6 @@ qboolean Actor::checkused( Conditional &condition )
 
 bool Actor::ReleaseControl(Listener *controller)
 {
-    // reported success, so a script could "release" a controller it never held.
     if (!_controller) {
         return false;
     }
@@ -12444,7 +12375,6 @@ bool Actor::ReleaseControl(Listener *controller)
 
 
 
-// IDA: NOT FOUND
 
 
 qboolean Actor::CheckBottom( void )
@@ -12594,7 +12524,6 @@ void Actor::setHeadTwitch( Event *ev )
 
 
 
-// IDA: NOT FOUND
 
 Entity* Group::GetNextMember( Entity *entity )
 {
@@ -12622,8 +12551,6 @@ Entity* Group::GetNextMember( Entity *entity )
 }
 
 
-// SetGroupDeathThread/Archive out-of-line; GetPreviousMember is not among them), and no
-// PORT-ONLY-DEAD.
 
 
 
@@ -12774,7 +12701,6 @@ qboolean Actor::checkExecutedPackageInLastTimeFrame(Conditional &condition)
 
 qboolean Actor::checkPatrolWaypointNodeInDistance(Conditional &condition)
 {
-    // and never reads them -- the real test uses `origin` directly.  Kept, verbatim.
     float distance = atof(condition.getParm(1));
 
     Entity *ent_in_range;
@@ -14169,7 +14095,6 @@ const str Actor::FindDialog( Sentient *user, DialogType_t dialogType , const str
 	   				}
 
 
-				// If dialog is already not good go to next dialog
 				if (!good_dialog)
 					break;
 			}
@@ -14314,7 +14239,6 @@ void Actor::FireProjectile( Event *ev )
 
 	if ( !GetClosestTag( tag_name, number_of_tags, currentEnemy->centroid, &orig ) )
 		{
-		// Could not find the tag so just use the centroid of the actor
 		orig[0] = centroid[0];
 		orig[1] = centroid[1];
 		orig[2] = centroid[2];
@@ -14434,7 +14358,6 @@ float Actor::GetDialogRemainingTime( void )
 		}
    }
 
-// Parameters:		Event *ev -- not used
 void Actor::GetStage( Event *ev )
 	{
 	ev->ReturnFloat( (float)stage );
@@ -14734,7 +14657,6 @@ void Actor::MeleeEvent( Event *ev )
 
 	if ( GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_ON ) && GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_DAMAGED ) )
 		{
-		// row a gate early-out is indistinguishable from the tiki never dispatching the
 		if ( gi.cvar("qa_probe", "0", 0)->integer )
 			gi.Printf( "[GAMEPLAY:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_once_already_damaged\n",
 					   entnum, model.c_str(), ( ev->NumArgs() > 2 ) ? ev->GetString( 3 ) : "-",
@@ -15396,8 +15318,6 @@ void Actor::RemoveAnimDoneEvent( void )
 
 
 
-//				the actor is not under control, the request is granted.
-//				request was not exclusive, then the previous controller
 bool Actor::RequestControl
 (
 	Listener			*controller,
@@ -16543,7 +16463,6 @@ qboolean Actor::CanAttackFrom( const Vector &pos, const Entity *ent, qboolean us
 	return false;
 	}
 
-// gi.GetNextMorphTarget / load_lip_info, which this port's engine does not yet
 
 void Actor::SetActorFlag( int flag, qboolean flag_value )
 	{
@@ -16757,7 +16676,6 @@ void Actor::_notifyGroupSpottedEnemy()
 	_notifyGroupOfEnemy();
    }
 
-// an empty localized path is exactly "the line never plays and the subtitle never draws".
 #define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
 #define PROBE_PRINT                       gi.Printf
 #include "../qcommon/qa_probe.h"
@@ -16801,7 +16719,6 @@ void Actor::PlayDialog( Sentient *user, float volume, float min_dist, const char
 	if(dialogAnim)
 		dialog_anim = dialogAnim;
 
-	// `actor='Tuvok' ... anim=''`) are therefore the probe's own ordering, not a
 	if ( PROBE_On() ) {
 		static int widget_dlg;
 
@@ -17683,7 +17600,6 @@ const bool Actor::GetStickToGround( void ) const
 	return movementSubsystem->GetStickToGround();
 }
 
-// with no responder, so ACTOR_FLAG_ANIM_DONE was never set).
 void Actor::AnimDone(Event *ev)
 {
     SetActorFlag(ACTOR_FLAG_ANIM_DONE, true);

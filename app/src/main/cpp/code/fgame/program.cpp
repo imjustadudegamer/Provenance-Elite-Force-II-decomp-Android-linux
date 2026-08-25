@@ -569,7 +569,6 @@ void Program::CreateEventDefs( void )
 	int num;
 	int i;
 	
-	// does not begin with '_' (SDK listener.cpp:1801, fgame/listener.cpp:1736).
 	num = Event::NumEventDefs();
 	for( i = 1; i <= num; i++ )
 	{

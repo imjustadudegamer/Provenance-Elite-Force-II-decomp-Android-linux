@@ -201,7 +201,6 @@ void CameraMoveState::Evaluate(Camera *camera)
             ang.AngleVectors(&back, NULL, NULL);
 
             end = start - back * camera->follow_dist;
-            // SDK camera.cpp:251 -- EF2 lifts the follow point by 12, not MOHAA's 24.
             end[2] += 12.0f;
 
             trace = G_Trace(

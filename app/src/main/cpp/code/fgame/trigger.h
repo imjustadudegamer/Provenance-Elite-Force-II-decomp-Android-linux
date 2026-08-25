@@ -42,7 +42,6 @@ protected:
     qboolean          edgeTriggered; 
     int               multiFaceted;  
 
-    // SDK trigger.h:64 -- the item a Sentient must be carrying before this trigger will
     str key;
 
     str thread;
@@ -449,7 +448,6 @@ public:
 
     void SetMins(Event *ev);
     void SetMaxs(Event *ev);
-    // the port's invented ones were declared-but-never-defined and polluted the vtable.)
 };
 
 class TriggerMusic : public Trigger

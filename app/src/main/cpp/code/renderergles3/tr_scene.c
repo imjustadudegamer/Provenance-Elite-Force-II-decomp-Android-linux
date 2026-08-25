@@ -342,7 +342,6 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	backEndData->staticModelData = tr.refdef.staticModelData;
 
-	// third disjunct the decompile does not resolve to a named field; with the two
 	if (r_dynamiclight->integer == 0 || r_vertexLight->integer == 1) {
 		tr.refdef.num_dlights = 0;
 	}
@@ -379,7 +378,6 @@ void RE_RenderScene( const refdef_t *fd ) {
 	parms.terrainGlobalMinZ = fd->terrain_global_min;      
 	parms.worldSurfaceFade = fd->entity_fade_dist;         
 
-	// Port-only GL1 fog start (sanctioned platform layer).  Retail's viewParms has no
 	parms.farplane_bias = fd->farplane_bias;
 
 

@@ -1,7 +1,6 @@
 
 #pragma once
 
-// EF2 value (SDK bg_local.h:25).  Must stay in step with the bg_public.h copy: this macro
 #define MIN_WALK_NORMAL 0.65f 
 
 #define JUMP_VELOCITY   270
@@ -38,7 +37,6 @@ typedef struct {
 extern pmove_t *pm;
 extern pml_t    pml;
 
-// define it (SDK bg_pmove.c:48) -- it just never reads it either.
 extern float pm_stopspeed;
 extern float pm_swimScale;
 extern float pm_wadeScale;

@@ -51,7 +51,6 @@ typedef struct campspot_s
 	struct campspot_s *next;
 } campspot_t;
 
-// GT_MAX_GAME_TYPE) is NOT declared here.  This engine's qcommon/q_shared.h
 
 typedef struct levelitem_s
 {
@@ -424,16 +423,13 @@ void BotInitLevelItems(void)
 		goalareanum = 0;
 		if (spawnflags & 1)
 		{
-			//if the item is not floating in water
 			if (!(AAS_PointContents(origin) & CONTENTS_WATER))
 			{
 				VectorCopy(origin, end);
 				end[2] -= 32;
 				trace = AAS_Trace(origin, ic->iteminfo[i].mins, ic->iteminfo[i].maxs, end, -1, CONTENTS_SOLID|CONTENTS_PLAYERCLIP);
-				//if the item not near the ground
 				if (trace.fraction >= 1)
 				{
-					//if the item is not reachable from a jumppad
 					goalareanum = AAS_BestReachableFromJumpPadArea(origin, ic->iteminfo[i].mins, ic->iteminfo[i].maxs);
 					Log_Write("item %s reachable from jumppad area %d\r\n", ic->iteminfo[i].classname, goalareanum);
 					if (!goalareanum) continue;
@@ -842,7 +838,6 @@ void BotUpdateEntityItems(void)
 				break;
 			} 
 		} 
-		//if the model is not from a known item
 		if (i >= ic->numiteminfo) continue;
 		li = AllocLevelItem();
 		if (!li) continue;
@@ -853,7 +848,6 @@ void BotUpdateEntityItems(void)
 		li->goalareanum = AAS_BestReachableArea(li->origin,
 									ic->iteminfo[i].mins, ic->iteminfo[i].maxs,
 									li->goalorigin);
-		//never go for items dropped into jumppads
 		if (AAS_AreaJumpPad(li->goalareanum))
 		{
 			FreeLevelItem(li);
@@ -1204,7 +1198,6 @@ int BotItemGoalInVisButNotVisible(int viewer, vec3_t eye, vec3_t viewangles, bot
 		if (goal->entitynum <= 0)
 			return qfalse;
 		AAS_EntityInfo(goal->entitynum, &entinfo);
-		// not updated
 		if (entinfo.ltime < AAS_Time() - 0.5)
 			return qtrue;
 	} 

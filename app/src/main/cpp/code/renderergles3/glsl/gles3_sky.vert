@@ -1,15 +1,7 @@
 #version 300 es
 /*
-ProvenanceEF2 GLES3 shade layer -- sky-portal program (tr_sky.c).
-
-RB_StageIteratorSky draws the six outerbox sides and, when the camera is above
-the cloud height, the innerbox (cloud) layer through the SAME fixed-function
 state machine as an ordinary stage.  The vertex data is tess.xyz plus the sky
-texcoords, and the cloud layer scrolls its texture coordinates by the sky
 shader's time (tr_sky.c's cloud pass).  GLES 3.0 has no fixed-function matrices
-or texgen, so the transform and the scroll are explicit here; everything else
-(rgbGen identity, alphaGen skyAlpha/oneMinusSkyAlpha) is the generic stage arm
-and is reproduced by u_BaseColor / u_SkyAlpha.
 */
 in vec3 a_Position;
 in vec2 a_TexCoord0;
@@ -17,7 +9,6 @@ in vec4 a_Color;
 uniform mat4 u_MVP;
 uniform mat4 u_ModelMatrix;	/* backEnd.ori.modelMatrix: eye-space clip test */
 
-//@@GLES3_CLIP@@
 uniform vec4 u_BaseColor;	/* sky stage colour (rgbGen identity = white) */
 uniform float u_SkyAlpha;	/* tr.refdef.sky_alpha */
 uniform vec2 u_SkyScroll;	/* cloud-layer texcoord scroll (tr_sky.c) */

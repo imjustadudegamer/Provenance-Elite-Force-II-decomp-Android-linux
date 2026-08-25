@@ -18,7 +18,6 @@ static const int CROUCH_MAXS_Z = 49;
 static const unsigned int DEFAULT_VIEWHEIGHT = 85; 
 static const unsigned int CROUCH_VIEWHEIGHT  = 43; 
 
-// SDK bg_public.h:111.  How long the player must have been running for the WAS_RUNNING
 static const int MINIMUM_RUNNING_TIME = 800;
 
 
@@ -31,7 +30,6 @@ static const int MINIMUM_RUNNING_TIME = 800;
 
 
 
-// FRAME_EXPLICIT and is NOT the same namespace -- see the comment at animate.cpp:658. Do
 #define ANIM_TOGGLEBIT (1 << 9)
 #define ANIM_BLEND     (1 << 10)
 #define ANIM_NUMBITS   11
@@ -119,7 +117,6 @@ extern "C" {
 
     } pmtype_t;
 
-    // EF2 has SIX fall bands, not four (SDK bg_public.h:130-136).  The two extra ones are
     typedef enum {
         EV_NONE,
 
@@ -189,7 +186,6 @@ extern "C" {
 #define PMF_SCANNER         (1 << 22)  
 // flag retail never consumes would be a divergence, not a port.
 #define PMF_ZOOM            (1 << 23)  
-// EF2's crouch-jump latches are NOT pm_flags bits.  Retail carries them as two real
 #define PMF_TIME_CROUCH_JUMP (1 << 26) 
 #define PMF_NIGHTVISION     (1 << 27) 
 #define PMF_DAMAGE_FRONT    (1 << 28)

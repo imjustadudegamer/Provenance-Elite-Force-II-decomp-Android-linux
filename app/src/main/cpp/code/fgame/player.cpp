@@ -1,11 +1,9 @@
 
 #include "g_local.h"
 
-// PROBE TEMP PROBE (worktree-only, never merge): server-side inventory-mirror fill.
 #define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
 #define PROBE_PRINT                       gi.Printf
 #include "../qcommon/qa_probe.h"
-/* [WIDGET:A1:infra] workstream A1 probe net (port-only, merge-safe: silent unless qa_probe is on). */
 #define WIDGET_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
 #define WIDGET_PROBE_PRINT                 gi.Printf
 #include "../qcommon/qa_widget.h"
@@ -62,13 +60,11 @@ const Vector damageNormalColor(0.5f, 0.0f, 0.0f);
 const Vector damageFireColor(0.5f, 0.25f, 0.0f);   
 
 
-// the per-model valid-player-model TIKI flag are not ported; registered as
 Event EV_Player_SetDoDamageScreenFlash (    "doDamageScreenFlash",
     EV_DEFAULT,
     "B",
     "bool",
     "Makes the screen flash when the player is damaged (or turns it off).");
-// map load printed 98 "Event does not exist" lines while parsing the character models.
 Event EV_Player_BackpackAttachOffset (    "backpackAttachOffset",
     EV_DEFAULT,
     "v",
@@ -138,16 +134,11 @@ Event EV_Player_NextItem (    "invnext",
     NULL,
     NULL,
     "Cycle to player's next item.");
-// "Event 'animateweapon' does not exist", the state command failed, and the fire
-// "Possible infinite loop" -> the shot never completed -> the player could not fire
 Event EV_Player_AnimateWeapon (    "animateweapon",
     EV_DEFAULT,
     "sSB",
     "anim hand animatingFlag",
     "Animates the weapon, optionally, in the specific hand (defaults to DUAL)If the animatingFlag is set to false, it will not set the WEAPON_ANIMATINGas the status for this animation.");
-// gamex86 sub_1007BAE0, but that function does not REGISTER a command -- it builds a str from
-// `bind <key> "use Tricorder"`.  A command named `tricorder` is not free here:
-// Program::GetDef will not let a script identifier shadow an unscoped event def
 Event EV_Player_GiveCheat (    "give",
     EV_CHEAT | EV_TIKIONLY | EV_SCRIPTONLY,
     "sI",
@@ -229,7 +220,6 @@ Event EV_Player_Jump (    "jump",
     "f",
     "height",
     "Makes the player jump.");
-// so the cam-fade-to-black never faded back in (black screen + half-drawn
 extern Event EV_Warp;
 
 extern Event EV_Actor_WarpTo;
@@ -291,9 +281,6 @@ Event EV_Player_FinishUseAnim (    "finishuseanim",
     NULL,
     NULL,
     "Fires off all targets associated with a particular useanim.");
-// SDK player.cpp:483-490 -- EV_SCRIPTONLY, not EV_CONSOLE.  CheckEventFlags
-// "Command not available from console."  The holster BUTTON is unaffected either
-// checkholsterweapon, never through this event.
 Event EV_Player_Holster (    "holster",
     EV_SCRIPTONLY,
     NULL,
@@ -419,8 +406,6 @@ Event EV_Player_SetInformationShow (    "setinformationshow",
     "name show",
     "Sets whether or not a specified information is shown");
 
-// these win over the Entity stubs whether or not the stubs are still present.
-// 848-854).  Ranges like [0,360] are parsed but never enforced at runtime
 extern Event EV_Player_SetViewAngles;
 
 extern Event EV_Player_UseEntity;
@@ -1404,15 +1389,12 @@ Player::Player()
     _secretsFound     = 0;
     _skillLevel       = 0;
 
-    // into the savegame is not something to ship.
     _itemIcon = 0;
     _itemText = "";
 
 
     last_camera_type             = -1;
 
-    // (SDK player.cpp:3218-3220, :3226, :3292).  The port-only early-out that used to sit
-    // ever printed -- the ctor never ran its tail.  Retail keeps its OWN LoadingSavegame
 
     useanim_numloops            = 1;
 
@@ -1447,7 +1429,6 @@ Player::Player()
 
     moveresult                = 0;
     animspeed                 = 0;
-    // EF2 seeds this at 350, not MOHAA's 200 (SDK player.cpp:3166).  The field is
     airspeed                  = 350.0f;
     weapons_holstered_by_code = false;
     actor_camera              = NULL;
@@ -1456,12 +1437,10 @@ Player::Player()
     take_pain         = true;
 
 
-    // `r_fov`, not from userinfo.  The MOHAA `selectedfov` path this port used to carry
     fov = sv_defaultFov->value;
 
     action_level = 0;
 
-    // userinfo key.  This port's client never registers that cvar CVAR_USERINFO, so the
     {
         const char *s = Info_ValueForKey(client->pers.userinfo, "mp_autoSwitchWeapons");
 
@@ -1473,7 +1452,6 @@ Player::Player()
         }
     }
 
-    // before Init() (whose InitStats reads it).  The port never initialized
 #ifdef DEDICATED
     p_heuristics = 0;
 #else
@@ -1518,8 +1496,6 @@ Player::~Player()
 
     player = this;
 
-    // `Container<Sentient *>` (SDK actor.cpp:46) -- RAW pointers, not SafePtrs -- and
-    // cause of m1l1a's Borg never acquiring the player.
     if ( TeamMateList.ObjectInList( player ) )
     {
         TeamMateList.RemoveObject( player );
@@ -1764,7 +1740,6 @@ void Player::InitSound(void)
     client->ps.music_volume           = 1.0;
     client->ps.music_volume_fade_time = 0.0;
 
-    // never written here and kept the spawn value: g_main.cpp:345 memsets game.clients, so the
     _allowMusicDucking                = true;
     client->ps.allowMusicDucking      = true;
 
@@ -1814,7 +1789,6 @@ void Player::InitClient(void)
 
 void Player::InitState(void)
 {
-    // previous life's knockback suppression, never gibbed on death, and was handed think
     // flags retail does not set on this path.
     gibbed           = false;
     pain             = 0;
@@ -1934,7 +1908,6 @@ void Player::InitView(void)
     camera  = NULL;
     v_angle = vec_zero;
     SetViewAngles(v_angle);
-    // STAND_EYE_HEIGHT (q_shared.h:1681 = 66), NOT the pmove stance height.  Confirmed
     viewheight = STAND_EYE_HEIGHT;
 
     head_target       = NULL;
@@ -1967,7 +1940,6 @@ void Player::ChooseSpawnPoint(void)
 
 
 // "Could not pick up ..." line in the game -- twelve retail call sites feed it and it is
-// after the first must restart the 2-second window, not let the first pickup's pending
 void Player::setItemText(int itemIcon, const str& itemText)
 {
     CancelEventsOfType(EV_Player_ClearItemText);
@@ -1978,7 +1950,6 @@ void Player::setItemText(int itemIcon, const str& itemText)
     PostEvent(EV_Player_ClearItemText, 2.0f);
 }
 
-// (SDK mp_manager.cpp:2730) and must not leave a stale clear event pending.
 void Player::clearItemText(void)
 {
     _itemIcon = 0;
@@ -1995,10 +1966,8 @@ void Player::clearItemText(Event *ev)
 
 
 
-// [192], GetViewModeHud [190] and GetViewModeUseFullbright [191]; it is NOT duplicated
 
 // The HUD is NOT pushed here.  Retail's CG_DrawActiveFrame (@0x00044FE0) reads
-// Note the comparison is on the MASK, not the name: switching between "normal" and
 void Player::setViewMode(const str& viewModeName)
 {
     Sentient::setViewMode(viewModeName);
@@ -2006,7 +1975,6 @@ void Player::setViewMode(const str& viewModeName)
     client->ps.viewMode = getViewMode();
 }
 
-// engine's viewmode table, so the decision is deferred to gi.*, never re-derived.
 qboolean Player::ShouldSendToClient(Entity *entityToSend)
 {
     if (multiplayerManager.inMultiplayer() && client->pers.mp_lowBandwidth
@@ -2044,7 +2012,6 @@ void Player::SetObjectiveShow(Event *ev)
     ObjName = ev->GetString(1);
     Show    = ev->GetBoolean(2);
 
-    // and its visible flag set through the ENGINE's MissionObjective list, not through a
     ObjIndex = gi.MObjective_GetIndexFromName(ObjName.c_str());
     if (ObjIndex == 0) {
         return;
@@ -2052,7 +2019,6 @@ void Player::SetObjectiveShow(Event *ev)
 
     gi.MObjective_SetShowObjective(ObjName.c_str(), Show);
 
-    // EF2 "show" is sticky: showing clears HIDDEN + marks CURRENT; it is never
     if (Show) {
         unsigned int bitToChange = (ObjIndex <= OBJECTIVE_MAX_STATES) ? OBJECTIVE_SHOW_BIT(ObjIndex) : 0u;
 
@@ -2184,7 +2150,6 @@ void Player::SetInformationShow(Event *ev)
 
 void Player::EndLevel(Event *ev)
 {
-    // last frame (displayed while loading) is not fullbright.
     setViewMode("none");
 
     if (health > max_health) {
@@ -2266,9 +2231,7 @@ void Player::Dead(Event *ev)
         G_MissionFailed(playerKilled);
     }
 
-    // SP GetTeamSpawnTimeLeft() was always 0, so the body never executed; deleting it is
 
-    // SDK player.cpp:3831 -- time spent dead does not count as gameplay.
     _updateGameFrames = false;
 }
 
@@ -2280,7 +2243,6 @@ void Player::Killed(Event *ev)
     int      meansofdeath;
     Vector   direction;
 
-    // Sentient::ArmorDamage (SDK sentient.cpp:581), never to Entity::DamageEvent --
     attacker     = ev->GetEntity(1);
     inflictor    = ev->GetEntity(3);
     meansofdeath = ev->GetInteger(4);
@@ -2303,12 +2265,10 @@ void Player::Killed(Event *ev)
     animate->ClearTorsoAnim();
     animate->ClearLegsAnim();
 
-    //  player.cpp:3834-3930, never touches `vehicle`: dying in the m6 turret leaves the
 
 
     deadflag = DEAD_DYING;
 
-    // i.e. respawn_time = level.time + 1.0f.  This port never wrote it, so respawn_time
     respawn_time = level.time + 1.0f;
 
     TIKIANIM_PROBE("die", "ent=%d mp=%d attackerIsPlayer=%d attackerEnt=%d mod=%d respawn_time=%.2f deadflag=DYING",
@@ -2324,7 +2284,6 @@ void Player::Killed(Event *ev)
         _targetedEntity = NULL;
     }
 
-    // (The map-script thread registered via playerDeathThread() is NOT run here.
 
 
     if (g_gametype->integer != GT_SINGLE_PLAYER) {
@@ -2358,8 +2317,6 @@ void Player::Killed(Event *ev)
     edict->clipmask  = MASK_DEADSOLID;
     edict->svflags |= SVF_DEADMONSTER;  
     setContents(CONTENTS_CORPSE);
-    // breaks out and the body never integrates.  This port had MOVETYPE_TOSS, which was
-    // -- that one is a collision-workstream divergence, recorded, not touched.
     setMoveType(MOVETYPE_NONE);
 
     angles.x = 0;
@@ -2379,7 +2336,6 @@ void Player::Killed(Event *ev)
 }
 
 
-// the same name, which EF2 content never uses), so every one of those calls was a
 void Player::MissionFailed(Event *ev)
 {
     str reason = "DefaultFailure";
@@ -2519,7 +2475,6 @@ void Player::DoUse(Event *ev)
     bool       entityActuallyUsed;
     Entity    *bestActor;
 
-    // SDK player.cpp:4053-4055 -- a spectator does not use anything at all.
     if (multiplayerManager.inMultiplayer() && multiplayerManager.isPlayerSpectator(this)) {
         return;
     }
@@ -2635,12 +2590,10 @@ Actor *Player::getBestActorToUse(int *entityList, int count)
     return bestActor;
 }
 
-// SDK player.cpp:12754-12790, RETAIL-EXACT.  `_holdableItem` is never set in this port
 void Player::useHoldableItem(void)
 {
     if (_holdableItem) {
         if (_holdableItem->use()) {
-            // Must check again if holdable item exists, because use might have caused the holdable item to be destroyed
             if (_holdableItem) {
                 setItemText(_holdableItem->getIcon(), va("$$Used$$ $$Item-%s$$", _holdableItem->getName().c_str()));
                 removeHoldableItem();
@@ -2668,7 +2621,6 @@ void Player::TouchStuff(pmove_t *pmove)
 
     toucheduseanim = NULL;
 
-    // SDK player.cpp:4183-4190.  The test is the PM type, not the entity move type: a
     if (GetMovePlayerMoveType() != PM_NOCLIP) {
 
         if (multiplayerManager.inMultiplayer() && multiplayerManager.isPlayerSpectator(this)) {
@@ -2707,7 +2659,6 @@ void Player::TouchStuff(pmove_t *pmove)
     }
 }
 
-//     groundentity is moving up/down, looks like shaky otherwise") is a deliberate departure
 // Kept deliberately, against retail:
 void Player::GetMoveInfo(pmove_t *pmove)
 {
@@ -3138,10 +3089,8 @@ void Player::CheckMoveFlags(void)
     trace   = G_Trace(start, mins, maxs, end, this, edict->clipmask, true, "CheckMoveFlags");
     canfall = !(trace.fraction < 1.0f);
 
-    // all") never gets ps.walking refreshed, so ONGROUND reads false and the shipped
     CheckGround();
 
-    // gate is a VELOCITY test, not the ground-walking flag; and hardimpact's threshold
     if (!groundentity && (velocity.z < -250.0f)) {
         falling    = true;
         hardimpact = false;
@@ -3361,8 +3310,6 @@ void Player::ClientMoveLadder(usercmd_t *ucmd)
     _onLadder = false;
 }
 
-// / PMF_DUCKED), a port-only `!= ABSOLUTE && != PUSH && != CLIMBWALL` guard that SKIPPED
-// the whole Pmove for those three movecontrols, and a port-only `MOVERESULT_BLOCKED` /
 void Player::ClientMove(usercmd_t *ucmd)
 {
     pmove_t pmove;
@@ -3459,9 +3406,6 @@ void Player::ClientMove(usercmd_t *ucmd)
 }
 
 // retail's Player never had a vehicle move function at all, only the two ifs now in
-// successful Drive and -- crucially -- never ran a Pmove when Drive succeeded.
-// Consequence worth recording: PMF_TURRET (bg_public.h:473, marked PORT-ONLY, absent
-// locomotion row, not this one.
 
 
 void Player::GetViewTrace(trace_t& trace, int contents, float maxDistance)
@@ -3526,7 +3470,6 @@ void Player::GetViewTrace(trace_t& trace, int contents, float maxDistance)
     );
 }
 
-// Actor is explicitly NOT targeted, so the identifier drops off a corpse.
 void Player::CheckForTargetedEntity(void)
 {
     trace_t viewTrace;
@@ -3575,7 +3518,6 @@ void Player::ProcessTargetedEntity(void)
     _targetedEntity->edict->s.eFlags |= EF_DISPLAY_DESC1;
 }
 
-// per-client frame event, EV_ClientMove).  The body reads current_ucmd, not the event.
 void Player::ClientThink(Event *ev)
 {
     if (current_ucmd->serverTime > level.inttime) {
@@ -3621,7 +3563,6 @@ void Player::ClientThink(Event *ev)
         _isThirdPerson = false;
     }
 
-    // could never leave zero -- no locomotion, no jump -- while posture still worked,
     if (world->getPhysicsVar(WORLD_PHYSICS_AIRACCELERATE) != -1.0f) {
         client->ps.pm_airaccelerate = (int)world->getPhysicsVar(WORLD_PHYSICS_AIRACCELERATE);
     } else {
@@ -3694,7 +3635,6 @@ void Player::ClientThink(Event *ev)
 
     client->ps.pm_flags &= ~(PMF_RADAR_MODE | PMF_SCANNER);
 
-    // ClientMove, not before it -- the port had it at the top of the function, which is
     CheckForTargetedEntity();
     ProcessTargetedEntity();
 
@@ -3726,8 +3666,6 @@ void Player::ClientThink(Event *ev)
         specialMoveCharge = level.time;
     }
 
-    // only evaluate the state when not noclipping -- SDK player.cpp:5598-5613.
-    // and movecontrol was never refreshed from currentState_Torso/Legs->getMoveType().
     // retail traces for every client frame -- was defined and never called at all.
     if (getMoveType() == MOVETYPE_NOCLIP) {
         SetAnim("idle", all);
@@ -3840,7 +3778,6 @@ void Player::LoadStateTable(void)
     torso_conditionals.FreeObjectList();
 
     statemap_Legs =
-    // pak0's OLDER file byte-exactly and never saw the patch (three torso weapon-fire
         GetStatemap(str(g_statefile->string) + "_Legs.st", (Condition<Class> *)Conditions, &legs_conditionals, false);
     statemap_Torso = GetStatemap(
         str(g_statefile->string) + "_Torso.st", (Condition<Class> *)Conditions, &torso_conditionals, false
@@ -4170,13 +4107,11 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
             laststate_Torso = NULL;
         }
 
-        // clears animdone_Legs with it whenever the torso state is not MOVECONTROL_LEGS.
         animdone_Torso = false;
         if (movecontrol != MOVECONTROL_LEGS) {
             animdone_Legs = false;
         }
 
-        // statemap's torso animation never survived a frame.
         if (laststate_Torso != currentState_Torso) {
             // Process exit commands of the last state.  The NULL test is not retail's:
             // (SDK player.cpp:6196-6201) so its laststate_Torso can never be NULL here.
@@ -4237,8 +4172,6 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
                 SetAnim(torsoAnim.c_str(), torso);
             }
 
-            // UIROWS TEMP PROBE (branch-only, never merge): the DM-bot anim-selection leg.
-            //                    block and no movetype, so movecontrol never lands on LEGS)
             static int uirows_botanim;
             if (PROBE_On() && PROBE_Throttle(&uirows_botanim, 24, 400)) {
                 Weapon *uirows_w = GetActiveWeapon(WEAPON_DUAL);
@@ -4416,7 +4349,6 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
 
 void Player::AnimateWeapon(Event *ev)
 {
-    // animatingFlag to true -- "animateweapon <anim> <hand> false" never suppressed
     Weapon      *weapon = NULL;
     weaponhand_t hand = WEAPON_DUAL;
     bool         animatingFlag = true;
@@ -4437,8 +4369,6 @@ void Player::AnimateWeapon(Event *ev)
     weapon->playAnim(ev->GetString(1), animatingFlag);
 }
 
-// command was silently dropped, the weapon never entered WEAPON_RELOADING, and the torso
-// statemap thrashed STAND<->FORCE_RELOAD forever (and the clip never refilled).  Forward
 
 
 void Player::GiveWeaponCheat(Event *ev)
@@ -4465,7 +4395,6 @@ void Player::GiveCheat(Event *ev)
 
 void Player::GiveAllCheat(Event *ev)
 {
-    // not active yet.  Retail GiveAllCheat__6PlayerFP5Event carries both PostEvent
     char *buffer;
     char *buf;
     char  com_token[MAX_STRING_CHARS];
@@ -4594,7 +4523,6 @@ void Player::GameVersion(Event *ev)
     gi.SendServerCommand(edict - g_entities, "print \"%s : %s\n\"", GAMEVERSION, __DATE__);
 }
 
-// cvar -- so the client never learned the server's clamped FOV.
 void Player::SetFov(float newFov, bool forced)
 {
     fov = newFov;
@@ -4817,7 +4745,6 @@ void Player::CalcBlend(void)
     blend[0] = blend[1] = blend[2] = blend[3] = 0;
     SetBlend(false);
 
-    // import "this port does not have" and that no shipped viewmode carries a screen
     if (gi.GetViewModeScreenBlend(getViewMode(), viewModeColor, &viewModeAlpha, &viewModeAdditive)) {
         AddBlend(viewModeColor[0], viewModeColor[1], viewModeColor[2], viewModeAlpha);
         SetBlend(viewModeAdditive);
@@ -5610,7 +5537,6 @@ void Player::AcquireHeadTarget(void)
         }
 
         if (new_head_target != head_target) {
-            // If we were looking at an item and are not now, mark it as has been looked at
 
             if (head_target && head_target->isSubclassOf(Item)) {
                 item               = (Item *)(Entity *)head_target;
@@ -5652,8 +5578,6 @@ void Player::HandleFinishableList()
                 continue;
             }
 
-            // Enemy Angles not yet used...
-            // Chance not yet used...
 
             delta.z = 0.0f;
             delta.normalize();
@@ -6159,7 +6083,6 @@ void Player::UpdateStats( void )
 		if ( item )
 		{
 			client->ps.inventory_name_index[i-1] = item->getIndex();
-			// client would mean the transport leg, not the fill leg.
 			{
 				static int probe_n = 0;
 				if (PROBE_Throttle(&probe_n, 24, 200)) {
@@ -6243,7 +6166,6 @@ void Player::UpdateStats( void )
 
 void Player::UpdateMusic(void)
 {
-    // command -- not ported, and used by zero shipped scripts.)
 
 
     if (!g_allowActionMusic->integer) {
@@ -6261,7 +6183,6 @@ void Player::UpdateMusic(void)
         client->ps.fallback_music_mood = music_fallback_mood;
     }
 
-    // Naturally decay the action level.  Retail's hysteresis is deliberate: between 15
     if (action_level > 0.0f) {
         if (g_gametype->integer != GT_SINGLE_PLAYER) {
             action_level -= level.fixedframetime * 2.0f;
@@ -6283,7 +6204,6 @@ void Player::UpdateMusic(void)
     client->ps.music_volume           = music_current_volume;
     client->ps.music_volume_fade_time = music_volume_fade_time;
 
-    // separate, never-written flag -- see the note in Player::InitSound.
     client->ps.allowMusicDucking = _allowMusicDucking;
 }
 
@@ -6368,7 +6288,6 @@ void Player::UpdateMisc(void)
         client->ps.pm_flags |= PMF_LEVELEXIT;
     }
 
-    // not PMF_RESPAWNED.  The flag this branch reads was set two blocks above by
     if (client->ps.pm_flags & PMF_LEVELEXIT) {
         if (music_current_mood != mood_success) {
             ChangeMusic("success", "normal", false);
@@ -6380,9 +6299,6 @@ void Player::UpdateMisc(void)
     }
 }
 
-// active weapon is the whole of EF2's "you never press reload" behaviour.  This function did
-// not exist in the port at all, so the only reload path was the explicit BUTTON_RELOAD
-// one slot and must not be reloaded twice.
 void Player::CheckReloadWeapons(void)
 {
     Weapon *weap;
@@ -6504,7 +6420,6 @@ void Player::ChangeMusic(const char *current, const char *fallback, qboolean for
 
     music_forced = force;
 
-    // SDK player.cpp:9386-9389: a change to "normal" never counts as forced.  Retail
     if (current && !strcmp(current, "normal")) {
         music_forced = qfalse;
     }
@@ -6668,7 +6583,6 @@ void Player::HolsterToggle(Event *ev)
     }
 }
 
-// Sentient with a single holsteredWeapon scalar, which could not express the
 void Player::Holster(qboolean putaway)
 {
     Weapon *leftWeap, *rightWeap, *dualWeap;
@@ -6747,9 +6661,6 @@ void Player::Holster(Event *ev)
     SafeHolster(ev->GetBoolean(1));
 }
 
-// SDK entity.cpp:3094 by treating its argument as LOCAL angles, so the arm was not merely
-// origin.y >= -843 -- and with a stale yaw_forward the box usually never pointed there at all,
-// so EV_Use never reached the trigger and the lift "button" did nothing.  Everything else that
 void Player::setAngles(Vector ang)
 {
     Entity::setAngles(ang);
@@ -6797,7 +6708,6 @@ void Player::ArchivePersistantData(Archiver& arc, qboolean sublevelTransition)
         }
     }
 
-    // sublevel transition, not one.  This port had a single scalar, so a player who
     for (int hw = 0; hw < MAX_ACTIVE_WEAPONS; hw++) {
         str hname;
 
@@ -6813,8 +6723,6 @@ void Player::ArchivePersistantData(Archiver& arc, qboolean sublevelTransition)
     }
 
 
-    // turbolift / cinematic where the new map's info_player_start must win.
-    // the flag is written into the stream: the load side must know whether two vectors
     if (arc.Saving()) {
         if (sublevelTransition && level._saveOrientation) {
             anglesArchived = true;
@@ -6850,7 +6758,6 @@ void Player::ArchivePersistantData(Archiver& arc, qboolean sublevelTransition)
 }
 
 // NOTE (faithful, do not "fix"): by the time this runs, G_ExitLevel has already blanked
-// same ordering.  Reproduced as-is.
 void Player::LevelCleanup(void)
 {
     if (!client) {
@@ -6923,7 +6830,6 @@ int Player::GetKnockback(int original_knockback, qboolean blocked)
 
     new_knockback = original_knockback;
 
-    // unconditionally and never consulted the shield.
     if (blocked) {
         if (LargeShieldActive()) {
             new_knockback -= 150;
@@ -7035,11 +6941,8 @@ void Player::ReceivedItem(Item *item)
         }
     }
 
-    // text starts with neither '$' nor '*' and that was not posted from the console
     // NULL guard in usePlayer, so retail survives only because retail NEVER posts EV_Use
-    // EV_Player_UseItem (NOT EV_Use) at FRAMETIME.  This port's Sentient::giveItem
     // preserved without the invented post.  Deleted, not guarded: a NULL check in
-    // usePlayer would be a port-only invention masking a bad argument.
 }
 
 void Player::RemovedItem(Item *item)
@@ -7218,7 +7121,6 @@ void Player::GibEvent(Event *ev)
     }
 }
 
-// `SkillLevel-PlayerDamage` multiplier is not exactly 1.0 (Easy .5 / Hard 3 / VeryHard 6,
 void Player::ArmorDamage(Event *ev)
 {
     float oldHealth;
@@ -7310,7 +7212,6 @@ void Player::ArmorDamage(Event *ev)
 
     Sentient::ArmorDamage(damage);
 
-    // `inMultiplayer()`, not the gametype; the port's old `g_gametype` form is gone because
     if (multiplayerManager.inMultiplayer()) {
         float damageTaken = oldHealth - health;
 
@@ -7459,7 +7360,6 @@ void Player::SetStateFile(Event *ev)
 
 
 
-// valid-player-model TIKI flag are not ported. Consume the args so campaign and
 
 void Player::setBackpackAttachOffset(Event *ev)
 {
@@ -7501,9 +7401,6 @@ Vector Player::getFlagAttachAngles(void)
     return _flagAttachAngles;
 }
 
-// Ordering is 1:1 with playerstat_t indices 0..76 in code/fgame/bg_public.h.  Retail has
-// exactly 77 names; this port's MOHAA-leftover stats (77..98, MAX_STATS 112) deliberately
-// not name them either.  Nothing here renumbers a stat.
 static const char *const playerStatNames[] = {
     "health",           
     "dead_yaw",         
@@ -7660,8 +7557,6 @@ void Player::UseSpecifiedEntity(Event *ev)
     }
 }
 
-// deliberately NO Player-side `disableinventory` EVENT row: the single shipped declaration
-// 0-arg TIKI call does not supply.
 void Player::disableInventory(void)
 {
     client->ps.pm_flags |= PMF_NO_WEAPONBAR;
@@ -7845,8 +7740,6 @@ qboolean Player::checkcrouch(Conditional &condition)
     return qfalse;
 }
 
-// the lean guard, the last_attack_button latch and the WEAPON_RIGHT -> WEAPON_DUAL
-// truncated form could never see a rifle: the ATTACKLEFT statemap conditional -- and
 qboolean Player::checkattackleft( Conditional &condition )
 {
 	if ( level.playerfrozen || ( flags & FL_IMMOBILE ) )
@@ -8031,7 +7924,6 @@ qboolean Player::checkuse( Conditional &condition )
 	return ( last_ucmd.buttons & BUTTON_USE ) != 0;
 }
 
-// delta_angles), not the raw sign of the cmd yaw -- a positive cmd yaw is "turn left"
 qboolean Player::checkturnleft(Conditional &condition)
 {
     float yaw;
@@ -8205,7 +8097,6 @@ void Player::ActivateDualWeapons( Event *ev )
 	holsteredWeapons[WEAPON_RIGHT] = NULL;
 	holsteredWeapons[WEAPON_DUAL]  = NULL;
 	
-	// let the player know that our weapons are not holstered
 	WeaponsNotHolstered();
 }
 
@@ -8220,7 +8111,6 @@ void Player::ActivateNewWeapon( Event *ev )
 	holsteredWeapons[WEAPON_RIGHT] = NULL;
 	holsteredWeapons[WEAPON_DUAL]  = NULL;
 	
-	// let the player know that our weapons are not holstered
 	WeaponsNotHolstered();
 }
 
@@ -8244,7 +8134,6 @@ void Player::AdjustTorso( Event *ev )
 }
 
 
-// IDA: NOT FOUND
 void Player::ApplyPowerupEffects(int &moveSpeed)
 {
 	if ( _powerup )
@@ -8450,13 +8339,11 @@ void Player::ClientMoveFlagsAndSpeeds( int moveSpeed, int noclipSpeed, int crouc
 }
 
 
-// IDA: NOT FOUND
 void Player::ClientMoveLean( usercmd_t *ucmd )
 {
 }
 
 
-// IDA: NOT FOUND
 void Player::ClientMoveMisc( usercmd_t *ucmd )
 {
 	if ( client->ps.feetfalling && ( waterlevel < 2 ) && !( client->ps.pm_time ) )
@@ -8693,7 +8580,6 @@ void Player::Gib( void )
 }
 
 
-// IDA: NOT FOUND
 void Player::GiveOxygen( float time )
 {
 	air_finished = level.time + time;
@@ -9278,7 +9164,6 @@ void Player::SetPlayerViewUsingActorController( Camera *camera_shadow2 )
 }
 
 
-// IDA: NOT FOUND
 void Player::SetPlayerViewUsingCinematicController( Camera *camera_shadow1 )
 {
 	client->ps.camera_angles[ 0 ] = camera_shadow1->angles[ 0 ];
@@ -9296,7 +9181,6 @@ void Player::SetPlayerViewUsingCinematicController( Camera *camera_shadow1 )
 }
 
 
-// IDA: NOT FOUND
 void Player::SetPlayerViewUsingEntityWatchingController( void )
 {
 
@@ -9326,7 +9210,6 @@ void Player::SetPlayerViewUsingEntityWatchingController( void )
 }
 
 
-// IDA: NOT FOUND
 void Player::SetPlayerViewUsingNoClipController( void )
 {
 	client->ps.pm_flags &= ~PMF_CAMERA_VIEW;
@@ -9342,7 +9225,6 @@ void Player::SetPointsEvent( Event *ev )
 }
 
 
-// IDA: NOT FOUND
 void Player::SetProjDetonate(qboolean value)
 {
 	projdetonate = value;
@@ -9391,7 +9273,6 @@ void Player::SetState(const str& legsstate, const str& torsostate)
 		( this->*MoveStartFuncs[ movecontrol ] )();
 	}
 	
-	// to get out of sync because delta_angles is not updated correctly.
 }
 
 
@@ -9412,7 +9293,6 @@ void Player::ShakeCamera( void )
 	
 	VectorClear( client->ps.damage_angles );
 
-	// Don't shake camera if in cinematic and not allowed to
 
 	if ( ( playerCameraMode == PLAYER_CAMERA_MODE_CINEMATIC ) && !world->canShakeCamera() )
 		return;
@@ -9605,7 +9485,6 @@ void Player::StartFakePlayer( void )
 	this->hideModel();
 	this->ProcessEvent( EV_Sentient_TurnOffShadow );
 	this->flags |= FL_IMMOBILE;
-	// make the player not solid
 	setSolidType( SOLID_NOT );
 	
 	PostEvent( EV_Player_Done, 0.0f );
@@ -9699,7 +9578,6 @@ void Player::UpdateEntityStateForClient( entityState_t *state )
 }
 
 
-// IDA: NOT FOUND
 void Player::UpdateObjectiveStatus( void )
 {
 	client->ps.objectiveStates = _objectiveStates;
@@ -9936,7 +9814,6 @@ void Player::allowMusicDucking( bool allowMusicDucking )
 }
 
 
-// IDA: NOT FOUND
 void Player::applyWeaponSpeedModifiers( int *moveSpeed )
 {
 	Weapon *weap;
@@ -11171,7 +11048,6 @@ qboolean Player::checkattackright( Conditional &condition )
 	if ( client->ps.leanDelta != 0 )
 		return false;
 	
-	// If we're in the middle of a reload, we're not done attacking
 	
 	if ( last_ucmd.buttons & BUTTON_ATTACKRIGHT )
 	{

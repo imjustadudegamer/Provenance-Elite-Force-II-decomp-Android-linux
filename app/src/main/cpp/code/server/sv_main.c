@@ -281,7 +281,6 @@ static void SVC_RemoteCommand( netadr_t from, msg_t *msg ) {
 	int			i;
 	static int	lastRconTime;
 
-	// port-only: SVC_RateLimit / SVC_RateLimitAddress have NO Mac symbol at all
 	if ( (int)Com_Milliseconds() < lastRconTime + 500 ) {
 		return;
 	}
@@ -815,7 +814,6 @@ void Com_Pause_f(void)
 		return;
 	}
 
-	// SANCTIONED platform glue: the Android sys layer drops the process/thread
 	SetBelowNormalThreadPriority();
 
 	Cvar_Set( "paused", "1" );
@@ -824,7 +822,6 @@ void Com_Pause_f(void)
 
 void Com_UnPause_f(void)
 {
-	// SANCTIONED platform glue, symmetric with Com_Pause_f.
 	if ( paused->integer == 1 ) {
 		SetNormalThreadPriority();
 	}

@@ -754,7 +754,6 @@ qboolean TIKI_LoadSetupCase(
             }
             break;
         case SETUP_REPLACESURFACE: {
-            // does NOT hide the old surface.  Retail resolves <skbfile> in the skel cache
             char oldsurface[64];
             char newsurface[64];
             char skbfile[128];

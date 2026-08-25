@@ -2500,7 +2500,6 @@ static int EVENT_EntityOf( void *p )
 	return -1;
 }
 
-// vtable word differs is NOT a SafePtrBase, so its target pointer must not be chased.
 static void *WIDGETF3_SafePtrVt( void )
 {
 	static void *vt;

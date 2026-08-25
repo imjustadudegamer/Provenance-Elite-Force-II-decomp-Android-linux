@@ -1181,7 +1181,6 @@ static void IN_TouchReleaseGone( void )
 }
 
 
-// It is DELETED, not disabled: EF1 shipped it disabled, EF2's uilib menus are driven by
 static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 {
 	touchControl.lastTouchMs = Sys_Milliseconds();   

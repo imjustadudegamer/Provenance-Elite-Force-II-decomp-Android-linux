@@ -1,7 +1,6 @@
 
 
 
-// does not pull class.h in by itself (class.cpp:32-50 includes it explicitly), so
 #include <cgame/cg_local.h>
 #include "listener.h"
 #include "class.h"

@@ -9,8 +9,6 @@
 #include "level.h"
 
 
-// 🔴 RESOLUTION IS LAZY, AND HAS TO BE.  Retail never checks a thread name when it
-// (SDK interpreter.cpp:1331-1348).  That is not merely a style match -- a BSP `thread`
 
 
 

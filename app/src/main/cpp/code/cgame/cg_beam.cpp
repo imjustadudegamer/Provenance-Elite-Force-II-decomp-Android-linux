@@ -782,7 +782,6 @@ void CG_CreateModelBeam(beam_t *b, vec3_t org, vec3_t dist, float total_length, 
     }
 }
 
-// free/active list this port used to walk does not exist.  Retail tests exactly
 void CG_AddBeams(void)
 {
     int     i, ii;

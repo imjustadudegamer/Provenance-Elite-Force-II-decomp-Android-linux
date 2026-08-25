@@ -171,7 +171,6 @@ void UIButtonBase::updateGameplayProperty(void)
         return;
     }
 
-    // Retail does not step i back after RemoveObjectAt (the next entry shifts into the
     for (int i = 1; i <= m_serverThreads.NumObjects(); i++) {
         str *entry = m_serverThreads.ObjectAt(i);
 
@@ -305,7 +304,6 @@ void UIButtonBase::SetDialogThreadToRun(Event *ev)
     m_dialogThreadToRun = ev->GetString(1);
 }
 
-// off_22A810+27.  Not used by any shipped .urc, ported for API completeness.
 void UIButtonBase::ClearDialogThreads(Event *ev)
 {
     m_dialogThreadToRun = "";

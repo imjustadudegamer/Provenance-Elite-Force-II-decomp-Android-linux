@@ -90,7 +90,6 @@ typedef struct {
     int   numskins;
     int   flags;
     float damage_multiplier;
-    // Retail's replacesurface does NOT add a mesh and does NOT hide the old surface:
     // Empty replSkel == the surface is not replaced (retail leaves the row at -1).
     char  replSkel[MAX_SKELNAME];
     char  replMorph[MAX_SKELNAME];

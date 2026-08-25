@@ -209,7 +209,6 @@ void Menu::ForceHide(void)
     for (i = 1; i <= n; i++) {
         UIWidget *wid = m_itemlist.ObjectAt(i);
 
-        // Retail does NOT run the hidecommands here -- that is HideMenu's job -- and
         if (wid->getShow()) {
             wid->ResetMotion(MOTION_OUT);
         }
@@ -260,7 +259,6 @@ bool Menu::CheckNoMouse(void)
     return ((UIWidgetContainer *)w)->CheckNoMouse();
 }
 
-// directly.  Retail does not bounds-check here; this port does, because the port creates
 bool Menu::allowGameFocus(void)
 {
     UIWidget *w = GetContainerWidget();
@@ -643,7 +641,6 @@ Menu *MenuManager::FindMenu(str name)
 }
 
 #ifdef __ANDROID__
-// never executed it -- the shipped six-resolution SwitchBox plus the `reslist`
 static void MENU3DAndroidVideoMenuFixup(Menu *menu)
 {
     UIWidget *menu3dcont;

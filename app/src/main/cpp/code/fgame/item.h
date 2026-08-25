@@ -54,7 +54,6 @@ protected:
     int   item_index;
     str   item_name;
 
-    // EF2 Item::maximum_amount / Item::amount are FLOATS (SDK item.h:57-58), not ints.
     float maximum_amount;
     float amount;
 
@@ -103,7 +102,6 @@ public:
 
     virtual int GetItemIndex(void) {  return item_index; };
 
-    // SDK item.h:91-94 -- float, not int.  See the note on `amount` above.
     virtual float getAmount(void);
     virtual void  setAmount(float startamount);
 
@@ -228,7 +226,6 @@ public:
 
     void damageEvent(Event *ev);
 
-    // SDK item.cpp:1085-1087 -- deliberately empty.
     void cacheStrings(void) override;
 };
 
@@ -241,6 +238,5 @@ public:
 
     Item *ItemPickup(Entity *other, qboolean add_to_inventory = qtrue, qboolean checkautopickup = qtrue) override;  
 
-    // SDK item.cpp:1133-1135 -- deliberately empty.
     void cacheStrings(void) override;
 };

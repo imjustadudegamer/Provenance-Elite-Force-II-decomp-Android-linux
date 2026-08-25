@@ -206,7 +206,6 @@ void UIListCtrl::OnSizeChanged(Event *ev)
     m_vertscroll->setNumItems(m_itemlist.NumObjects());
 }
 
-// Retail always draws with m_font -- never the header font -- and no virtual scale
 void UIListCtrl::DrawColumns(void)
 {
     int     atleft;

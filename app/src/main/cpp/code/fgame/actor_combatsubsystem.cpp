@@ -11,7 +11,6 @@
 #include "object.h"      
 #include "scriptslave.h" 
 
-// SDK actor_combatsubsystem.cpp:32-36 -- the default constructor is a deliberate hard
 // error in retail.  Mac PPC has no symbol for it (never called, eliminated), so this is
 CombatSubsystem::CombatSubsystem()
 {

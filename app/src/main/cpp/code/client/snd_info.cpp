@@ -135,7 +135,6 @@ void load_sfx_info()
             } else if (!Q_stricmp(token, "maxfactor")) {
                 if (tiki.TokenAvailable(qtrue)) {
                     token = tiki.GetToken(qtrue);
-                    // That is not academic: the one shipped use is
                     sfx_infos[number_of_sfx_infos - 1].max_factor = (float)atof(token);
                 }
             }

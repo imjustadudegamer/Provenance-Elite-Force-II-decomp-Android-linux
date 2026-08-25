@@ -678,7 +678,6 @@ Event EV_SetMissionObjective (    "missionobjective",
     "missionobjective",
     "Sets the mission objective flag");
 
-//   addHealthOverTime         0 uses  (shipped content never calls it)
 
 Event EV_SetEntityExplosionModel (    "setentityexplosionmodel",
     EV_DEFAULT,
@@ -820,7 +819,6 @@ Event EV_SetVelocity (    "setvelocity",
     "v",
     "velocity",
     "Sets the Velocity");
-// `extern Event EV_EntStub_setvar` (actor.cpp:3390), so the object must stay until the
 extern Event EV_Actor_SetVar;
 
 extern Event EV_ScriptThread_SetFloatVar;
@@ -1751,11 +1749,9 @@ Entity::Entity()
     bind_info = NULL;
 
 
-    // (explosionModel is an empty str by construction, matching SDK entity.cpp:1994.)
     _affectingViewModes = 0;
     addAffectingViewModes(gi.GetViewModeClassMask("entity"));
 
-    // SDK g_utils.cpp:1567) and EF2's client lerp arm reads es.origin/es.angles, not the
     edict->s.clientNum  = ENTITYNUM_NONE;    
     edict->clipmask     = MASK_SOLID;        
     edict->s.bindparent = ENTITYNUM_NONE;    
@@ -1764,7 +1760,6 @@ Entity::Entity()
     edict->s.pos.trType = TR_LERP;           
     edict->ownerNum     = ENTITYNUM_NONE;    
 
-    // (SDK helper_node.cpp:2816-2848) and does NOT chain Entity::Archive, so nothing
 
     spawnflags       = level.spawnflags;
     level.spawnflags = 0;
@@ -2253,7 +2248,6 @@ void Entity::SpawnFlagsEvent(Event *ev)
     }
 }
 
-// SDK entity.cpp:4026-4036.  EF2 dropped MOHAA's "health must be greater than 0"
 void Entity::SetHealth(Event *ev)
 {
     health = ev->GetFloat(1);
@@ -3784,7 +3778,6 @@ bool Entity::hasCustomShader(const char *customShader)
     return true;
 }
 
-// Note the spelling trap: the SDK class member and methods are called
 void Entity::affectingViewMode(Event *ev)
 {
     addAffectingViewModes(gi.GetViewModeMask(ev->GetString(1)));
@@ -3928,7 +3921,6 @@ void Entity::GetStringVar(Event *ev)
 
 
 
-// Retail reads `other` out of the callback event and then never uses it
 
 
 
@@ -5919,7 +5911,6 @@ void Entity::AttachModelEvent(Event *ev)
 
     tagnum = gi.Tag_NumForName(edict->s.modelindex, bone);
     if (tagnum >= 0) {
-        // SDK entity.cpp:5448-5453: the "could not attach" warning is COMMENTED OUT in
         if (!obj->attach(this->entnum, tagnum, use_angles, offset, angles_offset)) {
             delete obj;
             return;
@@ -7097,7 +7088,6 @@ void Entity::Contents(Event *ev)
     link();
 }
 
-// shipped ones, not the header's guess.  See docs/agent_reports/event-los-mask_2026-09-25.md.
 void Entity::setMask(Event *ev)
 {
     if (!ev) {
@@ -7192,8 +7182,6 @@ void Entity::setMask(Event *ev)
     edict->clipmask = (int)currentMask;
 }
 
-// so the one shipped use printed "Event 'fulltrace' does not exist."
-// This is not observable in shipped data: the sole shipped use sets it to 0, which is
 void Entity::SetFullTraceEvent(Event *ev)
 {
     _fulltrace = ev->GetBoolean(1);

@@ -1199,7 +1199,6 @@ void G_ArchiveEdict(Archiver& arc, gentity_t *edict)
     arc.ArchiveInteger(&edict->s.eType);
     arc.ArchiveInteger(&edict->s.eFlags);
 
-    // Retail deliberately does not archive pos / apos.
 
     arc.ArchiveVec3(edict->s.netorigin);
     arc.ArchiveVec3(edict->s.origin);
@@ -1394,7 +1393,6 @@ weaponhand_t WeaponHandNameToNum(str side)
         return WEAPON_ERROR;
     }
 
-    // Retail's strings (SDK g_utils.cpp:2134-2158), RETAIL-EXACT -- no port-only
     if (!side.icmp("righthand") || !side.icmp("right")) {
         return WEAPON_RIGHT;
     } else if (!side.icmp("lefthand") || !side.icmp("left")) {
@@ -1485,7 +1483,6 @@ void G_DebugDamage(float damage, Entity *victim, Entity *attacker, Entity *infli
 
 void G_FadeOut(float delaytime)
 {
-    // Make sure we are not already faded or fading out -- SDK g_utils.cpp:2241-2251.
     if ((level.m_fade_type == fadeout) && (level.m_fade_time_start > 0.0f)) {
         float alpha;
 

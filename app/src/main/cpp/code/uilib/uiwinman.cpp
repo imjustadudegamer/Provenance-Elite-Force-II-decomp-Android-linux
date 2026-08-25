@@ -697,7 +697,6 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 }
 
 // Retail's comparator is deliberately NON-TOTAL: widgetContainerCompare @0x000B4450
-// Retail's own GL trace fixes the OBSERVABLE, not the mechanism:
 void UIWindowManager::sortWidgetContainers(void)
 {
     // this sort uses never answers 0 on a tie (widgetContainerCompare @0x000B4450: fcmpu /
@@ -754,7 +753,6 @@ void UIWindowManager::CreateMenus(void)
         }
     }
 
-    // Retail does NOT sort here: its only callers are CL_InitializeUI
     // list twice, and with retail's tie-breaking predicate (never answers 0) a second
 }
 

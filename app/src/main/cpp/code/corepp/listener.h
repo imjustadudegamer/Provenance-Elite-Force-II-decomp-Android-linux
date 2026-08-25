@@ -301,7 +301,6 @@ public:
         floatValue = 0;
     }
 
-    // drops stringValue and vectorValue (SDK listener.h:191-198).  Container<> never
     // survives exactly as in retail; do not "fix" this.
     EventVar(const EventVar& ev)
     {
@@ -378,7 +377,6 @@ private:
     Container<EventArgDef> *definition;
     EventArgDef            *returntype;
 
-    // Retail does not return a value from an engine event through the event's own
     int threadnum;
 
     short             anim_number = 0;

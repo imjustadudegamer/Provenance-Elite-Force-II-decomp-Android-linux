@@ -61,7 +61,7 @@ def load(path):
 DATA=open(DATA_BIN,'rb').read()
 
 def decode_ref(kind, addr):
-    """Decode a retail data global to a human constant."""
+    """Decode a retail data global to a readable constant."""
     def rd(a, n):
         off = a - DATA_BASE
         if off < 0 or off + n > len(DATA): return None

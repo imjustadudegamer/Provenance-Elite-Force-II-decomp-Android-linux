@@ -1531,7 +1531,6 @@ void PM_CrashLand
 		return;
 
 
-	// never take falling damage if completely underwater
 	if ( pm->waterlevel == 3 )
       {
 		return;

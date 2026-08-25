@@ -1,5 +1,4 @@
 
-// Recovered from the Mac PPC build, which is not stripped.  Addresses are
 // by locating the cgame TOC base at 0x00008000 -- established, not guessed, by
 //       // NOTE: `di` is dead.  It is passed by CG_Target and never read --
 //   field) and NOT infoIcon (retail's MULTIPLAYER info icon: SDK player.cpp:8544 writes

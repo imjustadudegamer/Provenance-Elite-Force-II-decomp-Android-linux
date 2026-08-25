@@ -75,7 +75,6 @@ void SCR_DrawAndroidBars( void ) {
 	right  = dx + dw;
 	bottom = dy + dh;
 
-	// never reaches this line (the guard above returns), so the desktop oracle
 	int limit_subT0 = LIMIT_SubT0();
 
 	re.Set2DWindow(
@@ -199,7 +198,6 @@ static void SCR_DrawFPS( void ) {
 		}
 	}
 
-	// NOT cls.glconfig, which is the surface and clips under 16:9.
 	W = uid.vidWidth;
 	H = uid.vidHeight;
 	if ( W <= 0.0f || H <= 0.0f ) {

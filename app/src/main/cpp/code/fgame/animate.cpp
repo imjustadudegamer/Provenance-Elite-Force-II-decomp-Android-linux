@@ -194,7 +194,6 @@ void Animate::Archive(Archiver& arc)
 
 
 
-// SDK animate.cpp:271-275 -- the channel is left completely untouched, not cleared.
 void Animate::NewAnim(int animnum, int slot, float weight, int ef2Channel)
 {
     tiki_cmd_t cmds;
@@ -322,7 +321,6 @@ void Animate::NewAnim(int animnum, int slot, float weight, int ef2Channel)
         }
     }
 
-    // entry, not per-frame.  Retail sets it on dead actors (SDK actor.cpp:7035) so a corpse's
     if (self->edict->s.eFlags & EF_DONT_PROCESS_COMMANDS) {
         static int bot_dp;
         if (PROBE_Throttle(&bot_dp, 4, 500)) {

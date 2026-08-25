@@ -1,4 +1,3 @@
-// Retail does NOT ship a separate aas/ea/ai export table across the game
 
 #include "server.h"
 #include "../botlib/botlib.h"

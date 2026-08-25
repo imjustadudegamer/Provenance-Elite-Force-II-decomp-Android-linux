@@ -11,7 +11,6 @@
 #define WATER_NO_SPLASH_HEIGHT 16
 
 
-// back transcribed from their own decompiles, not resurrected from MOHAA
 
 static spawnthing_t cg_splashSpawnthing;
 

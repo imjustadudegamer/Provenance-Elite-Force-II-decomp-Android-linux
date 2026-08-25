@@ -488,7 +488,6 @@ int SensoryPerception::GetLastSoundType()
     return _last_soundType;
 }
 
-// SDK actor_sensoryperception.cpp:995.  Still does NOT recompute _fovdot -- see the
 void SensoryPerception::SetFOV(float fov)
 {
     _fov = fov;

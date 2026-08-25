@@ -15,7 +15,7 @@ typedef struct dtiki_s dtiki_t;
 typedef struct skelAnimFrame_s skelAnimFrame_t;
 
 
-// (files owned by a different workstream) are moved onto retail's paths.
+// (files owned by a different change) are moved onto retail's paths.
 typedef struct {
 	void	(*Shutdown)( qboolean destroyWindow );						 
 
@@ -307,11 +307,9 @@ typedef struct {
     void (*SKEL_SetExternalMorphControllers)(void *skeletor, const morph_controller_t *controllers, int count);
     int (*SKEL_GetBoneParent)(void *skeletor, int boneIndex);
 
-    // oracle (which never calls it) is untouched.
     void (*NoteBlockedMsec)( int msec );
 
     // PORT-ONLY (retail had no on-disk cache to evict), appended after the budget
-    // sink so no existing member's offset moves and the GL1 oracle, which never
     void (*FS_RemoveHomeData)( const char *qpath );
 } refimport_t;
 

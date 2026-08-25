@@ -90,7 +90,6 @@ extern Event EV_ScriptThread_WaitForPlayer;
 
 extern Event EV_ScriptThread_WaitForDialog;
 
-// (Program::GetDef, program.cpp:421-436: an event def has no scope, so it is never
 extern Event EV_Player_KillAllDialog;
 
 extern Event EV_ScriptThread_WaitForAnimation;

@@ -34,13 +34,9 @@ Container<int> extraEntitiesList;
 #    include <intrin.h>
 #endif
 
-// Retail's value is 8.  This is a DELIBERATE, ISOLATED divergence: the port's archive
-// RETAIL PARITY TARGET IS 8 (SDK g_main.cpp:19).  Do NOT set this to 8 until the stream
 // load here, and saves written here load in retail EF2 -- so the port must both accept
 #define SAVEGAME_VERSION   8
 #define SAVEGAME_GAME_API  4
-// health, stats, the per-actor dialog state -- never restored.  Retail rejects <1 and >1
-// NOT BUMPED for the gameVars unification.  Retail's .spv is `int version` followed by
 #define PERSISTANT_VERSION 1
 
 static char G_ErrorMessage[4096];
@@ -236,7 +232,6 @@ void G_DeAllocGameData(void)
 extern "C" void G_SpawnEntities(const char *mapname, const char *entities, int levelTime)
 {
     try {
-        // Level::NewMap, not straight into SpawnEntities.  NewMap (SDK level.cpp:678-684)
         level.NewMap(mapname, entities, levelTime);
     }
 
@@ -797,7 +792,6 @@ qboolean G_ArchivePersistant(const char *name, qboolean loading, qboolean sublev
             return qfalse;
         }
 
-        // What stood here was first MOHAA's assertion that the list must already be empty
     } else {
         arc.Create(name);
 
@@ -880,7 +874,6 @@ str getAliasParmString(AliasListNode_t *aliasNode)
     return parms;
 }
 
-// dtikianim_t* plus a random flag, g_public.h:468), and g_public.h is not ours to change,
 
 
 void ArchiveAliases(Archiver& arc)
@@ -1171,7 +1164,6 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
         TeammateRoster::getInstance()->Archive(arc);
         WIDGET_PROBE("archive", "tail: TeammateRoster done\n");
 
-        // call must not trap.  This was the ONE call in the archive tail that dereferenced
         WIDGET_PROBE("archive", "tail: GameplayManager at arc pos=%lu\n",
                    (unsigned long)arc.Pos());
         GameplayManager *gpmArchive = GameplayManager::getTheGameplayManager();

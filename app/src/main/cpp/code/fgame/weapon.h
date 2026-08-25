@@ -85,7 +85,6 @@ class Player;
 class WeaponProperty : public Class
 {
 public:
-    // Resize) require one.  Retail never instantiated Container<WeaponProperty>
     WeaponProperty() : _property(), _stringValue(), _floatValue(0.f) {}
     WeaponProperty(const str& property) : _property(property) {}
     ~WeaponProperty() {}
@@ -502,7 +501,6 @@ public:
     str          GetLeftHolsterTag(void);
     str          GetRightHolsterTag(void);
     str          GetDualHolsterTag(void);
-    // Port-only alias kept for sentient_combat.cpp:806, which asks for "the" holster tag.
 
     void           SetMeansOfDeath(Event *ev);
     meansOfDeath_t GetMeansOfDeath(firemode_t mode);
@@ -593,7 +591,6 @@ inline void Weapon::ArchivePersistantData(Archiver &arc)
 
 //   * `quiet` is a SCALAR in retail (SDK weapon.h:784), not one flag per firemode.
 //   * several fields retail archives are never initialised in its own constructor
-// Retail members this port does not have are written from zeroed temporaries so the
 // MOHAA members this port has but retail never archived -- m_iAnimSlot,
 inline void Weapon::Archive(Archiver& arc)
 {

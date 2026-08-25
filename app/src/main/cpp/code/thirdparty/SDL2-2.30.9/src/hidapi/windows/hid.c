@@ -774,7 +774,7 @@ static int hid_write_timeout(hid_device *dev, const unsigned char *data, size_t 
 		/* The user passed the right number of bytes. Use the buffer as-is. */
 		buf = (unsigned char *) data;
 	} else {
-		/* Create a temporary buffer and copy the operator's data
+		/* Create a temporary buffer and copy the data
 		   into it, padding the rest with zeros. */
 		buf = (unsigned char *) malloc(dev->output_report_length);
 		memcpy(buf, data, length);

@@ -132,7 +132,6 @@ void CreateExplosion(
         );
     }
 
-    // ⚠ Retail never passes SOUNDTYPE_EXPLOSION here.  Reproduced.
     explosion->BroadcastSound();
 
     explosion->animate->RandomAnimate("idle", EV_StopAnimating);
@@ -145,7 +144,6 @@ void CreateExplosion(
 }
 
 
-// (SDK explosion.cpp:201-207) -- a func_exploder never exploded when triggered.
 CLASS_DECLARATION(Trigger, Exploder, "func_exploder") {
     {&EV_Trigger_Effect,     &Exploder::MakeExplosion},
     {&EV_Touch,              NULL                    },
@@ -207,7 +205,6 @@ void Exploder::setDamage(Event *ev)
 
 CLASS_DECLARATION(Trigger, MultiExploder, "func_multi_exploder") {
     {&EV_Touch,                NULL                         },
-    // dropped (SDK explosion.cpp:292-300) -- a func_multi_exploder never exploded.
     {&EV_Trigger_Effect,       &MultiExploder::MakeExplosion},
     {&EV_Exploder_SetDmg,      &MultiExploder::SetDmg       },
     {&EV_Exploder_SetDuration, &MultiExploder::SetDuration  },
@@ -365,7 +362,6 @@ void MultiExploder::SetRandom(Event *ev)
     Event EV_ExplodeObject_SetDebrisAmount (
     "amount", EV_DEFAULT, "i", "amountOfDebris", "How much debris to spawn each time.");
 
-// EF2 SDK explosion.cpp:505.  21 "Event 'explodetiki' does not exist" errors in a
     Event EV_ExplodeObject_SetupExplodeTiki (
     "explodetiki",
     EV_TIKIONLY,

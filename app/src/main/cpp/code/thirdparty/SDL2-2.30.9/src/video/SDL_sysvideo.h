@@ -44,7 +44,7 @@ struct SDL_WindowShaper
     /* The window associated with the shaper */
     SDL_Window *window;
 
-    /* The operator's specified coordinates for the window, for once we give it a shape. */
+    /* The specified coordinates for the window, for once we give it a shape. */
     Uint32 userx, usery;
 
     /* The parameters for shape calculation. */

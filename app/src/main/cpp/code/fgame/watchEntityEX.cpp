@@ -255,7 +255,6 @@ BehaviorReturnCode_t WatchEntityEX::evaluateStateHold()
 	if ( yawDiff > -5.5 && yawDiff < 5.5 )
 		return BEHAVIOR_EVALUATING;
 
-	//if Not facing enemy
 	return BEHAVIOR_SUCCESS;   
 }
 

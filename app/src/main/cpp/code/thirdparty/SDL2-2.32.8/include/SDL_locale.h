@@ -47,7 +47,7 @@ typedef struct SDL_Locale
 } SDL_Locale;
 
 /**
- * Report the operator's preferred locale.
+ * Report the preferred locale.
  *
  * This returns an array of SDL_Locale structs, the final item zeroed out.
  * When the caller is done with this array, it should call SDL_free() on the
@@ -66,7 +66,7 @@ typedef struct SDL_Locale
  * Please note that not all of these strings are 2 characters; some are three
  * or more.
  *
- * The returned list of locales are in the order of the operator's preference. For
+ * The returned list of locales are in the order of the preference. For
  * example, a German citizen that is fluent in US English and knows enough
  * Japanese to navigate around Tokyo might have a list like: { "de", "en_US",
  * "jp", NULL }. Someone from England might prefer British English (where

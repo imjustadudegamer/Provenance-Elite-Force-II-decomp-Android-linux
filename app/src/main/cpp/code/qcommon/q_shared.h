@@ -11,7 +11,6 @@ extern "C" {
 
 #define BASEGAME				"base"
 
-// Support on the Mac), but a port that must run from a read-only Android/desktop
  #define HOMEPATH_NAME_UNIX_LEGACY	".provenanceef2"
  #define HOMEPATH_NAME				"provenanceef2"
 
@@ -1108,7 +1107,6 @@ struct cvar_s {
 	cvar_t *hashPrev;
 	int			hashIndex;
 
-	// Cvar_Get will not overwrite the recorded default.  fgame/q_shared.h:841
 	qboolean	defaultRecorded;
 };
 
@@ -1219,7 +1217,6 @@ typedef struct {
 
 
 // header and the portal state does not exist in EF2 at all (the retail engine is
-// both the x86 and PPC builds, so a byte-exact writer must not swap either.
 typedef struct savegamestruct_s {
 	int time;
 	int svsTime;
@@ -1231,7 +1228,6 @@ typedef struct savegamestruct_s {
 
 typedef char savegamestruct_is_204_bytes[ ( sizeof( savegamestruct_t ) == 204 ) ? 1 : -1 ];
 
-// Retail's markFragment_t is 24 bytes, not the MOHAA 12 the port carries.  Three
 typedef struct {
 	int		firstPoint;
 	int		numPoints;
@@ -1368,7 +1364,6 @@ typedef enum
 
 #define MAX_EXTRA_ENTITIES_FROM_GAME	100
 
-// Measured from the unstripped Mac PEF, not guessed:
 #define MAX_SERVER_SOUNDS			32
 #define MAX_SERVER_SOUNDS_BITS		6
 
@@ -1610,7 +1605,6 @@ typedef struct playerState_s {
 
 
 
-// (personal/evidence/ef2-sdk/dlls/game/q_shared.h:1528-1545).  This is NOT MOHAA's table: MOHAA put
 #define BUTTON_ATTACKRIGHT_BITINDEX     0
 #define BUTTON_ATTACKLEFT_BITINDEX      1
 #define BUTTON_RELOAD_BITINDEX          2           
@@ -1877,7 +1871,6 @@ typedef struct entityState_s {
 	float	mat[3][3];		
 } entityState_t;
 
-//     0x24C (588) is bindparent, the first of the three "not sent over" tail
 static_assert(sizeof(entityState_t) == 644, "entityState_t must be 644 bytes (retail EF2)");
 static_assert(offsetof(entityState_t, pos) == 16, "entityState_t layout drift");
 static_assert(offsetof(entityState_t, apos) == 52, "entityState_t layout drift");

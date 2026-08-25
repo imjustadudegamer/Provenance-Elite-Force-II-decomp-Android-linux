@@ -379,7 +379,6 @@ Event EV_Trigger_SetSound (    "sound",
     "Set the sound to play when this trigger is activated");
 extern Event EV_Camera_SetThread;
 
-// SDK trigger.cpp:127-134. The item a Sentient must be carrying for this trigger to
 Event EV_Trigger_SetKey (    "key",
     EV_SCRIPTONLY,
     "s",

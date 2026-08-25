@@ -483,7 +483,6 @@ void CheckWinding (winding_t *w)
 		edgedist = DotProduct (p1, edgenormal);
 		edgedist += ON_EPSILON;
 		
-	// all other points must be on front side
 		for (j=0 ; j<w->numpoints ; j++)
 		{
 			if (j == i)

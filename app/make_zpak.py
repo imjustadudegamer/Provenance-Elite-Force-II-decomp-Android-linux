@@ -4,8 +4,8 @@ make_zpak.py -- build the port's own Android pak: app/src/main/assets/base/zpak-
 
 WHY THIS EXISTS
 ---------------
-The operator's rule (2026-09-30) is that the port must have exactly ONE LOOSE cfg -- the
-unified operator-state `config.cfg` in the engine's write root -- while cfgs that live
+The rule is that the port must have exactly ONE LOOSE cfg -- the
+unified state `config.cfg` in the engine's write root -- while cfgs that live
 INSIDE pak files are fine to keep.
 
 Retail keeps its key-bind and cvar defaults in a LOOSE `base/global/default.cfg`, and
@@ -17,7 +17,7 @@ retail's own check
 
 so a minimal install that has only the retail paks (which is exactly what the port's
 import flow asks for) crashes on the first launch.  That is what happened on the
-operator's Pixel 1:
+Pixel 1:
 
     Com_Error: FATAL: Couldn't load default.cfg
     ... assertion "code != ERR_FATAL" failed
@@ -95,7 +95,7 @@ def collect():
     #        (loc/Eng/ui/menu_promptrestoredefaults.urc: stuffcommand "exec global/defaultoptions.cfg")
     # All three are generated from the SAME header text, so they cannot drift from the
     # engine's own first-boot defaults.  Retail ships them as LOOSE files in base/global/;
-    # the operator's rule is that the port has exactly ONE loose cfg, so they live here.
+    # the rule is that the port has exactly ONE loose cfg, so they live here.
     text = default_commands()
     # Retail's default.cfg opens with `unbindall' (its own reset semantics); the
     # header macro stays a pure command list, so the generator adds it here.

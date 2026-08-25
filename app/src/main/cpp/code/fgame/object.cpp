@@ -24,7 +24,6 @@ Event EV_ThrowObject_Pickup
 );
 
 
-// never handled that line either.  Registering `shootable` on Object is still the 1:1
 // silent unhandled-command no-op retail produces (corepp/listener.cpp:3518-3522).  Do NOT
 Event EV_Object_Shootable (    "shootable",
     EV_DEFAULT,
@@ -144,7 +143,6 @@ void Object::Killed(Event *ev)
 
 
 
-// damage (SDK object.cpp:393-396) -- "efeFF", not MOHAA's "efeF".
 Event EV_ThrowObject_Throw (    "throw",
     EV_DEFAULT,
     "efeF",

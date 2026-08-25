@@ -319,7 +319,6 @@ void G_ClientBegin(gentity_t *ent, const usercmd_t *cmd)
                 ent->entity->SetDeltaAngles();
             }
         } else {
-            // Retail names the pointer and never reads it back; the ctor alone does
             Player *Q_UNUSED_VAR player;
 
             level.spawn_entnum = ent->s.number;

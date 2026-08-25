@@ -54,7 +54,6 @@ public:
     void        NewAnim(int animnum, int slot = 0, float weight = 1.0f, int ef2Channel = EF2ANIM_INFER);
     void        NewAnim(int animnum, Event *endevent, int slot = 0, float weight = 1.0f);
     void        NewAnim(int animnum, Event &endevent, int slot = 0, float weight = 1.0f);
-    // There is deliberately NO NewAnim(const char *animname, ...) overload.  Retail
     void        RandomAnimate(const char *animname, Event *endevent = NULL, bodypart_t part = legs);
     void        RandomAnimate(const char *animname, const Event &endevent, bodypart_t part = legs);
     void        Legs_SetFrameEvent(Event *ev);
@@ -123,7 +122,6 @@ inline void Animate::RandomAnimate(const char *animname, const Event &endevent, 
 }
 ;
 
-// (SDK animate.h:40-115 declares none, and SDK animate.cpp never writes one).  The two
 
 
 

@@ -2107,7 +2107,6 @@ void PF_WidgetPrintf(const char *widgetName, const char *fmt, ...)
 }
 
 
-// screenblend are never exercised by shipped data -- but the grammar and the
 // getters below are retail's, not the shipped subset.
 
 #define VM_MAX_MODES 32
@@ -2918,7 +2917,6 @@ void SV_InitGameProgs( void ) {
 		Com_Error(ERR_DROP, "%s", err);
 	}
 
-	// Retail shape: the array test wraps the loop, it is not part of the
 	if( svs.clients )
 	{
 		for( i = 0; i < sv_maxclients->integer; i++ )

@@ -1029,8 +1029,6 @@ CLASS_DECLARATION(Listener, PathManager, NULL) {
     {NULL, NULL}
 };
 
-// re-seeded its two port-only flags here; ResetNodes (navigate.cpp:197-221 / SDK
-// port-only booleans now carry in-class initialisers (navigate.h:320-324).
 PathManager::PathManager()
 {
     thePathManager.ResetNodes();

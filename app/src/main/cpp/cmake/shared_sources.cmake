@@ -109,7 +109,7 @@ ${SOURCE_DIR}/tiki/tiki_skan.cpp
 # engine (no SV_ProcessGamespyQueries / SV_GamespyHeartbeat / "authorizeThis"
 # anywhere in the 4,802-function Mac decompile).  The client-side SDK stays
 # (retail's in-game server browser is engine-native; the port's UIFAKKServerList
-# still compiles against the vendored SDK until the client workstream rewrites it).
+# still compiles against the vendored SDK until the client change rewrites it).
 
 include_directories(${SOURCE_DIR}/qcommon)
 include_directories(${SOURCE_DIR}/script)

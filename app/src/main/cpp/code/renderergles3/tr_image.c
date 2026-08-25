@@ -2121,7 +2121,6 @@ image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPic
 				if (image->allowPicmip != allowPicmip) {
 					ri.Printf(PRINT_WARNING, "WARNING: reused image %s with mixed allowPicmip parm\n", name);
 				}
-				// Retail compares the stored INDEX, not the resolved enum
 				if (image->textureMode != textureMode) {
 					ri.Printf(PRINT_WARNING, "WARNING: reused image %s with mixed glWrapClampMode parm\n", name);
 				}

@@ -84,7 +84,7 @@ static int get_driindex(void)
         char *endptr = NULL;
         const int idx = (int)SDL_strtol(hint, &endptr, 10);
         if ((*endptr == '\0') && (idx >= 0)) { /* *endptr==0 means "whole string was a valid number" */
-            return idx;                        /* we'll take the operator's request here. */
+            return idx;                        /* we'll take the request here. */
         }
     }
 

@@ -105,7 +105,6 @@ void ActorThink::ActorStateUpdate(Actor& actor)
             actor.gameComponent->HandleThink();
         }
 
-        // long) never volunteered a line at the player.  Mac PPC
         if (actor.DialogMode == DIALOG_MODE_ANXIOUS) {
             actor.TryTalkToPlayer();
         }
@@ -219,7 +218,6 @@ void SimplifiedThink::DoArchive(Archiver& arc)
     arc.ArchiveSafePointer(&_actor);
 }
 
-// SDK actorstrategies.cpp:539 -- SimplifiedThink moves with SimpleMove, not the
 void SimplifiedThink::DoMove(Actor& actor)
 {
     actor.last_origin = actor.origin;

@@ -1,5 +1,4 @@
 
-// That struct is not game_import_t (whose +0x24C is MissionObjective_GetDescription,
 
 #include "cl_ui.h"
 #include "cl_uistd.h"
@@ -59,7 +58,6 @@ BranchDialogEntry::~BranchDialogEntry()
     _options.ClearObjectList();
 }
 
-//  2. The reject branch does NOT free the option.  Retail's else-arm builds a temp
 //     (`__dla__FPv' at 0x1A90D8) frees that temp str's spilled buffer -- never
 //     `option` (r4, spilled to 0x8C(r1) at 0x1A903C, is not passed to it).
 void BranchDialogEntry::addOption(BranchOption *option)
@@ -271,7 +269,6 @@ bool DialogTextManager::parseDialogBranchEntry(BranchDialogEntry *entry, char **
         } else if (!Q_stricmp(token, "option")) {
             BranchOption *option = new BranchOption;
 
-            // COM_GetToken(a3, 0) in the decompiled body): the option text must sit
             token = COM_GetToken(buffer, qfalse);
 
             if (!token) {
@@ -332,7 +329,6 @@ void DialogTextManager::parseBranchDialogFile(const char *buffer)
                     "parseBranchDialogFile: Unable to process branch dialog format for %s", entry->_name.c_str()
                 );
                 delete entry;
-                // Retail abandons the whole file here, not just this entry.
                 return;
             }
 
@@ -416,7 +412,6 @@ void DialogTextManager::displayBranchDialog(const str& name)
         }
     }
 
-    // Retail says nothing when the name does not resolve.
 }
 
 // Note what retail does NOT do: it never clears the title of a disabled option.

@@ -10,7 +10,6 @@ TeammateRoster *TeammateRoster::_instance = NULL;
 
 TeammateRoster::TeammateRoster()
 {
-    // SDK teammateroster.cpp:33-51.  Retail does NOT zero _teammateList here --
     GameplayManager *gpm = GameplayManager::getTheGameplayManager();
 
     if (!gpm) {

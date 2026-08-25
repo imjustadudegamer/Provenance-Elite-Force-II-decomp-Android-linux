@@ -281,7 +281,6 @@ sfxHandle_t S_RegisterSoundExt(const char *name, int streamed, qboolean force_lo
         return 0;
     }
 
-    // Retail localizes the path, it does NOT case-fold it: the call sequence is
     Com_LocalizeFilePath(name, szCacheName);
 
     sfx = S_FindName(szCacheName, s_registrationSequence);
@@ -541,7 +540,6 @@ void S_Play()
         return;
     }
 
-    //     must NOT be "corrected" to Cmd_Argv(i).  (docs/DIVERGENCE_LEDGER_0904.md's 2026-08-04
     for (i = 1; i < Cmd_Argc(); i++) {
         if (strrchr(Cmd_Argv(i), '.')) {
             Q_strncpyz(name, Cmd_Argv(i), sizeof(name));

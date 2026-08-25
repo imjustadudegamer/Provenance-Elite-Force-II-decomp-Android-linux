@@ -115,7 +115,6 @@ static int CG_OffsetThirdPersonView(void)
     target_angles   = cg.refdefViewAngles;
     target_position = cg.refdef.vieworg;
 
-    // live copy" and that the port had never carried into this function.  Retail opens
     if (cg.snap->ps.stats[STAT_HEALTH] <= 0 && cg.snap->ps.pm_type != PM_SPECTATOR_FOLLOW) {
         target_angles[PITCH] = 45.0f;
         target_angles[YAW]   = (float)cg.snap->ps.stats[STAT_DEAD_YAW];
@@ -394,7 +393,6 @@ int CG_OffsetFirstPersonView(void)
     VectorMA(vieworg, fabs(ef2_bobfracsin * cg_viewBobMaxVert->value), up, vieworg);
     cg.refdefViewAngles[2] += ef2_bobfracsin * cg_viewBobMaxRoll->value;
 
-    // (SDK player.cpp:5658-5666); the roll edit must come first because it tilts `left`.
     if (cg.predicted_player_state.leanDelta != 0.0f) {
         vec3_t leanLeft;
 
@@ -404,7 +402,6 @@ int CG_OffsetFirstPersonView(void)
         VectorMA(vieworg, cg.predicted_player_state.leanDelta, leanLeft, vieworg);
     }
 
-    // NOT Mac-only, and NOT a missing feature.  The Windows build has the identical
 
     // death camera is CG_OffsetThirdPersonView's, Windows @0x30049031).  Not carried over.
 

@@ -1351,7 +1351,6 @@ void R_Init( void ) {
 		backEndDataBuf[i]->polyVerts = (polyVert_t*)((char*)ptr + sizeof(backEndData_t) + sizeof(srfPoly_t) * max_polys);
 		backEndDataBuf[i]->staticModels = NULL;
 		backEndDataBuf[i]->staticModelData = NULL;
-		// Retail ri.Malloc does not zero; R_InitNextFrame clears the buffer it selects, so
 		backEndDataBuf[i]->commands.used = 0;
 	}
 	backEndData = backEndDataBuf[0];
@@ -1409,7 +1408,6 @@ void RE_Shutdown( qboolean destroyWindow ) {
 
 	// SANCTIONED PLATFORM DELTA (GL1 renderer platform layer): retail @0x0001A2B0
 
-	// Retail clears the registration flag BEFORE the renderer teardown, not after it:
 	tr.registered = qfalse;
 
 	R_ShutdownShadows();

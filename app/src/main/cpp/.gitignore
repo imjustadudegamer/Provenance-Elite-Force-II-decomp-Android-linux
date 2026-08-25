@@ -47,5 +47,3 @@ out
 # local EF2 port build output
 build/
 
-# Claude Code agent worktrees
-.claude/

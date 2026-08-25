@@ -280,7 +280,6 @@ void UISlider::UpdateData(void)
             Q_snprintf(text, 32, "%.3f", m_value);
         }
 
-        // read off the shipped data) -- and never appends to m_command.  The
         str cmd = m_command + ' ' + text + '\n';
         Cbuf_AddText(cmd.c_str());
     }

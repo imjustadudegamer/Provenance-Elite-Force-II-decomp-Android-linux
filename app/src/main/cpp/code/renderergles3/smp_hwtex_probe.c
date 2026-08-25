@@ -65,9 +65,6 @@ static GLuint make_program(void)
 	return p;
 }
 
-/* Upload `blocks` as a w x h compressed texture, sample it 1:1 and read the
- * texels back in upload-row order.  A compressed image can never be a colour
- * attachment, so the readback goes through an RGBA8 render target. */
 static int gpu_decode(int w, int h, GLenum fmt, const void *blocks, int nbytes, unsigned char *out)
 {
 	GLuint tex = 0, rt = 0, fbo = 0, prog;

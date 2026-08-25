@@ -28,7 +28,6 @@ griditemtype_t FAKKServerListItem::getListItemType(int index) const
     return griditemtype_t::TYPE_STRING;
 }
 
-// Retail uses atol(), not atoi().
 int FAKKServerListItem::getListItemValue(int i) const
 {
     return atol(m_strings[i]);

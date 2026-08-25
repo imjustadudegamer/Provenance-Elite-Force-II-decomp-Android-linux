@@ -84,7 +84,6 @@ qboolean Armor::_needThisArmor(Sentient *sentient)
     return qtrue;
 }
 
-// SDK Armor::_pickupArmor (armor.cpp:259-294). Note this is NOT Item::ItemPickup's
 void Armor::_pickupArmor(Sentient *sentient)
 {
     str realname;
@@ -153,7 +152,6 @@ BasicArmor::BasicArmor()
     _lastAddTime = 0.0f;
 }
 
-// SDK BasicArmor::Add (armor.cpp:872-877). Armor::Add is not overridden in EF2 -- it is
 void BasicArmor::Add(int num)
 {
     Armor::Add(num);
@@ -229,7 +227,6 @@ float BasicArmor::ResolveDamage(float damage, int meansOfDeath, const Vector& di
     return damage - damageAbsorbed;
 }
 
-// SDK BasicArmor::CanBeDamagedBy (armor.cpp:890-893).  The player's shield never makes
 bool BasicArmor::CanBeDamagedBy(int meansOfDeath)
 {
     return true;
@@ -271,7 +268,6 @@ CLASS_DECLARATION(Armor, AdaptiveArmor, NULL) {
     {NULL,                                   NULL                                }
 };
 
-//                        archived into the .sav (g_main.cpp:1576) but NOT into the .spv.
 
 void AdaptiveArmor::SetFXLife(Event *ev)
 {
@@ -482,7 +478,6 @@ void AdaptiveArmor::_changeFX()
     _AdaptionFX = _fxList.ObjectAt(_currentFXIndex);
 }
 
-// operator was never the divergence -- the CONSTANT was, and it moved the crossover
 bool AdaptiveArmor::CanBeDamagedBy(int meansOfDeath)
 {
     float DamageTotal;
@@ -692,7 +687,6 @@ float ShieldArmor::ResolveDamage(
     return damage;
 }
 
-// SDK armor.cpp:1042-1050: the shield never claims immunity to a MOD outright.
 bool ShieldArmor::CanBeDamagedBy(int meansOfDeath)
 {
     (void)meansOfDeath;

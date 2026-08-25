@@ -40,7 +40,6 @@ void CG_BuildSolidList(void)
     }
 }
 
-// R_GetInlineModelBounds rows.  Retail never marks a brush entity, so nothing walks
 
 void CG_ClipMoveToEntities(
     const vec3_t start,
@@ -460,7 +459,6 @@ void CG_PredictPlayerState(void)
 
 void CG_TransitionPlayerState(playerState_t *ps, playerState_t *ops)
 {
-    // (bg_pmove.cpp:1102-1103) and were, until now, written every frame and never read
     if (cg_pmove.landed) {
         cg.landChange = cg_pmove.landedVelocity * 0.025f;
 

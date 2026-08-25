@@ -25,7 +25,6 @@ typedef struct skelAnimFrame_s {
     SkelMat4 bones[1];
 } skelAnimFrame_t;
 
-// site must use this: skeletor.cpp's four whole-skeleton solvers and the deleted oracle's
 #define SKELANIMFRAME_SIZE(n) \
     (sizeof(skelAnimFrame_t) + ((n) > 0 ? (n) - 1 : 0) * sizeof(SkelMat4))
 
@@ -56,7 +55,6 @@ public:
     float         actionWeight;
     skanBlendInfo m_blendInfo[MAX_SKEL_BLEND_FRAMES];
 
-    // Retail does not need this array because its refEntity carries the two channels as
     short int m_ef2Split;
     short int m_ef2BodyPart[MAX_SKEL_BLEND_FRAMES];
 

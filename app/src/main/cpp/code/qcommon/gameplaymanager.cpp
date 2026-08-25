@@ -2,7 +2,6 @@
 #include "gameplaymanager.h"
 #include <assert.h>
 
-// the two launchers (where it does not and `Cvar_Get` is not exported), so the wiring is
 #ifdef GAME_DLL
 #define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
 #define PROBE_PRINT                       gi.Printf
@@ -43,7 +42,6 @@ bool GameplayManager::isReady()
 
 GameplayManager* GameplayManager::getTheGameplayManager()
 {
-	// a normal false, so a pre-create() call must not trap.
 	return _theGameplayManager;
 }
 
@@ -115,7 +113,6 @@ const str GameplayManager::getDefine(const str& propname)
 
 
 
-//					bool create -- whether or not to create properties that are not found
 void GameplayManager::setFloatValue(const str& objname, const str& propname, float value, bool create)
 {
 #ifdef GAME_DLL
@@ -132,7 +129,6 @@ void GameplayManager::setFloatValue(const str& objname, const str& propname, flo
 }
 
 
-//					bool create -- whether or not to create properties that are not found
 void GameplayManager::setStringValue(const str& objname, const str& propname, const str& valuestr, bool create)
 {
 #ifdef GAME_DLL
@@ -269,7 +265,6 @@ void GameplayManager::processPendingMessages( void )
 
 void GameplayManager::Archive(Archiver &arc)
 {
-	// ("tail: GameplayManager" printed, "done" never did).  Static analysis REFUTED the
 	WIDGET_PROBE("archive", "gpm: manager archive enter (%s)\n", arc.Saving() ? "SAVE" : "LOAD");
 	_gameplayDatabase.Archive(arc);
 	WIDGET_PROBE("archive", "gpm: manager archive done\n");
@@ -307,7 +302,6 @@ extern "C" void GetGameplayStringProperty(const char* objectName, const char* pr
 	strncpy(buffer, stringValue.c_str(), length);
 }
 
-//				create		- If true, it creates the property if the property does not exist
 extern "C" void SetGameplayStringProperty(const char* objectName, const char* propertyName, const char* stringValue, qboolean create)
 {
 	GameplayManager* gpm = GameplayManager::getTheGameplayManager();

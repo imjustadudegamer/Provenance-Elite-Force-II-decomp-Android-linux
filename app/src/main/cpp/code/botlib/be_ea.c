@@ -41,7 +41,6 @@ void EA_SelectWeapon(int client, int weapon)
 
 	bi->weapon = weapon;
 } 
-// Retail's EA_Attack carries two extra arguments the Q3 original did not have
 // Retail (EA_Attack @0x0014D8D0) never sets both bits.  It picks exactly one of
 void EA_Attack(int client, int primarydangerous, int altdangerous)
 {

@@ -241,7 +241,6 @@ static void SV_AddEntToSnapshot( gentity_t *clientEnt, svEntity_t *svEnt, gentit
 		return;
 	}
 
-	// which is what G_SendEntity (SDK g_main.cpp:1579) dispatches to -- could never run
 	if ( ge->SendEntity && !ge->SendEntity( clientEnt, gEnt ) ) {
 		return;
 	}
@@ -313,7 +312,6 @@ static void SV_AddEntitiesVisibleFromPoint(gentity_t *clientEnt, const vec3_t or
 			parentEnt = SV_GentityNum(ent->s.bindparent);
 		}
 
-		// Retail therefore never even reaches the PVS walk for the child of a parent in
 		if (parentEnt) {
 			if ((parentEnt->svflags & SVF_NOCLIENT)
 				|| ((parentEnt->s.renderfx & RF_DONTDRAW) && parentEnt->s.solid)) {
@@ -525,7 +523,6 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 		org[2] += ps->viewheight;
 	}
 
-	// G_UpdatePlayerStateForClient, SDK g_main.cpp:1622) never ran.
 	if ( ge->UpdatePlayerStateForClient ) {
 		ge->UpdatePlayerStateForClient( clientEnt, &frame->ps );
 	}
@@ -577,7 +574,6 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 		state = &svs.snapshotEntities[svs.nextSnapshotEntities % svs.numSnapshotEntities];
 		*state = ent->s;
 
-		// G_UpdateEntityStateForClient, SDK g_main.cpp:1601) never ran and the
 		if ( ge->UpdateEntityStateForClient ) {
 			ge->UpdateEntityStateForClient( clientEnt, state );
 		}
@@ -680,7 +676,6 @@ static void SV_SnapshotPassthrough( client_t *client ) {
 		cl.parseEntities[ cl.parseEntitiesNum & ( MAX_PARSE_ENTITIES - 1 ) ] =
 			svs.snapshotEntities[ ( frame->first_entity + i ) % svs.numSnapshotEntities ];
 		cl.parseEntitiesNum++;
-		//     (SDK q_shared.h:1774 "not sent over" -- they are client-side scratch).
 		MSG_SetupClientEntity( &cl.parseEntities[ ( cl.parseEntitiesNum - 1 ) & ( MAX_PARSE_ENTITIES - 1 ) ] );
 	}
 

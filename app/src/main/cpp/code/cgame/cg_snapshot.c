@@ -97,7 +97,6 @@ void CG_SetInitialSnapshot(snapshot_t *snap)
         cent->interpolate  = qfalse;
         cent->currentValid = qtrue;
 
-        // entityState_t.quat is declared "not sent over" (SDK q_shared.h:1774): it is
         EulerToQuat(cent->currentState.angles, cent->currentState.quat);
 
         CG_ResetEntity(cent);

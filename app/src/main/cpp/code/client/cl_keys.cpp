@@ -527,7 +527,6 @@ const char *Key_GetKeynameForCommand(const char *command)
         if (!keys[i].binding) {
             continue;
         }
-        // Retail EF2 does NOT test keys[i].down here -- Mac PPC
         if (!stricmp(command, keys[i].binding)) {
             return Key_KeynumToString(i);
         }
@@ -898,7 +897,6 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
         return;
     }
 
-    // CTRL not held.  Latent today only because nothing in shipped content or the
     if (down) {
         if (alt_down && key != K_ALT) {
             altkeys[key].down = down;
@@ -1005,7 +1003,6 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
             return;
         }
     } else if (down) {
-        // The chat-input gate below is the KEY CATCHER, not cls.loading.  Retail,
         if ((Key_GetCatcher() & KEYCATCH_UI && !menubound[key]) || UI_BindActive()) {
             // instead of the binding executor.  Digits are NOT menubound in retail's
             PROBE(
@@ -1021,7 +1018,6 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
         } else if (Key_GetCatcher() & KEYCATCH_MESSAGE) {
             Message_Key(key);
         } else if (cls.state != CA_DISCONNECTED || menubound[key]) {
-            // Retail's wart is reproduced deliberately: the gate is applied to a
             kb = altkeys[key].binding;
             if (kb && paused->integer && Q_stricmp(kb, "pause")) {
                 return;

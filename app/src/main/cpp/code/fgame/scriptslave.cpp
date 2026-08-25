@@ -462,7 +462,6 @@ Event EV_ScriptSlave_OnDamage
 	"Sets what label to jump to and process script at when damaged."
 );
 
-// EV_NoDamage (SDK entity.cpp:244-250, "entity does not take damage.").  Event names
 extern Event EV_NoDamage;
 
 Event EV_ScriptSlave_HandlesDamage
@@ -1558,7 +1557,6 @@ static void ScriptSlave_DoNodeEvents(SplinePath *node, Entity *slave)
     }
 }
 
-// never started it, which is why all 134 shipped followpath calls did nothing.
 void ScriptSlave::FollowPath(Event *ev)
 {
     int           i, argnum;
@@ -1763,7 +1761,6 @@ void ScriptSlave::ClosePortal(Event *ev)
 
 void ScriptSlave::PhysicsOn(Event *ev)
 {
-    // SDK scriptslave.cpp:2244-2251, verbatim.  The port-only
     commandswaiting = false;
     setMoveType(MOVETYPE_BOUNCE);
     setSolidType(SOLID_BBOX);

@@ -91,7 +91,6 @@ public:
 
     CThread();
 
-    // SDK globalcmd.cpp:2748-2780.  Reads a file of CONSOLE COMMANDS -- not GameScript --
     void Parse(const char *filename);
 
     void DelayedStart(float delay);

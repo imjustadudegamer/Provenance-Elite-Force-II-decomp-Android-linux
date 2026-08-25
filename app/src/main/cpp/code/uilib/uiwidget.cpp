@@ -1185,7 +1185,6 @@ UIWidget::UIWidget()
     m_configstring_index       = -1;
     m_iFontAlignmentHorizontal = FONT_JUSTHORZ_CENTER;
     m_iFontAlignmentVertical   = FONT_JUSTVERT_CENTER;
-    // at 640x480 and must be scaled by uid.scaleRes".  The port used to seed it
     m_bVirtual                 = qtrue;
     m_depth                    = 1.0f;
     m_noresize                 = false;
@@ -1409,7 +1408,6 @@ static int Fctiwz(float f)
 // m_frame.size.height, NOT m_startingpos.  Motion @0x000A0590 proves it: every
 void UIWidget::calculateDrawRegion(void)
 {
-    // finite and positive (vidWidth/640), so the shipped result never saturates.
     const int   n = Fctiwz((float)m_borderWidth * uid.scaleRes[0] + 0.5f);
     const float f = (float)n;
 
@@ -3567,7 +3565,6 @@ void UIWidget::PasteFromWindowsClipboard(void) {}
 
 void UIWidget::setData(const str& data)
 {
-    // [WIDGET:B1:whitegrid] Retail's sentinel is the LITERAL "EMPTY", not the empty
     //   0xA53B8  clrlwi. r0, r0, 0x18 / beq 0xA53CC    ; NOT equal -> register
     // sentinel: Scoreboard::addIcons @0x001CE490 appends the literal `"EMPTY" `
     // NOTE the sentinel arm writes the slot DIRECTLY and does not call
@@ -3585,7 +3582,6 @@ const char *UIWidget::getData(void)
     return "";
 }
 
-// Retail does NOT store +1016/+1020 (m_size), +1392/+1396 (m_indent/
 // DELETED here (they were never retail's).  Retail also does not store +1048
 void UIWidget::copyProperties(UIWidget& other)
 {
@@ -3651,7 +3647,6 @@ void UIWidget::copyProperties(UIWidget& other)
     other.m_motiontype = m_motiontype;
     other.m_motiontime = m_motiontime;
 
-    // PropogateCoordinateSystem(dest).  Retail does NOT propagate
     if (other.m_origin.x != m_origin.x || other.m_origin.y != m_origin.y) {
         other.m_origin = m_origin;
         other.PropogateCoordinateSystem();
@@ -3662,7 +3657,6 @@ void UIWidget::copyProperties(UIWidget& other)
     other.m_iFontAlignmentHorizontal = m_iFontAlignmentHorizontal;
     other.m_iFontAlignmentVertical   = m_iFontAlignmentVertical;
 
-    // Retail does NOT copy +1048 (m_name).
     other.m_cvarname    = m_cvarname;
     other.m_command     = m_command;
     other.m_hoversound  = m_hoversound;
@@ -3762,7 +3756,6 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
         return;
     }
 
-    // 16 shipped .urc files use it, all HUD/overlay menus that must not draw over the
     if (m_hideDuringLoad && menuManager.getLoading()) {
         LIMIT_VW_Exit(LIMIT_VW_Self(limit_t0, getClassname(), getName()));
         return;
@@ -4663,7 +4656,6 @@ WidgetMover::WidgetMover(UIWidget *widget)
 {
     m_currentcommand = 0;       
     m_widget         = widget;  
-    // SANCTIONED hardening (register W30C-047, audit B-016), CORRECTED by
     m_time           = 0.0f;
     m_totaltime      = 0.0f;
 }

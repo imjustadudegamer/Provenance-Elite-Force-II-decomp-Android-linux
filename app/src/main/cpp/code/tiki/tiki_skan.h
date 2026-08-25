@@ -17,7 +17,6 @@ struct skelFrame_s;
 typedef struct skelAnimHeader_s skelAnimHeaderRec_t;
 typedef struct skelFrame_s     skelFrameRec_t;
 
-// hand back the same bytes as a host-order skelAnimHeader_t.  Retail never
 skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes);
 
 void TIKI_Skan_Bind(skelAnimDataGameHeader_t *owner, skelAnimHeaderRec_t *hdr);

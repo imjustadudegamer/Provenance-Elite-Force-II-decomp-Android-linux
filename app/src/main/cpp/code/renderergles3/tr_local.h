@@ -311,7 +311,6 @@ typedef enum {
 	CGEN_DOT,
 	CGEN_ONE_MINUS_DOT,
 	CGEN_DEFAULT,		 
-	// world-fog marking, whose flag is never written in the Mac engine (see the
 	CGEN_FOG,			 
 	CGEN_FOG_BLEND		 
 } colorGen_t;
@@ -444,7 +443,6 @@ typedef struct {
 	waveForm_t		alphaWave;
     alphaGen_t		alphaGen;
 
-	// Retail EF2's shaderStage_t+0xD0 (dword 52).  It is NOT parsed from any
 	acff_t			acff;
 
     unsigned		stateBits;					
@@ -755,7 +753,6 @@ typedef struct {
 
     float		worldSurfaceFade;
 
-    // latch is set.  They live in viewParms_t because R_RenderView (tr_main.c:1942)
     // assigns a fresh viewParms every view, so the latch is per-view exactly as retail's
     int			terrainGlobalRun;
     float		terrainGlobalMinZ;

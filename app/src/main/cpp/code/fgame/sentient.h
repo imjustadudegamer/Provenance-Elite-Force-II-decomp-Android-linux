@@ -6,7 +6,6 @@
 #include "../corepp/container.h"
 #include "animate.h"
 #include "characterstate.h"
-// sentient.h never mentions one) -- the driver link is Player::vehicle (SDK player.h:246).
 
 extern Event EV_Sentient_AddToMyArmor;
 extern Event EV_Sentient_SetMyArmorAmount;
@@ -137,7 +136,6 @@ protected:
     void         SetCriticalHealthPercentage(Event *ev);  
     float        GetCriticalHealthPercentage();
 
-    // sentient.cpp:2661-2672).  The single writer of last_surface_hit / last_bone_hit /
     void             SetRegionalDamage(int surface_number, int bone_number, Vector direction);
 
     virtual void     ArmorDamage(Event *ev);
@@ -228,7 +226,6 @@ public:
     int            MaxAmmoCount(const str &ammo_type);  
     int            AmmoIndex(const str &ammo_type);  
     int            UseAmmo(const str &ammo_type, int amount);  
-    // SDK sentient.h:288.  Returns the amount actually taken; `pickedUp` deliberately has
     int GiveAmmo(const str& type, int amount, bool pickedUp, int max_amount = -1);
 
     int GiveAmmo(const str& type, int amount, int max_amount) = delete;
@@ -253,7 +250,6 @@ public:
 
     void             setModel(const char *mdl) override;
     void             Archive(Archiver& arc) override;
-    // never reads it (SDK sentient.cpp:3289-3425); only Player does (SDK
     virtual void     ArchivePersistantData(Archiver& arc, qboolean sublevelTransition);
     Item           *FindBaseArmor(void);  
     void             ArmorEvent(Event *ev);  
@@ -309,7 +305,6 @@ public:
     void getActiveWeaponName(Event *ev);
     void getActiveWeaponName(weaponhand_t hand, str& weaponName);  
     void setViewMode(Event *ev);
-    // (player.h:626, `virtual`) therefore did NOT override it -- it was a fresh
     // (`client->ps.viewMode = getViewMode();`, SDK player.cpp:12015-12019) -- NEVER RAN.
     virtual void setViewMode(const str &viewModeName);  
     unsigned int getViewMode(void);  

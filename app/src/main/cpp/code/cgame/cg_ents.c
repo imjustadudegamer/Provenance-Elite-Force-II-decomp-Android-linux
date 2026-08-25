@@ -339,7 +339,6 @@ void CG_Sprite(centity_t *cent)
     ent.shaderRGBA[1] = (int)(255.0f * cent->color[1]);
     ent.shaderRGBA[2] = (int)(255.0f * cent->color[2]);
 
-    // Set alpha.  Retail clamps against the entity's own alpha colour, not against 255.
     if (s1->alpha < 1.0f) {
         ent.shaderRGBA[3] = (int)(255.0f * s1->alpha);
     } else {

@@ -1974,7 +1974,6 @@ void CL_InitRef( void ) {
 
 	re = *ret;
 
-	// SANCTIONED PLATFORM GLUE (STANDING_RULES §2.2/§2.3 -- the dynamic renderer
 	CL_FillUIImports();
 
 	// not have (retail links its renderer in).

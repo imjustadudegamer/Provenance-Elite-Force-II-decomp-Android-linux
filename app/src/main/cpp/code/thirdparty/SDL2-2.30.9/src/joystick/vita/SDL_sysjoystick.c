@@ -125,7 +125,7 @@ int VITA_JoystickInit(void)
     }
 
     // Assume we have at least one controller, even when nothing is paired
-    // This way the operator can jump in, pair a controller
+    // This way one can jump in, pair a controller
     // and control things immediately even if it is paired
     // after the app has already started.
 

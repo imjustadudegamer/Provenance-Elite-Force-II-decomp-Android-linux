@@ -279,7 +279,6 @@ public:
     morph_t  controllers[NUM_MORPH_CONTROLLERS];
     qboolean controller_on;
 
-    // SDK entity.h:367.  MorphInfo does NOT derive from Class, so it cannot go through
 };
 
 inline MorphInfo::MorphInfo()
@@ -328,7 +327,6 @@ private:
     bool                 _networkDetail;
 
 protected:
-    // SDK entity.h:388-389.  Creates the UseData record if there is not one already.
     void buildUseData(void);
 
 public:
@@ -548,7 +546,6 @@ public:
                 Entity *weapon = 0);
 
     void     DamageType(Event *ev);
-    // virtual, so the Entity vtable referenced a body that did not exist -- that is the
     void         FadeNoRemove(Event *ev);
     void         FadeOut(Event *ev);
     void         FadeIn(Event *ev);

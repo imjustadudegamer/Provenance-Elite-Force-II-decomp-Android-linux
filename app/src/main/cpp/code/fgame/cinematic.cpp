@@ -176,7 +176,6 @@ void CinematicActor::actorBehaviorFinishedEvent(Event *ev)
     }
 }
 
-// (SDK actor.cpp:326) and takes a float yaw AND an int useAnims -- not the port's
 void CinematicActor::_turnActor(bool useAnims)
 {
     assert(_actor);
@@ -369,7 +368,6 @@ void CinematicActor::getToPosition(void)
     }
 }
 
-// SDK CinematicArmature.cpp:804.  The tiki must resolve to a subclass of Actor;
 void CinematicActor::_spawn(void)
 {
     ClassDef *cls;
@@ -570,7 +568,6 @@ void CinematicCamera::start(void)
     }
 }
 
-// hard.  (The `lerp` field is parsed and never read; all 834 shipped cuts set it
 void CinematicCamera::cut(void)
 {
     if (!_camera) {
@@ -784,7 +781,6 @@ void CinematicCut::_handleFadeOutEvent(Event *ev)
     level.m_fade_style      = alphablend;
 }
 
-// name does not resolve returns the view to the player.  47 shipped cuts carry a
 void CinematicCut::_handleCutEvent(Event *ev)
 {
     if (_cinematicCamera) {
@@ -1009,7 +1005,6 @@ void Cinematic::Archive(Archiver& arc)
     arc.ArchiveInteger(&numOrigins);
 
     if (arc.Loading()) {
-        // Retail resizes the CAMERA list here, not the origin list (SDK
         _cameraList.Resize(numCameras);
         for (int originIdx = 1; originIdx <= numOrigins; ++originIdx) {
             CinematicOrigin *cinematicOrigin = NULL;

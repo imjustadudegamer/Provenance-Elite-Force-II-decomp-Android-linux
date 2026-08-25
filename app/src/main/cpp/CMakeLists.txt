@@ -69,7 +69,7 @@ endif()
 # parallel dispatch on.  EF2_MULTITHREAD=0 compiles the layer away entirely:
 # q_jobs.c then answers every call with the inline serial loop, no thread is
 # created anywhere and every consumer executes the byte-identical sequential
-# code it executed before this workstream.  That zero-config build is the standing
+# code it executed before this change.  That zero-config build is the standing
 # proof that the threads are OPTIONAL, and the rollback path if a device
 # ever misbehaves.
 #
@@ -88,7 +88,7 @@ endif()
 option(BUILD_SERVER "Build dedicated server" ON)
 option(BUILD_CLIENT "Build client" ON)
 # GLES 3.0 renderer (gles3-gles3).  This is the programme's shipping substrate
-# and, since the operator-ordered deletion of the fixed-function renderer, the
+# and, since the deletion of the fixed-function renderer, the
 # ONLY one: it is the fork of that renderer's sources with the substrate
 # swapped to GLES 3.0 + GLSL ES 3.0 (see cmake/renderer_gles3.cmake).  It is
 # driven by EF2_RENDERER (now a one-value switch), so no existing invocation

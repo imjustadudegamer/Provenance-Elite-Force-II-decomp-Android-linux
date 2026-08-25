@@ -55,7 +55,6 @@ static ALCdevice   *al_device                  = NULL;
 static ALsizei      al_default_resampler_index = 0;
 static ALsizei      al_resampler_index         = 0;
 
-// SANCTIONED (OpenAL backend, Standing Rules 2.1): the SECOND-provider branch.  OpenAL has
 static int s_iNumChannels3D = MAX_SOUNDSYSTEM_CHANNELS_3D;
 static int S_OPENAL_MaxSupportedSamples();
 
@@ -345,7 +344,6 @@ static bool S_OPENAL_InitContext()
     case 3:
         attrlist[5] = ALC_QUAD_SOFT;
         break;
-    // audio-audio.  The shipped menu authors SIX speaker types, not four:
     case 4:
         attrlist[5] = ALC_SURROUND_5_1_SOFT;
         break;
@@ -593,7 +591,6 @@ qboolean S_OPENAL_Init()
         }
 
         if (iProviderMax < 32) {
-            // SANCTIONED: the second provider's count is the one datum this backend cannot
             s_iNumChannels3D = 32;
         }
     }
@@ -985,7 +982,6 @@ static qboolean S_OPENAL_ShouldPlay(sfx_t *pSfx)
     int iNumberPlaying;
     int i;
 
-    // twice over.  Retail's `n < 0` can never hold, i.e. `maxnumber 0` means the sound
     // is NEVER played.  Reproduced.
     iMaxNumberPlaying = sfx_infos[pSfx->sfx_info_index].max_number_playing;
     if (iMaxNumberPlaying < 0) {
@@ -1001,7 +997,6 @@ static qboolean S_OPENAL_ShouldPlay(sfx_t *pSfx)
             continue;
         }
 
-        // Retail compares the sound NAME, not the sfx_t identity, and its busy test is
         if (!strcmp(pChannel->pSfx->name, pSfx->name)
             && (pChannel->is_playing() || pChannel->bPendingStart)) {
             iNumberPlaying++;
@@ -2132,7 +2127,6 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
             }
         }
 
-        // S_OPENAL_StartSound and never retried, so a source that came into range between
         if (pChannel->bPendingStart) {
             if (!S_OPENAL_ShouldStart(pChannel->vOrigin, pChannel->fMinDist, pChannel->fMaxDist)) {
                 pChannel->end_sample();
@@ -2171,7 +2165,6 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
             continue;
         }
 
-        // no-entity sentinel (-1, the cgame's temp-model/effect value).  Retail reads
         if (pChannel->iEntNum >= 0 && pChannel->iEntNum < MAX_GENTITIES) {
             VectorCopy(s_entity[pChannel->iEntNum].position, vOrigin);
         } else {
@@ -2272,7 +2265,6 @@ void S_OPENAL_Update()
 
     bool bLevelsChanged = false;
 
-    // xS_MILES_AddLoopSounds:297), so the 0.5 never reached the loop that carries the bed --
 
     if (paused->integer && !s_bSoundPaused) {
         S_PauseSound();
@@ -2930,8 +2922,6 @@ U32 openal_channel::sample_ms_offset()
         return 0;
     }
 
-    // SANCTIONED crash-safety (W30C-044 class sweep): sample_playback_rate() is
-    // buffer has no frequency yet returns 0 and would trap the integer division.
     S32 rate = sample_playback_rate();
     if (!rate) {
         return 0;
@@ -4257,7 +4247,6 @@ U32 openal_channel_two_d_stream::sample_offset()
         offset = totalQueueLength - streamNextOffset + playerByteOffset;
     }
 
-    // SANCTIONED crash-safety (W30C-044 class sweep): getBitsPerSample() returns
     if (!bitsPerSample) {
         return 0;
     }

@@ -295,7 +295,6 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
 
     if (thislight->exclusiveLightNameCount) {
         int i;
-        // correct answer for any model that does not declare one, and no shipped light
         const unsigned int uTikiHash = 0;
 
         bAllowed = qfalse;
@@ -646,7 +645,6 @@ void R_Sphere_SetupEntity()
     vec3_t     vLightDir;
     spherel_t *lightlist[MAX_MAP_SPHERE_LIGHTS_EF2];
 
-    // DELIBERATE DEVIATION, and the reason is a menu.  Retail does NOT seed a TessFunction
     backEnd.currentSphere->TessFunction = &RB_Light_Sphere;
 
     if ((backEnd.currentEntity->e.renderfx & RF_FULLBRIGHT) || r_light_nolight->integer) {

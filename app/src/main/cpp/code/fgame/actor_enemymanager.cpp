@@ -196,8 +196,6 @@ void EnemyManager::TrivialUpdate()
     }
 }
 
-// ⚠️ THIS DOES NOT PICK THE TARGET.  Retail's Update never calls FindHighestHateEnemy; it
-//      _Evaluate*/_CheckFor* helpers (SDK RageAI.cpp:115-330) are not ported;
 void EnemyManager::Update()
 {
     HateListEntry_t *listIndex;

@@ -68,9 +68,6 @@ typedef struct {
 extern const gles3StateBitArm_t	gles3StateBitArms[];
 extern const int				gles3NumStateBitArms;
 
-/* The program table (tr_program_table.inc).  One row per reachable stage
- * permutation; the table census parses this and checks shipped content
- * against it.  DEAD rows carry a reason and are allowed but must be labelled. */
 typedef struct {
 	unsigned		rgbGen;			
 	unsigned		alphaGen;		

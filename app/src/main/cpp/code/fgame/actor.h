@@ -8,7 +8,6 @@
 class Actor;     
 class Sentient;  
 #include "actorincludes.h" 
-// Retail actor.h:20 -- Conditional (statemap conditions) must precede the
 #include "characterstate.h"
 
 #include "actorgamecomponents.h"
@@ -288,7 +287,6 @@ public:
     void BroadcastAlert(float rad = SOUND_RADIUS);
     void BroadcastAlert(Event *ev);  
 
-    // (SDK actor_sensoryperception.h:110-114).  SetFov deliberately does NOT touch the
     void  SetVisionDistance(float distance);
     void           ShowInfo(void);
     str            name;
@@ -384,8 +382,6 @@ public:
     void   EyeOffset(Event *ev);  
 
     // BULLETS DO NOT BOUNCE -- see the actor bounce-off blocks in Projectile::Touch.
-    // actor.cpp:19639) but never puts it in the response table, so no shipped data can
-    // actor.cpp:3147).  The dead setter is not transcribed; the default is.
     str   bounce_off_effect;
     float bounce_off_velocity;
     void  SetBounceOff(Event *ev);       
@@ -396,7 +392,6 @@ public:
     float  maxLeadFactor;
     void   SetAimLeadFactors(Event *ev); 
 
-    // (RageAI.cpp:192-258), which is not ported.
     void  SetCheckConeOfFireDistance(Event *ev);
     void SetCheckConeOfFireDistance(float distance); 
 
@@ -417,8 +412,6 @@ public:
     str  kill_thread;
     void SetKillThreadEvent(Event *ev);
 
-    // These are NOT the ScriptSlave on*/no* family that entity.cpp registers.  Retail
-    // not interchangeable: igm_dialog.scr:36-79 arms `theActor.onuse("workUseThread")`
     str   onuse_thread_name;
     str   ondamage_thread;
     int   ondamage_threshold;
@@ -434,7 +427,6 @@ public:
 
     void ArmorDamage(Event *ev) override;
 
-    // (actor.cpp:2901 / :4395 / :15286) and never read anywhere in the SDK; the dead
     EntityPtr forcedEnemy;
     void      AttackEntity(Event *ev);
 
@@ -848,7 +840,6 @@ public:
     BehaviorReturnCode_t eyeBehaviorCode;   
     BehaviorReturnCode_t torsoBehaviorCode; 
 
-    // SDK actor.h:186/:191/:195/:199.  NOT archived on either side -- runtime-only
     str currentBehavior;         
     str currentHeadBehavior;     
     str currentEyeBehavior;      
@@ -982,7 +973,6 @@ public:
     float    lastPathCheck_Patrol;          
     qboolean testing;                       
 
-    // not move: see docs/DIVERGENCE_LEDGER_0904.md.
     ActorThink         *thinkStrategy;       
     ActorGameComponent *gameComponent;       
     SensoryPerception  *sensoryPerception;   

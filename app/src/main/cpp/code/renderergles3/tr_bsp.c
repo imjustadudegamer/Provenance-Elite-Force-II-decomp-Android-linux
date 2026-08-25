@@ -878,7 +878,6 @@ static void ParseFace( dsurface_t *ds, drawVert_t *verts, msurface_t *surf, int 
         return;
     }
 
-    // MST_PLANAR face had fogIndex 0 -- i.e. was never fogged -- on the 6 shipped maps
     surf->fogIndex = LittleLong( ds->fogNum ) + 1;
 
     numPoints = LittleLong( ds->numVerts );
@@ -1604,7 +1603,6 @@ qboolean R_GetEntityToken( char *buffer, int size ) {
     return qfalse;
 }
 
-// loader's lump order is not ascending in fileofs: in maps/ent-training1.bsp the
 static byte *r_bspFileBuffer;
 static int   r_bspFileLength;
 
@@ -1806,7 +1804,6 @@ void RE_LoadWorldMap( const char *name ) {
     _R(82);
     // more; EF2 lump 18 is empty by design and 16/17 do not exist in an EF2 BSP.)
     _R(89);
-    // TRAP kept for posterity: ent-training1's 40040-byte lump divides evenly by BOTH 104
     numSLights = R_LoadLump(h, &header.lumps[LUMP_ENTLIGHTS], &lump, sizeof(mapspherel_t));
     _R(90);
     R_LoadSphereLights(&lump);

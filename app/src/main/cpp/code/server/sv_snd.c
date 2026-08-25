@@ -38,7 +38,6 @@ void SV_ClientSound(client_t* client, vec3_t* org, int entnum, int channel, int 
 	sound->min_dist = mindist;
 	sound->pitch_modifier = pitch;
 	sound->sound_index = sound_index;
-	// EF2 PARITY (ledger T4.6): `maxdist` and `streamed` are deliberately NOT stored.
 	(void)maxdist;
 	(void)streamed;
 	client->number_of_server_sounds++;

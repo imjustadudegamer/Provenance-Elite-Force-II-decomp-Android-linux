@@ -434,7 +434,6 @@ Path *PathFinder<Heuristic>::FindPath(PathNode *from, PathNode *to, int maxNodes
         node = ReturnBestNode();
     }
 
-    // a shipped run), so `count' is set and never read and clang says so on every TU that
     (void)count;
 
 

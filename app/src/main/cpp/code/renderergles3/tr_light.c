@@ -130,8 +130,6 @@ void RB_SetupStaticModelLighting(trRefdef_t *refdef, cStaticModelUnpacked_t *ent
     if (!(refdef->rdflags & RDF_NOWORLDMODEL)) {
         R_GetLightingAtPoint(lightOrigin, vLight);
     } else {
-        // RDF_NOWORLDMODEL at tr_world.c:868 -- so a UI/NOWORLDMODEL view never has a
-        // ships no MOHAA static-model lumps at all (the deleted oracle's tr_bsp.c never sets
         vLight[0] = vLight[1] = vLight[2] = tr.identityLight * 150.0;
     }
 

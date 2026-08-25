@@ -578,7 +578,7 @@ extern "C" {
 /** Configures the encoder's use of variable duration frames.
   * When variable duration is enabled, the encoder is free to use a shorter frame
   * size than the one requested in the opus_encode*() call.
-  * It is then the operator's responsibility
+  * It is then the responsibility
   * to verify how much audio was encoded by checking the ToC byte of the encoded
   * packet. The part of the audio that was not encoded needs to be resent to the
   * encoder for the next call. Do not use this option unless you <b>really</b>

@@ -113,7 +113,6 @@ void CG_DrawDisconnect(void)
         return;
     }
 
-    // The box is CONSTANT virtual 640x480 geometry, not the shader's own size:
     // TIKIANIM-C: retail's path, not MOHAA's.  "gfx/2d/net.tga" is the Q3/MOHAA phone-jack
     handle = cgi.R_RegisterShader("sysimg/2d/disconnected");
     x      = 544.0f * cgs.screenXScale;
@@ -280,7 +279,6 @@ const char *CG_CreateTargetString(const centity_t *cent, const char *prop, char 
         return out;
     }
 
-    // buffer (r1+0x148), not back into the property buffer.
     {
         char wrapped[256];
 
@@ -421,7 +419,6 @@ void CG_DrawCrosshair()
     }
 }
 
-// THE COLOUR is data, not code.  Retail asks the GameplayDatabase for the entity
 //   * NOT customShader.  That is retail's FX-overlay image index (SDK q_shared.h:1734,
 //   * NOT infoIcon.  In retail that is the MULTIPLAYER info icon: SDK q_shared.h:1768
 //     Entity::UpdateInteractiveType (code/fgame/entity.cpp) -- a field retail has never
@@ -795,13 +792,11 @@ void CG_DrawTargetIdentifier(void)
 }
 
 
-//   bits (0x100 and 0x80) and never store.  With no writer the four bits stay
 void CG_Draw2D(void)
 {
     CG_DrawLagometer();
     CG_DrawDisconnect();
 
-    // every level with no boss: the crosshair then never hid.  Retail sets bit 0x1
     if (cg.snap && !(cg.snap->ps.stats[STAT_CINEMATIC] & 1)) {
         if (cg_ident.entnum >= 0) {
             CG_GetIdentificationData(&cg_entities[cg_ident.entnum], cg_ident.color);

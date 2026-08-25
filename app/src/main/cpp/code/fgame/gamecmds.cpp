@@ -62,7 +62,6 @@ consolecmd_t G_ConsoleCmds[] = {
     {"purchaseSkill",   G_PurchaseSkillCmd,   qfalse},
     {"swapItem",        G_SwapItemCmd,        qfalse},
     {"dropItem",        G_DropItemCmd,        qfalse},
-    // EF2 branching dialog (SDK gamecmds.cpp:78).  Retail marks it "not available in
     {"dialogrunthread", G_DialogRunThread,    qfalse},
     {NULL,              NULL,                 qfalse}
 };

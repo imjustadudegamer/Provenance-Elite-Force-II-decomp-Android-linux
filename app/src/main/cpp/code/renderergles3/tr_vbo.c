@@ -2,7 +2,6 @@
 #include "tr_vbo.h"
 #include "tr_imm_decompose.h"
 
-// (tr_shade.c:264) -- the w workstream is SIMD padding and is carried, not dropped.
 typedef struct {
 	float			xyz[4];		
 	float			normal[4];	

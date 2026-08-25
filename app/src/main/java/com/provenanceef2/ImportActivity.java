@@ -19,45 +19,17 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * Launcher activity (the EF1 port's ImportActivity, adapted to EF2's data
  * layout): makes sure the retail game data is present in the app's OBB
- * directory before the engine starts.
- *
  * EF2's game directory is "base" (q_shared.h BASEGAME) and retail ships the
- * campaign in pak0/pak10/pak15/pak16/pak20/pak30/pak31/pak32/pak50.pk3.  The
- * locpak*.pk3 files and the multiplayer-map paks (ctf_*, dm_*, hm_*) are
- * optional extras -- the engine simply reads whichever paks are present.
- *
- * gamex86.dll is not loaded or executed by this port -- it is required only as
- * proof that the operator owns a real copy of the game, which is what the game's
- * source license permits this port to operate alongside.
- *
- * On Android 11+ ordinary file managers cannot write into
- * Android/obb/<package>, so operators cannot copy the files there by hand.
- * This activity lets them pick the files with the system document picker
- * (Storage Access Framework) and stream-copies them into the OBB directory,
- * which the app itself may always write to without permissions.
- *
- * adb route (works on devices where the shell user can reach Android/data or
- * Android/obb):  adb push base/. /sdcard/Android/obb/com.provenanceef2/base/
- *
- * Deliberately uses only android.app classes (no androidx dependency).
  */
 public class ImportActivity extends Activity {
     private static final String TAG = "ProvenanceEF2";
     private static final int REQUEST_PICK_PAKS = 42;
 
     /**
-     * EVERY retail pak, and all of them are required (human ruling 2026-09-30: "make all retail
+     * EVERY retail pak, and all of them are required (the rule: "make all retail
      * paks required").  The set is the retail install's own base/ directory, in its own order:
-     * the nine campaign paks (shaders/scripts/UI, the 523 campaign maps, the textures, the 8193
-     * models, the sound/music banks and the small patch pak), the two localisation paks -- note
-     * locpak1 carries ui/ and fonts/ as well as loc/, not only strings -- and the four
      * multiplayer map paks.  The proof-of-ownership gamex86.dll is required alongside them.
-     *
-     * This list is deliberately the FULL set rather than a minimal one: a partially imported
-     * install could boot to a map with missing art or sound, and the operator would rather be told
-     * exactly which files are absent up front.  getMissingList() names every one of them.
      */
     private static final String[] REQUIRED_PAKS = {
             "pak0.pk3", "pak10.pk3", "pak15.pk3", "pak16.pk3",
@@ -106,8 +78,6 @@ public class ImportActivity extends Activity {
 
     /**
      * Verify a genuine retail DLL sits alongside the paks. Lenient on version:
-     * any real gamex86.dll passes -- we only check it is a real DOS/PE binary
-     * (the "MZ" header) of a plausible size, not a specific build/hash.
      */
     private boolean dllPresent() {
         File f = new File(mBaseDir, REQUIRED_DLL);
@@ -148,7 +118,6 @@ public class ImportActivity extends Activity {
         finish();
     }
 
-    /** First-run / missing-data dialog. extraLine, if non-null, is prepended. */
     private void showImportDialog(String extraLine) {
         String msg = (extraLine != null ? extraLine + "\n\n" : "")
                 + "Star Trek: Elite Force II needs the game data from "
@@ -215,12 +184,10 @@ public class ImportActivity extends Activity {
             return;
         }
         if (resultCode != RESULT_OK || data == null) {
-            // user backed out of the picker
             showImportDialog("No files were selected.");
             return;
         }
 
-        // Collect picked URIs (single pick -> getData, multi -> clipData)
         final Uri[] uris;
         if (data.getClipData() != null) {
             int count = data.getClipData().getItemCount();
@@ -304,7 +271,6 @@ public class ImportActivity extends Activity {
         });
     }
 
-    /** Resolve the operator-visible file name of a picked document. */
     private String displayName(Uri uri) {
         Cursor c = null;
         try {
@@ -314,7 +280,6 @@ public class ImportActivity extends Activity {
                 if (idx >= 0) {
                     String name = c.getString(idx);
                     if (name != null) {
-                        // basic sanitation: no path separators
                         return new File(name).getName();
                     }
                 }
@@ -327,11 +292,6 @@ public class ImportActivity extends Activity {
         return null;
     }
 
-    /**
-     * Stream-copy one picked document into the OBB base/ dir.
-     * Writes to a .tmp file first and renames into place so a half-finished
-     * copy never looks like a valid pak.
-     */
     private void copyDocument(Uri uri, File dest, ProgressDialog progress,
                               String name) throws Exception {
         ContentResolver resolver = getContentResolver();

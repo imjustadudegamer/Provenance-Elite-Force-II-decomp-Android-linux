@@ -6,7 +6,6 @@ extern "C" {
 #endif
 
 
-// Field sizes and offsets are the Mac-binary measurements, not the SDK's (the SDK
 enum {
     ALIAS_NAME_MAX       = 32,
     ALIAS_REAL_NAME_MAX  = 128,

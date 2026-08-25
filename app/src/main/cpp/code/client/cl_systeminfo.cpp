@@ -431,7 +431,6 @@ void SystemSetup::configureCPUOptions(void)
     if (match) {
         Cbuf_AddText(va("%s%s%s", EXEC_PREFIX, match->command.c_str(), EXEC_SUFFIX));
     } else if (cpuEntries.NumObjects() > 0) {
-        // SANCTIONED PORT DIVERGENCE (platform glue) -- never land on `slow'.
         // host that reaches this arm is never the 300 MHz / 32 MB machine retail's
         Cbuf_AddText(va("%s%s%s", EXEC_PREFIX, cpuEntries.ObjectAt(1)->command.c_str(), EXEC_SUFFIX));
     } else {
@@ -460,7 +459,6 @@ void SystemSetup::configureMemoryOptions(void)
     if (match) {
         Cbuf_AddText(va("%s%s%s", EXEC_PREFIX, match->command.c_str(), EXEC_SUFFIX));
     } else if (memoryEntries.NumObjects() > 0) {
-        // SANCTIONED PORT DIVERGENCE (platform glue) -- never land on `memorylow'.
         // global/memoryconfig.sys in pak0.pk3) can never match and retail's
         Cbuf_AddText(va("%s%s%s", EXEC_PREFIX, memoryEntries.ObjectAt(1)->command.c_str(), EXEC_SUFFIX));
     } else {

@@ -1,7 +1,5 @@
 
 // This file is retail cgame_mac.pef's cg_testemitter, not MOHAA 2.0's.  MOHAA's editor
-// CG_*EffectCommandCvars trio) does not exist in the Mac binary and is gone from here.
-// Every table below was read off the relocated-pool disassembly, not the decompiler
 
 #include "cg_commands.h"
 
@@ -278,7 +276,6 @@ void ClientGameCommandManager::SwitchEmitter(int num, int setcurnum)
     cgi.Cvar_Set("cg_te_scalerate", va("%f", pCurrSpawnthing->cgd.scaleRate));
     cgi.Cvar_Set("cg_te_radius", va("%f", pCurrSpawnthing->sphereRadius));
 
-    // cg_te_forwardvelocity, not cg_te_forwardvel.  Retail never registers either, so
     cgi.Cvar_Set("cg_te_forwardvelocity", va("%f", pCurrSpawnthing->forwardVelocity));
 
     cgi.Cvar_Set("cg_te_orgoffset_x", va("%f", pCurrSpawnthing->origin_offset_base[0]));

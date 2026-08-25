@@ -887,7 +887,6 @@ qboolean SV_ArchiveServerFile( const char *serverExt, qboolean loading, qboolean
 			return qfalse;
 		}
 
-		// Retail's read path restores exactly two fields and does not touch the
 		FS_Read( &save, sizeof( savegamestruct_t ), f );
 		Q_strncpyz( svs.mapName, save.mapName, sizeof( svs.mapName ) );
 		svs.time = save.svsTime;

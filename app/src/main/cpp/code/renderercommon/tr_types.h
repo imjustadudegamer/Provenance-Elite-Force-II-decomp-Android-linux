@@ -45,7 +45,6 @@ typedef enum {
 struct skelFrame_s;
 struct dtiki_s;
 
-// decompiles, not inferred.
 typedef struct refEntity_s {
 	refEntityType_t	reType;                     
 	int			renderfx;                       
@@ -104,13 +103,11 @@ typedef struct refEntity_s {
 
 	byte		surfaces[MAX_MODEL_SURFACES];  
 
-	// Retail +236/+238 are two INDEPENDENT halfwords, not one int: CG_ModelAnim
 	short		tag_num;                        
 	short		skin_num;                       
 
 	int			bone_tag[NUM_BONE_CONTROLLERS];  
 
-	// Retail +260..+339: the five bone-controller quaternions, INLINE (not the
 	vec4_t		bone_quat[NUM_BONE_CONTROLLERS];    
 
 	morph_controller_t	morph_controllers[NUM_MORPH_CONTROLLERS];    
@@ -221,13 +218,11 @@ typedef struct {
 
     char		text[MAX_RENDER_STRINGS][MAX_RENDER_STRING_LENGTH];
 
-	// Derived twice from the shipped Mac PPC image, not from a prior report:
 
     float       farplane_distance;       
     vec3_t      farplane_color;          
     qboolean    farplane_cull;           
     qboolean	farplane_fog;            
-    // viewParms+0x288 / +0x28C, which is the same latch the global-terrain pass in
     qboolean	terrain_global_bool;     
     float		terrain_global_min;      
 
@@ -238,7 +233,6 @@ typedef struct {
     vec3_t      sky_origin;              
     vec3_t      sky_axis[3];             
 
-	// (the deleted oracle's tr_backend.c:1255), i.e. a sanctioned platform-layer consumer, pinned
 	float		farplane_bias;           
 } refdef_t;
 

@@ -1,23 +1,8 @@
 #version 300 es
 /*
-===========================================================================
-ProvenanceEF2 -- OpenGL ES 3.0 shade layer (G2 gles3-gles3-shade)
 gles3_stage.vert -- the generic-stage vertex program.
-
-This ONE source is compiled once per distinct GLP_* bitmask
-(tr_program_table.inc), which is how "every combination the shipped corpus
-can produce" is covered without a combinatorial source explosion: the coarse
-axis (bundle count, tcGen family, tcMod presence, lightmap, atest, wave,
-normal, entity-space) is a #define, and the per-stage generator arm is an
 integer uniform carrying retail's OWN enum ordinal
-(tr_local.h colorGen_t:483 / alphaGen_t:433 / texCoordGen_t:537), so
-`u_ColorGen = pStage->rgbGen` with no translation.  renderergl2 does exactly
 this (glsl/generic_vp.glsl:56-59 `uniform int u_ColorGen; u_AlphaGen;` and
-tr_local.h:656-657 UNIFORM_COLORGEN / UNIFORM_ALPHAGEN).
-
-Every arm cites the the deleted oracle line it mirrors.  the deleted oracle is the
-behaviour oracle for this port; an approximation here is a divergence.
-===========================================================================
 */
 #define GLES3_VERTEX 1
 
@@ -39,25 +24,11 @@ out highp float v_ClipDist;	/* portal clip plane, eye space (gles3_clip.inc.glsl
 out vec2 v_TexCoord1;
 #endif
 
-//@@GLES3_COMMON@@
 
-//@@GLES3_CLIP@@
 
-/* Extra stage-only uniforms (not in the shared library).
-   u_LocalViewOrigin : tr.refdef.vieworg, the value
-     RB_CalcParallaxTexCoords (tr_shade_calc.c:1651) reads -- distinct from
-     u_ViewOrigin, which is backEnd.ori.viewOrigin (the env-map family).
-   u_ForceAlpha : EF2 RF_FORCE_ALPHA.  When >= 0 it overrides the generated
-     alpha with tess.entityFade-independent entity shaderRGBA[3], exactly the
-     C loop `svars.colors[v][3] = e.shaderRGBA[3]` in
-     RB_IterateStagesGeneric (tr_shade.c:1638) / RB_StageIteratorVertexLit-
-     TextureUnfogged (tr_shade.c:1899).  -1 = inactive. */
 uniform vec3	u_LocalViewOrigin;
 uniform float	u_ForceAlpha;
 
-/* ===================================================================
- * TexCoord generators -- the deleted oracle tr_shade.c ComputeTexCoords:1457
- * =================================================================== */
 #ifdef GLP_TCGEN0
 vec2 GLES3_TexGen0(vec3 pos, vec3 nrm)
 {
@@ -67,14 +38,12 @@ vec2 GLES3_TexGen0(vec3 pos, vec3 nrm)
 	if (u_TCGen0 == 5)								/* TCGEN_VECTOR    :1487 */
 		return vec2(dot(pos, u_TCGen0Vec0), dot(pos, u_TCGen0Vec1));
 	if (u_TCGen0 == 4) {							/* ENVIRONMENT_MAPPED :1484 */
-		/* RB_CalcEnvironmentTexCoords tr_shade_calc.c:1299-1321 */
 		vec3 viewer = normalize(u_ViewOrigin - pos);
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
 		return vec2(0.5 + refl.y * 0.5, 0.5 - refl.z * 0.5);
 	}
 	if (u_TCGen0 == 7) {							/* ANGLE_BASED_ENVIRONMENT :1496 */
-		/* tr_shade_calc.c:1370-1389; the viewer is axis[0] normalised ONCE */
 		vec3 viewer = normalize(u_EntityAxis[0]);
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
@@ -99,7 +68,6 @@ vec2 GLES3_TexGen0(vec3 pos, vec3 nrm)
 		return vec2(0.5 + refl.y * 0.5, 0.5 - refl.z * 0.5);
 	}
 	if (u_TCGen0 == 8) {							/* SUN_REFLECTION :1501 */
-		/* tr_shade_calc.c:1485-1537 */
 		vec3 viewer = normalize(pos - u_ViewOrigin);
 		float d = dot(viewer, nrm);
 		vec3 refl;
@@ -113,7 +81,6 @@ vec2 GLES3_TexGen0(vec3 pos, vec3 nrm)
 		return vec2(sr.y + 0.5, sr.z + 0.5);
 	}
 	if (u_TCGen0 == 9) {							/* TCGEN_FOG :1504 */
-		/* RB_CalcFogTexCoords tr_shade_calc.c:2228-2260 */
 		float s = (u_FogSConstant + 0.001953125)
 			+ ((pos.x * u_FogSVector.x + pos.y * u_FogSVector.y) + pos.z * u_FogSVector.z);
 		float tRaw = u_FogTConstant
@@ -156,29 +123,7 @@ vec2 GLES3_TexGen1(vec3 pos, vec3 nrm)
 }
 #endif
 
-/* ===================================================================
- * tcMod chain -- the deleted oracle tr_shade.c ComputeTexCoords:1523-1595 and
- * tr_shade_calc.c RB_Calc*TexCoords.  Up to TR_MAX_TEXMODS (4) per bundle;
- * TMOD_NONE breaks out of the loop (:1526).  u_TexMod[4i+0..3] packs the arm.
- * =================================================================== */
 #ifdef GLP_TCMOD0
-/*
-PACKING (written by GLES3_SetupStageUniforms, tr_program.c):
-    p0 = (type, a, b, c)     p1 = (d, e, f, g)
-    TRANSFORM      a=m[0][0] b=m[1][0] c=translate[0] | d=m[0][1] e=m[1][1] f=translate[1]
-    TURBULENT      c=amplitude                        | d=phase     e=frequency
-    SCROLL         a=scroll[0] b=scroll[1]            |
-    SCALE          a=scale[0]  b=scale[1]             |
-    STRETCH        a=func b=base c=amplitude          | d=phase     e=frequency
-    ROTATE         a=degsPerSecond (sentinel resolved) b=coef c=start
-    OFFSET         a=offsetS (sentinel resolved) b=offsetT
-    PARALLAX       a=rate[0]   b=rate[1]              |
-    WAVETRANS/T    a=func b=base c=amplitude          | d=phase     e=frequency
-MACRO is absent by design: RB_CalcMacroTexCoords (tr_shade_calc.c:1675) needs
-RB_TextureAxisFromPlane / RB_QuakeTextureVecs and the bound image's
-uploadWidth/Height, so GLES3_StageNeedsCPUTexCoords() routes it through the
-oracle and passes tess.svars.texcoords[] straight through instead.
-*/
 vec2 GLES3_ApplyTexMod0(vec2 st, vec3 pos)
 {
 	for (int tm = 0; tm < u_NumTexMod0; tm++) {
@@ -187,8 +132,6 @@ vec2 GLES3_ApplyTexMod0(vec2 st, vec3 pos)
 		vec4  p1 = u_TexMod0[tm * 4 + 1];
 		if (ty == GLES3_TMOD_NONE) break;					/* :1526 */
 		else if (ty == GLES3_TMOD_SCROLL || ty == GLES3_TMOD_ENTITYTR) {
-			/* :1540 / :1535 -> RB_CalcScrollTexCoords (tr_shade_calc.c:1721):
-			   adjusted = speed * shaderTime; adjusted -= floor(adjusted). */
 			vec2 sp = (ty == GLES3_TMOD_ENTITYTR) ? u_EntityTexCoord.xy : p0.yz;
 			vec2 adj = sp * u_ShaderTime;
 			adj -= floor(adj);
@@ -207,10 +150,6 @@ vec2 GLES3_ApplyTexMod0(vec2 st, vec3 pos)
 			st.y = st.y * scale - 0.5 * (scale - 1.0);
 		}
 		else if (ty == GLES3_TMOD_TURBULENT) {				/* :1530 tr_shade_calc.c:1585 */
-			/* RB_CalcTurbulentTexCoordsRange: now = phase + shaderTime*frequency,
-			   index = (int)(((x+z) * 1.0/128 * 0.125 + now) * 2048) & 2047,
-			   value = tr.sinTable[index] * amplitude.  The `1.0/128 * 0.125`
-			   association is C's left-to-right evaluation, reproduced here. */
 			float now = p1.x + u_ShaderTime * p1.y;
 			float off0 = (pos.x + pos.z) * (1.0 / 128.0) * 0.125 + now;
 			float off1 = pos.y * (1.0 / 128.0) * 0.125 + now;
@@ -218,10 +157,6 @@ vec2 GLES3_ApplyTexMod0(vec2 st, vec3 pos)
 			st.y += texelFetch(u_WaveTable, ivec2(int(off1 * 2048.0) & 2047, 0), 0).r * p0.w;
 		}
 		else if (ty == GLES3_TMOD_ROTATE) {					/* :1560 tr_shade_calc.c:1779 */
-			/* RB_CalcRotateTexCoords: degs = -degsPerSecond*coef*shaderTime - start;
-			   index = degs * (2048/360); sin = sinTable[index&2047];
-			   cos = sinTable[(index + 512)&2047]; then RB_CalcTransformTexCoords
-			   with the centring matrix (translate = 0.5 -/+ 0.5*cos/sin). */
 			float degs = -p0.y * p0.z * u_ShaderTime - p0.w;
 			int   index = int(degs * (2048.0 / 360.0));
 			float sinValue = texelFetch(u_WaveTable, ivec2(index & 2047, 0), 0).r;
@@ -241,7 +176,6 @@ vec2 GLES3_ApplyTexMod0(vec2 st, vec3 pos)
 		}
 		else if (ty == GLES3_TMOD_PARALLAX) {				/* :1571 tr_shade_calc.c:1651 */
 			/* RB_CalcParallaxTexCoords reads tr.refdef.vieworg, NOT
-			   backEnd.ori.viewOrigin -- a different value in an entity's own
 			   frame, hence the separate u_LocalViewOrigin uniform. */
 			st.x += u_LocalViewOrigin.x * p0.y;
 			st.y += u_LocalViewOrigin.y * p0.z;
@@ -256,7 +190,6 @@ vec2 GLES3_ApplyTexMod0(vec2 st, vec3 pos)
 		}
 		else if (ty == GLES3_TMOD_BULGETRANS) {				/* :1587 tr_shade_calc.c:188 */
 			/* RB_CalcBulgeTexCoords computes `offset' per vertex and DISCARDS it
-			   (`(void)offset; // BUG: ... this function is a no-op').  The
 			   oracle is the contract, so this arm is deliberately a no-op. */
 		}
 	}
@@ -322,12 +255,6 @@ vec2 GLES3_ApplyTexMod1(vec2 st, vec3 pos)
 }
 #endif
 
-/* ===================================================================
- * Colour generator -- the deleted oracle tr_shade.c ComputeColors:806-1081
- * r,g,b are in 0..255 byte space, exactly like tess.svars.colors, so every
- * truncation the C code performs at the byte store is reproduced by
- * GLES3_Byte() at the end.
- * =================================================================== */
 void main()
 {
 	vec3 pos = a_Position;
@@ -346,7 +273,6 @@ void main()
 	vec4 color;
 
 #ifdef GLP_RGBAGEN
-	/* --- rgbGen, tr_shade.c:813-1081 ------------------------------------ */
 	if (u_ColorGen == 1) {						/* CGEN_IDENTITY_LIGHTING :819 */
 		float v = u_IdentityLightByte;
 		color = vec4(v, v, v, 255.0);
@@ -382,8 +308,6 @@ void main()
 	}
 	else if (u_ColorGen == 10 || u_ColorGen == 14) {
 		/* CGEN_LIGHTING_SPHERICAL / CGEN_STATIC :903.  The entity/sphere light
-		   model (tr_sphere_shade.cpp, RB_CalcDiffuseColor tr_shade_calc.c:2044)
-		   is evaluated on the CPU into a_Color by the tr_shade_calc.c fork, so
 		   the shader reproduces retail's byte copy (:1015/:920) exactly. */
 		color = floor(vcol * 255.0);
 	}
@@ -394,7 +318,6 @@ void main()
 		color = floor(u_BaseColor * 255.0);
 	}
 	else if (u_ColorGen == 15 || u_ColorGen == 16) {
-		/* CGEN_SCOORD / CGEN_TCOORD :1033/:1045 tr_shade_calc.c:1133 */
 		float w = (u_ColorGen == 15) ? st0.x : st0.y;
 		float f = w;									/* sWeight/tWeight folded */
 		f = ((u_AlphaMax - u_AlphaMin) * f + u_AlphaMin) * 255.0;
@@ -403,7 +326,6 @@ void main()
 		color = vec4(f, f, f, 255.0);
 	}
 	else if (u_ColorGen == 17 || u_ColorGen == 18) {
-		/* CGEN_DOT / CGEN_ONE_MINUS_DOT :1057/:1060 tr_shade_calc.c:976/:998 */
 		vec3 viewer = normalize(u_ViewOrigin - pos);
 		float f = dot(nrm, viewer);
 		f = f * f;
@@ -423,7 +345,6 @@ void main()
 		color = vec4(255.0, 255.0, 255.0, 255.0);
 	}
 
-	/* --- alphaGen, tr_shade.c:1086-1411 -------------------------------- */
 	if (u_AlphaGen == 0) {						/* AGEN_IDENTITY :1090 */
 		color.a = 255.0;
 	}
@@ -479,20 +400,6 @@ void main()
 		color.a = max(f, 0.0);
 	}
 	else if (u_AlphaGen == 15) {				/* AGEN_CONSTANT :1180 */
-		/* The oracle's AGEN_CONSTANT arm (the deleted personal/oracle/tr_shade.c:1180-1181)
-		   reads pStage->colorConst[3], NOT the stage's sCoord/tCoord
-		   alphaConst byte: ParseStage's `alphaGen const` arm
-		   (tr_shader.c:1683-1684) writes colorConst[3], and only
-		   `rgbGen sCoord/tCoord` (tr_shader.c:1429/1730) ever writes
-		   alphaConst.  GLES3_SetupStageUniforms has already selected the
-		   right source into u_BaseColor.a (color2D[3] for AGEN_GLOBAL_ALPHA,
-		   colorConst[3] otherwise), exactly as the two C arms select
-		   between backEnd.color2D[3] and pStage->colorConst[3], so this arm
-		   and the AGEN_GLOBAL_ALPHA arm differ only in the value the CPU
-		   published.  Reading u_AlphaConst here made every shipped
-		   `alphaGen const` stage emit alpha 0 (the byte is zero for all of
-		   them), which blended the inventory strip's const-alpha shaders
-		   away entirely. */
 		color.a = floor(u_BaseColor.a * 255.0);
 	}
 	else if (u_AlphaGen == 16) {				/* AGEN_GLOBAL_ALPHA :1183 */
@@ -508,18 +415,6 @@ void main()
 		color.a = floor(255.0 * u_EntityFade);
 	}
 	else if (u_AlphaGen == 22 || u_AlphaGen == 23) {
-		/* AGEN_DOT_VIEW / AGEN_ONE_MINUS_DOT_VIEW, the deleted personal/oracle/tr_shade_calc.c
-		   RB_CalcAlphaFromDotView :2620-2655 and RB_CalcAlphaFromOneMinusDotView
-		   :2660-2695:
-		       VectorCopy(tr.refdef.viewaxis[0], viewInModel);
-		       VectorNormalizeFast(viewInModel);
-		       d = fabs(DotProduct(viewInModel, tess.normal[i]));
-		       (one-minus: d = 1.0 - fabs(dot))
-		   The axis is tr.refdef.viewaxis[0], published as u_ViewAxis0; it was a
-		   hardcoded (1,0,0) here, which pinned the generator to one world
-		   direction and produced the wrong alpha for all 26 shipped
-		   viewDot/oneMinusViewDot stages (census rgbGen/alphaGen pairs
-		   (2,22)/(2,23)/(11,22)). */
 		vec3 viewInModel = normalize(u_ViewAxis0);
 		float f = abs(dot(viewInModel, nrm));
 		if (u_AlphaGen == 23) f = 1.0 - f;
@@ -528,7 +423,6 @@ void main()
 		color.a = max(f, 0.0);
 	}
 	else if (u_AlphaGen == 33 || u_AlphaGen == 34) {
-		/* AGEN_SCOORD / AGEN_TCOORD :1192/:1204 :1114 */
 		float w = (u_AlphaGen == 33) ? st0.x : st0.y;
 		float f = ((u_AlphaMax - u_AlphaMin) * w + u_AlphaMin) * 255.0;
 		f = f - max(float(int(f - u_AlphaConst * 255.0)), 0.0);
@@ -548,23 +442,17 @@ void main()
 #endif
 
 	/* Per-vertex fog modulation -- tr_shade.c ComputeColors:1424-1449.
-	   Applied in byte space, exactly as the C code truncates at the byte
-	   store.  When the stage's colour is CPU-computed (spherelight / static /
-	   dist-fade) GLES3_SetupStageUniforms sets u_Acff = 0: the oracle has
 	   already applied it and the value arrives through a_Color. */
 	color = GLES3_ApplyAcff(color, pos);
 
 	/* EF2 RF_FORCE_ALPHA -- the per-vertex alpha overwrite
-	   (tr_shade.c:1638/1899).  Only the shader-computed arms need it; the
 	   CPU-coloured arms get the byte written into svars.colors by the caller. */
 	if (u_ForceAlpha >= 0.0) {
 		color.a = floor(u_ForceAlpha * 255.0);
 	}
 
-	/* Tessellation-independent: finish the colour in byte space. */
 	v_Color = GLES3_Byte(color);
 
-	/* --- texture coordinates ------------------------------------------ */
 	vec2 tc0 = a_TexCoord0;
 #ifdef GLP_TCGEN0
 	tc0 = GLES3_TexGen0(pos, nrm);

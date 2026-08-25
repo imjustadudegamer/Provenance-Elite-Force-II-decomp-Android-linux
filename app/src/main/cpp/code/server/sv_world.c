@@ -492,7 +492,6 @@ static void SV_TIKI_Intersect( const dtiki_t *tiki, const moveclip_t *clip, trac
 				continue;
 			}
 
-			// Retail reaches the bone through its own tag solver, not through a
 			SV_TIKI_BoneOrientation( tiki, handle, touch, bone, &orient );
 
 			VectorCopy( touch->s.origin, boneOrigins[bone] );
@@ -668,7 +667,6 @@ static void SV_ClipMoveToEntities( moveclip_t *clip ) {
 		}
 		touch = SV_GentityNum( touchlist[i] );
 
-		// (SDK player.cpp:5716, Player::GetViewTrace) could never hit a trigger.
 		if( touch->solid == SOLID_NOT ) {
 			continue;
 		}

@@ -8,7 +8,6 @@
 #include "../qcommon/stringresource.h"
 #include "../corepp/tiki.h" 
 
-// task: EF2 stat-system conversion).  Retail does NOT bound the read: a name the
 static const char *const ef2PlayerStatNames[] = {
     "health",          "dead_yaw",           "ammo_left",             "clipammo_left",
     "num_shots_left",  "max_num_shots_left", "ammo_right",            "clipammo_right",
@@ -3466,7 +3465,6 @@ void UIDialogTextConsole::Draw(void)
         }
 
         if (m_maxLines < m_lines.NumObjects()) {
-            // line's own clock -- it is NOT pinned to the last page.  Raw PPC
             // NOT reset m_firstLine (retail @0x001A5670 stores only +1740 and +1820),
             int   numLines     = m_lines.NumObjects();
             int   nominalFirst = numLines - m_maxLines + 1;

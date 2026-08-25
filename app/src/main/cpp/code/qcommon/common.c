@@ -1479,7 +1479,6 @@ void Com_Init( char *commandLine ) {
 
 #ifdef __ANDROID__
 	// joystick term in CL_CreateCmd @0x16F490 is deliberately not transcribed
-	// upgrading install.  Bump again whenever the shipped defaults must win
 #define ANDROID_DEFAULTS_VERSION 7
 	if ( Cvar_VariableIntegerValue( "in_androidDefaults" ) < ANDROID_DEFAULTS_VERSION )
 	{
@@ -1550,7 +1549,6 @@ void Com_Init( char *commandLine ) {
 
 	com_maxfps = Cvar_Get( "com_maxfps", "85", CVAR_ARCHIVE );
 	/* limit-pace: PORT-ONLY, beyond retail's list above.  Safe defaults and NOT
-	   archived -- the limiter blocks with a 1 ms spin margin, and any other device
 	   or experiment must opt out explicitly rather than inherit a stored value. */
 	com_frameWait       = Cvar_Get( "com_frameWait", "1", 0 );
 	com_frameWaitMargin = Cvar_Get( "com_frameWaitMargin", "1", 0 );
@@ -1586,8 +1584,6 @@ void Com_Init( char *commandLine ) {
 		}
 	}
 
-	// uitext: the platform token is THIS build's, not the Mac PPC decompile's -- the
-	// `version' cvar is CVAR_SERVERINFO, so it must not advertise a PPC Mac on a
 	s = va( "%s %s %s %s", "Elite Force II", "1.10", PLATFORM_STRING, "Oct  9 2003");
 	com_version = Cvar_Get( "version", s, CVAR_ROM | CVAR_SERVERINFO );
 	// Retail registers "protocol" in SV_Init, not here (SV_Init @0x001DF3E0,

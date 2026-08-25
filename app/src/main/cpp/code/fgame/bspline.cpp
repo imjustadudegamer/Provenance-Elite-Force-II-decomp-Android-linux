@@ -489,7 +489,6 @@ Event EV_SplinePath_SetThread (    "thread",
     "thread",
     "Sets the thread.");
 
-// SDK bspline.cpp:537.  This was missing entirely, and it is not cosmetic: 31 shipped
 
 Event EV_SplinePath_SetWatch (    "watch",
     EV_SCRIPTONLY,

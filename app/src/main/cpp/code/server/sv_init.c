@@ -436,7 +436,6 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	Cvar_Set( "sv_serverid", va( "%i", sv.serverId ) );
 
-	// EF2 PARITY (ledger T4.14, the "never calls FS_Restart" half).
 	if ( sv_stickyChecksumFeed ) {
 		sv.checksumFeed = sv_stickyChecksumFeed;
 	} else if ( restart ) {

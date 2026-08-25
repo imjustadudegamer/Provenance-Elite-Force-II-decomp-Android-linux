@@ -110,7 +110,6 @@ void CL_SnapshotWorldState(worldState_t *ws);
 
 #define MAX_TIMEDEMO_DURATIONS	4096
 
-// Retail clientConnection_t string capacity is 1024, NOT the port's MAX_STRING_CHARS
 #ifndef MAX_CLIENT_STRING_CHARS
 #define	MAX_CLIENT_STRING_CHARS	1024
 #endif
@@ -530,7 +529,6 @@ void SetBackgroundMode(int mode);
 void GetRenderingContext(void);
 void StopLoadingScreen(void);
 void StartLoadingScreen(void);
-// shipped engine never actually starts a loading screen here (the push happens
 void StartCinematic(const char *pszName);
 int CIN_PlayCinematic( const char *arg0, int xpos, int ypos, int width, int height, int bits);
 e_status CIN_StopCinematic(int handle);

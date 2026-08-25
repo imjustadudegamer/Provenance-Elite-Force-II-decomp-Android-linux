@@ -151,7 +151,6 @@ char *Sys_ConsoleInput(void)
 
 char *Sys_GetClipboardData(void)
 {
-    // `38600000 li r3,0` / `4E800020 blr` -- so the Mac engine never returned
     return NULL;
 }
 

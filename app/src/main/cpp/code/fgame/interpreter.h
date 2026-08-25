@@ -1,5 +1,4 @@
 
-//      entered.  Level::Start must call program.Load( game_script ) (SDK level.cpp:358)
 
 #pragma once
 

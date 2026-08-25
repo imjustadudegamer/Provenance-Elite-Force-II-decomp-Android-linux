@@ -1182,7 +1182,6 @@ void ScriptDoor::ScriptDoorGetState(Event *ev)
 
     currentState = "STATE_UNKNOWN";
 
-    // Retail dereferences `master` unguarded; a door whose link pass has not run yet has
     st = master ? master->GetState() : state;
 
     switch (st) {

@@ -80,7 +80,6 @@ void Mover::MoveDone(Event *ev)
     event    = endevent;
     endevent = NULL;
 
-    // DELIBERATE DEVIATION.  SDK mover.cpp:114 is a bare `self->ProcessEvent( event );`.
     // Retail's invariant is that endevent is always set before EV_MoveDone can be posted
     // (MoveTo and LinearInterpolate both assign it first, on every path), so retail never
     // retail's invariant holds, which is every other case.

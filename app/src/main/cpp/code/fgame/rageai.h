@@ -24,7 +24,6 @@ public:
     void         Archive(Archiver& arc);
     virtual void SetBehaviorPackage(const str &packageName) {}
 
-    // Do NOT "restore" the commented lines -- that would be a divergence, not a fix.
     virtual void NotifySightStatusChanged(Entity *enemy, qboolean canSee) {}
 
     virtual void NotifyDamageChanged(Entity *enemy, float damage) {}

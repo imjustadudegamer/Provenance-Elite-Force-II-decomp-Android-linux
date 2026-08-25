@@ -382,7 +382,6 @@ void SV_DropClient( client_t *drop, const char *reason, qboolean freeClient ) {
 		}
 	}
 
-	// 7 x 1024 == 7168 in that run.  Retail never clears a challenge here, so
 	for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
 		if ( svs.clients[i].state >= CS_CONNECTED ) {
 			break;
@@ -408,9 +407,7 @@ static void SV_SendClientGameState( client_t *client ) {
 
 	client->gamestateMessageNum = client->netchan.outgoingSequence;
 
-	// EF2 world state: DELIBERATE DIVERGENCE FROM RETAIL, see below.
 	// Retail does NOT resynchronise them: SV_SendClientGameState @0x001D9100 never touches
-	// case, not the corner case -- it would black out grouped lighting in all 25 shipped
 	Com_Memset( &client->ws, 0, sizeof( client->ws ) );
 
 	MSG_Init( &msg, msgBuffer, sizeof( msgBuffer ) );

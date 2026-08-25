@@ -2476,7 +2476,6 @@ void UseObject::UseMaterialEvent( Event *ev )
 }
 
 
-// SDK misc.cpp:2354-2357.  This port had the class but not the registration, so
 CLASS_DECLARATION(Entity, Waypoint, "info_waypoint")
 {
     {NULL, NULL}

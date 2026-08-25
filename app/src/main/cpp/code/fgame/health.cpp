@@ -17,7 +17,6 @@ CLASS_DECLARATION(Item, Health, "health_020") {
     {NULL,            NULL                 }
 };
 
-//   * `SetTargetName("health")`.  Retail sets `item_name`, not the targetname -- and the
 Health::Health()
 {
     if (multiplayerManager.checkFlag(MP_FLAG_NO_HEALTH)) {

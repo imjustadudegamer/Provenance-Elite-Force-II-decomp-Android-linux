@@ -227,7 +227,6 @@ public:
     painDirection_t pain_dir;
     meansOfDeath_t  pain_type;
     bool            take_pain;
-    // EF2 SDK player.h:303 -- float, not int.  As an int this truncated every
     float           nextpaintime;
     bool            knockdown;
 
@@ -665,7 +664,6 @@ public:
     void Holster(Event *ev);
     void HolsterToggle(Event *ev);
 
-    // SDK player.h:868-869.  Retail puts holstering on Player, not Sentient --
     void SafeHolster(qboolean putaway);
 
     painDirection_t Pain_string_to_int(str pain);
@@ -1454,7 +1452,6 @@ inline void Player::Archive(Archiver& arc)
     arc.ArchiveSafePointer(&_branchDialogActor);
     _needToSendBranchDialog = true;
 
-    // Retail deliberately skips these 4, multiplayer only:
 
     arc.ArchiveBool(&_cameraCutThisFrame);
 

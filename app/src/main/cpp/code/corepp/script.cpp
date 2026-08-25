@@ -454,7 +454,6 @@ const char *Script::GetMacroString(const char *theMacroName)
         }
     }
 
-    // Undefined macro. EF2's shipped data references macros that are never
     return "";
 }
 

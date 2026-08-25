@@ -8,8 +8,6 @@
 #define SMP_PAIRMEMO_BITS 17
 #define SMP_PAIRMEMO_SIZE ( 1 << SMP_PAIRMEMO_BITS )
 #define SMP_PAIRMEMO_PROBE 8
-/* Node indices are < 4096 on every shipped map (m1l1b has 370); the encoding
-   is injective on [0,4095]^2 and never yields the 0 empty marker. */
 #define SMP_PAIRMEMO_MAXNODE 4095
 
 static inline unsigned SMP_PathPairKey( unsigned a, unsigned b ) {

@@ -123,7 +123,6 @@ Damage::Damage(Event *ev)
         weapon = NULL;
     }
 
-    // DELIBERATE DEVIATION.  Retail's Damage(Event*) never assigns showPain
     showPain = false;
 }
 

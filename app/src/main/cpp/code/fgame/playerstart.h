@@ -1,5 +1,4 @@
 
-// PlayerStart is an Entity in EF2 (SDK PlayerStart.h:27), not MOHAA's
 
 #pragma once
 
@@ -47,7 +46,6 @@ private:
     void SetType(Event *ev);
 
 public:
-    // SDK PlayerStart.h:64.  Retail declares it public and does NOT archive it;
     str _type;
 
     PlayerDeathmatchStart() {}

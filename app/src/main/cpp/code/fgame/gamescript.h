@@ -118,4 +118,3 @@ inline void ScriptLibrarian::Archive(Archiver &arc)
 
 extern ScriptLibrarian ScriptLib;
 
-// 🔴 DEFINED OUT OF LINE in gamescript.cpp, not here.  Retail emits it as a real function

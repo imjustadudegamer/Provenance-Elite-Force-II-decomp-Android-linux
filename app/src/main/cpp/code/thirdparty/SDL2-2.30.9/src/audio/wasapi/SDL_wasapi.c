@@ -398,7 +398,7 @@ int WASAPI_PrepDevice(_THIS, const SDL_bool updatestream)
        !!!  it will write into the kernel's audio buffer directly instead of
        !!!  shared memory that a user-mode mixer then writes to the kernel with
        !!!  everything else. Doing this means any other sound using this device will
-       !!!  stop playing, including the operator's MP3 player and system notification
+       !!!  stop playing, including the MP3 player and system notification
        !!!  sounds. You'd probably need to release the device when the app isn't in
        !!!  the foreground, to be a good citizen of the system. It's doable, but it's
        !!!  more work and causes some annoyances, and I don't know what the latency

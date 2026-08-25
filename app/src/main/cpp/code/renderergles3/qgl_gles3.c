@@ -450,8 +450,6 @@ int QGL_GLES3_LoadProcs(int *staged)
 		qglActiveTextureARB = (void (APIENTRYP)(GLenum))qglActiveTexture;
 	}
 
-	/* The adapters.  gles3_real_* remembers the genuine proc (or its trap, in
-	 * which case the adapter reproduces the loud failure). */
 	gles3_real_Enable = qglEnable;
 	gles3_real_Disable = qglDisable;
 	gles3_real_GetIntegerv = qglGetIntegerv;

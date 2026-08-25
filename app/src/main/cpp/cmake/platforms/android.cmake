@@ -1,13 +1,13 @@
 # Android (uivk-android) -- the device target: arm64-v8a, the GLES 3.0
 # backend, the engine built as libmain.so and driven by SDL2-for-Android.
 #
-# Everything here is the accepted-divergence platform layer (the operator's
+# Everything here is the accepted-divergence platform layer (the
 # 0914 boundary: platform glue / sound backend / video backend are
 # legitimately per-platform).  Nothing above the substrate moves: the same
 # engine front-end, game module, cgame and tiki/skeletor/uilib sources build
 # on both sides of the switch.
 #
-# Shape taken from the operator's shipped EF1 Android port
+# Shape taken from the shipped EF1 Android port
 # (VoyagerNX_Android/android-port-Single-Player/EFAndroid-SP), which solved
 # these problems on-device:
 #

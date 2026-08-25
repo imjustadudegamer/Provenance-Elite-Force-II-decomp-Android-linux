@@ -334,7 +334,6 @@ CThread *ScriptMaster::CreateThread(const char *label)
     thread = new CThread;
 
     threadnum = GetUniqueThreadNumber();
-    // SDK scriptmaster.cpp:972-989.  The CThread constructor does NOT register the
     Threads.AddObject(thread);
 
     if (!thread->Setup(threadnum, label)) {

@@ -1567,7 +1567,7 @@ typedef enum {
 
   /* Set this option to the filename of your .netrc file you want libcurl
      to parse (using the CURLOPT_NETRC option). If not set, libcurl will do
-     a poor attempt to find the operator's home directory and check for a .netrc
+     a poor attempt to find the home directory and check for a .netrc
      file in there. */
   CURLOPT(CURLOPT_NETRC_FILE, CURLOPTTYPE_STRINGPOINT, 118),
 

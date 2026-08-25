@@ -176,7 +176,6 @@ void Level::CleanUp(qboolean restart_shadow1)
     _playerDeathThread = "";
 
 #ifndef DEDICATED
-    // SDK level.cpp:199-201.  DEDICATED is never defined in this build, so the call is
     gi.MObjective_ClearObjectiveList();
 #endif
 
@@ -484,7 +483,6 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
 }
 
 
-// command tables read by Level::consoleThread->Parse (SDK level.cpp:906), not scripts.
 
 void Level::Precache(void)
 {
@@ -980,9 +978,7 @@ void Level::Archive(Archiver& arc)
         ChangeSoundtrack(current_soundtrack.c_str());
         saved_soundtrack = temp_soundtrack;
 
-        // not archived since we can't save mid-frame (SDK level.cpp:850-852)
         next_edict = NULL;
-        // not archived since we can't save mid-frame (SDK level.cpp:851-852)
         memset(&impact_trace, 0, sizeof(impact_trace));
 
         loadLevelStrings();

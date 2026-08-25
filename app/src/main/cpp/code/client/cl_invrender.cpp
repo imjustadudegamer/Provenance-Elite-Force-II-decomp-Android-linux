@@ -315,7 +315,6 @@ void CL_Draw3DModel(
         }
     }
 
-    // Retail never writes shaderRGBA here: the caller's refEntity is memset to 0
     re.ClearScene();
     re.AddRefEntityToScene(ent);
     re.RenderScene(&inv_refdef);

@@ -75,7 +75,6 @@ typedef struct {
 
 
 
-// Retail client_t string capacity is 1024, NOT the port's MAX_STRING_CHARS (2048) or
 #define	MAX_CLIENT_STRING_CHARS	1024
 
 typedef struct {

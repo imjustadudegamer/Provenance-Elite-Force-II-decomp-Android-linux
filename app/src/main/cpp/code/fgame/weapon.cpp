@@ -1677,7 +1677,6 @@ void Weapon::GetMuzzlePosition( Vector *position, Vector *forward, Vector *right
 
 	if ( tagnum >= 0 )
 	{
-		// (slot 110, Tag_OrientationEx) is never loaded in the whole 1648-byte
 		barrel_or = gi.Tag_Orientation( edict->s.viewmodelindex, 0, 0, tagnum & TAG_MASK, 1.0f, edict->s.bone_tag, edict->s.bone_quat );
 	}
 	else
@@ -1699,7 +1698,6 @@ void Weapon::GetMuzzlePosition( Vector *position, Vector *forward, Vector *right
 		pos += viewWeapOrg;
 	}
 	
-	// For now lets shoot from the viewpoint not the weapon
 	
 	*position = pos;
 	
@@ -1786,7 +1784,6 @@ void Weapon::Shoot( Event *ev )
 	Sentient *owner_shadow4;   
 	owner_shadow4 = this->owner;
 	
-	// If I am owned by a player, I need to get the muzzle position, otherwise, I just
 	if ( useActorAiming || !owner_shadow4->isSubclassOf( Player ) )
 	{
 		owner_shadow4->shotsFiredThisVolley++;
@@ -1842,7 +1839,6 @@ void Weapon::Shoot( Event *ev )
 			projectileModelName = projectileModel[mode];
 		}
 
-		// and read as "actor never fires".  Same verdict shape, same qa_probe gate.
 		if (gi.cvar("qa_probe", "0", 0)->integer) {
 			gi.Printf("[UIVK:shootpj] own=%d proj='%s' pos=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f)\n",
 				  owner_shadow4 ? owner_shadow4->entnum : -1,
@@ -3102,7 +3098,6 @@ qboolean Weapon::CheckReload( firemode_t mode )
 	return false;
 }
 
-//Weapon::ForceReload - Reload the clip if it's not full already
 qboolean Weapon::ForceReload( void )
 {
 	firemode_t mode = FIRE_MODE1;
@@ -3112,7 +3107,6 @@ qboolean Weapon::ForceReload( void )
 	if ( !canReload() )
 		return false;
 	
-	// Make sure it's not put away
 	if ( putaway )
 		return false;
 	
@@ -3124,7 +3118,6 @@ qboolean Weapon::ForceReload( void )
 	else
 		clipToUse = mode;
 	
-	// If our clip is not full and we have ammo available...
 	if ( ( ( ammo_clip_size[clipToUse] != ammo_in_clip[clipToUse] ) && AmmoAvailable( mode ) ) || targetidle)
 	{
 		Event *ev1;
@@ -3726,7 +3719,6 @@ void Weapon::SetRegenAmmo( Event *ev )
 	turnThinkOn();
 }
 
-// Description:		Specifies that this weapon only regenerates ammo when it is idle (not shooting)
 
 void Weapon::SetRegenOnlyWhenIdle( Event *ev )
 {
@@ -4270,7 +4262,6 @@ void Weapon::ProcessTargetedEntity( EntityPtr entity )
 
 }
 
-// Description:		Sets the move speed modifier (when not firing)
 void Weapon::Uninitialize(void)
 {
 	if( _zoomStage == ZOOM_STAGE_1 || _zoomStage == ZOOM_STAGE_2 )
@@ -4281,7 +4272,6 @@ void Weapon::Uninitialize(void)
 
 
 
-// Description:		Sets the move speed modifier (when not firing)
 void Weapon::setMoveSpeedModifier( Event *ev )
 {
 	defaultMoveSpeedModifier = ev->GetFloat( 1 );
@@ -4587,7 +4577,6 @@ Vector Weapon::getSpread( void )
 }
 
 
-// Parameters:		Event *ev -- not used
 void Weapon::processGameplayData( Event *ev )
 {
 	GameplayManager *gpm = GameplayManager::getTheGameplayManager();

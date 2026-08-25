@@ -446,7 +446,6 @@ void UI_FocusMenuIfExists(void)
     currentMenu = menuManager.CurrentMenu();
     r_mode      = Cvar_VariableValue("r_mode");
 
-    // shipped data and which therefore must RAISE the cursor.  It took the game-focus arm
     noMenu = (currentMenu == NULL);
     if (UI_IsHudActive()) {
         noMenu = false;
@@ -1393,7 +1392,6 @@ void UI_ShowMenu(const char *name, qboolean bForce)
 
 void UI_HideMenu(const char *name, qboolean bForce)
 {
-    // Retail takes only the name and always force-hides: it never delivers an
     menuManager.HideMenu(name);
 }
 
@@ -2187,7 +2185,6 @@ void UI_FinishLoadingScreen_f(void)
 
     // NO PORT-ONLY SORT HERE.  Retail UI_ServerLoaded @0x00197CA0 (228 B, the whole
     // count compensation, and widgetContainerCompare @0x000B4450 never answers 0
-    // flip instead of removing it.  Retail's own sequence is what the port must run.
 
     if (com_sv_running->integer) {
         Cbuf_AddText("ui_addhud healthhud\n");
@@ -2213,7 +2210,6 @@ void UI_ServerLoaded(void)
     CL_UpdateSnapFlags();
     // Retail UI_ServerLoaded @0x00197CA0 (228 B) never touches sv.state: its body is
 
-    // Retail UI_ServerLoaded is UNCONDITIONAL: it never tests server_loading and has
     UI_EndLoad();
 
     pMaxClients = Cvar_Get("sv_maxclients", "1", 0);
@@ -2358,7 +2354,6 @@ void UI_Hud_f(void)
         return;
     }
 
-    // hudListHidden latch UI_Update uses); ui_hud 1 brings it back.  Retail
     ui_hud = atoi(Cmd_Argv(1));
     hide   = !ui_hud;
 
@@ -2881,7 +2876,6 @@ static void UI_GetSavedGames_f(void)
 
     Com_DPrintf("ui_getsavegames: %d .ssv files found, %d rows added to '%s'\n", numfiles, count, ui_saveListWidget);
 
-    // Retail: the load screen's table comes up with NO row selected; the player must
     if (count > 0) {
         Cbuf_AddText(va("globalwidgetcommand %s selectrow %d\n", ui_saveListWidget, ui_saveListIsSave ? 2 : 1));
     }
@@ -2955,7 +2949,6 @@ static void UI_GetSaveGameInfo_f(void)
         gpm->setStringValue("LoadSaveGame", "ScreenShotShader", "sysimg/2d/default-map-screen.tga");
         gpm->setStringValue("LoadSaveGame", "SaveGameName", "EMPTY");
 
-        // The [$$Empty$$] sentinel is NOT a selected save.  Retail reads the property
         // bridge's selection restores retail's semantics: sentinel -> nothing selected.
         ui_selectedSaveName[0] = 0;
     }

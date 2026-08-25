@@ -987,7 +987,6 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 				blendSrcBits = GLS_SRCBLEND_SRC_ALPHA;
 				blendDstBits = GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 			} else {
-				// and the GL1 oracle never carried the arm either -- so removing it lets
 				blendSrcBits = NameToSrcBlendMode( token );
 
 				token = COM_ParseExt( text, qfalse );
@@ -1327,7 +1326,6 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 				}
 				stage->alphaMax = atof(token);
 			}
-			// binary, and none in any shipped .shader either, so the port-only "dotView"
 			else if (!Q_stricmp(token, "viewDot"))
 			{
 				shader.needsNormal = qtrue;
@@ -2529,7 +2527,6 @@ static void CollapseMultitexture(int *stagecounter) {
 				continue;
 			}
 
-			// a 0x111 stride, not 4 consecutive bytes -- which does not match a
 			{
 				int		ci;
 				float	merged[4];
@@ -2565,7 +2562,6 @@ static void CollapseMultitexture(int *stagecounter) {
 			stage->bundle[1] = stage[1].bundle[0];
 		}
 
-		// Retail stores the env code in bits 0..1 of stage+0x90 and does NOT touch
 		stage->multitextureEnv = ( collapse[iUseCollapse].multitextureEnv == 2 ) ? GL_ADD : GL_MODULATE;
 
 		if (stagenum + 2 < MAX_SHADER_STAGES) {

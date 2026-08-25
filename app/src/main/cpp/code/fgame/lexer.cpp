@@ -13,7 +13,6 @@ static const char *pr_punctuation[] =
 	NULL
 };
 
-// That is not theoretical: on this build it is exactly what happened, and the first shipped
 
 
 int		type_size[6]      = { 1, 1, 1, 3, 1, 1 };

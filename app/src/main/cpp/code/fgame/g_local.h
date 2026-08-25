@@ -10,7 +10,6 @@
 
 #define GAMEVERSION                "provenanceef2"
 
-// SDK g_local.h:49 -- for any processing that must occur after all objects are spawned
 #define  EV_POSTSPAWN         -1.0f
 
 #define  EV_REMOVE            -12.0f    

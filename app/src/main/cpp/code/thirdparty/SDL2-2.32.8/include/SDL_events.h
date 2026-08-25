@@ -85,7 +85,7 @@ typedef enum SDL_EventType
                                      Called on Android in onResume()
                                 */
 
-    SDL_LOCALECHANGED,  /**< The operator's locale preferences have changed. */
+    SDL_LOCALECHANGED,  /**< The locale preferences have changed. */
 
     /* Display events */
     SDL_DISPLAYEVENT   = 0x150,  /**< Display state change */
@@ -965,7 +965,7 @@ extern DECLSPEC int SDLCALL SDL_WaitEventTimeout(SDL_Event * event,
  * Add an event to the event queue.
  *
  * The event queue can actually be used as a two way communication channel.
- * Not only can events be read from the queue, but the operator can also push
+ * Not only can events be read from the queue, but one can also push
  * their own events onto it. `event` is a pointer to the event structure you
  * wish to push onto the queue. The event is copied into the queue, and the
  * caller may dispose of the memory pointed to after SDL_PushEvent() returns.
@@ -1085,9 +1085,9 @@ extern DECLSPEC SDL_bool SDLCALL SDL_GetEventFilter(SDL_EventFilter * filter,
  * the internal queue and be delivered to the watch callback immediately, and
  * arrive at the next event poll.
  *
- * Note: the callback is called for events posted by the operator through
+ * Note: the callback is called for events posted on device through
  * SDL_PushEvent(), but not for disabled events, nor for events by a filter
- * callback set with SDL_SetEventFilter(), nor for events posted by the operator
+ * callback set with SDL_SetEventFilter(), nor for events posted on device
  * through SDL_PeepEvents().
  *
  * \param filter an SDL_EventFilter function to call when an event happens.

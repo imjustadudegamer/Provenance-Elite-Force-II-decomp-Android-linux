@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GLSL ES 3.00 build + validation for the gles3-gles3-shade workstream (G2).
+GLSL ES 3.00 build + validation for the gles3-gles3-shade change (G2).
 
 WHAT IT DOES
 ------------

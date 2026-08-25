@@ -100,7 +100,6 @@ inline void CameraMoveState::operator=(CameraMoveState& newstate)
     followingpath = newstate.followingpath;
 }
 
-//     long, which CameraMoveState::Evaluate (SDK camera.cpp:271-273) can never produce.
 inline void CameraMoveState::Archive(Archiver& arc)
 {
     arc.ArchiveVector(&pos);

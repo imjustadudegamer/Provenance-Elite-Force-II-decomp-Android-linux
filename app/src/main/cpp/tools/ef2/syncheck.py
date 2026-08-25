@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Syntax-only compile check for one source file, in ANY worktree.
+"""Syntax-only compile check for one source file, in ANY tree.
 
 Usage:  python3 syncheck.py <path/to/file.cpp> [more.cpp ...]
 
 Pulls the real compile command for that file out of the MAIN tree's
 build/compile_commands.json, rewrites every path so it points at the
-worktree the file actually lives in, and runs it with -fsyntax-only.
+tree the file actually lives in, and runs it with -fsyntax-only.
 Costs ~2 s per file and never writes an object file, so it is safe to
-run concurrently from many worktrees.
+run concurrently from many trees.
 """
 import json
 import os
@@ -20,7 +20,7 @@ MAIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 DB = os.path.join(MAIN, "build", "compile_commands.json")
 
 
-def worktree_root_of(path):
+def tree_root_of(path):
     """Walk up until we find the checkout root (has a code/ dir)."""
     p = os.path.abspath(path)
     while p != "/":
@@ -43,7 +43,7 @@ def main(argv):
     rc = 0
     for target in argv:
         target = os.path.abspath(target)
-        root = worktree_root_of(target)
+        root = tree_root_of(target)
         rel = os.path.relpath(target, root)
         entry = by_suffix.get(rel)
         if entry is None:

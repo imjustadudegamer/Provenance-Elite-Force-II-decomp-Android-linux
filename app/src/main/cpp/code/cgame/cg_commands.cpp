@@ -2102,7 +2102,6 @@ void ClientGameCommandManager::SetFade(Event *ev)
     }
 }
 
-// The +0x568 / +0x56C field names are pinned by the two sibling verbs, not guessed:
 void ClientGameCommandManager::SetDoFade(Event *ev)
 {
     float fadeDelay;
@@ -2879,7 +2878,6 @@ void ClientGameCommandManager::BeginTagTraceImpactMark(Event *ev)
     }
 }
 
-//                     NOT resolvable from the decompile (r22 is a carried register) and not
 void ClientGameCommandManager::EndTagTraceImpactMark(void)
 {
 
@@ -3571,7 +3569,6 @@ spawnthing_t *ClientGameCommandManager::InitializeSpawnthing(spawnthing_t *sp)
     sp->cgd.min_twinkletimeon  = 0;
     sp->cgd.swipe_life         = 0;
     sp->cgd.scale2             = 1;
-    // spawnthing +1544/+1548/+1552 (cgd+0x1D8), so an emitter that never authors it starts
     sp->cgd.spinRate[0]        = 0;
     sp->cgd.spinRate[1]        = 0;
     sp->cgd.spinRate[2]        = 0;
@@ -3705,7 +3702,6 @@ void ClientGameCommandManager::BeginTagEmitter(Event *ev)
         );
     }
 
-    // Retail does not abort on a tag the model does not have here: its ONLY tagemitter
     // it, exactly like retail's emitter that never finds its tag.
     tagnum = cgi.Tag_NumForName(current_tiki, tagname.c_str());
 
@@ -3746,7 +3742,6 @@ void ClientGameCommandManager::EndTagEmitter(void)
 
 void ClientGameCommandManager::BeginTagBeamEmitter(Event *ev)
 {
-    // Retail BeginTagBeamEmitter has NO current_entity gate (it never reads
     endblockfcn = &ClientGameCommandManager::EndTagBeamEmitter;
 
 
@@ -3774,7 +3769,6 @@ void ClientGameCommandManager::BeginTagBeamEmitter(Event *ev)
             m_spawnthing->emittername = ev->GetString(2);
         }
     } else {
-        // EMITTER NAME and arg 3 is the END TAG, not the other way round.  Retail's
         if (ev->NumArgs() == 3) {
             m_spawnthing->emittername = ev->GetString(2);
             m_spawnthing->endTag      = ev->GetString(3);
@@ -4234,7 +4228,6 @@ void ClientGameCommandManager::GetOrientation(const str& tagname, spawnthing_t *
         }
     }
 
-    // If angles are not set, then use the angles from the tag.  Retail lines 263-291 read
     if (!(sp->cgd.flags & T_ANGLES)) {
         vectoangles(sp->aim_axis[0], sp->cgd.angles);
     }
@@ -4731,7 +4724,6 @@ void ClientGameCommandManager::Sound(Event *ev)
         }
     }
 
-    // ⚠️ argstype 2, not 0.  Retail's Sound does not route through PlaySound at all -- it
     if (current_entity) {
         PlaySound(sound_name, current_entity->origin, channel, volume, min_distance, pitch);
     } else {
@@ -5003,8 +4995,6 @@ void ClientGameCommandManager::DynamicLight(Event *ev)
     }
 }
 
-// absent, which is what happens for all 15 shipped uses.  Argument 1 is not stored as a
-// ⚠️ Retail does NOT set T_DLIGHT.  cgd.flags bit 13 (T_DLIGHT) and cgd.flags2 bit 13
 // did, would light the world from an emitter that retail never lights from, and would do it
 void ClientGameCommandManager::LensFlare(Event *ev)
 {
@@ -5034,7 +5024,6 @@ void ClientGameCommandManager::LensFlare(Event *ev)
 }
 
 // A beam naming a tag its model does not have is NOT fatal in retail.  Proven against the
-// Mac PPC cgame: the string "Tagname '%s' does not exist" does not exist anywhere in the
 static void CG_BeamTagMissing(const char *tagname, const char *context)
 {
     static Container<str> warned;
@@ -5552,7 +5541,6 @@ static void CG_ProcessTikiInitCommands(int handle)
     }
 
     // Retail ProcessInitCommands @0x0001FF60 does NOT walk the dtiki_t itself --
-    // Retail runs autoCacheTiki whether or not the init-command collector came back
     if (cgi.TIKI_InitCommands_Client(handle, &tiki_cmd)) {
         for (i = 0; i < tiki_cmd.num_cmds; i++) {
             tiki_singlecmd_t *cmd = &tiki_cmd.cmds[i];

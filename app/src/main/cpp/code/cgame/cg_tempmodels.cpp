@@ -316,7 +316,6 @@ qboolean ClientGameCommandManager::TempModelRealtimeEffects(
     vec3_t invLocalAxis[3];
     vec3_t parentAxis[3];
 
-    // ⚠️ Retail reads BOTH values off m_spawnthing, not off p->cgd, even though they are cgd
     // the null test: retail NEVER stores NULL into m_spawnthing (no `stw rX, 1558360(r3)` with
     if (m_spawnthing && m_spawnthing->cgd.drag != 0.0f) {
         if ((float)p->aliveTime >= m_spawnthing->cgd.dragDelay) {
@@ -585,7 +584,6 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
         p->tbcController->Update(p);
     }
 
-    // never for 0x200 (T_SWARM).  MOHAA's `if (T_SWARM) origin += velocity * ftime * scale`
     if (p->cgd.flags2 & (T2_MOVE | T2_ACCEL)) {
         p->cgd.origin += p->cgd.velocity * ftime * scale + p->cgd.accel * ftimeSquared;
 
@@ -1194,7 +1192,6 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         memset(&ent, 0, sizeof(refEntity_t));
         memset(&p->lastEnt, 0, sizeof(refEntity_t));
 
-        // against cgd.flags -- never 0x100.  The whole branch was MOHAA residue and is gone;
         p->m_spawnthing = m_spawnthing;
         start           = m_spawnthing->cgd.origin;
 
@@ -1557,8 +1554,6 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         }
 
         // 0x00018BBC is SetAccel__...FRC6Vectorf -- the two-argument overload, not the
-        // NOT a cvar and NOT the renderer's world_t.  Retail dereferences cg.snap here
-        // 0 in all nine, so this arm never fires on shipped data.  It is implemented
         if (m_spawnthing->windEffect > 0.0f) {
             Vector wind(cg.snap->ws.wind_direction);
 

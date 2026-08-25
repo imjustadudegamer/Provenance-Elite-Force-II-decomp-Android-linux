@@ -426,7 +426,6 @@ Event EV_Projectile_RemoveWhenStopped (    "removewhenstopped",
     NULL,
     "Make the projectile get removed when it stops");
 
-// EF2 SDK weaputils.cpp:579.  8 "Event 'proj_notshootable' does not exist" errors in a
 Event EV_Projectile_NotShootable (    "proj_NotShootable",
     EV_TIKIONLY,
     NULL,
@@ -742,8 +741,6 @@ void Projectile::HeatSeek(Event *ev)
                 continue;
             }
 
-            // SDK weaputils.cpp:923.  `edict` here is the PROJECTILE's, not ent's -- a
-            // projectile flagged SVF_MONSTER never skips a candidate.  Retail's, verbatim.
             if (((ent->takedamage != DAMAGE_AIM) || (ent->health <= 0)) && !(edict->svflags & SVF_MONSTER)) {
                 continue;
             }
@@ -768,7 +765,6 @@ void Projectile::HeatSeek(Event *ev)
         angles.y = AdjustAngle(angspeed, angles.y, v.y);
         angles.z = AdjustAngle(angspeed, angles.z, v.z);
 
-        // heatseek-only projectile (13 shipped .tik files author `heatseek`) never
         setAngles(angles);
         velocity = Vector(orientation[0]) * speed;
     }
@@ -1168,7 +1164,6 @@ void Projectile::Touch(Event *ev)
 
     // but the entry frame is NOT evidence that the call has no retail counterpart --
     // restoration does not reintroduce: the tail resolves the attacker the way retail
-    // The kill-side code is NOT the bug and must not be "fixed": port actor.cpp:6629-6634
 
 
     PostEvent(EV_Remove, 0);
@@ -1181,7 +1176,6 @@ void Projectile::Touch(Event *ev)
 
 
 
-    // Make the projectile not solid (SDK :1612-1614).  Retail's `//hideModel();` is a
     setSolidType(SOLID_NOT);
     setMoveType(MOVETYPE_NONE);
 
@@ -1385,7 +1379,6 @@ void Projectile::Stopped(Event *ev)
     }
 }
 
-// (verified by grepping every FL_THINK write in code/), so it never ran once.  Retail
 void Projectile::Think()
 {
     Vector  f, r, u;
@@ -1728,7 +1721,6 @@ Projectile *ProjectileAttack(
         return NULL;
     }
 
-    // event, serviced by the event pump, not synchronously.  Retail therefore sets the
     proj->setModel(projectileModel);
     proj->setMoveType(MOVETYPE_BOUNCE);
     proj->CancelEventsOfType(EV_ProcessInitCommands);
@@ -1849,8 +1841,6 @@ Projectile *ProjectileAttack(
         proj->PostEvent(EV_Projectile_ClearOwner, 1);
     }
 
-    // dodge reflex) can never fire.  Retail posts to whatever the launch trace hits,
-    // it.  Retail does not null-check `victim` before ->PostEvent; guarded here because
     {
         Vector  incoming_end = (dir * 1000.0f) + start;
         trace_t incoming_trace =
@@ -1945,7 +1935,6 @@ float BulletAttack(
                       damage);
         }
 
-        // Retail's `ent` is NOT reset per iteration: a shot that hits nothing leaves the
         if (trace.ent) {
             ent = trace.ent->entity;
         }
@@ -2288,7 +2277,6 @@ void FlashPlayers(
         delta  = org - trace.endpos;
         length = delta.length();
 
-        // SDK weaputils.cpp:2707-2716.  A flash behind the player's back does not blind
         dirToExplosion   = org - player->origin;
         playerViewAngles = player->GetVAngles();
         playerViewAngles.AngleVectors(&playerViewDir);

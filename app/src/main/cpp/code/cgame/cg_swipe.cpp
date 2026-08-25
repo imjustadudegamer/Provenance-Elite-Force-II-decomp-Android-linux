@@ -81,7 +81,6 @@ void ClientGameCommandManager::SwipeOff(Event *ev)
     }
 
     if (was_enabled) {
-        // / stw r0, 0x6a0(r3)`, i.e. `clientFlags &= ~CF_UPDATESWIPE`. It never touches
         if (current_centity) {
             current_centity->clientFlags &= ~CF_UPDATESWIPE;
         }

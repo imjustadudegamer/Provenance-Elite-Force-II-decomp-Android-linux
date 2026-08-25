@@ -90,7 +90,6 @@ void UIFont::Print(float x, float y, const char *text, int maxlen, UColor shadow
     uii.Rend_DrawString(m_font, text, (int)vx, (int)vy, maxlen, scale);
 }
 
-// is not recoverable from the shipped binary (Hex-Rays returns no body for
 static void UIFont_WrapLines(UIFont *font, const char *text, float maxWidth, bool virtualScale, Container<str>& lines)
 {
     str         line;
@@ -238,7 +237,6 @@ void UIFont::PrintJustified(
     }
 }
 
-// indirection against 0x100 -- it does NOT reject negatives -- and always reads
 float UIFont::getFloatWidth(const char *text, int maxlen, bool virtualScale)
 {
     float width    = 0.0f;

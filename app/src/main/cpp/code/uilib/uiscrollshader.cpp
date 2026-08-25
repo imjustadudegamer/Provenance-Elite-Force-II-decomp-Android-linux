@@ -7,7 +7,6 @@
 class UIScrollShader : public UIWidget
 {
 protected:
-    // linked cvar's value.  Retail's constructor does NOT initialise any of them --
     float m_scrollMin;
     float m_scrollMax;
     float m_scrollPercent;
@@ -50,8 +49,6 @@ void UIScrollShader::SetScroll(Event *ev)
     m_scrollPercent = ev->GetFloat(3);
 }
 
-// Retail's UIWidget::Display never reads +1596..+1608 -- its material draw is a plain
-// 0..1 quad -- so the strip does not actually move in the shipped engine; the port's
 void UIScrollShader::UpdateUIElement(void)
 {
     float value;

@@ -100,7 +100,6 @@ typedef struct skelAnimDataGameHeader_s {
     SkelVec3             bounds[2];
     skelAnimGameFrame_t *m_frame;
     short int            nTotalChannels;
-    // followed by numFrames contiguous skelFrame_t records.  Retail never frees
     skelAnimHeader_t    *skan;
     struct tikiFrame_s *tanFrames;
     int                  numTanFrames;

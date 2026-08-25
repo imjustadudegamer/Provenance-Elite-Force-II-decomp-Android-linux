@@ -182,7 +182,6 @@ static void CG_RunModelAnimation(
         return;
     }
 
-    // PREVIOUS name's result). Retail does not scale by it here -- it only tests it against
     if (cg_animSpeed->value == 0.0f) {
         state->base.framelerp = 0.0f;
         state->base.frame     = 0;
@@ -696,7 +695,6 @@ void CG_AttachEntity(
 
     entity->renderfx |= (parent->renderfx & ~(RF_FLAGS_NOT_INHERITED | RF_LIGHTING_ORIGIN));
 
-    // Retail does NOT transform a lighting-origin delta through the entity's new axis
     VectorCopy(parent->lightingOrigin, entity->lightingOrigin);
     entity->shadowPlane = parent->shadowPlane;
 }
@@ -811,7 +809,6 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
         VectorCopy(cent->lerpOrigin, cg.sky_origin);
     }
 
-    // The operand is the SWAPPED local, not entityState::modelindex.  Retail
     if (!modelindex) {
         return;
     }
@@ -826,7 +823,6 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
     VectorSubtract(vMins, vMaxs, vTmp);
     model.radius = VectorLength(vTmp) * 0.5;
 
-    //     which is NOT networked (q_shared.h:2537 "not sent over") and is therefore
     //     uninitialised client-side -- an uninitialised read that retail never performs.
     for (i = 0; i < NUM_BONE_CONTROLLERS; i++) {
         model.bone_tag[i] = s1->bone_tag[i];
@@ -865,7 +861,6 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
     model.tiki   = CG_TikiFromHandle(tiki);
 
     if (!model.tiki) {
-        // for anything that is not MOD_TIKI (the deleted oracle's tr_model.cpp:63-72).
         if (model.hModel) {
             model.skinNum = s1->skinNum;
             model.renderfx |= s1->renderfx;
@@ -1013,7 +1008,6 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
     }
 
     // @0x001A8450, verbatim in the SDK source) never zeroes
-    // Retail therefore must (and does) test the flag; testing the index alone, as
     if ((s1->eFlags & EF_EFFECT_CUSTOM) && s1->customShader) {
         model.customShader = cgi.R_RegisterShader(CG_ConfigString(CS_IMAGES + s1->customShader));
         model.renderfx |= RF_CUSTOMSHADERPASS;
@@ -1037,7 +1031,6 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
         model.renderfx |= RF_CUSTOMSHADERPASS;
     }
 
-    // +0x22C == 556; fgame Entity::affectingViewMode @ entity.cpp:4950) was never
     if (s1->affectingViewModes) {
         unsigned int viewModeMask = cg.snap->ps.viewMode & s1->affectingViewModes;
 

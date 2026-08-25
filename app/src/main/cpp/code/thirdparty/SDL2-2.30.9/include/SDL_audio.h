@@ -465,7 +465,7 @@ typedef Uint32 SDL_AudioDeviceID;
 extern DECLSPEC int SDLCALL SDL_GetNumAudioDevices(int iscapture);
 
 /**
- * Get the operator-readable name of a specific audio device.
+ * Get the readable name of a specific audio device.
  *
  * This function is only valid after successfully initializing the audio
  * subsystem. The values returned by this function reflect the latest call to

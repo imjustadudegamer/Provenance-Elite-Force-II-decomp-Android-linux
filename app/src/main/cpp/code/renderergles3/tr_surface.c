@@ -235,8 +235,7 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 		}
 	}
 
-	// (r22), not srf->numVerts (0x4B4A0 add r5, r0, r22).  The first round is the ordinary
-	// (tr_shader.c:4073, :4080) and never assigns a projectionShadowShader at all
+	// (r22), not srf->numVerts (0x4B4A0 add r5, r0, r22).  The first pass is the ordinary
 	if ( tess.numVertexes + numVerts >= SHADER_MAX_VERTEXES
 		|| tess.numIndexes + srf->numIndexes >= SHADER_MAX_INDEXES ) {
 		int maxVerts = SHADER_MAX_VERTEXES;

@@ -831,7 +831,6 @@ void MultiplayerItem::damageEvent(Event *ev)
     Entity::DamageEvent(ev);
 }
 
-// SDK item.cpp:1085-1087 -- deliberately empty; an MP item never shows a pickup message.
 void MultiplayerItem::cacheStrings(void) {}
 
 CLASS_DECLARATION(Item, SecretItem, NULL) {
@@ -851,7 +850,6 @@ SecretItem::SecretItem()
 }
 
 
-// SDK item.cpp:1133-1135.  A secret item never produces a "$$PickedUp$$ ..." message --
 void SecretItem::cacheStrings(void) {}
 
 

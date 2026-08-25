@@ -2,13 +2,13 @@
   "version": 6,
   "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
   "vendor": {
-    "ef2.workstream": {
+    "ef2.change": {
       "renderer-switch": [
         "the ONE-tree renderer/platform switch.",
         "",
         "linux-gles3   -- the shipping substrate: renderer_gles3.so; it is the",
         "   only renderer left (the fixed-function and Vulkan backends are",
-        "   deleted by human order), so the client's cl_renderer default is",
+        "   deleted by decision), so the client's cl_renderer default is",
         "   'gles3'.",
         "android-gles3 -- the device target.  Needs an NDK on the host:",
         "   export EF2_ANDROID_NDK=<ndk root> first.",

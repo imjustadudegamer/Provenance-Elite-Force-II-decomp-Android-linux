@@ -2410,7 +2410,7 @@ extern "C" {
  * Chrome ANGLE binaries
  *
  * SDL has EGL and OpenGL ES2 support on Windows via the ANGLE project. It can
- * use two different sets of binaries, those compiled by the operator from source
+ * use two different sets of binaries, those compiled on device from source
  * or those provided by the Chrome browser. In the later case, these binaries
  * require that SDL loads a DLL providing the shader compiler.
  *

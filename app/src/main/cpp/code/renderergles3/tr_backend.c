@@ -404,7 +404,6 @@ void GL_State( unsigned long stateBits )
 		case GLS_ATEST_GE_80:
 			break;
 		default:
-			// NOTHING -- it does not even disable the alpha test.  assert(0)
 			break;
 		}
 	}
@@ -1119,7 +1118,6 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 
 	RB_SetGL2D();
 
-	// rectangle down (CIN_DrawCinematic, `cin_keepAspect`).  Retail never had to paint
 	if ( x > 0 || y > 0 || x + w < glConfig.vidWidth || y + h < glConfig.vidHeight ) {
 		gles3Program_t	*p2d;
 

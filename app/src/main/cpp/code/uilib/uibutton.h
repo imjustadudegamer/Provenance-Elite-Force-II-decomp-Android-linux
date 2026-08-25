@@ -53,7 +53,6 @@ public:
     virtual void        setData(const str& data) override;
     virtual const char *getData(void) override;
 
-    // vtable slot 21 override the port never had.  When `serverthreadproperty` is in
     virtual void        updateGameplayProperty(void) override;
 
     bool StaysPressed(void) const override { return m_stayPressed; }

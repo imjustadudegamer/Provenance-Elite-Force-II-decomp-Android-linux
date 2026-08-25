@@ -93,7 +93,6 @@ Event EV_Spawn_SpawnNow (    "spawnnow",
     "Spawns the entity and returns it.");
 extern Event EV_Actor_AttackMode;
 
-// different event, owned by Item (SDK item.cpp:149-156), and is the key SetArgs
 Event EV_Spawn_PickupThread (    "pickupthread",
     EV_SCRIPTONLY,
     "s",
@@ -529,7 +528,6 @@ Event EV_RandomSpawn_Think (    "_randomspawn_think",
     NULL,
     "The function that actually spawns things in.");
 
-// (SDK spawners.cpp:612-618) -- a func_randomspawn never toggled on activation.
 CLASS_DECLARATION(Spawn, RandomSpawn, "func_randomspawn") {
     {&EV_Activate,            &RandomSpawn::ToggleSpawn},
     {&EV_RandomSpawn_MinTime, &RandomSpawn::MinTime    },

@@ -8,7 +8,6 @@
 class AmmoEntity : public Item
 {
 private:
-    // EF2 AmmoEntity::_lastPrintTime (SDK ammo.h:27).  Throttle for the "could not pick up,
     float _lastPrintTime;
 
 public:

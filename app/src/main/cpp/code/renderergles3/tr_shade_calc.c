@@ -1765,7 +1765,6 @@ void RB_CalcFogTexCoords( float *dstTexCoords ) {
 			+ DotProduct( fog->surface, backEnd.ori.origin )
 			+ DotProduct( backEnd.ori.viewOrigin, tVector );
 	} else {
-		// hasSurface only for those, so this arm never runs on shipped data.
 		tConstant = 1.0f;
 		tVector[0] = tVector[1] = tVector[2] = 0.0f;
 	}

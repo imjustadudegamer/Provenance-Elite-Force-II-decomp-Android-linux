@@ -31,7 +31,6 @@ Event EV_Sentient_BeginAttack (	"beginattack",
 );
 
 
-// Defined in weapon.cpp:557 but not externed from weapon.h (only EV_Weapon_DonePutaway
 extern Event EV_Weapon_DoneAnimating;
 
 Event EV_Sentient_Attack (    "fire",
@@ -175,7 +174,6 @@ Event EV_Sentient_SetHateModifier (    "sethatemodifier",
 
 qboolean Sentient::Immune(int meansofdeath)
 {
-    // shipped Immune() body was never rewritten, and AddImmunity's live code adds to
     int number_of_immunities, i;
 
     number_of_immunities = immunities.NumObjects();

@@ -2,7 +2,6 @@
 
 
 #include "g_local.h"
-// never hits the collision; every other fgame TU reaches qcommon.h first through
 #include "../qcommon/qcommon.h"
 #include "botlib.h"		
 #include "be_aas.h"
@@ -26,7 +25,6 @@
 
 #include "player.h"
 
-// BOT TEMP PROBE (port-only, worktree-only): the bot-think leg.  Symptom 1 is
 #define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
 #define PROBE_PRINT                 gi.Printf
 #include "../qcommon/qa_probe.h"
@@ -534,7 +532,6 @@ void BotInterbreeding(void) {
 			BotAIShutdownClient(botstates[i]->client, qfalse);
 		}
 	}
-	//make sure all item weight configs are reloaded and Not shared
 	gi.BotLibVarSet("bot_reloadcharacters", "1");
 	for (i = 0; i < bot_interbreedbots.integer; i++) {
 		gi.SendConsoleCommand( va("addbot %s 4 free %i %s%d\n",
@@ -1627,7 +1624,6 @@ int BotAIStartFrame(int time) {
 		BotScheduleBotThink();
 	}
 
-	// default to zero-cost when the think budget does not fire this frame.
 	smp_tspawn = gi.Milliseconds();
 	smp_tlib = smp_tupd = smp_treg = smp_tspawn;
 
@@ -1681,7 +1677,6 @@ int BotAIStartFrame(int time) {
 				continue;
 			}
 #ifdef MISSIONPACKBOTTODO
-			// never link prox mine triggers
 			if (ent->contents == CONTENTS_TRIGGER) {
 				if (ent->touch == ProximityMine_Trigger) {
 					gi.BotLibUpdateEntity(i, NULL);

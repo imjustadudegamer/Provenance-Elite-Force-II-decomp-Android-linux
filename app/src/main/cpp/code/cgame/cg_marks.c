@@ -55,11 +55,9 @@ int CG_GetMarkFragments(
     float           fPushDist
 )
 {
-    //    RE_AddPolyToScene calls.  Retail never walks cg_solidEntities for a mark.
     //  * Retail CG_ImpactMark @0x33490 allocates ONE record PER FRAGMENT and never writes
     // What the pass DID here was manufacture fragments retail never builds.  Its face
     // jambs, console flanks, near-backfacing panels -- on brush entities retail never
-    // Retail's answer is to not make them at all, so the pass is gone.
     return cgi.R_MarkFragments(
         numVerts,
         pVerts,

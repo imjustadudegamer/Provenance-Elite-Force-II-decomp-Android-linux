@@ -182,7 +182,6 @@ public:
     float ResolveDamage(
         float damage, int meansOfDeath, const Vector& direction, const Vector& position, Entity *attacker
     ) override;
-    // SDK armor.h:229 / armor.cpp:890: the player's shield never claims outright immunity.
     bool  CanBeDamagedBy(int meansOfDeath) override;
     void  Think(void) override;
     void  Add(int num) override;

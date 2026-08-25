@@ -117,7 +117,6 @@ public:
     bool doFullTeleport( Entity *entity ); 
 };
 
-// SDK misc.h:138-147.  `teleport_thread` was not archived at all, leaving every
 inline void Teleporter::Archive(Archiver& arc)
 {
     Trigger::Archive(arc);

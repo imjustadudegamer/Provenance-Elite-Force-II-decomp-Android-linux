@@ -7197,7 +7197,6 @@ BehaviorReturnCode_t	TurnInvestigate::Evaluate
 	if ( ( newSteeringForce[YAW] < .5f ) && ( newSteeringForce[YAW] > -.5f ) )
 		return BEHAVIOR_SUCCESS;
 
-	// Make sure we are not turning faster than out turn speed
 	if ( newSteeringForce[YAW] > turn_speed )
 		{
 		newSteeringForce[YAW] = turn_speed;

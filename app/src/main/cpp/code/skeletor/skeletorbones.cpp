@@ -37,7 +37,6 @@ void SkeletorLoadBoneFromBuffer(skelChannelList_c *boneList, boneData_t *boneDat
 
     newBoneIndex = boneList->GetLocalFromGlobal(boneData->channel);
 
-    // unplaceable bone instead. EF2-faithful: the engine must not crash on shipped data.
     if (newBoneIndex < 0) {
         return;
     }

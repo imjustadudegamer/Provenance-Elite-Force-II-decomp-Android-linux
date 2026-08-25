@@ -139,7 +139,6 @@ class UIWidget : public USignal
 protected:
     UIRect2D              m_frame;
     UIRect2D              m_drawRegion;
-    // Retail UIWidget +28 and +1476 are NOT extra members: they are the SAME
     class WidgetMover    *m_mover;
 
     void move(Event *ev);
@@ -388,7 +387,6 @@ public:
     class UColor       getBackgroundColor(void);
 
     /* craudit-crashaudit: the child container, read-only, for the stale-raw-pointer
-       membership check in UIWindowManager::UpdateViews (uiwinman.cpp).  Port-only
        accessor; it exposes what retail's own Container<P8UIWidget> already is. */
     Container<UIWidget *>& getChildren(void) { return m_children; }
     virtual void       setBackgroundColor(const UColor& color, WidgetState state, bool setbordercolor);
@@ -486,7 +484,6 @@ public:
     void               PopCommand(Event *ev);
     void               KeyCommand(Event *ev);
     void               AddFlag(int flag);
-    // EF2 `staypressed`.  Retail has no such predicate, and does not need one: its
     virtual bool       StaysPressed(void) const { return false; }
     virtual void       setWidgetState(WidgetState state);
     void               setNormalState(void);

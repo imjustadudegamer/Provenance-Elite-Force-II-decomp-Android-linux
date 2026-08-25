@@ -1,5 +1,4 @@
 
-// navigate.h must come BEFORE path.h: navigate.h includes path.h (navigate.h:335)
 #include "navigate.h"
 #include "entity.h"
 #include "doors.h"
@@ -382,7 +381,6 @@ PathNode *Path::NextNode(float dist)
     return s;
 }
 
-// path.cpp:445 takes it and never uses it.
 void Path::DrawPath(float r, float g, float b, float)
 {
     Vector    s;

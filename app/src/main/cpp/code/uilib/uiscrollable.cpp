@@ -4,7 +4,6 @@
 #include "../qcommon/stringresource.h"
 #include "uiwidgets_ef2.h"
 
-// stored in a str and never looked at again -- the 12 shipped menus that use it
 
 Event EV_Scrollable_ScrollbarTemplate
 (
@@ -29,7 +28,6 @@ CLASS_DECLARATION(UIWidget, UIScrollable, NULL) {
 UIScrollable::UIScrollable()
 {
     // literal pool at 0x00218998 -- 16.0f, NOT 0.0f -- and never calls AllowActivate.
-    // divergence, not the live render root).
     m_scrollBar            = NULL;
     // (m_bottomItem), the same r4 the item-height store at 0x8A828 does not use.  The
     // inert -- retail never calls it and the ctor default is already false -- and is

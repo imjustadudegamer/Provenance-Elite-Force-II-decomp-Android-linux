@@ -684,7 +684,6 @@ int TIKI_SkelBonesFromRecords(
 
             TIKI_Skan_QuatMul(localQuat, parentQuat, w);
 
-            // The matrix must be the parent's, not this bone's own local one.  Retail
             {
                 float px = localOffset[0];
                 float py = localOffset[1];

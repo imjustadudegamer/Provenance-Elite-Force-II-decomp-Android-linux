@@ -190,7 +190,6 @@ wavinfo_t GetWavinfo(const char *name, byte *wav, int wavlength)
         info.rate     = GetLittleLong();
         data_p += 4;
 
-        // Retail never reads nBlockAlign (+12 in the fmt body): it jumps
         GetLittleShort();
         info.width = GetLittleShort() / 8;
 

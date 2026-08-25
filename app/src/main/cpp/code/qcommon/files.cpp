@@ -893,7 +893,6 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 	if(filename == NULL)
 		Com_Error(ERR_FATAL, "FS_FOpenFileRead: NULL 'filename' parameter passed");
 
-	// qpaths are not supposed to have a leading slash
 	if(filename[0] == '/' || filename[0] == '\\')
 		filename++;
 
@@ -1520,7 +1519,6 @@ void FS_CopyFile( const char *from, const char *to ) {
 
 void Com_LocalizeFilePath( const char *path, char *localizedPath )
 {
-	// Retail is a pure string rewrite: it does NOT stat or read anything and it
 	cvar_t			*lang;
 	const char		*l;
 	const char		*rest;

@@ -19,7 +19,7 @@ set(INTERNAL_SDL_DIR ${SOURCE_DIR}/thirdparty/SDL2-2.32.8)
 # the event pump, the audio device and the GLES 3.0 context
 # (SDL_CreateWindow(SDL_WINDOW_OPENGL) + SDL_GL_CreateContext).  There is no
 # system SDL2 to find_package() under the NDK, so the
-# tree carries the same upstream SDL2 the operator's EF1 Android port ships
+# tree carries the same upstream SDL2 the EF1 Android port ships
 # (2.30.9, device-proven there; unmodified, license in the directory).
 #
 # Trimmed to what the engine can reach: no SDL2main (SDLActivity is the main),

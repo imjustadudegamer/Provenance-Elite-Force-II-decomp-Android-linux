@@ -573,7 +573,6 @@ typedef struct {
 	qboolean	autosprite;
 } dlightdef_t;
 
-// TRAP: a 40040-byte lump divides evenly by BOTH 104 (=385, correct) and 56 (=715), so the
 typedef struct {
 	vec3_t       origin;                     
 	vec3_t       color;                      

@@ -229,7 +229,6 @@ void CinematicArmature::deleteAllCinematics( void )
 	}
 }
 
-// along (CinematicArmature.h:70) but never defined, so nothing could clear the list the
 void CinematicArmature::clearCinematicsList( void )
 {
 	_cinematicList.ClearObjectList();

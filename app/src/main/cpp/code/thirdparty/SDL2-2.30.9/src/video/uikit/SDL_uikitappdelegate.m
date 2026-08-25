@@ -388,7 +388,7 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
      * have a chance to load resources while the launch screen is still up. */
     [self performSelector:@selector(hideLaunchScreen) withObject:nil afterDelay:0.0];
 
-    /* run the operator's application, passing argc and argv */
+    /* run the application, passing argc and argv */
     SDL_iPhoneSetEventPump(SDL_TRUE);
     exit_status = forward_main(forward_argc, forward_argv);
     SDL_iPhoneSetEventPump(SDL_FALSE);
@@ -398,7 +398,7 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
         launchWindow = nil;
     }
 
-    /* exit, passing the return status from the operator's application */
+    /* exit, passing the return status from the application */
     /* We don't actually exit to support applications that do setup in their
      * main function and then allow the Cocoa event loop to run. */
     /* exit(exit_status); */

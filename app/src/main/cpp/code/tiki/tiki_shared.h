@@ -404,7 +404,6 @@ typedef struct boneData_s {
 
     short int  ef2BodyPart;
 
-    // skelHeader_t happens to name `ofsEnd'.  Retail never copies it anywhere: its
     short int  baseRow[8];
     qboolean   hasBaseRow;
 
@@ -574,7 +573,6 @@ typedef struct lodControl_s {
     lodCurvePointConstants_t consts[MAX_LOD_CURVE_CONSTS];
 } lodControl_t;
 
-//   +76  numTargets                (not read by the decompile -- the controller
 typedef struct skelMorphTargetRecord_s {
     char name[64];
     int  numVerts;

@@ -2865,7 +2865,7 @@ static int op_read_native(OggOpusFile *_of,
         _of->prev_packet_gp=pop->granulepos;
         if(OP_UNLIKELY(duration*nchannels>_buf_size)){
           op_sample *buf;
-          /*If the operator's buffer is too small, decode into a scratch buffer.*/
+          /*If the buffer is too small, decode into a scratch buffer.*/
           buf=_of->od_buffer;
           if(OP_UNLIKELY(buf==NULL)){
             ret=op_init_buffer(_of);
@@ -2887,7 +2887,7 @@ static int op_read_native(OggOpusFile *_of,
         }
         else{
           OP_ASSERT(_pcm!=NULL);
-          /*Otherwise decode directly into the operator's buffer.*/
+          /*Otherwise decode directly into the buffer.*/
           ret=op_decode(_of,_pcm,pop,duration,nchannels);
           if(OP_UNLIKELY(ret<0))return ret;
           if(OP_LIKELY(trimmed_duration>0)){

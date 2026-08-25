@@ -1,17 +1,4 @@
 #version 300 es
-/*
-ProvenanceEF2 GLES3 shade layer (G2 gles3-gles3-shade)
-gles3_2d.vert -- the 2D / HUD / font program.
-
-the deleted oracle drives 2D through the SAME stage iterator with backEnd.in2D set:
-RB_SetGL2D (tr_backend.c:1135) calls Set2DWindow (tr_draw.c) to install an
-ortho projection, and RB_IterateStagesGeneric adds GLS_DEPTHTEST_DISABLE when
-backEnd.in2D (tr_shade.c:1661-1663).  GL_State's depthtest-disable arm is a
-render-state, not a program, so this program only has to reproduce the colour
-path: rgbGen constant/global (Draw_SetColor -> tr_draw.c), alphaGen constant/
-global, tcGen texture.  No normals, no lighting, no wave LUT -- the UI path is
-kept small deliberately (old-Mali shader compiler faults, MALI_FIXES.md).
-*/
 in vec3 a_Position;
 in vec2 a_TexCoord0;
 in vec4 a_Color;

@@ -1267,7 +1267,6 @@ dtikianim_t *TIKI_InitTiki(dloaddef_t *ld, size_t defsize)
         if (!SkeletorCacheFindFilename(anim->name, &index)) {
             bPrecache = false;
 
-            // (The cvar's registration lives in qcommon/common.c:2016-2018 and must be
             bPrecache = true;
 
             if (!SkeletorCacheLoadData(anim->name, bPrecache, index)) {

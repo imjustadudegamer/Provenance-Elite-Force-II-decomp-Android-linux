@@ -35,7 +35,6 @@ extern "C" {
         int            number_of_sounds;
         server_sound_t sounds[MAX_SERVER_SOUNDS];
 
-        // clSnapshot_t::ws, which is exactly why CG_Weather was never portable (ledger row
         worldState_t ws;
     } snapshot_t;
 

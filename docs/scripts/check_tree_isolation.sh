@@ -9,7 +9,7 @@
 # otherwise describe more than one writer at once.
 #
 # WHAT IT CHECKS
-#   1. exactly one worktree is registered (the project root);
+#   1. exactly one tree is registered (the project root);
 #   2. the build inputs (app/src/main/cpp, app, docs/scripts) carry no uncommitted
 #      or untracked work.  Ignored build output is fine -- only something that
 #      would compile into the artefact counts.
@@ -20,7 +20,7 @@
 #   docs/scripts/check_tree_isolation.sh --self-test  # plant a file, require RED,
 #                                                     # remove it, require GREEN
 #
-# EXIT: 0 clean; 3 the tree carries work; 4 the worktree count is wrong.
+# EXIT: 0 clean; 3 the tree carries work; 4 the tree count is wrong.
 # Escape hatch for a deliberate dirty build: EF2_TREE_DIRTY_OK=1
 #
 set -uo pipefail
@@ -37,20 +37,20 @@ esac
 SCOPE=(app/src/main/cpp app docs/scripts)
 PROBE_REL="app/src/main/cpp/code/qcommon/__tree_isolation_probe.tmp"
 
-worktree_count() {
-    git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c '^worktree '
+tree_count() {
+    git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c '^tree '
 }
 
 dirty_in() {
     git -C "$ROOT" status --porcelain --untracked-files=all -- "${SCOPE[@]}" 2>/dev/null
 }
 
-# check -> 0 clean, 3 the tree carries work, 4 the worktree count is wrong
+# check -> 0 clean, 3 the tree carries work, 4 the tree count is wrong
 check() {
     local build="${1:-}" rc=0 n d
-    n="$(worktree_count)"
+    n="$(tree_count)"
     if [ "$n" != "1" ]; then
-        echo "check_tree_isolation: FAIL -- $n worktrees are registered; there must be exactly one"
+        echo "check_tree_isolation: FAIL -- $n trees are registered; there must be exactly one"
         git -C "$ROOT" worktree list | sed 's/^/    /'
         rc=4
     fi

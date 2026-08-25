@@ -292,8 +292,6 @@ static void rc_ledger_add( const char *basename, unsigned int seqLo, unsigned in
 	if ( s_entryCount >= SMP_TEXCACHE_MAX_ENTRIES ) {
 		return;
 	}
-	/* One ledger row per file: a re-store (or a corrupt entry rewritten after
-	 * deletion) must not double-count, or the cap would evict too much. */
 	rc_ledger_forget( basename );
 	s_entries[s_entryCount].seqLo = seqLo;
 	s_entries[s_entryCount].seqHi = seqHi;

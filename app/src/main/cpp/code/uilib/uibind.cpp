@@ -117,7 +117,6 @@ void BindListener::NewItem(Event *ev)
     }
 }
 
-// which is not necessarily the index of the container just appended.  Retail's
 void BindListener::BindGroup(Event *ev)
 {
     str  groupName;

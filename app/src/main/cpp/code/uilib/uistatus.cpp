@@ -176,7 +176,6 @@ void UIStatusBar::EnableSizeBox(UIWidget *which)
 void UIStatusBar::ParentSized(Event *ev)
 {
     if (m_align.alignment == WND_ALIGN_BOTTOM) {
-        // the port-only `if (!m_parent) return;` guard is deleted.  Every shipped status
         UISize2D parentSize = m_parent->getSize();
 
         setFrame(UIRect2D(0.0, parentSize.height - m_align.dist, parentSize.width, m_align.dist));

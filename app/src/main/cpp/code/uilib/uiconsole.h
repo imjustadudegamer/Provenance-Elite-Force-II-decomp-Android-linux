@@ -27,7 +27,6 @@ inline item::item()
     pColor = NULL;
 }
 
-// The line-history fallback.  Retail does NOT use a compile-time array: its
 #define MAX_CONSOLE_ITEMS 300
 
 class UIConsole : public UIWidget
