@@ -1476,11 +1476,21 @@ void G_BeginIntermission(const char *map_name)
         }
     }
 
+    /*
+     * Every client is put into the intermission.  Retail does the two writes
+     * inline here -- Mac G_BeginIntermission @0x001D50A0 sets
+     * `ps.pm_flags |= PMF_INTERMISSION' (0x80) and `ent->flags |= FL_IMMOBILE'
+     * (0x4000) per client -- and the shipped SDK funnels them through the same
+     * helper this port already has.  Without the flag the client never learns
+     * the level ended, so it never pushes `missionsuccess': the fade-out runs
+     * and the screen stays black.
+     */
     for (i = 0, client = g_entities; i < game.maxclients; client++, i++) {
         if (!client->inuse || !client->entity) {
             continue;
         }
 
+        G_MoveClientToIntermission(client->entity);
     }
 
 }
