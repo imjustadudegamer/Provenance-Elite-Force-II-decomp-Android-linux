@@ -2126,7 +2126,7 @@ static void UI_RelayoutHudMenu( Menu *hud )
         return;
     }
 
-    bLayoutScale = cont->getHudScale() > 1.0f && !cont->isHudFullScreen();
+    bLayoutScale = cont->isHudScaleSet() && !cont->isHudFullScreen();
 
     if ( bLayoutScale ) {
         UIWidget::HudScalePush( cont->getHudScale() );

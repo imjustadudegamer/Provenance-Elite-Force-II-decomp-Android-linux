@@ -267,9 +267,12 @@ protected:
     UIRect2D m_authoredFrame;
     bool     m_bFrameLatched = false;
     /* In-game HUD menus carry the effective HUD scale here; 1.0 means retail.
-       It is the only widget state that multiplies `uid.scaleRes', and it is
-       scoped to the flagged menu's own subtree. */
+       `m_hudScaleSet' is what puts the menu in the HUD scope at all, so a menu
+       whose factor is 1.0 -- the multiplayer scoreboard, or a HUD set after the
+       cvar returns to 1.0 -- is still laid out by the scope and therefore
+       restored to its authored geometry instead of keeping an old factor. */
     float    m_hudScale = 1.0f;
+    bool     m_hudScaleSet = false;
 
 public:
     CLASS_PROTOTYPE(UIWidget);
@@ -278,9 +281,12 @@ public:
 
     void        setHudScale(float scale);
     float       getHudScale(void) const;
+    bool        isHudScaleSet(void) const;
     bool        isHudFullScreen(void) const;
     static void HudScalePush(float scale);
     static void HudScalePop(void);
+    static float HudScaleCurrent(void);
+    static float HudTextScale(void);
 
     // PAINT TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Prints this
     void PAINTDumpState(int index, const char *menuName);
