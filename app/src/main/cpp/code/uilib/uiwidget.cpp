@@ -4782,6 +4782,83 @@ void UIWidgetContainer::SetLastActiveWidgetOrderNum(void)
     SetActiveWidgetOrderNum(m_currentwidnum);
 }
 
+/*
+ * The pad focus model.  The highlight is the widget's own mouse-over state, so
+ * the focused child is drawn by the same material, colour, hover command and
+ * hover sound a mouse-over uses -- there is no second highlight to keep in
+ * step.  Movement walks the container's visible, enabled children in child
+ * order and clamps at both ends, which is what keeps a held D-pad or stick from
+ * running past the last entry of a list.
+ */
+UIWidget *UIWidgetContainer::getFocusWidget(void) const
+{
+    return m_focusWidget;
+}
+
+void UIWidgetContainer::setFocusWidget(UIWidget *wid)
+{
+    if (m_focusWidget == wid) {
+        return;
+    }
+
+    if (m_focusWidget) {
+        m_focusWidget->setNormalState();
+    }
+
+    m_focusWidget = wid;
+
+    if (m_focusWidget) {
+        m_focusWidget->setHoverState();
+    }
+}
+
+void UIWidgetContainer::clearFocusWidget(void)
+{
+    setFocusWidget(NULL);
+}
+
+qboolean UIWidgetContainer::moveFocus(int dir)
+{
+    Container<UIWidget *> focusable;
+    int                   i;
+    int                   cur;
+    int                   next;
+
+    if (!dir) {
+        return qfalse;
+    }
+
+    for (i = 1; i <= m_children.NumObjects(); i++) {
+        UIWidget *child = m_children.ObjectAt(i);
+
+        if (child && child->isEnabled() && child->getShow()) {
+            focusable.AddObject(child);
+        }
+    }
+
+    if (!focusable.NumObjects()) {
+        return qfalse;
+    }
+
+    cur = m_focusWidget ? focusable.IndexOfObject(m_focusWidget) : 0;
+
+    if (cur < 1) {
+        next = (dir > 0) ? 1 : focusable.NumObjects();
+    } else {
+        next = cur + ((dir > 0) ? 1 : -1);
+    }
+
+    if (next < 1) {
+        next = 1;
+    }
+    if (next > focusable.NumObjects()) {
+        next = focusable.NumObjects();
+    }
+
+    setFocusWidget(focusable.ObjectAt(next));
+    return qtrue;
+}
+
 
 #define WIDGETMOVER_MSEC_PER_SEC 1000.0f
 

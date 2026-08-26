@@ -30,6 +30,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../qcommon/qa_ui.h"
 
+/* A held navigation key's own repeat: the pad sends one press per tap and the
+   UI never sees an operating-system repeat, so the delay before the first
+   repeat and the interval after it are the UI's.  The move itself is clamped in
+   the container, which is what stops a held key overshooting a list. */
+#define UI_PAD_NAV_REPEAT_DELAY 400
+#define UI_PAD_NAV_REPEAT       120
+
 Event W_MouseExited
 (
     "mouse_exited",
@@ -160,6 +167,9 @@ UIWindowManager::UIWindowManager()
     m_showcursor       = true;
     m_font             = NULL;
     m_bindactive       = NULL;
+    m_padNavActive     = false;
+    m_padRepeatKey     = 0;
+    m_padNextRepeat    = 0;
     setBorderStyle(border_none);
 }
 
@@ -429,6 +439,30 @@ void UIWindowManager::ServiceEvents(void)
     }
 
     SafePtr<UIWidget> b = m_oldview;
+
+    /* The mouse takes the highlight back the moment it moves or a button is
+       pressed: the pad never blocks it, and with no pad in use the state here
+       is never entered. */
+    if (m_padNavActive && (m_oldpos != pos || buttons != m_lastbuttons)) {
+        ClearPadFocus();
+    }
+
+    /* A held direction key repeats at the UI's own rate.  The key state is the
+       engine's, so a D-pad button held down and a stick pushed past its
+       deadzone both keep the key down until they are released. */
+    if (m_padNavActive && m_padRepeatKey) {
+        if (!Key_IsDown(m_padRepeatKey)) {
+            m_padRepeatKey = 0;
+        } else if ((int)(uid.time - m_padNextRepeat) >= 0) {
+            int dir = PadNavDirection(m_padRepeatKey);
+
+            m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT;
+
+            if (dir != 0) {
+                MovePadFocus(dir);
+            }
+        }
+    }
 
     if (b != view) {
         ViewEvent(m_oldview, W_MouseExited, pos, buttons);
@@ -707,11 +741,150 @@ void UIWindowManager::CharEvent(int ch)
     }
 }
 
+/*
+ * `dir` is the child-order step for a navigation key: up/left walk back, down/
+ * right walk on.  The left stick produces its own key codes, not arrows, so it
+ * is a direction here too -- its deadzone is the SDL layer's joy threshold and
+ * is already applied before the key is emitted.
+ */
+int UIWindowManager::PadNavDirection(int key)
+{
+    switch (key) {
+    case K_UPARROW:
+    case K_PAD0_LEFTSTICK_UP:
+    case K_LEFTARROW:
+    case K_PAD0_LEFTSTICK_LEFT:
+        return -1;
+
+    case K_DOWNARROW:
+    case K_PAD0_LEFTSTICK_DOWN:
+    case K_RIGHTARROW:
+    case K_PAD0_LEFTSTICK_RIGHT:
+        return 1;
+
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+bool UIWindowManager::MovePadFocus(int dir)
+{
+    Menu      *menu = menuManager.CurrentMenu();
+    UIWidget  *cont;
+
+    if (!menu) {
+        return false;
+    }
+
+    cont = menu->GetContainerWidget();
+
+    if (!cont || !cont->isSubclassOf(UIWidgetContainer)) {
+        return false;
+    }
+
+    return ((UIWidgetContainer *)cont)->moveFocus(dir) ? true : false;
+}
+
+void UIWindowManager::ClearPadFocus(void)
+{
+    Menu     *menu = menuManager.CurrentMenu();
+    UIWidget *cont;
+
+    m_padNavActive  = false;
+    m_padRepeatKey  = 0;
+
+    if (!menu) {
+        return;
+    }
+
+    cont = menu->GetContainerWidget();
+
+    if (cont && cont->isSubclassOf(UIWidgetContainer)) {
+        ((UIWidgetContainer *)cont)->clearFocusWidget();
+    }
+}
+
+/*
+ * The pad's activation key runs the mouse's own click path at the widget's
+ * centre: the container focus has already put it in the mouse-over state, so a
+ * synthesized press and release reaches exactly the code a click reaches --
+ * UIButtonBase::Released -> Action(), a checkbox's toggle, and so on.  Nothing
+ * new is added to the widget layer for activation.
+ */
+bool UIWindowManager::ActivateFocusedWidget(void)
+{
+    Menu              *menu = menuManager.CurrentMenu();
+    UIWidgetContainer *cont;
+    UIWidget          *focused;
+    UIPoint2D          pos;
+    Event              down(W_LeftMouseDown);
+    Event              up(W_LeftMouseUp);
+
+    if (!menu) {
+        return false;
+    }
+
+    UIWidget *containerWidget = menu->GetContainerWidget();
+
+    if (!containerWidget || !containerWidget->isSubclassOf(UIWidgetContainer)) {
+        return false;
+    }
+
+    cont    = (UIWidgetContainer *)containerWidget;
+    focused = cont->getFocusWidget();
+
+    if (!focused || !focused->isEnabled() || !focused->getShow()) {
+        return false;
+    }
+
+    ActivateControl(focused);
+
+    pos = focused->getGlobalPoint(UIPoint2D(focused->getSize().width * 0.5f, focused->getSize().height * 0.5f));
+
+    ViewEvent(focused, down, pos, 1);
+    ViewEvent(focused, up, pos, 0);
+
+    return true;
+}
+
 qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 {
+    int dir;
+
     if (m_bindactive) {
         m_bindactive->KeyEvent(key, time);
         return true;
+    }
+
+    dir = PadNavDirection(key);
+
+    /* Navigation is only ever taken from a 2D menu.  A D-pad or stick press in
+       the world is still the world's, and the first navigation key here is what
+       arms the highlight -- until it arrives nothing on screen differs from
+       before. */
+    if (dir != 0 && menuManager.CurrentMenu()) {
+        m_padNavActive = true;
+
+        /* The widgets that read arrows themselves -- listbox, table, console,
+           text field, slider -- get the key first and keep it. */
+        if (m_activeControl && m_activeControl->KeyEvent(key, time)) {
+            return true;
+        }
+
+        if (MovePadFocus(dir)) {
+            m_padRepeatKey  = key;
+            m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT_DELAY;
+        }
+
+        return true;
+    }
+
+    if (key == K_ENTER && m_padNavActive) {
+        if (ActivateFocusedWidget()) {
+            return true;
+        }
     }
 
     if (m_activeControl && m_activeControl->KeyEvent(key, time)) {
