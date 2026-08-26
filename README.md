@@ -123,9 +123,8 @@ which is kept separate from the game data.
 This port is not fully play tested, and the campaign has not been played end to
 end. What is open is listed here rather than left to discover:
 
-- **Graphics.** Some surfaces still come out black or missing — the tutorial
-  mission bridge is the known one. The sparkle and beam effects do not yet match
-  retail's timing exactly, and a few UI elements still diverge.
+- **Graphics.** The sparkle and beam effects do not yet match retail's timing
+  exactly, and a few UI elements still diverge.
 - **Sound.** Loop stacking, the silent menu clicks and the missing weapon fire
   sounds are fixed in the source, but none of it has been confirmed in play yet —
   report anything that still misbehaves. Audio stutter under load remains open.
