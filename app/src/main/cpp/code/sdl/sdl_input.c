@@ -643,6 +643,22 @@ static keyNum_t IN_KeyFor( SDL_GameControllerButton sdlButton )
 
 static int IN_GamepadMenuKey( int button, int defaultKey )
 {
+	/*
+	 * A running cinematic is skipped by the keyboard's own escape key, and a
+	 * pad has no escape key: Start and Select stand in for it.  The boot
+	 * cinematics run with a menu catcher set, so this is asked first, before
+	 * the catcher test and before the menu mapping, or Start would arrive as
+	 * Enter and do nothing.
+	 */
+	if ( cinematicRunning( ) )
+	{
+		switch ( button )
+		{
+			case SDL_CONTROLLER_BUTTON_START: return K_ESCAPE;
+			case SDL_CONTROLLER_BUTTON_BACK:  return K_ESCAPE;
+		}
+	}
+
 	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) )
 		return defaultKey;
 

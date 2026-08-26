@@ -633,6 +633,12 @@ class UIWidgetContainer : public UIWidget
     qboolean m_bNoEscape = qfalse;
     bool     m_nomouse        = false;
     bool     m_allowGameFocus = false;
+    /* The child the pad's focus highlight is on.  EF2's uilib has no keyboard
+       focus of its own -- retail's UIWindowManager::KeyEvent @0x000B2C50 only
+       forwards to the bind target and the mouse-activated control -- so the
+       pad model lives here, in the container, and is armed only by a navigation
+       key.  A SafePtr, because a menu transition deletes its widgets. */
+    SafePtr<UIWidget> m_focusWidget;
 
 
 public:
@@ -660,6 +666,14 @@ public:
     void      SetActiveWidgetOrderNum(UIWidget *wid);
     void      SetActiveWidgetOrderNum(int num);
     void      SetLastActiveWidgetOrderNum(void);
+
+    /* Pad focus: which child holds it, and movement among the visible, enabled
+       ones by child order.  Movement is CLAMPED at both ends so a held key in a
+       list cannot run past the last entry. */
+    UIWidget *getFocusWidget(void) const;
+    void      setFocusWidget(UIWidget *wid);
+    void      clearFocusWidget(void);
+    qboolean  moveFocus(int dir);
 };
 
 extern Event W_Destroyed;
