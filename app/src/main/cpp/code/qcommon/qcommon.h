@@ -898,6 +898,10 @@ qboolean IN_IsCursorActive(void);
 qboolean IN_HasRealMouse(void);
 void     IN_NoteRealMouse(void);
 
+/* The Android display density in dpi, or 0 where the query is unavailable.
+   Declared for every platform so callers need no #ifdef. */
+int Sys_AndroidDensityDpi(void);
+
 void Com_Pause(void);
 void Com_Unpause(void);
 void Com_FakePause(void);

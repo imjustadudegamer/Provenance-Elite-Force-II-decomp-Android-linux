@@ -610,7 +610,7 @@ static void EmphasizeSphereColors(void)
 {
     int i;
 
-    if (backEnd.refdef.rdflags & RDF_HUD) {
+    if (backEnd.refdef.rdflags & RDF_FULLBRIGHT) {
         for (i = 0; i < SPHERE_NUM_BASIS; i++) {
             VectorSet(backEnd.currentSphere->pointcolor[i], 255.0f, 255.0f, 255.0f);
         }

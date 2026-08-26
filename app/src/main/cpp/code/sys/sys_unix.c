@@ -47,6 +47,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef __ANDROID__
 #include <android/log.h>
+#include <jni.h>
 #ifdef USE_INTERNAL_SDL_HEADERS
 #include "SDL_system.h"
 #else
@@ -239,7 +240,68 @@ char *Sys_DefaultHomeConfigPath(void) { return Sys_HomeConfigPath(); }
 char *Sys_DefaultHomeDataPath(void)   { return Sys_HomeDataPath(); }
 char *Sys_DefaultHomeStatePath(void)  { return Sys_HomeStatePath(); }
 
+/* The display density in dpi, read from the Android Resources rather than from
+   SDL's own DPI query: the JNI path behind SDL_GetDisplayDPI can fail on a
+   device and leave a caller with nothing to size against.  Returns 0 when the
+   query is unavailable. */
+int Sys_AndroidDensityDpi( void )
+{
+	JNIEnv *env;
+	jobject activity;
+	jclass	activityClass;
+	jclass	resourcesClass;
+	jclass	metricsClass;
+	jobject resources;
+	jobject metrics;
+	jmethodID getResources;
+	jmethodID getDisplayMetrics;
+	jfieldID  densityDpiField;
+	jint	dpi;
+
+	env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+	activity = (jobject)SDL_AndroidGetActivity();
+	if ( env == NULL || activity == NULL )
+		return 0;
+
+	activityClass = (*env)->GetObjectClass( env, activity );
+	if ( activityClass == NULL )
+		return 0;
+
+	getResources = (*env)->GetMethodID( env, activityClass,
+		"getResources", "()Landroid/content/res/Resources;" );
+	if ( getResources == NULL )
+		return 0;
+
+	resources = (*env)->CallObjectMethod( env, activity, getResources );
+	if ( resources == NULL )
+		return 0;
+
+	resourcesClass = (*env)->GetObjectClass( env, resources );
+	getDisplayMetrics = (*env)->GetMethodID( env, resourcesClass,
+		"getDisplayMetrics", "()Landroid/util/DisplayMetrics;" );
+	if ( getDisplayMetrics == NULL )
+		return 0;
+
+	metrics = (*env)->CallObjectMethod( env, resources, getDisplayMetrics );
+	if ( metrics == NULL )
+		return 0;
+
+	metricsClass = (*env)->GetObjectClass( env, metrics );
+	densityDpiField = (*env)->GetFieldID( env, metricsClass, "densityDpi", "I" );
+	if ( densityDpiField == NULL )
+		return 0;
+
+	dpi = (*env)->GetIntField( env, metrics, densityDpiField );
+
+	return ( dpi > 0 ) ? (int)dpi : 0;
+}
+
 #else 
+
+int Sys_AndroidDensityDpi( void )
+{
+	return 0;
+}
 
 char *Sys_HomeConfigPath(void)
 {

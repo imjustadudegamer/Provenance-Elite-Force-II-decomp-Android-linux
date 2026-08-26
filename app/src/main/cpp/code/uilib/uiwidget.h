@@ -278,6 +278,7 @@ public:
 
     void        setHudScale(float scale);
     float       getHudScale(void) const;
+    bool        isHudFullScreen(void) const;
     static void HudScalePush(float scale);
     static void HudScalePop(void);
 

@@ -1275,8 +1275,50 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 		}
 		GLES3_SetUniform1f( lmprog, GLES3_U_FORCEALPHA, -1.0f );
 
-		GLES3_BindAnimatedImage( &tess.xstages[0]->bundle[0], 0 );
-		GLES3_BindAnimatedImage( &tess.xstages[0]->bundle[1], 1 );
+		/*
+		 * Retail RB_StageIteratorLightmappedMultitextureUnfogged @0x000368D0
+		 * substitutes the white image for each bundle whose `isLightmap' bit is
+		 * set while the fullbright bit is up -- bundle[0] at *(bundle+60), the
+		 * `& 2' test at 0x369AC/0x369D0, and bundle[1] at *(bundle+128), the
+		 * second test at 0x36A10/0x36A38.  These arms were missing here, so on
+		 * the fast path every lightmapped world surface kept its own (dark)
+		 * lightmap while the generic stage path brightened, which is what left
+		 * a bridge partly black with night vision on.  `!backEnd.in2D' is the
+		 * platform guard the 2D field needed and is false here: this iterator
+		 * is the world path.
+		 */
+		if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
+			 && tess.xstages[0]->bundle[0].isLightmap )
+		{
+			GLES3_SelectTexture( 0 );
+			GL_Bind( tr.whiteImage );
+		}
+		else
+		{
+			GLES3_BindAnimatedImage( &tess.xstages[0]->bundle[0], 0 );
+		}
+
+		if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
+			 && tess.xstages[0]->bundle[1].isLightmap )
+		{
+			GLES3_SelectTexture( 1 );
+			GL_Bind( tr.whiteImage );
+		}
+		else
+		{
+			GLES3_BindAnimatedImage( &tess.xstages[0]->bundle[1], 1 );
+		}
+
+		{
+			unsigned	u0 = (unsigned)glState.currenttextures[0];
+			unsigned	u1 = (unsigned)glState.currenttextures[1];
+			unsigned	w0 = tess.xstages[0]->bundle[0].image[0]
+						   ? (unsigned)tess.xstages[0]->bundle[0].image[0]->texnum : 0u;
+			unsigned	w1 = tess.xstages[0]->bundle[1].image[0]
+						   ? (unsigned)tess.xstages[0]->bundle[1].image[0]->texnum : 0u;
+
+			GLES3_StageBindCensus( tess.shader, tess.xstages[0], 0, qfalse, w0, w1, u0, u1 );
+		}
 
 		RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
 							   input->texCoords[0][0], input->texCoords[0][0] + 2, 4,

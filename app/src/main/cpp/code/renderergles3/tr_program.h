@@ -329,6 +329,14 @@ void		GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStag
 							 const shader_t *shader, unsigned stateBits, float forceAlpha,
 							  qboolean hudColorClobber );
 
+/* The fullbright arm's per-frame note and the stage-bind census are shared by
+   every stage path that binds a bundle, so the lightmapped multitexture
+   iterator -- the fast path most world geometry takes -- reports with the rest. */
+void		GLES3_FullbrightNote( void );
+void		GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
+								   int stageIndex, qboolean in2D,
+								   unsigned w0, unsigned w1, unsigned u0, unsigned u1 );
+
 void		GLES3_BindProgram( gles3Program_t *p );
 void		GLES3_RefreshClipPlane( void );
 
