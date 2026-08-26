@@ -34,6 +34,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "limit_uiprobe.h"
 
+/* The HUD scope's depth and factor.  Declared here because the layout pass
+   (`ChangeResolution') reads them and is defined above their setter. */
+static int   s_hudScaleDepth;
+static float s_hudScaleValue = 1.0f;
+
 static UBorderColor DeriveBorderColor(const UColor& color)
 {
     constexpr float borderDarkScale = 0x1.555556p-1f;   
@@ -2886,7 +2891,9 @@ bool UIWidget::isResizeable(void)
 
 void UIWidget::ChangeResolution(void)
 {
-    int i;
+    int   i;
+    float scalex;
+    float scaley;
 
     if (m_mover) {
         m_mover->ChangeResolution();
@@ -2897,12 +2904,23 @@ void UIWidget::ChangeResolution(void)
         m_bFrameLatched = true;
     }
 
-    if (!isResizeable()) {
+    if (isResizeable()) {
+        /* A widget authored in the 640x480 virtual space follows the display
+           division, exactly as retail does. */
+        scalex = uid.scaleRes[0];
+        scaley = uid.scaleRes[1];
+    } else if (s_hudScaleDepth > 0) {
+        /* A noresize widget is authored in screen pixels and retail never
+           rescales it, so the only thing that may grow it is the HUD scope --
+           and there the factor applies to the authored frame alone.  This is
+           the arm that makes a HUD element's computed frame actually grow; the
+           factor reaching `uid.scaleRes' only rescales the widgets that already
+           read it, which is a different set. */
+        scalex = s_hudScaleValue;
+        scaley = s_hudScaleValue;
+    } else {
         return;
     }
-
-    float scalex = uid.scaleRes[0];
-    float scaley = uid.scaleRes[1];
 
     float newx = (float)(int)(0.5f + scalex * m_authoredFrame.pos.x);
     float newy = (float)(int)(0.5f + scaley * m_authoredFrame.pos.y);
@@ -3774,7 +3792,8 @@ float UIWidget::getBackgroundAlpha(void)
 
 void UIWidget::setHudScale(float scale)
 {
-    m_hudScale = scale;
+    m_hudScale    = scale;
+    m_hudScaleSet = true;
 }
 
 float UIWidget::getHudScale(void) const
@@ -3782,30 +3801,36 @@ float UIWidget::getHudScale(void) const
     return m_hudScale;
 }
 
+bool UIWidget::isHudScaleSet(void) const
+{
+    return m_hudScaleSet;
+}
+
 /* A HUD menu authored across the whole 640x480 virtual screen is an overlay:
    its edges and its widget geometry stay where retail puts them so nothing is
-   pushed past the screen, and the factor reaches it through the draw scope,
-   which grows the text and the other draw-time metrics in place.  A smaller HUD
-   panel has room to grow, so its geometry scales too and keeps its corner. */
+   pushed past the screen, and the factor reaches its text through the draw
+   scope.  A smaller HUD panel has room to grow, so its geometry scales too and
+   keeps the corner its `align' declares. */
 bool UIWidget::isHudFullScreen(void) const
 {
     return m_authoredFrame.size.width >= 640.0f && m_authoredFrame.size.height >= 480.0f;
 }
 
-/* The effective HUD scale multiplies the two virtual-space stores for exactly
-   one HUD subtree.  The depth guard keeps a menu pushed from both the HUD draw
-   list and its own Display from multiplying twice, and the saved pair is what
-   every other element in the frame still resolves against. */
-static int   s_hudScaleDepth = 0;
-static float s_hudScaleRes[2] = {0.0f, 0.0f};
-
+/*
+ * The HUD scope carries the factor and deliberately does NOT multiply
+ * `uid.scaleRes'.  A HUD element is authored `noresize', so `uid.scaleRes' is
+ * exactly the division noresize exists to ignore: its authored frame is already
+ * in screen pixels.  Multiplying the shared virtual space instead left the
+ * geometry alone -- `ChangeResolution' returns early for a noresize widget --
+ * while `uid.scaleRes' still reached the resolution-scaled widgets that read it,
+ * which rescaled the inventory bar a second time and pushed it off the screen.
+ * The factor is therefore applied once, to the authored frame of a noresize
+ * widget, and to the text drawn inside the scope.
+ */
 void UIWidget::HudScalePush(float scale)
 {
     if (s_hudScaleDepth == 0) {
-        s_hudScaleRes[0] = uid.scaleRes[0];
-        s_hudScaleRes[1] = uid.scaleRes[1];
-        uid.scaleRes[0] *= scale;
-        uid.scaleRes[1] *= scale;
+        s_hudScaleValue = scale;
     }
 
     s_hudScaleDepth++;
@@ -3820,9 +3845,18 @@ void UIWidget::HudScalePop(void)
     s_hudScaleDepth--;
 
     if (s_hudScaleDepth == 0) {
-        uid.scaleRes[0] = s_hudScaleRes[0];
-        uid.scaleRes[1] = s_hudScaleRes[1];
+        s_hudScaleValue = 1.0f;
     }
+}
+
+float UIWidget::HudScaleCurrent(void)
+{
+    return s_hudScaleDepth > 0 ? s_hudScaleValue : 1.0f;
+}
+
+float UIWidget::HudTextScale(void)
+{
+    return HudScaleCurrent();
 }
 
 void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
@@ -3847,10 +3881,10 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
         return;
     }
 
-    /* A HUD menu's subtree is the only place the 640x480 virtual space is
-       multiplied.  The pushed scope covers this widget and every child it
-       recurses into, and is popped before anything else draws. */
-    bool bHudScale = m_hudScale > 1.0f;
+    /* A HUD menu's subtree is the only place the HUD factor reaches text and
+       the other draw-time metrics.  The scope covers this widget and every
+       child it recurses into, and is popped before anything else draws. */
+    bool bHudScale = m_hudScaleSet;
 
     if (bHudScale) {
         HudScalePush(m_hudScale);

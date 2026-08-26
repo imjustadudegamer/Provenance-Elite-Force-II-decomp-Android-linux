@@ -94,13 +94,29 @@ void UIFont::setFont(const char *fontname)
 // In retail the flag scales the GLYPHS, not the string's origin.  Retail
 void UIFont::Print(float x, float y, const char *text, int maxlen, UColor shadowColor, int virtualScreen)
 {
-    const float *scale = virtualScreen ? uid.scaleRes : NULL;
+    const float *scale = NULL;
     float        vx    = x;
     float        vy    = y;
+    float        hudScaleBuf[2];
 
-    if (scale && uid.scaleRes[0] != 0.0f && uid.scaleRes[1] != 0.0f) {
-        vx = x / uid.scaleRes[0];
-        vy = y / uid.scaleRes[1];
+    /* A noresize widget's text is drawn at its authored pixel size and never
+       reads `uid.scaleRes', so inside a HUD scope it takes that scope's factor
+       instead, which is the only thing that grows it. */
+    if (virtualScreen) {
+        scale = uid.scaleRes;
+
+        if (uid.scaleRes[0] != 0.0f && uid.scaleRes[1] != 0.0f) {
+            vx = x / uid.scaleRes[0];
+            vy = y / uid.scaleRes[1];
+        }
+    } else {
+        float hudTextScale = UIWidget::HudTextScale();
+
+        if (hudTextScale != 1.0f) {
+            hudScaleBuf[0] = hudTextScale;
+            hudScaleBuf[1] = hudTextScale;
+            scale          = hudScaleBuf;
+        }
     }
 
     if (shadowColor.a != 0.0f) {
@@ -272,7 +288,9 @@ float UIFont::getFloatWidth(const char *text, int maxlen, bool virtualScale)
     if (virtualScale) {
         scale = uid.scaleRes[0];
     } else {
-        scale = 1.0f;
+        /* The HUD scope's factor is what grows a noresize widget's text; it is
+           1.0 everywhere else, so every other caller is unchanged. */
+        scale = UIWidget::HudTextScale();
     }
 
     for (int i = 0;; i++) {
@@ -338,6 +356,8 @@ int UIFont::getCharWidth(char ch, bool virtualScale)
         width = 256.0f * m_font->sgl[0]->locations[indirected].size[0];
         if (virtualScale) {
             width *= uid.scaleRes[0];
+        } else {
+            width *= UIWidget::HudTextScale();
         }
         return (int)width;
     }
@@ -375,7 +395,7 @@ int UIFont::getHeight(bool virtualScale)
         return (int)(m_font->sgl[0]->height * uid.scaleRes[1]);
     }
 
-    return (int)m_font->sgl[0]->height;
+    return (int)(m_font->sgl[0]->height * UIWidget::HudTextScale());
 }
 
 qboolean UI_FontDBCSIsLeadByte(fontheader_t *font, unsigned short uch)

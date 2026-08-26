@@ -55,13 +55,16 @@ There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
 tricorder, the radar and the rest — and nothing else. The 640x480 virtual space
 is still resolved by `CL_FillUIDef` as the retail division of the pillarbox rect,
 so every 2D menu, dialog, loading screen and scoreboard is pixel-identical. The
-factor is a scope around a HUD element's own subtree: the widget set's
-`ChangeResolution` lays out a HUD menu with the pair multiplied, `Display` draws
-it that way, and the pair is restored before anything else in the frame resolves
-it. Each HUD menu keeps the edge its `align` declares, so a `bottom left` element
-grows up and right from the bottom-left corner, a `top right` element grows down
-and left, and a centred element grows about its centre. It is archived, so a
-config rewrite keeps it.
+factor is a scope around a HUD element's own subtree, and it is applied once: a
+HUD element is authored `noresize`, so `ChangeResolution` lays its authored pixel
+frame out multiplied by the factor, `Display` draws the subtree with the factor
+reaching its text, and the scope is closed before anything else in the frame
+resolves it. The shared virtual space itself is never multiplied, so a HUD
+element that already follows the display division — the inventory bar — is not
+rescaled a second time. Each HUD menu keeps the edge its `align` declares, so a
+`bottom left` element grows up and right from the bottom-left corner, a `top
+right` element grows down and left, and a centred element grows about its centre.
+It is archived, so a config rewrite keeps it.
 
 Two sets are in scope. `hudList` holds everything `ui_addhud` pushes there,
 including the menus the game adds by script through `Player::addHud` — the
