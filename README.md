@@ -164,7 +164,7 @@ cd app/src/main/cpp
 cmake --preset linux-gles3 && ninja -C build-linux-gles3 -j16
 ```
 
-Artifacts land in `build-linux-gles3/Release/`: `provenanceef2`,
+The build lands in `build-linux-gles3/Release/`: `provenanceef2`,
 `provenanceef2ded`, `game.so`, `cgame.so` and `renderer_gles3.so`. The gate for
 every change is a clean rebuild at 0 warnings / 0 errors and `ldd -r` reporting
 0 undefined symbols on all five.

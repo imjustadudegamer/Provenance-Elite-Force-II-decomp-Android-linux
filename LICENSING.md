@@ -128,7 +128,7 @@ per-file notice) for each file. The repository root therefore carries no blanket
 
 ## Forks and redistribution
 
-If you fork or redistribute this repository or an artifact built from it:
+If you fork or redistribute this repository or a build made from it:
 
 - keep every notice, banner and SPDX identifier intact;
 - ship `docs/EF2-SDK-licenseAgreement.txt` with any SDK-derived material, as

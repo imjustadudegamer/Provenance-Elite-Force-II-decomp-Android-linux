@@ -32,7 +32,7 @@ cmake --preset linux-gles3
 ninja -C build-linux-gles3 -j16
 ```
 
-Artifacts under `build-linux-gles3/Release/`:
+Binaries under `build-linux-gles3/Release/`:
 
 | file | what it is |
 |---|---|
@@ -51,7 +51,7 @@ They are built by the `tests` CMake target and never executed.
 Every change must pass, on a clean rebuild:
 
 - `ninja -j16` — 0 warnings / 0 errors;
-- `ldd -r` — 0 undefined on all five artifacts;
+- `ldd -r` — 0 undefined on all five binaries;
 
 ## What ships in the APK
 
