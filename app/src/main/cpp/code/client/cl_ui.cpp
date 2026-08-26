@@ -1952,8 +1952,13 @@ void UI_Cvar_Set(const char *var_name, const char *value)
  */
 #define HUD_SCALE_MIN	1.0f
 #define HUD_SCALE_MAX	2.0f
+/* A phone panel is at least an xhdpi one, so when neither density query answers
+   this is the floor to size against rather than dropping the feature to 1.0. */
+#define HUD_SCALE_PHONE_FLOOR_DPI	320
 
 static float s_uiHudScaleAuto = 1.0f;
+static int   s_uiHudScaleDpi = 0;
+static const char *s_uiHudScaleDpiSource = "none";
 
 static float UI_ClampHudScale( float scale )
 {
@@ -1969,14 +1974,34 @@ static float UI_ClampHudScale( float scale )
 static void UI_ComputeAutoHudScale( void )
 {
     s_uiHudScaleAuto = 1.0f;
+    s_uiHudScaleDpi = 0;
+    s_uiHudScaleDpiSource = "desktop";
 
 #ifdef __ANDROID__
     {
         float ddpi = 0.0f;
 
         if ( SDL_GetDisplayDPI( 0, &ddpi, NULL, NULL ) == 0 && ddpi > 0.0f ) {
-            s_uiHudScaleAuto = UI_ClampHudScale( ddpi / 160.0f );
+            s_uiHudScaleDpi = (int)ddpi;
+            s_uiHudScaleDpiSource = "sdl";
+        } else {
+            /* SDL's own Android DPI query can answer non-zero and hand back
+               nothing usable.  The Resources density is the same number the
+               window manager reports, so it is read directly. */
+            int jdpi = Sys_AndroidDensityDpi();
+
+            if ( jdpi > 0 ) {
+                s_uiHudScaleDpi = jdpi;
+                s_uiHudScaleDpiSource = "resources";
+            }
         }
+
+        if ( s_uiHudScaleDpi <= 0 ) {
+            s_uiHudScaleDpi = HUD_SCALE_PHONE_FLOOR_DPI;
+            s_uiHudScaleDpiSource = "phone-floor";
+        }
+
+        s_uiHudScaleAuto = UI_ClampHudScale( (float)s_uiHudScaleDpi / 160.0f );
     }
 #endif
 }
@@ -1990,13 +2015,46 @@ static float UI_EffectiveHudScale( void )
     return s_uiHudScaleAuto;
 }
 
+/* One startup line, always, with the inputs that produced the scale: the
+   resolved factor, the path it came from, the raw density and the pre-clamp
+   ratio.  Without it a device round cannot tell a working scale from a silent
+   1.0. */
+static void UI_LogHudScale( void )
+{
+    if ( ui_hudScale && ui_hudScale->value > 0.0f ) {
+        Com_Printf( "HUD scale: source=cvar configured=%.3f density_ratio=n/a effective=%.3f\n",
+                    ui_hudScale->value, UI_EffectiveHudScale() );
+        return;
+    }
+
+    if ( s_uiHudScaleDpi > 0 ) {
+        Com_Printf( "HUD scale: source=auto dpi=%d via=%s density_ratio=%.3f effective=%.3f\n",
+                    s_uiHudScaleDpi, s_uiHudScaleDpiSource,
+                    (float)s_uiHudScaleDpi / 160.0f, UI_EffectiveHudScale() );
+    } else {
+        Com_Printf( "HUD scale: source=auto desktop density_ratio=n/a effective=%.3f\n",
+                    UI_EffectiveHudScale() );
+    }
+}
+
 /*
- * `hudList' is the whole in-game HUD draw set.  Every name reachable through
- * `ui_addhud' is an in-game HUD element -- health, radar, inventory, item text,
- * mission objectives, the pause icon, the objective notices, the arena and
- * match-mode status boards, and the weapon-detail HUDs cgame adds per view mode.
- * The one exception is `dm_scoreboard': the multiplayer scoreboard is interface,
- * not HUD, so it is explicitly excluded and stays retail-sized.
+ * The in-game HUD is two sets that reach the screen by different routes, and
+ * both are scaled.
+ *
+ * The first is `hudList': everything `ui_addhud' pushes there -- health, radar,
+ * inventory, item text, mission objectives, the pause icon, the objective
+ * notices, the arena and match-mode status boards, and the menus the game adds
+ * by script through `Player::addHud' (`stufftext "ui_addhud ..."`) such as the
+ * tricorder's keypad, modulation and route panels.  The one exception is
+ * `dm_scoreboard': the multiplayer scoreboard is interface, not HUD, so it is
+ * excluded and stays retail-sized.
+ *
+ * The second is the fixed set the client itself finds by name and shows in the
+ * in-game path: the weapon-ammo readouts (`weaphud*'), the dialogue/comm box
+ * (`headhud', `headtexthud', `texthud') and the small HUD panels.  Those never
+ * go through `ui_addhud', so they are scaled here directly.  Menus, dialogs,
+ * loading screens, the mission-result screens and the scoreboard are in neither
+ * set.
  */
 static qboolean UI_HudMenuScaled( const Menu *hud )
 {
@@ -2018,25 +2076,61 @@ static void UI_ApplyHudScale( Menu *hud )
     }
 }
 
-/* A HUD menu added mid-session was last laid out at retail scale, so it is
-   re-laid out here in its own scope and re-aligned afterwards.  At 1.0 the
-   menu is already correct and retail's own layout is left untouched. */
+/* The client-managed HUD menus, in one place so the factor is applied when they
+   are first found and again when the cvar changes. */
+static Menu **UI_StaticHudMenus( int *count )
+{
+    static Menu *list[32];
+    int          n = 0;
+    int          i;
+
+    for ( i = 0; i < 6; i++ ) {
+        list[n++] = weaphud[i];
+    }
+
+    list[n++] = hud_health;
+    list[n++] = printhud;
+    list[n++] = hud_boss;
+    list[n++] = itemTextHud;
+    list[n++] = poweruphud;
+    list[n++] = radarhud;
+    list[n++] = headhud;
+    list[n++] = headtexthud;
+    list[n++] = texthud;
+    list[n++] = specialmovetimer;
+    list[n++] = pointshud;
+    list[n++] = hud_levelExit;
+    list[n++] = hud_targetName;
+
+    *count = n;
+    return list;
+}
+
+/* A HUD menu added or first found after the last resolution change was laid out
+   at retail scale, so it is laid out here in its own scope and re-aligned
+   afterwards.  A full-screen overlay keeps retail geometry and takes the factor
+   at draw time only. */
 static void UI_RelayoutHudMenu( Menu *hud )
 {
-    float hudScale;
-    int   i, n;
+    UIWidget *cont;
+    bool      bLayoutScale;
+    int       i, n;
 
-    if ( !hud || !hud->GetContainerWidget() ) {
+    if ( !hud ) {
         return;
     }
 
-    hudScale = hud->GetContainerWidget()->getHudScale();
+    cont = hud->GetContainerWidget();
 
-    if ( !( hudScale > 1.0f ) ) {
+    if ( !cont ) {
         return;
     }
 
-    UIWidget::HudScalePush( hudScale );
+    bLayoutScale = cont->getHudScale() > 1.0f && !cont->isHudFullScreen();
+
+    if ( bLayoutScale ) {
+        UIWidget::HudScalePush( cont->getHudScale() );
+    }
 
     n = hud->GetWidgetCount();
     for ( i = 1; i <= n; i++ ) {
@@ -2047,9 +2141,35 @@ static void UI_RelayoutHudMenu( Menu *hud )
         }
     }
 
-    UIWidget::HudScalePop();
+    if ( bLayoutScale ) {
+        UIWidget::HudScalePop();
+    }
 
     hud->RealignWidgets();
+}
+
+static void UI_ApplyStaticHudScale( void )
+{
+    int   n, i;
+    Menu **list = UI_StaticHudMenus( &n );
+
+    for ( i = 0; i < n; i++ ) {
+        UI_ApplyHudScale( list[i] );
+    }
+}
+
+/* Set the factor on every client-managed HUD menu and lay it out.  Used once
+   the client has found its HUD menus; a cvar change re-lays them out through
+   `UI_ResolutionChange' instead. */
+static void UI_ScaleStaticHudMenus( void )
+{
+    int   n, i;
+    Menu **list = UI_StaticHudMenus( &n );
+
+    for ( i = 0; i < n; i++ ) {
+        UI_ApplyHudScale( list[i] );
+        UI_RelayoutHudMenu( list[i] );
+    }
 }
 
 static void UI_SyncHudScale( void )
@@ -2057,6 +2177,8 @@ static void UI_SyncHudScale( void )
     for ( int i = 1; i <= hudList.NumObjects(); i++ ) {
         UI_ApplyHudScale( hudList.ObjectAt(i) );
     }
+
+    UI_ApplyStaticHudScale();
 }
 
 // THE single writer of the whole `uid` block.  Retail CL_FillUIDef @0x00196BE0
@@ -5594,6 +5716,7 @@ void CL_InitializeUI(void)
     cg_targetedPlayerName = Cvar_Get("cg_targetedPlayerName", "", 0);      
     ui_hudScale           = Cvar_Get("ui_hudScale", "0", CVAR_ARCHIVE);     
     UI_ComputeAutoHudScale();
+    UI_LogHudScale();
     Cvar_Get("ui_consoleLineHistory", "300", 1);                           
     Cvar_Get("ui_startmap", "", 1);                                        
     Cvar_Get("dlg_badsave", "This save game is invalid", 0);               
@@ -5802,6 +5925,11 @@ void CL_InitializeUI(void)
     hud_targetName = menuManager.FindMenu("targetNameHud");  
 
     uWinMan.ChangeResolution();
+
+    /* `uWinMan.ChangeResolution' laid every menu out with the retail virtual
+       space, and that is what latches each container's authored frame.  The
+       client-managed HUD menus are laid out again here in their own scope. */
+    UI_ScaleStaticHudMenus();
 
     mainmenu = menuManager.FindMenu("main");
 

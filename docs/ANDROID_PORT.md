@@ -60,9 +60,19 @@ factor is a scope around a HUD element's own subtree: the widget set's
 it that way, and the pair is restored before anything else in the frame resolves
 it. Each HUD menu keeps the edge its `align` declares, so a `bottom left` element
 grows up and right from the bottom-left corner, a `top right` element grows down
-and left, and a centred element grows about its centre. `hudList` is the HUD set;
-the multiplayer scoreboard (`dm_scoreboard`) is excluded and stays retail-sized.
-It is archived, so a config rewrite keeps it.
+and left, and a centred element grows about its centre. It is archived, so a
+config rewrite keeps it.
+
+Two sets are in scope. `hudList` holds everything `ui_addhud` pushes there,
+including the menus the game adds by script through `Player::addHud` — the
+tricorder's keypad, modulation and route panels among them — with the
+multiplayer scoreboard (`dm_scoreboard`) excluded. The client-managed set is
+scaled directly: the weapon-ammo readouts (`weaphud*`) and the dialogue/comm box
+(`headhud`, `headtexthud`, `texthud`), plus the small HUD panels. A HUD menu
+authored across the whole 640x480 screen is an overlay: its edges and geometry
+stay where retail puts them, so nothing is pushed past the screen, and the factor
+reaches its text through the draw scope. A smaller panel has room to grow, so its
+geometry scales and keeps its coarse corner.
 
 | value | effect |
 |-------|--------|
@@ -75,6 +85,13 @@ clamped to `[1.0, 2.0]` — a physical-size rule, not a pixel count. A 6.4" 720p
 panel reports density 320 and a 6.4" 1440p panel reports 560, so both land on the
 shared cap of `2.0` and the HUD reads the same size on each, while the clamp is
 the same at both ends and no device ends up smaller than it is today.
+
+The density comes from `SDL_GetDisplayDPI` first; because that query can fail on
+a device, the Resources density is read over JNI (`Sys_AndroidDensityDpi`) as the
+second source, and a phone floor (320 dpi) is used if neither answers, so the
+feature cannot silently collapse to `1.0`. The effective factor is printed once
+at startup on every platform, with the path it came from, the raw density and the
+pre-clamp ratio.
 
 ### Pointer
 

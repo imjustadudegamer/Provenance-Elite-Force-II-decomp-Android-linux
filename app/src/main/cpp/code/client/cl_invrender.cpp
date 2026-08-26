@@ -307,7 +307,7 @@ void CL_Draw3DModel(
         ent->morph_controllers[0].percent = dm_morph_c1->value;
     }
 
-    // RDF_NOWORLDMODEL and NOTHING ELSE (retail does not set RDF_HUD) -- and
+    // RDF_NOWORLDMODEL and NOTHING ELSE (retail does not set RDF_FULLBRIGHT) -- and
     inv_refdef.x       = uid.originX + (int)x;
     inv_refdef.y       = uid.originY + (int)y;
     inv_refdef.width   = (int)w;

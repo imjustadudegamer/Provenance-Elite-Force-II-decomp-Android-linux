@@ -947,7 +947,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		qglDepthRange (0, 1.0);
 	}
 
-	if (!(backEnd.refdef.rdflags & RDF_HUD)) {
+	if (!(backEnd.refdef.rdflags & RDF_FULLBRIGHT)) {
 		BE_ZONE( BE_FAM_DS, BE_DSZ_flare, R_DrawLensFlares() );
 	}
 

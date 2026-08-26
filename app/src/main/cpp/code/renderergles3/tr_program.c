@@ -1870,7 +1870,16 @@ summary:
 }
 
 
-static void NVFIX_NvNote( void )
+/*
+ * One line per 60 frames while the fullbright arm is firing, carrying the raw
+ * flags word and both bits apart: `fullbright' is the illumination predicate
+ * retail's stage iterators test as `& 2', and `nightvision' names the shipped
+ * view mode that sets it.  They are printed separately because the arm keys on
+ * the first and the bridge question is about the second, and because the
+ * earlier single field -- printed as a raw `& RDF_FULLBRIGHT' value, so 2 or 0 --
+ * was read as a boolean night-vision state.
+ */
+void GLES3_FullbrightNote( void )
 {
 	static int s_nvSubs;
 	static int s_nvFrame = -1;
@@ -1894,10 +1903,12 @@ static void NVFIX_NvNote( void )
 				} else {
 					ri.Printf( PRINT_ALL,
 						"[NIGHTVISION:nv] row=%d frame=%d beRDF=0x%08x trRDF=0x%08x "
-						"HUD=%d subsThisFrame=%d\n",
+						"fullbright=%d nightvision=%d subsThisFrame=%d\n",
 						s_nvRows, tr.frameCount,
 						(unsigned)backEnd.refdef.rdflags, (unsigned)tr.refdef.rdflags,
-						( ( backEnd.refdef.rdflags & RDF_HUD ) ? 1 : 0 ), s_nvSubs );
+						( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) ? 1 : 0,
+						( backEnd.refdef.rdflags & RDF_NIGHTVISION ) ? 1 : 0,
+						s_nvSubs );
 				}
 				s_nvRows++;
 			}
@@ -1907,14 +1918,18 @@ static void NVFIX_NvNote( void )
 }
 
 /*
- * The stage-bind census exists to name the tutorial bridge's night-vision
- * funnel, so its rows are split: ordinary rows share one large budget, and the
- * funnel rows -- the night-vision arm, or a bind that did not follow the
- * stage's own image -- keep their own, so a menu pass cannot spend it before the
- * bridge is drawn.  A claim past a budget is reported once, as the budget it is.
+ * The stage-bind census exists to name the tutorial bridge's fullbright arm, so
+ * its rows are split three ways with a budget each: ordinary rows share the
+ * large one, the rows where the arm actually substituted a bind keep their own,
+ * and the rows where a bind did not follow the stage's own image keep a third.
+ * The arm and the bind mismatch are different questions and a menu pass -- the
+ * loading screen's animated dots are a bind mismatch -- must not spend the arm's
+ * budget before the bridge is drawn.  A claim past a budget is reported once, as
+ * the budget it is.
  */
 #define SURFSTATS_ROWS			4096
-#define SURFSTATS_FUNNEL_ROWS	64
+#define SURFSTATS_ARM_ROWS		64
+#define SURFSTATS_MISS_ROWS		64
 
 #define SURFSTAT_DUP	0
 #define SURFSTAT_NEW	1
@@ -1956,6 +1971,87 @@ static int R_SurfStatClaim( surfStatRow_t *rows, int *used, int cap,
 	return SURFSTAT_NEW;
 }
 
+/*
+ * One row per distinct stage bind, reported by every stage path that binds a
+ * bundle -- the generic iterator through `GLES3_DrawStage' and the lightmapped
+ * multitexture iterator, which is the fast path most world geometry takes and
+ * which bound its bundles directly, so the census never saw the level.  The row
+ * carries the raw flags word and both bits apart, and it is claimed against one
+ * of three budgets: the arm actually firing, a bind that did not follow the
+ * stage's own image, or neither.  `want' is the stage's own image for the unit,
+ * `u' is what is bound there now.
+ */
+void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
+							int stageIndex, qboolean in2D,
+							unsigned w0, unsigned w1, unsigned u0, unsigned u1 )
+{
+	static surfStatRow_t	s_surfSeen[SURFSTATS_ROWS];
+	static surfStatRow_t	s_surfArm[SURFSTATS_ARM_ROWS];
+	static surfStatRow_t	s_surfMiss[SURFSTATS_MISS_ROWS];
+	static int			s_surfN, s_surfArmN, s_surfMissN, s_surfRows;
+	static cvar_t		*s_surfCvar;
+
+	int			claim;
+	qboolean	fbarm;
+	qboolean	bindmiss;
+	qboolean	nv;
+
+	if ( !shader || !pStage ) {
+		return;
+	}
+
+	if ( !s_surfCvar ) {
+		s_surfCvar = ri.Cvar_Get( "lifecycle_surfStats", "1", 0 );
+	}
+
+	if ( !s_surfCvar || !s_surfCvar->integer ) {
+		return;
+	}
+
+	fbarm = (qboolean)( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
+						&& ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) );
+	bindmiss = (qboolean)( u0 != w0 || ( w1 != 0 && u1 != w1 ) );
+	nv = (qboolean)( ( backEnd.refdef.rdflags & RDF_NIGHTVISION ) ? qtrue : qfalse );
+
+	if ( fbarm ) {
+		GLES3_FullbrightNote();
+	}
+
+	claim = fbarm
+		? R_SurfStatClaim( s_surfArm, &s_surfArmN, SURFSTATS_ARM_ROWS,
+						   (const void *)shader, (const void *)pStage, (int)pStage->rgbGen, u0, u1 )
+		: ( bindmiss
+			? R_SurfStatClaim( s_surfMiss, &s_surfMissN, SURFSTATS_MISS_ROWS,
+							   (const void *)shader, (const void *)pStage, (int)pStage->rgbGen, u0, u1 )
+			: R_SurfStatClaim( s_surfSeen, &s_surfN, SURFSTATS_ROWS,
+							   (const void *)shader, (const void *)pStage, (int)pStage->rgbGen, u0, u1 ) );
+
+	if ( claim == SURFSTAT_FULL ) {
+		ri.Printf( PRINT_ALL, "[LIFECYCLE:surf] capped at %d %s rows; no further rows\n",
+				   fbarm ? SURFSTATS_ARM_ROWS : ( bindmiss ? SURFSTATS_MISS_ROWS : SURFSTATS_ROWS ),
+				   fbarm ? "fullbright-arm" : ( bindmiss ? "bind-mismatch" : "distinct" ) );
+	} else if ( claim == SURFSTAT_NEW ) {
+		/* A row this frame that no frame before it printed was not recorded, so
+		   the count of NEW rows can never be read as the count of draws.  The
+		   dropped count is printed with the row so a thin census says which of
+		   the two budgets it hit. */
+		s_surfRows++;
+
+		ri.Printf( PRINT_ALL,
+			"[LIFECYCLE:surf] n=%d kind=%s shader=%s stage=%d rgb=%d lm=%d/%d in2D=%d "
+			"want0=%u want1=%u u0=%u u1=%u arm0=%d arm1=%d rdf=0x%08x fullbright=%d nv=%d\n",
+			s_surfRows, fbarm ? "arm" : ( bindmiss ? "miss" : "seen" ),
+			shader->name, stageIndex, (int)pStage->rgbGen,
+			(int)pStage->bundle[0].isLightmap, (int)pStage->bundle[1].isLightmap,
+			(int)in2D, w0, w1, u0, u1,
+			(int)( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[0].isLightmap ),
+			(int)( pStage->bundle[1].image[0] && ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[1].isLightmap ),
+			(unsigned)backEnd.refdef.rdflags,
+			( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) ? 1 : 0,
+			nv ? 1 : 0 );
+	}
+}
+
 void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -1976,7 +2072,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		GLES3_SetUniform1f( prog, GLES3_U_FORCEALPHA, forceAlpha );
 	} );
 
-	if ( hudColorClobber && ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D
+	if ( hudColorClobber && ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
 		 && pStage->rgbGen != CGEN_LIGHTING_SPHERICAL
 		 && pStage->rgbGen != CGEN_NOISE
 		 && pStage->rgbGen != CGEN_SCOORD
@@ -1992,9 +2088,8 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		GLES3_SelectTexture( 0 );
 		GL_Bind( tr.whiteImage );
 	}
-	else if ( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[0].isLightmap )
+	else if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[0].isLightmap )
 	{
-		NVFIX_NvNote();
 		GLES3_SelectTexture( 0 );
 		GL_Bind( tr.whiteImage );
 	}
@@ -2005,9 +2100,8 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 
 	if ( pStage->bundle[1].image[0] )
 	{
-		if ( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[1].isLightmap )
+		if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[1].isLightmap )
 		{
-			NVFIX_NvNote();
 			GLES3_SelectTexture( 1 );
 			GL_Bind( tr.whiteImage );
 		}
@@ -2018,56 +2112,18 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	}
 
 	{
-		static surfStatRow_t	s_surfSeen[SURFSTATS_ROWS];
-		static surfStatRow_t	s_surfFunnel[SURFSTATS_FUNNEL_ROWS];
-		static int			s_surfN, s_surfFunnelN, s_surfRows;
-		static cvar_t		*s_surfCvar;
-
-		int			i, sIdx = -1, claim;
-		qboolean	funnel;
+		int			sIdx = -1;
+		int			i;
 		unsigned	u0 = (unsigned)glState.currenttextures[0];
 		unsigned	u1 = (unsigned)glState.currenttextures[1];
 		unsigned	w0 = pStage->bundle[0].image[0] ? (unsigned)pStage->bundle[0].image[0]->texnum : 0u;
 		unsigned	w1 = pStage->bundle[1].image[0] ? (unsigned)pStage->bundle[1].image[0]->texnum : 0u;
 
-		if ( !s_surfCvar ) {
-			s_surfCvar = ri.Cvar_Get( "lifecycle_surfStats", "1", 0 );
-		}
-
 		for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
 			if ( tess.xstages[i] == pStage ) { sIdx = i; break; }
 		}
 
-		funnel = (qboolean)( ( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D
-							   && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) )
-						  || u0 != w0 || ( w1 != 0 && u1 != w1 ) );
-
-		if ( s_surfCvar && s_surfCvar->integer ) {
-			claim = funnel
-				? R_SurfStatClaim( s_surfFunnel, &s_surfFunnelN, SURFSTATS_FUNNEL_ROWS,
-								   (const void *)shader, (const void *)pStage, (int)pStage->rgbGen, u0, u1 )
-				: R_SurfStatClaim( s_surfSeen, &s_surfN, SURFSTATS_ROWS,
-								   (const void *)shader, (const void *)pStage, (int)pStage->rgbGen, u0, u1 );
-
-			if ( claim == SURFSTAT_FULL ) {
-				ri.Printf( PRINT_ALL, "[LIFECYCLE:surf] capped at %d %s rows; no further rows\n",
-						   funnel ? SURFSTATS_FUNNEL_ROWS : SURFSTATS_ROWS,
-						   funnel ? "funnel" : "distinct" );
-			} else if ( claim == SURFSTAT_NEW ) {
-				s_surfRows++;
-
-				ri.Printf( PRINT_ALL,
-					"[LIFECYCLE:surf] n=%d shader=%s stage=%d rgb=%d lm=%d/%d in2D=%d "
-					"want0=%u want1=%u u0=%u u1=%u arm0=%d arm1=%d nv=%d funnel=%d\n",
-					s_surfRows, shader->name, sIdx, (int)pStage->rgbGen,
-					(int)pStage->bundle[0].isLightmap, (int)pStage->bundle[1].isLightmap,
-					(int)backEnd.in2D, w0, w1, u0, u1,
-					(int)( ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[0].isLightmap ),
-					(int)( pStage->bundle[1].image[0] && ( backEnd.refdef.rdflags & RDF_HUD ) && !backEnd.in2D && pStage->bundle[1].isLightmap ),
-					(int)( backEnd.refdef.rdflags & RDF_HUD ),
-					(int)funnel );
-			}
-		}
+		GLES3_StageBindCensus( shader, pStage, sIdx, backEnd.in2D ? qtrue : qfalse, w0, w1, u0, u1 );
 	}
 
 

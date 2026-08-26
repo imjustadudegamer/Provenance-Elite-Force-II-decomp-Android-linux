@@ -37,8 +37,16 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	RF_NOSHADOW		0x0040		
 
 #define RDF_NOWORLDMODEL	0x0001		
-#define RDF_HUD				0x0002
+/* The illumination bit, set from the active view mode's `useFullBright'.  Retail
+   carries it as `RDF_FULLBRIGHT' and its own shader/binaries test it as `& 2';
+   the name here previously read `RDF_HUD', which named a HUD pass that does not
+   exist and was misread as one. */
+#define RDF_FULLBRIGHT		0x0002
 #define RDF_HYPERSPACE		0x0004		
+/* The active view mode is the shipped `nightvision' one.  Distinct from
+   `RDF_FULLBRIGHT': that bit is the generic illumination predicate, this one
+   names the mode the illumination is for. */
+#define RDF_NIGHTVISION		0x0008
 
 typedef struct {
 	vec3_t		xyz;

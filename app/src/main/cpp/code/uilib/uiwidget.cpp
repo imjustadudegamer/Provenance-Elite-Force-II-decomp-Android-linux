@@ -3782,6 +3782,16 @@ float UIWidget::getHudScale(void) const
     return m_hudScale;
 }
 
+/* A HUD menu authored across the whole 640x480 virtual screen is an overlay:
+   its edges and its widget geometry stay where retail puts them so nothing is
+   pushed past the screen, and the factor reaches it through the draw scope,
+   which grows the text and the other draw-time metrics in place.  A smaller HUD
+   panel has room to grow, so its geometry scales too and keeps its corner. */
+bool UIWidget::isHudFullScreen(void) const
+{
+    return m_authoredFrame.size.width >= 640.0f && m_authoredFrame.size.height >= 480.0f;
+}
+
 /* The effective HUD scale multiplies the two virtual-space stores for exactly
    one HUD subtree.  The depth guard keeps a menu pushed from both the HUD draw
    list and its own Display from multiplying twice, and the saved pair is what

@@ -611,10 +611,12 @@ void MenuManager::ChangeResolution(void)
         Menu     *menu = m_menulist.ObjectAt(i);
         UIWidget *cont = menu->GetContainerWidget();
         float     hudScale = cont ? cont->getHudScale() : 1.0f;
-        bool      bHudScale = hudScale > 1.0f;
+        /* A full-screen HUD overlay keeps retail geometry; the draw scope still
+           grows its text.  Everything else is laid out in the multiplied space
+           and keeps its declared corner. */
+        bool      bHudScale = hudScale > 1.0f && !(cont && cont->isHudFullScreen());
 
-        /* Only a HUD menu is laid out with the multiplied virtual space.  The
-           scope wraps the whole item list so a child's own ChangeResolution
+        /* The scope wraps the whole item list so a child's own ChangeResolution
            call, which this loop issues after the container's, resolves the
            same space as the container. */
         if (bHudScale) {
