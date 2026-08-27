@@ -9,7 +9,7 @@ it states that too rather than papering over it.
 The project is **unofficial**. It is not affiliated with, endorsed by or
 sponsored by Ritual Entertainment, Activision, id Software, Raven Software,
 Paramount or CBS. It is **non-commercial**. It ships **no game assets**: the
-operator supplies their own retail installation. It comes with **no warranty**.
+player supplies their own retail installation. It comes with **no warranty**.
 
 ## The four provenance buckets
 
