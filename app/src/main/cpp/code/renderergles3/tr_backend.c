@@ -1531,7 +1531,7 @@ const void	*RB_SwapBuffers( const void *data ) {
 #define BE_MAX_ROOTS		3600
 #define BE_MAX_ROWS		400
 #define BE_MAX_ZONES		8
-#define BE_MAX_COUNTERS	8
+#define BE_MAX_COUNTERS	9
 #define BE_MAX_SUBS		4
 #define BE_TOP_N			3
 #define BE_NAME_LEN		48
@@ -1579,7 +1579,7 @@ static const char *const s_beSubName[BE_MAX_SUBS] = {
 
 static const char *const s_beCntName[BE_FAM_COUNT][BE_MAX_COUNTERS] = {
 	{ "lists", "cmds", "surfN", "drawN", "empty", "sprN", "sprBatch", "sprDraw" },
-	{ "surfsN", "batchN", "vertN", "stageN", "drawN", "unifs", "binds", "edgeN" },
+	{ "surfsN", "batchN", "vertN", "stageN", "drawN", "unifs", "unifskip", "binds", "edgeN" },
 	{ "made", NULL, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 static const int s_beCntCount[BE_FAM_COUNT] = {
@@ -1588,7 +1588,7 @@ static const int s_beCntCount[BE_FAM_COUNT] = {
 
 typedef char be_tables_agree_enums[
 	( BE_FAM_COUNT == 3 && BE_BE_ZONES == 8 && BE_DS_ZONES == 5
-	  && BE_PROG_ZONES == 3 && BE_BE_COUNTERS == 8 && BE_DS_COUNTERS == 8
+	  && BE_PROG_ZONES == 3 && BE_BE_COUNTERS == 8 && BE_DS_COUNTERS == 9
 	  && BE_PROG_COUNTERS == 1 && BE_DS_SUBS == 4 ) ? 1 : -1 ];
 
 void BE_Zone( int family, int zone, int usec );

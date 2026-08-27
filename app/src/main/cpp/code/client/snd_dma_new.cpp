@@ -87,7 +87,9 @@ void S_Init(qboolean full_startup)
 
     s_volume         = Cvar_Get("s_volume", "1.0", CVAR_ARCHIVE);
     s_musicVolume    = Cvar_Get("s_musicvolume", "0.60", CVAR_ARCHIVE);
-    s_dialogVolume   = Cvar_Get("s_dialogvolume", "0.60", CVAR_ARCHIVE);
+    /* 0.96, not retail's 0.60: bus = master x category x authored, then ^(5/3), so at 0.60
+       the tutorial pair puts lcars_hit.wav (authored 1.6) +6.804 dB over Tuvok (1.0). */
+    s_dialogVolume   = Cvar_Get("s_dialogvolume", "0.96", CVAR_ARCHIVE);
     s_sfxVolume      = Cvar_Get("s_sfxvolume", "0.60", CVAR_ARCHIVE);
     s_combatVolume   = Cvar_Get("s_combatvolume", "0.60", CVAR_ARCHIVE);
     s_khz            = Cvar_Get("s_khz", "44", CVAR_ARCHIVE | CVAR_SOUND_LATCH);

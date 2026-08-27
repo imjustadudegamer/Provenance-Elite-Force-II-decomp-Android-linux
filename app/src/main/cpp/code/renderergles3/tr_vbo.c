@@ -42,10 +42,36 @@ int r_spriteListOpen = 0;
 
 GLuint r_vaoBound = 0;
 
+/*
+ * A buffer bind is only worth a driver call when it changes the binding.  The element
+ * array binding is VAO state, so a VAO switch drops that half of the cache.
+ */
+static GLuint	s_arrayBufferBound = (GLuint)~0u;
+static GLuint	s_elementBufferBound = (GLuint)~0u;
+
+void RB_BindBuffer( GLenum target, GLuint buffer ) {
+	if ( target == GL_ARRAY_BUFFER ) {
+		if ( s_arrayBufferBound == buffer ) {
+			return;
+		}
+		s_arrayBufferBound = buffer;
+	} else if ( target == GL_ELEMENT_ARRAY_BUFFER ) {
+		if ( s_elementBufferBound == buffer ) {
+			return;
+		}
+		s_elementBufferBound = buffer;
+	} else {
+		qglBindBuffer( target, buffer );
+		return;
+	}
+	qglBindBuffer( target, buffer );
+}
+
 void RB_BindVAO( GLuint vao ) {
 	if ( r_vaoBound != vao ) {
 		qglBindVertexArray( vao );
 		r_vaoBound = vao;
+		s_elementBufferBound = (GLuint)~0u;
 	}
 }
 static GLuint	s_vboTess;
@@ -112,14 +138,14 @@ void RB_VBO_Init( void )
 
 	qglGenVertexArrays( 1, &s_vaoTess );
 	RB_BindVAO( s_vaoTess );
-	qglBindBuffer( GL_ARRAY_BUFFER, s_vboTess );
-	qglBindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTess );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTess );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTess );
 	RB_VBO_ConfigureAttribs();
 
 	qglGenVertexArrays( 1, &s_vaoStream );
 	RB_BindVAO( s_vaoStream );
-	qglBindBuffer( GL_ARRAY_BUFFER, s_vboStream );
-	qglBindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboStream );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
 	RB_VBO_ConfigureAttribs();
 
 
@@ -210,12 +236,12 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		}
 
 		RB_BindVAO( s_vaoTess );
-		qglBindBuffer( GL_ARRAY_BUFFER, s_vboTess );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTess );
 		qglBufferData( GL_ARRAY_BUFFER,
 					   ( GLsizeiptr )( ( size_t )input->numVertexes * RB_VERTEX_STRIDE ),
 					   s_tessStage, GL_STREAM_DRAW );
 
-		qglBindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTess );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTess );
 		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
 					   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
 					   indexes, GL_STREAM_DRAW );
@@ -285,7 +311,7 @@ void RB_ImmFlush( void )
 	}
 
 	RB_BindVAO( s_vaoStream );
-	qglBindBuffer( GL_ARRAY_BUFFER, s_vboStream );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboStream );
 	qglBufferData( GL_ARRAY_BUFFER,
 				   ( GLsizeiptr )( ( size_t )s_streamNumVerts * RB_VERTEX_STRIDE ),
 				   s_streamVerts, GL_STREAM_DRAW );
@@ -315,7 +341,7 @@ void RB_ImmFlush( void )
 	}
 
 	if ( nIndices > 0 ) {
-		qglBindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
 		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
 					   ( GLsizeiptr )( ( size_t )nIndices * sizeof( unsigned int ) ),
 					   s_streamIndices, GL_STREAM_DRAW );

@@ -49,6 +49,25 @@ constant whenever the defaults header changes.
 
 There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
 
+### Dialogue level, deliberately not retail's
+
+The dialogue bus is the one audio default this port does not take from retail.
+Retail registers `s_volume 1.0` and `s_musicvolume`/`s_dialogvolume`/
+`s_sfxvolume`/`s_combatvolume` all at 0.60, and the bus is
+`master x category x authored`, raised to `5/3` by Miles' own curve. On the
+tutorial pair the shipped data authors `lcars_hit.wav` at 1.6 and Tuvok's line at
+1.0, so retail gives the effect 0.934226 against dialogue 0.426827 -- a factor of
+2.188769, +6.804 dB, which is the imbalance the mix was reported for.
+
+The dialogue bus therefore defaults to **0.96**, the value that carries
+`s_sfxvolume x 1.6 / 1.0` and puts dialogue exactly at that effect instead of
+under it (both resolve to 0.934226, ratio 1.000000, 0.000 dB). `s_sfxvolume`
+stays at retail's 0.60: raising dialogue alone meets the target, so the effects
+side is untouched. `s_dialogvolume` is `CVAR_ARCHIVE`, so the value also ships as
+`seta s_dialogvolume 0.96` in `EF2_ANDROID_DEFAULT_COMMANDS` (with
+`ANDROID_DEFAULTS_VERSION` bumped) for an install whose `config.cfg` already
+
+
 ### In-game HUD scale
 
 `ui_hudScale` scales the in-game HUD, weapon ammo, the dialogue box, the

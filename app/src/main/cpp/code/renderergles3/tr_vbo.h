@@ -54,6 +54,7 @@ const float *RB_GetProjectionMatrix( void );
 extern GLuint r_vaoBound;
 extern int r_spriteListOpen;
 void RB_BindVAO( GLuint vao );
+void RB_BindBuffer( GLenum target, GLuint buffer );
 
 #ifdef __cplusplus
 }

@@ -1513,7 +1513,7 @@ void Com_Init( char *commandLine ) {
 
 #ifdef __ANDROID__
 	// joystick term in CL_CreateCmd @0x16F490 is deliberately not transcribed
-#define ANDROID_DEFAULTS_VERSION 7
+#define ANDROID_DEFAULTS_VERSION 8
 	if ( Cvar_VariableIntegerValue( "in_androidDefaults" ) < ANDROID_DEFAULTS_VERSION )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );

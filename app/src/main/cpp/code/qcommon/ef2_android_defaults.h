@@ -19,6 +19,9 @@ root, for more details.
 #define EF2_ANDROID_DEFAULTS_H
 
 
+/* s_dialogvolume 0.96 is deliberate: retail's shared 0.60 leaves dialogue 6.804 dB under
+   the tutorial's authored effect, and this seta is what carries the change to an install
+   whose config.cfg already archived the old value.  See snd_dma_new.cpp S_Init. */
 #define EF2_ANDROID_DEFAULT_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
 	"bind w \"+forward\"\n" \
@@ -141,10 +144,11 @@ root, for more details.
 	"seta cl_touchOpacity 1.0\n" \
 	"seta cl_crouchToggle 1\n" \
 	"seta s_musicvolume 0.5\n" \
+	"seta s_dialogvolume 0.96\n" \
 	"seta ui_console 0\n" \
 	"seta ui_minicon 0\n"
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 
 
-#define EF2_ANDROID_DEFAULT_SETA_COUNT 49
+#define EF2_ANDROID_DEFAULT_SETA_COUNT 50
