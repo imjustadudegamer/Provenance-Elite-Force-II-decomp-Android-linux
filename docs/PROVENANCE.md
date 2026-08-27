@@ -57,6 +57,6 @@ corpus is absent.
 - **No log carries a network address.** Diagnostics keep the port, the state and
   the failure reason; the address-free form is `NET_AdrToLogString`.
 - **Startup logging is minimal.** The engine prints the device model and the CPU
-  model and nothing else identifying.
+  model and the CPU model, and nothing further.
 - **The prose speaks in the engine's terms.** Names, identifiers and quoted
   evidence come from the engine, the renderer or retail.
