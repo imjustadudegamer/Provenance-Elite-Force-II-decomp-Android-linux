@@ -1799,6 +1799,10 @@ static void GLES3_DrawCensusKey( const gles3DrawKey_t *k, qboolean in2D ) {
 	int				 slot;
 	int				 idx;
 
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
+
 	GLES3_CensusInit( c );
 
 	if ( c->lastFrame != tr.frameCount ) {
@@ -1871,13 +1875,9 @@ summary:
 
 
 /*
- * One line per 60 frames while the fullbright arm is firing, carrying the raw
- * flags word and both bits apart: `fullbright' is the illumination predicate
- * retail's stage iterators test as `& 2', and `nightvision' names the shipped
- * view mode that sets it.  They are printed separately because the arm keys on
- * the first and the bridge question is about the second, and because the
- * earlier single field -- printed as a raw `& RDF_FULLBRIGHT' value, so 2 or 0 --
- * was read as a boolean night-vision state.
+ * One [NIGHTVISION:nv] row per 60 frames: `fullbright' is the `& 2' predicate
+ * retail's stage iterators test, `nightvision' the shipped view mode that sets
+ * it.  They are separate because the bridge question is about the second.
  */
 void GLES3_FullbrightNote( void )
 {
@@ -1885,6 +1885,10 @@ void GLES3_FullbrightNote( void )
 	static int s_nvFrame = -1;
 	static int s_nvRows;
 	static cvar_t *s_nvCvar;
+
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
 
 	s_nvSubs++;
 
@@ -1917,16 +1921,10 @@ void GLES3_FullbrightNote( void )
 	}
 }
 
-/*
- * The stage-bind census exists to name the tutorial bridge's fullbright arm, so
- * its rows are split three ways with a budget each: ordinary rows share the
- * large one, the rows where the arm actually substituted a bind keep their own,
- * and the rows where a bind did not follow the stage's own image keep a third.
- * The arm and the bind mismatch are different questions and a menu pass -- the
- * loading screen's animated dots are a bind mismatch -- must not spend the arm's
- * budget before the bridge is drawn.  A claim past a budget is reported once, as
- * the budget it is.
- */
+/* Three budgets: ordinary rows, rows where the fullbright arm substituted a
+ * bind, and rows where a bind did not follow the stage's own image.  The arm and
+ * the mismatch are different questions, so the loading screen's animated dots
+ * must not spend the arm's budget before the bridge is drawn. */
 #define SURFSTATS_ROWS			4096
 #define SURFSTATS_ARM_ROWS		64
 #define SURFSTATS_MISS_ROWS		64
@@ -2004,7 +2002,7 @@ void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 		s_surfCvar = ri.Cvar_Get( "lifecycle_surfStats", "1", 0 );
 	}
 
-	if ( !s_surfCvar || !s_surfCvar->integer ) {
+	if ( !s_surfCvar || !s_surfCvar->integer || !R_ProbeStatsOn() ) {
 		return;
 	}
 
@@ -2176,7 +2174,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	}
 
 #define SMP_DECAL_MAX 16
-	if ( !Q_stricmp( shader->name, "markShadow" ) )
+	if ( R_ProbeStatsOn() && !Q_stricmp( shader->name, "markShadow" ) )
 	{
 		static int		s_smpDecalCount;
 		static qboolean	s_smpDecalNotice;
@@ -2238,7 +2236,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 #undef SMP_DECAL_MAX
 
 #define SMP_DECALTX_MAX 4
-	if ( !Q_stricmp( shader->name, "markShadow" ) )
+	if ( R_ProbeStatsOn() && !Q_stricmp( shader->name, "markShadow" ) )
 	{
 		static int	s_smpDecaltxCount;
 
@@ -2303,7 +2301,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 			|| !Q_stricmpn( shader->name, "hud/", 4 )
 			|| !Q_stricmpn( shader->name, "sysimg/", 7 );
 
-		if ( isUI ) {
+		if ( isUI && R_ProbeStatsOn() ) {
 			if ( s_smpui2dCount >= SMP_UI2D_MAX ) {
 				if ( s_smpui2dCount == SMP_UI2D_MAX ) {
 					s_smpui2dCount++;

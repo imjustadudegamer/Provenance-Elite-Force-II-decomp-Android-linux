@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
 #define PROBE_PRINT                       Com_Printf
-#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)  
 #include "../qcommon/qa_probe.h"
 
 #include "../qcommon/qa_ui.h"
@@ -735,6 +735,37 @@ static void MENU3DAndroidVideoMenuFixup(Menu *menu)
         menu3dw = menu3dw->getNextSibling();
     }
 }
+
+/* The two antialiasing checkboxes (r_arb_multisample, r_ext_nv_multisample_filter)
+ * are registered and read nowhere, so they change neither picture nor cost. */
+static void MENU3DAndroidAdvancedVideoMenuFixup(Menu *menu)
+{
+    UIWidget *advcont;
+    UIWidget *advw;
+
+    if (!menu || Q_stricmp(menu->m_name.c_str(), "advancedvideo")) {
+        return;
+    }
+
+    advcont = menu->GetContainerWidget();
+    if (!advcont) {
+        return;
+    }
+
+    advw = advcont->getFirstChild();
+
+    while (advw) {
+        const char *advcvar = advw->getCvarName();
+
+        if (advcvar && advcvar[0]
+            && (!Q_stricmp(advcvar, "r_arb_multisample")
+                || !Q_stricmp(advcvar, "r_ext_nv_multisample_filter"))) {
+            advw->ProcessEvent(new Event(EV_Widget_Hide));
+        }
+
+        advw = advw->getNextSibling();
+    }
+}
 #endif
 
 static const char *const audioRetailOnlyAudioCvars[] = {
@@ -820,6 +851,7 @@ bool MenuManager::PushMenu(str name)
 
 #ifdef __ANDROID__
     MENU3DAndroidVideoMenuFixup(m);
+    MENU3DAndroidAdvancedVideoMenuFixup(m);
 #endif
 
     m->SaveCVars();
@@ -879,6 +911,7 @@ bool MenuManager::TransitionMenu(str name)
 
 #ifdef __ANDROID__
     MENU3DAndroidVideoMenuFixup(m);
+    MENU3DAndroidAdvancedVideoMenuFixup(m);
 #endif
 
     m->SaveCVars();
@@ -923,6 +956,7 @@ bool MenuManager::ShowMenu(str name)
 
 #ifdef __ANDROID__
     MENU3DAndroidVideoMenuFixup(m);
+    MENU3DAndroidAdvancedVideoMenuFixup(m);
 #endif
 
     m->SaveCVars();

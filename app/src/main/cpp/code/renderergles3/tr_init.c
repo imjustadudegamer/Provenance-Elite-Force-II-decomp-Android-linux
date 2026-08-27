@@ -36,6 +36,19 @@ int r_sequencenumber;
 
 static void GfxInfo_f( void );
 
+/* The per-event recorders (bind pairs, uploads, draw-key and stage-bind censuses)
+ * run only under the `qa_probe' gate ; the stage-bind
+ * census scans up to SURFSTATS_ROWS rows for every stage once its table fills. */
+qboolean R_ProbeStatsOn( void ) {
+	static cvar_t	*probe;
+
+	if ( !probe ) {
+		probe = ri.Cvar_Get( "qa_probe", "0", 0 );
+	}
+
+	return ( probe && probe->integer ) ? qtrue : qfalse;
+}
+
 
 cvar_t	*r_ignoreFastPath;
 

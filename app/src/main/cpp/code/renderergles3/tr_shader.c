@@ -3641,7 +3641,7 @@ void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char
 	if ( !s_cvar ) {
 		s_cvar = ri.Cvar_Get( "smp_shaderProbe", "1", 0 );
 	}
-	if ( !s_cvar || !s_cvar->integer ) {
+	if ( !s_cvar || !s_cvar->integer || !R_ProbeStatsOn() ) {
 		return;
 	}
 
