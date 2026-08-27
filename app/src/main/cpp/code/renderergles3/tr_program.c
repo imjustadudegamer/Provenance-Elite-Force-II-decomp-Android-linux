@@ -51,6 +51,7 @@ REFERENCES
 #include "qgl_gles3_tokens.h"
 #include "tr_program.h"
 #include "tr_program_cache.h"
+#include "tr_vbo.h"
 
 #include "glsl/gles3_glsl_embedded.h"
 
@@ -231,6 +232,26 @@ static int		s_progCreateProbeRows;
 #define GLES3_WAVETABLE_UNIT 2
 static GLuint	s_waveTable;
 static qboolean	s_waveTableReady;
+
+/*
+ * Uniform values live in the program object, so re-issuing the value a (program, location)
+ * already carries costs a driver call and changes nothing.  A direct-mapped slot always
+ * holds the last value written for its key, so a hit is exact and a collision only costs
+ * the call it was going to make anyway.
+ */
+#define GLES3_UNIF_CACHE_BITS	11
+#define GLES3_UNIF_CACHE_SIZE	( 1 << GLES3_UNIF_CACHE_BITS )
+#define GLES3_UNIF_CACHE_VALS	16
+
+typedef struct {
+	unsigned	program;
+	int			location;
+	short		count;
+	short		used;
+	float		val[GLES3_UNIF_CACHE_VALS];
+} gles3UnifCache_t;
+
+static gles3UnifCache_t	s_unifCache[GLES3_UNIF_CACHE_SIZE];
 
 void GLES3_CreateWaveTable( void )
 {
@@ -678,6 +699,7 @@ void GLES3_ProgramsShutdown( void )
 	}
 	gles3NumPrograms = 0;
 	Com_Memset( gles3Programs, 0, sizeof( gles3Programs ) );
+	Com_Memset( s_unifCache, 0, sizeof( s_unifCache ) );
 	glState.currentProgram = 0;
 	GLES3_DestroyWaveTable();
 	PROGCACHE_ProgCache_Shutdown();
@@ -1005,12 +1027,46 @@ gles3Program_t *GLES3_StageProgram( const shaderStage_t *pStage, const shader_t 
 	return GLES3_GetProgram( defines );
 }
 
+static qboolean GLES3_UniformCached( gles3Program_t *p, int location, const void *v, int n )
+{
+	gles3UnifCache_t	*e;
+	unsigned			 slot;
+
+	/* a value set on a program that is not bound never reaches it, so it is not remembered */
+	if ( glState.currentProgram != p->program ) {
+		return qfalse;
+	}
+
+	slot = ( (unsigned)p->program * 31u + (unsigned)location ) & ( GLES3_UNIF_CACHE_SIZE - 1 );
+	e = &s_unifCache[slot];
+
+	if ( n > GLES3_UNIF_CACHE_VALS ) {
+		e->program = 0;
+		return qfalse;
+	}
+	if ( e->used && e->program == p->program && e->location == location
+		 && e->count == (short)n && memcmp( e->val, v, (size_t)n * sizeof( float ) ) == 0 ) {
+		return qtrue;
+	}
+
+	e->used = 1;
+	e->program = p->program;
+	e->location = location;
+	e->count = (short)n;
+	memcpy( e->val, v, (size_t)n * sizeof( float ) );
+	return qfalse;
+}
+
 void GLES3_SetUniform1i( gles3Program_t *p, gles3Uniform_t u, int v )
 {
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniform1i( p->uniforms[u], v );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], &v, 1 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform1i( p->uniforms[u], v );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
@@ -1018,35 +1074,69 @@ void GLES3_SetUniform1f( gles3Program_t *p, gles3Uniform_t u, float v )
 {
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniform1f( p->uniforms[u], v );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], &v, 1 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform1f( p->uniforms[u], v );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
 void GLES3_SetUniform2f( gles3Program_t *p, gles3Uniform_t u, float x, float y )
 {
+	float	v[2];
+
+	v[0] = x;
+	v[1] = y;
+
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniform2f( p->uniforms[u], x, y );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], v, 2 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform2f( p->uniforms[u], x, y );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
 void GLES3_SetUniform3f( gles3Program_t *p, gles3Uniform_t u, float x, float y, float z )
 {
+	float	v[3];
+
+	v[0] = x;
+	v[1] = y;
+	v[2] = z;
+
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniform3f( p->uniforms[u], x, y, z );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], v, 3 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform3f( p->uniforms[u], x, y, z );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
 void GLES3_SetUniform4f( gles3Program_t *p, gles3Uniform_t u, float x, float y, float z, float w )
 {
+	float	v[4];
+
+	v[0] = x;
+	v[1] = y;
+	v[2] = z;
+	v[3] = w;
+
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniform4f( p->uniforms[u], x, y, z, w );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], v, 4 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform4f( p->uniforms[u], x, y, z, w );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
@@ -1054,8 +1144,12 @@ void GLES3_SetUniformMat4( gles3Program_t *p, gles3Uniform_t u, const float *m )
 {
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniformMatrix4fv( p->uniforms[u], 1, GL_FALSE, m );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], m, 16 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniformMatrix4fv( p->uniforms[u], 1, GL_FALSE, m );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
@@ -1063,8 +1157,12 @@ void GLES3_SetUniform3fv( gles3Program_t *p, gles3Uniform_t u, const float *v )
 {
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniform3fv( p->uniforms[u], 1, v );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], v, 3 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform3fv( p->uniforms[u], 1, v );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
@@ -1072,8 +1170,12 @@ void GLES3_SetUniform4fv( gles3Program_t *p, gles3Uniform_t u, const float *v )
 {
 	if ( p && p->uniforms[u] != -1 )
 	{
-		qglUniform4fv( p->uniforms[u], 1, v );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], v, 4 ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform4fv( p->uniforms[u], 1, v );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
@@ -1081,8 +1183,12 @@ static void GLES3_SetUniform4fvN( gles3Program_t *p, gles3Uniform_t u, const flo
 {
 	if ( p && p->uniforms[u] != -1 && count > 0 )
 	{
-		qglUniform4fv( p->uniforms[u], count, v );
-		BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		if ( GLES3_UniformCached( p, p->uniforms[u], v, count ) ) {
+			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
+		} else {
+			qglUniform4fv( p->uniforms[u], count, v );
+			BE_Bump( BE_FAM_DS, BE_DSC_unifs, 1 );
+		}
 	}
 }
 
@@ -2376,7 +2482,7 @@ static void GLES3_WireEnsure( void )
 	qglGenVertexArrays( 1, &s_wireVao );
 	qglGenBuffers( 1, &s_wireVbo );
 	RB_BindVAO( s_wireVao );
-	qglBindBuffer( GL_ARRAY_BUFFER, s_wireVbo );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_wireVbo );
 	qglBufferData( GL_ARRAY_BUFFER, sizeof( s_wireVerts ), NULL, GL_STREAM_DRAW );
 	qglEnableVertexAttribArray( ATTR_POSITION );
 	qglVertexAttribPointer( ATTR_POSITION, 4, GL_FLOAT, GL_FALSE,
@@ -2424,7 +2530,7 @@ void GLES3_WireEnd( GLenum mode )
 	}
 	bytes = (GLsizeiptr)( (size_t)s_wireNumVerts * sizeof( gles3WireVertex_t ) );
 	RB_BindVAO( s_wireVao );
-	qglBindBuffer( GL_ARRAY_BUFFER, s_wireVbo );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_wireVbo );
 	qglBufferData( GL_ARRAY_BUFFER, bytes, s_wireVerts, GL_STREAM_DRAW );
 	qglDrawArrays( mode, 0, s_wireNumVerts );
 	BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );

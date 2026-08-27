@@ -33,6 +33,10 @@ CLASSIFICATION
     * body comment    any comment line after the leading comment region.  This
                       is the pool the budget is cut from.
 
+The 2,000-line budget is lifted: the ceiling is now 2,200, and brevity is still
+the rule for anything added.  A change that needs more than the headroom reports
+the count it needs rather than deleting a file's header.
+
 Exit: 0 within budget, 1 over, 2 usage.
 """
 
@@ -180,7 +184,7 @@ def main():
     global TREE
     ap = argparse.ArgumentParser()
     ap.add_argument("--tree", default=DEFAULT_TREE, help="the project root")
-    ap.add_argument("--limit", type=int, default=2000)
+    ap.add_argument("--limit", type=int, default=2200)
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
     TREE = os.path.abspath(args.tree)

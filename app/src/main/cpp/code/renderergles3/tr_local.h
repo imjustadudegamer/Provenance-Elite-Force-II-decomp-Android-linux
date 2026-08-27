@@ -2290,7 +2290,7 @@ typedef enum {
 
 typedef enum {
 	BE_DSC_surfs = 0, BE_DSC_batches, BE_DSC_verts, BE_DSC_stages,
-	BE_DSC_draws, BE_DSC_unifs, BE_DSC_binds, BE_DSC_edges,
+	BE_DSC_draws, BE_DSC_unifs, BE_DSC_unifskip, BE_DSC_binds, BE_DSC_edges,
 	BE_DS_COUNTERS
 } be_ds_counter_t;
 
