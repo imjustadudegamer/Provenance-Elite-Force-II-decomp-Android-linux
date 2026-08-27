@@ -2,7 +2,7 @@
 
 One source tree, two targets: Android (arm64-v8a, the shipping GLES 3.0 backend)
 and Linux x86-64 (the same engine, used for the offline corpora and the desktop
-reference). There is no fork — a single `EF2_PLATFORM` / `EF2_RENDERER` switch in
+reference). There is no fork, a single `EF2_PLATFORM` / `EF2_RENDERER` switch in
 `app/src/main/cpp/CMakeLists.txt` selects the platform glue and the renderer.
 
 ## Android
@@ -50,8 +50,8 @@ They are built by the `tests` CMake target and never executed.
 
 Every change must pass, on a clean rebuild:
 
-- `ninja -j16` — 0 warnings / 0 errors;
-- `ldd -r` — 0 undefined on all five binaries;
+- `ninja -j16`, 0 warnings / 0 errors;
+- `ldd -r`, 0 undefined on all five binaries;
 
 ## What ships in the APK
 

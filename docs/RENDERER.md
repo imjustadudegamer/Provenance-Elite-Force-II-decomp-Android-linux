@@ -29,9 +29,9 @@ file.
 
 The renderer carries the seven view modes (normal, night vision, and the other
 HUD/vision effects), the portal clip plane, the shadow-volume silhouette path,
-the decal/mark path and the tiki/skeletor model path. Retail-faithful details —
+the decal/mark path and the tiki/skeletor model path. Retail-faithful details , 
 the `RDF_FULLBRIGHT` reach on the stage path, the inline-colour reads, the texture-unit
-class — are recorded with their addresses in the citation register.
+class, are recorded with their addresses in the citation register.
 
 ## Probes
 

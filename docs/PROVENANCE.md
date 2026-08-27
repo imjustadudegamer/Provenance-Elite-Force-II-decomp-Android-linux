@@ -3,11 +3,11 @@
 Every function, struct, table and constant in this port is held to one of three
 witnesses, in priority order:
 
-1. **The EF2 SDK** — the shipped game/engine source, the tie-break for behaviour.
-2. **The retail Mac PPC binaries** — the primary decompile, at
+1. **The EF2 SDK**, the shipped game/engine source, the tie-break for behaviour.
+2. **The retail Mac PPC binaries**, the primary decompile, at
    `personal/evidence/mac_symbols/` (untracked). The PC x86 binary is corroboration
    only: the two address spaces do not align.
-3. **The shipped retail data** — the paks, censused byte-for-byte where an
+3. **The shipped retail data**, the paks, censused byte-for-byte where an
    authored value, table size or count is at issue.
 
 A claim that cannot be tied to one of these is recorded as open, not asserted.

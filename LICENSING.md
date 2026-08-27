@@ -31,8 +31,8 @@ third party's own notice are never given a project SPDX id.
 
 ## 1. The engine lineage: GNU GPL v2 or later
 
-The engine — `code/qcommon/`, `code/botlib/`, `code/renderercommon/`,
-`code/renderergles3/`, `code/sdl/`, `code/sys/` and `code/thirdparty/` — descends
+The engine, `code/qcommon/`, `code/botlib/`, `code/renderercommon/`,
+`code/renderergles3/`, `code/sdl/`, `code/sys/` and `code/thirdparty/`, descends
 from id Software's Quake III Arena release, through ioquake3 and OpenMoHAA.
 Those files are free software under the GNU General Public License, version 2 or
 (at your option) any later version. The full text is `COPYING.txt` at the
@@ -42,11 +42,11 @@ changed also carry a change notice, as GPLv2 section 2(a) requires.
 
 ## 2. The Elite Force II game layer: the Ritual SDK agreement
 
-`Star Trek: Voyager — Elite Force II` (2003) was developed by **Ritual
+`Star Trek: Voyager, Elite Force II` (2003) was developed by **Ritual
 Entertainment** and published by **Activision**. Raven Software developed the
-2000 predecessor, *Star Trek: Voyager — Elite Force*; it did not develop the
-sequel. In 2003 Ritual released the Elite Force II SDK — server-side game code
-for the 1.10 patch — under a Limited Use Software License Agreement. That
+2000 predecessor, *Star Trek: Voyager, Elite Force*; it did not develop the
+sequel. In 2003 Ritual released the Elite Force II SDK, server-side game code
+for the 1.10 patch, under a Limited Use Software License Agreement. That
 agreement is dated 2003-10-15 and is reproduced verbatim in this repository at
 [`docs/EF2-SDK-licenseAgreement.txt`](docs/EF2-SDK-licenseAgreement.txt).
 
@@ -140,7 +140,7 @@ If you fork or redistribute this repository or a build made from it:
 
 ## Checks in this repository
 
-- `tools/license_lint.py` — every source file carries its provenance notice, and
+- `tools/license_lint.py`, every source file carries its provenance notice, and
 
-- `PROVENANCE.tsv` — the per-file ledger; `tools/provenance_ledger.py` regenerates
+- `PROVENANCE.tsv`, the per-file ledger; `tools/provenance_ledger.py` regenerates
   and checks it against the ancestor corpora.

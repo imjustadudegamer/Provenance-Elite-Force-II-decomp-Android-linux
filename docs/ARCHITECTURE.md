@@ -1,6 +1,6 @@
 # Architecture
 
-A native Android port of *Star Trek: Voyager — Elite Force II*, built on a
+A native Android port of *Star Trek: Voyager, Elite Force II*, built on a
 de-MOHAAd id Tech 3 engine lineage. Every function, struct, table and constant is
 held to the EF2 SDK and the retail Mac PPC binaries; the engine, the game DLL,
 the cgame, the GLES 3.0 renderer and the tiki/skeletor model layer all build from
@@ -36,8 +36,8 @@ carries the notice for its own provenance, `PROVENANCE.tsv` records it, and
 | `qcommon/` | shared core: filesystem, cvars, commands, netcode, common frame, the console |
 | `client/` | the client: connection state machine, input, sound, UI host, save manager, renderer interface |
 | `server/` | the server: client slots, snapshots, game import, networking |
-| `fgame/` | the game module — entities, actors, weapons, AI, script responses |
-| `cgame/` | the client-game module — prediction, entities, HUD, radar, effects |
+| `fgame/` | the game module, entities, actors, weapons, AI, script responses |
+| `cgame/` | the client-game module, prediction, entities, HUD, radar, effects |
 | `uilib/` | the menu library: widgets, menus, the UI import/export tables |
 | `renderergles3/` | the shipping renderer: GLES 3.0 programs, state, buffers, the shader model |
 | `renderercommon/` | renderer headers shared across backends |
@@ -61,9 +61,9 @@ compiled into the same executable as the client and reaches the engine through
 
 Two CMake cache variables select the target:
 
-- `EF2_PLATFORM` — `linux` or `android`; picks the platform glue and the data
+- `EF2_PLATFORM`, `linux` or `android`; picks the platform glue and the data
   root.
-- `EF2_RENDERER` — `gles3`; the fixed-function and Vulkan backends are deleted,
+- `EF2_RENDERER`, `gles3`; the fixed-function and Vulkan backends are deleted,
   so `gles3` is the only value.
 
 The accepted divergences from retail are confined to platform glue, the sound
