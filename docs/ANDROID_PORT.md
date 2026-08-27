@@ -51,8 +51,8 @@ There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
 
 ### In-game HUD scale
 
-`ui_hudScale` scales the in-game HUD — weapon ammo, the dialogue box, the
-tricorder, the radar and the rest — and nothing else. The 640x480 virtual space
+`ui_hudScale` scales the in-game HUD, weapon ammo, the dialogue box, the
+tricorder, the radar and the rest; and nothing else. The 640x480 virtual space
 is still resolved by `CL_FillUIDef` as the retail division of the pillarbox rect,
 so every 2D menu, dialog, loading screen and scoreboard is pixel-identical. The
 factor is a scope around a HUD element's own subtree, and it is applied once: a
@@ -60,15 +60,15 @@ HUD element is authored `noresize`, so `ChangeResolution` lays its authored pixe
 frame out multiplied by the factor, `Display` draws the subtree with the factor
 reaching its text, and the scope is closed before anything else in the frame
 resolves it. The shared virtual space itself is never multiplied, so a HUD
-element that already follows the display division — the inventory bar — is not
+element that already follows the display division, the inventory bar, is not
 rescaled a second time. Each HUD menu keeps the edge its `align` declares, so a
 `bottom left` element grows up and right from the bottom-left corner, a `top
 right` element grows down and left, and a centred element grows about its centre.
 It is archived, so a config rewrite keeps it.
 
 Two sets are in scope. `hudList` holds everything `ui_addhud` pushes there,
-including the menus the game adds by script through `Player::addHud` — the
-tricorder's keypad, modulation and route panels among them — with the
+including the menus the game adds by script through `Player::addHud`, the
+tricorder's keypad, modulation and route panels among them, with the
 multiplayer scoreboard (`dm_scoreboard`) excluded. The client-managed set is
 scaled directly: the weapon-ammo readouts (`weaphud*`) and the dialogue/comm box
 (`headhud`, `headtexthud`, `texthud`), plus the small HUD panels. A HUD menu
@@ -79,14 +79,14 @@ geometry scales and keeps its coarse corner.
 
 A scaled HUD element's frame is in scaled pixels, so the font that measures and
 draws its text carries the same factor: `ChangeResolution` tells the widget's
-`UIFont` the factor at the moment it chooses the frame, and every metric read —
-at layout, at a print event or at the draw — answers in that unit. The dialogue
+`UIFont` the factor at the moment it chooses the frame, and every metric read , 
+at layout, at a print event or at the draw, answers in that unit. The dialogue
 console is why: it derives its wrap width from its frame at layout time and its
 character widths when the print event arrives, and a metric that resolved through
 the draw scope answered in authored pixels outside it, so a long line never
 wrapped. `UIFont::Print` divides the origin by the factor and hands the factor
 to `Rend_DrawString`, which multiplies the glyph's coordinates by it, so the flag
-scales the glyphs and not the string's origin — retail's own reading of it
+scales the glyphs and not the string's origin, retail's own reading of it
 (`UIFont::Print` @0x0005FB70, `R_DrawString` @0x0000D250). A font no widget has
 laid out still follows the draw scope.
 
@@ -97,7 +97,7 @@ laid out still follows the draw scope.
 
 Auto is `1.0` on the desktop, which leaves the Linux build pixel-identical: no
 scope is entered at all at `1.0`. On Android it is the display density over 160,
-clamped to `[1.0, 2.0]` — a physical-size rule, not a pixel count. A 6.4" 720p
+clamped to `[1.0, 2.0]`, a physical-size rule, not a pixel count. A 6.4" 720p
 panel reports density 320 and a 6.4" 1440p panel reports 560, so both land on the
 shared cap of `2.0` and the HUD reads the same size on each, while the clamp is
 the same at both ends and no device ends up smaller than it is today.
@@ -122,7 +122,7 @@ desktop the draw is unconditional, exactly as retail.
 Both input methods ship and share one key map
 (`code/client/touch_controls.h`): the on-screen pills queue the same key codes
 the gamepad does, so rebinding `PAD0_B` also moves the touch crouch pill. The
-gamepad maps through SDL's GameController API — sticks to move/look, triggers to
+gamepad maps through SDL's GameController API, sticks to move/look, triggers to
 fire, face buttons to jump/crouch/use/reload, D-pad to tricorder/objectives/lean,
 Back to the visor, Start to the menu. While a menu is up the common buttons are
 translated to the keys the menus bind.
