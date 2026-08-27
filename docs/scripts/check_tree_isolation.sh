@@ -12,7 +12,7 @@
 #   1. exactly one tree is registered (the project root);
 #   2. the build inputs (app/src/main/cpp, app, docs/scripts) carry no uncommitted
 #      or untracked work.  Ignored build output is fine -- only something that
-#      would compile into the artefact counts.
+#      would compile into the binary counts.
 #
 # USAGE
 #   docs/scripts/check_tree_isolation.sh              # audit the tree
