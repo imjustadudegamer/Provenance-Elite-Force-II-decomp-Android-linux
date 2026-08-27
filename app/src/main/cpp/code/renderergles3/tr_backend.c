@@ -72,7 +72,7 @@ void GL_Bind( image_t *image ) {
 
 #define SMP_BIND_MAX   2048
 #define SMP_BIND_HASH  8192			
-		{
+		if ( R_ProbeStatsOn() ) {
 			typedef struct {
 				int				tmu;
 				unsigned		texnum;
@@ -541,7 +541,7 @@ void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, 
 	if ( !s_cvar ) {
 		s_cvar = ri.Cvar_Get( "smp_vpProbe", "1", 0 );
 	}
-	if ( !s_cvar || !s_cvar->integer ) {
+	if ( !s_cvar || !s_cvar->integer || !R_ProbeStatsOn() ) {
 		return;
 	}
 

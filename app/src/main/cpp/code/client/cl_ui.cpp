@@ -1453,11 +1453,15 @@ void UI_PushMenu_f(void)
 
 void UI_TransitionMenu_f(void)
 {
+    /* Retail UI_TransitionMenu_f @0x00194150 pops the current menu first (argv[2]
+     * is the restore flag), then transitions.  Without the pop the
+     * `promptadvancedvideo' warning stayed on the SHOW stack over the new menu
+     * (MenuManager::PopMenu @0x0006D3A0 drains that stack first). */
     if (Cmd_Argc() <= 1) {
         Com_Printf("Usage: transitionmenu <menuname> [transitiontype]\n");
-        return;
     }
 
+    menuManager.PopMenu(atoi(Cmd_Argv(2)));
     UI_TransitionMenu(Cmd_Argv(1));
 }
 

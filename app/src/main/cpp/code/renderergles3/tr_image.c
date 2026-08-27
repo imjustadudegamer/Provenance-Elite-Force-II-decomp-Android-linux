@@ -1345,6 +1345,7 @@ image_t* R_CreateImageOld(
 	SMP_RLOAD_END( upload );
 
 #define SMP_IMGUP_MAX 512
+	if ( R_ProbeStatsOn() )
 	{
 		static char		*s_smpImgupSeen[SMP_IMGUP_MAX];
 		static int		 s_smpImgupCount;

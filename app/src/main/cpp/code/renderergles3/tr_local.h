@@ -1624,6 +1624,7 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 void Set2DInitialShaderTime(float startTime);
 
 void RE_Scissor(int x, int y, int width, int height);
+qboolean R_ProbeStatsOn( void );
 void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport );
 void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);

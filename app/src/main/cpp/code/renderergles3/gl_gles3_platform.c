@@ -708,7 +708,7 @@ int BE_Armed( void ) {
 	if ( !s_beStats ) {
 		s_beStats = ri.Cvar_Get( "be_stats", "1", 0 );
 	}
-	return ( s_beStats && s_beStats->integer ) ? 1 : 0;
+	return ( s_beStats && s_beStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
 }
 
 int BE_Microseconds( void ) {

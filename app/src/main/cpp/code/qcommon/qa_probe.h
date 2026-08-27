@@ -26,6 +26,8 @@ root, for more details.
 #error "define PROBE_PRINT before including qa_probe.h"
 #endif
 
+/* The probes are OFF unless `qa_probe' is 1  (set by hand
+ * for a QA run); a release launch pays nothing for the per-event bookkeeping. */
 #ifdef PROBE_ON_OVERRIDE
 static inline qboolean PROBE_On(void)
 {
@@ -37,7 +39,7 @@ static inline qboolean PROBE_On(void)
 	static cvar_t *v;
 
 	if (!v) {
-		v = PROBE_GET("qa_probe", "1", 0);
+		v = PROBE_GET("qa_probe", "0", 0);
 	}
 	return (v && v->integer) ? qtrue : qfalse;
 }
