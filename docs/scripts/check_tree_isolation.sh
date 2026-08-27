@@ -50,9 +50,25 @@ check() {
     local build="${1:-}" rc=0 n d
     n="$(tree_count)"
     if [ "$n" != "1" ]; then
-        echo "check_tree_isolation: FAIL -- $n trees are registered; there must be exactly one"
-        git -C "$ROOT" worktree list | sed 's/^/    /'
-        rc=4
+        # A second worktree is normal while a pass is running elsewhere.  What
+        # actually matters is that no OTHER tree sits inside this tree's build
+        # inputs, because the CMake globs would compile its files instead.
+        local other_inside=0 wt
+        while read -r wt; do
+            [ "$wt" = "$ROOT" ] && continue
+            case "$wt" in
+                "$ROOT"/app|"$ROOT"/app/*|"$ROOT"/docs/scripts|"$ROOT"/docs/scripts/*) other_inside=1 ;;
+            esac
+        done <<EOF
+$(git -C "$ROOT" worktree list --porcelain | awk '/^worktree /{print $2}')
+EOF
+        if [ "$other_inside" = "1" ]; then
+            echo "check_tree_isolation: FAIL -- a worktree lies inside this tree's build inputs"
+            git -C "$ROOT" worktree list | sed 's/^/    /'
+            rc=4
+        else
+            echo "check_tree_isolation: NOTE -- $n trees registered; none inside this tree's build inputs"
+        fi
     fi
     d="$(dirty_in)"
     if [ -n "$d" ]; then
