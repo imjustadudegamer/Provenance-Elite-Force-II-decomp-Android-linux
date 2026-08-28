@@ -2906,19 +2906,31 @@ void UIWidget::ChangeResolution(void)
 
     if (isResizeable()) {
         /* A widget authored in the 640x480 virtual space follows the display
-           division, exactly as retail does. */
+           division, and its text takes it through the virtual flag. */
         scalex = uid.scaleRes[0];
         scaley = uid.scaleRes[1];
+
+        if (m_font) {
+            m_font->setTextScale(1.0f);
+        }
     } else if (s_hudScaleDepth > 0) {
         /* A noresize widget is authored in screen pixels and retail never
-           rescales it, so the only thing that may grow it is the HUD scope --
-           and there the factor applies to the authored frame alone.  This is
-           the arm that makes a HUD element's computed frame actually grow; the
-           factor reaching `uid.scaleRes' only rescales the widgets that already
-           read it, which is a different set. */
+           rescales it, so the factor applies to the authored frame alone.  The
+           font is told the same factor here, where the frame is chosen, not at
+           draw time: the dialogue console wraps its text from a print event, and
+           a metric that changed unit between that event and the draw is what
+           left a line unwrapped and a line advance doubled. */
         scalex = s_hudScaleValue;
         scaley = s_hudScaleValue;
+
+        if (m_font) {
+            m_font->setTextScale(s_hudScaleValue);
+        }
     } else {
+        /* No scope: the frame below stays authored, so the metrics do too. */
+        if (m_font) {
+            m_font->setTextScale(1.0f);
+        }
         return;
     }
 

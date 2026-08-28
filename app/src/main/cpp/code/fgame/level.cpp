@@ -116,10 +116,16 @@ void Level::Init(void)
 
     intermissiontime         = 0.0f;
     exitintermission         = 0;
-    intermission_advancetime = 0.0f;  
     timeInLevel              = 0.0f;  
     startTime                = 0;     
     _showIntermission        = true; 
+
+    /* `intermission_advancetime' is deliberately not cleared here.  Retail's
+       Level::Init @0x00238950 writes intermissiontime (+0xc4) and
+       exitintermission (+0xc8) only; the advance time is written once per map
+       by G_InitGame @0x001D20F0 (0x001D21AC) from `g_intermissiontime'.  Init
+       runs from SpawnEntities, which the engine calls after InitGame, so
+       clearing it here disarms the ten seconds ClientThink waits on. */
 
     cinematic = false;
     ai_on     = true;

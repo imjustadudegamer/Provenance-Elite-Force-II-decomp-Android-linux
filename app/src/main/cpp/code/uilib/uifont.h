@@ -43,10 +43,17 @@ protected:
     UColor        color;
     fontheader_t *m_font;
     str           name;
+    /* The factor the widget that owns this font had its frame scaled by.  A
+       font no widget has laid out follows the HUD draw scope instead. */
+    float         m_textScale;
+    bool          m_textScaleSet;
 
 public:
     UIFont();
     UIFont(const char *fn);
+
+    void  setTextScale(float scale);
+    float getTextScale(void) const;
 
     void Print(float x, float y, const char *text, int maxlen, UColor shadowColor, int virtualScreen);
     void PrintJustified(

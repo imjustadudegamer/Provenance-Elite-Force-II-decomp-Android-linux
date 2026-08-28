@@ -38,6 +38,9 @@ UIFont::UIFont()
 {
     color = UBlack;
 
+    m_textScale    = 1.0f;
+    m_textScaleSet = false;
+
     loadDefaultFont();
 
     setColor(color);
@@ -47,12 +50,30 @@ UIFont::UIFont(const char *fn)
 {
     color = UBlack;
 
+    m_textScale    = 1.0f;
+    m_textScaleSet = false;
+
     m_font = uii.Rend_LoadFont(fn);
     if (m_font) {
         name = fn;
     } else {
         loadDefaultFont();
     }
+}
+
+void UIFont::setTextScale(float scale)
+{
+    m_textScale    = scale;
+    m_textScaleSet = true;
+}
+
+float UIFont::getTextScale(void) const
+{
+    if (m_textScaleSet) {
+        return m_textScale;
+    }
+
+    return UIWidget::HudTextScale();
 }
 
 void UIFont::setColor(UColor col)
@@ -71,6 +92,9 @@ void UIFont::copyFrom(const UIFont *src)
     color  = src->color;
     m_font = src->m_font;
     name   = src->name;
+
+    m_textScale    = src->m_textScale;
+    m_textScaleSet = src->m_textScaleSet;
 }
 
 void UIFont::loadDefaultFont(void)
@@ -97,26 +121,29 @@ void UIFont::Print(float x, float y, const char *text, int maxlen, UColor shadow
     const float *scale = NULL;
     float        vx    = x;
     float        vy    = y;
-    float        hudScaleBuf[2];
+    float        textScaleBuf[2];
 
-    /* A noresize widget's text is drawn at its authored pixel size and never
-       reads `uid.scaleRes', so inside a HUD scope it takes that scope's factor
-       instead, which is the only thing that grows it. */
+    /* The factor reaches `Rend_DrawString' as the virtual screen's division
+       does: it scales the glyphs and the origin is divided by it, because the
+       renderer multiplies the quad's coordinates by the same pair.  Retail's
+       flag does the same -- R_DrawString @0x0000D250 scales the glyphs and
+       UIFont::Print @0x0005FB70 passes x and y through.  Without the division a
+       scaled widget's text lands at twice its own line and leaves the box. */
     if (virtualScreen) {
         scale = uid.scaleRes;
-
-        if (uid.scaleRes[0] != 0.0f && uid.scaleRes[1] != 0.0f) {
-            vx = x / uid.scaleRes[0];
-            vy = y / uid.scaleRes[1];
-        }
     } else {
-        float hudTextScale = UIWidget::HudTextScale();
+        float textScale = getTextScale();
 
-        if (hudTextScale != 1.0f) {
-            hudScaleBuf[0] = hudTextScale;
-            hudScaleBuf[1] = hudTextScale;
-            scale          = hudScaleBuf;
+        if (textScale != 1.0f) {
+            textScaleBuf[0] = textScale;
+            textScaleBuf[1] = textScale;
+            scale           = textScaleBuf;
         }
+    }
+
+    if (scale && scale[0] != 0.0f && scale[1] != 0.0f) {
+        vx = x / scale[0];
+        vy = y / scale[1];
     }
 
     if (shadowColor.a != 0.0f) {
@@ -288,9 +315,9 @@ float UIFont::getFloatWidth(const char *text, int maxlen, bool virtualScale)
     if (virtualScale) {
         scale = uid.scaleRes[0];
     } else {
-        /* The HUD scope's factor is what grows a noresize widget's text; it is
-           1.0 everywhere else, so every other caller is unchanged. */
-        scale = UIWidget::HudTextScale();
+        /* The owning widget's factor, resolved the same way wherever the metric
+           is asked from, so a wrap and the frame it wraps into share a unit. */
+        scale = getTextScale();
     }
 
     for (int i = 0;; i++) {
@@ -357,7 +384,7 @@ int UIFont::getCharWidth(char ch, bool virtualScale)
         if (virtualScale) {
             width *= uid.scaleRes[0];
         } else {
-            width *= UIWidget::HudTextScale();
+            width *= getTextScale();
         }
         return (int)width;
     }
@@ -395,7 +422,7 @@ int UIFont::getHeight(bool virtualScale)
         return (int)(m_font->sgl[0]->height * uid.scaleRes[1]);
     }
 
-    return (int)(m_font->sgl[0]->height * UIWidget::HudTextScale());
+    return (int)(m_font->sgl[0]->height * getTextScale());
 }
 
 qboolean UI_FontDBCSIsLeadByte(fontheader_t *font, unsigned short uch)

@@ -77,6 +77,19 @@ stay where retail puts them, so nothing is pushed past the screen, and the facto
 reaches its text through the draw scope. A smaller panel has room to grow, so its
 geometry scales and keeps its coarse corner.
 
+A scaled HUD element's frame is in scaled pixels, so the font that measures and
+draws its text carries the same factor: `ChangeResolution` tells the widget's
+`UIFont` the factor at the moment it chooses the frame, and every metric read —
+at layout, at a print event or at the draw — answers in that unit. The dialogue
+console is why: it derives its wrap width from its frame at layout time and its
+character widths when the print event arrives, and a metric that resolved through
+the draw scope answered in authored pixels outside it, so a long line never
+wrapped. `UIFont::Print` divides the origin by the factor and hands the factor
+to `Rend_DrawString`, which multiplies the glyph's coordinates by it, so the flag
+scales the glyphs and not the string's origin — retail's own reading of it
+(`UIFont::Print` @0x0005FB70, `R_DrawString` @0x0000D250). A font no widget has
+laid out still follows the draw scope.
+
 | value | effect |
 |-------|--------|
 | `0` | auto (default) |
