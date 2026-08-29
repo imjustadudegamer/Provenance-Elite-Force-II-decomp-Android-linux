@@ -65,6 +65,13 @@ SKIP_COMPONENTS = ("thirdparty", "ommap", "lcc", ".build", "__pycache__", ".git"
 
 TREE = DEFAULT_TREE
 
+# The editorial ceiling: body comments plus design headers, licence notices
+# exempt.  2,000 was the old ceiling; it was lifted to 2,200 and this constant is
+# the single source of truth, read back with --print-budget
+# rather than carrying a copy of the number.  It is a chosen headroom, not a
+# measured quantity: it records how much design prose the tree is allowed.
+EDITORIAL_BUDGET = 2200
+
 
 def comment_indexes(text):
     """The set of line indexes that are comment lines, one lexer for all files."""
@@ -184,9 +191,16 @@ def main():
     global TREE
     ap = argparse.ArgumentParser()
     ap.add_argument("--tree", default=DEFAULT_TREE, help="the project root")
-    ap.add_argument("--limit", type=int, default=2200)
+    ap.add_argument("--limit", type=int, default=EDITORIAL_BUDGET)
+    ap.add_argument("--print-budget", action="store_true",
+                    help="print the editorial ceiling and exit")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
+
+    if args.print_budget:
+        print(EDITORIAL_BUDGET)
+        return 0
+
     TREE = os.path.abspath(args.tree)
 
     m = measure()
