@@ -828,10 +828,12 @@ void TIKI_CalcRadius(dtiki_t *tiki)
     bounds[0] = &tiki->a->mins[0];
     bounds[1] = &tiki->a->maxs[0];
 
-    for (j = 0; j < 4; j++) {
+    // 0x000FB1F0:293-307 -- all eight box corners, then radius *= load_scale
+    // (dtiki +188); retail has no 0.7 and no lod_scale here.
+    for (j = 0; j < 8; j++) {
         tmpVec[0] = bounds[j & 1][0];
-        tmpVec[1] = bounds[j & 1][1];
-        tmpVec[2] = bounds[j & 1][2];
+        tmpVec[1] = bounds[(j >> 1) & 1][1];
+        tmpVec[2] = bounds[(j >> 2) & 1][2];
 
         radius = VectorLength(tmpVec);
         if (radius > tiki->radius) {
@@ -839,8 +841,7 @@ void TIKI_CalcRadius(dtiki_t *tiki)
         }
     }
 
-    radius       = tiki->radius * 0.7f;
-    tiki->radius = radius * tiki->lod_scale;
+    tiki->radius *= tiki->load_scale;
 }
 
 skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
