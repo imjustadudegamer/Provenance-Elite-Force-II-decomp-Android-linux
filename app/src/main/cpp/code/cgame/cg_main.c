@@ -24,6 +24,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_local.h"
 
+#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_probe.h"
+
 #ifdef _WIN32
 #    include <windows.h>
 #endif
@@ -459,8 +463,26 @@ void CG_ServerRestarted(void)
     CG_InitializeWeather();
 }
 
+/*
+ * cginit is one SMP_LOAD zone worth ~3.3 s on the device and CG_Init's own body is
+ * a few registrations, so the time is inside one of them.  These legs say which.
+ * cgi.Milliseconds is the module's own clock, available before anything is set up.
+ */
+#define CGINIT_LEG_COUNT 6
+
+static int  s_cginitLegs[CGINIT_LEG_COUNT];
+static int  s_cginitLegT0[CGINIT_LEG_COUNT];
+
+#define CGINIT_LEG_BEGIN( leg ) \
+    do { s_cginitLegT0[ leg ] = cgi.Milliseconds(); } while ( 0 )
+#define CGINIT_LEG_END( leg ) \
+    do { s_cginitLegs[ leg ] += cgi.Milliseconds() - s_cginitLegT0[ leg ]; } while ( 0 )
+
 void CG_Init(clientGameImport_t *imported, int serverMessageNum, int serverCommandSequence)
 {
+    int leg;
+    int cginitT0;
+
     cgi = *imported;
 
     // does not exist in retail cgame.  Leaving the gates preserves that.
@@ -473,24 +495,46 @@ void CG_Init(clientGameImport_t *imported, int serverMessageNum, int serverComma
     cgs.processedSnapshotNum  = serverMessageNum;
     cgs.serverCommandSequence = serverCommandSequence;
 
-    CG_RegisterCvars();
+    for ( leg = 0; leg < CGINIT_LEG_COUNT; leg++ ) {
+        s_cginitLegs[ leg ] = 0;
+    }
+    cginitT0 = cgi.Milliseconds();
 
+    CGINIT_LEG_BEGIN( 0 );
+    CG_RegisterCvars();
+    CGINIT_LEG_END( 0 );
+
+    CGINIT_LEG_BEGIN( 1 );
     L_InitEvents();
 
     Swap_Init();
+    CGINIT_LEG_END( 1 );
 
+    CGINIT_LEG_BEGIN( 2 );
     CG_InitializeCommandManager();
 
     CG_InitializeWeather();
+    CGINIT_LEG_END( 2 );
 
+    CGINIT_LEG_BEGIN( 3 );
     CG_GameStateReceived();
+    CGINIT_LEG_END( 3 );
 
+    CGINIT_LEG_BEGIN( 4 );
     CG_InitConsoleCommands();
+    CGINIT_LEG_END( 4 );
 
+    CGINIT_LEG_BEGIN( 5 );
     CG_InitFootprintMap();
+    CGINIT_LEG_END( 5 );
 
     cg.cachedViewMode = -1;
 
+    LOADHANG_PROBE( "cginit",
+                    "total=%d cvars=%d events=%d cmds=%d gamestate=%d console=%d footprint=%d\n",
+                    cgi.Milliseconds() - cginitT0,
+                    s_cginitLegs[ 0 ], s_cginitLegs[ 1 ], s_cginitLegs[ 2 ],
+                    s_cginitLegs[ 3 ], s_cginitLegs[ 4 ], s_cginitLegs[ 5 ] );
 }
 
 void CG_Shutdown(void)

@@ -292,6 +292,10 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	startTime = ri.Milliseconds();
 
+	/* FE:scene measures every front-end leg of this scene against one root, so a
+	 * single [FE:scene] line decomposes one renderFront number. */
+	BE_RootBegin( BE_FAM_FE );
+
 	if (!tr.world && !( fd->rdflags & RDF_NOWORLDMODEL ) ) {
 		ri.Error (ERR_DROP, "R_RenderScene: NULL worldmodel");
 	}
@@ -405,6 +409,8 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 
 	R_RenderView( &parms );
+
+	BE_RootEnd( BE_FAM_FE );
 
 	r_firstSceneDrawSurf = tr.refdef.numDrawSurfs;
 	r_firstSceneSpriteSurf = tr.refdef.numSpriteSurfs;

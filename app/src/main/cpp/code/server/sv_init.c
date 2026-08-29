@@ -328,6 +328,25 @@ static Q_UNUSED_VAR void SV_TouchFile( const char *filename ) {
 
 static int sv_stickyChecksumFeed = 0;
 
+/*
+ * The spawn hatch is one SMP_LOAD zone and the ports of its sub-legs leave ~11 s
+ * inside SV_SpawnServer unattributed.  These are the calls no other timer covers:
+ * the client's map-loading screen, the game module's cleanup, the filesystem
+ * restart, the warm-up frames, and the baseline build.  Milliseconds: the legs are
+ * seconds-scale.  `resid' is the whole spawn minus them, so a leg that is missing
+ * from this list shows up as residual rather than as a silent zero.
+ */
+#define SPAWN_LEG_COUNT 5
+
+static int	s_spawnLegs[SPAWN_LEG_COUNT];
+static int	s_spawnLegT0[SPAWN_LEG_COUNT];
+static int	s_spawnTotalT0;
+
+#define SPAWN_LEG_BEGIN( leg ) \
+	do { if ( PROBE_On() ) { s_spawnLegT0[ leg ] = Sys_Milliseconds(); } } while ( 0 )
+#define SPAWN_LEG_END( leg ) \
+	do { if ( PROBE_On() ) { s_spawnLegs[ leg ] += Sys_Milliseconds() - s_spawnLegT0[ leg ]; } } while ( 0 )
+
 void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 					 qboolean sublevelLoad, qboolean areSublevels ) {
 	int			i;
@@ -354,6 +373,15 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	}
 
 	differentmap = qtrue;
+
+	if ( PROBE_On() ) {
+		int	leg;
+
+		for ( leg = 0; leg < SPAWN_LEG_COUNT; leg++ ) {
+			s_spawnLegs[ leg ] = 0;
+		}
+		s_spawnTotalT0 = Sys_Milliseconds();
+	}
 
 	SMP_LOAD_BEGIN( spawn );
 
@@ -410,10 +438,14 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	Q_strncpyz( last_mapname, map, sizeof( last_mapname ) );
 
+	SPAWN_LEG_BEGIN( 0 );
 	CL_MapLoading( differentmap, map, strchr( server, '#' ), areSublevels );
+	SPAWN_LEG_END( 0 );
 
 	if ( ge ) {
+		SPAWN_LEG_BEGIN( 1 );
 		ge->Cleanup( restart );
+		SPAWN_LEG_END( 1 );
 	}
 
 	if ( differentmap ) {
@@ -465,7 +497,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	} else {
 		srand( Com_Milliseconds() );
 		sv.checksumFeed = ( ( rand() << 16 ) ^ rand() ) ^ Com_Milliseconds();
+		SPAWN_LEG_BEGIN( 2 );
 		FS_Restart( sv.checksumFeed );
+		SPAWN_LEG_END( 2 );
 		sv_stickyChecksumFeed = sv.checksumFeed;
 	}
 
@@ -537,6 +571,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 		g_gametype->modified = qfalse;
 
+		SPAWN_LEG_BEGIN( 3 );
 		CL_ProcessLoadingScreen( "$$RunningFirstGameFrames$$" );
 
 		for ( i = 0; i < 3; i++ ) {
@@ -550,16 +585,21 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 			svs.time += 100;
 		}
+		SPAWN_LEG_END( 3 );
 	}
 
+	SPAWN_LEG_BEGIN( 3 );
 	for ( i = 0; i < 3; i++ ) {
 		ge->RunFrame( svs.time, 100 );
 		SV_BotFrame( svs.time );
 		svs.time += 100;
 	}
+	SPAWN_LEG_END( 3 );
 
 	if ( differentmap ) {
+		SPAWN_LEG_BEGIN( 4 );
 		SV_CreateBaseline();
+		SPAWN_LEG_END( 4 );
 
 		for ( i = 0; i < sv_maxclients->integer; i++ ) {
 			if ( svs.clients[ i ].state >= CS_CONNECTED ) {
@@ -644,9 +684,11 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		}
 	}
 
+	SPAWN_LEG_BEGIN( 3 );
 	ge->RunFrame( svs.time, 100 );
 	SV_BotFrame( svs.time );
 	svs.time += 100;
+	SPAWN_LEG_END( 3 );
 
 	if ( sv_pure->integer ) {
 		p = FS_LoadedPakChecksums();
@@ -666,6 +708,21 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	Com_Printf( "-----------------------------------\n" );
 
 	SMP_LOAD_END( spawn );
+
+	if ( PROBE_On() ) {
+		int	total = Sys_Milliseconds() - s_spawnTotalT0;
+		int	named = 0;
+		int	leg;
+
+		for ( leg = 0; leg < SPAWN_LEG_COUNT; leg++ ) {
+			named += s_spawnLegs[ leg ];
+		}
+
+		LOADHANG_PROBE( "spawn",
+						"total=%d map=%s mapload=%d cleanup=%d fsrestart=%d warm=%d baseline=%d resid=%d\n",
+						total, map, s_spawnLegs[ 0 ], s_spawnLegs[ 1 ], s_spawnLegs[ 2 ],
+						s_spawnLegs[ 3 ], s_spawnLegs[ 4 ], total - named );
+	}
 }
 
 qboolean SV_DoneLoading( void ) {

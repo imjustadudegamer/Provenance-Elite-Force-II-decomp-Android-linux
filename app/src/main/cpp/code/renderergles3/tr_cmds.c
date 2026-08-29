@@ -22,6 +22,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
 
+#ifdef USE_INTERNAL_SDL_HEADERS
+#	include "SDL_atomic.h"
+#else
+#	include <SDL_atomic.h>
+#endif
+
 static backEndCounters_t pc_save;
 
 typedef struct rbFrame_s {
@@ -39,6 +45,13 @@ static volatile rbFrame_t	*rb_lastExecuted = NULL;
 
 static qboolean		rb_serialIssue = qfalse;
 
+/* backEnd.pc.msec is overwritten by every R_IssueRenderCommands, and the last one
+ * of a frame is the RC_SWAP_BUFFERS-only list.  Summing the executions instead
+ * makes renderBack the whole frame's back end, inline runs included.  The render
+ * thread and the front end both write here, so the counter is atomic.  The part
+ * that ran inline is [FE:scene] exec; that part is already inside renderFront. */
+static SDL_atomic_t	rb_frameBackMsec;
+
 int RB_FrameSmpFrame( void ) {
 	return rb_activeFrame ? rb_activeFrame->smpFrame : tr.smpFrame;
 }
@@ -52,7 +65,15 @@ int RB_FrameBoneArena( void ) {
 }
 
 int RB_FrameBackEndMsec( void ) {
-	return rb_lastExecuted ? rb_lastExecuted->backEndMsec : backEnd.pc.msec;
+	return SDL_AtomicGet( &rb_frameBackMsec );
+}
+
+void RB_FrameBackEndReset( void ) {
+	SDL_AtomicSet( &rb_frameBackMsec, 0 );
+}
+
+static void RB_FrameBackEndAccount( int msec ) {
+	SDL_AtomicAdd( &rb_frameBackMsec, msec );
 }
 
 void R_SavePerformanceCounters(void) {
@@ -144,6 +165,7 @@ void R_IssueRenderCommands( qboolean runPerformanceCounters ) {
 			rb_activeFrame = frame;
 			RB_ExecuteRenderCommands( cmdList->cmds );
 			frame->backEndMsec = backEnd.pc.msec;
+			RB_FrameBackEndAccount( backEnd.pc.msec );
 			rb_activeFrame = NULL;
 		}
 		rb_lastExecuted = frame;
@@ -164,6 +186,7 @@ void RB_RenderThread( void ) {
 		if ( !r_skipBackEnd->integer ) {
 			RB_ExecuteRenderCommands( frame->cmds );
 			frame->backEndMsec = backEnd.pc.msec;
+			RB_FrameBackEndAccount( backEnd.pc.msec );
 		}
 
 		rb_activeFrame = NULL;
@@ -422,6 +445,11 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec ) {
 
 	R_IssueRenderCommands( qtrue );
 
+	if ( backEndMsec ) {
+		*backEndMsec = RB_FrameBackEndMsec();
+	}
+	RB_FrameBackEndReset();
+
 	R_InitNextFrame();
 
 	RB_MtFrameBoundary();
@@ -430,9 +458,6 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec ) {
 		*frontEndMsec = tr.frontEndMsec;
 	}
 	tr.frontEndMsec = 0;
-	if ( backEndMsec ) {
-		*backEndMsec = RB_FrameBackEndMsec();
-	}
 }
 
 void RE_TakeVideoFrame( int width, int height,
