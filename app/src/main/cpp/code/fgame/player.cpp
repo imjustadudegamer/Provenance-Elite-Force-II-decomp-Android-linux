@@ -3614,7 +3614,24 @@ void Player::ClientThink(Event *ev)
     viewheight = client->ps.pm_defaultviewheight;
 
     if (level.intermissiontime) {
+        static int missionend_start, missionend_cross;
+
         client->ps.pm_flags |= PMF_FROZEN;
+
+        if (PROBE_Throttle(&missionend_start, 1, 1 << 30)) {
+            WIDGET_PROBE("missionend",
+                         "think first time=%.3f intermission=%.3f advance=%.3f dt=%.3f exit=%d\n",
+                         level.time, level.intermissiontime, level.intermission_advancetime,
+                         level.time - level.intermissiontime, level.exitintermission ? 1 : 0);
+        }
+        if ((level.intermission_advancetime != 0.0f)
+            && ((level.time - level.intermissiontime) > level.intermission_advancetime)
+            && PROBE_Throttle(&missionend_cross, 1, 1 << 30)) {
+            WIDGET_PROBE("missionend",
+                         "think crossed time=%.3f intermission=%.3f advance=%.3f dt=%.3f\n",
+                         level.time, level.intermissiontime, level.intermission_advancetime,
+                         level.time - level.intermissiontime);
+        }
 
         if (g_endintermission->integer > 0) {
             g_endintermission->integer = 0;

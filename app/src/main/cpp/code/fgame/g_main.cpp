@@ -158,6 +158,8 @@ extern "C" void G_InitGame( int startTime, int randomSeed )
 
 		gameVars.ClearList();
 		level.intermission_advancetime = (float)g_intermissiontime->integer;
+		WIDGET_PROBE("missionend", "initgame g_intermissiontime=%d advance=%.3f\n",
+		             g_intermissiontime->integer, level.intermission_advancetime);
 		level.fixedframetime           = ( 1.0f / sv_fps->value );
 		level.startTime                = startTime;
 
@@ -1445,20 +1447,34 @@ void G_BeginIntermission(const char *map_name)
         return;
     }
 
-    if (level.intermissiontime || g_gametype->integer != GT_SINGLE_PLAYER) {
+    if (level.intermissiontime) {
         return;
     }
 
-    level.intermissiontime = level.time;
-
-    G_FadeOut(2.0f);
-
-    G_FadeSound(4.0f);
+    if (multiplayerManager.inMultiplayer()) {
+        level.intermissiontime = level.time + (float)mp_intermissionTime->integer;
+    } else {
+        level.intermissiontime = level.time + 1.0f;
+        G_FadeOut(1.0f);
+        G_FadeSound(1.0f);
+    }
 
     level.nextmap = map_name;
 
+    WIDGET_PROBE("missionend",
+                 "begin map='%s' time=%.3f intermissiontime=%.3f advance=%.3f nextmap='%s' "
+                 "failed=%d show=%d sublevels=%d\n",
+                 map_name, level.time, level.intermissiontime, level.intermission_advancetime,
+                 level.nextmap.c_str(), level.mission_failed ? 1 : 0,
+                 level._showIntermission ? 1 : 0,
+                 gi.areSublevels(level.mapname.c_str(), map_name) ? 1 : 0);
+
     if (gi.areSublevels(level.mapname.c_str(), map_name) || !level._showIntermission) {
+        level.intermissiontime = level.time;
         level.exitintermission = true;
+
+        Director.PlayerNotReady();
+
         return;
     }
 
@@ -1477,13 +1493,9 @@ void G_BeginIntermission(const char *map_name)
     }
 
     /*
-     * Every client is put into the intermission.  Retail does the two writes
-     * inline here -- Mac G_BeginIntermission @0x001D50A0 sets
-     * `ps.pm_flags |= PMF_INTERMISSION' (0x80) and `ent->flags |= FL_IMMOBILE'
-     * (0x4000) per client -- and the shipped SDK funnels them through the same
-     * helper this port already has.  Without the flag the client never learns
-     * the level ended, so it never pushes `missionsuccess': the fade-out runs
-     * and the screen stays black.
+     * The flag is what tells the client the level ended; without it the fade
+     * runs and the screen stays black.  Retail @0x001D50A0 writes the same two
+     * words per client that G_MoveClientToIntermission writes.
      */
     for (i = 0, client = g_entities; i < game.maxclients; client++, i++) {
         if (!client->inuse || !client->entity) {
@@ -1492,6 +1504,8 @@ void G_BeginIntermission(const char *map_name)
 
         G_MoveClientToIntermission(client->entity);
     }
+
+    Director.PlayerNotReady();
 
 }
 
@@ -1502,6 +1516,8 @@ void G_ExitLevel(void)
     gentity_t         *ent;
 
     if (level.mission_failed) {
+        WIDGET_PROBE("missionend", "exit bailed: mission_failed mapname='%s'\n",
+                     level.mapname.c_str());
         return;
     }
 
@@ -1526,6 +1542,9 @@ void G_ExitLevel(void)
         Com_sprintf(command, sizeof(command), "gamemap \"%s\"\n", level.nextmap.c_str());
         gi.SendConsoleCommand(command);
     }
+
+    WIDGET_PROBE("missionend", "exit mapname='%s' nextmap='%s' cmd='%s'\n",
+                 level.mapname.c_str(), level.nextmap.c_str(), command);
 
     for (j = 0; j < game.maxclients; j++) {
         ent = &g_entities[j];
