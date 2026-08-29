@@ -39,7 +39,7 @@ static inline qboolean PROBE_On(void)
 	static cvar_t *v;
 
 	if (!v) {
-		v = PROBE_GET("qa_probe", "0", 0);
+		v = PROBE_GET("qa_probe", "1", 0);
 	}
 	return (v && v->integer) ? qtrue : qfalse;
 }

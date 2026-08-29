@@ -945,6 +945,15 @@ void Level::Archive(Archiver& arc)
     arc.ArchiveFloat(&intermissiontime);
     arc.ArchiveInteger(&exitintermission);
     arc.ArchiveFloat(&intermission_advancetime);
+    if (arc.Loading()) {
+        /* The cvar owns this value (G_InitGame, SDK g_main.cpp:196).  A savegame
+           a build with the zeroing Init wrote carries a zero, and the restore
+           runs after G_InitGame, so restoring it would disarm ClientThink's
+           ten-second gate for the whole loaded session. */
+        WIDGET_PROBE("missionend", "archive load advance=%.3f cvar=%d\n",
+                     intermission_advancetime, g_intermissiontime->integer);
+        intermission_advancetime = (float)g_intermissiontime->integer;
+    }
     arc.ArchiveBool(&_showIntermission);
     arc.ArchiveBool(&_saveOrientation);
 
