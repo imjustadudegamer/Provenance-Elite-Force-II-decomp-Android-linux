@@ -50,11 +50,16 @@ void Sys_PrintFaultContext(int signum, void *siginfo, void *context) {
 }
 
 void Sys_PrintBackTrace() {
+    Sys_PrintBackTraceTo(NULL);
+}
+
+void Sys_PrintBackTraceTo(void (*out)(const char *text)) {
     void* backtrace[128];
     SYMBOL_INFO* symbol;
     HANDLE hProcess;
     unsigned int i;
     unsigned short frames;
+    char line[1024];
 
     hProcess = GetCurrentProcess();
 
@@ -69,7 +74,12 @@ void Sys_PrintBackTrace() {
     {
         SymFromAddr(hProcess, (DWORD64)(backtrace[i]), 0, symbol);
 
-        fprintf(stderr, "=> %s[0x%p]\n", symbol->Name, (void*)symbol->Address);
+        if (out) {
+            snprintf(line, sizeof(line), "=> %s[0x%p]\n", symbol->Name, (void*)symbol->Address);
+            out(line);
+        } else {
+            fprintf(stderr, "=> %s[0x%p]\n", symbol->Name, (void*)symbol->Address);
+        }
     }
 
     free(symbol);

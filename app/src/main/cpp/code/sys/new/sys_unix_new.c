@@ -145,9 +145,14 @@ static size_t Sys_Unwind_Frames(void **frames, size_t maxFrames) {
 }
 
 void Sys_PrintBackTrace(void) {
+    Sys_PrintBackTraceTo(NULL);
+}
+
+void Sys_PrintBackTraceTo(void (*out)(const char *text)) {
     void*   frames[128];
     size_t  count = 0;
     size_t  i;
+    char    line[1024];
 
     count = Sys_Unwind_Frames(frames, ARRAY_LEN(frames));
 
@@ -155,24 +160,37 @@ void Sys_PrintBackTrace(void) {
         Dl_info info;
 
         if (dladdr(frames[i], &info) && info.dli_sname) {
-            Sys_FaultOutf("=> %s(%s+0x%lx) [%p]\n",
+            snprintf(line, sizeof(line), "=> %s(%s+0x%lx) [%p]\n",
                 info.dli_fname ? info.dli_fname : "?",
                 info.dli_sname,
                 (unsigned long)((const char*)frames[i] - (const char*)info.dli_saddr),
                 frames[i]);
         } else if (dladdr(frames[i], &info) && info.dli_fbase) {
-            Sys_FaultOutf("=> %s(+0x%lx) [%p]\n",
+            snprintf(line, sizeof(line), "=> %s(+0x%lx) [%p]\n",
                 info.dli_fname ? info.dli_fname : "?",
                 (unsigned long)((const char*)frames[i] - (const char*)info.dli_fbase),
                 frames[i]);
         } else {
-            Sys_FaultOutf("=> %p\n", frames[i]);
+            snprintf(line, sizeof(line), "=> %p\n", frames[i]);
+        }
+
+        if (out) {
+            out(line);
+        } else {
+            Sys_FaultOutf("%s", line);
         }
     }
 
     if (count <= 3) {
-        Sys_FaultOutf("(stack walk stopped at the signal frame -- see the faulting instruction above,\n");
-        Sys_FaultOutf(" and the core dump, for the real location)\n");
+        const char *tail =
+            "(stack walk stopped at the signal frame -- see the faulting instruction above,\n"
+            " and the core dump, for the real location)\n";
+
+        if (out) {
+            out(tail);
+        } else {
+            Sys_FaultOutf("%s", tail);
+        }
     }
 }
 

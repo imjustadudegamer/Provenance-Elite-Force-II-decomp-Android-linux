@@ -1279,13 +1279,10 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 		 * Retail RB_StageIteratorLightmappedMultitextureUnfogged @0x000368D0
 		 * substitutes the white image for each bundle whose `isLightmap' bit is
 		 * set while the fullbright bit is up -- bundle[0] at *(bundle+60), the
-		 * `& 2' test at 0x369AC/0x369D0, and bundle[1] at *(bundle+128), the
-		 * second test at 0x36A10/0x36A38.  These arms were missing here, so on
-		 * the fast path every lightmapped world surface kept its own (dark)
-		 * lightmap while the generic stage path brightened, which is what left
-		 * a bridge partly black with night vision on.  `!backEnd.in2D' is the
-		 * platform guard the 2D field needed and is false here: this iterator
-		 * is the world path.
+		 * `& 2' test at 0x369AC/0x369D0, bundle[1] at *(bundle+128), the second
+		 * test at 0x36A10/0x36A38.  Without these arms every lightmapped world
+		 * surface kept its own dark lightmap on the fast path while the generic
+		 * path brightened.  `!backEnd.in2D' is false here: this is the world path.
 		 */
 		if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
 			 && tess.xstages[0]->bundle[0].isLightmap )

@@ -33,6 +33,9 @@ void Sys_ShutdownEx(void);
 
 void Sys_PrepareBackTrace(void);
 void Sys_PrintBackTrace(void);
+/* Frames go to `out' when it is given.  Com_Error's call-site report needs them
+   on the console and the platform log, which the fault sink does not reach. */
+void Sys_PrintBackTraceTo(void (*out)(const char *text));
 void Sys_PrintFaultContext(int signum, void *siginfo, void *context);
 void Sys_PlatformInit_New(void);
 

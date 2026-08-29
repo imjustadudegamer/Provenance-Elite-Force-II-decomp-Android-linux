@@ -365,6 +365,33 @@ void QDECL Com_DebugPrintf( const char *fmt, ...) {
 
 #endif
 
+/*
+ * Retail Com_Error @0x000C8460 has no empty-message case: it formats what it was
+ * handed, so its ERR_DISCONNECT arm's `strlen( com_errorMessage )' test then
+ * picks `CL_Disconnect( 1 )' -- the silent disconnect -- and writing anything
+ * into the buffer here would pick `CL_AbnormalDisconnect' instead.  Report the
+ * code, the last command tokenised and the frames, capped, through the console,
+ * which the fault sink's captured stderr stream does not reach.
+ */
+static void Com_ErrorFrames( const char *text ) {
+	Com_Printf( "%s", text );
+}
+
+static void Com_ErrorNoText( int code ) {
+	static int	s_rows;
+	static const char	*const codeName[] = { "ERR_FATAL", "ERR_DROP", "ERR_DISCONNECT", "ERR_NEED_CD" };
+
+	if ( s_rows >= 4 ) {
+		return;
+	}
+	s_rows++;
+
+	Com_Printf( "Com_Error: code=%d (%s) was raised with NO text\n", code,
+		( code >= 0 && code < 4 ) ? codeName[code] : "unknown code" );
+	Com_Printf( "  last command: '%s %s'\n", Cmd_Argv( 0 ), Cmd_Args() );
+	Sys_PrintBackTraceTo( Com_ErrorFrames );
+}
+
 void QDECL Com_Error( int code, const char *fmt, ... ) {
 	va_list		argptr;
 	static int	lastErrorTime;
@@ -388,28 +415,13 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 	va_end (argptr);
 
 	if ( com_errorMessage[0] == '\0' ) {
-		static int s_faultEmptyErrRows;
-
-		if ( s_faultEmptyErrRows < 4 ) {
-			s_faultEmptyErrRows++;
-			Com_Printf( "Com_Error: code=%d was raised with NO text; the call site follows\n", code );
+		Com_ErrorNoText( code );
+	} else {
 #ifdef __ANDROID__
-			Sys_AndroidLog( ANDROID_LOG_ERROR,
-				va( "Com_Error: code=%d was raised with NO text; the call site follows\n", code ) );
+		Sys_AndroidLog( code == ERR_DISCONNECT ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
+			va( "ENGINE ERROR code=%d: %s\n", code, com_errorMessage ) );
 #endif
-			Sys_PrintBackTrace();
-		}
-
-		Q_strncpyz( com_errorMessage,
-			va( "Com_Error was raised with code %d and no text from the caller "
-				"(a VM/script caller passing an empty message is the usual cause)", code ),
-			sizeof( com_errorMessage ) );
 	}
-
-#ifdef __ANDROID__
-	Sys_AndroidLog( code == ERR_DISCONNECT ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
-		va( "ENGINE ERROR code=%d: %s\n", code, com_errorMessage ) );
-#endif
 
 	if ( code == ERR_FATAL ) {
 		fprintf( stderr, "Com_Error: FATAL: %s\n", com_errorMessage );
