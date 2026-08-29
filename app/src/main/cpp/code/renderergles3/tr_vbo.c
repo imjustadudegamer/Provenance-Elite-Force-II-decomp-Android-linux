@@ -85,8 +85,10 @@ static rbVertex_t	s_tessStage[SHADER_MAX_VERTEXES];
 
 /* One range of the repack.  Every vertex reads only its own source slots and writes
  * only its own s_tessStage element, so chunks are disjoint and the bytes produced do
- * not depend on the split. */
-#define RB_VBO_PACK_CHUNK	512
+ * not depend on the split.  The pool never pays here: the measured split is slower than
+ * inline at every size, and at the structural maximum the range is one chunk, so every
+ * batch takes the pool's inline branch. */
+#define RB_VBO_PACK_CHUNK	SHADER_MAX_VERTEXES
 
 typedef struct {
 	const shaderCommands_t	*input;
@@ -253,6 +255,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	BE_SUB( BE_FAM_DS, BE_DSZ_sub_vbo, {
 		rbVboPack_t	pack;
 		int			subT0;
+		int			subT1;
 
 		pack.input = input;
 		pack.texcoord0 = texcoord0;
@@ -276,7 +279,66 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
 					   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
 					   indexes, GL_STREAM_DRAW );
-		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, BE_Microseconds() - subT0 );
+		subT1 = BE_On() ? BE_Microseconds() : 0;
+		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, subT1 - subT0 );
+
+		/* [BE:send] probe: the upload phase is the one place inside the walk where the
+		 * CPU can block on the driver.  A phase that is long only when it follows a long
+		 * gap is a drain of the previous frame; a phase that is long inside a run, where
+		 * the gap is short, is the send itself blocking.  `big` counts the phases whose
+		 * batch exceeded the old 512-vertex chunk.  Every read is behind BE_On(), so a
+		 * release run reads no clock.  Values are microseconds. */
+		if ( BE_On() ) {
+			static int	s_sendWinT0;
+			static int	s_sendLast;
+			static int	s_sendRuns;
+			static int	s_sendBatches;
+			static int	s_sendSum;
+			static int	s_sendFirst;
+			static int	s_sendMax;
+			static int	s_sendGapMax;
+			static int	s_sendVerts;
+			static int	s_sendBig;
+			static int	s_sendBigVerts;
+			int			phase;
+			int			gap;
+
+			phase = subT1 - subT0;
+			gap = s_sendLast ? subT0 - s_sendLast : 0;
+			if ( !s_sendWinT0 ) {
+				s_sendWinT0 = subT0;
+			}
+			s_sendBatches++;
+			s_sendSum += phase;
+			s_sendVerts += input->numVertexes;
+			if ( input->numVertexes > 512 ) {
+				s_sendBig++;
+				s_sendBigVerts += input->numVertexes;
+			}
+			if ( !s_sendLast || gap > 2000 ) {
+				s_sendRuns++;
+				s_sendFirst += phase;
+			}
+			if ( gap > s_sendGapMax ) {
+				s_sendGapMax = gap;
+			}
+			if ( phase > s_sendMax ) {
+				s_sendMax = phase;
+			}
+			s_sendLast = subT1;
+			if ( subT1 - s_sendWinT0 >= 1000000 ) {
+				ri.Printf( PRINT_ALL,
+						   "[BE:send] window=%dms batches=%d runs=%d sum=%dus first=%dus mid=%dus"
+						   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d\n",
+						   ( subT1 - s_sendWinT0 ) / 1000, s_sendBatches, s_sendRuns,
+						   s_sendSum, s_sendFirst, s_sendSum - s_sendFirst,
+						   s_sendMax, s_sendGapMax, s_sendVerts, s_sendBig, s_sendBigVerts );
+				s_sendWinT0 = subT1;
+				s_sendRuns = s_sendBatches = s_sendSum = s_sendFirst = 0;
+				s_sendMax = s_sendGapMax = 0;
+				s_sendVerts = s_sendBig = s_sendBigVerts = 0;
+			}
+		}
 
 		subT0 = BE_On() ? BE_Microseconds() : 0;
 		qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
