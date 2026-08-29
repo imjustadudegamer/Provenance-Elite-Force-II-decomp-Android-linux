@@ -534,14 +534,12 @@ void RB_LoadIdentityProjection( void )
 }
 
 /*
- * The saved-matrix copies are fortify-checked, and the bound the compiler
- * derives for the destination is the whole-array remainder,
- * sizeof(stack) - 16*depth, which is zero for every depth outside
- * [0, RB_MATRIX_STACK_DEPTH).  A one-ended test does not bound that copy: a
- * negative depth satisfies a signed upper test, the remainder collapses to
- * zero, and the abort lands in __memcpy_chk.  Each accessor therefore tests the
- * index as unsigned, so the copy is reachable only where the remainder is at
- * least one matrix and an out-of-range state value is refused, not fatal.
+ * The saved-matrix copies are fortify-checked and the bound the compiler derives
+ * for the destination is the whole-array remainder, sizeof(stack) - 16*depth,
+ * which is zero for every depth outside [0, RB_MATRIX_STACK_DEPTH).  A one-ended
+ * test does not bound that copy: a negative depth satisfies a signed upper test,
+ * the remainder collapses to zero, and the abort lands in __memcpy_chk.  Each
+ * accessor therefore tests the index as unsigned.
  */
 void RB_PushModelView( void )
 {

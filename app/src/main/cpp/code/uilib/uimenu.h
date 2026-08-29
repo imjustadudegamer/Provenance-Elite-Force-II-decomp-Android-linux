@@ -108,6 +108,7 @@ public:
     void  PushMenu(Event *ev);
     void  PopMenu(qboolean restore_cvars);
     Menu *CurrentMenu(void);
+    bool  HasShownMenu(void) { return m_showmenustack.Head() != NULL; }
     bool  ClearMenus(bool force);
     void  ListMenus(void);
     void  UpdateAllMenus(void);

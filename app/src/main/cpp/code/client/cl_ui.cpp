@@ -1458,6 +1458,18 @@ void UI_TransitionMenu_f(void)
         return;
     }
 
+    // Retail UI_TransitionMenu_f @0x00194150 drops the current menu through
+    // MenuManager::PopMenu @0x0006D3A0 (show stack first) and records a
+    // transition that MenuManager::UpdateAllMenus @0x0006C870 pushes once menus
+    // unlock.  Same final stacks here: the show arm locks nothing, so pop and
+    // push are immediate, and with no transient shown the push arm would lock, so
+    // the collapse into TransitionMenu is used instead.
+    if (menuManager.HasShownMenu()) {
+        menuManager.PopMenu(atoi(Cmd_Argv(2)));
+        UI_PushMenu(Cmd_Argv(1));
+        return;
+    }
+
     UI_TransitionMenu(Cmd_Argv(1));
 }
 
@@ -1939,16 +1951,14 @@ void UI_Cvar_Set(const char *var_name, const char *value)
 }
 
 /*
- * One HUD scale factor for the in-game HUD only -- weapon ammo, the dialogue box,
- * the tricorder, the radar and the rest.  The 640x480 virtual space that
+ * One HUD scale factor for the in-game HUD only.  The 640x480 virtual space that
  * `uid.scaleRes' resolves stays retail, so every 2D menu, dialog, loading screen
  * and scoreboard is pixel-identical; a HUD element's subtree is the only place
  * `uid.scaleRes' is multiplied, and each HUD menu keeps the edge its `align'
  * declares.  `ui_hudScale' 0 means auto: 1.0 on a desktop, and on Android the
- * display density over 160 clamped to [1,2], which is a physical-size rule -- a
- * 6.4" 720p panel (density 320) and a 6.4" 1440p panel (density 560) both land on
- * the cap and therefore read the same size.  The clamp is the same on both ends,
- * so no device is smaller than it is today.
+ * display density over 160 clamped to [1,2] -- a 6.4" 720p panel (density 320)
+ * and a 6.4" 1440p panel (density 560) both land on the cap and read the same
+ * size.  The clamp is the same on both ends.
  */
 #define HUD_SCALE_MIN	1.0f
 #define HUD_SCALE_MAX	2.0f
@@ -2039,22 +2049,15 @@ static void UI_LogHudScale( void )
 
 /*
  * The in-game HUD is two sets that reach the screen by different routes, and
- * both are scaled.
- *
- * The first is `hudList': everything `ui_addhud' pushes there -- health, radar,
- * inventory, item text, mission objectives, the pause icon, the objective
- * notices, the arena and match-mode status boards, and the menus the game adds
- * by script through `Player::addHud' (`stufftext "ui_addhud ..."`) such as the
- * tricorder's keypad, modulation and route panels.  The one exception is
- * `dm_scoreboard': the multiplayer scoreboard is interface, not HUD, so it is
- * excluded and stays retail-sized.
- *
- * The second is the fixed set the client itself finds by name and shows in the
- * in-game path: the weapon-ammo readouts (`weaphud*'), the dialogue/comm box
- * (`headhud', `headtexthud', `texthud') and the small HUD panels.  Those never
- * go through `ui_addhud', so they are scaled here directly.  Menus, dialogs,
- * loading screens, the mission-result screens and the scoreboard are in neither
- * set.
+ * both are scaled.  The first is `hudList': everything `ui_addhud' pushes there
+ * -- health, radar, inventory, item text, mission objectives, the pause icon,
+ * the objective notices, the arena and match-mode status boards, and the menus
+ * the game adds through `Player::addHud'.  `dm_scoreboard' is the exception:
+ * the multiplayer scoreboard is interface, not HUD, and stays retail-sized.
+ * The second is the fixed set the client finds by name -- the weapon-ammo
+ * readouts (`weaphud*'), the dialogue/comm box (`headhud', `headtexthud',
+ * `texthud') and the small HUD panels.  Menus, dialogs, loading screens, the
+ * mission-result screens and the scoreboard are in neither set.
  */
 static qboolean UI_HudMenuScaled( const Menu *hud )
 {
