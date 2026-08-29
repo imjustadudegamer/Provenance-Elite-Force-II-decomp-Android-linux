@@ -2193,6 +2193,7 @@ int		RB_FrameSmpFrame( void );
 int		RB_FrameCount( void );		
 int		RB_FrameBoneArena( void );	
 int		RB_FrameBackEndMsec( void );	
+void	RB_FrameBackEndReset( void );
 
 void R_SavePerformanceCounters(void);
 void R_InitCommandBuffers( void );
@@ -2261,6 +2262,7 @@ typedef enum {
 	BE_FAM_BE = 0,
 	BE_FAM_DS,
 	BE_FAM_PROG,
+	BE_FAM_FE,
 	BE_FAM_COUNT
 } be_family_t;
 
@@ -2285,6 +2287,7 @@ typedef enum {
 typedef enum {
 	BE_DSZ_sub_stage = 0, BE_DSZ_sub_vbo, BE_DSZ_sub_unif,
 	BE_DSZ_sub_shadow,
+	BE_DSZ_sub_pack, BE_DSZ_sub_upload, BE_DSZ_sub_draw,
 	BE_DS_SUBS
 } be_ds_sub_t;
 
@@ -2303,6 +2306,20 @@ typedef enum {
 	BE_PC_made = 0,
 	BE_PROG_COUNTERS
 } be_prog_counter_t;
+
+/* The front-end legs of one scene (one R_RenderScene, every view it recurses into).
+ * `exec` is the part of the front end that R_IssuePendingRenderCommands runs inline,
+ * so it is the back end measured from inside renderFront and overlaps [BE:ds]. */
+typedef enum {
+	BE_FEZ_view = 0, BE_FEZ_world, BE_FEZ_ents, BE_FEZ_poly, BE_FEZ_sprite,
+	BE_FEZ_sort, BE_FEZ_exec, BE_FEZ_other,
+	BE_FE_ZONES
+} be_fe_zone_t;
+
+typedef enum {
+	BE_FEC_surfs = 0, BE_FEC_ents, BE_FEC_views, BE_FEC_portals,
+	BE_FE_COUNTERS
+} be_fe_counter_t;
 
 int		BE_Microseconds( void );
 int		BE_Armed( void );

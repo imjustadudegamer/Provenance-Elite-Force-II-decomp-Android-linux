@@ -57,6 +57,10 @@ void Sys_AndroidLog( int priority, const char *msg );
 #  include "../uilib/ui_public.h"
 #endif
 
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                          Com_Printf
+#include "qa_probe.h"
+
 
 void InitializeCinematicSystem(void);
 
@@ -1962,6 +1966,86 @@ static void SMP_LoadPrint( int frames, int window ) {
 	}
 }
 
+/*
+ * The frame cost on a phone can drift with SoC frequency and heat rather than with
+ * anything the engine did.  Nothing else in the tree reads either, so a capture
+ * cannot tell a code regression from a throttled part without this row.  Sampling
+ * is one window roll (a few sysfs reads per second) and only under the probe gate.
+ */
+static void SMP_ThermalProbe( int window ) {
+	static int	rows;
+	static int	first;
+	int			core, cores, mhz[8];
+	char		path[96], buf[64];
+	char		line[256], part[32];
+	FILE		*fp;
+
+	if ( !PROBE_On() ) {
+		return;
+	}
+	if ( rows > 200 ) {
+		return;
+	}
+	rows++;
+
+	if ( !first ) {
+		first = Sys_Milliseconds();
+	}
+
+	/* The readable scaling_cur_freq files are the core count here: the dedicated
+	 * server links no SDL, so there is no SDL_GetCPUCount to ask. */
+	cores = 0;
+	for ( core = 0; core < 8; core++ ) {
+		mhz[core] = -1;
+		Com_sprintf( path, sizeof( path ),
+					 "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", core );
+		fp = fopen( path, "r" );
+		if ( !fp ) {
+			continue;
+		}
+		if ( fgets( buf, sizeof( buf ), fp ) ) {
+			mhz[core] = atoi( buf ) / 1000;
+			cores = core + 1;
+		}
+		fclose( fp );
+	}
+
+	line[0] = '\0';
+	for ( core = 0; core < cores; core++ ) {
+		Com_sprintf( part, sizeof( part ), "%s%d", core ? "," : " mhz=", mhz[core] );
+		Q_strcat( line, sizeof( line ), part );
+	}
+
+	{
+		int	zone, zones = 0;
+		int	temp[4];
+
+		for ( zone = 0; zone < 4; zone++ ) {
+			temp[zone] = -1;
+			Com_sprintf( path, sizeof( path ),
+						 "/sys/class/thermal/thermal_zone%d/temp", zone );
+			fp = fopen( path, "r" );
+			if ( !fp ) {
+				continue;
+			}
+			if ( fgets( buf, sizeof( buf ), fp ) ) {
+				temp[zone] = atoi( buf );
+				zones++;
+			}
+			fclose( fp );
+		}
+		if ( zones ) {
+			for ( zone = 0; zone < 4; zone++ ) {
+				Com_sprintf( part, sizeof( part ), "%s%d", zone ? "," : " milliC=", temp[zone] );
+				Q_strcat( line, sizeof( line ), part );
+			}
+		}
+	}
+
+	Com_Printf( "[THERM:cpu] row=%d window=%dms elapsed=%dms cores=%d%s\n",
+				rows, window, Sys_Milliseconds() - first, cores, line );
+}
+
 static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int totalMsec ) {
 	static cvar_t	*smp_frameStats;
 	static cvar_t	*smp_loadStats;
@@ -2061,6 +2145,8 @@ static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int t
 	smp_lastWindowValid  = qtrue;
 
 	Com_Printf( "[SMP:frame] frames=%d window=%dms%s\n", frames, window, line );
+
+	SMP_ThermalProbe( window );
 
 	if ( smp_loadOn ) {
 		SMP_LoadPrint( smp_loadFrames, window );

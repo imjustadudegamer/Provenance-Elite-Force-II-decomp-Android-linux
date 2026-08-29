@@ -83,6 +83,71 @@ static qboolean	s_vboInitialised;
 
 static rbVertex_t	s_tessStage[SHADER_MAX_VERTEXES];
 
+/* One range of the repack.  Every vertex reads only its own source slots and writes
+ * only its own s_tessStage element, so chunks are disjoint and the bytes produced do
+ * not depend on the split. */
+#define RB_VBO_PACK_CHUNK	512
+
+typedef struct {
+	const shaderCommands_t	*input;
+	const float				*texcoord0;
+	const float				*texcoord1;
+	const unsigned char		*colors;
+	const float				*normals;
+	int						tcStrideFloats;
+} rbVboPack_t;
+
+static void RB_VboPackRange( void *vctx, int begin, int end ) {
+	const rbVboPack_t	*c = (const rbVboPack_t *)vctx;
+	const shaderCommands_t	*input = c->input;
+	rbVertex_t			*dst = s_tessStage + begin;
+
+	for ( ; begin < end; begin++, dst++ ) {
+		const float *src;
+
+		src = input->xyz[begin];
+		dst->xyz[0] = src[0];
+		dst->xyz[1] = src[1];
+		dst->xyz[2] = src[2];
+		dst->xyz[3] = src[3];
+
+		if ( c->normals ) {
+			src = c->normals + begin * 4;
+			dst->normal[0] = src[0];
+			dst->normal[1] = src[1];
+			dst->normal[2] = src[2];
+			dst->normal[3] = src[3];
+		} else {
+			dst->normal[0] = input->xyz[begin][0];
+			dst->normal[1] = input->xyz[begin][1];
+			dst->normal[2] = input->xyz[begin][2];
+			dst->normal[3] = 1.0f;
+		}
+
+		if ( c->colors ) {
+			dst->color[0] = c->colors[begin * 4 + 0];
+			dst->color[1] = c->colors[begin * 4 + 1];
+			dst->color[2] = c->colors[begin * 4 + 2];
+			dst->color[3] = c->colors[begin * 4 + 3];
+		} else {
+			dst->color[0] = dst->color[1] = dst->color[2] = dst->color[3] = 255;
+		}
+
+		if ( c->texcoord0 ) {
+			dst->st0[0] = c->texcoord0[begin * c->tcStrideFloats + 0];
+			dst->st0[1] = c->texcoord0[begin * c->tcStrideFloats + 1];
+		} else {
+			dst->st0[0] = dst->st0[1] = 0.0f;
+		}
+		if ( c->texcoord1 ) {
+			dst->st1[0] = c->texcoord1[begin * c->tcStrideFloats + 0];
+			dst->st1[1] = c->texcoord1[begin * c->tcStrideFloats + 1];
+		} else {
+			dst->st1[0] = dst->st1[1] = 0.0f;
+		}
+	}
+}
+
 #define RB_STREAM_MAX_VERTS	(SHADER_MAX_VERTEXES * 4)
 #define RB_STREAM_MAX_RECS	4096
 
@@ -177,9 +242,6 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const unsigned char *colors,
 							const float *normals )
 {
-	int		i;
-	rbVertex_t	*dst;
-
 	if ( !s_vboInitialised ) {
 		RB_VBO_Init();
 	}
@@ -189,52 +251,21 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	}
 
 	BE_SUB( BE_FAM_DS, BE_DSZ_sub_vbo, {
-		dst = s_tessStage;
-		for ( i = 0; i < input->numVertexes; i++, dst++ ) {
-			const float *src;
+		rbVboPack_t	pack;
+		int			subT0;
 
-			src = input->xyz[i];
-			dst->xyz[0] = src[0];
-			dst->xyz[1] = src[1];
-			dst->xyz[2] = src[2];
-			dst->xyz[3] = src[3];
+		pack.input = input;
+		pack.texcoord0 = texcoord0;
+		pack.texcoord1 = texcoord1;
+		pack.colors = colors;
+		pack.normals = normals;
+		pack.tcStrideFloats = tcStrideFloats;
 
-			if ( normals ) {
-				src = normals + i * 4;
-				dst->normal[0] = src[0];
-				dst->normal[1] = src[1];
-				dst->normal[2] = src[2];
-				dst->normal[3] = src[3];
-			} else {
-				dst->normal[0] = input->xyz[i][0];
-				dst->normal[1] = input->xyz[i][1];
-				dst->normal[2] = input->xyz[i][2];
-				dst->normal[3] = 1.0f;
-			}
+		subT0 = BE_On() ? BE_Microseconds() : 0;
+		JobPool_ParallelRange( input->numVertexes, RB_VBO_PACK_CHUNK, RB_VboPackRange, &pack );
+		BE_Sub( BE_FAM_DS, BE_DSZ_sub_pack, BE_Microseconds() - subT0 );
 
-			if ( colors ) {
-				dst->color[0] = colors[i * 4 + 0];
-				dst->color[1] = colors[i * 4 + 1];
-				dst->color[2] = colors[i * 4 + 2];
-				dst->color[3] = colors[i * 4 + 3];
-			} else {
-				dst->color[0] = dst->color[1] = dst->color[2] = dst->color[3] = 255;
-			}
-
-			if ( texcoord0 ) {
-				dst->st0[0] = texcoord0[i * tcStrideFloats + 0];
-				dst->st0[1] = texcoord0[i * tcStrideFloats + 1];
-			} else {
-				dst->st0[0] = dst->st0[1] = 0.0f;
-			}
-			if ( texcoord1 ) {
-				dst->st1[0] = texcoord1[i * tcStrideFloats + 0];
-				dst->st1[1] = texcoord1[i * tcStrideFloats + 1];
-			} else {
-				dst->st1[0] = dst->st1[1] = 0.0f;
-			}
-		}
-
+		subT0 = BE_On() ? BE_Microseconds() : 0;
 		RB_BindVAO( s_vaoTess );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTess );
 		qglBufferData( GL_ARRAY_BUFFER,
@@ -245,8 +276,12 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
 					   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
 					   indexes, GL_STREAM_DRAW );
+		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, BE_Microseconds() - subT0 );
 
+		subT0 = BE_On() ? BE_Microseconds() : 0;
 		qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
+		BE_Sub( BE_FAM_DS, BE_DSZ_sub_draw, BE_Microseconds() - subT0 );
+
 		BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
 		BE_Bump( BE_FAM_DS, BE_DSC_draws, 1 );
 		if ( r_spriteListOpen ) {

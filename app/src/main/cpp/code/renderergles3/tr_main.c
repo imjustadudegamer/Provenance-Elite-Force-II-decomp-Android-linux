@@ -1215,19 +1215,19 @@ void R_AddSpriteSurfaces(void)
 }
 
 void R_GenerateDrawSurfs( void ) {
-	R_AddWorldSurfaces ();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_world, R_AddWorldSurfaces() );
 	if (!(tr.refdef.rdflags & RDF_NOWORLDMODEL)) {
-		R_AddSwipeSurfaces();
+		BE_ZONE( BE_FAM_FE, BE_FEZ_poly, R_AddSwipeSurfaces() );
 	}
 
-	R_AddPolygonSurfaces();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_poly, R_AddPolygonSurfaces() );
 
 
-    R_AddEntitySurfaces();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_ents, R_AddEntitySurfaces() );
 
-	R_AddSpriteSurfaces();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_sprite, R_AddSpriteSurfaces() );
 
-	R_SetupProjection ();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_SetupProjection() );
 }
 
 void R_DebugPolygon( int color, int numPoints, float *points ) {
@@ -1536,27 +1536,33 @@ void R_RenderView (viewParms_t *parms) {
 
 	tr.viewCount++;
 
-	R_RotateForViewer ();
+	BE_Bump( BE_FAM_FE, BE_FEC_views, 1 );
+	BE_Bump( BE_FAM_FE, BE_FEC_portals, parms->isPortal ? 1 : 0 );
 
-	R_SetupFrustum ();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_RotateForViewer() );
 
-	R_Sky_Reset();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_SetupFrustum() );
 
-	R_DrawDebugStrings();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_Sky_Reset() );
+
+	BE_ZONE( BE_FAM_FE, BE_FEZ_other, R_DrawDebugStrings() );
 
 	R_GenerateDrawSurfs();
 
+	BE_Bump( BE_FAM_FE, BE_FEC_surfs, tr.refdef.numDrawSurfs - firstDrawSurf );
+	BE_Bump( BE_FAM_FE, BE_FEC_ents, tr.refdef.num_entities );
 
-    R_SortDrawSurfs(
-		tr.refdef.drawSurfs + firstDrawSurf, tr.refdef.numDrawSurfs - firstDrawSurf,
-		tr.refdef.spriteSurfs + firstSpriteSurf, tr.refdef.numSpriteSurfs - firstSpriteSurf
-	);
+    BE_ZONE( BE_FAM_FE, BE_FEZ_sort, R_SortDrawSurfs( tr.refdef.drawSurfs + firstDrawSurf,
+		tr.refdef.numDrawSurfs - firstDrawSurf, tr.refdef.spriteSurfs + firstSpriteSurf,
+		tr.refdef.numSpriteSurfs - firstSpriteSurf ) );
 
-	R_IssuePendingRenderCommands();
+	/* exec is the back end run from inside the front end: [BE:ds] measures the same
+	 * work from the other side, so the two overlap rather than add. */
+	BE_ZONE( BE_FAM_FE, BE_FEZ_exec, R_IssuePendingRenderCommands() );
 
-	R_DrawDebugLines();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_other, R_DrawDebugLines() );
 
-	R_DebugGraphics();
+	BE_ZONE( BE_FAM_FE, BE_FEZ_other, R_DebugGraphics() );
 }
 
 

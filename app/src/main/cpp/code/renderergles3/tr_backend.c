@@ -1532,7 +1532,7 @@ const void	*RB_SwapBuffers( const void *data ) {
 #define BE_MAX_ROWS		400
 #define BE_MAX_ZONES		8
 #define BE_MAX_COUNTERS	9
-#define BE_MAX_SUBS		4
+#define BE_MAX_SUBS		7
 #define BE_TOP_N			3
 #define BE_NAME_LEN		48
 
@@ -1562,34 +1562,40 @@ static int			s_beRootArmed[BE_FAM_COUNT];
 static int			s_beWindowStart;
 static qboolean		s_beWindowSet;
 
-static const char *const s_beFamName[BE_FAM_COUNT] = { "be", "ds", "prog" };
+/* The tag each family prints under: the back-end families keep [BE:...] so an
+ * existing capture reads the same; the front-end family is its own list. */
+static const char *const s_beFamTag[BE_FAM_COUNT] = { "BE:be", "BE:ds", "BE:prog", "FE:scene" };
 
 static const char *const s_beZoneName[BE_FAM_COUNT][BE_MAX_ZONES] = {
 	{ "surfs", "sprites", "sprwalk", "pic", "buf", "swap", "color", "other" },
 	{ "walk", "end", "flare", "shadow", "other", NULL, NULL, NULL },
-	{ "compile", "link", "other", NULL, NULL, NULL, NULL, NULL }
+	{ "compile", "link", "other", NULL, NULL, NULL, NULL, NULL },
+	{ "view", "world", "ents", "poly", "sprite", "sort", "exec", "other" }
 };
 static const int s_beZoneCount[BE_FAM_COUNT] = {
-	BE_BE_ZONES, BE_DS_ZONES, BE_PROG_ZONES
+	BE_BE_ZONES, BE_DS_ZONES, BE_PROG_ZONES, BE_FE_ZONES
 };
 
 static const char *const s_beSubName[BE_MAX_SUBS] = {
-	"substage", "subvbo", "subunif", "subshadow"
+	"substage", "subvbo", "subunif", "subshadow",
+	"subpack", "subupload", "subdraw"
 };
 
 static const char *const s_beCntName[BE_FAM_COUNT][BE_MAX_COUNTERS] = {
 	{ "lists", "cmds", "surfN", "drawN", "empty", "sprN", "sprBatch", "sprDraw" },
 	{ "surfsN", "batchN", "vertN", "stageN", "drawN", "unifs", "unifskip", "binds", "edgeN" },
-	{ "made", NULL, NULL, NULL, NULL, NULL, NULL, NULL }
+	{ "made", NULL, NULL, NULL, NULL, NULL, NULL, NULL },
+	{ "surfs", "ents", "views", "portals", NULL, NULL, NULL, NULL }
 };
 static const int s_beCntCount[BE_FAM_COUNT] = {
-	BE_BE_COUNTERS, BE_DS_COUNTERS, BE_PROG_COUNTERS
+	BE_BE_COUNTERS, BE_DS_COUNTERS, BE_PROG_COUNTERS, BE_FE_COUNTERS
 };
 
 typedef char be_tables_agree_enums[
-	( BE_FAM_COUNT == 3 && BE_BE_ZONES == 8 && BE_DS_ZONES == 5
-	  && BE_PROG_ZONES == 3 && BE_BE_COUNTERS == 8 && BE_DS_COUNTERS == 9
-	  && BE_PROG_COUNTERS == 1 && BE_DS_SUBS == 4 ) ? 1 : -1 ];
+	( BE_FAM_COUNT == 4 && BE_BE_ZONES == 8 && BE_DS_ZONES == 5
+	  && BE_PROG_ZONES == 3 && BE_FE_ZONES == 8 && BE_BE_COUNTERS == 8
+	  && BE_DS_COUNTERS == 9 && BE_PROG_COUNTERS == 1 && BE_FE_COUNTERS == 4
+	  && BE_DS_SUBS == 7 ) ? 1 : -1 ];
 
 void BE_Zone( int family, int zone, int usec );
 
@@ -1682,8 +1688,8 @@ static void BE_Print( int family, int windowMs ) {
 				 mean10 / 10, mean10 % 10, max10 / 10, max10 % 10 );
 	Q_strcat( line, sizeof( line ), part );
 
-	ri.Printf( PRINT_ALL, "[BE:%s] roots=%d window=%dms%s\n",
-			   s_beFamName[family], f->roots, windowMs, line );
+	ri.Printf( PRINT_ALL, "[%s] roots=%d window=%dms%s\n",
+			   s_beFamTag[family], f->roots, windowMs, line );
 }
 
 static void BE_MaybeRoll( void ) {
@@ -1712,8 +1718,8 @@ static void BE_MaybeRoll( void ) {
 		} else {
 			s_be[i].stopped = 1;
 			ri.Printf( PRINT_ALL,
-					   "[BE:%s] capped at %d rows; no further lines\n",
-					   s_beFamName[i], BE_MAX_ROWS );
+					   "[%s] capped at %d rows; no further lines\n",
+					   s_beFamTag[i], BE_MAX_ROWS );
 		}
 		BE_Reset( i );
 	}
