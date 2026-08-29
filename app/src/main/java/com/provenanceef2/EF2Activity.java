@@ -2,6 +2,7 @@ package com.provenanceef2;
 
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.pm.ActivityInfo;
 import android.content.res.AssetManager;
 import android.os.Bundle;
 import android.util.Log;
@@ -105,6 +106,18 @@ public class EF2Activity extends SDLActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
         SDLActivity.mFullscreenModeActive = true;
+    }
+
+    /**
+     * The engine is landscape-only and the manifest says so, but SDL overwrites
+     * that declaration: when it has no orientation hint it asks for
+     * SCREEN_ORIENTATION_FULL_USER on a resizeable surface, which undoes the
+     * lock and lets the game rotate to portrait.  This override is the clamp, so
+     * the requested orientation stays landscape whatever SDL asks for.
+     */
+    @Override
+    public void setOrientationBis(int w, int h, boolean resizable, String hint) {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     @Override

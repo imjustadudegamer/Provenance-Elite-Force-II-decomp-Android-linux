@@ -52,10 +52,17 @@
 
         <!-- Launcher: verifies/imports the retail pak files (SAF picker on
              Android 11+ where file managers cannot write Android/obb), then
-             hands off to EF2Activity. -->
+             hands off to EF2Activity.  It carries the same landscape lock and
+             the same non-resizeable declaration as the game activity: without
+             them the import screen rotates to portrait, and from API 31 up the
+             platform ignores a screenOrientation on a resizeable activity, so
+             the lock would be silently dropped. -->
         <activity android:name="com.provenanceef2.ImportActivity"
             android:label="@string/app_name"
             android:theme="@style/AppTheme"
+            android:screenOrientation="sensorLandscape"
+            android:resizeableActivity="false"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="true"
             >
             <intent-filter>
@@ -69,6 +76,7 @@
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"
             android:screenOrientation="sensorLandscape"
+            android:resizeableActivity="false"
             android:windowSoftInputMode="stateAlwaysHidden|adjustNothing"
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:preferMinimalPostProcessing="true"
