@@ -39,6 +39,19 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 static int   s_hudScaleDepth;
 static float s_hudScaleValue = 1.0f;
 
+/* The update stamp: one value per UI_Update, bumped before the walk starts. */
+static int   s_updateStamp;
+
+void UIWidget::FrameStampBump(void)
+{
+    s_updateStamp++;
+}
+
+int UIWidget::FrameStamp(void)
+{
+    return s_updateStamp;
+}
+
 static UBorderColor DeriveBorderColor(const UColor& color)
 {
     constexpr float borderDarkScale = 0x1.555556p-1f;   
@@ -3018,6 +3031,16 @@ void UIWidget::updateCvarVisibility(void)
 void UIWidget::update(void)
 {
     int i;
+
+    /* The per-update stamp is checked before the probe opens, so a subtree the
+       update walk has already descended this update costs one compare and reads
+       no clock.  `FrameStampBump' runs once per UI_Update, so every widget is
+       reached exactly once per update and a new update stamps anew. */
+    if (m_updateStamp == s_updateStamp) {
+        return;
+    }
+
+    m_updateStamp = s_updateStamp;
 
     int limit_t0 = LIMIT_VW_UpdEnter();
     int limit_self;

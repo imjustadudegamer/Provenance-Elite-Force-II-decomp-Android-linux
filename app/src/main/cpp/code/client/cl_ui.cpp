@@ -903,6 +903,10 @@ static void UI_Update_Impl(void);
 
 void UI_Update(void)
 {
+    /* One update descent per UI update: the stamp is what stops the window
+       manager's walk repeating the descent the menu manager's walk already did. */
+    UIWidget::FrameStampBump();
+
     UI_ROOT_BEGIN(UI_FAM_UI);
 
     UI_Update_Impl();
