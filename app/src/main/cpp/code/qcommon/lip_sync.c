@@ -224,12 +224,14 @@ static int loadVolumeLipFile(const char *filename, lip_sync_t *lip)
 
         entry = &lip->entries[lip->num_entries];
 
+        // 0xDFAD0/0xDFADC: a loud group drives morph_o by the selected amplitude,
+        // a quiet one drives morph_mouth_base at rest.
         if (sel >= LIP_VLP_THRESHOLD) {
-            entry->nameIndex = idxBase;
-            entry->amplitude = LIP_VLP_RESET;
-        } else {
             entry->nameIndex = idxO;
             entry->amplitude = sel;
+        } else {
+            entry->nameIndex = idxBase;
+            entry->amplitude = LIP_VLP_RESET;
         }
         entry->section = frame;
 
