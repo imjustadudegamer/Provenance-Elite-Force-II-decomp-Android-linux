@@ -550,6 +550,10 @@ void UpdateStereoSide( stereoFrame_t s ) {
 #endif
 
 	SCR_DrawFPS();
+
+	/* Last, and on every frame: SCR_DrawScreenField is skipped when the 3D view is hidden,
+	   so the bands would otherwise keep an undefined back-buffer.  A no-op when there are none. */
+	SCR_DrawAndroidBars();
 }
 
 void SCR_SimpleUpdateScreen( void ) {
