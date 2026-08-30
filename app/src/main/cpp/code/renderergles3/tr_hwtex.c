@@ -988,6 +988,24 @@ void SMP_TranscodeRows(void *vctx, int begin, int end)
 }
 
 
+int SMP_MipLevelCount(int width, int height)
+{
+	int levels = 1;
+
+	if (width < 1) width = 1;
+	if (height < 1) height = 1;
+
+	while (width > 1 || height > 1) {
+		width >>= 1;
+		height >>= 1;
+		if (width < 1) width = 1;
+		if (height < 1) height = 1;
+		levels++;
+	}
+	return levels;
+}
+
+
 void SMP_MipMap(unsigned char *in, int width, int height)
 {
 	int   i, j;
