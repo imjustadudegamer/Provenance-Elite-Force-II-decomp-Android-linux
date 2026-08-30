@@ -566,11 +566,38 @@ static GLenum R_ES3InternalFormat( int fmt ) {
 	}
 }
 
+/* TexStorage2D takes a sized internal format (ES 3.0 spec 3.8, p.137), so
+ * R_ES3InternalFormat's unsized GL_RGBA cases keep the TexImage2D path. */
+static GLenum R_ES3StorageFormat( GLenum fmt ) {
+	switch ( fmt ) {
+	case GL_RGBA8:   return GL_RGBA8;
+	case GL_RGBA4:   return GL_RGBA4;
+	case GL_RGB5_A1: return GL_RGB5_A1;
+	default:         return 0;
+	}
+}
+
 
 extern qboolean charSet;
 
 static int	s_gles3UploadSamples = 0;
 static int	s_gles3UploadFormat  = 0;
+
+/* The software path re-specifies every mip level with TexImage2D.  One
+ * TexStorage2D for the whole chain plus a TexSubImage2D per level is the same
+ * chain built once, but the storage is immutable afterwards -- so the builtin
+ * '*' images, which Draw_StretchRaw and RE_UploadCinematic re-specify, stay on
+ * TexImage2D. */
+static qboolean	s_gles3UploadStored = qfalse;
+static int		s_gles3UploadLevels = 1;
+
+static void R_UploadLevel( GLenum sizedFormat, int level, int w, int h, const void *data ) {
+	if ( s_gles3UploadStored ) {
+		qglTexSubImage2D( GL_TEXTURE_2D, level, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data );
+	} else {
+		qglTexImage2D( GL_TEXTURE_2D, level, sizedFormat, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
+	}
+}
 
 static int	s_gles3PathKind = 0;
 static int	s_gles3PathFmt  = 0;
@@ -611,7 +638,8 @@ static void Upload32(
 	int* pUploadWidth,
 	int* pUploadHeight,
 	int* bytesUsed,
-	qboolean bIsLightmap
+	qboolean bIsLightmap,
+	qboolean allowStorage
 )
 {
 	int			samples;
@@ -619,9 +647,10 @@ static void Upload32(
 	unsigned	*resampledBuffer = NULL;
 	int			scaled_width, scaled_height;
 	int			i, c;
+	int			levels;
+	GLenum		sizedFormat;
 	byte		*scan;
 	GLenum		internalFormat = GL_RGB;
-	float		rMax = 0, gMax = 0, bMax = 0;
 
 	for (scaled_width = 1 ; scaled_width < width ; scaled_width<<=1)
 		;
@@ -664,20 +693,10 @@ static void Upload32(
 	scan = ((byte *)data);
 	samples = 3;
 	if (!bIsLightmap) {
+		/* Only the alpha byte decides the sample count; the per-channel maxima
+		 * that the retail loop accumulated alongside it are never read. */
 		for ( i = 0; i < c; i++ )
 		{
-			if ( scan[i*4+0] > rMax )
-			{
-				rMax = scan[i*4+0];
-			}
-			if ( scan[i*4+1] > gMax )
-			{
-				gMax = scan[i*4+1];
-			}
-			if ( scan[i*4+2] > bMax )
-			{
-				bMax = scan[i*4+2];
-			}
 			if ( scan[i*4 + 3] != 255 ) 
 			{
 				samples = 4;
@@ -772,11 +791,33 @@ static void Upload32(
 	}
 	s_gles3UploadSamples = samples;
 	s_gles3UploadFormat  = internalFormat;
+
+	/* The chain the mip loop below will build, counted before it mutates
+	 * scaled_width/height. */
+	levels = SMP_MipLevelCount( scaled_width, scaled_height );
+
+	sizedFormat = R_ES3StorageFormat( R_ES3InternalFormat( internalFormat ) );
+	s_gles3UploadStored = qfalse;
+	s_gles3UploadLevels = numMipmaps ? levels : 1;
+	if ( qglTexStorage2D && allowStorage && sizedFormat != 0 ) {
+		int	drain;
+
+		for ( drain = 0; drain < 16 && qglGetError() != GL_NO_ERROR; drain++ ) {
+			;
+		}
+		qglTexStorage2D( GL_TEXTURE_2D, s_gles3UploadLevels, sizedFormat,
+						 scaled_width, scaled_height );
+		/* a driver that refuses the immutable storage keeps the TexImage2D path */
+		if ( qglGetError() == GL_NO_ERROR ) {
+			s_gles3UploadStored = qtrue;
+		}
+	}
+
 	if ( ( scaled_width == width ) && 
 		( scaled_height == height ) ) {
 		if (!numMipmaps)
 		{
-			qglTexImage2D (GL_TEXTURE_2D, 0, R_ES3InternalFormat( internalFormat ), scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+			R_UploadLevel( R_ES3InternalFormat( internalFormat ), 0, scaled_width, scaled_height, data );
 			SMP_RecordUploadLevel( 0, scaled_width, scaled_height );
 			*pUploadWidth = scaled_width;
 			*pUploadHeight = scaled_height;
@@ -807,7 +848,7 @@ static void Upload32(
 	*pUploadHeight = scaled_height;
 	*format = internalFormat;
 
-	qglTexImage2D (GL_TEXTURE_2D, 0, R_ES3InternalFormat( internalFormat ), scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
+	R_UploadLevel( R_ES3InternalFormat( internalFormat ), 0, scaled_width, scaled_height, scaledBuffer );
 	SMP_RecordUploadLevel( 0, scaled_width, scaled_height );
 
 	*bytesUsed = samples * scaled_width * scaled_height;
@@ -832,7 +873,7 @@ static void Upload32(
 				R_BlendOverTexture( (byte *)scaledBuffer, scaled_width * scaled_height, mipBlendColors[miplevel] );
 			}
 
-			qglTexImage2D (GL_TEXTURE_2D, miplevel, R_ES3InternalFormat( internalFormat ), scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
+			R_UploadLevel( R_ES3InternalFormat( internalFormat ), miplevel, scaled_width, scaled_height, scaledBuffer );
 			SMP_RecordUploadLevel( miplevel, scaled_width, scaled_height );
 		}
 	}
@@ -1336,7 +1377,8 @@ image_t* R_CreateImageOld(
 			&image->uploadWidth,
 			&image->uploadHeight,
 			&image->bytesUsed,
-			isLightmap
+			isLightmap,
+			(qboolean)( name[0] != '*' )
 		);
 
 		s_smpWantStats = qfalse;

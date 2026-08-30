@@ -53,6 +53,45 @@ typedef enum {
 
 #define R_MODE_FALLBACK 3  
 
+/* The renderer asks for ES 3.2 and runs on nothing lower: a refusal is a
+ * refusal.  The requested values are here so the startup line and the refusal
+ * line cannot drift from the attributes actually set. */
+#define GLES3_CONTEXT_MAJOR 3
+#define GLES3_CONTEXT_MINOR 2
+
+static void *GLES3_ResolveProc(const char *name);
+
+/* A refused 3.2 request has to name what the device offered.  This opens one
+ * throwaway context with no version attribute (the driver then picks its
+ * highest) only to read the version and renderer strings, and destroys it; the
+ * renderer never runs on it. */
+static void GLES3_LogOfferedVersion(void)
+{
+	typedef const unsigned char *(*gles3GetString_t)(unsigned int);
+	gles3GetString_t getString;
+	SDL_GLContext	 probe;
+	const char		*version, *renderer;
+
+	SDL_GL_ResetAttributes();
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	probe = SDL_GL_CreateContext(SDL_window);
+	if (!probe) {
+		ri.Printf(PRINT_ALL,
+				  "[GLES3:gles3] context requested=%d.%d offered=\"none\" (%s)\n",
+				  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR, SDL_GetError());
+		return;
+	}
+
+	getString = (gles3GetString_t)GLES3_ResolveProc("glGetString");
+	version   = getString ? (const char *)getString(0x1F02 /* GL_VERSION */) : NULL;
+	renderer  = getString ? (const char *)getString(0x1F01 /* GL_RENDERER */) : NULL;
+	ri.Printf(PRINT_ALL,
+			  "[GLES3:gles3] context requested=%d.%d offered=\"%s\" renderer=\"%s\"\n",
+			  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
+			  version ? version : "(null)", renderer ? renderer : "(null)");
+	SDL_GL_DeleteContext(probe);
+}
+
 static void *GLES3_ResolveProc(const char *name)
 {
 	void *p = (void *)SDL_GL_GetProcAddress(name);
@@ -124,8 +163,8 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 	SDL_GL_ResetAttributes();
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
 						profileMask ? profileMask : SDL_GL_CONTEXT_PROFILE_ES);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, GLES3_CONTEXT_MAJOR);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, GLES3_CONTEXT_MINOR);
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
@@ -141,8 +180,10 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		SDL_GL_SetAttribute(SDL_GL_STEREO, 0);
 	}
 
-	ri.Printf(PRINT_ALL, "[GLES3:gles3] context attempt %s (%dx%d depth=%d stencil=%d)\n",
-			  what, width, height, depthBits, stencilBits);
+	ri.Printf(PRINT_ALL,
+			  "[GLES3:gles3] context attempt %s requested=%d.%d (%dx%d depth=%d stencil=%d)\n",
+			  what, GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
+			  width, height, depthBits, stencilBits);
 
 	SDL_window = SDL_CreateWindow(CLIENT_WINDOW_TITLE, x, y, width, height, flags);
 	if (!SDL_window) {
@@ -152,7 +193,10 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 
 	sdl_gl_context = SDL_GL_CreateContext(SDL_window);
 	if (!sdl_gl_context) {
-		ri.Printf(PRINT_ALL, "[GLES3:gles3] SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+		ri.Printf(PRINT_ALL,
+				  "[GLES3:gles3] context REFUSED: requested=%d.%d not granted (%s)\n",
+				  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR, SDL_GetError());
+		GLES3_LogOfferedVersion();
 		GLES3_FreeContext();
 		return qfalse;
 	}
@@ -164,6 +208,16 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		int missingCore = QGL_GLES3_LoadProcs(&staged);
 
 		QGL_GLES3_LogDeviceInfo();
+		{
+			const char *grantedRenderer =
+				qglGetString ? (const char *)qglGetString(GL_RENDERER) : NULL;
+
+			ri.Printf(PRINT_ALL,
+					  "[GLES3:gles3] context requested=%d.%d granted=%d.%d renderer=\"%s\"\n",
+					  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
+					  qglesMajorVersion, qglesMinorVersion,
+					  grantedRenderer ? grantedRenderer : "(null)");
+		}
 		ri.Printf(PRINT_ALL, "[GLES3:gles3] procs=%d core=%d core_missing=%d staged_desktop_traps=%d\n",
 				  QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), missingCore, staged);
 		if (missingCore > 0) {
@@ -467,7 +521,10 @@ void GLimp_Init(qboolean fixedFunction)
 		}
 	}
 
-	ri.Error(ERR_FATAL, "GLimp_Init() - could not create a GLES 3.0 subsystem");
+	ri.Error(ERR_FATAL,
+			 "GLimp_Init() - no OpenGL ES %d.%d context: every configuration was refused; "
+			 "see the [GLES3:gles3] context lines above for the version the device offered",
+			 GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR);
 
 success:
 	GLES3_InitExtensions();

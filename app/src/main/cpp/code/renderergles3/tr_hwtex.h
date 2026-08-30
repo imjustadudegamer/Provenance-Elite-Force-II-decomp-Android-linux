@@ -53,6 +53,10 @@ void SMP_TranscodeRows(void *vctx, int begin, int end);
 
 void SMP_MipMap(unsigned char *in, int width, int height);
 
+/* The number of levels the software upload's mip loop emits for a base level of
+ * width x height: level 0 plus one per halving until both reach 1. */
+int SMP_MipLevelCount(int width, int height);
+
 int SMP_TranscodeChainBytes(int upW, int upH, int levels);
 
 typedef void (*smpTranscodeRunner_t)(void *ud, smpTranscodeRows_t *ctx, int bh, int bw);
