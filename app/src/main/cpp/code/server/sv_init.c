@@ -328,15 +328,19 @@ static Q_UNUSED_VAR void SV_TouchFile( const char *filename ) {
 
 static int sv_stickyChecksumFeed = 0;
 
-/*
- * The spawn hatch is one SMP_LOAD zone and the ports of its sub-legs leave ~11 s
- * inside SV_SpawnServer unattributed.  These are the calls no other timer covers:
- * the client's map-loading screen, the game module's cleanup, the filesystem
- * restart, the warm-up frames, and the baseline build.  Milliseconds: the legs are
- * seconds-scale.  `resid' is the whole spawn minus them, so a leg that is missing
- * from this list shows up as residual rather than as a silent zero.
- */
-#define SPAWN_LEG_COUNT 5
+/* Every call in SV_SpawnServer that can take milliseconds is bracketed, so a
+ * missing bracket shows as residual rather than as a silent zero.  Legs: 0
+ * CL_MapLoading, 1 ge->Cleanup, 2 FS_Restart, 3 warm RunFrames, 4
+ * SV_CreateBaseline, 5 CM_LoadMap, 6 pure pak checksums, 7 configstrings, 8
+ * client walk, 9 heartbeat and Hunk mark, 10 SV_InitGameProgs, 11 SpawnEntities. */
+#define SPAWN_LEG_COUNT 12
+#define SPAWN_LEG_CMAP		5
+#define SPAWN_LEG_PURE		6
+#define SPAWN_LEG_CSTRINGS	7
+#define SPAWN_LEG_CLIENTS	8
+#define SPAWN_LEG_MARK		9
+#define SPAWN_LEG_SVINIT	10
+#define SPAWN_LEG_SPAWNENT	11
 
 static int	s_spawnLegs[SPAWN_LEG_COUNT];
 static int	s_spawnLegT0[SPAWN_LEG_COUNT];
@@ -473,7 +477,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 		Com_sprintf( filename, sizeof( filename ), "maps/%s.bsp", map );
 		SMP_LOAD_BEGIN( cmap );
+		SPAWN_LEG_BEGIN( SPAWN_LEG_CMAP );
 		CM_LoadMap( filename, qfalse, &checksum );
+		SPAWN_LEG_END( SPAWN_LEG_CMAP );
 		SMP_LOAD_END( cmap );
 
 		Cvar_Set( "sv_mapChecksum", va( "%i", checksum ) );
@@ -548,7 +554,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	if ( !ge ) {
 		SMP_LOAD_BEGIN( svinit );
+		SPAWN_LEG_BEGIN( SPAWN_LEG_SVINIT );
 		SV_InitGameProgs();
+		SPAWN_LEG_END( SPAWN_LEG_SVINIT );
 		SMP_LOAD_END( svinit );
 	}
 
@@ -558,7 +566,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		svs.time = 0;
 
 		SMP_LOAD_BEGIN( spawnent );
+		SPAWN_LEG_BEGIN( SPAWN_LEG_SPAWNENT );
 		ge->SpawnEntities( map, CM_EntityString(), svs.time );
+		SPAWN_LEG_END( SPAWN_LEG_SPAWNENT );
 		SMP_LOAD_END( spawnent );
 
 		p = ge->error_message;
@@ -601,6 +611,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		SV_CreateBaseline();
 		SPAWN_LEG_END( 4 );
 
+		SPAWN_LEG_BEGIN( SPAWN_LEG_CLIENTS );
 		for ( i = 0; i < sv_maxclients->integer; i++ ) {
 			if ( svs.clients[ i ].state >= CS_CONNECTED ) {
 				const char	*denied;
@@ -628,7 +639,9 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 				}
 			}
 		}
+		SPAWN_LEG_END( SPAWN_LEG_CLIENTS );
 
+		SPAWN_LEG_BEGIN( SPAWN_LEG_PURE );
 		if ( sv_pure->integer ) {
 			p = FS_LoadedPakChecksums();
 			Cvar_Set( "sv_paks", p );
@@ -641,24 +654,30 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 			Cvar_Set( "sv_paks", "" );
 			Cvar_Set( "sv_pakNames", "" );
 		}
+		SPAWN_LEG_END( SPAWN_LEG_PURE );
 
 		// Cvar_InfoString (0x001DF14C / 0x001DF184), not the _Big variant, and
+		SPAWN_LEG_BEGIN( SPAWN_LEG_CSTRINGS );
 		Q_strncpyz( systemInfo, Cvar_InfoString( CVAR_SYSTEMINFO ), sizeof( systemInfo ) );
 		cvar_modifiedFlags &= ~CVAR_SYSTEMINFO;
 		SV_SetConfigstring( CS_SYSTEMINFO, systemInfo );
 
 		SV_SetConfigstring( CS_SERVERINFO, Cvar_InfoString( CVAR_SERVERINFO ) );
 		cvar_modifiedFlags &= ~CVAR_SERVERINFO;
+		SPAWN_LEG_END( SPAWN_LEG_CSTRINGS );
 
 		sv.state = SS_GAME;
 
+		SPAWN_LEG_BEGIN( SPAWN_LEG_MARK );
 		SV_Heartbeat_f();
 
 		Hunk_SetMark();
+		SPAWN_LEG_END( SPAWN_LEG_MARK );
 	} else {
 		sv.restarting = qfalse;
 		sv.state = SS_GAME;
 
+		SPAWN_LEG_BEGIN( SPAWN_LEG_CLIENTS );
 		for ( i = 0; i < sv_maxclients->integer; i++ ) {
 			if ( svs.clients[ i ].state >= CS_CONNECTED ) {
 				const char	*denied;
@@ -682,6 +701,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 				}
 			}
 		}
+		SPAWN_LEG_END( SPAWN_LEG_CLIENTS );
 	}
 
 	SPAWN_LEG_BEGIN( 3 );
@@ -690,6 +710,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	svs.time += 100;
 	SPAWN_LEG_END( 3 );
 
+	SPAWN_LEG_BEGIN( SPAWN_LEG_PURE );
 	if ( sv_pure->integer ) {
 		p = FS_LoadedPakChecksums();
 		Cvar_Set( "sv_paks", p );
@@ -702,6 +723,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		Cvar_Set( "sv_paks", "" );
 		Cvar_Set( "sv_pakNames", "" );
 	}
+	SPAWN_LEG_END( SPAWN_LEG_PURE );
 
 	Q_strncpyz( svs.gameName, "current", sizeof( svs.gameName ) );
 
@@ -719,9 +741,15 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		}
 
 		LOADHANG_PROBE( "spawn",
-						"total=%d map=%s mapload=%d cleanup=%d fsrestart=%d warm=%d baseline=%d resid=%d\n",
+						"total=%d map=%s mapload=%d cleanup=%d fsrestart=%d warm=%d baseline=%d resid=%d"
+						" cmap=%d svinit=%d spawnent=%d pure=%d cstrings=%d clients=%d mark=%d"
+						" legs=%d\n",
 						total, map, s_spawnLegs[ 0 ], s_spawnLegs[ 1 ], s_spawnLegs[ 2 ],
-						s_spawnLegs[ 3 ], s_spawnLegs[ 4 ], total - named );
+						s_spawnLegs[ 3 ], s_spawnLegs[ 4 ], total - named,
+						s_spawnLegs[ SPAWN_LEG_CMAP ], s_spawnLegs[ SPAWN_LEG_SVINIT ],
+						s_spawnLegs[ SPAWN_LEG_SPAWNENT ], s_spawnLegs[ SPAWN_LEG_PURE ],
+						s_spawnLegs[ SPAWN_LEG_CSTRINGS ], s_spawnLegs[ SPAWN_LEG_CLIENTS ],
+						s_spawnLegs[ SPAWN_LEG_MARK ], named );
 	}
 }
 

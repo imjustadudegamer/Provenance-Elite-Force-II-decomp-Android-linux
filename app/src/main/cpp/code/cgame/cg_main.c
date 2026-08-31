@@ -162,6 +162,26 @@ int qsort_compare_strings(const void *s1, const void *s2)
     return Q_stricmp(*(const char **)s1, *(const char **)s2);
 }
 
+/* CG_GameStateReceived is one zone worth ~3.5 s on the device: every call in it
+ * is bracketed, and the counters name the precache class each config string drives. */
+#define CGG_LEG_COUNT 10
+
+static int s_cggLegs[CGG_LEG_COUNT];
+static int s_cggLegT0[CGG_LEG_COUNT];
+
+static int s_cggModels;
+static int s_cggTikis;
+static int s_cggSounds;
+static int s_cggLightstyles;
+static int s_cggPlayers;
+static int s_cggInline;
+static int s_cggCfgStrs;
+
+#define CGG_LEG_BEGIN( leg ) \
+    do { if (PROBE_On()) { s_cggLegT0[ leg ] = cgi.Milliseconds(); } } while (0)
+#define CGG_LEG_END( leg ) \
+    do { if (PROBE_On()) { s_cggLegs[ leg ] += cgi.Milliseconds() - s_cggLegT0[ leg ]; } } while (0)
+
 void CG_RegisterSounds(void)
 {
     int i;
@@ -187,12 +207,14 @@ void CG_ProcessConfigString(int num)
             qhandle_t hModel = cgi.R_RegisterModel(str);
 
             cgs.model_draw[index] = hModel;
+            s_cggModels++;
 
             if (strstr(str, ".tik")) {
                 int tiki = cgi.R_Model_GetHandle(hModel);
 
                 cgs.model_tiki[index] = tiki;
                 if (tiki >= 0) {
+                    s_cggTikis++;
                     CG_ProcessInitCommands(tiki, NULL);
                 }
             }
@@ -221,14 +243,18 @@ void CG_ProcessConfigString(int num)
 
         if (num >= CS_SOUNDS && num < CS_SOUNDS + MAX_SOUNDS) {
             if (str && *str && *str != '*') {
+                s_cggSounds++;
                 cgs.sound_precache[num - CS_SOUNDS] = cgi.S_RegisterSound(str);
             }
         } else if (num >= CS_LIGHTSTYLES && num < CS_LIGHTSTYLES + MAX_LIGHTSTYLES) {
+            s_cggLightstyles++;
             CG_SetLightStyle(num - CS_LIGHTSTYLES, str);
         } else if (num >= CS_PLAYERS && num < CS_PLAYERS + MAX_CLIENTS) {
             const char *value;
 
             index = num - CS_PLAYERS;
+
+            s_cggPlayers++;
 
             value = Info_ValueForKey(str, "name");
             if (!value) {
@@ -247,17 +273,37 @@ void CG_ProcessConfigString(int num)
 }
 
 
+/* CG_PrepRefresh is the rest of the cgame cost: world map, inline models, media
+ * shaders, the configstring sweep and the level-defs tail. */
+#define CGP_LEG_COUNT 5
+
+static int s_cgpLegs[CGP_LEG_COUNT];
+static int s_cgpLegT0[CGP_LEG_COUNT];
+
+#define CGP_LEG_BEGIN( leg ) \
+    do { if (PROBE_On()) { s_cgpLegT0[ leg ] = cgi.Milliseconds(); } } while (0)
+#define CGP_LEG_END( leg ) \
+    do { if (PROBE_On()) { s_cgpLegs[ leg ] += cgi.Milliseconds() - s_cgpLegT0[ leg ]; } } while (0)
+
 void CG_PrepRefresh(void)
 {
     int i;
+    int leg;
+
+    for (leg = 0; leg < CGP_LEG_COUNT; leg++) {
+        s_cgpLegs[leg] = 0;
+    }
 
     memset(&cg.refdef, 0, sizeof(cg.refdef));
 
+    CGP_LEG_BEGIN(0);
     cgi.R_LoadWorldMap(cgs.mapname);
+    CGP_LEG_END(0);
 
     // misattribution of this instruction: retail never -1-fills inlineDrawModel
     memset(cgs.model_tiki, -1, sizeof(cgs.model_tiki));
 
+    CGP_LEG_BEGIN(1);
     cgs.numInlineModels = cgi.CM_NumInlineModels();
 
     for (i = 1; i < cgs.numInlineModels; i++) {
@@ -272,9 +318,13 @@ void CG_PrepRefresh(void)
         for (j = 0; j < 3; j++) {
             cgs.inlineModelMidpoints[i][j] = mins[j] + 0.5 * (maxs[j] - mins[j]);
         }
+        s_cggInline++;
     }
+    CGP_LEG_END(1);
+
     cgi.ProcessLoadingScreen("$$LoadingMedia$$");  
 
+    CGP_LEG_BEGIN(2);
     cgs.media.shadowMarkShader         = cgi.R_RegisterShader("markShadow");
     cgs.media.footShadowMarkShader     = cgs.media.shadowMarkShader;
     cgs.media.wakeMarkShader           = cgi.R_RegisterShader("ripple.spr");
@@ -295,13 +345,18 @@ void CG_PrepRefresh(void)
     cgs.media.hudDrawFont   = NULL;
     cgs.media.attackerFont  = cgi.R_LoadFont("facfont-20");
     cgs.media.objectiveFont = cgi.R_LoadFont("facfont-20"); 
-
+    CGP_LEG_END(2);
+    CGP_LEG_BEGIN(3);
+    s_cggCfgStrs = 0;
     for (i = CS_SYSTEMINFO + 1; i < MAX_CONFIGSTRINGS; i++) {
         CG_ProcessConfigString(i);
         cgi.ProcessLoadingScreen("$$LoadingMedia$$");  
+        s_cggCfgStrs++;
     }
+    CGP_LEG_END(3);
 
     // layer.  (Retail passes the BARE map name here -- cgs+0xC568 -- not the .bsp path.)
+    CGP_LEG_BEGIN(4);
     {
         const char *environmentName = NULL;
         const char *levelName       = NULL;
@@ -314,6 +369,14 @@ void CG_PrepRefresh(void)
     cgi.Dialog_ResetConsole("DialogConsole");
     cgi.Cvar_Set("added_objective", "0");
     cgi.Cmd_Stuff("ui_enableinventory\n");
+    CGP_LEG_END(4);
+
+    LOADHANG_PROBE("cgprep",
+                   "total=%d world=%d inline=%d media=%d sweep=%d tail=%d"
+                   " inlineN=%d cgsounds=%d\n",
+                   s_cgpLegs[0] + s_cgpLegs[1] + s_cgpLegs[2] + s_cgpLegs[3] + s_cgpLegs[4],
+                   s_cgpLegs[0], s_cgpLegs[1], s_cgpLegs[2], s_cgpLegs[3], s_cgpLegs[4],
+                   s_cggInline, s_cggSounds);
 }
 
 
@@ -410,19 +473,37 @@ void CG_GameStateReceived(void)
 {
     const char *s;
     int checksum;
+    int leg;
+    int totalT0;
 
+    for (leg = 0; leg < CGG_LEG_COUNT; leg++) {
+        s_cggLegs[leg] = 0;
+    }
+    s_cggModels = s_cggTikis = s_cggSounds = 0;
+    s_cggLightstyles = s_cggPlayers = s_cggInline = s_cggCfgStrs = 0;
+    totalT0 = cgi.Milliseconds();
+
+    CGG_LEG_BEGIN(0);
     memset(&cg, 0, sizeof(cg));
     cg.cachedViewMode = -1;  
     memset(cg_entities, 0, sizeof(cg_entities));
+    CGG_LEG_END(0);
 
+    CGG_LEG_BEGIN(1);
     CG_ClearLightStyles();
 
     CG_GetRendererConfig();
+    CGG_LEG_END(1);
 
+    CGG_LEG_BEGIN(2);
     cgi.GetGameState(&cgs.gameState);
+    CGG_LEG_END(2);
 
+    CGG_LEG_BEGIN(3);
     cgi.ProcessLoadingScreen("$$LoadingClientGame$$");  
+    CGG_LEG_END(3);
 
+    CGG_LEG_BEGIN(4);
     s = CG_ConfigString(CS_GAME_VERSION);
     if (strcmp(s, GAME_VERSION)) {
         cgi.Error(ERR_DROP, "Client/Server game mismatch: %s/%s", GAME_VERSION, s);
@@ -432,16 +513,37 @@ void CG_GameStateReceived(void)
     cgs.levelStartTime = atoi(s);
 
     CG_ParseServerinfo();
+    CGG_LEG_END(4);
 
+    CGG_LEG_BEGIN(5);
     cgi.CM_LoadMap(cgs.mapname, &checksum);
+    CGG_LEG_END(5);
 
+    CGG_LEG_BEGIN(6);
     CG_InitMarks();
+    CGG_LEG_END(6);
 
+    CGG_LEG_BEGIN(7);
     CG_RegisterSounds();
+    CGG_LEG_END(7);
 
+    CGG_LEG_BEGIN(8);
     CG_PrepRefresh();
+    CGG_LEG_END(8);
 
+    CGG_LEG_BEGIN(9);
     CG_Precache();  
+    CGG_LEG_END(9);
+
+    LOADHANG_PROBE("cgsplit",
+                   "total=%d memset=%d renderer=%d getgs=%d loading=%d serverinfo=%d"
+                   " cmap=%d marks=%d sounds=%d prep=%d precache=%d"
+                   " models=%d tikis=%d soundsN=%d lightstyles=%d players=%d cfgstrs=%d\n",
+                   cgi.Milliseconds() - totalT0,
+                   s_cggLegs[0], s_cggLegs[1], s_cggLegs[2], s_cggLegs[3], s_cggLegs[4],
+                   s_cggLegs[5], s_cggLegs[6], s_cggLegs[7], s_cggLegs[8], s_cggLegs[9],
+                   s_cggModels, s_cggTikis, s_cggSounds, s_cggLightstyles, s_cggPlayers,
+                   s_cggCfgStrs);
 }
 
 void CG_ServerRestarted(void)
