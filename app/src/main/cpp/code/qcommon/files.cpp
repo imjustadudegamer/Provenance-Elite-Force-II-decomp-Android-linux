@@ -42,6 +42,9 @@ extern "C" void Sys_AndroidLog( int priority, const char *msg );
 #   include <sys/stat.h>
 #   include <errno.h>
 #   include <dirent.h>
+#else
+#   include <sys/types.h>
+#   include <sys/stat.h>
 #endif
 
 #ifdef _MSC_VER
@@ -91,6 +94,10 @@ typedef struct {
 	int				referenced;					
 	fileInPack_t*	hashTable[MAX_FILEHASH_SIZE];	
 	fileInPack_t*	buildBuffer;				
+	int*			crcWords;					
+	int				numCrcWords;				
+	long			fileSize;					
+	long			fileTime;					
 } pack_t;
 
 typedef struct {
@@ -1652,6 +1659,108 @@ void FS_WriteTextFile( const char *qpath, const void *buffer, int size ) {
 
 
 
+/* Retail parses each pak's central directory once per FS_Startup; a restart
+ * re-walks the same unchanged paks.  A retired pack keeps its parsed directory,
+ * hash table and CRC words, so only the two feed-dependent checksums are redone. */
+#define FS_PAKCACHE_MAX 64
+
+static pack_t	*fs_pakCache[FS_PAKCACHE_MAX];
+
+static qboolean FS_ZipIdentity( const char *zipfile, long *sizeOut, long *timeOut ) {
+#ifdef _WIN32
+	struct _stat st;
+
+	if ( _stat( zipfile, &st ) != 0 ) {
+		return qfalse;
+	}
+#else
+	struct stat st;
+
+	if ( stat( zipfile, &st ) != 0 ) {
+		return qfalse;
+	}
+#endif
+	*sizeOut = (long)st.st_size;
+	*timeOut = (long)st.st_mtime;
+	return qtrue;
+}
+
+static void FS_PakSetBasename( pack_t *pack, const char *basename ) {
+	Q_strncpyz( pack->pakBasename, basename, sizeof( pack->pakBasename ) );
+
+	if ( strlen( pack->pakBasename ) > 4
+		 && !Q_stricmp( pack->pakBasename + strlen( pack->pakBasename ) - 4, ".pk3" ) ) {
+		pack->pakBasename[strlen( pack->pakBasename ) - 4] = 0;
+	}
+}
+
+static void FS_PakSetChecksums( pack_t *pack ) {
+	if ( !pack->crcWords || pack->numCrcWords < 1 ) {
+		return;
+	}
+
+	pack->crcWords[0]   = LittleLong( fs_checksumFeed );
+	pack->checksum      = LittleLong( Com_BlockChecksum( pack->crcWords, 4 * pack->numCrcWords ) );
+	pack->pure_checksum = LittleLong( Com_BlockChecksumKey( pack->crcWords, 4 * pack->numCrcWords,
+															LittleLong( fs_checksumFeed ) ) );
+}
+
+static pack_t *FS_PakCacheTake( const char *pakFilename, long fileSize, long fileTime ) {
+	int i;
+
+	for ( i = 0; i < FS_PAKCACHE_MAX; i++ ) {
+		pack_t *pack = fs_pakCache[i];
+
+		if ( !pack ) {
+			continue;
+		}
+		if ( !Q_stricmp( pack->pakFilename, pakFilename )
+			 && pack->fileSize == fileSize && pack->fileTime == fileTime ) {
+			fs_pakCache[i] = NULL;
+			return pack;
+		}
+	}
+	return NULL;
+}
+
+static qboolean FS_PakCachePut( pack_t *pack ) {
+	int i;
+
+	for ( i = 0; i < FS_PAKCACHE_MAX; i++ ) {
+		if ( fs_pakCache[i] == pack ) {
+			return qtrue;
+		}
+	}
+	for ( i = 0; i < FS_PAKCACHE_MAX; i++ ) {
+		if ( !fs_pakCache[i] ) {
+			fs_pakCache[i] = pack;
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+static void FS_FreePack( pack_t *pack ) {
+	if ( !pack ) {
+		return;
+	}
+	if ( pack->handle ) {
+		unzClose( pack->handle );
+	}
+	Z_Free( pack->buildBuffer );
+	Z_Free( pack->crcWords );
+	Z_Free( pack );
+}
+
+static void FS_PakCacheRelease( void ) {
+	int i;
+
+	for ( i = 0; i < FS_PAKCACHE_MAX; i++ ) {
+		FS_FreePack( fs_pakCache[i] );
+		fs_pakCache[i] = NULL;
+	}
+}
+
 static pack_t *FS_LoadZipFile( const char *zipfile, const char *basename )
 {
 	fileInPack_t	*buildBuffer;
@@ -1667,6 +1776,18 @@ static pack_t *FS_LoadZipFile( const char *zipfile, const char *basename )
 	int				fs_numHeaderLongs;
 	int				*fs_headerLongs;
 	char			*namePtr;
+	long			fileSize, fileTime;
+
+	if ( FS_ZipIdentity( zipfile, &fileSize, &fileTime ) ) {
+		pack = FS_PakCacheTake( zipfile, fileSize, fileTime );
+		if ( pack ) {
+			FS_PakSetBasename( pack, basename );
+			FS_PakSetChecksums( pack );
+			return pack;
+		}
+	} else {
+		fileSize = fileTime = 0;
+	}
 
 	fs_numHeaderLongs = 0;
 
@@ -1674,10 +1795,12 @@ static pack_t *FS_LoadZipFile( const char *zipfile, const char *basename )
 	FS_PrefetchZipDirectory( zipfile );
 	err = unzGetGlobalInfo (uf,&gi);
 
-	if (err != UNZ_OK)
+	if (err != UNZ_OK) {
+		if (uf) {
+			unzClose(uf);
+		}
 		return NULL;
-
-	fs_packFiles += gi.number_entry;
+	}
 
 	len = 0;
 	unzGoToFirstFile(uf);
@@ -1702,14 +1825,15 @@ static pack_t *FS_LoadZipFile( const char *zipfile, const char *basename )
 	}
 
 	Q_strncpyz( pack->pakFilename, zipfile, sizeof( pack->pakFilename ) );
-	Q_strncpyz( pack->pakBasename, basename, sizeof( pack->pakBasename ) );
-
-	if ( strlen( pack->pakBasename ) > 4 && !Q_stricmp( pack->pakBasename + strlen( pack->pakBasename ) - 4, ".pk3" ) ) {
-		pack->pakBasename[strlen( pack->pakBasename ) - 4] = 0;
-	}
+	FS_PakSetBasename( pack, basename );
 
 	pack->handle = uf;
 	pack->numfiles = gi.number_entry;
+	pack->buildBuffer = NULL;
+	pack->crcWords = fs_headerLongs;
+	pack->numCrcWords = 0;
+	pack->fileSize = fileSize;
+	pack->fileTime = fileTime;
 	unzGoToFirstFile(uf);
 
 	for (i = 0; (uLong)i < gi.number_entry; i++)
@@ -1733,12 +1857,8 @@ static pack_t *FS_LoadZipFile( const char *zipfile, const char *basename )
 		unzGoToNextFile(uf);
 	}
 
-	pack->checksum = Com_BlockChecksum( fs_headerLongs, 4 * fs_numHeaderLongs );
-	pack->pure_checksum = Com_BlockChecksumKey( fs_headerLongs, 4 * fs_numHeaderLongs, LittleLong( fs_checksumFeed ) );
-	pack->checksum = LittleLong( pack->checksum );
-	pack->pure_checksum = LittleLong( pack->pure_checksum );
-
-	Z_Free(fs_headerLongs);
+	pack->numCrcWords = fs_numHeaderLongs;
+	FS_PakSetChecksums( pack );
 
 	pack->buildBuffer = buildBuffer;
 	return pack;
@@ -1747,9 +1867,7 @@ static pack_t *FS_LoadZipFile( const char *zipfile, const char *basename )
 
 static void FS_FreePak(pack_t *thepak)
 {
-	unzClose(thepak->handle);
-	Z_Free(thepak->buildBuffer);
-	Z_Free(thepak);
+	FS_FreePack(thepak);
 }
 
 qboolean FS_CompareZipChecksum(const char *zipfile)
@@ -2586,9 +2704,11 @@ void FS_Shutdown( qboolean closemfp ) {
 		next = p->next;
 
 		if ( p->pack ) {
-			unzClose(p->pack->handle);
-			Z_Free( p->pack->buildBuffer );
-			Z_Free( p->pack );
+			/* A restart rebuilds the same paks from the same files; keep the
+			 * parsed directory instead of walking it again. */
+			if ( closemfp || !FS_PakCachePut( p->pack ) ) {
+				FS_FreePack( p->pack );
+			}
 		}
 		if ( p->dir ) {
 			Z_Free( p->dir );
@@ -2597,6 +2717,10 @@ void FS_Shutdown( qboolean closemfp ) {
 	}
 
 	fs_searchpaths = NULL;
+
+	if ( closemfp ) {
+		FS_PakCacheRelease();
+	}
 
 	// so the third name retail removes is "cd" -- NOT the port's "fdir".  Retail
 	// never registers or removes "fdir"; this restores retail's list.
