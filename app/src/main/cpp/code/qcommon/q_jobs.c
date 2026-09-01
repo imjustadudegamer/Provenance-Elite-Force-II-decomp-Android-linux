@@ -372,6 +372,12 @@ qboolean JobPool_SelfTest( JobPoolPrint print ) {
 	if ( !print ) {
 		return qfalse;
 	}
+	/* With no workers there is no mutex and no done condition to wait on, so the
+	 * batch below would block forever on a NULL cond.  Report and return. */
+	if ( !JobPool_Enabled() ) {
+		print( "jobpooltest: SKIPPED (the pool has no workers)\n" );
+		return qtrue;
+	}
 	memset( &t, 0, sizeof( t ) );
 	t.count = jobs_pool.numWorkers > 0 ? jobs_pool.numWorkers * 4 : 4;
 	if ( t.count > ( int )( sizeof( t.hits ) / sizeof( t.hits[ 0 ] ) ) ) {
