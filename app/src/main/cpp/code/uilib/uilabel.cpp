@@ -254,8 +254,12 @@ void UILabel::Draw(void)
     if (string && *string) {
         char converted[0x400];
 
-        uii.SR_ConvertStringResourceIds(string, converted, sizeof(converted));
-        string = converted;
+        /* The conversion returns its input unchanged unless the text carries a
+           `$$id$$' pair, so text without one is drawn as it stands. */
+        if (strstr(string, "$$")) {
+            uii.SR_ConvertStringResourceIds(string, converted, sizeof(converted));
+            string = converted;
+        }
 
         m_font->setColor(getStateForegroundColor());
 
