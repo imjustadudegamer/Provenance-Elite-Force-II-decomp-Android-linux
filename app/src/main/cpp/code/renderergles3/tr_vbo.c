@@ -83,6 +83,43 @@ static qboolean	s_vboInitialised;
 
 static rbVertex_t	s_tessStage[SHADER_MAX_VERTEXES];
 
+/* The [BE:send] accumulators.  RB_VboSendTake() hands them to the back-end
+ * window printer, so the row rolls in the same window as [BE:ds] and [BE:be]
+ * instead of opening its own. */
+static int	s_sendLast;
+static int	s_sendRuns;
+static int	s_sendBatches;
+static int	s_sendSum;
+static int	s_sendFirst;
+static int	s_sendMax;
+static int	s_sendGapMax;
+static int	s_sendVerts;
+static int	s_sendBig;
+static int	s_sendBigVerts;
+
+qboolean RB_VboSendTake( beSendRow_t *out ) {
+	if ( !out ) {
+		return qfalse;
+	}
+
+	out->batches = s_sendBatches;
+	out->runs = s_sendRuns;
+	out->sum = s_sendSum;
+	out->first = s_sendFirst;
+	out->mid = s_sendSum - s_sendFirst;
+	out->max = s_sendMax;
+	out->gapMax = s_sendGapMax;
+	out->verts = s_sendVerts;
+	out->big = s_sendBig;
+	out->bigVerts = s_sendBigVerts;
+
+	s_sendBatches = s_sendRuns = s_sendSum = s_sendFirst = 0;
+	s_sendMax = s_sendGapMax = 0;
+	s_sendVerts = s_sendBig = s_sendBigVerts = 0;
+
+	return ( out->batches > 0 ) ? qtrue : qfalse;
+}
+
 /* One range of the repack.  Every vertex reads only its own source slots and writes
  * only its own s_tessStage element, so chunks are disjoint and the bytes produced do
  * not depend on the split.  The pool never pays here: the measured split is slower than
@@ -287,27 +324,14 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		 * gap is a drain of the previous frame; a phase that is long inside a run, where
 		 * the gap is short, is the send itself blocking.  `big` counts the phases whose
 		 * batch exceeded the old 512-vertex chunk.  Every read is behind BE_On(), so a
-		 * release run reads no clock.  Values are microseconds. */
+		 * release run reads no clock.  Values are microseconds.  The row is printed by
+		 * BE_MaybeRoll() so it shares the [BE:ds]/[BE:be] window. */
 		if ( BE_On() ) {
-			static int	s_sendWinT0;
-			static int	s_sendLast;
-			static int	s_sendRuns;
-			static int	s_sendBatches;
-			static int	s_sendSum;
-			static int	s_sendFirst;
-			static int	s_sendMax;
-			static int	s_sendGapMax;
-			static int	s_sendVerts;
-			static int	s_sendBig;
-			static int	s_sendBigVerts;
 			int			phase;
 			int			gap;
 
 			phase = subT1 - subT0;
 			gap = s_sendLast ? subT0 - s_sendLast : 0;
-			if ( !s_sendWinT0 ) {
-				s_sendWinT0 = subT0;
-			}
 			s_sendBatches++;
 			s_sendSum += phase;
 			s_sendVerts += input->numVertexes;
@@ -326,18 +350,6 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 				s_sendMax = phase;
 			}
 			s_sendLast = subT1;
-			if ( subT1 - s_sendWinT0 >= 1000000 ) {
-				ri.Printf( PRINT_ALL,
-						   "[BE:send] window=%dms batches=%d runs=%d sum=%dus first=%dus mid=%dus"
-						   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d\n",
-						   ( subT1 - s_sendWinT0 ) / 1000, s_sendBatches, s_sendRuns,
-						   s_sendSum, s_sendFirst, s_sendSum - s_sendFirst,
-						   s_sendMax, s_sendGapMax, s_sendVerts, s_sendBig, s_sendBigVerts );
-				s_sendWinT0 = subT1;
-				s_sendRuns = s_sendBatches = s_sendSum = s_sendFirst = 0;
-				s_sendMax = s_sendGapMax = 0;
-				s_sendVerts = s_sendBig = s_sendBigVerts = 0;
-			}
 		}
 
 		subT0 = BE_On() ? BE_Microseconds() : 0;

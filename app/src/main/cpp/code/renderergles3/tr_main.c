@@ -1262,7 +1262,7 @@ void R_DebugGraphics( void ) {
 		return;
 	}
 
-	R_IssuePendingRenderCommands();
+	R_FlushRenderCommands();
 
 	GL_BindUnit0( tr.whiteImage);
 	GL_Cull( CT_FRONT_SIDED );
@@ -1451,7 +1451,7 @@ void R_DrawDebugLines(void) {
 		return;
 	}
 
-	R_IssuePendingRenderCommands();
+	R_FlushRenderCommands();
     GL_BindUnit0(tr.whiteImage);
 	if (r_debuglines_depthmask->integer) {
 		GL_State(GLS_POLYMODE_LINE | GLS_DEPTHMASK_TRUE);

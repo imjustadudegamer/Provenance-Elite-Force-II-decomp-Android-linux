@@ -1039,7 +1039,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
 
 void	RB_SetGL2D (void) {
-	Set2DWindow(0, 0, glConfig.vidWidth, glConfig.vidHeight, 0.0, glConfig.vidWidth, glConfig.vidHeight, 0.0, 0.0, 1.0);
+	RB_2D_SetWindow(0, 0, glConfig.vidWidth, glConfig.vidHeight, 0.0, glConfig.vidWidth, glConfig.vidHeight, 0.0, 0.0, 1.0);
 }
 
 
@@ -1059,7 +1059,7 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 	if ( !tr.registered ) {
 		return;
 	}
-	R_IssuePendingRenderCommands();
+	R_FlushRenderCommands();
 
 	qglFinish();
 
@@ -1310,6 +1310,86 @@ const void *RB_StretchPic ( const void *data ) {
 	tess.texCoords[ numVerts + 3 ][0][0] = cmd->s1;
 	tess.texCoords[ numVerts + 3 ][0][1] = cmd->t2;
 
+	return (const void *)(cmd + 1);
+}
+
+/* The 2D dispatch arms: each one runs the same RB_2D_* body the single-threaded
+ * entry point runs, so the recorded stream is the immediate stream. */
+static const void *RB_2DColor( const void *data ) {
+	const color2DCommand_t *cmd = (const color2DCommand_t *)data;
+
+	RB_2D_SetColor( cmd->color );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DStretchPic( const void *data ) {
+	const stretchPic2DCommand_t *cmd = (const stretchPic2DCommand_t *)data;
+
+	RB_2D_StretchPic( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h, cmd->s1, cmd->t1, cmd->s2, cmd->t2 );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DStretchPic2( const void *data ) {
+	const stretchPic2Command_t *cmd = (const stretchPic2Command_t *)data;
+
+	RB_2D_StretchPic2( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h, cmd->s1, cmd->t1, cmd->s2, cmd->t2, cmd->sx, cmd->sy );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DTilePic( const void *data ) {
+	const tilePic2DCommand_t *cmd = (const tilePic2DCommand_t *)data;
+
+	RB_2D_TilePic( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h, cmd->picw, cmd->pich );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DTilePicOffset( const void *data ) {
+	const tilePic2DCommand_t *cmd = (const tilePic2DCommand_t *)data;
+
+	RB_2D_TilePicOffset( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h, cmd->picw, cmd->pich, cmd->offsetX, cmd->offsetY );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DTrianglePic( const void *data ) {
+	const trianglePic2DCommand_t *cmd = (const trianglePic2DCommand_t *)data;
+
+	RB_2D_TrianglePic( cmd->shader, (const vec2_t *)cmd->points, (const vec2_t *)cmd->texCoords );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DBox( const void *data ) {
+	const box2DCommand_t *cmd = (const box2DCommand_t *)data;
+
+	RB_2D_Box( cmd->x, cmd->y, cmd->w, cmd->h, cmd->blend ? qtrue : qfalse );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DLineLoop( const void *data ) {
+	const lineLoop2DCommand_t *cmd = (const lineLoop2DCommand_t *)data;
+	const vec2_t *points = (const vec2_t *)(cmd + 1);
+
+	RB_2D_LineLoop( points, cmd->count, cmd->stipple_factor, cmd->stipple_mask );
+	return (const void *)((const byte *)points + cmd->count * (int)sizeof( vec2_t ));
+}
+
+static const void *RB_2DSetWindow( const void *data ) {
+	const setWindow2DCommand_t *cmd = (const setWindow2DCommand_t *)data;
+
+	RB_2D_SetWindow( cmd->x, cmd->y, cmd->w, cmd->h, cmd->left, cmd->right, cmd->bottom, cmd->top, cmd->n, cmd->f );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DScissor( const void *data ) {
+	const scissor2DCommand_t *cmd = (const scissor2DCommand_t *)data;
+
+	RB_2D_Scissor( cmd->x, cmd->y, cmd->width, cmd->height );
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_2DShaderTime( const void *data ) {
+	const shaderTime2DCommand_t *cmd = (const shaderTime2DCommand_t *)data;
+
+	RB_2D_ShaderTime( cmd->startTime );
 	return (const void *)(cmd + 1);
 }
 
@@ -1724,6 +1804,20 @@ static void BE_MaybeRoll( void ) {
 		BE_Reset( i );
 	}
 
+	/* The send row shares this roll, so a capture can join it to [BE:ds] and
+	 * [BE:be] by the window value rather than by timestamp. */
+	if ( BE_On() ) {
+		beSendRow_t send;
+
+		if ( RB_VboSendTake( &send ) ) {
+			ri.Printf( PRINT_ALL,
+					   "[BE:send] window=%dms batches=%d runs=%d sum=%dus first=%dus mid=%dus"
+					   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d\n",
+					   window, send.batches, send.runs, send.sum, send.first, send.mid,
+					   send.max, send.gapMax, send.verts, send.big, send.bigVerts );
+		}
+	}
+
 	s_beWindowStart = now;
 }
 
@@ -1914,6 +2008,39 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			break;
 		case RC_CLEARDEPTH:
 			BE_ZONE( BE_FAM_BE, BE_BEZ_color, data = RB_ClearDepth(data) );
+			break;
+		case RC_2D_COLOR:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_color, data = RB_2DColor(data) );
+			break;
+		case RC_2D_STRETCH_PIC:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_pic, data = RB_2DStretchPic(data) );
+			break;
+		case RC_2D_STRETCH_PIC2:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_pic, data = RB_2DStretchPic2(data) );
+			break;
+		case RC_2D_TILE_PIC:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_pic, data = RB_2DTilePic(data) );
+			break;
+		case RC_2D_TILE_PIC_OFFSET:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_pic, data = RB_2DTilePicOffset(data) );
+			break;
+		case RC_2D_TRIANGLE_PIC:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_pic, data = RB_2DTrianglePic(data) );
+			break;
+		case RC_2D_BOX:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_color, data = RB_2DBox(data) );
+			break;
+		case RC_2D_LINE_LOOP:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DLineLoop(data) );
+			break;
+		case RC_2D_SET_WINDOW:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DSetWindow(data) );
+			break;
+		case RC_2D_SCISSOR:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DScissor(data) );
+			break;
+		case RC_2D_SHADER_TIME:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DShaderTime(data) );
 			break;
 		case RC_END_OF_LIST:
 		default:

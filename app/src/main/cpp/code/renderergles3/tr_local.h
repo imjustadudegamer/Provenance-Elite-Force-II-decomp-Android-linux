@@ -1628,6 +1628,27 @@ qboolean R_ProbeStatsOn( void );
 void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport );
 void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);
+
+/* The 2D command bodies.  One body per entry point, run directly when the back
+ * end is single-threaded and run by the render thread when the same call was
+ * recorded, so the recorded stream is the immediate stream in the same order. */
+void RB_2D_SetColor( const byte *rgba );
+void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 );
+void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy );
+void RB_2D_TilePic( shader_t *shader, float x, float y, float w, float h, float picw, float pich );
+void RB_2D_TilePicOffset( shader_t *shader, float x, float y, float w, float h, float picw, float pich, int offsetX, int offsetY );
+void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t vTexCoords[3] );
+void RB_2D_Box( float x, float y, float w, float h, qboolean blend );
+void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int stipple_mask );
+void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f );
+void RB_2D_Scissor( int x, int y, int width, int height );
+void RB_2D_ShaderTime( float startTime );
+
+/* Drops the recorded window/scissor coalescing state; every command whose
+ * execution can change the viewport or the scissor box calls this when it is
+ * recorded, so a skipped duplicate can never leave 3D state in force. */
+void R_Invalidate2DWindowCache( void );
+
 void RE_StretchRaw(int x, int y, int w, int h, int cols, int rows, int components, const byte* data, qboolean dirty);
 void	RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty);
 
@@ -2139,6 +2160,75 @@ typedef struct
 	int commandId;
 } clearDepthCommand_t;
 
+/* The 2D (overlay) commands.  Under r_smp the tr_draw.c entry points append one
+ * of these instead of issuing GL on the front-end thread; the render thread runs
+ * the same body the single-threaded path runs.  Every field is resolved on the
+ * recording thread so the handler never reads front-end state. */
+typedef struct {
+	int			commandId;
+	byte		color[4];
+} color2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	shader_t	*shader;
+	float		x, y, w, h;
+	float		s1, t1, s2, t2;
+} stretchPic2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	shader_t	*shader;
+	float		x, y, w, h;
+	float		s1, t1, s2, t2;
+	float		sx, sy;
+} stretchPic2Command_t;
+
+typedef struct {
+	int			commandId;
+	shader_t	*shader;
+	float		x, y, w, h;
+	float		picw, pich;
+	int			offsetX, offsetY;
+} tilePic2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	shader_t	*shader;
+	float		points[3][2];
+	float		texCoords[3][2];
+} trianglePic2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	float		x, y, w, h;
+	int			blend;			/* 0 = AddBox (ONE/ONE), 1 = DrawBox (SRC_ALPHA) */
+} box2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	int			count;
+	int			stipple_factor;
+	int			stipple_mask;
+	/* count vec2_t points follow, padded to sizeof(void *) */
+} lineLoop2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	int			x, y, w, h;
+	float		left, right, bottom, top, n, f;
+} setWindow2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	int			x, y, width, height;
+} scissor2DCommand_t;
+
+typedef struct {
+	int			commandId;
+	float		startTime;
+} shaderTime2DCommand_t;
+
 typedef enum {
 	RC_END_OF_LIST,
 	RC_SET_COLOR,
@@ -2150,7 +2240,18 @@ typedef enum {
 	RC_SCREENSHOT,
 	RC_VIDEOFRAME,
 	RC_COLORMASK,
-	RC_CLEARDEPTH
+	RC_CLEARDEPTH,
+	RC_2D_COLOR,
+	RC_2D_STRETCH_PIC,
+	RC_2D_STRETCH_PIC2,
+	RC_2D_TILE_PIC,
+	RC_2D_TILE_PIC_OFFSET,
+	RC_2D_TRIANGLE_PIC,
+	RC_2D_BOX,
+	RC_2D_LINE_LOOP,
+	RC_2D_SET_WINDOW,
+	RC_2D_SCISSOR,
+	RC_2D_SHADER_TIME
 } renderCommand_t;
 
 
@@ -2188,6 +2289,7 @@ void R_AddSpriteSurfCmd( drawSurf_t* drawSurfs, int numDrawSurfs );
 void RB_ExecuteRenderCommands( const void *data );
 void RB_RenderThread( void );
 qboolean GLimp_GLContextMakeCurrent( qboolean makeCurrent );
+qboolean GLimp_GLMainOwnsContext( void );
 
 int		RB_FrameSmpFrame( void );	
 int		RB_FrameCount( void );		
@@ -2200,6 +2302,7 @@ void R_InitCommandBuffers( void );
 void R_ShutdownCommandBuffers( void );
 
 void R_SyncRenderThread( void );
+void R_FlushRenderCommands( void );
 
 void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs );
 
@@ -2320,6 +2423,14 @@ typedef enum {
 	BE_FEC_surfs = 0, BE_FEC_ents, BE_FEC_views, BE_FEC_portals,
 	BE_FE_COUNTERS
 } be_fe_counter_t;
+
+/* One [BE:send] window, taken by the back-end window printer so the row rolls
+ * with [BE:ds] and [BE:be] instead of opening its own clock. */
+typedef struct {
+	int		batches, runs, sum, first, mid, max, gapMax, verts, big, bigVerts;
+} beSendRow_t;
+
+qboolean	RB_VboSendTake( beSendRow_t *out );
 
 int		BE_Microseconds( void );
 int		BE_Armed( void );

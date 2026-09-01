@@ -213,6 +213,27 @@ void R_IssuePendingRenderCommands( void ) {
 	if ( !tr.registered ) {
 		return;
 	}
+	/* Under r_smp this parks the render thread so a following
+	 * driver-resource op (texture upload, shader link) owns the GL context.
+	 * It never runs a partial frame here: the frame is handed off whole from
+	 * RE_EndFrame, which is what the render thread overlaps with. */
+	if ( glConfig.smpActive && !GLimp_IsRenderThread() ) {
+		R_SyncRenderThread();
+		return;
+	}
+	if ( backEndData->commands.used == 0 ) {
+		return;
+	}
+	R_IssueRenderCommands( qfalse );
+}
+
+/* Runs the recorded list on the calling thread with the render thread parked.
+ * Only immediate-GL callers that must be ordered after the recorded list use
+ * this; a 2D entry point records instead. */
+void R_FlushRenderCommands( void ) {
+	if ( !tr.registered ) {
+		return;
+	}
 	if ( backEndData->commands.used == 0 ) {
 		if ( glConfig.smpActive && !GLimp_IsRenderThread() ) {
 			R_SyncRenderThread();
@@ -256,6 +277,8 @@ void *R_GetCommandBuffer( int bytes ) {
 void	R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	drawSurfsCommand_t	*cmd;
 
+	R_Invalidate2DWindowCache();
+
 	cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 	if ( !cmd ) {
 		return;
@@ -272,6 +295,8 @@ void	R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 void	R_AddSpriteSurfCmd(drawSurf_t* drawSurfs, int numDrawSurfs) {
     drawSurfsCommand_t* cmd;
+
+    R_Invalidate2DWindowCache();
 
     cmd = R_GetCommandBuffer(sizeof(*cmd));
     if (!cmd) {
@@ -341,6 +366,8 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 	if ( !tr.registered ) {
 		return;
 	}
+
+	R_Invalidate2DWindowCache();
 
 	tr.frameCount++;
 	tr.frameSceneNum = 0;
@@ -453,6 +480,8 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec ) {
 	R_InitNextFrame();
 
 	RB_MtFrameBoundary();
+
+	R_Invalidate2DWindowCache();
 
 	if ( frontEndMsec ) {
 		*frontEndMsec = tr.frontEndMsec;

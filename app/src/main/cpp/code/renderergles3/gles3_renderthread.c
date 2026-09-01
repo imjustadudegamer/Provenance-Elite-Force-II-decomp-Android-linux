@@ -87,6 +87,15 @@ qboolean GLimp_IsRenderThread( void )
 	return ( glimp_renderThread != NULL && SDL_ThreadID() == glimp_renderThreadId ) ? qtrue : qfalse;
 }
 
+/* True while the front end has parked the render thread and therefore owns the
+ * single GL context.  The 2D font path and RE_StretchRaw draw immediately in
+ * that window; nothing else may touch render-thread state off the render
+ * thread. */
+qboolean GLimp_GLMainOwnsContext( void )
+{
+	return ( glimp_glOwner == GLIMP_GL_MAIN ) ? qtrue : qfalse;
+}
+
 static int SDLCALL GLimp_RenderThreadWrapper( void *arg )
 {
 	(void)arg;
