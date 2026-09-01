@@ -162,6 +162,14 @@ static void UIFont_WrapLines(UIFont *font, const char *text, float maxWidth, boo
     const char *p           = text;
     bool        atLineStart = true; 
 
+    /* A text with no newline, no leading blank and a width inside the region is
+       one line equal to itself; the token walk would only rebuild it. */
+    if (text[0] && text[0] != ' ' && text[0] != '\t' && !strchr(text, '\n')
+        && font->getFloatWidth(text, -1, virtualScale) <= maxWidth) {
+        lines.AddObject(str(text));
+        return;
+    }
+
     while (*p) {
         if (*p == '\n') {
             lines.AddObject(line);
