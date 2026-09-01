@@ -1037,6 +1037,12 @@ static void R_FirstLight_f(void)
 		return;
 	}
 
+	/* The firstlight core is a context-agnostic utility shared with the offline
+	 * probe, which has no render thread.  It creates textures, shaders, programs
+	 * and buffers, so the engine entry claims the GL context first: under r_smp
+	 * this parks the render thread and the whole command then owns the context. */
+	R_IssuePendingRenderCommands();
+
 	ri.Printf(PRINT_ALL, "[GLES3:firstlight] phase=engine vid=%dx%d\n",
 			  glConfig.vidWidth, glConfig.vidHeight);
 

@@ -2246,6 +2246,13 @@ image_t* R_RefreshImageFileOld(const char* name, qboolean mipmap, qboolean allow
 		return NULL;
 	}
 
+	/* This frees the old image before R_FindImageFileOld creates its
+	 * replacement, and the free is a driver-resource destruction.  The create
+	 * path claims in R_CreateImageOld, which is too late for the deletion, so
+	 * the claim is taken here: under r_smp the render thread is parked for both
+	 * the glDeleteTextures and the upload that follows. */
+	R_IssuePendingRenderCommands();
+
 	strncpy(imagename, name, ARRAY_LEN(imagename));
 	hash = generateHashValue(name);
 	image = hashTable[hash];
