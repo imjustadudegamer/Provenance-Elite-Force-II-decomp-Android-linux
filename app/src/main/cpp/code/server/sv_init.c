@@ -351,6 +351,29 @@ static int	s_spawnTotalT0;
 #define SPAWN_LEG_END( leg ) \
 	do { if ( PROBE_On() ) { s_spawnLegs[ leg ] += Sys_Milliseconds() - s_spawnLegT0[ leg ]; } } while ( 0 )
 
+/* The twelve legs bracket the fresh-map path.  A solo savegame load runs the
+ * other arm of the `if ( loadgame )` fork and skips both `if ( !ge )` and
+ * `if ( !loadgame )`, so the work it does needs windows of its own; they are a
+ * separate table so the twelve legs keep their meaning.  A window never
+ * contains a leg and a leg never contains a window, so the sum of the two
+ * tables is the measured time and the residual is what neither covers.
+ * Windows: 0 the name parse and first-initialisation block, 1 the hunk clear,
+ * map load name, checksum feed, portals and world clear, 2 the loadgame level
+ * restore, 3 the post-spawn gaps and the tail. */
+#define SPAWN_WIN_COUNT 4
+#define SPAWN_WIN_NAME		0
+#define SPAWN_WIN_SETUP		1
+#define SPAWN_WIN_RESTORE	2
+#define SPAWN_WIN_TAIL		3
+
+static int	s_spawnWins[SPAWN_WIN_COUNT];
+static int	s_spawnWinT0[SPAWN_WIN_COUNT];
+
+#define SPAWN_WIN_BEGIN( win ) \
+	do { if ( PROBE_On() ) { s_spawnWinT0[ win ] = Sys_Milliseconds(); } } while ( 0 )
+#define SPAWN_WIN_END( win ) \
+	do { if ( PROBE_On() ) { s_spawnWins[ win ] += Sys_Milliseconds() - s_spawnWinT0[ win ]; } } while ( 0 )
+
 void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 					 qboolean sublevelLoad, qboolean areSublevels ) {
 	int			i;
@@ -384,10 +407,15 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		for ( leg = 0; leg < SPAWN_LEG_COUNT; leg++ ) {
 			s_spawnLegs[ leg ] = 0;
 		}
+		for ( leg = 0; leg < SPAWN_WIN_COUNT; leg++ ) {
+			s_spawnWins[ leg ] = 0;
+		}
 		s_spawnTotalT0 = Sys_Milliseconds();
 	}
 
 	SMP_LOAD_BEGIN( spawn );
+
+	SPAWN_WIN_BEGIN( SPAWN_WIN_NAME );
 
 	hash = strchr( server, '#' );
 	if ( hash ) {
@@ -442,6 +470,8 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	Q_strncpyz( last_mapname, map, sizeof( last_mapname ) );
 
+	SPAWN_WIN_END( SPAWN_WIN_NAME );
+
 	SPAWN_LEG_BEGIN( 0 );
 	CL_MapLoading( differentmap, map, strchr( server, '#' ), areSublevels );
 	SPAWN_LEG_END( 0 );
@@ -453,6 +483,8 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	}
 
 	if ( differentmap ) {
+		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
+
 		SMP_LOAD_BEGIN( hunkclr );
 		Hunk_Clear();
 		CM_ClearMap();
@@ -469,22 +501,35 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		for ( i = 0; i < MAX_CONFIGSTRINGS; i++ ) {
 			sv.configstrings[ i ] = CopyString( "" );
 		}
+
+		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 	}
 
 	if ( differentmap ) {
 		// 0x001DEC10.  Retail does NOT unload the game module here -- that is the
+		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
+
 		SV_ClearGameInterface();
 
 		Com_sprintf( filename, sizeof( filename ), "maps/%s.bsp", map );
 		SMP_LOAD_BEGIN( cmap );
+		SPAWN_WIN_END( SPAWN_WIN_SETUP );
+
 		SPAWN_LEG_BEGIN( SPAWN_LEG_CMAP );
 		CM_LoadMap( filename, qfalse, &checksum );
 		SPAWN_LEG_END( SPAWN_LEG_CMAP );
+
+		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
+
 		SMP_LOAD_END( cmap );
 
 		Cvar_Set( "sv_mapChecksum", va( "%i", checksum ) );
 		Cvar_Set( "mapname", svs.rawServerName );
+
+		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 	}
+
+	SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
 	if ( differentmap || loadgame ) {
 		sv.serverId = com_frameTime;
@@ -496,18 +541,32 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	Cvar_Set( "sv_serverid", va( "%i", sv.serverId ) );
 
+	SPAWN_WIN_END( SPAWN_WIN_SETUP );
+
 	if ( sv_stickyChecksumFeed ) {
 		sv.checksumFeed = sv_stickyChecksumFeed;
 	} else if ( restart ) {
 		sv.checksumFeed = sv_stickyChecksumFeed;
 	} else {
+		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
+
 		srand( Com_Milliseconds() );
 		sv.checksumFeed = ( ( rand() << 16 ) ^ rand() ) ^ Com_Milliseconds();
+
+		SPAWN_WIN_END( SPAWN_WIN_SETUP );
+
 		SPAWN_LEG_BEGIN( 2 );
 		FS_Restart( sv.checksumFeed );
 		SPAWN_LEG_END( 2 );
+
+		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
+
 		sv_stickyChecksumFeed = sv.checksumFeed;
+
+		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 	}
+
+	SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
 	svs.snapFlagServerBit ^= SNAPFLAG_SERVERCOUNT;
 
@@ -524,7 +583,11 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	sv.state = SS_LOADING;
 	sv.restarting = restart;
 
+	SPAWN_WIN_END( SPAWN_WIN_SETUP );
+
 	if ( loadgame ) {
+		SPAWN_WIN_BEGIN( SPAWN_WIN_RESTORE );
+
 		WIDGET_PROBE("svstime", "pre-archive: svs.time=%d map=%s\n", svs.time, svs.mapName);
 
 		if ( sublevelLoad ) {
@@ -550,6 +613,8 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		}
 
 		ge->PostLoad();
+
+		SPAWN_WIN_END( SPAWN_WIN_RESTORE );
 	}
 
 	if ( !ge ) {
@@ -563,13 +628,19 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	// argument, so a load NEVER zeroes it.  The whole branch reads:
 	// MOVED, not just documented: the assignment now sits where retail's does, as the
 	if ( !loadgame ) {
+		SPAWN_WIN_BEGIN( SPAWN_WIN_TAIL );
+
 		svs.time = 0;
+
+		SPAWN_WIN_END( SPAWN_WIN_TAIL );
 
 		SMP_LOAD_BEGIN( spawnent );
 		SPAWN_LEG_BEGIN( SPAWN_LEG_SPAWNENT );
 		ge->SpawnEntities( map, CM_EntityString(), svs.time );
 		SPAWN_LEG_END( SPAWN_LEG_SPAWNENT );
 		SMP_LOAD_END( spawnent );
+
+		SPAWN_WIN_BEGIN( SPAWN_WIN_TAIL );
 
 		p = ge->error_message;
 		if ( p ) {
@@ -580,6 +651,8 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		SV_ArchivePersistantFile( qtrue, qfalse );
 
 		g_gametype->modified = qfalse;
+
+		SPAWN_WIN_END( SPAWN_WIN_TAIL );
 
 		SPAWN_LEG_BEGIN( 3 );
 		CL_ProcessLoadingScreen( "$$RunningFirstGameFrames$$" );
@@ -725,11 +798,15 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	}
 	SPAWN_LEG_END( SPAWN_LEG_PURE );
 
+	SPAWN_WIN_BEGIN( SPAWN_WIN_TAIL );
+
 	Q_strncpyz( svs.gameName, "current", sizeof( svs.gameName ) );
 
 	Com_Printf( "-----------------------------------\n" );
 
 	SMP_LOAD_END( spawn );
+
+	SPAWN_WIN_END( SPAWN_WIN_TAIL );
 
 	if ( PROBE_On() ) {
 		int	total = Sys_Milliseconds() - s_spawnTotalT0;
@@ -739,17 +816,22 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		for ( leg = 0; leg < SPAWN_LEG_COUNT; leg++ ) {
 			named += s_spawnLegs[ leg ];
 		}
+		for ( leg = 0; leg < SPAWN_WIN_COUNT; leg++ ) {
+			named += s_spawnWins[ leg ];
+		}
 
 		LOADHANG_PROBE( "spawn",
 						"total=%d map=%s mapload=%d cleanup=%d fsrestart=%d warm=%d baseline=%d resid=%d"
 						" cmap=%d svinit=%d spawnent=%d pure=%d cstrings=%d clients=%d mark=%d"
-						" legs=%d\n",
+						" win_name=%d win_setup=%d win_restore=%d win_tail=%d legs=%d\n",
 						total, map, s_spawnLegs[ 0 ], s_spawnLegs[ 1 ], s_spawnLegs[ 2 ],
 						s_spawnLegs[ 3 ], s_spawnLegs[ 4 ], total - named,
 						s_spawnLegs[ SPAWN_LEG_CMAP ], s_spawnLegs[ SPAWN_LEG_SVINIT ],
 						s_spawnLegs[ SPAWN_LEG_SPAWNENT ], s_spawnLegs[ SPAWN_LEG_PURE ],
 						s_spawnLegs[ SPAWN_LEG_CSTRINGS ], s_spawnLegs[ SPAWN_LEG_CLIENTS ],
-						s_spawnLegs[ SPAWN_LEG_MARK ], named );
+						s_spawnLegs[ SPAWN_LEG_MARK ],
+						s_spawnWins[ SPAWN_WIN_NAME ], s_spawnWins[ SPAWN_WIN_SETUP ],
+						s_spawnWins[ SPAWN_WIN_RESTORE ], s_spawnWins[ SPAWN_WIN_TAIL ], named );
 	}
 }
 

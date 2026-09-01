@@ -1066,6 +1066,52 @@ qboolean LevelArchiveValid(Archiver& arc)
     return qtrue;
 }
 
+/* Load-time attribution for the solo savegame path.  SV_SpawnServer's spawn
+ * probe brackets ge->ReadLevel inside SPAWN_WIN_RESTORE; these marks split what
+ * is inside that window, so a run names the stage instead of leaving the whole
+ * restore in one window.  Inert unless the probes are on. */
+#define GARCH_STAGE_COUNT 10
+enum {
+    GARCH_L_LEVEL = 0,
+    GARCH_L_SCRIPTLIB,
+    GARCH_L_PATH,
+    GARCH_L_WORLD,
+    GARCH_L_ENTS,
+    GARCH_L_PROGRAM,
+    GARCH_L_ALIASES,
+    GARCH_L_ROSTER,
+    GARCH_L_CLOSE,
+    GARCH_L_PRECACHE
+};
+
+static int s_garchStage[GARCH_STAGE_COUNT];
+static int s_garchMark;
+
+static void GARCH_Stage( int stage ) {
+    int now;
+
+    if ( !PROBE_On() ) {
+        return;
+    }
+    now = gi.Milliseconds();
+    if ( s_garchMark ) {
+        s_garchStage[ stage ] += now - s_garchMark;
+    }
+    s_garchMark = now;
+}
+
+static void GARCH_StageReset( void ) {
+    int i;
+
+    if ( !PROBE_On() ) {
+        return;
+    }
+    s_garchMark = gi.Milliseconds();
+    for ( i = 0; i < GARCH_STAGE_COUNT; i++ ) {
+        s_garchStage[ i ] = 0;
+    }
+}
+
 qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loading)
 {
     try {
@@ -1077,6 +1123,8 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
         if (loading) {
             LoadingSavegame = true;
             LoadingServer = true;
+
+            GARCH_StageReset();
 
             level.CleanUp(false);
 
@@ -1110,12 +1158,14 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
         if (arc.Loading()) {
             WIDGET_PROBE("archive", "stage: level done, inttime=%d\n", level.inttime);
         }
+        GARCH_Stage(GARCH_L_LEVEL);
         if (arc.Loading()) {
             thePathManager.Init(level.mapname.c_str());
         }
 
         arc.ArchiveObject(&ScriptLib);
         WIDGET_PROBE("archive", "stage: ScriptLib done\n");
+        GARCH_Stage(GARCH_L_SCRIPTLIB);
 
         arc.ArchiveObject(&gravPathManager);
 
@@ -1131,6 +1181,8 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
             levelVars.ClearList();
         }
         arc.ArchiveObject(&levelVars);
+
+        GARCH_Stage(GARCH_L_PATH);
 
         if (arc.Saving()) {
             num = 0;
@@ -1161,10 +1213,13 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
 
             arc.ReadObject();
 
+            GARCH_Stage(GARCH_L_WORLD);
 
             for (i = 0; i < num; i++) {
                 arc.ReadObject();
             }
+
+            GARCH_Stage(GARCH_L_ENTS);
 
             WIDGET_PROBE("archive", "stage: entity run done (%d entities)\n", num);
         }
@@ -1179,10 +1234,12 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
         WIDGET_PROBE("archive", "tail: ArchiveObject(Program)\n");
         arc.ArchiveObject(&program);
         WIDGET_PROBE("archive", "tail: ArchiveObject(Program) done\n");
+        GARCH_Stage(GARCH_L_PROGRAM);
 
         WIDGET_PROBE("archive", "tail: ArchiveAliases\n");
         ArchiveAliases(arc);
         WIDGET_PROBE("archive", "tail: ArchiveAliases done\n");
+        GARCH_Stage(GARCH_L_ALIASES);
 
         WIDGET_PROBE("archive", "tail: TeammateRoster\n");
         TeammateRoster::getInstance()->Archive(arc);
@@ -1200,17 +1257,19 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
                        "tail: GameplayManager SINGLETON IS NULL -- create() has not run\n");
         }
 
-
+        GARCH_Stage(GARCH_L_ROSTER);
 
         arc.Close();
 
         WIDGET_PROBE("archive", "stage: arc.Close() done (fixups resolved)\n");
+        GARCH_Stage(GARCH_L_CLOSE);
 
         if (arc.Loading()) {
             LoadingSavegame = false;
 
             level.Precache();
             WIDGET_PROBE("archive", "stage: level.Precache() done\n");
+            GARCH_Stage(GARCH_L_PRECACHE);
         } else {
             gi.centerprintf(&g_entities[0], CENTERPRINT_IMPORTANCE_NORMAL,
                             "@textures/menu/gamesaved");
@@ -1227,6 +1286,14 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
                 }
             }
             WIDGET_PROBE("archive", "stage: player->Loaded() done, G_ArchiveLevel complete\n");
+            WIDGET_PROBE("archive",
+                       "load stages level=%d scriptlib=%d paths=%d world=%d ents=%d program=%d"
+                       " aliases=%d roster=%d close=%d precache=%d nent=%d\n",
+                       s_garchStage[GARCH_L_LEVEL], s_garchStage[GARCH_L_SCRIPTLIB],
+                       s_garchStage[GARCH_L_PATH], s_garchStage[GARCH_L_WORLD],
+                       s_garchStage[GARCH_L_ENTS], s_garchStage[GARCH_L_PROGRAM],
+                       s_garchStage[GARCH_L_ALIASES], s_garchStage[GARCH_L_ROSTER],
+                       s_garchStage[GARCH_L_CLOSE], s_garchStage[GARCH_L_PRECACHE], num);
         }
 
         return qtrue;
