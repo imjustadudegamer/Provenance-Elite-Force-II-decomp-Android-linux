@@ -20,7 +20,7 @@ root, for more details.
  *
  * Input: /usr/include/GLES3/gl3.h
  *        renderercommon/qgl.h (for the names already carried there)
- * GLES 3.0 core entry points not already carried by the shared lists: 150
+ * GLES 3.0 core entry points not already carried by the shared lists: 151
  *
  * Every name here is loaded by qgl_gles3.c through SDL_GL_GetProcAddress
  * and, when the context does not provide it, replaced by a trap that
@@ -115,6 +115,7 @@ root, for more details.
 	GLE(GLboolean, IsTexture, GLuint texture) \
 	GLE(GLboolean, IsTransformFeedback, GLuint id) \
 	GLE(GLboolean, IsVertexArray, GLuint array) \
+	GLE(void *, MapBufferRange, GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access) \
 	GLE(void, PauseTransformFeedback, void) \
 	GLE(void, PixelStorei, GLenum pname, GLint param) \
 	GLE(void, ProgramBinary, GLuint program, GLenum binaryFormat, const void *binary, GLsizei length) \

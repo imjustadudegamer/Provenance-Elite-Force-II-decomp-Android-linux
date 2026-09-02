@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
+#include "tr_vbo.h"
 #include "gles3_g1_api.h"
 
 #define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
@@ -1878,9 +1879,10 @@ static void BE_MaybeRoll( void ) {
 		if ( RB_VboSendTake( &send ) ) {
 			ri.Printf( PRINT_ALL,
 					   "[BE:send] window=%dms batches=%d runs=%d sum=%dus first=%dus mid=%dus"
-					   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d\n",
+					   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d arena=%d fall=%d\n",
 					   window, send.batches, send.runs, send.sum, send.first, send.mid,
-					   send.max, send.gapMax, send.verts, send.big, send.bigVerts );
+					   send.max, send.gapMax, send.verts, send.big, send.bigVerts,
+					   RB_VboArenaMode(), send.fall );
 		}
 	}
 
@@ -2037,6 +2039,9 @@ void RB_ExecuteRenderCommands( const void *data ) {
 	t1 = ri.Milliseconds ();
 
 	BE_RootBegin( BE_FAM_BE );
+
+	/* One frame's tessellation stream goes into one store, opened here. */
+	RB_VBO_BeginFrame();
 
 	while ( 1 ) {
 		data = PADP(data, sizeof(void *));
