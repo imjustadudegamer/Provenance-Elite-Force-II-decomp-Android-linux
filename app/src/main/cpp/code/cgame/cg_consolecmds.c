@@ -55,6 +55,10 @@ static void CG_FlushModels_f(void)
 
     cgi.TIKI_FlushAll();
 
+    // TIKI_FlushAll drops every tiki, so a handle recorded by the walk memo is
+    // about to be handed to a different tiki.  Drop the memo with them.
+    CG_ResetTikiWalkCache();
+
     for (int i = 32; i < 512; i++) {
         CG_ProcessConfigString(i);
     }

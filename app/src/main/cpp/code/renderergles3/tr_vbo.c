@@ -35,7 +35,15 @@ typedef struct {
 
 #define RB_VERTEX_STRIDE	((GLsizei)sizeof( rbVertex_t ))
 
-static GLuint	s_vaoTess;
+/* The tessellation store is a small ring of persistent buffer pairs.  A send
+ * re-specifies its slot's storage; the slot rotates per batch so that storage is
+ * never the one the immediately preceding draw reads.  The slots carry the
+ * batch's exact size and bytes -- nothing is padded, so the upload stream is the
+ * pre-change stream.  Three slots break the immediate dependency; a ring sized
+ * to a whole frame was refuted earlier and is not needed for that. */
+#define RB_TESS_RING	3
+
+static GLuint	s_vaoTessRing[RB_TESS_RING];
 static GLuint	s_vaoStream;
 
 int r_spriteListOpen = 0;
@@ -74,8 +82,9 @@ void RB_BindVAO( GLuint vao ) {
 		s_elementBufferBound = (GLuint)~0u;
 	}
 }
-static GLuint	s_vboTess;
-static GLuint	s_eboTess;
+static GLuint	s_vboTessRing[RB_TESS_RING];
+static GLuint	s_eboTessRing[RB_TESS_RING];
+static int		s_tessRingNext;
 static GLuint	s_vboStream;
 static GLuint	s_eboStream;
 
@@ -231,20 +240,25 @@ static void RB_VBO_ConfigureAttribs( void )
 
 void RB_VBO_Init( void )
 {
+	int		i;
+
 	if ( s_vboInitialised ) {
 		return;
 	}
 
-	qglGenBuffers( 1, &s_vboTess );
-	qglGenBuffers( 1, &s_eboTess );
+	for ( i = 0; i < RB_TESS_RING; i++ ) {
+		qglGenBuffers( 1, &s_vboTessRing[i] );
+		qglGenBuffers( 1, &s_eboTessRing[i] );
+		qglGenVertexArrays( 1, &s_vaoTessRing[i] );
+		RB_BindVAO( s_vaoTessRing[i] );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[i] );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[i] );
+		RB_VBO_ConfigureAttribs();
+	}
+	s_tessRingNext = 0;
+
 	qglGenBuffers( 1, &s_vboStream );
 	qglGenBuffers( 1, &s_eboStream );
-
-	qglGenVertexArrays( 1, &s_vaoTess );
-	RB_BindVAO( s_vaoTess );
-	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTess );
-	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTess );
-	RB_VBO_ConfigureAttribs();
 
 	qglGenVertexArrays( 1, &s_vaoStream );
 	RB_BindVAO( s_vaoStream );
@@ -260,18 +274,46 @@ void RB_VBO_Init( void )
 
 void RB_VBO_Shutdown( void )
 {
+	int		i;
+
 	if ( !s_vboInitialised ) {
 		return;
 	}
 
-	qglDeleteBuffers( 1, &s_vboTess );
-	qglDeleteBuffers( 1, &s_eboTess );
+	for ( i = 0; i < RB_TESS_RING; i++ ) {
+		qglDeleteBuffers( 1, &s_vboTessRing[i] );
+		qglDeleteBuffers( 1, &s_eboTessRing[i] );
+		qglDeleteVertexArrays( 1, &s_vaoTessRing[i] );
+	}
 	qglDeleteBuffers( 1, &s_vboStream );
 	qglDeleteBuffers( 1, &s_eboStream );
-	qglDeleteVertexArrays( 1, &s_vaoTess );
 	qglDeleteVertexArrays( 1, &s_vaoStream );
 
 	s_vboInitialised = qfalse;
+}
+
+/* One batch's two sends.  `slot` rotates per batch, and the vertex and index
+ * sends of a batch share their slot, so the pair a draw reads is the pair just
+ * written and the pair the next send re-specifies is the previous batch's.  Both
+ * sizes and both payloads are the pre-change ones: the batch's exact values, no
+ * padding.  The call set is the pre-change call set -- two glBufferData sends
+ * plus the same bind calls, no fence, no subdata, no map. */
+static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIndexes )
+{
+	int		slot = s_tessRingNext;
+
+	s_tessRingNext = ( s_tessRingNext + 1 ) % RB_TESS_RING;
+
+	RB_BindVAO( s_vaoTessRing[slot] );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
+	qglBufferData( GL_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
+				   s_tessStage, GL_STREAM_DRAW );
+
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
+	qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
+				   indexes, GL_STREAM_DRAW );
 }
 
 
@@ -306,16 +348,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_pack, BE_Microseconds() - subT0 );
 
 		subT0 = BE_On() ? BE_Microseconds() : 0;
-		RB_BindVAO( s_vaoTess );
-		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTess );
-		qglBufferData( GL_ARRAY_BUFFER,
-					   ( GLsizeiptr )( ( size_t )input->numVertexes * RB_VERTEX_STRIDE ),
-					   s_tessStage, GL_STREAM_DRAW );
-
-		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTess );
-		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
-					   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
-					   indexes, GL_STREAM_DRAW );
+		RB_VboSendTess( input->numVertexes, indexes, numIndexes );
 		subT1 = BE_On() ? BE_Microseconds() : 0;
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, subT1 - subT0 );
 
@@ -385,8 +418,7 @@ void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
 		RB_VBO_Init();
 	}
 
-	RB_BindVAO( s_vaoTess );
-
+	RB_BindVAO( s_vaoTessRing[0] );
 	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_ENABLED,    enabled );
 	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_SIZE,       size );
 	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_TYPE,       type );
