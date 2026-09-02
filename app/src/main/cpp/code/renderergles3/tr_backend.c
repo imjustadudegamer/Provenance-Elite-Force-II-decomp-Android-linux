@@ -1313,8 +1313,7 @@ const void *RB_StretchPic ( const void *data ) {
 	return (const void *)(cmd + 1);
 }
 
-/* The 2D dispatch arms: each one runs the same RB_2D_* body the single-threaded
- * entry point runs, so the recorded stream is the immediate stream. */
+/* Each 2D dispatch arm runs the body its entry point runs. */
 static const void *RB_2DColor( const void *data ) {
 	const color2DCommand_t *cmd = (const color2DCommand_t *)data;
 
@@ -1391,6 +1390,75 @@ static const void *RB_2DShaderTime( const void *data ) {
 
 	RB_2D_ShaderTime( cmd->startTime );
 	return (const void *)(cmd + 1);
+}
+
+/* One recorded page-and-colour run of a string. */
+static const void *RB_2DFontString( const void *data ) {
+	const fontString2DCommand_t	*cmd = (const fontString2DCommand_t *)data;
+	const fontGlyph_t			*g = (const fontGlyph_t *)(cmd + 1);
+	int							i;
+
+	if ( cmd->numGlyphs > 0 && cmd->shader ) {
+		if ( tess.numIndexes ) {
+			RB_EndSurface();
+		}
+
+		RB_BeginSurface( cmd->shader, 0 );
+
+		for ( i = 0; i < cmd->numGlyphs; i++, g++ ) {
+			float	x = g->x, y = g->y;
+
+			RB_CHECKOVERFLOW( 4, 6 );
+
+			tess.texCoords[tess.numVertexes][0][0] = g->pos[0];
+			tess.texCoords[tess.numVertexes][0][1] = g->pos[1];
+			tess.texCoords[tess.numVertexes + 1][0][0] = g->size[0] + g->pos[0];
+			tess.texCoords[tess.numVertexes + 1][0][1] = g->pos[1];
+			tess.texCoords[tess.numVertexes + 2][0][0] = g->pos[0];
+			tess.texCoords[tess.numVertexes + 2][0][1] = g->size[1] + g->pos[1];
+			tess.texCoords[tess.numVertexes + 3][0][0] = g->size[0] + g->pos[0];
+			tess.texCoords[tess.numVertexes + 3][0][1] = g->size[1] + g->pos[1];
+
+			tess.xyz[tess.numVertexes][0] = x;
+			tess.xyz[tess.numVertexes][1] = y;
+			tess.xyz[tess.numVertexes][2] = cmd->z;
+			tess.xyz[tess.numVertexes + 1][0] = x + cmd->glyphScale * g->size[0] * 256.0;
+			tess.xyz[tess.numVertexes + 1][1] = y;
+			tess.xyz[tess.numVertexes + 1][2] = cmd->z;
+			tess.xyz[tess.numVertexes + 2][0] = x;
+			tess.xyz[tess.numVertexes + 2][1] = y + cmd->charHeight;
+			tess.xyz[tess.numVertexes + 2][2] = cmd->z;
+			tess.xyz[tess.numVertexes + 3][0] = x + cmd->glyphScale * g->size[0] * 256.0;
+			tess.xyz[tess.numVertexes + 3][1] = y + cmd->charHeight;
+			tess.xyz[tess.numVertexes + 3][2] = cmd->z;
+
+			tess.indexes[tess.numIndexes] = tess.numVertexes;
+			tess.indexes[tess.numIndexes + 1] = tess.numVertexes + 1;
+			tess.indexes[tess.numIndexes + 2] = tess.numVertexes + 2;
+			tess.indexes[tess.numIndexes + 3] = tess.numVertexes + 1;
+			tess.indexes[tess.numIndexes + 4] = tess.numVertexes + 3;
+			tess.indexes[tess.numIndexes + 5] = tess.numVertexes + 2;
+
+			if ( cmd->scaled ) {
+				tess.xyz[tess.numVertexes][0] *= cmd->widthScale;
+				tess.xyz[tess.numVertexes][1] *= cmd->heightScale;
+				tess.xyz[tess.numVertexes + 1][0] *= cmd->widthScale;
+				tess.xyz[tess.numVertexes + 1][1] *= cmd->heightScale;
+				tess.xyz[tess.numVertexes + 2][0] *= cmd->widthScale;
+				tess.xyz[tess.numVertexes + 2][1] *= cmd->heightScale;
+				tess.xyz[tess.numVertexes + 3][0] *= cmd->widthScale;
+				tess.xyz[tess.numVertexes + 3][1] *= cmd->heightScale;
+			}
+
+			tess.numVertexes += 4;
+			tess.numIndexes += 6;
+		}
+
+		RB_EndSurface();
+	}
+
+	return (const void *)( (const byte *)data + PAD( (int)sizeof( *cmd )
+						   + cmd->numGlyphs * (int)sizeof( fontGlyph_t ), sizeof( void * ) ) );
 }
 
 void RB_SetupFog(void) {
@@ -1642,8 +1710,7 @@ static int			s_beRootArmed[BE_FAM_COUNT];
 static int			s_beWindowStart;
 static qboolean		s_beWindowSet;
 
-/* The tag each family prints under: the back-end families keep [BE:...] so an
- * existing capture reads the same; the front-end family is its own list. */
+/* The tag each family prints under; the back-end families keep [BE:...]. */
 static const char *const s_beFamTag[BE_FAM_COUNT] = { "BE:be", "BE:ds", "BE:prog", "FE:scene" };
 
 static const char *const s_beZoneName[BE_FAM_COUNT][BE_MAX_ZONES] = {
@@ -1804,8 +1871,7 @@ static void BE_MaybeRoll( void ) {
 		BE_Reset( i );
 	}
 
-	/* The send row shares this roll, so a capture can join it to [BE:ds] and
-	 * [BE:be] by the window value rather than by timestamp. */
+	/* The send row shares this roll; a capture joins it by the window value. */
 	if ( BE_On() ) {
 		beSendRow_t send;
 
@@ -2038,6 +2104,9 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			break;
 		case RC_2D_SCISSOR:
 			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DScissor(data) );
+			break;
+		case RC_2D_FONT_STRING:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DFontString(data) );
 			break;
 		case RC_2D_SHADER_TIME:
 			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DShaderTime(data) );

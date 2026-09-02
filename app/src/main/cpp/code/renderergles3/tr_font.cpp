@@ -614,16 +614,140 @@ void R_LoadFontShader(fontheader_sgl_t* font)
     font->trhandle = r_sequencenumber;
 }
 
+/* A string drawn under r_smp is one recorded command per page-and-colour run; the
+ * render thread writes the same vertices the single-threaded body writes. */
+#define FONT_RUN_MAX 96
+
+static fontGlyph_t	s_fontRun[FONT_RUN_MAX];
+static int			s_fontRunCount;
+static shader_t	   *s_fontRunShader;
+static int			s_fontRunScaled;
+static float		s_fontRunZ, s_fontRunCharHeight, s_fontRunGlyphScale;
+static float		s_fontRunWidthScale, s_fontRunHeightScale;
+
+static void R_FontRunWrite( void ) {
+	int		i;
+
+	if ( !s_fontRunCount || !s_fontRunShader ) {
+		return;
+	}
+
+	RB_BeginSurface( s_fontRunShader, 0 );
+
+	for ( i = 0; i < s_fontRunCount; i++ ) {
+		const fontGlyph_t	*g = &s_fontRun[i];
+		float				x = g->x, y = g->y;
+
+		RB_CHECKOVERFLOW( 4, 6 );
+
+		tess.texCoords[tess.numVertexes][0][0] = g->pos[0];
+		tess.texCoords[tess.numVertexes][0][1] = g->pos[1];
+		tess.texCoords[tess.numVertexes + 1][0][0] = g->size[0] + g->pos[0];
+		tess.texCoords[tess.numVertexes + 1][0][1] = g->pos[1];
+		tess.texCoords[tess.numVertexes + 2][0][0] = g->pos[0];
+		tess.texCoords[tess.numVertexes + 2][0][1] = g->size[1] + g->pos[1];
+		tess.texCoords[tess.numVertexes + 3][0][0] = g->size[0] + g->pos[0];
+		tess.texCoords[tess.numVertexes + 3][0][1] = g->size[1] + g->pos[1];
+
+		tess.xyz[tess.numVertexes][0] = x;
+		tess.xyz[tess.numVertexes][1] = y;
+		tess.xyz[tess.numVertexes][2] = s_fontRunZ;
+		tess.xyz[tess.numVertexes + 1][0] = x + s_fontRunGlyphScale * g->size[0] * 256.0;
+		tess.xyz[tess.numVertexes + 1][1] = y;
+		tess.xyz[tess.numVertexes + 1][2] = s_fontRunZ;
+		tess.xyz[tess.numVertexes + 2][0] = x;
+		tess.xyz[tess.numVertexes + 2][1] = y + s_fontRunCharHeight;
+		tess.xyz[tess.numVertexes + 2][2] = s_fontRunZ;
+		tess.xyz[tess.numVertexes + 3][0] = x + s_fontRunGlyphScale * g->size[0] * 256.0;
+		tess.xyz[tess.numVertexes + 3][1] = y + s_fontRunCharHeight;
+		tess.xyz[tess.numVertexes + 3][2] = s_fontRunZ;
+
+		tess.indexes[tess.numIndexes] = tess.numVertexes;
+		tess.indexes[tess.numIndexes + 1] = tess.numVertexes + 1;
+		tess.indexes[tess.numIndexes + 2] = tess.numVertexes + 2;
+		tess.indexes[tess.numIndexes + 3] = tess.numVertexes + 1;
+		tess.indexes[tess.numIndexes + 4] = tess.numVertexes + 3;
+		tess.indexes[tess.numIndexes + 5] = tess.numVertexes + 2;
+
+		if ( s_fontRunScaled ) {
+			tess.xyz[tess.numVertexes][0] *= s_fontRunWidthScale;
+			tess.xyz[tess.numVertexes][1] *= s_fontRunHeightScale;
+			tess.xyz[tess.numVertexes + 1][0] *= s_fontRunWidthScale;
+			tess.xyz[tess.numVertexes + 1][1] *= s_fontRunHeightScale;
+			tess.xyz[tess.numVertexes + 2][0] *= s_fontRunWidthScale;
+			tess.xyz[tess.numVertexes + 2][1] *= s_fontRunHeightScale;
+			tess.xyz[tess.numVertexes + 3][0] *= s_fontRunWidthScale;
+			tess.xyz[tess.numVertexes + 3][1] *= s_fontRunHeightScale;
+		}
+
+		tess.numVertexes += 4;
+		tess.numIndexes += 6;
+	}
+
+	RB_EndSurface();
+}
+
+static void R_FontRunFlush( void ) {
+	fontString2DCommand_t	*cmd;
+	int						bytes;
+
+	if ( !s_fontRunCount || !s_fontRunShader ) {
+		s_fontRunCount = 0;
+		return;
+	}
+
+	bytes = (int)sizeof( *cmd ) + s_fontRunCount * (int)sizeof( fontGlyph_t );
+	cmd = (fontString2DCommand_t *)R_GetCommandBuffer( bytes );
+
+	if ( !cmd ) {
+		R_FlushRenderCommands();
+		R_FontRunWrite();
+		s_fontRunCount = 0;
+		return;
+	}
+
+	cmd->commandId = RC_2D_FONT_STRING;
+	cmd->shader = s_fontRunShader;
+	cmd->numGlyphs = s_fontRunCount;
+	cmd->scaled = s_fontRunScaled;
+	cmd->z = s_fontRunZ;
+	cmd->charHeight = s_fontRunCharHeight;
+	cmd->glyphScale = s_fontRunGlyphScale;
+	cmd->widthScale = s_fontRunWidthScale;
+	cmd->heightScale = s_fontRunHeightScale;
+	Com_Memcpy( cmd + 1, s_fontRun, s_fontRunCount * sizeof( fontGlyph_t ) );
+
+	s_fontRunCount = 0;
+}
+
+static void R_FontRunBegin( shader_t *shader, float z, float charHeight, float glyphScale,
+							float widthScale, float heightScale, int scaled ) {
+	if ( s_fontRunCount ) {
+		R_FontRunFlush();
+	}
+
+	s_fontRunShader = shader;
+	s_fontRunZ = z;
+	s_fontRunCharHeight = charHeight;
+	s_fontRunGlyphScale = glyphScale;
+	s_fontRunWidthScale = widthScale;
+	s_fontRunHeightScale = heightScale;
+	s_fontRunScaled = scaled;
+}
+
 void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y, int maxlen, const float *pvVirtualScreen) {
     float charHeight;
     float startx, starty;
     int i;
     int curPage; 
     float fWidthScale, fHeightScale;
+    int record;
 
     i = 0;
     startx = x;
     starty = y;
+    fWidthScale = 1.0f;
+    fHeightScale = 1.0f;
     if (pvVirtualScreen) {
         if (pvVirtualScreen[0]) {
             fWidthScale = pvVirtualScreen[0];
@@ -642,7 +766,11 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         return;
     }
 
-    R_FlushRenderCommands();
+    record = glConfig.smpActive ? 1 : 0;
+
+    if (!record) {
+        R_FlushRenderCommands();
+    }
 
     if (font->trhandle != r_sequencenumber) {
         font->shader = NULL;
@@ -693,7 +821,11 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
 
                 if (next >= '0' && next <= '9') {
                     if (curPage != -1) {
-                        RB_EndSurface();
+                        if (record) {
+                            R_FontRunFlush();
+                        } else {
+                            RB_EndSurface();
+                        }
                         curPage = -1;
                     }
                     R_ChangeTextColor(atoi(&text[i + 1]));
@@ -720,17 +852,45 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
                     page = 0;
                 }
                 if (page != curPage) {
-                    if (curPage != -1) {
-                        RB_EndSurface();
+                    if (record) {
+                        R_FontRunBegin((shader_t*)font->shaderPages[page], s_fontZ, charHeight,
+                                       s_fontGeneralScale, fWidthScale, fHeightScale,
+                                       pvVirtualScreen != NULL);
+                    } else {
+                        if (curPage != -1) {
+                            RB_EndSurface();
+                        }
+                        RB_BeginSurface((shader_t*)font->shaderPages[page], 0);
                     }
-                    RB_BeginSurface((shader_t*)font->shaderPages[page], 0);
                     curPage = page;
                 }
             }
 
-            RB_CHECKOVERFLOW(4, 6);
-
             loc = &font->locations[indirected];
+
+            if (record) {
+                fontGlyph_t	*g;
+
+                if (s_fontRunCount >= FONT_RUN_MAX) {
+                    R_FontRunFlush();
+                    R_FontRunBegin((shader_t*)font->shaderPages[curPage], s_fontZ, charHeight,
+                                   s_fontGeneralScale, fWidthScale, fHeightScale,
+                                   pvVirtualScreen != NULL);
+                }
+
+                g = &s_fontRun[s_fontRunCount++];
+                g->x = x;
+                g->y = y;
+                g->pos[0] = loc->pos[0];
+                g->pos[1] = loc->pos[1];
+                g->size[0] = loc->size[0];
+                g->size[1] = loc->size[1];
+
+                x += s_fontGeneralScale * loc->size[0] * 256.0;
+                break;
+            }
+
+            RB_CHECKOVERFLOW(4, 6);
 
             tess.texCoords[tess.numVertexes][0][0] = loc->pos[0];
             tess.texCoords[tess.numVertexes][0][1] = loc->pos[1];
@@ -781,7 +941,11 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
     }
 
     if (curPage != -1) {
-        RB_EndSurface();
+        if (record) {
+            R_FontRunFlush();
+        } else {
+            RB_EndSurface();
+        }
     }
 }
 

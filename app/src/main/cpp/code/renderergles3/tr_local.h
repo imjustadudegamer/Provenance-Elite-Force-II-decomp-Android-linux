@@ -2229,6 +2229,23 @@ typedef struct {
 	float		startTime;
 } shaderTime2DCommand_t;
 
+typedef struct {
+	float		x, y;
+	float		pos[2];
+	float		size[2];
+} fontGlyph_t;
+
+typedef struct {
+	int			commandId;
+	shader_t	*shader;
+	int			numGlyphs;
+	int			scaled;
+	float		z;
+	float		charHeight;
+	float		glyphScale;
+	float		widthScale, heightScale;
+} fontString2DCommand_t;
+
 typedef enum {
 	RC_END_OF_LIST,
 	RC_SET_COLOR,
@@ -2251,6 +2268,7 @@ typedef enum {
 	RC_2D_LINE_LOOP,
 	RC_2D_SET_WINDOW,
 	RC_2D_SCISSOR,
+	RC_2D_FONT_STRING,
 	RC_2D_SHADER_TIME
 } renderCommand_t;
 
