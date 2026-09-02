@@ -43,6 +43,11 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const float *normals );
 void RB_VBO_DrawTess( const shaderCommands_t *input );
 
+/* The static world arena's per-batch surface log.  Reset at RB_BeginSurface and
+ * appended by the world surface functions; the draw path reads it. */
+void RB_VboStaticReset( void );
+void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx );
+
 void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
 							  int *normalized, const void **pointer );
 
