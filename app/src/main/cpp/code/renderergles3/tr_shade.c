@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 #include "tr_program.h"
+#include "tr_vbo.h"
 
 
 
@@ -155,6 +156,7 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	tess.numVertexes = 0;
 	tess.shader = state;
 	tess.dlightBits = 0;		
+	RB_VboStaticReset();
 	tess.vertexColorValid = (r_vertexLight->integer != 0) || (glConfig.hardwareType == 4);
 	tess.entityFade = 1.0f;
 	tess.shaderTime = 1.0f;

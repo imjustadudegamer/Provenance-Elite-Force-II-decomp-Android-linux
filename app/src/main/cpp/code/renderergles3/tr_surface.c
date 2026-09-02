@@ -205,6 +205,7 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 	byte		*color;
 	int			dlightBits;
 	int			vertBase;
+	int			idxBase;
 	int			numVerts;
 	int			remap[1200];		 
 	qboolean	needsNormal;
@@ -282,6 +283,7 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 	}
 
 	vertBase = tess.numVertexes;
+	idxBase = tess.numIndexes;
 
 	if ( numVerts == srf->numVerts ) {
 		for ( i = 0 ; i < srf->numIndexes ; i++ ) {
@@ -369,6 +371,11 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 
 	tess.numVertexes += numVerts;
 	backEnd.pc.c_vertexes += numVerts;
+
+	if ( backEnd.currentEntity == &tr.worldEntity && dlightBits == 0
+		 && tess.currentStageIteratorFunc == RB_StageIteratorLightmappedMultitextureUnfogged ) {
+		RB_VboStaticRecord( srf, vertBase, numVerts, idxBase, tess.numIndexes - idxBase );
+	}
 }
 
 void RB_SurfaceTerrain( srfTriangles_t *srf ) {
@@ -585,6 +592,15 @@ void RB_SurfaceFace( srfSurfaceFace_t *surf ) {
 	tess.vertexColorValid = qtrue;
 
 	tess.numVertexes += surf->numPoints;
+
+	/* The static arena logs the range this surface just added, but only for the
+	 * world batch the lightmapped multitexture fast path will draw without a
+	 * dynamic light.  Anything else leaves tess alone on the streaming path. */
+	if ( backEnd.currentEntity == &tr.worldEntity && dlightBits == 0
+		 && tess.currentStageIteratorFunc == RB_StageIteratorLightmappedMultitextureUnfogged ) {
+		RB_VboStaticRecord( surf, Bob, surf->numPoints,
+							tess.numIndexes - surf->numIndices, surf->numIndices );
+	}
 }
 
 

@@ -35,13 +35,20 @@ typedef struct {
 
 #define RB_VERTEX_STRIDE	((GLsizei)sizeof( rbVertex_t ))
 
-/* The tessellation store is a small ring of persistent buffer pairs.  A send
- * re-specifies its slot's storage; the slot rotates per batch so that storage is
- * never the one the immediately preceding draw reads.  The slots carry the
- * batch's exact size and bytes -- nothing is padded, so the upload stream is the
- * pre-change stream.  Three slots break the immediate dependency; a ring sized
- * to a whole frame was refuted earlier and is not needed for that. */
-#define RB_TESS_RING	3
+/* The tessellation store is a ring of persistent buffer pairs.  The pair is
+ * allocated ONCE at the structural maximum and is never re-specified; a send
+ * writes the batch's exact bytes at the pair's base with glBufferSubData.  The
+ * allocation is the ring, the upload is the batch, and the two are not the same
+ * number.  The slot rotates per batch so a send never writes the storage the
+ * preceding draws read; eight slots put eight batches between a write and the
+ * next write to the same store.  The device capture shows the cost of the old
+ * form is per call, not per byte (`[BE:send] sum=723374us batches=3552
+ * first=239us mid=723135us`), so removing the per-send re-specification is the
+ * fix and padding the send is not required to reach it. */
+#define RB_TESS_RING	8
+
+#define RB_TESS_VBO_BYTES	((GLsizeiptr)( (size_t)SHADER_MAX_VERTEXES * RB_VERTEX_STRIDE ))
+#define RB_TESS_EBO_BYTES	((GLsizeiptr)( (size_t)SHADER_MAX_INDEXES * sizeof( glIndex_t ) ))
 
 static GLuint	s_vaoTessRing[RB_TESS_RING];
 static GLuint	s_vaoStream;
@@ -252,7 +259,9 @@ void RB_VBO_Init( void )
 		qglGenVertexArrays( 1, &s_vaoTessRing[i] );
 		RB_BindVAO( s_vaoTessRing[i] );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[i] );
+		qglBufferData( GL_ARRAY_BUFFER, RB_TESS_VBO_BYTES, NULL, GL_STREAM_DRAW );
 		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[i] );
+		qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_EBO_BYTES, NULL, GL_STREAM_DRAW );
 		RB_VBO_ConfigureAttribs();
 	}
 	s_tessRingNext = 0;
@@ -263,7 +272,14 @@ void RB_VBO_Init( void )
 	qglGenVertexArrays( 1, &s_vaoStream );
 	RB_BindVAO( s_vaoStream );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboStream );
+	qglBufferData( GL_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )RB_STREAM_MAX_VERTS * RB_VERTEX_STRIDE ),
+				   NULL, GL_STREAM_DRAW );
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
+	qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )RB_IMM_INDEX_CAPACITY( RB_STREAM_MAX_VERTS )
+								   * sizeof( unsigned int ) ),
+				   NULL, GL_STREAM_DRAW );
 	RB_VBO_ConfigureAttribs();
 
 
@@ -271,6 +287,8 @@ void RB_VBO_Init( void )
 
 	s_vboInitialised = qtrue;
 }
+
+static void RB_VboStaticShutdown( void );
 
 void RB_VBO_Shutdown( void )
 {
@@ -289,15 +307,18 @@ void RB_VBO_Shutdown( void )
 	qglDeleteBuffers( 1, &s_eboStream );
 	qglDeleteVertexArrays( 1, &s_vaoStream );
 
+	RB_VboStaticShutdown();
+
 	s_vboInitialised = qfalse;
 }
 
 /* One batch's two sends.  `slot` rotates per batch, and the vertex and index
  * sends of a batch share their slot, so the pair a draw reads is the pair just
- * written and the pair the next send re-specifies is the previous batch's.  Both
- * sizes and both payloads are the pre-change ones: the batch's exact values, no
- * padding.  The call set is the pre-change call set -- two glBufferData sends
- * plus the same bind calls, no fence, no subdata, no map. */
+ * written and the pair the next send writes is eight batches old.  Both sizes and
+ * both payloads are the batch's exact values, no padding: the allocation is the
+ * structural maximum and the upload is the batch.  The call set is two
+ * glBufferSubData sends plus the same bind calls; no call re-specifies storage,
+ * and there is no fence, map or flush. */
 static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIndexes )
 {
 	int		slot = s_tessRingNext;
@@ -306,14 +327,262 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 
 	RB_BindVAO( s_vaoTessRing[slot] );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
-	qglBufferData( GL_ARRAY_BUFFER,
-				   ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
-				   s_tessStage, GL_STREAM_DRAW );
+	qglBufferSubData( GL_ARRAY_BUFFER, 0,
+					  ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
+					  s_tessStage );
 
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
-	qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
-				   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
-				   indexes, GL_STREAM_DRAW );
+	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
+					  ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
+					  indexes );
+}
+
+/* ---- static world vertex arena ------------------------------------------
+ * A world surface whose batch the lightmapped multitexture fast path draws
+ * takes the same vertex bytes on every frame: the positions and texture
+ * coordinates come out of the BSP's own arrays, the colour is the constant
+ * white array, and the batch carries no dynamic light.  The arena therefore
+ * bakes each such surface once, appends the packed bytes to a device buffer
+ * that is written once and never re-specified, and later frames draw the
+ * surface from its region.  The bake runs the shipping pack body over the same
+ * tess range, so the bytes are the bytes the streaming path would have
+ * uploaded; the only thing that moves is where the vertex data comes from.
+ * Draw order, batch composition, index order, uniforms and state are untouched.
+ *
+ * What is proven static for this class, and why it is the whole input set:
+ *   - the surface is world BSP geometry, never an entity (the record hook tests
+ *     `backEnd.currentEntity == &tr.worldEntity`); BSP surfaces do not move;
+ *   - the shader takes RB_StageIteratorLightmappedMultitextureUnfogged, so the
+ *     batch is one stage with a constant vertex colour and bundle 0/1 texture
+ *     coordinates taken straight from `tess.texCoords` (the BSP drawVert st and
+ *     lightmap fields), and no svars generator runs;
+ *   - the batch has no dynamic light (`tess.dlightBits == 0`), so no dlight
+ *     projection consumes the tess arrays, and `GLP_NORMAL` is not set by this
+ *     program for a lightmapped shader, so the normal slot is not an input;
+ *   - neither `r_showtris` nor `r_shownormals` is on, so no debug pass reads the
+ *     batch back out of `tess`.
+ * Anything else -- a moving entity, a dlight, a deformed or waveform shader,
+ * the shadow pass, the generic or vertex-lit iterator, 2D -- is left on the
+ * streaming path byte for byte as it was. */
+#define RB_STATIC_ARENA_VERTS	( ( 24u * 1024u * 1024u ) / (unsigned)sizeof( rbVertex_t ) )
+#define RB_STATIC_HASH_BITS		14
+#define RB_STATIC_HASH_SIZE		( 1u << RB_STATIC_HASH_BITS )
+#define RB_STATIC_BATCH_MAX		4096
+
+typedef struct {
+	const void	*surf;		/* NULL = never used */
+	GLint		first;		/* first vertex of the region in the arena */
+} rbStaticRegion_t;
+
+typedef struct {
+	const void	*surf;
+	int			vertStart;
+	int			numVerts;
+	int			idxStart;
+	int			numIdx;
+} rbStaticRec_t;
+
+static rbStaticRegion_t	s_staticHash[RB_STATIC_HASH_SIZE];
+static GLuint			s_staticVbo;
+static GLuint			s_staticVaoRing[RB_TESS_RING];
+static int				s_staticVertsUsed;
+static qboolean			s_staticFull;
+
+static rbStaticRec_t	s_staticRec[RB_STATIC_BATCH_MAX];
+static int				s_staticRecCount;
+static qboolean			s_staticRecOverflow;
+static glIndex_t		s_staticIdx[SHADER_MAX_INDEXES];
+
+static void RB_VboStaticShutdown( void ) {
+	int		i;
+
+	if ( s_staticVbo ) {
+		for ( i = 0; i < RB_TESS_RING; i++ ) {
+			qglDeleteVertexArrays( 1, &s_staticVaoRing[i] );
+		}
+		qglDeleteBuffers( 1, &s_staticVbo );
+		s_staticVbo = 0;
+	}
+	Com_Memset( s_staticHash, 0, sizeof( s_staticHash ) );
+	s_staticVertsUsed = 0;
+	s_staticFull = qfalse;
+	RB_VboStaticReset();
+}
+
+void RB_VboStaticReset( void ) {
+	s_staticRecCount = 0;
+	s_staticRecOverflow = qfalse;
+}
+
+void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx ) {
+	if ( s_staticRecOverflow || numVerts <= 0 || numIdx <= 0 ) {
+		return;
+	}
+	if ( s_staticRecCount >= RB_STATIC_BATCH_MAX ) {
+		s_staticRecOverflow = qtrue;
+		return;
+	}
+	s_staticRec[s_staticRecCount].surf = surf;
+	s_staticRec[s_staticRecCount].vertStart = vertStart;
+	s_staticRec[s_staticRecCount].numVerts = numVerts;
+	s_staticRec[s_staticRecCount].idxStart = idxStart;
+	s_staticRec[s_staticRecCount].numIdx = numIdx;
+	s_staticRecCount++;
+}
+
+static unsigned RB_StaticHash( const void *p ) {
+	size_t	v = ( size_t )p >> 4;
+
+	return (unsigned)( ( v * (size_t)2654435761u ) >> ( ( sizeof( size_t ) * 8 ) - RB_STATIC_HASH_BITS ) );
+}
+
+/* Lookup, or the insertion point for a new key.  NULL only when the table is full. */
+static rbStaticRegion_t *RB_StaticFind( const void *surf ) {
+	unsigned			h = RB_StaticHash( surf );
+	unsigned			i;
+
+	for ( i = 0; i < RB_STATIC_HASH_SIZE; i++ ) {
+		rbStaticRegion_t	*e = &s_staticHash[( h + i ) & ( RB_STATIC_HASH_SIZE - 1 )];
+
+		if ( e->surf == surf ) {
+			return e;
+		}
+		if ( !e->surf ) {
+			return e;
+		}
+	}
+	return NULL;
+}
+
+static void RB_VboStaticInit( void ) {
+	int		i;
+
+	if ( s_staticVbo ) {
+		return;
+	}
+
+	qglGenBuffers( 1, &s_staticVbo );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
+	qglBufferData( GL_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )RB_STATIC_ARENA_VERTS * sizeof( rbVertex_t ) ),
+				   NULL, GL_STATIC_DRAW );
+
+	for ( i = 0; i < RB_TESS_RING; i++ ) {
+		qglGenVertexArrays( 1, &s_staticVaoRing[i] );
+		RB_BindVAO( s_staticVaoRing[i] );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[i] );
+		RB_VBO_ConfigureAttribs();
+	}
+	RB_BindVAO( 0 );
+}
+
+/* Is this draw the lightmapped multitexture world path over a batch that the
+ * surface hooks recorded exactly?  The call signature is checked because it is
+ * the only caller that passes bundle 0/1 as one four-float stride with the
+ * constant white colour, and the arena layout is that signature's layout. */
+static qboolean RB_StaticBatch( const shaderCommands_t *input, int numIndexes,
+								const float *texcoord0, const float *texcoord1, int tcStrideFloats,
+								const unsigned char *colors, const float *normals ) {
+	int		i, v, n;
+
+	if ( input != &tess || s_staticRecCount <= 0 || s_staticRecOverflow ) {
+		return qfalse;
+	}
+	if ( r_showtris->integer || r_shownormals->integer ) {
+		return qfalse;
+	}
+	if ( tess.dlightBits ) {
+		return qfalse;
+	}
+	if ( tcStrideFloats != 4
+		 || texcoord0 != (const float *)input->texCoords[0][0]
+		 || texcoord1 != (const float *)input->texCoords[0][0] + 2
+		 || colors != (const unsigned char *)tess.constantColor255
+		 || normals != input->normal[0] ) {
+		return qfalse;
+	}
+	if ( input->numVertexes > SHADER_MAX_VERTEXES || numIndexes > SHADER_MAX_INDEXES ) {
+		return qfalse;
+	}
+
+	/* the records must tile the batch exactly, in order, with no gap */
+	v = 0;
+	n = 0;
+	for ( i = 0; i < s_staticRecCount; i++ ) {
+		if ( s_staticRec[i].vertStart != v || s_staticRec[i].idxStart != n ) {
+			return qfalse;
+		}
+		v += s_staticRec[i].numVerts;
+		n += s_staticRec[i].numIdx;
+	}
+	if ( v != input->numVertexes || n != numIndexes ) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
+/* Bake every recorded surface that is not in the arena yet.  The bytes come from
+ * `s_tessStage`, which the caller packed with the shipping body over the same
+ * range, so the arena holds exactly the streaming stream.  A surface that does
+ * not fit is left unbaked and the batch falls back for good. */
+static qboolean RB_VboStaticBake( void ) {
+	int		i;
+
+	RB_VboStaticInit();
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
+
+	for ( i = 0; i < s_staticRecCount; i++ ) {
+		const rbStaticRec_t	*r = &s_staticRec[i];
+		rbStaticRegion_t	*e = RB_StaticFind( r->surf );
+
+		if ( !e ) {
+			s_staticFull = qtrue;
+			return qfalse;
+		}
+		if ( e->surf == r->surf ) {
+			continue;			/* already resident */
+		}
+		if ( s_staticVertsUsed + r->numVerts > (int)RB_STATIC_ARENA_VERTS ) {
+			s_staticFull = qtrue;
+			return qfalse;
+		}
+
+		e->surf = r->surf;
+		e->first = s_staticVertsUsed;
+		qglBufferSubData( GL_ARRAY_BUFFER,
+						  (GLintptr)( ( size_t )s_staticVertsUsed * sizeof( rbVertex_t ) ),
+						  (GLsizeiptr)( ( size_t )r->numVerts * sizeof( rbVertex_t ) ),
+						  s_tessStage + r->vertStart );
+		s_staticVertsUsed += r->numVerts;
+	}
+	return qtrue;
+}
+
+/* Compose the batch's index list against the arena and send only that.  The
+ * indices are the batch's own triangles, rebased onto the region of the surface
+ * each came from, so the drawn triangles and their order are unchanged. */
+static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
+	int		slot = s_tessRingNext;
+	int		k = 0;
+	int		i;
+
+	s_tessRingNext = ( s_tessRingNext + 1 ) % RB_TESS_RING;
+
+	for ( i = 0; i < s_staticRecCount; i++ ) {
+		const rbStaticRec_t	*r = &s_staticRec[i];
+		const rbStaticRegion_t	*e = RB_StaticFind( r->surf );
+		int					j;
+
+		for ( j = 0; j < r->numIdx; j++ ) {
+			s_staticIdx[k++] = (glIndex_t)( e->first + ( indexes[r->idxStart + j] - r->vertStart ) );
+		}
+	}
+
+	RB_BindVAO( s_staticVaoRing[slot] );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
+	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
+					  (GLsizeiptr)( ( size_t )k * sizeof( glIndex_t ) ), s_staticIdx );
 }
 
 
@@ -335,6 +604,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		rbVboPack_t	pack;
 		int			subT0;
 		int			subT1;
+		qboolean	staticDraw;
 
 		pack.input = input;
 		pack.texcoord0 = texcoord0;
@@ -347,8 +617,18 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		JobPool_ParallelRange( input->numVertexes, RB_VBO_PACK_CHUNK, RB_VboPackRange, &pack );
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_pack, BE_Microseconds() - subT0 );
 
+		/* A static world batch is baked from that pack and drawn out of the
+		 * arena; everything else takes the streaming send unchanged. */
+		staticDraw = RB_StaticBatch( input, numIndexes, texcoord0, texcoord1,
+									 tcStrideFloats, colors, normals )
+					 && RB_VboStaticBake();
+
 		subT0 = BE_On() ? BE_Microseconds() : 0;
-		RB_VboSendTess( input->numVertexes, indexes, numIndexes );
+		if ( staticDraw ) {
+			RB_VboStaticSend( indexes, numIndexes );
+		} else {
+			RB_VboSendTess( input->numVertexes, indexes, numIndexes );
+		}
 		subT1 = BE_On() ? BE_Microseconds() : 0;
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, subT1 - subT0 );
 
@@ -453,9 +733,9 @@ void RB_ImmFlush( void )
 
 	RB_BindVAO( s_vaoStream );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboStream );
-	qglBufferData( GL_ARRAY_BUFFER,
-				   ( GLsizeiptr )( ( size_t )s_streamNumVerts * RB_VERTEX_STRIDE ),
-				   s_streamVerts, GL_STREAM_DRAW );
+	qglBufferSubData( GL_ARRAY_BUFFER, 0,
+					  ( GLsizeiptr )( ( size_t )s_streamNumVerts * RB_VERTEX_STRIDE ),
+					  s_streamVerts );
 
 	nIndices = 0;
 	for ( i = 0; i < s_streamNumRecs; i++ ) {
@@ -483,9 +763,9 @@ void RB_ImmFlush( void )
 
 	if ( nIndices > 0 ) {
 		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
-		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
-					   ( GLsizeiptr )( ( size_t )nIndices * sizeof( unsigned int ) ),
-					   s_streamIndices, GL_STREAM_DRAW );
+		qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
+						  ( GLsizeiptr )( ( size_t )nIndices * sizeof( unsigned int ) ),
+						  s_streamIndices );
 	}
 
 	for ( i = 0; i < s_streamNumRecs; i++ ) {
