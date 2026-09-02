@@ -789,6 +789,10 @@ void Z_FreeTags( int tag );
 int Z_AvailableMemory( void );
 void Z_LogHeap( void );
 
+void Z_ChurnGet( long long *allocs, long long *frees, long long *bytes );
+void Z_ChurnReset( void );
+void Z_ChurnMeterFrame( void );
+
 void Hunk_Clear( void );
 void Hunk_ClearToMark( void );
 void Hunk_SetMark( void );

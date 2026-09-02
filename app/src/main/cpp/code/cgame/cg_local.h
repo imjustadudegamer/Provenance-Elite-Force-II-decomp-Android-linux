@@ -320,7 +320,6 @@ extern "C" {
         glconfig_t  glconfig;     
         float       screenXScale; 
         float       screenYScale;
-        float       screenXBias;
         vec2_t      uiHiResScale;
         int serverCommandSequence; 
         int processedSnapshotNum;  

@@ -543,17 +543,27 @@ void UpdateStereoSide( stereoFrame_t s ) {
 		SMP_LOAD_END( ui );
 	}
 
+	/* On every frame, and BEFORE both overlays.  `SCR_DrawScreenField' can be
+	   skipped (cls.state == CA_DISCONNECTED, or a frame with no View3D widget), so the
+	   bands would otherwise keep an undefined back-buffer; and the touch pad and pills
+	   are laid out in FULL-SURFACE coordinates (sdl_input.c maps a touch to
+	   vidWidth/vidHeight), so a band painted after them cuts off whatever falls in it
+	   -- at 4:3 the pad sits entirely inside the left band.  The bands are still after
+	   the pass that can write the back-buffer, and the overlays only add their own
+	   quads, so the bands keep covering the rest of it.  A no-op when the rect is the
+	   surface (android_aspect 0), so mode 0 is bit-identical. */
+	SCR_DrawAndroidBars();
+
+	/* The debug counter goes UNDER the touch overlay: it is drawn from uid.vidWidth/
+	   vidHeight (inside the display rect) and must not paint over the pad or a pill,
+	   so the overlay stays on top and complete. */
+	SCR_DrawFPS();
+
 #ifdef __ANDROID__
 	if ( CL_TouchControlsVisible() ) {
 		CL_DrawTouchControls();
 	}
 #endif
-
-	SCR_DrawFPS();
-
-	/* Last, and on every frame: SCR_DrawScreenField is skipped when the 3D view is hidden,
-	   so the bands would otherwise keep an undefined back-buffer.  A no-op when there are none. */
-	SCR_DrawAndroidBars();
 }
 
 void SCR_SimpleUpdateScreen( void ) {

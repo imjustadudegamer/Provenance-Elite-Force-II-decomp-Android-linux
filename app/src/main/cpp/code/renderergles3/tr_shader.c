@@ -3297,14 +3297,19 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 			  GLS_SRCBLEND_SRC_ALPHA |
 			  GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 	} else if ( shader.lightmapIndex == LIGHTMAP_WHITEIMAGE ) {
+		// R_RealFindShader @0x0003D430, case -2 (engine_decomp_all/R_RealFindShader.c:283).
+		// Stage 0 is the white image at CGEN_IDENTITY (v8[43] = 2) with a
+		// depth-mask-only state (v8[51] = 256); stage 1 is the image at
+		// CGEN_IDENTITY_LIGHTING (v8[111] = 1) modulated by the texture.  The two
+		// generators were swapped here against retail and then put back
 		unfoggedStages[0].bundle[0].image[0] = tr.whiteImage;
 		unfoggedStages[0].active = qtrue;
-		unfoggedStages[0].rgbGen = CGEN_IDENTITY_LIGHTING;
+		unfoggedStages[0].rgbGen = CGEN_IDENTITY;
 		unfoggedStages[0].stateBits = GLS_DEFAULT;
 
 		unfoggedStages[1].bundle[0].image[0] = image;
 		unfoggedStages[1].active = qtrue;
-		unfoggedStages[1].rgbGen = CGEN_IDENTITY;
+		unfoggedStages[1].rgbGen = CGEN_IDENTITY_LIGHTING;
 		unfoggedStages[1].stateBits |= GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO;
 	} else {
 		if ( shader.lightmapIndex & DYNAMIC_LIGHTMAP_BIT ) {
