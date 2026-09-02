@@ -459,6 +459,11 @@ extern "C" {
     void     CG_InitializeClientEmitters(void);
     void     CG_TurnEmitterOn(const char *emittername, entityState_t *es);
     void     CG_ProcessInitCommands(int tiki, refEntity_t *ent);
+    void     CG_ResetTikiWalkCache(void);
+    extern int cg_tikiWalkFrames;
+    extern int cg_tikiWalkEmptyAnims;
+    extern int cg_tikiWalkCmdAnims;
+    extern int cg_tikiWalkReplays;
     void     CG_EndTiki(dtiki_t *tiki);
     qboolean CG_Command_ProcessFile(const char *filename, qboolean quiet, int curTiki);
     void     CG_RestartCommandManager(int time);

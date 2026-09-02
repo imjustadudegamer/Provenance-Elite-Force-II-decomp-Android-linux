@@ -4815,6 +4815,45 @@ void ClientGameCommandManager::LoopSound(Event *ev)
 
 Container<int> cg_CachedTikis;
 
+/* autoCacheTiki turns every model, sound and loop-sound command an animation
+ * carries into a CacheResource call.  It is reached once per .tik config string
+ * and once more for every tiki cg_CachedTikis collects, and cg_CachedTikis is
+ * cleared between two top-level models, so a tiki that several config strings
+ * reach is walked again for each of them.  The commands of a tiki whose
+ * animations are all loaded cannot change, so the first walk records what it
+ * cached and a later walk replays that list: the CacheResource sequence, and
+ * with it the precache set, its order and every handle, is the one the repeated
+ * walk produced, with the frame scan done once. */
+#define CGTIKI_WALK_MAX 96
+#define CGTIKI_NAME_MAX 512
+
+typedef struct {
+    int handle;
+    int complete;
+    int first;
+    int num;
+} cgTikiWalk_t;
+
+static cgTikiWalk_t s_cgTikiWalk[CGTIKI_WALK_MAX];
+static char         s_cgTikiNames[CGTIKI_NAME_MAX][MAX_QPATH];
+static int          s_cgTikiWalkCount;
+static int          s_cgTikiNamesUsed;
+
+int cg_tikiWalkFrames;
+int cg_tikiWalkEmptyAnims;
+int cg_tikiWalkCmdAnims;
+int cg_tikiWalkReplays;
+
+void CG_ResetTikiWalkCache(void)
+{
+    s_cgTikiWalkCount     = 0;
+    s_cgTikiNamesUsed     = 0;
+    cg_tikiWalkFrames     = 0;
+    cg_tikiWalkEmptyAnims = 0;
+    cg_tikiWalkCmdAnims   = 0;
+    cg_tikiWalkReplays    = 0;
+}
+
 void CacheResource(const char *stuff)
 {
     str real_stuff;
@@ -5586,24 +5625,56 @@ static void CG_ProcessTikiInitCommands(int handle)
 // (-3) is NOT visited, matching retail.
 static void autoCacheTiki(int tiki)
 {
-    tiki_cmd_t tiki_cmd;
-    int        numanims, numframes;
-    int        animnum, framenum, i;
+    tiki_cmd_t     tiki_cmd;
+    cgTikiWalk_t  *memo = NULL;
+    int            numanims, numframes;
+    int            animnum, framenum, i;
 
     if (tiki < 0) {
         return;
+    }
+
+    for (i = 0; i < s_cgTikiWalkCount; i++) {
+        if (s_cgTikiWalk[i].handle == tiki && s_cgTikiWalk[i].complete) {
+            for (framenum = 0; framenum < s_cgTikiWalk[i].num; framenum++) {
+                CacheResource(s_cgTikiNames[s_cgTikiWalk[i].first + framenum]);
+            }
+            cg_tikiWalkReplays++;
+            return;
+        }
+    }
+
+    if (s_cgTikiWalkCount < CGTIKI_WALK_MAX) {
+        memo           = &s_cgTikiWalk[s_cgTikiWalkCount];
+        memo->handle   = tiki;
+        memo->complete = qtrue;
+        memo->first    = s_cgTikiNamesUsed;
+        memo->num      = 0;
     }
 
     numanims = cgi.TIKI_NumAnims(tiki);
 
     for (animnum = 0; animnum < numanims; animnum++) {
         if (!cgi.TIKI_AnimLoaded(tiki, animnum)) {
+            if (memo) {
+                memo->complete = qfalse;
+            }
+            continue;
+        }
+
+        // An animation with an empty client-command list can only re-read that
+        // empty list, once per frame, so the frame walk is skipped whole.
+        if (!cgi.Anim_HasCommands(tiki, animnum)) {
+            cg_tikiWalkEmptyAnims++;
             continue;
         }
 
         numframes = cgi.Anim_NumFrames(tiki, animnum);
+        cg_tikiWalkCmdAnims++;
 
         for (framenum = -2; framenum < numframes; framenum++) {
+            cg_tikiWalkFrames++;
+
             if (!cgi.Frame_Commands(tiki, animnum, framenum, &tiki_cmd, NULL)) {
                 continue;
             }
@@ -5615,9 +5686,23 @@ static void autoCacheTiki(int tiki)
                     && (!strcmp(cmd->args[0], "model") || !strcmp(cmd->args[0], "sound")
                         || !strcmp(cmd->args[0], "loopsound"))) {
                     CacheResource(cmd->args[1]);
+
+                    if (memo && s_cgTikiNamesUsed < CGTIKI_NAME_MAX) {
+                        Q_strncpyz(s_cgTikiNames[s_cgTikiNamesUsed], cmd->args[1], MAX_QPATH);
+                        s_cgTikiNamesUsed++;
+                        memo->num++;
+                    } else if (memo) {
+                        memo->complete = qfalse;
+                    }
                 }
             }
         }
+    }
+
+    if (memo && memo->complete) {
+        s_cgTikiWalkCount++;
+    } else {
+        s_cgTikiNamesUsed = memo ? memo->first : s_cgTikiNamesUsed;
     }
 }
 

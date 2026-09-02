@@ -373,10 +373,11 @@ void CG_PrepRefresh(void)
 
     LOADHANG_PROBE("cgprep",
                    "total=%d world=%d inline=%d media=%d sweep=%d tail=%d"
-                   " inlineN=%d cgsounds=%d\n",
+                   " inlineN=%d cgsounds=%d walkFrames=%d walkEmpty=%d walkCmd=%d walkHit=%d\n",
                    s_cgpLegs[0] + s_cgpLegs[1] + s_cgpLegs[2] + s_cgpLegs[3] + s_cgpLegs[4],
                    s_cgpLegs[0], s_cgpLegs[1], s_cgpLegs[2], s_cgpLegs[3], s_cgpLegs[4],
-                   s_cggInline, s_cggSounds);
+                   s_cggInline, s_cggSounds,
+                   cg_tikiWalkFrames, cg_tikiWalkEmptyAnims, cg_tikiWalkCmdAnims, cg_tikiWalkReplays);
 }
 
 
@@ -481,6 +482,7 @@ void CG_GameStateReceived(void)
     }
     s_cggModels = s_cggTikis = s_cggSounds = 0;
     s_cggLightstyles = s_cggPlayers = s_cggInline = s_cggCfgStrs = 0;
+    CG_ResetTikiWalkCache();
     totalT0 = cgi.Milliseconds();
 
     CGG_LEG_BEGIN(0);

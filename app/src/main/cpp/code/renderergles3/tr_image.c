@@ -1277,6 +1277,13 @@ image_t* R_CreateImageOld(
 		}
 	}
 
+	/* Every GL call below belongs to the texture-upload class of driver-resource
+	 * ops, so under r_smp this thread must own the context before the first of
+	 * them.  Without the park the context stays with the render thread, gen
+	 * returns 0 and the whole upload silently no-ops -- the image is then bound
+	 * as texture 0 and samples as a flat square. */
+	R_IssuePendingRenderCommands();
+
 	image = &tr.images[i];
     qglGenTextures(1, &image->texnum);
 
