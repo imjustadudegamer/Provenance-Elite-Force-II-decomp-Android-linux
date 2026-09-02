@@ -59,14 +59,17 @@ def gl3_prototypes(path):
     The character classes are deliberately [^;] rather than . with DOTALL: a
     Khronos prototype is "GL_APICALL <ret> GL_APIENTRY glFoo (args);" on one
     logical line, and a non-greedy .*? with DOTALL happily spans the ';' and
-    swallows the NEXT prototype (observed: glMapBufferRange).  Rejecting ';'
-    keeps every match inside one statement.
+    swallows the NEXT prototype.  Rejecting ';' keeps every match inside one
+    statement.  The separator before GL_APIENTRY is \\s* and not \\s+, because a
+    pointer return closes on the calling convention with no blank:
+    "void *GL_APIENTRY glMapBufferRange(...)" -- the header writes the star
+    against GL_APIENTRY, so a required blank drops that prototype silently.
     """
     with open(path, "r", errors="ignore") as fh:
         txt = fh.read()
     out = []
     for m in re.finditer(
-        r"GL_APICALL\s+([^;]*?)\s+GL_APIENTRY\s+(gl\w+)\s*\(([^;]*?)\);", txt
+        r"GL_APICALL\s+([^;]*?)\s*GL_APIENTRY\s+(gl\w+)\s*\(([^;]*?)\);", txt
     ):
         ret = " ".join(m.group(1).split())
         name = m.group(2)[2:]

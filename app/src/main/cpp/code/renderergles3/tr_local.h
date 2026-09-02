@@ -2446,9 +2446,17 @@ typedef enum {
  * with [BE:ds] and [BE:be] instead of opening its own clock. */
 typedef struct {
 	int		batches, runs, sum, first, mid, max, gapMax, verts, big, bigVerts;
+	/* Batches the frame store could not hold and the ring drew instead.  It
+	 * belongs in the row because the store's effect cannot be read without it:
+	 * the comparison is the store's only where this is zero. */
+	int		fall;
 } beSendRow_t;
 
 qboolean	RB_VboSendTake( beSendRow_t *out );
+
+/* 1 the frame store, 0 the ring.  Printed with the send row so a capture names
+ * which of the two arms it ran rather than leaving it to a note beside the log. */
+int			RB_VboArenaMode( void );
 
 int		BE_Microseconds( void );
 int		BE_Armed( void );

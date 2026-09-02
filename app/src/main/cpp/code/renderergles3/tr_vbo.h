@@ -35,6 +35,10 @@ extern "C" {
 void RB_VBO_Init( void );
 void RB_VBO_Shutdown( void );
 
+/* Opens the frame's tessellation stream store.  Called once per back end frame,
+ * on the thread that owns the GL context, before any draw. */
+void RB_VBO_BeginFrame( void );
+
 void RB_VBO_DrawTessIndexed( const shaderCommands_t *input, const glIndex_t *indexes, int numIndexes );
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const glIndex_t *indexes, int numIndexes,

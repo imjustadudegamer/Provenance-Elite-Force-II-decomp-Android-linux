@@ -67,7 +67,7 @@ botlib/l_utils.h	gpl	recovered GPL banner	botlib/l_utils.h	1.000	-	0.000
 cgame/be_cgprobe.cpp	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
 cgame/be_cgprobe.h	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
 cgame/cg_beam.cpp	gpl	recovered GPL banner	cgame/cg_beam.cpp	0.822	-	0.000
-cgame/cg_commands.cpp	gpl	recovered GPL banner	cgame/cg_commands.cpp	0.541	-	0.000
+cgame/cg_commands.cpp	gpl	recovered GPL banner	cgame/cg_commands.cpp	0.538	-	0.000
 cgame/cg_commands.h	gpl	recovered GPL banner	cgame/cg_commands.h	0.640	-	0.000
 cgame/cg_consolecmds.c	gpl	recovered GPL banner	cgame/cg_consolecmds.c	0.235	-	0.000
 cgame/cg_drawtools.cpp	gpl	recovered GPL banner	cgame/cg_drawtools.cpp	0.223	-	0.000
@@ -75,8 +75,8 @@ cgame/cg_ents.c	gpl	recovered GPL banner	cgame/cg_ents.c	0.573	-	0.000
 cgame/cg_footprints.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 cgame/cg_footprints.h	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 cgame/cg_lightstyles.cpp	gpl	recovered GPL banner	cgame/cg_lightstyles.cpp	1.000	-	0.000
-cgame/cg_local.h	gpl	recovered GPL banner	cgame/cg_local.h	0.689	-	0.000
-cgame/cg_main.c	gpl	recovered GPL banner	cgame/cg_main.c	0.463	-	0.000
+cgame/cg_local.h	gpl	recovered GPL banner	cgame/cg_local.h	0.685	-	0.000
+cgame/cg_main.c	gpl	recovered GPL banner	cgame/cg_main.c	0.419	-	0.000
 cgame/cg_marks.c	gpl	recovered GPL banner	cgame/cg_marks.c	0.484	-	0.000
 cgame/cg_modelanim.c	gpl	recovered GPL banner	cgame/cg_modelanim.c	0.225	-	0.000
 cgame/cg_player.cpp	gpl	recovered GPL banner	cgame/cg_player.cpp	0.927	-	0.000
@@ -92,7 +92,7 @@ cgame/cg_swipe.cpp	gpl	recovered GPL banner	cgame/cg_swipe.cpp	0.886	-	0.000
 cgame/cg_tempmodels.cpp	gpl	recovered GPL banner	cgame/cg_tempmodels.cpp	0.670	-	0.000
 cgame/cg_testemitter.cpp	gpl	recovered GPL banner	cgame/cg_testemitter.cpp	0.119	-	0.000
 cgame/cg_ui.cpp	gpl	recovered GPL banner	cgame/cg_ui.cpp	0.200	-	0.000
-cgame/cg_view.c	gpl	recovered GPL banner	cgame/cg_view.c	0.406	-	0.000
+cgame/cg_view.c	gpl	recovered GPL banner	cgame/cg_view.c	0.404	-	0.000
 cgame/cg_viewmodelanim.c	gpl	recovered GPL banner	cgame/cg_viewmodelanim.c	0.004	-	0.000
 cgame/cg_weather.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 cgame/class.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/class.cpp	0.968
@@ -122,10 +122,10 @@ client/cl_savemanager.cpp	recon	port record names the retail binaries as the sou
 client/cl_savemanager.h	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 client/cl_scoreboard.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 client/cl_scoreboard.h	recon	port record names the retail binaries as the source	-	0.000	-	0.000
-client/cl_scrn.cpp	gpl	recovered GPL banner	client/cl_scrn.cpp	0.325	-	0.000
+client/cl_scrn.cpp	gpl	recovered GPL banner	client/cl_scrn.cpp	0.324	-	0.000
 client/cl_systeminfo.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 client/cl_systeminfo.h	recon	port record names the retail binaries as the source	-	0.000	-	0.000
-client/cl_ui.cpp	gpl	recovered GPL banner	client/cl_ui.cpp	0.319	-	0.000
+client/cl_ui.cpp	gpl	recovered GPL banner	client/cl_ui.cpp	0.313	-	0.000
 client/cl_ui.h	gpl	recovered GPL banner	client/cl_ui.h	0.415	-	0.000
 client/cl_uibranchdialog.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 client/cl_uidialog.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
@@ -153,13 +153,13 @@ client/snd_codec.h	gpl	recovered GPL banner	client/snd_codec.h	0.932	-	0.000
 client/snd_codec_mp3.c	gpl	recovered GPL banner	client/snd_codec_mp3.c	0.977	-	0.000
 client/snd_codec_wav.c	gpl	recovered GPL banner	client/snd_codec_wav.c	1.000	-	0.000
 client/snd_dma_new.cpp	gpl	recovered GPL banner	client/snd_dma_new.cpp	0.815	-	0.000
-client/snd_info.cpp	gpl	recovered GPL banner	client/snd_info.cpp	0.600	-	0.000
+client/snd_info.cpp	gpl	recovered GPL banner	client/snd_info.cpp	0.594	-	0.000
 client/snd_local.h	gpl	recovered GPL banner	client/snd_local.h	0.962	-	0.000
 client/snd_local_new.h	gpl	recovered GPL banner	client/snd_local_new.h	0.871	-	0.000
 client/snd_mem_new.cpp	gpl	recovered GPL banner	client/snd_mem_new.cpp	0.903	-	0.000
 client/snd_miles_new.cpp	gpl	recovered GPL banner	client/snd_miles_new.cpp	1.000	-	0.000
 client/snd_miles_new.h	gpl	recovered GPL banner	client/snd_miles_new.h	1.000	-	0.000
-client/snd_openal_new.cpp	gpl	recovered GPL banner	client/snd_openal_new.cpp	0.788	-	0.000
+client/snd_openal_new.cpp	gpl	recovered GPL banner	client/snd_openal_new.cpp	0.785	-	0.000
 client/snd_openal_new.h	gpl	recovered GPL banner	client/snd_openal_new.h	0.939	-	0.000
 client/snd_public.h	gpl	recovered GPL banner	client/snd_public.h	0.610	-	0.000
 client/touch_controls.h	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
@@ -256,7 +256,7 @@ fgame/ammo.cpp	gpl	recovered GPL banner	fgame/ammo.cpp	0.683	dlls/game/ammo.cpp	
 fgame/ammo.h	gpl	recovered GPL banner	fgame/ammo.h	0.854	dlls/game/ammo.h	0.451
 fgame/animate.cpp	sdk	port record names the EF2 SDK as the source	fgame/animate.cpp	0.156	dlls/game/animate.cpp	0.256
 fgame/animate.h	gpl	recovered GPL banner	fgame/animate.h	0.252	dlls/game/animate.h	0.194
-fgame/archive.cpp	sdk	Ritual EF2 SDK	fgame/archive.cpp	0.228	dlls/game/archive.cpp	0.941
+fgame/archive.cpp	sdk	Ritual EF2 SDK	fgame/archive.cpp	0.183	dlls/game/archive.cpp	0.925
 fgame/archive.h	sdk	Ritual EF2 SDK	fgame/archive.h	0.253	dlls/game/archive.h	0.962
 fgame/armor.cpp	gpl	recovered GPL banner	fgame/armor.cpp	0.079	dlls/game/armor.cpp	0.245
 fgame/armor.h	gpl	recovered GPL banner	fgame/armor.h	0.088	dlls/game/armor.h	0.344
@@ -292,7 +292,7 @@ fgame/camera.cpp	gpl	recovered GPL banner	fgame/camera.cpp	0.763	dlls/game/camer
 fgame/camera.h	gpl	recovered GPL banner	fgame/camera.h	0.854	dlls/game/camera.h	0.417
 fgame/changePosture.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/changePosture.cpp	0.996
 fgame/changePosture.hpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/changePosture.hpp	0.925
-fgame/characterstate.cpp	gpl	recovered GPL banner	fgame/characterstate.cpp	0.693	dlls/game/characterstate.cpp	0.272
+fgame/characterstate.cpp	gpl	recovered GPL banner	fgame/characterstate.cpp	0.686	dlls/game/characterstate.cpp	0.271
 fgame/characterstate.h	gpl	recovered GPL banner	fgame/characterstate.h	0.814	dlls/game/characterstate.h	0.425
 fgame/chars.h	gpl	OpenMoHAA lineage	fgame/chars.h	1.000	dlls/game/chars.h	1.000
 fgame/cinematic.cpp	sdk	port record names the EF2 SDK as the source	-	0.000	-	0.000
@@ -326,7 +326,7 @@ fgame/doors.cpp	gpl	recovered GPL banner	fgame/doors.cpp	0.528	dlls/game/doors.c
 fgame/doors.h	gpl	recovered GPL banner	fgame/doors.h	0.694	dlls/game/doors.h	0.430
 fgame/earthquake.cpp	sdk	port record names the EF2 SDK as the source	fgame/earthquake.cpp	0.179	dlls/game/earthquake.cpp	0.421
 fgame/earthquake.h	sdk	port record names the EF2 SDK as the source	fgame/earthquake.h	0.267	dlls/game/earthquake.h	0.500
-fgame/entity.cpp	sdk	port record names the EF2 SDK as the source	fgame/entity.cpp	0.340	dlls/game/entity.cpp	0.111
+fgame/entity.cpp	sdk	port record names the EF2 SDK as the source	fgame/entity.cpp	0.335	dlls/game/entity.cpp	0.111
 fgame/entity.h	gpl	recovered GPL banner	fgame/entity.h	0.486	dlls/game/entity.h	0.275
 fgame/equipment.cpp	sdk	port record names the EF2 SDK as the source	-	0.000	dlls/game/equipment.cpp	0.400
 fgame/equipment.h	sdk	port record names the EF2 SDK as the source	-	0.000	dlls/game/equipment.h	0.367
@@ -337,8 +337,8 @@ fgame/fuzzyengine.h	sdk	port record names the EF2 SDK as the source	-	0.000	-	0.
 fgame/g_bot.cpp	sdk	Ritual EF2 SDK	fgame/g_bot.cpp	0.036	dlls/game/g_bot.cpp	0.969
 fgame/g_client.cpp	gpl	recovered GPL banner	fgame/g_client.cpp	0.199	-	0.000
 fgame/g_import_verify_gen.h	recon	no ancestor and no surviving notice	-	0.000	-	0.000
-fgame/g_local.h	gpl	recovered GPL banner	fgame/g_local.h	0.834	dlls/game/g_local.h	0.075
-fgame/g_main.cpp	gpl	recovered GPL banner	fgame/g_main.cpp	0.402	dlls/game/g_main.cpp	0.082
+fgame/g_local.h	gpl	recovered GPL banner	fgame/g_local.h	0.822	dlls/game/g_local.h	0.073
+fgame/g_main.cpp	gpl	recovered GPL banner	fgame/g_main.cpp	0.384	dlls/game/g_main.cpp	0.107
 fgame/g_main.h	gpl	recovered GPL banner	fgame/g_main.h	0.809	dlls/game/g_main.h	0.282
 fgame/g_phys.cpp	gpl	recovered GPL banner	fgame/g_phys.cpp	0.655	dlls/game/g_phys.cpp	0.450
 fgame/g_phys.h	gpl	recovered GPL banner	fgame/g_phys.h	0.606	dlls/game/g_phys.h	0.532
@@ -444,7 +444,7 @@ fgame/path.cpp	sdk	port record names the EF2 SDK as the source	-	0.000	dlls/game
 fgame/path.h	sdk	port record names the EF2 SDK as the source	-	0.000	dlls/game/path.h	0.270
 fgame/patrol.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/patrol.cpp	1.000
 fgame/patrol.hpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/patrol.hpp	0.956
-fgame/player.cpp	sdk	port record names the EF2 SDK as the source	fgame/player.cpp	0.196	dlls/game/player.cpp	0.301
+fgame/player.cpp	sdk	port record names the EF2 SDK as the source	fgame/player.cpp	0.196	dlls/game/player.cpp	0.300
 fgame/player.h	sdk	port record names the EF2 SDK as the source	fgame/player.h	0.274	dlls/game/player.h	0.254
 fgame/player_combat.cpp	gpl	recovered GPL banner	fgame/player_combat.cpp	0.451	dlls/game/player_combat.cpp	0.065
 fgame/player_conditionals.cpp	gpl	recovered GPL banner	fgame/player_conditionals.cpp	0.022	-	0.000
@@ -557,48 +557,48 @@ gamespy/Chat/chatCallbacks.c	vendored	recovered third-party notice	gamespy/Chat/
 gamespy/Chat/chatCallbacks.h	vendored	recovered third-party notice	gamespy/Chat/chatCallbacks.h	0.993	-	0.000
 gamespy/Chat/chatChannel.c	vendored	recovered third-party notice	gamespy/Chat/chatChannel.c	0.958	-	0.000
 gamespy/Chat/chatChannel.h	vendored	recovered third-party notice	gamespy/Chat/chatChannel.h	0.972	-	0.000
-gamespy/Chat/chatCrypt.c	vendored	vendored module	gamespy/Chat/chatCrypt.c	1.000	-	0.000
-gamespy/Chat/chatCrypt.h	vendored	vendored module	gamespy/Chat/chatCrypt.h	1.000	-	0.000
+gamespy/Chat/chatCrypt.c	vendored	existing third-party notice	gamespy/Chat/chatCrypt.c	1.000	-	0.000
+gamespy/Chat/chatCrypt.h	vendored	existing third-party notice	gamespy/Chat/chatCrypt.h	1.000	-	0.000
 gamespy/Chat/chatHandlers.c	vendored	recovered third-party notice	gamespy/Chat/chatHandlers.c	0.997	-	0.000
 gamespy/Chat/chatHandlers.h	vendored	recovered third-party notice	gamespy/Chat/chatHandlers.h	1.000	-	0.000
 gamespy/Chat/chatMain.c	vendored	recovered third-party notice	gamespy/Chat/chatMain.c	0.998	-	0.000
 gamespy/Chat/chatMain.h	vendored	recovered third-party notice	gamespy/Chat/chatMain.h	1.000	-	0.000
 gamespy/Chat/chatSocket.c	vendored	recovered third-party notice	gamespy/Chat/chatSocket.c	1.000	-	0.000
 gamespy/Chat/chatSocket.h	vendored	recovered third-party notice	gamespy/Chat/chatSocket.h	1.000	-	0.000
-gamespy/Chat/chatc/chatc.c	vendored	vendored module	gamespy/Chat/chatc/chatc.c	0.995	-	0.000
-gamespy/Chat/chatty/ChannelListDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/ChannelListDlg.cpp	0.982	-	0.000
-gamespy/Chat/chatty/ChannelListDlg.h	vendored	vendored module	gamespy/Chat/chatty/ChannelListDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/ChannelModeDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/ChannelModeDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/ChannelModeDlg.h	vendored	vendored module	gamespy/Chat/chatty/ChannelModeDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/ChildFrm.cpp	vendored	vendored module	gamespy/Chat/chatty/ChildFrm.cpp	1.000	-	0.000
-gamespy/Chat/chatty/ChildFrm.h	vendored	vendored module	gamespy/Chat/chatty/ChildFrm.h	1.000	-	0.000
-gamespy/Chat/chatty/ConnectDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/ConnectDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/ConnectDlg.h	vendored	vendored module	gamespy/Chat/chatty/ConnectDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/EnterDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/EnterDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/EnterDlg.h	vendored	vendored module	gamespy/Chat/chatty/EnterDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/GetUserInfoDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/GetUserInfoDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/GetUserInfoDlg.h	vendored	vendored module	gamespy/Chat/chatty/GetUserInfoDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/KickReasonDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/KickReasonDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/KickReasonDlg.h	vendored	vendored module	gamespy/Chat/chatty/KickReasonDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/MainFrm.cpp	vendored	vendored module	gamespy/Chat/chatty/MainFrm.cpp	1.000	-	0.000
-gamespy/Chat/chatty/MainFrm.h	vendored	vendored module	gamespy/Chat/chatty/MainFrm.h	1.000	-	0.000
-gamespy/Chat/chatty/SendRawDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/SendRawDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/SendRawDlg.h	vendored	vendored module	gamespy/Chat/chatty/SendRawDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/SetPasswordDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/SetPasswordDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/SetPasswordDlg.h	vendored	vendored module	gamespy/Chat/chatty/SetPasswordDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/SetTopicDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/SetTopicDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/SetTopicDlg.h	vendored	vendored module	gamespy/Chat/chatty/SetTopicDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/StdAfx.cpp	vendored	vendored module	gamespy/Chat/chatty/StdAfx.cpp	1.000	-	0.000
-gamespy/Chat/chatty/StdAfx.h	vendored	vendored module	gamespy/Chat/chatty/StdAfx.h	1.000	-	0.000
-gamespy/Chat/chatty/TalkDlg.cpp	vendored	vendored module	gamespy/Chat/chatty/TalkDlg.cpp	1.000	-	0.000
-gamespy/Chat/chatty/TalkDlg.h	vendored	vendored module	gamespy/Chat/chatty/TalkDlg.h	1.000	-	0.000
-gamespy/Chat/chatty/chatty.cpp	vendored	vendored module	gamespy/Chat/chatty/chatty.cpp	1.000	-	0.000
-gamespy/Chat/chatty/chatty.h	vendored	vendored module	gamespy/Chat/chatty/chatty.h	1.000	-	0.000
-gamespy/Chat/chatty/chattyDoc.cpp	vendored	vendored module	gamespy/Chat/chatty/chattyDoc.cpp	0.993	-	0.000
-gamespy/Chat/chatty/chattyDoc.h	vendored	vendored module	gamespy/Chat/chatty/chattyDoc.h	1.000	-	0.000
-gamespy/Chat/chatty/chattyView.cpp	vendored	vendored module	gamespy/Chat/chatty/chattyView.cpp	1.000	-	0.000
-gamespy/Chat/chatty/chattyView.h	vendored	vendored module	gamespy/Chat/chatty/chattyView.h	1.000	-	0.000
-gamespy/Chat/chatty/resource.h	vendored	vendored module	gamespy/Chat/chatty/resource.h	1.000	-	0.000
+gamespy/Chat/chatc/chatc.c	vendored	existing third-party notice	gamespy/Chat/chatc/chatc.c	0.995	-	0.000
+gamespy/Chat/chatty/ChannelListDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/ChannelListDlg.cpp	0.982	-	0.000
+gamespy/Chat/chatty/ChannelListDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/ChannelListDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/ChannelModeDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/ChannelModeDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/ChannelModeDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/ChannelModeDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/ChildFrm.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/ChildFrm.cpp	1.000	-	0.000
+gamespy/Chat/chatty/ChildFrm.h	vendored	existing third-party notice	gamespy/Chat/chatty/ChildFrm.h	1.000	-	0.000
+gamespy/Chat/chatty/ConnectDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/ConnectDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/ConnectDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/ConnectDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/EnterDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/EnterDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/EnterDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/EnterDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/GetUserInfoDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/GetUserInfoDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/GetUserInfoDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/GetUserInfoDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/KickReasonDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/KickReasonDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/KickReasonDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/KickReasonDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/MainFrm.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/MainFrm.cpp	1.000	-	0.000
+gamespy/Chat/chatty/MainFrm.h	vendored	existing third-party notice	gamespy/Chat/chatty/MainFrm.h	1.000	-	0.000
+gamespy/Chat/chatty/SendRawDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/SendRawDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/SendRawDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/SendRawDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/SetPasswordDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/SetPasswordDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/SetPasswordDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/SetPasswordDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/SetTopicDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/SetTopicDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/SetTopicDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/SetTopicDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/StdAfx.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/StdAfx.cpp	1.000	-	0.000
+gamespy/Chat/chatty/StdAfx.h	vendored	existing third-party notice	gamespy/Chat/chatty/StdAfx.h	1.000	-	0.000
+gamespy/Chat/chatty/TalkDlg.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/TalkDlg.cpp	1.000	-	0.000
+gamespy/Chat/chatty/TalkDlg.h	vendored	existing third-party notice	gamespy/Chat/chatty/TalkDlg.h	1.000	-	0.000
+gamespy/Chat/chatty/chatty.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/chatty.cpp	1.000	-	0.000
+gamespy/Chat/chatty/chatty.h	vendored	existing third-party notice	gamespy/Chat/chatty/chatty.h	1.000	-	0.000
+gamespy/Chat/chatty/chattyDoc.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/chattyDoc.cpp	0.993	-	0.000
+gamespy/Chat/chatty/chattyDoc.h	vendored	existing third-party notice	gamespy/Chat/chatty/chattyDoc.h	1.000	-	0.000
+gamespy/Chat/chatty/chattyView.cpp	vendored	existing third-party notice	gamespy/Chat/chatty/chattyView.cpp	1.000	-	0.000
+gamespy/Chat/chatty/chattyView.h	vendored	existing third-party notice	gamespy/Chat/chatty/chattyView.h	1.000	-	0.000
+gamespy/Chat/chatty/resource.h	vendored	existing third-party notice	gamespy/Chat/chatty/resource.h	1.000	-	0.000
 gamespy/GP/gp.c	vendored	recovered third-party notice	gamespy/GP/gp.c	1.000	-	0.000
 gamespy/GP/gp.h	vendored	recovered third-party notice	gamespy/GP/gp.h	1.000	-	0.000
 gamespy/GP/gpi.c	vendored	recovered third-party notice	gamespy/GP/gpi.c	1.000	-	0.000
@@ -613,12 +613,12 @@ gamespy/GP/gpiConnect.c	vendored	recovered third-party notice	gamespy/GP/gpiConn
 gamespy/GP/gpiConnect.h	vendored	recovered third-party notice	gamespy/GP/gpiConnect.h	1.000	-	0.000
 gamespy/GP/gpiInfo.c	vendored	recovered third-party notice	gamespy/GP/gpiInfo.c	1.000	-	0.000
 gamespy/GP/gpiInfo.h	vendored	recovered third-party notice	gamespy/GP/gpiInfo.h	1.000	-	0.000
-gamespy/GP/gpiKeys.c	vendored	vendored module	gamespy/GP/gpiKeys.c	1.000	-	0.000
-gamespy/GP/gpiKeys.h	vendored	vendored module	gamespy/GP/gpiKeys.h	1.000	-	0.000
+gamespy/GP/gpiKeys.c	vendored	existing third-party notice	gamespy/GP/gpiKeys.c	1.000	-	0.000
+gamespy/GP/gpiKeys.h	vendored	existing third-party notice	gamespy/GP/gpiKeys.h	1.000	-	0.000
 gamespy/GP/gpiOperation.c	vendored	recovered third-party notice	gamespy/GP/gpiOperation.c	1.000	-	0.000
 gamespy/GP/gpiOperation.h	vendored	recovered third-party notice	gamespy/GP/gpiOperation.h	1.000	-	0.000
-gamespy/GP/gpiPS3.c	vendored	vendored module	gamespy/GP/gpiPS3.c	1.000	-	0.000
-gamespy/GP/gpiPS3.h	vendored	vendored module	gamespy/GP/gpiPS3.h	1.000	-	0.000
+gamespy/GP/gpiPS3.c	vendored	existing third-party notice	gamespy/GP/gpiPS3.c	1.000	-	0.000
+gamespy/GP/gpiPS3.h	vendored	existing third-party notice	gamespy/GP/gpiPS3.h	1.000	-	0.000
 gamespy/GP/gpiPeer.c	vendored	recovered third-party notice	gamespy/GP/gpiPeer.c	1.000	-	0.000
 gamespy/GP/gpiPeer.h	vendored	recovered third-party notice	gamespy/GP/gpiPeer.h	1.000	-	0.000
 gamespy/GP/gpiProfile.c	vendored	recovered third-party notice	gamespy/GP/gpiProfile.c	1.000	-	0.000
@@ -631,28 +631,28 @@ gamespy/GP/gpiUnique.c	vendored	recovered third-party notice	gamespy/GP/gpiUniqu
 gamespy/GP/gpiUnique.h	vendored	recovered third-party notice	gamespy/GP/gpiUnique.h	1.000	-	0.000
 gamespy/GP/gpiUtility.c	vendored	recovered third-party notice	gamespy/GP/gpiUtility.c	1.000	-	0.000
 gamespy/GP/gpiUtility.h	vendored	recovered third-party notice	gamespy/GP/gpiUtility.h	1.000	-	0.000
-gamespy/GP/gpstress/gpstress.c	vendored	vendored module	gamespy/GP/gpstress/gpstress.c	1.000	-	0.000
-gamespy/Peer/PeerLobby/ConnectPage.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/ConnectPage.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/ConnectPage.h	vendored	vendored module	gamespy/Peer/PeerLobby/ConnectPage.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/CreatePage.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/CreatePage.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/CreatePage.h	vendored	vendored module	gamespy/Peer/PeerLobby/CreatePage.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/GroupPage.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/GroupPage.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/GroupPage.h	vendored	vendored module	gamespy/Peer/PeerLobby/GroupPage.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/LobbyWizard.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/LobbyWizard.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/LobbyWizard.h	vendored	vendored module	gamespy/Peer/PeerLobby/LobbyWizard.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/PeerLobby.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/PeerLobby.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/PeerLobby.h	vendored	vendored module	gamespy/Peer/PeerLobby/PeerLobby.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/SideBarCtrl.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/SideBarCtrl.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/SideBarCtrl.h	vendored	vendored module	gamespy/Peer/PeerLobby/SideBarCtrl.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/StagingPage.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/StagingPage.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/StagingPage.h	vendored	vendored module	gamespy/Peer/PeerLobby/StagingPage.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/StdAfx.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/StdAfx.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/StdAfx.h	vendored	vendored module	gamespy/Peer/PeerLobby/StdAfx.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/TitlePage.cpp	vendored	vendored module	gamespy/Peer/PeerLobby/TitlePage.cpp	1.000	-	0.000
-gamespy/Peer/PeerLobby/TitlePage.h	vendored	vendored module	gamespy/Peer/PeerLobby/TitlePage.h	1.000	-	0.000
-gamespy/Peer/PeerLobby/resource.h	vendored	vendored module	gamespy/Peer/PeerLobby/resource.h	1.000	-	0.000
-gamespy/Peer/peer.h	vendored	vendored module	gamespy/Peer/peer.h	1.000	-	0.000
-gamespy/Peer/peerAscii.h	vendored	vendored module	gamespy/Peer/peerAscii.h	1.000	-	0.000
+gamespy/GP/gpstress/gpstress.c	vendored	existing third-party notice	gamespy/GP/gpstress/gpstress.c	1.000	-	0.000
+gamespy/Peer/PeerLobby/ConnectPage.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/ConnectPage.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/ConnectPage.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/ConnectPage.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/CreatePage.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/CreatePage.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/CreatePage.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/CreatePage.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/GroupPage.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/GroupPage.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/GroupPage.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/GroupPage.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/LobbyWizard.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/LobbyWizard.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/LobbyWizard.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/LobbyWizard.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/PeerLobby.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/PeerLobby.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/PeerLobby.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/PeerLobby.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/SideBarCtrl.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/SideBarCtrl.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/SideBarCtrl.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/SideBarCtrl.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/StagingPage.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/StagingPage.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/StagingPage.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/StagingPage.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/StdAfx.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/StdAfx.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/StdAfx.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/StdAfx.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/TitlePage.cpp	vendored	existing third-party notice	gamespy/Peer/PeerLobby/TitlePage.cpp	1.000	-	0.000
+gamespy/Peer/PeerLobby/TitlePage.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/TitlePage.h	1.000	-	0.000
+gamespy/Peer/PeerLobby/resource.h	vendored	existing third-party notice	gamespy/Peer/PeerLobby/resource.h	1.000	-	0.000
+gamespy/Peer/peer.h	vendored	existing third-party notice	gamespy/Peer/peer.h	1.000	-	0.000
+gamespy/Peer/peerAscii.h	vendored	existing third-party notice	gamespy/Peer/peerAscii.h	1.000	-	0.000
 gamespy/Peer/peerAutoMatch.c	vendored	recovered third-party notice	gamespy/Peer/peerAutoMatch.c	1.000	-	0.000
 gamespy/Peer/peerAutoMatch.h	vendored	recovered third-party notice	gamespy/Peer/peerAutoMatch.h	1.000	-	0.000
 gamespy/Peer/peerCallbacks.c	vendored	recovered third-party notice	gamespy/Peer/peerCallbacks.c	1.000	-	0.000
@@ -679,284 +679,284 @@ gamespy/Peer/peerRooms.c	vendored	recovered third-party notice	gamespy/Peer/peer
 gamespy/Peer/peerRooms.h	vendored	recovered third-party notice	gamespy/Peer/peerRooms.h	1.000	-	0.000
 gamespy/Peer/peerSB.c	vendored	recovered third-party notice	gamespy/Peer/peerSB.c	1.000	-	0.000
 gamespy/Peer/peerSB.h	vendored	recovered third-party notice	gamespy/Peer/peerSB.h	1.000	-	0.000
-gamespy/Peer/peerc/peerc.c	vendored	vendored module	gamespy/Peer/peerc/peerc.c	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/LoginDlg.cpp	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/LoginDlg.cpp	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/LoginDlg.h	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/LoginDlg.h	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/SetupDlg.cpp	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/SetupDlg.cpp	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/SetupDlg.h	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/SetupDlg.h	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/StdAfx.cpp	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/StdAfx.cpp	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/StdAfx.h	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/StdAfx.h	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.cpp	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.cpp	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.h	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.h	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.cpp	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.cpp	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.h	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.h	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.cpp	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.cpp	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.h	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.h	1.000	-	0.000
-gamespy/Voice2/Voice2BuddyMFC/resource.h	vendored	vendored module	gamespy/Voice2/Voice2BuddyMFC/resource.h	1.000	-	0.000
+gamespy/Peer/peerc/peerc.c	vendored	existing third-party notice	gamespy/Peer/peerc/peerc.c	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/LoginDlg.cpp	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/LoginDlg.cpp	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/LoginDlg.h	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/LoginDlg.h	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/SetupDlg.cpp	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/SetupDlg.cpp	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/SetupDlg.h	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/SetupDlg.h	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/StdAfx.cpp	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/StdAfx.cpp	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/StdAfx.h	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/StdAfx.h	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.cpp	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.cpp	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.h	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFC.h	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.cpp	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.cpp	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.h	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/Voice2BuddyMFCDlg.h	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.cpp	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.cpp	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.h	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/VoiceSessionDlg.h	1.000	-	0.000
+gamespy/Voice2/Voice2BuddyMFC/resource.h	vendored	existing third-party notice	gamespy/Voice2/Voice2BuddyMFC/resource.h	1.000	-	0.000
 gamespy/Voice2/gv.h	vendored	recovered third-party notice	gamespy/Voice2/gv.h	1.000	-	0.000
-gamespy/Voice2/gvCodec.c	vendored	vendored module	gamespy/Voice2/gvCodec.c	1.000	-	0.000
+gamespy/Voice2/gvCodec.c	vendored	existing third-party notice	gamespy/Voice2/gvCodec.c	1.000	-	0.000
 gamespy/Voice2/gvCodec.h	vendored	recovered third-party notice	gamespy/Voice2/gvCodec.h	1.000	-	0.000
-gamespy/Voice2/gvCustomDevice.c	vendored	vendored module	gamespy/Voice2/gvCustomDevice.c	1.000	-	0.000
+gamespy/Voice2/gvCustomDevice.c	vendored	existing third-party notice	gamespy/Voice2/gvCustomDevice.c	1.000	-	0.000
 gamespy/Voice2/gvCustomDevice.h	vendored	recovered third-party notice	gamespy/Voice2/gvCustomDevice.h	1.000	-	0.000
-gamespy/Voice2/gvDevice.c	vendored	vendored module	gamespy/Voice2/gvDevice.c	1.000	-	0.000
+gamespy/Voice2/gvDevice.c	vendored	existing third-party notice	gamespy/Voice2/gvDevice.c	1.000	-	0.000
 gamespy/Voice2/gvDevice.h	vendored	recovered third-party notice	gamespy/Voice2/gvDevice.h	1.000	-	0.000
-gamespy/Voice2/gvDirectSound.c	vendored	vendored module	gamespy/Voice2/gvDirectSound.c	1.000	-	0.000
+gamespy/Voice2/gvDirectSound.c	vendored	existing third-party notice	gamespy/Voice2/gvDirectSound.c	1.000	-	0.000
 gamespy/Voice2/gvDirectSound.h	vendored	recovered third-party notice	gamespy/Voice2/gvDirectSound.h	1.000	-	0.000
-gamespy/Voice2/gvFrame.c	vendored	vendored module	gamespy/Voice2/gvFrame.c	1.000	-	0.000
+gamespy/Voice2/gvFrame.c	vendored	existing third-party notice	gamespy/Voice2/gvFrame.c	1.000	-	0.000
 gamespy/Voice2/gvFrame.h	vendored	recovered third-party notice	gamespy/Voice2/gvFrame.h	1.000	-	0.000
-gamespy/Voice2/gvGSM.c	vendored	vendored module	gamespy/Voice2/gvGSM.c	1.000	-	0.000
+gamespy/Voice2/gvGSM.c	vendored	existing third-party notice	gamespy/Voice2/gvGSM.c	1.000	-	0.000
 gamespy/Voice2/gvGSM.h	vendored	recovered third-party notice	gamespy/Voice2/gvGSM.h	1.000	-	0.000
-gamespy/Voice2/gvLogitechPS2Codecs.c	vendored	vendored module	gamespy/Voice2/gvLogitechPS2Codecs.c	1.000	-	0.000
+gamespy/Voice2/gvLogitechPS2Codecs.c	vendored	existing third-party notice	gamespy/Voice2/gvLogitechPS2Codecs.c	1.000	-	0.000
 gamespy/Voice2/gvLogitechPS2Codecs.h	vendored	recovered third-party notice	gamespy/Voice2/gvLogitechPS2Codecs.h	1.000	-	0.000
 gamespy/Voice2/gvMain.c	vendored	recovered third-party notice	gamespy/Voice2/gvMain.c	1.000	-	0.000
 gamespy/Voice2/gvMain.h	vendored	recovered third-party notice	gamespy/Voice2/gvMain.h	1.000	-	0.000
-gamespy/Voice2/gvOSXAudio.c	vendored	vendored module	gamespy/Voice2/gvOSXAudio.c	1.000	-	0.000
+gamespy/Voice2/gvOSXAudio.c	vendored	existing third-party notice	gamespy/Voice2/gvOSXAudio.c	1.000	-	0.000
 gamespy/Voice2/gvOSXAudio.h	vendored	recovered third-party notice	gamespy/Voice2/gvOSXAudio.h	1.000	-	0.000
-gamespy/Voice2/gvPS2Audio.c	vendored	vendored module	gamespy/Voice2/gvPS2Audio.c	1.000	-	0.000
+gamespy/Voice2/gvPS2Audio.c	vendored	existing third-party notice	gamespy/Voice2/gvPS2Audio.c	1.000	-	0.000
 gamespy/Voice2/gvPS2Audio.h	vendored	recovered third-party notice	gamespy/Voice2/gvPS2Audio.h	1.000	-	0.000
-gamespy/Voice2/gvPS2Eyetoy.c	vendored	vendored module	gamespy/Voice2/gvPS2Eyetoy.c	1.000	-	0.000
+gamespy/Voice2/gvPS2Eyetoy.c	vendored	existing third-party notice	gamespy/Voice2/gvPS2Eyetoy.c	1.000	-	0.000
 gamespy/Voice2/gvPS2Eyetoy.h	vendored	recovered third-party notice	gamespy/Voice2/gvPS2Eyetoy.h	1.000	-	0.000
-gamespy/Voice2/gvPS2Headset.c	vendored	vendored module	gamespy/Voice2/gvPS2Headset.c	1.000	-	0.000
+gamespy/Voice2/gvPS2Headset.c	vendored	existing third-party notice	gamespy/Voice2/gvPS2Headset.c	1.000	-	0.000
 gamespy/Voice2/gvPS2Headset.h	vendored	recovered third-party notice	gamespy/Voice2/gvPS2Headset.h	1.000	-	0.000
-gamespy/Voice2/gvPS2Spu2.c	vendored	vendored module	gamespy/Voice2/gvPS2Spu2.c	1.000	-	0.000
+gamespy/Voice2/gvPS2Spu2.c	vendored	existing third-party notice	gamespy/Voice2/gvPS2Spu2.c	1.000	-	0.000
 gamespy/Voice2/gvPS2Spu2.h	vendored	recovered third-party notice	gamespy/Voice2/gvPS2Spu2.h	1.000	-	0.000
-gamespy/Voice2/gvPS3Audio.c	vendored	vendored module	gamespy/Voice2/gvPS3Audio.c	1.000	-	0.000
-gamespy/Voice2/gvPS3Audio.h	vendored	vendored module	gamespy/Voice2/gvPS3Audio.h	1.000	-	0.000
-gamespy/Voice2/gvPS3Headset.c	vendored	vendored module	gamespy/Voice2/gvPS3Headset.c	1.000	-	0.000
-gamespy/Voice2/gvPS3Headset.h	vendored	vendored module	gamespy/Voice2/gvPS3Headset.h	1.000	-	0.000
-gamespy/Voice2/gvPSPAudio.c	vendored	vendored module	gamespy/Voice2/gvPSPAudio.c	1.000	-	0.000
+gamespy/Voice2/gvPS3Audio.c	vendored	existing third-party notice	gamespy/Voice2/gvPS3Audio.c	1.000	-	0.000
+gamespy/Voice2/gvPS3Audio.h	vendored	existing third-party notice	gamespy/Voice2/gvPS3Audio.h	1.000	-	0.000
+gamespy/Voice2/gvPS3Headset.c	vendored	existing third-party notice	gamespy/Voice2/gvPS3Headset.c	1.000	-	0.000
+gamespy/Voice2/gvPS3Headset.h	vendored	existing third-party notice	gamespy/Voice2/gvPS3Headset.h	1.000	-	0.000
+gamespy/Voice2/gvPSPAudio.c	vendored	existing third-party notice	gamespy/Voice2/gvPSPAudio.c	1.000	-	0.000
 gamespy/Voice2/gvPSPAudio.h	vendored	recovered third-party notice	gamespy/Voice2/gvPSPAudio.h	1.000	-	0.000
-gamespy/Voice2/gvSource.c	vendored	vendored module	gamespy/Voice2/gvSource.c	1.000	-	0.000
+gamespy/Voice2/gvSource.c	vendored	existing third-party notice	gamespy/Voice2/gvSource.c	1.000	-	0.000
 gamespy/Voice2/gvSource.h	vendored	recovered third-party notice	gamespy/Voice2/gvSource.h	1.000	-	0.000
-gamespy/Voice2/gvSpeex.c	vendored	vendored module	gamespy/Voice2/gvSpeex.c	1.000	-	0.000
+gamespy/Voice2/gvSpeex.c	vendored	existing third-party notice	gamespy/Voice2/gvSpeex.c	1.000	-	0.000
 gamespy/Voice2/gvSpeex.h	vendored	recovered third-party notice	gamespy/Voice2/gvSpeex.h	1.000	-	0.000
-gamespy/Voice2/gvSpeexSpu.c	vendored	vendored module	gamespy/Voice2/gvSpeexSpu.c	1.000	-	0.000
+gamespy/Voice2/gvSpeexSpu.c	vendored	existing third-party notice	gamespy/Voice2/gvSpeexSpu.c	1.000	-	0.000
 gamespy/Voice2/gvSpeexSpu.h	vendored	recovered third-party notice	gamespy/Voice2/gvSpeexSpu.h	1.000	-	0.000
-gamespy/Voice2/gvUtil.c	vendored	vendored module	gamespy/Voice2/gvUtil.c	1.000	-	0.000
+gamespy/Voice2/gvUtil.c	vendored	existing third-party notice	gamespy/Voice2/gvUtil.c	1.000	-	0.000
 gamespy/Voice2/gvUtil.h	vendored	recovered third-party notice	gamespy/Voice2/gvUtil.h	1.000	-	0.000
-gamespy/Voice2/voice2bench/voice2bench.c	vendored	vendored module	gamespy/Voice2/voice2bench/voice2bench.c	1.000	-	0.000
-gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_debug.h	vendored	vendored module	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_debug.h	1.000	-	0.000
-gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_release.h	vendored	vendored module	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_release.h	1.000	-	0.000
-gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_debug.h	vendored	vendored module	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_debug.h	1.000	-	0.000
-gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_release.h	vendored	vendored module	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_release.h	1.000	-	0.000
-gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_debug.h	vendored	vendored module	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_debug.h	1.000	-	0.000
-gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_release.h	vendored	vendored module	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_release.h	1.000	-	0.000
-gamespy/Voice2/voice2bench/voicesample.h	vendored	vendored module	gamespy/Voice2/voice2bench/voicesample.h	1.000	-	0.000
+gamespy/Voice2/voice2bench/voice2bench.c	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voice2bench.c	1.000	-	0.000
+gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_debug.h	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_debug.h	1.000	-	0.000
+gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_release.h	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_eenet_release.h	1.000	-	0.000
+gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_debug.h	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_debug.h	1.000	-	0.000
+gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_release.h	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_insock_release.h	1.000	-	0.000
+gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_debug.h	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_debug.h	1.000	-	0.000
+gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_release.h	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voice2benchps2cw/voice2bench_prefix_snsystems_release.h	1.000	-	0.000
+gamespy/Voice2/voice2bench/voicesample.h	vendored	existing third-party notice	gamespy/Voice2/voice2bench/voicesample.h	1.000	-	0.000
 gamespy/cl_gamespy.c	vendored	vendored module	gamespy/cl_gamespy.c	0.872	-	0.000
 gamespy/cl_gamespy.h	vendored	vendored module	gamespy/cl_gamespy.h	0.500	-	0.000
-gamespy/common/android/gsThreadAndroid.c	vendored	vendored module	-	0.000	-	0.000
-gamespy/common/gsAssert.c	vendored	vendored module	gamespy/common/gsAssert.c	1.000	-	0.000
-gamespy/common/gsAssert.h	vendored	vendored module	gamespy/common/gsAssert.h	1.000	-	0.000
-gamespy/common/gsAvailable.c	vendored	vendored module	gamespy/common/gsAvailable.c	1.000	-	0.000
-gamespy/common/gsAvailable.h	vendored	vendored module	gamespy/common/gsAvailable.h	1.000	-	0.000
-gamespy/common/gsCommon.h	vendored	vendored module	gamespy/common/gsCommon.h	1.000	-	0.000
-gamespy/common/gsCore.c	vendored	vendored module	gamespy/common/gsCore.c	1.000	-	0.000
-gamespy/common/gsCore.h	vendored	vendored module	gamespy/common/gsCore.h	1.000	-	0.000
-gamespy/common/gsCrypt.c	vendored	vendored module	gamespy/common/gsCrypt.c	1.000	-	0.000
-gamespy/common/gsCrypt.h	vendored	vendored module	gamespy/common/gsCrypt.h	1.000	-	0.000
-gamespy/common/gsDebug.c	vendored	vendored module	gamespy/common/gsDebug.c	1.000	-	0.000
-gamespy/common/gsDebug.h	vendored	vendored module	gamespy/common/gsDebug.h	1.000	-	0.000
-gamespy/common/gsLargeInt.c	vendored	vendored module	gamespy/common/gsLargeInt.c	1.000	-	0.000
-gamespy/common/gsLargeInt.h	vendored	vendored module	gamespy/common/gsLargeInt.h	1.000	-	0.000
-gamespy/common/gsMemory.c	vendored	vendored module	gamespy/common/gsMemory.c	0.997	-	0.000
-gamespy/common/gsMemory.h	vendored	vendored module	gamespy/common/gsMemory.h	0.917	-	0.000
-gamespy/common/gsPlatform.c	vendored	vendored module	gamespy/common/gsPlatform.c	1.000	-	0.000
-gamespy/common/gsPlatform.h	vendored	vendored module	gamespy/common/gsPlatform.h	1.000	-	0.000
-gamespy/common/gsPlatformSocket.c	vendored	vendored module	gamespy/common/gsPlatformSocket.c	1.000	-	0.000
-gamespy/common/gsPlatformSocket.h	vendored	vendored module	gamespy/common/gsPlatformSocket.h	0.996	-	0.000
-gamespy/common/gsPlatformThread.c	vendored	vendored module	gamespy/common/gsPlatformThread.c	0.967	-	0.000
-gamespy/common/gsPlatformThread.h	vendored	vendored module	gamespy/common/gsPlatformThread.h	1.000	-	0.000
-gamespy/common/gsPlatformUtil.c	vendored	vendored module	gamespy/common/gsPlatformUtil.c	1.000	-	0.000
-gamespy/common/gsPlatformUtil.h	vendored	vendored module	gamespy/common/gsPlatformUtil.h	0.963	-	0.000
-gamespy/common/gsRC4.c	vendored	vendored module	gamespy/common/gsRC4.c	1.000	-	0.000
-gamespy/common/gsRC4.h	vendored	vendored module	gamespy/common/gsRC4.h	1.000	-	0.000
-gamespy/common/gsSHA1.c	vendored	vendored module	gamespy/common/gsSHA1.c	1.000	-	0.000
-gamespy/common/gsSHA1.h	vendored	vendored module	gamespy/common/gsSHA1.h	1.000	-	0.000
-gamespy/common/gsSSL.c	vendored	vendored module	gamespy/common/gsSSL.c	1.000	-	0.000
-gamespy/common/gsSSL.h	vendored	vendored module	gamespy/common/gsSSL.h	1.000	-	0.000
-gamespy/common/gsSoap.c	vendored	vendored module	gamespy/common/gsSoap.c	1.000	-	0.000
-gamespy/common/gsSoap.h	vendored	vendored module	gamespy/common/gsSoap.h	1.000	-	0.000
-gamespy/common/gsStringUtil.c	vendored	vendored module	gamespy/common/gsStringUtil.c	1.000	-	0.000
-gamespy/common/gsStringUtil.h	vendored	vendored module	gamespy/common/gsStringUtil.h	1.000	-	0.000
-gamespy/common/gsUdpEngine.c	vendored	vendored module	gamespy/common/gsUdpEngine.c	1.000	-	0.000
-gamespy/common/gsUdpEngine.h	vendored	vendored module	gamespy/common/gsUdpEngine.h	1.000	-	0.000
-gamespy/common/gsXML.c	vendored	vendored module	gamespy/common/gsXML.c	1.000	-	0.000
-gamespy/common/gsXML.h	vendored	vendored module	gamespy/common/gsXML.h	1.000	-	0.000
-gamespy/common/linux/LinuxCommon.c	vendored	vendored module	gamespy/common/linux/LinuxCommon.c	1.000	-	0.000
-gamespy/common/linux/gsSocketLinux.c	vendored	vendored module	-	0.000	-	0.000
-gamespy/common/linux/gsThreadLinux.c	vendored	vendored module	gamespy/common/linux/gsThreadLinux.c	1.000	-	0.000
-gamespy/common/linux/gsUtilLinux.c	vendored	vendored module	gamespy/common/linux/gsUtilLinux.c	1.000	-	0.000
-gamespy/common/macosx/MacOSXCommon.c	vendored	vendored module	gamespy/common/macosx/MacOSXCommon.c	1.000	-	0.000
-gamespy/common/macosx/gsThreadMacOSX.c	vendored	vendored module	gamespy/common/macosx/gsThreadMacOSX.c	1.000	-	0.000
-gamespy/common/macosx/gsUtilMacOSX.c	vendored	vendored module	gamespy/common/macosx/gsUtilMacOSX.c	1.000	-	0.000
-gamespy/common/nitro/backup.c	vendored	vendored module	gamespy/common/nitro/backup.c	1.000	-	0.000
-gamespy/common/nitro/backup.h	vendored	vendored module	gamespy/common/nitro/backup.h	1.000	-	0.000
+gamespy/common/android/gsThreadAndroid.c	vendored	existing third-party notice	-	0.000	-	0.000
+gamespy/common/gsAssert.c	vendored	existing third-party notice	gamespy/common/gsAssert.c	1.000	-	0.000
+gamespy/common/gsAssert.h	vendored	existing third-party notice	gamespy/common/gsAssert.h	1.000	-	0.000
+gamespy/common/gsAvailable.c	vendored	existing third-party notice	gamespy/common/gsAvailable.c	1.000	-	0.000
+gamespy/common/gsAvailable.h	vendored	existing third-party notice	gamespy/common/gsAvailable.h	1.000	-	0.000
+gamespy/common/gsCommon.h	vendored	existing third-party notice	gamespy/common/gsCommon.h	1.000	-	0.000
+gamespy/common/gsCore.c	vendored	existing third-party notice	gamespy/common/gsCore.c	1.000	-	0.000
+gamespy/common/gsCore.h	vendored	existing third-party notice	gamespy/common/gsCore.h	1.000	-	0.000
+gamespy/common/gsCrypt.c	vendored	existing third-party notice	gamespy/common/gsCrypt.c	1.000	-	0.000
+gamespy/common/gsCrypt.h	vendored	existing third-party notice	gamespy/common/gsCrypt.h	1.000	-	0.000
+gamespy/common/gsDebug.c	vendored	existing third-party notice	gamespy/common/gsDebug.c	1.000	-	0.000
+gamespy/common/gsDebug.h	vendored	existing third-party notice	gamespy/common/gsDebug.h	1.000	-	0.000
+gamespy/common/gsLargeInt.c	vendored	existing third-party notice	gamespy/common/gsLargeInt.c	1.000	-	0.000
+gamespy/common/gsLargeInt.h	vendored	existing third-party notice	gamespy/common/gsLargeInt.h	1.000	-	0.000
+gamespy/common/gsMemory.c	vendored	existing third-party notice	gamespy/common/gsMemory.c	0.997	-	0.000
+gamespy/common/gsMemory.h	vendored	existing third-party notice	gamespy/common/gsMemory.h	0.917	-	0.000
+gamespy/common/gsPlatform.c	vendored	existing third-party notice	gamespy/common/gsPlatform.c	1.000	-	0.000
+gamespy/common/gsPlatform.h	vendored	existing third-party notice	gamespy/common/gsPlatform.h	1.000	-	0.000
+gamespy/common/gsPlatformSocket.c	vendored	existing third-party notice	gamespy/common/gsPlatformSocket.c	1.000	-	0.000
+gamespy/common/gsPlatformSocket.h	vendored	existing third-party notice	gamespy/common/gsPlatformSocket.h	0.996	-	0.000
+gamespy/common/gsPlatformThread.c	vendored	existing third-party notice	gamespy/common/gsPlatformThread.c	0.967	-	0.000
+gamespy/common/gsPlatformThread.h	vendored	existing third-party notice	gamespy/common/gsPlatformThread.h	1.000	-	0.000
+gamespy/common/gsPlatformUtil.c	vendored	existing third-party notice	gamespy/common/gsPlatformUtil.c	1.000	-	0.000
+gamespy/common/gsPlatformUtil.h	vendored	existing third-party notice	gamespy/common/gsPlatformUtil.h	0.963	-	0.000
+gamespy/common/gsRC4.c	vendored	existing third-party notice	gamespy/common/gsRC4.c	1.000	-	0.000
+gamespy/common/gsRC4.h	vendored	existing third-party notice	gamespy/common/gsRC4.h	1.000	-	0.000
+gamespy/common/gsSHA1.c	vendored	existing third-party notice	gamespy/common/gsSHA1.c	1.000	-	0.000
+gamespy/common/gsSHA1.h	vendored	existing third-party notice	gamespy/common/gsSHA1.h	1.000	-	0.000
+gamespy/common/gsSSL.c	vendored	existing third-party notice	gamespy/common/gsSSL.c	1.000	-	0.000
+gamespy/common/gsSSL.h	vendored	existing third-party notice	gamespy/common/gsSSL.h	1.000	-	0.000
+gamespy/common/gsSoap.c	vendored	existing third-party notice	gamespy/common/gsSoap.c	1.000	-	0.000
+gamespy/common/gsSoap.h	vendored	existing third-party notice	gamespy/common/gsSoap.h	1.000	-	0.000
+gamespy/common/gsStringUtil.c	vendored	existing third-party notice	gamespy/common/gsStringUtil.c	1.000	-	0.000
+gamespy/common/gsStringUtil.h	vendored	existing third-party notice	gamespy/common/gsStringUtil.h	1.000	-	0.000
+gamespy/common/gsUdpEngine.c	vendored	existing third-party notice	gamespy/common/gsUdpEngine.c	1.000	-	0.000
+gamespy/common/gsUdpEngine.h	vendored	existing third-party notice	gamespy/common/gsUdpEngine.h	1.000	-	0.000
+gamespy/common/gsXML.c	vendored	existing third-party notice	gamespy/common/gsXML.c	1.000	-	0.000
+gamespy/common/gsXML.h	vendored	existing third-party notice	gamespy/common/gsXML.h	1.000	-	0.000
+gamespy/common/linux/LinuxCommon.c	vendored	existing third-party notice	gamespy/common/linux/LinuxCommon.c	1.000	-	0.000
+gamespy/common/linux/gsSocketLinux.c	vendored	existing third-party notice	-	0.000	-	0.000
+gamespy/common/linux/gsThreadLinux.c	vendored	existing third-party notice	gamespy/common/linux/gsThreadLinux.c	1.000	-	0.000
+gamespy/common/linux/gsUtilLinux.c	vendored	existing third-party notice	gamespy/common/linux/gsUtilLinux.c	1.000	-	0.000
+gamespy/common/macosx/MacOSXCommon.c	vendored	existing third-party notice	gamespy/common/macosx/MacOSXCommon.c	1.000	-	0.000
+gamespy/common/macosx/gsThreadMacOSX.c	vendored	existing third-party notice	gamespy/common/macosx/gsThreadMacOSX.c	1.000	-	0.000
+gamespy/common/macosx/gsUtilMacOSX.c	vendored	existing third-party notice	gamespy/common/macosx/gsUtilMacOSX.c	1.000	-	0.000
+gamespy/common/nitro/backup.c	vendored	existing third-party notice	gamespy/common/nitro/backup.c	1.000	-	0.000
+gamespy/common/nitro/backup.h	vendored	existing third-party notice	gamespy/common/nitro/backup.h	1.000	-	0.000
 gamespy/common/nitro/font.c	vendored	recovered third-party notice	gamespy/common/nitro/font.c	1.000	-	0.000
 gamespy/common/nitro/font.h	vendored	recovered third-party notice	gamespy/common/nitro/font.h	1.000	-	0.000
-gamespy/common/nitro/gsSocketNitro.c	vendored	vendored module	gamespy/common/nitro/gsSocketNitro.c	1.000	-	0.000
-gamespy/common/nitro/gsThreadNitro.c	vendored	vendored module	gamespy/common/nitro/gsThreadNitro.c	1.000	-	0.000
-gamespy/common/nitro/gsTimerNitro.c	vendored	vendored module	gamespy/common/nitro/gsTimerNitro.c	1.000	-	0.000
-gamespy/common/nitro/gsUtilNitro.c	vendored	vendored module	gamespy/common/nitro/gsUtilNitro.c	1.000	-	0.000
-gamespy/common/nitro/key.c	vendored	vendored module	gamespy/common/nitro/key.c	1.000	-	0.000
-gamespy/common/nitro/key.h	vendored	vendored module	gamespy/common/nitro/key.h	1.000	-	0.000
-gamespy/common/nitro/main.c	vendored	vendored module	gamespy/common/nitro/main.c	1.000	-	0.000
-gamespy/common/nitro/menu.c	vendored	vendored module	gamespy/common/nitro/menu.c	1.000	-	0.000
-gamespy/common/nitro/menu.h	vendored	vendored module	gamespy/common/nitro/menu.h	1.000	-	0.000
-gamespy/common/nitro/nitrosample/nitrosample.c	vendored	vendored module	gamespy/common/nitro/nitrosample/nitrosample.c	1.000	-	0.000
-gamespy/common/nitro/screen.c	vendored	vendored module	gamespy/common/nitro/screen.c	1.000	-	0.000
-gamespy/common/nitro/screen.h	vendored	vendored module	gamespy/common/nitro/screen.h	1.000	-	0.000
-gamespy/common/nitro/touch.c	vendored	vendored module	gamespy/common/nitro/touch.c	1.000	-	0.000
-gamespy/common/nitro/touch.h	vendored	vendored module	gamespy/common/nitro/touch.h	1.000	-	0.000
-gamespy/common/nitro/wireless.c	vendored	vendored module	gamespy/common/nitro/wireless.c	1.000	-	0.000
-gamespy/common/nitro/wireless.h	vendored	vendored module	gamespy/common/nitro/wireless.h	1.000	-	0.000
+gamespy/common/nitro/gsSocketNitro.c	vendored	existing third-party notice	gamespy/common/nitro/gsSocketNitro.c	1.000	-	0.000
+gamespy/common/nitro/gsThreadNitro.c	vendored	existing third-party notice	gamespy/common/nitro/gsThreadNitro.c	1.000	-	0.000
+gamespy/common/nitro/gsTimerNitro.c	vendored	existing third-party notice	gamespy/common/nitro/gsTimerNitro.c	1.000	-	0.000
+gamespy/common/nitro/gsUtilNitro.c	vendored	existing third-party notice	gamespy/common/nitro/gsUtilNitro.c	1.000	-	0.000
+gamespy/common/nitro/key.c	vendored	existing third-party notice	gamespy/common/nitro/key.c	1.000	-	0.000
+gamespy/common/nitro/key.h	vendored	existing third-party notice	gamespy/common/nitro/key.h	1.000	-	0.000
+gamespy/common/nitro/main.c	vendored	existing third-party notice	gamespy/common/nitro/main.c	1.000	-	0.000
+gamespy/common/nitro/menu.c	vendored	existing third-party notice	gamespy/common/nitro/menu.c	1.000	-	0.000
+gamespy/common/nitro/menu.h	vendored	existing third-party notice	gamespy/common/nitro/menu.h	1.000	-	0.000
+gamespy/common/nitro/nitrosample/nitrosample.c	vendored	existing third-party notice	gamespy/common/nitro/nitrosample/nitrosample.c	1.000	-	0.000
+gamespy/common/nitro/screen.c	vendored	existing third-party notice	gamespy/common/nitro/screen.c	1.000	-	0.000
+gamespy/common/nitro/screen.h	vendored	existing third-party notice	gamespy/common/nitro/screen.h	1.000	-	0.000
+gamespy/common/nitro/touch.c	vendored	existing third-party notice	gamespy/common/nitro/touch.c	1.000	-	0.000
+gamespy/common/nitro/touch.h	vendored	existing third-party notice	gamespy/common/nitro/touch.h	1.000	-	0.000
+gamespy/common/nitro/wireless.c	vendored	existing third-party notice	gamespy/common/nitro/wireless.c	1.000	-	0.000
+gamespy/common/nitro/wireless.h	vendored	existing third-party notice	gamespy/common/nitro/wireless.h	1.000	-	0.000
 gamespy/common/ps2/cw/PREFIX_PS2_DEBUG_TC296.h	vendored	recovered third-party notice	gamespy/common/ps2/cw/PREFIX_PS2_DEBUG_TC296.h	1.000	-	0.000
 gamespy/common/ps2/cw/PREFIX_PS2_RELEASE_TC296.h	vendored	recovered third-party notice	gamespy/common/ps2/cw/PREFIX_PS2_RELEASE_TC296.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_eenet_debug.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_eenet_debug.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_eenet_debug_uniqueid.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_eenet_debug_uniqueid.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_eenet_release.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_eenet_release.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_eenet_release_uniqueid.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_eenet_release_uniqueid.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_insock_debug.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_insock_debug.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_insock_debug_uniqueid.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_insock_debug_uniqueid.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_insock_release.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_insock_release.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_insock_release_uniqueid.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_insock_release_uniqueid.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_snsystems_debug.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_snsystems_debug.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_snsystems_debug_uniqueid.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_snsystems_debug_uniqueid.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_snsystems_release.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_snsystems_release.h	1.000	-	0.000
-gamespy/common/ps2/cw/cwprefix_snsystems_release_uniqueid.h	vendored	vendored module	gamespy/common/ps2/cw/cwprefix_snsystems_release_uniqueid.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_eenet_debug.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_eenet_debug.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_eenet_debug_uniqueid.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_eenet_debug_uniqueid.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_eenet_release.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_eenet_release.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_eenet_release_uniqueid.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_eenet_release_uniqueid.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_insock_debug.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_insock_debug.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_insock_debug_uniqueid.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_insock_debug_uniqueid.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_insock_release.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_insock_release.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_insock_release_uniqueid.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_insock_release_uniqueid.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_snsystems_debug.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_snsystems_debug.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_snsystems_debug_uniqueid.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_snsystems_debug_uniqueid.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_snsystems_release.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_snsystems_release.h	1.000	-	0.000
+gamespy/common/ps2/cw/cwprefix_snsystems_release_uniqueid.h	vendored	existing third-party notice	gamespy/common/ps2/cw/cwprefix_snsystems_release_uniqueid.h	1.000	-	0.000
 gamespy/common/ps2/ent_cnf/cw/PREFIX_PS2IOP_DEBUG.h	vendored	recovered third-party notice	gamespy/common/ps2/ent_cnf/cw/PREFIX_PS2IOP_DEBUG.h	1.000	-	0.000
 gamespy/common/ps2/ent_cnf/cw/PREFIX_PS2IOP_RELEASE.h	vendored	recovered third-party notice	gamespy/common/ps2/ent_cnf/cw/PREFIX_PS2IOP_RELEASE.h	1.000	-	0.000
-gamespy/common/ps2/gsSocketPs2.c	vendored	vendored module	gamespy/common/ps2/gsSocketPs2.c	1.000	-	0.000
-gamespy/common/ps2/gsThreadPs2.c	vendored	vendored module	gamespy/common/ps2/gsThreadPs2.c	1.000	-	0.000
-gamespy/common/ps2/gsUtilPs2.c	vendored	vendored module	gamespy/common/ps2/gsUtilPs2.c	1.000	-	0.000
-gamespy/common/ps2/prodg/PS2_in_VC.h	vendored	vendored module	gamespy/common/ps2/prodg/PS2_in_VC.h	1.000	-	0.000
-gamespy/common/ps2/ps2common.c	vendored	vendored module	gamespy/common/ps2/ps2common.c	1.000	-	0.000
-gamespy/common/ps2/ps2pad.c	vendored	vendored module	gamespy/common/ps2/ps2pad.c	1.000	-	0.000
-gamespy/common/ps2/ps2pad.h	vendored	vendored module	gamespy/common/ps2/ps2pad.h	1.000	-	0.000
+gamespy/common/ps2/gsSocketPs2.c	vendored	existing third-party notice	gamespy/common/ps2/gsSocketPs2.c	1.000	-	0.000
+gamespy/common/ps2/gsThreadPs2.c	vendored	existing third-party notice	gamespy/common/ps2/gsThreadPs2.c	1.000	-	0.000
+gamespy/common/ps2/gsUtilPs2.c	vendored	existing third-party notice	gamespy/common/ps2/gsUtilPs2.c	1.000	-	0.000
+gamespy/common/ps2/prodg/PS2_in_VC.h	vendored	existing third-party notice	gamespy/common/ps2/prodg/PS2_in_VC.h	1.000	-	0.000
+gamespy/common/ps2/ps2common.c	vendored	existing third-party notice	gamespy/common/ps2/ps2common.c	1.000	-	0.000
+gamespy/common/ps2/ps2pad.c	vendored	existing third-party notice	gamespy/common/ps2/ps2pad.c	1.000	-	0.000
+gamespy/common/ps2/ps2pad.h	vendored	existing third-party notice	gamespy/common/ps2/ps2pad.h	1.000	-	0.000
 gamespy/common/ps3/SpeexSpursTaskManager/CellConfiguration.h	vendored	recovered third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/CellConfiguration.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/CellVectorMath.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/CellVectorMath.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/PS3Types.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/PS3Types.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SPUAssert.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SPUAssert.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SpeexSpursTask/SpuSpeexTaskMain.cpp	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SpeexSpursTask/SpuSpeexTaskMain.cpp	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SpuDoubleBuffer.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SpuDoubleBuffer.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SpuFakeDma.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SpuFakeDma.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SpuSpeexTaskOutput.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SpuSpeexTaskOutput.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.cpp	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.cpp	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/CellVectorMath.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/CellVectorMath.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/PS3Types.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/PS3Types.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SPUAssert.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SPUAssert.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SpeexSpursTask/SpuSpeexTaskMain.cpp	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpeexSpursTask/SpuSpeexTaskMain.cpp	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SpuDoubleBuffer.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpuDoubleBuffer.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SpuFakeDma.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpuFakeDma.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SpuSpeexTaskOutput.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpuSpeexTaskOutput.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.cpp	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.cpp	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexCInterface.h	1.000	-	0.000
 gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexTaskManager.cpp	vendored	recovered third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexTaskManager.cpp	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexTaskManager.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexTaskManager.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.cpp	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.cpp	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedObjectArray.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedObjectArray.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexTaskManager.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/SpursSpeexTaskManager.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.cpp	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.cpp	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedAllocator.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedObjectArray.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursAlignedObjectArray.h	1.000	-	0.000
 gamespy/common/ps3/SpeexSpursTaskManager/spursConfiguration.h	vendored	recovered third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursConfiguration.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursPlatformDefinitions.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursPlatformDefinitions.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursScalar.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursScalar.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursSupportInterface.cpp	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursSupportInterface.cpp	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursPlatformDefinitions.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursPlatformDefinitions.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursScalar.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursScalar.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursSupportInterface.cpp	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursSupportInterface.cpp	1.000	-	0.000
 gamespy/common/ps3/SpeexSpursTaskManager/spursSupportInterface.h	vendored	recovered third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursSupportInterface.h	1.000	-	0.000
 gamespy/common/ps3/SpeexSpursTaskManager/spursThreadSupportInterface.cpp	vendored	recovered third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursThreadSupportInterface.cpp	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursUtilityMacros.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursUtilityMacros.h	1.000	-	0.000
-gamespy/common/ps3/SpeexSpursTaskManager/spursthreadsupportinterface.h	vendored	vendored module	gamespy/common/ps3/SpeexSpursTaskManager/spursthreadsupportinterface.h	1.000	-	0.000
-gamespy/common/ps3/gsSocketPS3.c	vendored	vendored module	gamespy/common/ps3/gsSocketPS3.c	1.000	-	0.000
-gamespy/common/ps3/gsUtilPS3.c	vendored	vendored module	gamespy/common/ps3/gsUtilPS3.c	1.000	-	0.000
-gamespy/common/ps3/ps3common.c	vendored	vendored module	gamespy/common/ps3/ps3common.c	1.000	-	0.000
-gamespy/common/psp/gsSocketPSP.c	vendored	vendored module	gamespy/common/psp/gsSocketPSP.c	1.000	-	0.000
-gamespy/common/psp/gsUtilPSP.c	vendored	vendored module	gamespy/common/psp/gsUtilPSP.c	1.000	-	0.000
-gamespy/common/psp/pspcommon.c	vendored	vendored module	gamespy/common/psp/pspcommon.c	1.000	-	0.000
-gamespy/common/revolution/gsSocketRevolution.c	vendored	vendored module	gamespy/common/revolution/gsSocketRevolution.c	1.000	-	0.000
-gamespy/common/revolution/gsThreadRevoulution.c	vendored	vendored module	gamespy/common/revolution/gsThreadRevoulution.c	1.000	-	0.000
-gamespy/common/revolution/gsUtilRevolution.c	vendored	vendored module	gamespy/common/revolution/gsUtilRevolution.c	1.000	-	0.000
-gamespy/common/revolution/revolutionCommon.c	vendored	vendored module	gamespy/common/revolution/revolutionCommon.c	1.000	-	0.000
-gamespy/common/win32/Win32Common.c	vendored	vendored module	gamespy/common/win32/Win32Common.c	1.000	-	0.000
-gamespy/common/win32/gsSocketWin32.c	vendored	vendored module	-	0.000	-	0.000
-gamespy/common/win32/gsThreadWin32.c	vendored	vendored module	gamespy/common/win32/gsThreadWin32.c	1.000	-	0.000
-gamespy/common/win32/gsUtilWin32.c	vendored	vendored module	gamespy/common/win32/gsUtilWin32.c	1.000	-	0.000
-gamespy/common/x360/X360Common.c	vendored	vendored module	gamespy/common/x360/X360Common.c	1.000	-	0.000
-gamespy/common/x360/gsSocketX360.c	vendored	vendored module	gamespy/common/x360/gsSocketX360.c	1.000	-	0.000
-gamespy/common/x360/gsThreadX360.c	vendored	vendored module	gamespy/common/x360/gsThreadX360.c	1.000	-	0.000
-gamespy/common/xbox/gsSocketXbox.c	vendored	vendored module	gamespy/common/xbox/gsSocketXbox.c	1.000	-	0.000
-gamespy/darray.c	vendored	vendored module	gamespy/darray.c	1.000	-	0.000
-gamespy/darray.h	vendored	vendored module	gamespy/darray.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursUtilityMacros.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursUtilityMacros.h	1.000	-	0.000
+gamespy/common/ps3/SpeexSpursTaskManager/spursthreadsupportinterface.h	vendored	existing third-party notice	gamespy/common/ps3/SpeexSpursTaskManager/spursthreadsupportinterface.h	1.000	-	0.000
+gamespy/common/ps3/gsSocketPS3.c	vendored	existing third-party notice	gamespy/common/ps3/gsSocketPS3.c	1.000	-	0.000
+gamespy/common/ps3/gsUtilPS3.c	vendored	existing third-party notice	gamespy/common/ps3/gsUtilPS3.c	1.000	-	0.000
+gamespy/common/ps3/ps3common.c	vendored	existing third-party notice	gamespy/common/ps3/ps3common.c	1.000	-	0.000
+gamespy/common/psp/gsSocketPSP.c	vendored	existing third-party notice	gamespy/common/psp/gsSocketPSP.c	1.000	-	0.000
+gamespy/common/psp/gsUtilPSP.c	vendored	existing third-party notice	gamespy/common/psp/gsUtilPSP.c	1.000	-	0.000
+gamespy/common/psp/pspcommon.c	vendored	existing third-party notice	gamespy/common/psp/pspcommon.c	1.000	-	0.000
+gamespy/common/revolution/gsSocketRevolution.c	vendored	existing third-party notice	gamespy/common/revolution/gsSocketRevolution.c	1.000	-	0.000
+gamespy/common/revolution/gsThreadRevoulution.c	vendored	existing third-party notice	gamespy/common/revolution/gsThreadRevoulution.c	1.000	-	0.000
+gamespy/common/revolution/gsUtilRevolution.c	vendored	existing third-party notice	gamespy/common/revolution/gsUtilRevolution.c	1.000	-	0.000
+gamespy/common/revolution/revolutionCommon.c	vendored	existing third-party notice	gamespy/common/revolution/revolutionCommon.c	1.000	-	0.000
+gamespy/common/win32/Win32Common.c	vendored	existing third-party notice	gamespy/common/win32/Win32Common.c	1.000	-	0.000
+gamespy/common/win32/gsSocketWin32.c	vendored	existing third-party notice	-	0.000	-	0.000
+gamespy/common/win32/gsThreadWin32.c	vendored	existing third-party notice	gamespy/common/win32/gsThreadWin32.c	1.000	-	0.000
+gamespy/common/win32/gsUtilWin32.c	vendored	existing third-party notice	gamespy/common/win32/gsUtilWin32.c	1.000	-	0.000
+gamespy/common/x360/X360Common.c	vendored	existing third-party notice	gamespy/common/x360/X360Common.c	1.000	-	0.000
+gamespy/common/x360/gsSocketX360.c	vendored	existing third-party notice	gamespy/common/x360/gsSocketX360.c	1.000	-	0.000
+gamespy/common/x360/gsThreadX360.c	vendored	existing third-party notice	gamespy/common/x360/gsThreadX360.c	1.000	-	0.000
+gamespy/common/xbox/gsSocketXbox.c	vendored	existing third-party notice	gamespy/common/xbox/gsSocketXbox.c	1.000	-	0.000
+gamespy/darray.c	vendored	existing third-party notice	gamespy/darray.c	1.000	-	0.000
+gamespy/darray.h	vendored	existing third-party notice	gamespy/darray.h	1.000	-	0.000
 gamespy/gcdkey/CdkeyGen/gcdkeygen.c	vendored	recovered third-party notice	gamespy/gcdkey/CdkeyGen/gcdkeygen.c	1.000	-	0.000
 gamespy/gcdkey/gcdkeyc.c	vendored	recovered third-party notice	gamespy/gcdkey/gcdkeyc.c	1.000	-	0.000
 gamespy/gcdkey/gcdkeyc.h	vendored	recovered third-party notice	gamespy/gcdkey/gcdkeyc.h	1.000	-	0.000
 gamespy/gcdkey/gcdkeys.c	vendored	recovered third-party notice	gamespy/gcdkey/gcdkeys.c	1.000	-	0.000
 gamespy/gcdkey/gcdkeys.h	vendored	recovered third-party notice	gamespy/gcdkey/gcdkeys.h	1.000	-	0.000
-gamespy/ghttp/ghttp.h	vendored	vendored module	gamespy/ghttp/ghttp.h	1.000	-	0.000
-gamespy/ghttp/ghttpASCII.h	vendored	vendored module	gamespy/ghttp/ghttpASCII.h	1.000	-	0.000
-gamespy/ghttp/ghttpBuffer.c	vendored	vendored module	gamespy/ghttp/ghttpBuffer.c	1.000	-	0.000
-gamespy/ghttp/ghttpBuffer.h	vendored	vendored module	gamespy/ghttp/ghttpBuffer.h	1.000	-	0.000
-gamespy/ghttp/ghttpCallbacks.c	vendored	vendored module	gamespy/ghttp/ghttpCallbacks.c	1.000	-	0.000
+gamespy/ghttp/ghttp.h	vendored	existing third-party notice	gamespy/ghttp/ghttp.h	1.000	-	0.000
+gamespy/ghttp/ghttpASCII.h	vendored	existing third-party notice	gamespy/ghttp/ghttpASCII.h	1.000	-	0.000
+gamespy/ghttp/ghttpBuffer.c	vendored	existing third-party notice	gamespy/ghttp/ghttpBuffer.c	1.000	-	0.000
+gamespy/ghttp/ghttpBuffer.h	vendored	existing third-party notice	gamespy/ghttp/ghttpBuffer.h	1.000	-	0.000
+gamespy/ghttp/ghttpCallbacks.c	vendored	existing third-party notice	gamespy/ghttp/ghttpCallbacks.c	1.000	-	0.000
 gamespy/ghttp/ghttpCallbacks.h	vendored	recovered third-party notice	gamespy/ghttp/ghttpCallbacks.h	1.000	-	0.000
 gamespy/ghttp/ghttpCommon.c	vendored	recovered third-party notice	gamespy/ghttp/ghttpCommon.c	1.000	-	0.000
-gamespy/ghttp/ghttpCommon.h	vendored	vendored module	gamespy/ghttp/ghttpCommon.h	1.000	-	0.000
-gamespy/ghttp/ghttpConnection.c	vendored	vendored module	gamespy/ghttp/ghttpConnection.c	1.000	-	0.000
-gamespy/ghttp/ghttpConnection.h	vendored	vendored module	gamespy/ghttp/ghttpConnection.h	1.000	-	0.000
-gamespy/ghttp/ghttpEncryption.c	vendored	vendored module	gamespy/ghttp/ghttpEncryption.c	1.000	-	0.000
-gamespy/ghttp/ghttpEncryption.h	vendored	vendored module	gamespy/ghttp/ghttpEncryption.h	1.000	-	0.000
-gamespy/ghttp/ghttpMain.c	vendored	vendored module	gamespy/ghttp/ghttpMain.c	1.000	-	0.000
-gamespy/ghttp/ghttpMain.h	vendored	vendored module	gamespy/ghttp/ghttpMain.h	1.000	-	0.000
+gamespy/ghttp/ghttpCommon.h	vendored	existing third-party notice	gamespy/ghttp/ghttpCommon.h	1.000	-	0.000
+gamespy/ghttp/ghttpConnection.c	vendored	existing third-party notice	gamespy/ghttp/ghttpConnection.c	1.000	-	0.000
+gamespy/ghttp/ghttpConnection.h	vendored	existing third-party notice	gamespy/ghttp/ghttpConnection.h	1.000	-	0.000
+gamespy/ghttp/ghttpEncryption.c	vendored	existing third-party notice	gamespy/ghttp/ghttpEncryption.c	1.000	-	0.000
+gamespy/ghttp/ghttpEncryption.h	vendored	existing third-party notice	gamespy/ghttp/ghttpEncryption.h	1.000	-	0.000
+gamespy/ghttp/ghttpMain.c	vendored	existing third-party notice	gamespy/ghttp/ghttpMain.c	1.000	-	0.000
+gamespy/ghttp/ghttpMain.h	vendored	existing third-party notice	gamespy/ghttp/ghttpMain.h	1.000	-	0.000
 gamespy/ghttp/ghttpPost.c	vendored	recovered third-party notice	gamespy/ghttp/ghttpPost.c	1.000	-	0.000
-gamespy/ghttp/ghttpPost.h	vendored	vendored module	gamespy/ghttp/ghttpPost.h	1.000	-	0.000
+gamespy/ghttp/ghttpPost.h	vendored	existing third-party notice	gamespy/ghttp/ghttpPost.h	1.000	-	0.000
 gamespy/ghttp/ghttpProcess.c	vendored	recovered third-party notice	gamespy/ghttp/ghttpProcess.c	1.000	-	0.000
 gamespy/ghttp/ghttpProcess.h	vendored	recovered third-party notice	gamespy/ghttp/ghttpProcess.h	1.000	-	0.000
-gamespy/ghttp/ghttpc/ghttpc.c	vendored	vendored module	gamespy/ghttp/ghttpc/ghttpc.c	1.000	-	0.000
-gamespy/ghttp/ghttpmfc/StdAfx.cpp	vendored	vendored module	gamespy/ghttp/ghttpmfc/StdAfx.cpp	1.000	-	0.000
-gamespy/ghttp/ghttpmfc/StdAfx.h	vendored	vendored module	gamespy/ghttp/ghttpmfc/StdAfx.h	1.000	-	0.000
-gamespy/ghttp/ghttpmfc/ghttpmfc.cpp	vendored	vendored module	gamespy/ghttp/ghttpmfc/ghttpmfc.cpp	1.000	-	0.000
-gamespy/ghttp/ghttpmfc/ghttpmfc.h	vendored	vendored module	gamespy/ghttp/ghttpmfc/ghttpmfc.h	1.000	-	0.000
-gamespy/ghttp/ghttpmfc/ghttpmfcDlg.cpp	vendored	vendored module	gamespy/ghttp/ghttpmfc/ghttpmfcDlg.cpp	1.000	-	0.000
-gamespy/ghttp/ghttpmfc/ghttpmfcDlg.h	vendored	vendored module	gamespy/ghttp/ghttpmfc/ghttpmfcDlg.h	1.000	-	0.000
-gamespy/ghttp/ghttpmfc/resource.h	vendored	vendored module	gamespy/ghttp/ghttpmfc/resource.h	1.000	-	0.000
-gamespy/goaceng.h	vendored	vendored module	gamespy/goaceng.h	1.000	-	0.000
+gamespy/ghttp/ghttpc/ghttpc.c	vendored	existing third-party notice	gamespy/ghttp/ghttpc/ghttpc.c	1.000	-	0.000
+gamespy/ghttp/ghttpmfc/StdAfx.cpp	vendored	existing third-party notice	gamespy/ghttp/ghttpmfc/StdAfx.cpp	1.000	-	0.000
+gamespy/ghttp/ghttpmfc/StdAfx.h	vendored	existing third-party notice	gamespy/ghttp/ghttpmfc/StdAfx.h	1.000	-	0.000
+gamespy/ghttp/ghttpmfc/ghttpmfc.cpp	vendored	existing third-party notice	gamespy/ghttp/ghttpmfc/ghttpmfc.cpp	1.000	-	0.000
+gamespy/ghttp/ghttpmfc/ghttpmfc.h	vendored	existing third-party notice	gamespy/ghttp/ghttpmfc/ghttpmfc.h	1.000	-	0.000
+gamespy/ghttp/ghttpmfc/ghttpmfcDlg.cpp	vendored	existing third-party notice	gamespy/ghttp/ghttpmfc/ghttpmfcDlg.cpp	1.000	-	0.000
+gamespy/ghttp/ghttpmfc/ghttpmfcDlg.h	vendored	existing third-party notice	gamespy/ghttp/ghttpmfc/ghttpmfcDlg.h	1.000	-	0.000
+gamespy/ghttp/ghttpmfc/resource.h	vendored	existing third-party notice	gamespy/ghttp/ghttpmfc/resource.h	1.000	-	0.000
+gamespy/goaceng.h	vendored	existing third-party notice	gamespy/goaceng.h	1.000	-	0.000
 gamespy/gserver.c	vendored	recovered third-party notice	gamespy/gserver.c	1.000	-	0.000
 gamespy/gserver.h	vendored	recovered third-party notice	gamespy/gserver.h	1.000	-	0.000
 gamespy/gserverlist.c	vendored	recovered third-party notice	gamespy/gserverlist.c	1.000	-	0.000
 gamespy/gstats/gbucket.c	vendored	recovered third-party notice	gamespy/gstats/gbucket.c	1.000	-	0.000
 gamespy/gstats/gbucket.h	vendored	recovered third-party notice	gamespy/gstats/gbucket.h	1.000	-	0.000
-gamespy/gstats/gp_stats/StdAfx.cpp	vendored	vendored module	gamespy/gstats/gp_stats/StdAfx.cpp	1.000	-	0.000
-gamespy/gstats/gp_stats/StdAfx.h	vendored	vendored module	gamespy/gstats/gp_stats/StdAfx.h	1.000	-	0.000
-gamespy/gstats/gp_stats/gp_stats.cpp	vendored	vendored module	gamespy/gstats/gp_stats/gp_stats.cpp	1.000	-	0.000
-gamespy/gstats/gp_stats/gp_stats.h	vendored	vendored module	gamespy/gstats/gp_stats/gp_stats.h	1.000	-	0.000
-gamespy/gstats/gp_stats/gp_statsDlg.cpp	vendored	vendored module	gamespy/gstats/gp_stats/gp_statsDlg.cpp	1.000	-	0.000
-gamespy/gstats/gp_stats/gp_statsDlg.h	vendored	vendored module	gamespy/gstats/gp_stats/gp_statsDlg.h	1.000	-	0.000
-gamespy/gstats/gp_stats/resource.h	vendored	vendored module	gamespy/gstats/gp_stats/resource.h	1.000	-	0.000
+gamespy/gstats/gp_stats/StdAfx.cpp	vendored	existing third-party notice	gamespy/gstats/gp_stats/StdAfx.cpp	1.000	-	0.000
+gamespy/gstats/gp_stats/StdAfx.h	vendored	existing third-party notice	gamespy/gstats/gp_stats/StdAfx.h	1.000	-	0.000
+gamespy/gstats/gp_stats/gp_stats.cpp	vendored	existing third-party notice	gamespy/gstats/gp_stats/gp_stats.cpp	1.000	-	0.000
+gamespy/gstats/gp_stats/gp_stats.h	vendored	existing third-party notice	gamespy/gstats/gp_stats/gp_stats.h	1.000	-	0.000
+gamespy/gstats/gp_stats/gp_statsDlg.cpp	vendored	existing third-party notice	gamespy/gstats/gp_stats/gp_statsDlg.cpp	1.000	-	0.000
+gamespy/gstats/gp_stats/gp_statsDlg.h	vendored	existing third-party notice	gamespy/gstats/gp_stats/gp_statsDlg.h	1.000	-	0.000
+gamespy/gstats/gp_stats/resource.h	vendored	existing third-party notice	gamespy/gstats/gp_stats/resource.h	1.000	-	0.000
 gamespy/gstats/gpersist.h	vendored	recovered third-party notice	gamespy/gstats/gpersist.h	0.982	-	0.000
 gamespy/gstats/gstats.c	vendored	recovered third-party notice	gamespy/gstats/gstats.c	1.000	-	0.000
 gamespy/gstats/gstats.h	vendored	recovered third-party notice	gamespy/gstats/gstats.h	0.986	-	0.000
-gamespy/gstats/ladderTrack/HostOrJoinDlg.cpp	vendored	vendored module	gamespy/gstats/ladderTrack/HostOrJoinDlg.cpp	1.000	-	0.000
-gamespy/gstats/ladderTrack/HostOrJoinDlg.h	vendored	vendored module	gamespy/gstats/ladderTrack/HostOrJoinDlg.h	1.000	-	0.000
-gamespy/gstats/ladderTrack/LoginDlg.cpp	vendored	vendored module	gamespy/gstats/ladderTrack/LoginDlg.cpp	1.000	-	0.000
-gamespy/gstats/ladderTrack/LoginDlg.h	vendored	vendored module	gamespy/gstats/ladderTrack/LoginDlg.h	1.000	-	0.000
-gamespy/gstats/ladderTrack/StdAfx.cpp	vendored	vendored module	gamespy/gstats/ladderTrack/StdAfx.cpp	1.000	-	0.000
-gamespy/gstats/ladderTrack/StdAfx.h	vendored	vendored module	gamespy/gstats/ladderTrack/StdAfx.h	1.000	-	0.000
-gamespy/gstats/ladderTrack/WaitingDlg.cpp	vendored	vendored module	gamespy/gstats/ladderTrack/WaitingDlg.cpp	1.000	-	0.000
-gamespy/gstats/ladderTrack/WaitingDlg.h	vendored	vendored module	gamespy/gstats/ladderTrack/WaitingDlg.h	1.000	-	0.000
-gamespy/gstats/ladderTrack/ladderTrack.cpp	vendored	vendored module	gamespy/gstats/ladderTrack/ladderTrack.cpp	1.000	-	0.000
-gamespy/gstats/ladderTrack/ladderTrack.h	vendored	vendored module	gamespy/gstats/ladderTrack/ladderTrack.h	1.000	-	0.000
-gamespy/gstats/ladderTrack/ladderTrackDlg.cpp	vendored	vendored module	gamespy/gstats/ladderTrack/ladderTrackDlg.cpp	1.000	-	0.000
-gamespy/gstats/ladderTrack/ladderTrackDlg.h	vendored	vendored module	gamespy/gstats/ladderTrack/ladderTrackDlg.h	1.000	-	0.000
-gamespy/gstats/ladderTrack/resource.h	vendored	vendored module	gamespy/gstats/ladderTrack/resource.h	1.000	-	0.000
-gamespy/gstats/multiTrack/HostOrJoinDlg.cpp	vendored	vendored module	gamespy/gstats/multiTrack/HostOrJoinDlg.cpp	1.000	-	0.000
-gamespy/gstats/multiTrack/HostOrJoinDlg.h	vendored	vendored module	gamespy/gstats/multiTrack/HostOrJoinDlg.h	1.000	-	0.000
-gamespy/gstats/multiTrack/LoginDlg.cpp	vendored	vendored module	gamespy/gstats/multiTrack/LoginDlg.cpp	1.000	-	0.000
-gamespy/gstats/multiTrack/LoginDlg.h	vendored	vendored module	gamespy/gstats/multiTrack/LoginDlg.h	1.000	-	0.000
-gamespy/gstats/multiTrack/StdAfx.cpp	vendored	vendored module	gamespy/gstats/multiTrack/StdAfx.cpp	1.000	-	0.000
-gamespy/gstats/multiTrack/StdAfx.h	vendored	vendored module	gamespy/gstats/multiTrack/StdAfx.h	1.000	-	0.000
-gamespy/gstats/multiTrack/WaitingDlg.cpp	vendored	vendored module	gamespy/gstats/multiTrack/WaitingDlg.cpp	1.000	-	0.000
-gamespy/gstats/multiTrack/WaitingDlg.h	vendored	vendored module	gamespy/gstats/multiTrack/WaitingDlg.h	1.000	-	0.000
-gamespy/gstats/multiTrack/multiTrack.cpp	vendored	vendored module	gamespy/gstats/multiTrack/multiTrack.cpp	1.000	-	0.000
-gamespy/gstats/multiTrack/multiTrack.h	vendored	vendored module	gamespy/gstats/multiTrack/multiTrack.h	1.000	-	0.000
-gamespy/gstats/multiTrack/multiTrackDlg.cpp	vendored	vendored module	gamespy/gstats/multiTrack/multiTrackDlg.cpp	1.000	-	0.000
-gamespy/gstats/multiTrack/multiTrackDlg.h	vendored	vendored module	gamespy/gstats/multiTrack/multiTrackDlg.h	1.000	-	0.000
-gamespy/gstats/multiTrack/resource.h	vendored	vendored module	gamespy/gstats/multiTrack/resource.h	1.000	-	0.000
-gamespy/gstats/track/LoginDlg.cpp	vendored	vendored module	gamespy/gstats/track/LoginDlg.cpp	1.000	-	0.000
-gamespy/gstats/track/LoginDlg.h	vendored	vendored module	gamespy/gstats/track/LoginDlg.h	1.000	-	0.000
-gamespy/gstats/track/StdAfx.cpp	vendored	vendored module	gamespy/gstats/track/StdAfx.cpp	1.000	-	0.000
-gamespy/gstats/track/StdAfx.h	vendored	vendored module	gamespy/gstats/track/StdAfx.h	1.000	-	0.000
-gamespy/gstats/track/resource.h	vendored	vendored module	gamespy/gstats/track/resource.h	1.000	-	0.000
-gamespy/gstats/track/track.cpp	vendored	vendored module	gamespy/gstats/track/track.cpp	1.000	-	0.000
-gamespy/gstats/track/track.h	vendored	vendored module	gamespy/gstats/track/track.h	1.000	-	0.000
-gamespy/gstats/track/trackDlg.cpp	vendored	vendored module	gamespy/gstats/track/trackDlg.cpp	1.000	-	0.000
-gamespy/gstats/track/trackDlg.h	vendored	vendored module	gamespy/gstats/track/trackDlg.h	1.000	-	0.000
+gamespy/gstats/ladderTrack/HostOrJoinDlg.cpp	vendored	existing third-party notice	gamespy/gstats/ladderTrack/HostOrJoinDlg.cpp	1.000	-	0.000
+gamespy/gstats/ladderTrack/HostOrJoinDlg.h	vendored	existing third-party notice	gamespy/gstats/ladderTrack/HostOrJoinDlg.h	1.000	-	0.000
+gamespy/gstats/ladderTrack/LoginDlg.cpp	vendored	existing third-party notice	gamespy/gstats/ladderTrack/LoginDlg.cpp	1.000	-	0.000
+gamespy/gstats/ladderTrack/LoginDlg.h	vendored	existing third-party notice	gamespy/gstats/ladderTrack/LoginDlg.h	1.000	-	0.000
+gamespy/gstats/ladderTrack/StdAfx.cpp	vendored	existing third-party notice	gamespy/gstats/ladderTrack/StdAfx.cpp	1.000	-	0.000
+gamespy/gstats/ladderTrack/StdAfx.h	vendored	existing third-party notice	gamespy/gstats/ladderTrack/StdAfx.h	1.000	-	0.000
+gamespy/gstats/ladderTrack/WaitingDlg.cpp	vendored	existing third-party notice	gamespy/gstats/ladderTrack/WaitingDlg.cpp	1.000	-	0.000
+gamespy/gstats/ladderTrack/WaitingDlg.h	vendored	existing third-party notice	gamespy/gstats/ladderTrack/WaitingDlg.h	1.000	-	0.000
+gamespy/gstats/ladderTrack/ladderTrack.cpp	vendored	existing third-party notice	gamespy/gstats/ladderTrack/ladderTrack.cpp	1.000	-	0.000
+gamespy/gstats/ladderTrack/ladderTrack.h	vendored	existing third-party notice	gamespy/gstats/ladderTrack/ladderTrack.h	1.000	-	0.000
+gamespy/gstats/ladderTrack/ladderTrackDlg.cpp	vendored	existing third-party notice	gamespy/gstats/ladderTrack/ladderTrackDlg.cpp	1.000	-	0.000
+gamespy/gstats/ladderTrack/ladderTrackDlg.h	vendored	existing third-party notice	gamespy/gstats/ladderTrack/ladderTrackDlg.h	1.000	-	0.000
+gamespy/gstats/ladderTrack/resource.h	vendored	existing third-party notice	gamespy/gstats/ladderTrack/resource.h	1.000	-	0.000
+gamespy/gstats/multiTrack/HostOrJoinDlg.cpp	vendored	existing third-party notice	gamespy/gstats/multiTrack/HostOrJoinDlg.cpp	1.000	-	0.000
+gamespy/gstats/multiTrack/HostOrJoinDlg.h	vendored	existing third-party notice	gamespy/gstats/multiTrack/HostOrJoinDlg.h	1.000	-	0.000
+gamespy/gstats/multiTrack/LoginDlg.cpp	vendored	existing third-party notice	gamespy/gstats/multiTrack/LoginDlg.cpp	1.000	-	0.000
+gamespy/gstats/multiTrack/LoginDlg.h	vendored	existing third-party notice	gamespy/gstats/multiTrack/LoginDlg.h	1.000	-	0.000
+gamespy/gstats/multiTrack/StdAfx.cpp	vendored	existing third-party notice	gamespy/gstats/multiTrack/StdAfx.cpp	1.000	-	0.000
+gamespy/gstats/multiTrack/StdAfx.h	vendored	existing third-party notice	gamespy/gstats/multiTrack/StdAfx.h	1.000	-	0.000
+gamespy/gstats/multiTrack/WaitingDlg.cpp	vendored	existing third-party notice	gamespy/gstats/multiTrack/WaitingDlg.cpp	1.000	-	0.000
+gamespy/gstats/multiTrack/WaitingDlg.h	vendored	existing third-party notice	gamespy/gstats/multiTrack/WaitingDlg.h	1.000	-	0.000
+gamespy/gstats/multiTrack/multiTrack.cpp	vendored	existing third-party notice	gamespy/gstats/multiTrack/multiTrack.cpp	1.000	-	0.000
+gamespy/gstats/multiTrack/multiTrack.h	vendored	existing third-party notice	gamespy/gstats/multiTrack/multiTrack.h	1.000	-	0.000
+gamespy/gstats/multiTrack/multiTrackDlg.cpp	vendored	existing third-party notice	gamespy/gstats/multiTrack/multiTrackDlg.cpp	1.000	-	0.000
+gamespy/gstats/multiTrack/multiTrackDlg.h	vendored	existing third-party notice	gamespy/gstats/multiTrack/multiTrackDlg.h	1.000	-	0.000
+gamespy/gstats/multiTrack/resource.h	vendored	existing third-party notice	gamespy/gstats/multiTrack/resource.h	1.000	-	0.000
+gamespy/gstats/track/LoginDlg.cpp	vendored	existing third-party notice	gamespy/gstats/track/LoginDlg.cpp	1.000	-	0.000
+gamespy/gstats/track/LoginDlg.h	vendored	existing third-party notice	gamespy/gstats/track/LoginDlg.h	1.000	-	0.000
+gamespy/gstats/track/StdAfx.cpp	vendored	existing third-party notice	gamespy/gstats/track/StdAfx.cpp	1.000	-	0.000
+gamespy/gstats/track/StdAfx.h	vendored	existing third-party notice	gamespy/gstats/track/StdAfx.h	1.000	-	0.000
+gamespy/gstats/track/resource.h	vendored	existing third-party notice	gamespy/gstats/track/resource.h	1.000	-	0.000
+gamespy/gstats/track/track.cpp	vendored	existing third-party notice	gamespy/gstats/track/track.cpp	1.000	-	0.000
+gamespy/gstats/track/track.h	vendored	existing third-party notice	gamespy/gstats/track/track.h	1.000	-	0.000
+gamespy/gstats/track/trackDlg.cpp	vendored	existing third-party notice	gamespy/gstats/track/trackDlg.cpp	1.000	-	0.000
+gamespy/gstats/track/trackDlg.h	vendored	existing third-party notice	gamespy/gstats/track/trackDlg.h	1.000	-	0.000
 gamespy/gt2/gt2.h	vendored	recovered third-party notice	gamespy/gt2/gt2.h	1.000	-	0.000
 gamespy/gt2/gt2Auth.c	vendored	recovered third-party notice	gamespy/gt2/gt2Auth.c	1.000	-	0.000
 gamespy/gt2/gt2Auth.h	vendored	recovered third-party notice	gamespy/gt2/gt2Auth.h	1.000	-	0.000
@@ -966,8 +966,8 @@ gamespy/gt2/gt2Callback.c	vendored	recovered third-party notice	gamespy/gt2/gt2C
 gamespy/gt2/gt2Callback.h	vendored	recovered third-party notice	gamespy/gt2/gt2Callback.h	1.000	-	0.000
 gamespy/gt2/gt2Connection.c	vendored	recovered third-party notice	gamespy/gt2/gt2Connection.c	1.000	-	0.000
 gamespy/gt2/gt2Connection.h	vendored	recovered third-party notice	gamespy/gt2/gt2Connection.h	1.000	-	0.000
-gamespy/gt2/gt2Encode.c	vendored	vendored module	gamespy/gt2/gt2Encode.c	1.000	-	0.000
-gamespy/gt2/gt2Encode.h	vendored	vendored module	gamespy/gt2/gt2Encode.h	1.000	-	0.000
+gamespy/gt2/gt2Encode.c	vendored	existing third-party notice	gamespy/gt2/gt2Encode.c	1.000	-	0.000
+gamespy/gt2/gt2Encode.h	vendored	existing third-party notice	gamespy/gt2/gt2Encode.h	1.000	-	0.000
 gamespy/gt2/gt2Filter.c	vendored	recovered third-party notice	gamespy/gt2/gt2Filter.c	1.000	-	0.000
 gamespy/gt2/gt2Filter.h	vendored	recovered third-party notice	gamespy/gt2/gt2Filter.h	1.000	-	0.000
 gamespy/gt2/gt2Main.c	vendored	recovered third-party notice	gamespy/gt2/gt2Main.c	1.000	-	0.000
@@ -980,18 +980,18 @@ gamespy/gt2/gt2Utility.c	vendored	recovered third-party notice	gamespy/gt2/gt2Ut
 gamespy/gt2/gt2Utility.h	vendored	recovered third-party notice	gamespy/gt2/gt2Utility.h	1.000	-	0.000
 gamespy/gt2/gt2hostmig/gt2hostmig.c	vendored	recovered third-party notice	gamespy/gt2/gt2hostmig/gt2hostmig.c	1.000	-	0.000
 gamespy/gt2/gt2nat/gt2nat.c	vendored	recovered third-party notice	gamespy/gt2/gt2nat/gt2nat.c	1.000	-	0.000
-gamespy/gt2/gt2proxy/gt2proxy.c	vendored	vendored module	gamespy/gt2/gt2proxy/gt2proxy.c	1.000	-	0.000
+gamespy/gt2/gt2proxy/gt2proxy.c	vendored	existing third-party notice	gamespy/gt2/gt2proxy/gt2proxy.c	1.000	-	0.000
 gamespy/gutil.c	vendored	recovered third-party notice	gamespy/gutil.c	1.000	-	0.000
 gamespy/gutil.h	vendored	recovered third-party notice	gamespy/gutil.h	1.000	-	0.000
-gamespy/hashtable.c	vendored	vendored module	gamespy/hashtable.c	1.000	-	0.000
-gamespy/hashtable.h	vendored	vendored module	gamespy/hashtable.h	1.000	-	0.000
-gamespy/md5.h	vendored	vendored module	gamespy/md5.h	1.000	-	0.000
-gamespy/md5c.c	vendored	vendored module	gamespy/md5c.c	1.000	-	0.000
-gamespy/natneg/NATify.c	vendored	vendored module	gamespy/natneg/NATify.c	1.000	-	0.000
-gamespy/natneg/NATify.h	vendored	vendored module	gamespy/natneg/NATify.h	1.000	-	0.000
-gamespy/natneg/natneg.c	vendored	vendored module	gamespy/natneg/natneg.c	1.000	-	0.000
+gamespy/hashtable.c	vendored	existing third-party notice	gamespy/hashtable.c	1.000	-	0.000
+gamespy/hashtable.h	vendored	existing third-party notice	gamespy/hashtable.h	1.000	-	0.000
+gamespy/md5.h	vendored	existing third-party notice	gamespy/md5.h	1.000	-	0.000
+gamespy/md5c.c	vendored	existing third-party notice	gamespy/md5c.c	1.000	-	0.000
+gamespy/natneg/NATify.c	vendored	existing third-party notice	gamespy/natneg/NATify.c	1.000	-	0.000
+gamespy/natneg/NATify.h	vendored	existing third-party notice	gamespy/natneg/NATify.h	1.000	-	0.000
+gamespy/natneg/natneg.c	vendored	existing third-party notice	gamespy/natneg/natneg.c	1.000	-	0.000
 gamespy/natneg/natneg.h	vendored	recovered third-party notice	gamespy/natneg/natneg.h	1.000	-	0.000
-gamespy/natneg/nninternal.h	vendored	vendored module	gamespy/natneg/nninternal.h	1.000	-	0.000
+gamespy/natneg/nninternal.h	vendored	existing third-party notice	gamespy/natneg/nninternal.h	1.000	-	0.000
 gamespy/nonport.h	vendored	recovered third-party notice	gamespy/nonport.h	1.000	-	0.000
 gamespy/pinger/pinger.h	vendored	recovered third-party notice	gamespy/pinger/pinger.h	1.000	-	0.000
 gamespy/pinger/pingerMain.c	vendored	recovered third-party notice	gamespy/pinger/pingerMain.c	1.000	-	0.000
@@ -999,67 +999,67 @@ gamespy/pt/pt.h	vendored	recovered third-party notice	gamespy/pt/pt.h	1.000	-	0.
 gamespy/pt/ptMain.c	vendored	recovered third-party notice	gamespy/pt/ptMain.c	1.000	-	0.000
 gamespy/q_gamespy.c	vendored	vendored module	gamespy/q_gamespy.c	0.871	-	0.000
 gamespy/q_gamespy.h	vendored	vendored module	gamespy/q_gamespy.h	0.571	-	0.000
-gamespy/qr2/qr2.c	vendored	vendored module	gamespy/qr2/qr2.c	0.992	-	0.000
-gamespy/qr2/qr2.h	vendored	vendored module	gamespy/qr2/qr2.h	0.973	-	0.000
+gamespy/qr2/qr2.c	vendored	existing third-party notice	gamespy/qr2/qr2.c	0.992	-	0.000
+gamespy/qr2/qr2.h	vendored	existing third-party notice	gamespy/qr2/qr2.h	0.973	-	0.000
 gamespy/qr2/qr2csample/qr2csample.c	vendored	recovered third-party notice	gamespy/qr2/qr2csample/qr2csample.c	1.000	-	0.000
-gamespy/qr2/qr2regkeys.c	vendored	vendored module	gamespy/qr2/qr2regkeys.c	1.000	-	0.000
-gamespy/qr2/qr2regkeys.h	vendored	vendored module	gamespy/qr2/qr2regkeys.h	0.982	-	0.000
-gamespy/sake/sake.h	vendored	vendored module	gamespy/sake/sake.h	1.000	-	0.000
-gamespy/sake/sakeMain.c	vendored	vendored module	gamespy/sake/sakeMain.c	1.000	-	0.000
-gamespy/sake/sakeMain.h	vendored	vendored module	gamespy/sake/sakeMain.h	1.000	-	0.000
-gamespy/sake/sakeRequest.c	vendored	vendored module	gamespy/sake/sakeRequest.c	1.000	-	0.000
-gamespy/sake/sakeRequest.h	vendored	vendored module	gamespy/sake/sakeRequest.h	1.000	-	0.000
-gamespy/sake/sakeRequestInternal.h	vendored	vendored module	gamespy/sake/sakeRequestInternal.h	1.000	-	0.000
-gamespy/sake/sakeRequestMisc.c	vendored	vendored module	gamespy/sake/sakeRequestMisc.c	1.000	-	0.000
-gamespy/sake/sakeRequestModify.c	vendored	vendored module	gamespy/sake/sakeRequestModify.c	1.000	-	0.000
-gamespy/sake/sakeRequestRead.c	vendored	vendored module	gamespy/sake/sakeRequestRead.c	1.000	-	0.000
-gamespy/sc/sc.h	vendored	vendored module	gamespy/sc/sc.h	1.000	-	0.000
-gamespy/sc/scRaceSample/HostOrJoinDlg.cpp	vendored	vendored module	gamespy/sc/scRaceSample/HostOrJoinDlg.cpp	1.000	-	0.000
-gamespy/sc/scRaceSample/HostOrJoinDlg.h	vendored	vendored module	gamespy/sc/scRaceSample/HostOrJoinDlg.h	1.000	-	0.000
-gamespy/sc/scRaceSample/LoginDlg.cpp	vendored	vendored module	gamespy/sc/scRaceSample/LoginDlg.cpp	1.000	-	0.000
-gamespy/sc/scRaceSample/LoginDlg.h	vendored	vendored module	gamespy/sc/scRaceSample/LoginDlg.h	1.000	-	0.000
-gamespy/sc/scRaceSample/ScRaceSample.cpp	vendored	vendored module	gamespy/sc/scRaceSample/ScRaceSample.cpp	1.000	-	0.000
-gamespy/sc/scRaceSample/ScRaceSample.h	vendored	vendored module	gamespy/sc/scRaceSample/ScRaceSample.h	1.000	-	0.000
-gamespy/sc/scRaceSample/ScRaceSampleDlg.cpp	vendored	vendored module	gamespy/sc/scRaceSample/ScRaceSampleDlg.cpp	1.000	-	0.000
-gamespy/sc/scRaceSample/ScRaceSampleDlg.h	vendored	vendored module	gamespy/sc/scRaceSample/ScRaceSampleDlg.h	1.000	-	0.000
-gamespy/sc/scRaceSample/StdAfx.cpp	vendored	vendored module	gamespy/sc/scRaceSample/StdAfx.cpp	1.000	-	0.000
-gamespy/sc/scRaceSample/StdAfx.h	vendored	vendored module	gamespy/sc/scRaceSample/StdAfx.h	1.000	-	0.000
-gamespy/sc/scRaceSample/WaitingDlg.cpp	vendored	vendored module	gamespy/sc/scRaceSample/WaitingDlg.cpp	1.000	-	0.000
-gamespy/sc/scRaceSample/WaitingDlg.h	vendored	vendored module	gamespy/sc/scRaceSample/WaitingDlg.h	1.000	-	0.000
-gamespy/sc/scRaceSample/atlas_Competition_Race_Sample_App_v1.h	vendored	vendored module	gamespy/sc/scRaceSample/atlas_Competition_Race_Sample_App_v1.h	1.000	-	0.000
-gamespy/sc/scRaceSample/atlas_sc_race_v1.c	vendored	vendored module	gamespy/sc/scRaceSample/atlas_sc_race_v1.c	1.000	-	0.000
-gamespy/sc/scRaceSample/atlas_sc_race_v1.h	vendored	vendored module	gamespy/sc/scRaceSample/atlas_sc_race_v1.h	1.000	-	0.000
-gamespy/sc/scRaceSample/resource.h	vendored	vendored module	gamespy/sc/scRaceSample/resource.h	1.000	-	0.000
-gamespy/sc/sci.h	vendored	vendored module	gamespy/sc/sci.h	1.000	-	0.000
-gamespy/sc/sciInterface.c	vendored	vendored module	gamespy/sc/sciInterface.c	1.000	-	0.000
-gamespy/sc/sciInterface.h	vendored	vendored module	gamespy/sc/sciInterface.h	1.000	-	0.000
-gamespy/sc/sciMain.c	vendored	vendored module	gamespy/sc/sciMain.c	1.000	-	0.000
-gamespy/sc/sciReport.c	vendored	vendored module	gamespy/sc/sciReport.c	1.000	-	0.000
-gamespy/sc/sciReport.h	vendored	vendored module	gamespy/sc/sciReport.h	1.000	-	0.000
-gamespy/sc/sciSerialize.c	vendored	vendored module	gamespy/sc/sciSerialize.c	1.000	-	0.000
-gamespy/sc/sciSerialize.h	vendored	vendored module	gamespy/sc/sciSerialize.h	1.000	-	0.000
-gamespy/sc/sciWebServices.c	vendored	vendored module	gamespy/sc/sciWebServices.c	1.000	-	0.000
-gamespy/sc/sciWebServices.h	vendored	vendored module	gamespy/sc/sciWebServices.h	1.000	-	0.000
+gamespy/qr2/qr2regkeys.c	vendored	existing third-party notice	gamespy/qr2/qr2regkeys.c	1.000	-	0.000
+gamespy/qr2/qr2regkeys.h	vendored	existing third-party notice	gamespy/qr2/qr2regkeys.h	0.982	-	0.000
+gamespy/sake/sake.h	vendored	existing third-party notice	gamespy/sake/sake.h	1.000	-	0.000
+gamespy/sake/sakeMain.c	vendored	existing third-party notice	gamespy/sake/sakeMain.c	1.000	-	0.000
+gamespy/sake/sakeMain.h	vendored	existing third-party notice	gamespy/sake/sakeMain.h	1.000	-	0.000
+gamespy/sake/sakeRequest.c	vendored	existing third-party notice	gamespy/sake/sakeRequest.c	1.000	-	0.000
+gamespy/sake/sakeRequest.h	vendored	existing third-party notice	gamespy/sake/sakeRequest.h	1.000	-	0.000
+gamespy/sake/sakeRequestInternal.h	vendored	existing third-party notice	gamespy/sake/sakeRequestInternal.h	1.000	-	0.000
+gamespy/sake/sakeRequestMisc.c	vendored	existing third-party notice	gamespy/sake/sakeRequestMisc.c	1.000	-	0.000
+gamespy/sake/sakeRequestModify.c	vendored	existing third-party notice	gamespy/sake/sakeRequestModify.c	1.000	-	0.000
+gamespy/sake/sakeRequestRead.c	vendored	existing third-party notice	gamespy/sake/sakeRequestRead.c	1.000	-	0.000
+gamespy/sc/sc.h	vendored	existing third-party notice	gamespy/sc/sc.h	1.000	-	0.000
+gamespy/sc/scRaceSample/HostOrJoinDlg.cpp	vendored	existing third-party notice	gamespy/sc/scRaceSample/HostOrJoinDlg.cpp	1.000	-	0.000
+gamespy/sc/scRaceSample/HostOrJoinDlg.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/HostOrJoinDlg.h	1.000	-	0.000
+gamespy/sc/scRaceSample/LoginDlg.cpp	vendored	existing third-party notice	gamespy/sc/scRaceSample/LoginDlg.cpp	1.000	-	0.000
+gamespy/sc/scRaceSample/LoginDlg.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/LoginDlg.h	1.000	-	0.000
+gamespy/sc/scRaceSample/ScRaceSample.cpp	vendored	existing third-party notice	gamespy/sc/scRaceSample/ScRaceSample.cpp	1.000	-	0.000
+gamespy/sc/scRaceSample/ScRaceSample.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/ScRaceSample.h	1.000	-	0.000
+gamespy/sc/scRaceSample/ScRaceSampleDlg.cpp	vendored	existing third-party notice	gamespy/sc/scRaceSample/ScRaceSampleDlg.cpp	1.000	-	0.000
+gamespy/sc/scRaceSample/ScRaceSampleDlg.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/ScRaceSampleDlg.h	1.000	-	0.000
+gamespy/sc/scRaceSample/StdAfx.cpp	vendored	existing third-party notice	gamespy/sc/scRaceSample/StdAfx.cpp	1.000	-	0.000
+gamespy/sc/scRaceSample/StdAfx.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/StdAfx.h	1.000	-	0.000
+gamespy/sc/scRaceSample/WaitingDlg.cpp	vendored	existing third-party notice	gamespy/sc/scRaceSample/WaitingDlg.cpp	1.000	-	0.000
+gamespy/sc/scRaceSample/WaitingDlg.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/WaitingDlg.h	1.000	-	0.000
+gamespy/sc/scRaceSample/atlas_Competition_Race_Sample_App_v1.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/atlas_Competition_Race_Sample_App_v1.h	1.000	-	0.000
+gamespy/sc/scRaceSample/atlas_sc_race_v1.c	vendored	existing third-party notice	gamespy/sc/scRaceSample/atlas_sc_race_v1.c	1.000	-	0.000
+gamespy/sc/scRaceSample/atlas_sc_race_v1.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/atlas_sc_race_v1.h	1.000	-	0.000
+gamespy/sc/scRaceSample/resource.h	vendored	existing third-party notice	gamespy/sc/scRaceSample/resource.h	1.000	-	0.000
+gamespy/sc/sci.h	vendored	existing third-party notice	gamespy/sc/sci.h	1.000	-	0.000
+gamespy/sc/sciInterface.c	vendored	existing third-party notice	gamespy/sc/sciInterface.c	1.000	-	0.000
+gamespy/sc/sciInterface.h	vendored	existing third-party notice	gamespy/sc/sciInterface.h	1.000	-	0.000
+gamespy/sc/sciMain.c	vendored	existing third-party notice	gamespy/sc/sciMain.c	1.000	-	0.000
+gamespy/sc/sciReport.c	vendored	existing third-party notice	gamespy/sc/sciReport.c	1.000	-	0.000
+gamespy/sc/sciReport.h	vendored	existing third-party notice	gamespy/sc/sciReport.h	1.000	-	0.000
+gamespy/sc/sciSerialize.c	vendored	existing third-party notice	gamespy/sc/sciSerialize.c	1.000	-	0.000
+gamespy/sc/sciSerialize.h	vendored	existing third-party notice	gamespy/sc/sciSerialize.h	1.000	-	0.000
+gamespy/sc/sciWebServices.c	vendored	existing third-party notice	gamespy/sc/sciWebServices.c	1.000	-	0.000
+gamespy/sc/sciWebServices.h	vendored	existing third-party notice	gamespy/sc/sciWebServices.h	1.000	-	0.000
 gamespy/serverbrowsing/sb_ascii.h	vendored	recovered third-party notice	gamespy/serverbrowsing/sb_ascii.h	1.000	-	0.000
-gamespy/serverbrowsing/sb_crypt.c	vendored	vendored module	gamespy/serverbrowsing/sb_crypt.c	1.000	-	0.000
-gamespy/serverbrowsing/sb_crypt.h	vendored	vendored module	gamespy/serverbrowsing/sb_crypt.h	1.000	-	0.000
-gamespy/serverbrowsing/sb_internal.h	vendored	vendored module	gamespy/serverbrowsing/sb_internal.h	1.000	-	0.000
-gamespy/serverbrowsing/sb_queryengine.c	vendored	vendored module	gamespy/serverbrowsing/sb_queryengine.c	1.000	-	0.000
-gamespy/serverbrowsing/sb_server.c	vendored	vendored module	gamespy/serverbrowsing/sb_server.c	1.000	-	0.000
-gamespy/serverbrowsing/sb_serverbrowsing.c	vendored	vendored module	gamespy/serverbrowsing/sb_serverbrowsing.c	1.000	-	0.000
+gamespy/serverbrowsing/sb_crypt.c	vendored	existing third-party notice	gamespy/serverbrowsing/sb_crypt.c	1.000	-	0.000
+gamespy/serverbrowsing/sb_crypt.h	vendored	existing third-party notice	gamespy/serverbrowsing/sb_crypt.h	1.000	-	0.000
+gamespy/serverbrowsing/sb_internal.h	vendored	existing third-party notice	gamespy/serverbrowsing/sb_internal.h	1.000	-	0.000
+gamespy/serverbrowsing/sb_queryengine.c	vendored	existing third-party notice	gamespy/serverbrowsing/sb_queryengine.c	1.000	-	0.000
+gamespy/serverbrowsing/sb_server.c	vendored	existing third-party notice	gamespy/serverbrowsing/sb_server.c	1.000	-	0.000
+gamespy/serverbrowsing/sb_serverbrowsing.c	vendored	existing third-party notice	gamespy/serverbrowsing/sb_serverbrowsing.c	1.000	-	0.000
 gamespy/serverbrowsing/sb_serverbrowsing.h	vendored	recovered third-party notice	gamespy/serverbrowsing/sb_serverbrowsing.h	1.000	-	0.000
-gamespy/serverbrowsing/sb_serverlist.c	vendored	vendored module	gamespy/serverbrowsing/sb_serverlist.c	1.000	-	0.000
-gamespy/serverbrowsing/sbmfcsample/StdAfx.cpp	vendored	vendored module	gamespy/serverbrowsing/sbmfcsample/StdAfx.cpp	1.000	-	0.000
-gamespy/serverbrowsing/sbmfcsample/StdAfx.h	vendored	vendored module	gamespy/serverbrowsing/sbmfcsample/StdAfx.h	1.000	-	0.000
-gamespy/serverbrowsing/sbmfcsample/resource.h	vendored	vendored module	gamespy/serverbrowsing/sbmfcsample/resource.h	1.000	-	0.000
-gamespy/serverbrowsing/sbmfcsample/sbmfcsample.cpp	vendored	vendored module	gamespy/serverbrowsing/sbmfcsample/sbmfcsample.cpp	1.000	-	0.000
-gamespy/serverbrowsing/sbmfcsample/sbmfcsample.h	vendored	vendored module	gamespy/serverbrowsing/sbmfcsample/sbmfcsample.h	1.000	-	0.000
-gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.cpp	vendored	vendored module	gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.cpp	1.000	-	0.000
-gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.h	vendored	vendored module	gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.h	1.000	-	0.000
+gamespy/serverbrowsing/sb_serverlist.c	vendored	existing third-party notice	gamespy/serverbrowsing/sb_serverlist.c	1.000	-	0.000
+gamespy/serverbrowsing/sbmfcsample/StdAfx.cpp	vendored	existing third-party notice	gamespy/serverbrowsing/sbmfcsample/StdAfx.cpp	1.000	-	0.000
+gamespy/serverbrowsing/sbmfcsample/StdAfx.h	vendored	existing third-party notice	gamespy/serverbrowsing/sbmfcsample/StdAfx.h	1.000	-	0.000
+gamespy/serverbrowsing/sbmfcsample/resource.h	vendored	existing third-party notice	gamespy/serverbrowsing/sbmfcsample/resource.h	1.000	-	0.000
+gamespy/serverbrowsing/sbmfcsample/sbmfcsample.cpp	vendored	existing third-party notice	gamespy/serverbrowsing/sbmfcsample/sbmfcsample.cpp	1.000	-	0.000
+gamespy/serverbrowsing/sbmfcsample/sbmfcsample.h	vendored	existing third-party notice	gamespy/serverbrowsing/sbmfcsample/sbmfcsample.h	1.000	-	0.000
+gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.cpp	vendored	existing third-party notice	gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.cpp	1.000	-	0.000
+gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.h	vendored	existing third-party notice	gamespy/serverbrowsing/sbmfcsample/sbmfcsampleDlg.h	1.000	-	0.000
 gamespy/sv_gqueryreporting.c	vendored	vendored module	gamespy/sv_gqueryreporting.c	0.970	-	0.000
 gamespy/sv_gqueryreporting.h	vendored	vendored module	gamespy/sv_gqueryreporting.h	0.911	-	0.000
-gamespy/webservices/AuthService.c	vendored	vendored module	gamespy/webservices/AuthService.c	1.000	-	0.000
-gamespy/webservices/AuthService.h	vendored	vendored module	gamespy/webservices/AuthService.h	1.000	-	0.000
+gamespy/webservices/AuthService.c	vendored	existing third-party notice	gamespy/webservices/AuthService.c	1.000	-	0.000
+gamespy/webservices/AuthService.h	vendored	existing third-party notice	gamespy/webservices/AuthService.h	1.000	-	0.000
 null/null_client.c	gpl	recovered GPL banner	null/null_client.c	0.775	-	0.000
 null/null_cm.c	gpl	recovered GPL banner	null/null_cm.c	1.000	-	0.000
 null/null_input.c	gpl	recovered GPL banner	null/null_input.c	0.952	-	0.000
@@ -1081,12 +1081,12 @@ qcommon/cm_terrain_ef2.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0
 qcommon/cm_test.c	gpl	recovered GPL banner	qcommon/cm_test.c	0.995	-	0.000
 qcommon/cm_trace.c	gpl	recovered GPL banner	qcommon/cm_trace.c	0.945	-	0.000
 qcommon/cmd.c	gpl	recovered GPL banner	qcommon/cmd.c	0.965	-	0.000
-qcommon/common.c	gpl	recovered GPL banner	qcommon/common.c	0.667	-	0.000
+qcommon/common.c	gpl	recovered GPL banner	qcommon/common.c	0.657	-	0.000
 qcommon/crc.c	gpl	recovered GPL banner	qcommon/crc.c	0.985	-	0.000
 qcommon/crc.h	gpl	recovered GPL banner	qcommon/crc.h	0.833	-	0.000
 qcommon/cvar.c	gpl	recovered GPL banner	qcommon/cvar.c	0.890	-	0.000
 qcommon/ef2_android_defaults.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-qcommon/files.cpp	gpl	recovered GPL banner	qcommon/files.cpp	0.850	-	0.000
+qcommon/files.cpp	gpl	recovered GPL banner	qcommon/files.cpp	0.828	-	0.000
 qcommon/gameplaydatabase.cpp	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/gameplaydatabase.cpp	0.970
 qcommon/gameplaydatabase.h	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/gameplaydatabase.h	0.906
 qcommon/gameplayformulamanager.cpp	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/gameplayformulamanager.cpp	0.995
@@ -1101,7 +1101,7 @@ qcommon/json.hpp	vendored	recovered third-party notice	qcommon/json.hpp	1.000	-	
 qcommon/lip_sync.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/md4.c	gpl	recovered GPL banner	qcommon/md4.c	0.958	-	0.000
 qcommon/md5.c	vendored	recovered third-party notice	qcommon/md5.c	1.000	-	0.000
-qcommon/memory.c	gpl	recovered GPL banner	qcommon/memory.c	0.877	-	0.000
+qcommon/memory.c	gpl	recovered GPL banner	qcommon/memory.c	0.825	-	0.000
 qcommon/msg.cpp	gpl	recovered GPL banner	qcommon/msg.cpp	0.383	-	0.000
 qcommon/net_chan.c	gpl	recovered GPL banner	qcommon/net_chan.c	0.744	-	0.000
 qcommon/net_ip.c	gpl	recovered GPL banner	qcommon/net_ip.c	0.749	-	0.000
@@ -1118,7 +1118,7 @@ qcommon/q_version.h	gpl	recovered GPL banner	qcommon/q_version.h	0.730	-	0.000
 qcommon/qa_probe.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/qa_ui.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/qa_widget.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-qcommon/qcommon.h	gpl	recovered GPL banner	qcommon/qcommon.h	0.796	-	0.000
+qcommon/qcommon.h	gpl	recovered GPL banner	qcommon/qcommon.h	0.793	-	0.000
 qcommon/qcommon/platform.h	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/platform.h	1.000
 qcommon/qfiles.h	gpl	recovered GPL banner	qcommon/qfiles.h	0.670	Shared/qcommon/qfiles.h	0.616
 qcommon/quaternion.h	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/quaternion.h	0.971
@@ -1130,7 +1130,7 @@ qcommon/unzip.c	vendored	recovered third-party notice	qcommon/unzip.c	0.981	-	0.
 qcommon/unzip.h	vendored	recovered third-party notice	qcommon/unzip.h	0.992	-	0.000
 renderercommon/iqm.h	gpl	recovered GPL banner	renderercommon/iqm.h	1.000	-	0.000
 renderercommon/new/tr_public_new.h	gpl	recovered GPL banner	-	0.000	-	0.000
-renderercommon/new/tr_types_new.h	gpl	recovered GPL banner	renderercommon/new/tr_types_new.h	0.939	-	0.000
+renderercommon/new/tr_types_new.h	gpl	recovered GPL banner	renderercommon/new/tr_types_new.h	0.920	-	0.000
 renderercommon/puff.c	vendored	recovered third-party notice	renderercommon/puff.c	1.000	-	0.000
 renderercommon/puff.h	vendored	recovered third-party notice	renderercommon/puff.h	1.000	-	0.000
 renderercommon/qgl.h	gpl	recovered GPL banner	renderercommon/qgl.h	0.966	-	0.000
@@ -1145,7 +1145,7 @@ renderercommon/tr_image_tga.c	gpl	recovered GPL banner	renderercommon/tr_image_t
 renderercommon/tr_noise.c	gpl	recovered GPL banner	renderercommon/tr_noise.c	1.000	-	0.000
 renderercommon/tr_public.h	gpl	recovered GPL banner	renderercommon/tr_public.h	0.632	-	0.000
 renderercommon/tr_subs.c	gpl	recovered GPL banner	renderercommon/tr_subs.c	1.000	-	0.000
-renderercommon/tr_types.h	gpl	recovered GPL banner	renderercommon/tr_types.h	0.570	-	0.000
+renderercommon/tr_types.h	gpl	recovered GPL banner	renderercommon/tr_types.h	0.564	-	0.000
 renderergles3/gl_gles3_platform.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/gles3_firstlight.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/gles3_firstlight.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
@@ -1164,22 +1164,22 @@ renderergles3/qgl_gles3_tokens.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0
 renderergles3/qgl_linked.h	gpl	recovered GPL banner	renderergl1/qgl_linked.h	1.000	-	0.000
 renderergles3/smp_hwtex_probe.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/smp_texcache_probe.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderergles3/tr_backend.c	gpl	recovered GPL banner	renderergl1/tr_backend.c	0.594	-	0.000
+renderergles3/tr_backend.c	gpl	recovered GPL banner	renderergl1/tr_backend.c	0.556	-	0.000
 renderergles3/tr_bsp.c	gpl	recovered GPL banner	renderergl1/tr_bsp.c	0.543	-	0.000
-renderergles3/tr_cmds.c	gpl	recovered GPL banner	renderergl1/tr_cmds.c	0.757	-	0.000
+renderergles3/tr_cmds.c	gpl	recovered GPL banner	renderergl1/tr_cmds.c	0.719	-	0.000
 renderergles3/tr_curve.c	gpl	recovered GPL banner	renderergl1/tr_curve.c	0.865	-	0.000
-renderergles3/tr_draw.c	gpl	recovered GPL banner	renderergl1/tr_draw.c	0.608	-	0.000
-renderergles3/tr_font.cpp	gpl	recovered GPL banner	renderergl1/tr_font.cpp	0.886	-	0.000
+renderergles3/tr_draw.c	gpl	recovered GPL banner	renderergl2/tr_draw.c	0.235	-	0.000
+renderergles3/tr_font.cpp	gpl	recovered GPL banner	renderergl1/tr_font.cpp	0.820	-	0.000
 renderergles3/tr_ghost.cpp	gpl	recovered GPL banner	renderergl1/tr_ghost.cpp	0.998	-	0.000
 renderergles3/tr_ghost.h	gpl	recovered GPL banner	renderergl2/tr_ghost.h	0.998	-	0.000
 renderergles3/tr_hwtex.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_hwtex.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderergles3/tr_image.c	gpl	recovered GPL banner	renderergl1/tr_image.c	0.675	-	0.000
+renderergles3/tr_image.c	gpl	recovered GPL banner	renderergl1/tr_image.c	0.665	-	0.000
 renderergles3/tr_imm_decompose.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderergles3/tr_init.c	gpl	recovered GPL banner	renderergl1/tr_init.c	0.693	-	0.000
+renderergles3/tr_init.c	gpl	recovered GPL banner	renderergl1/tr_init.c	0.691	-	0.000
 renderergles3/tr_light.c	gpl	recovered GPL banner	renderergl1/tr_light.c	0.223	-	0.000
-renderergles3/tr_local.h	gpl	recovered GPL banner	renderergl1/tr_local.h	0.774	-	0.000
-renderergles3/tr_main.c	gpl	recovered GPL banner	renderergl1/tr_main.c	0.866	-	0.000
+renderergles3/tr_local.h	gpl	recovered GPL banner	renderergl1/tr_local.h	0.750	-	0.000
+renderergles3/tr_main.c	gpl	recovered GPL banner	renderergl1/tr_main.c	0.850	-	0.000
 renderergles3/tr_marks.c	gpl	recovered GPL banner	renderergl1/tr_marks.c	0.651	-	0.000
 renderergles3/tr_model.cpp	gpl	recovered GPL banner	renderergl1/tr_model.cpp	0.430	-	0.000
 renderergles3/tr_program.c	vendored	recovered third-party notice	-	0.000	-	0.000
@@ -1187,8 +1187,8 @@ renderergles3/tr_program.h	vendored	recovered third-party notice	-	0.000	-	0.000
 renderergles3/tr_program_cache.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_program_cache.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_program_table.inc	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderergles3/tr_scene.c	gpl	recovered GPL banner	renderergl1/tr_scene.c	0.639	-	0.000
-renderergles3/tr_shade.c	gpl	recovered GPL banner	renderergl1/tr_shade.c	0.716	-	0.000
+renderergles3/tr_scene.c	gpl	recovered GPL banner	renderergl1/tr_scene.c	0.637	-	0.000
+renderergles3/tr_shade.c	gpl	recovered GPL banner	renderergl1/tr_shade.c	0.709	-	0.000
 renderergles3/tr_shade_calc.c	gpl	recovered GPL banner	renderergl1/tr_shade_calc.c	0.675	-	0.000
 renderergles3/tr_shader.c	gpl	recovered GPL banner	renderergl1/tr_shader.c	0.836	-	0.000
 renderergles3/tr_shadows.c	gpl	recovered GPL banner	renderergl1/tr_shadows.c	0.667	-	0.000
@@ -1197,13 +1197,13 @@ renderergles3/tr_sky_portal.cpp	gpl	recovered GPL banner	renderergl1/tr_sky_port
 renderergles3/tr_sphere_shade.cpp	gpl	recovered GPL banner	renderergl1/tr_sphere_shade.cpp	0.173	-	0.000
 renderergles3/tr_sprite.c	gpl	recovered GPL banner	renderergl1/tr_sprite.c	0.997	-	0.000
 renderergles3/tr_staticmodels.cpp	gpl	recovered GPL banner	renderergl1/tr_staticmodels.cpp	0.542	-	0.000
-renderergles3/tr_sun_flare.cpp	gpl	recovered GPL banner	renderergl1/tr_sun_flare.cpp	0.603	-	0.000
-renderergles3/tr_surface.c	gpl	recovered GPL banner	renderergl1/tr_surface.c	0.672	-	0.000
+renderergles3/tr_sun_flare.cpp	gpl	recovered GPL banner	renderergl1/tr_sun_flare.cpp	0.602	-	0.000
+renderergles3/tr_surface.c	gpl	recovered GPL banner	renderergl1/tr_surface.c	0.667	-	0.000
 renderergles3/tr_swipe.cpp	gpl	recovered GPL banner	renderergl1/tr_swipe.cpp	0.962	-	0.000
 renderergles3/tr_texcache.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_texcache.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_util.cpp	gpl	recovered GPL banner	renderergl1/tr_util.cpp	0.980	-	0.000
-renderergles3/tr_vbo.c	gpl	GLES3 backend renamed from the OpenMoHAA renderer	renderergl2/tr_vbo.c	0.088	-	0.000
+renderergles3/tr_vbo.c	gpl	GLES3 backend renamed from the OpenMoHAA renderer	renderergl2/tr_vbo.c	0.076	-	0.000
 renderergles3/tr_vbo.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_vbo_imm.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_world.c	gpl	recovered GPL banner	renderergl1/tr_world.c	0.536	-	0.000
@@ -1214,15 +1214,15 @@ script/scriptvariable.h	gpl	recovered GPL banner	script/scriptvariable.h	0.982	d
 sdl/sdl_gamma.c	gpl	recovered GPL banner	sdl/sdl_gamma.c	1.000	-	0.000
 sdl/sdl_glimp.c	gpl	recovered GPL banner	sdl/sdl_glimp.c	0.970	-	0.000
 sdl/sdl_icon.h	gpl	id Tech 3 lineage (standard GPL notice)	sdl/sdl_icon.h	0.040	-	0.000
-sdl/sdl_input.c	gpl	recovered GPL banner	sdl/sdl_input.c	0.696	-	0.000
-sdl/sdl_mouse.c	gpl	recovered GPL banner	sdl/sdl_mouse.c	0.677	-	0.000
+sdl/sdl_input.c	gpl	recovered GPL banner	sdl/sdl_input.c	0.691	-	0.000
+sdl/sdl_mouse.c	gpl	recovered GPL banner	sdl/sdl_mouse.c	0.560	-	0.000
 sdl/sdl_snd.c	gpl	recovered GPL banner	sdl/sdl_snd.c	0.956	-	0.000
 server/server.h	gpl	recovered GPL banner	server/server.h	0.533	-	0.000
 server/sv_bot.c	gpl	recovered GPL banner	-	0.000	-	0.000
 server/sv_ccmds.c	gpl	recovered GPL banner	server/sv_ccmds.c	0.281	-	0.000
 server/sv_client.c	gpl	recovered GPL banner	server/sv_client.c	0.486	-	0.000
 server/sv_game.c	gpl	recovered GPL banner	server/sv_game.c	0.477	-	0.000
-server/sv_init.c	gpl	recovered GPL banner	server/sv_init.c	0.412	-	0.000
+server/sv_init.c	gpl	recovered GPL banner	server/sv_init.c	0.388	-	0.000
 server/sv_main.c	gpl	recovered GPL banner	server/sv_main.c	0.489	-	0.000
 server/sv_net_chan.c	gpl	recovered GPL banner	server/sv_net_chan.c	0.415	-	0.000
 server/sv_snapshot.c	gpl	recovered GPL banner	server/sv_snapshot.c	0.515	-	0.000
@@ -1251,15 +1251,15 @@ sys/con_log.c	gpl	recovered GPL banner	sys/con_log.c	1.000	-	0.000
 sys/con_passive.c	gpl	recovered GPL banner	sys/con_passive.c	0.800	-	0.000
 sys/con_tty.c	gpl	recovered GPL banner	sys/con_tty.c	0.979	-	0.000
 sys/con_win32.c	gpl	recovered GPL banner	sys/con_win32.c	1.000	-	0.000
-sys/new/sys_local_new.h	gpl	recovered GPL banner	sys/new/sys_local_new.h	0.237	-	0.000
+sys/new/sys_local_new.h	gpl	recovered GPL banner	sys/new/sys_local_new.h	0.233	-	0.000
 sys/new/sys_main_new.c	gpl	recovered GPL banner	sys/new/sys_main_new.c	0.942	-	0.000
-sys/new/sys_unix_new.c	gpl	recovered GPL banner	sys/new/sys_unix_new.c	0.233	-	0.000
-sys/new/sys_win32_new.c	gpl	recovered GPL banner	sys/new/sys_win32_new.c	0.959	-	0.000
+sys/new/sys_unix_new.c	gpl	recovered GPL banner	sys/new/sys_unix_new.c	0.214	-	0.000
+sys/new/sys_win32_new.c	gpl	recovered GPL banner	sys/new/sys_win32_new.c	0.894	-	0.000
 sys/sys_autoupdater.c	vendored	recovered third-party notice	sys/sys_autoupdater.c	0.961	-	0.000
 sys/sys_loadlib.h	gpl	recovered GPL banner	sys/sys_loadlib.h	1.000	-	0.000
 sys/sys_local.h	gpl	recovered GPL banner	sys/sys_local.h	0.932	-	0.000
 sys/sys_main.c	gpl	recovered GPL banner	sys/sys_main.c	0.743	-	0.000
-sys/sys_unix.c	gpl	recovered GPL banner	sys/sys_unix.c	0.838	-	0.000
+sys/sys_unix.c	gpl	recovered GPL banner	sys/sys_unix.c	0.815	-	0.000
 sys/sys_win32.c	gpl	recovered GPL banner	sys/sys_win32.c	0.993	-	0.000
 sys/win_bounds.cpp	gpl	recovered GPL banner	sys/win_bounds.cpp	1.000	Executable/win32/win_bounds.cpp	0.512
 sys/win_resource.h	gpl	recovered GPL banner	sys/win_resource.h	1.000	-	0.000
@@ -1269,7 +1269,7 @@ tiki/tiki_cache.cpp	gpl	recovered GPL banner	tiki/tiki_cache.cpp	0.556	-	0.000
 tiki/tiki_cache.h	gpl	recovered GPL banner	tiki/tiki_cache.h	0.559	-	0.000
 tiki/tiki_commands.cpp	gpl	recovered GPL banner	tiki/tiki_commands.cpp	0.159	-	0.000
 tiki/tiki_commands.h	gpl	recovered GPL banner	tiki/tiki_commands.h	1.000	-	0.000
-tiki/tiki_files.cpp	gpl	recovered GPL banner	tiki/tiki_files.cpp	0.690	-	0.000
+tiki/tiki_files.cpp	gpl	recovered GPL banner	tiki/tiki_files.cpp	0.685	-	0.000
 tiki/tiki_files.h	gpl	recovered GPL banner	tiki/tiki_files.h	0.727	-	0.000
 tiki/tiki_frame.cpp	gpl	recovered GPL banner	tiki/tiki_frame.cpp	0.660	-	0.000
 tiki/tiki_frame.h	gpl	recovered GPL banner	tiki/tiki_frame.h	0.818	-	0.000
@@ -1295,53 +1295,53 @@ tools/asm/cmdlib.h	vendored	vendored module	tools/asm/cmdlib.h	1.000	-	0.000
 tools/asm/mathlib.h	vendored	vendored module	tools/asm/mathlib.h	1.000	-	0.000
 tools/asm/opstrings.h	vendored	vendored module	tools/asm/opstrings.h	1.000	-	0.000
 tools/asm/q3asm.c	vendored	vendored module	tools/asm/q3asm.c	1.000	-	0.000
-tools/lcc/cpp/cpp.c	vendored	vendored module	tools/lcc/cpp/cpp.c	1.000	-	0.000
-tools/lcc/cpp/cpp.h	vendored	vendored module	tools/lcc/cpp/cpp.h	1.000	-	0.000
-tools/lcc/cpp/eval.c	vendored	vendored module	tools/lcc/cpp/eval.c	1.000	-	0.000
-tools/lcc/cpp/getopt.c	vendored	vendored module	tools/lcc/cpp/getopt.c	1.000	-	0.000
-tools/lcc/cpp/hideset.c	vendored	vendored module	tools/lcc/cpp/hideset.c	1.000	-	0.000
-tools/lcc/cpp/include.c	vendored	vendored module	tools/lcc/cpp/include.c	1.000	-	0.000
-tools/lcc/cpp/lex.c	vendored	vendored module	tools/lcc/cpp/lex.c	1.000	-	0.000
-tools/lcc/cpp/macro.c	vendored	vendored module	tools/lcc/cpp/macro.c	1.000	-	0.000
-tools/lcc/cpp/nlist.c	vendored	vendored module	tools/lcc/cpp/nlist.c	1.000	-	0.000
-tools/lcc/cpp/tokens.c	vendored	vendored module	tools/lcc/cpp/tokens.c	1.000	-	0.000
-tools/lcc/cpp/unix.c	vendored	vendored module	tools/lcc/cpp/unix.c	1.000	-	0.000
-tools/lcc/etc/bytecode.c	vendored	vendored module	tools/lcc/etc/bytecode.c	1.000	-	0.000
-tools/lcc/etc/lcc.c	vendored	vendored module	tools/lcc/etc/lcc.c	1.000	-	0.000
-tools/lcc/lburg/gram.c	vendored	vendored module	tools/lcc/lburg/gram.c	1.000	-	0.000
-tools/lcc/lburg/lburg.c	vendored	vendored module	tools/lcc/lburg/lburg.c	1.000	-	0.000
-tools/lcc/lburg/lburg.h	vendored	vendored module	tools/lcc/lburg/lburg.h	1.000	-	0.000
-tools/lcc/src/alloc.c	vendored	vendored module	tools/lcc/src/alloc.c	1.000	-	0.000
-tools/lcc/src/bind.c	vendored	vendored module	tools/lcc/src/bind.c	1.000	-	0.000
-tools/lcc/src/bytecode.c	vendored	vendored module	tools/lcc/src/bytecode.c	1.000	-	0.000
-tools/lcc/src/c.h	vendored	vendored module	tools/lcc/src/c.h	1.000	-	0.000
-tools/lcc/src/config.h	vendored	vendored module	tools/lcc/src/config.h	1.000	-	0.000
-tools/lcc/src/dag.c	vendored	vendored module	tools/lcc/src/dag.c	1.000	-	0.000
-tools/lcc/src/decl.c	vendored	vendored module	tools/lcc/src/decl.c	1.000	-	0.000
-tools/lcc/src/enode.c	vendored	vendored module	tools/lcc/src/enode.c	1.000	-	0.000
-tools/lcc/src/error.c	vendored	vendored module	tools/lcc/src/error.c	1.000	-	0.000
-tools/lcc/src/event.c	vendored	vendored module	tools/lcc/src/event.c	1.000	-	0.000
-tools/lcc/src/expr.c	vendored	vendored module	tools/lcc/src/expr.c	1.000	-	0.000
-tools/lcc/src/gen.c	vendored	vendored module	tools/lcc/src/gen.c	1.000	-	0.000
-tools/lcc/src/init.c	vendored	vendored module	tools/lcc/src/init.c	1.000	-	0.000
-tools/lcc/src/inits.c	vendored	vendored module	tools/lcc/src/inits.c	1.000	-	0.000
-tools/lcc/src/input.c	vendored	vendored module	tools/lcc/src/input.c	1.000	-	0.000
-tools/lcc/src/lex.c	vendored	vendored module	tools/lcc/src/lex.c	1.000	-	0.000
-tools/lcc/src/list.c	vendored	vendored module	tools/lcc/src/list.c	1.000	-	0.000
-tools/lcc/src/main.c	vendored	vendored module	tools/lcc/src/main.c	1.000	-	0.000
-tools/lcc/src/null.c	vendored	vendored module	tools/lcc/src/null.c	1.000	-	0.000
-tools/lcc/src/output.c	vendored	vendored module	tools/lcc/src/output.c	1.000	-	0.000
-tools/lcc/src/prof.c	vendored	vendored module	tools/lcc/src/prof.c	1.000	-	0.000
-tools/lcc/src/profio.c	vendored	vendored module	tools/lcc/src/profio.c	1.000	-	0.000
-tools/lcc/src/simp.c	vendored	vendored module	tools/lcc/src/simp.c	1.000	-	0.000
-tools/lcc/src/stmt.c	vendored	vendored module	tools/lcc/src/stmt.c	1.000	-	0.000
-tools/lcc/src/string.c	vendored	vendored module	tools/lcc/src/string.c	1.000	-	0.000
-tools/lcc/src/sym.c	vendored	vendored module	tools/lcc/src/sym.c	1.000	-	0.000
-tools/lcc/src/symbolic.c	vendored	vendored module	tools/lcc/src/symbolic.c	1.000	-	0.000
-tools/lcc/src/token.h	vendored	vendored module	tools/lcc/src/token.h	1.000	-	0.000
-tools/lcc/src/trace.c	vendored	vendored module	tools/lcc/src/trace.c	1.000	-	0.000
-tools/lcc/src/tree.c	vendored	vendored module	tools/lcc/src/tree.c	1.000	-	0.000
-tools/lcc/src/types.c	vendored	vendored module	tools/lcc/src/types.c	1.000	-	0.000
+tools/lcc/cpp/cpp.c	vendored	existing third-party notice	tools/lcc/cpp/cpp.c	1.000	-	0.000
+tools/lcc/cpp/cpp.h	vendored	existing third-party notice	tools/lcc/cpp/cpp.h	1.000	-	0.000
+tools/lcc/cpp/eval.c	vendored	existing third-party notice	tools/lcc/cpp/eval.c	1.000	-	0.000
+tools/lcc/cpp/getopt.c	vendored	existing third-party notice	tools/lcc/cpp/getopt.c	1.000	-	0.000
+tools/lcc/cpp/hideset.c	vendored	existing third-party notice	tools/lcc/cpp/hideset.c	1.000	-	0.000
+tools/lcc/cpp/include.c	vendored	existing third-party notice	tools/lcc/cpp/include.c	1.000	-	0.000
+tools/lcc/cpp/lex.c	vendored	existing third-party notice	tools/lcc/cpp/lex.c	1.000	-	0.000
+tools/lcc/cpp/macro.c	vendored	existing third-party notice	tools/lcc/cpp/macro.c	1.000	-	0.000
+tools/lcc/cpp/nlist.c	vendored	existing third-party notice	tools/lcc/cpp/nlist.c	1.000	-	0.000
+tools/lcc/cpp/tokens.c	vendored	existing third-party notice	tools/lcc/cpp/tokens.c	1.000	-	0.000
+tools/lcc/cpp/unix.c	vendored	existing third-party notice	tools/lcc/cpp/unix.c	1.000	-	0.000
+tools/lcc/etc/bytecode.c	vendored	existing third-party notice	tools/lcc/etc/bytecode.c	1.000	-	0.000
+tools/lcc/etc/lcc.c	vendored	existing third-party notice	tools/lcc/etc/lcc.c	1.000	-	0.000
+tools/lcc/lburg/gram.c	vendored	existing third-party notice	tools/lcc/lburg/gram.c	1.000	-	0.000
+tools/lcc/lburg/lburg.c	vendored	existing third-party notice	tools/lcc/lburg/lburg.c	1.000	-	0.000
+tools/lcc/lburg/lburg.h	vendored	existing third-party notice	tools/lcc/lburg/lburg.h	1.000	-	0.000
+tools/lcc/src/alloc.c	vendored	existing third-party notice	tools/lcc/src/alloc.c	1.000	-	0.000
+tools/lcc/src/bind.c	vendored	existing third-party notice	tools/lcc/src/bind.c	1.000	-	0.000
+tools/lcc/src/bytecode.c	vendored	existing third-party notice	tools/lcc/src/bytecode.c	1.000	-	0.000
+tools/lcc/src/c.h	vendored	existing third-party notice	tools/lcc/src/c.h	1.000	-	0.000
+tools/lcc/src/config.h	vendored	existing third-party notice	tools/lcc/src/config.h	1.000	-	0.000
+tools/lcc/src/dag.c	vendored	existing third-party notice	tools/lcc/src/dag.c	1.000	-	0.000
+tools/lcc/src/decl.c	vendored	existing third-party notice	tools/lcc/src/decl.c	1.000	-	0.000
+tools/lcc/src/enode.c	vendored	existing third-party notice	tools/lcc/src/enode.c	1.000	-	0.000
+tools/lcc/src/error.c	vendored	existing third-party notice	tools/lcc/src/error.c	1.000	-	0.000
+tools/lcc/src/event.c	vendored	existing third-party notice	tools/lcc/src/event.c	1.000	-	0.000
+tools/lcc/src/expr.c	vendored	existing third-party notice	tools/lcc/src/expr.c	1.000	-	0.000
+tools/lcc/src/gen.c	vendored	existing third-party notice	tools/lcc/src/gen.c	1.000	-	0.000
+tools/lcc/src/init.c	vendored	existing third-party notice	tools/lcc/src/init.c	1.000	-	0.000
+tools/lcc/src/inits.c	vendored	existing third-party notice	tools/lcc/src/inits.c	1.000	-	0.000
+tools/lcc/src/input.c	vendored	existing third-party notice	tools/lcc/src/input.c	1.000	-	0.000
+tools/lcc/src/lex.c	vendored	existing third-party notice	tools/lcc/src/lex.c	1.000	-	0.000
+tools/lcc/src/list.c	vendored	existing third-party notice	tools/lcc/src/list.c	1.000	-	0.000
+tools/lcc/src/main.c	vendored	existing third-party notice	tools/lcc/src/main.c	1.000	-	0.000
+tools/lcc/src/null.c	vendored	existing third-party notice	tools/lcc/src/null.c	1.000	-	0.000
+tools/lcc/src/output.c	vendored	existing third-party notice	tools/lcc/src/output.c	1.000	-	0.000
+tools/lcc/src/prof.c	vendored	existing third-party notice	tools/lcc/src/prof.c	1.000	-	0.000
+tools/lcc/src/profio.c	vendored	existing third-party notice	tools/lcc/src/profio.c	1.000	-	0.000
+tools/lcc/src/simp.c	vendored	existing third-party notice	tools/lcc/src/simp.c	1.000	-	0.000
+tools/lcc/src/stmt.c	vendored	existing third-party notice	tools/lcc/src/stmt.c	1.000	-	0.000
+tools/lcc/src/string.c	vendored	existing third-party notice	tools/lcc/src/string.c	1.000	-	0.000
+tools/lcc/src/sym.c	vendored	existing third-party notice	tools/lcc/src/sym.c	1.000	-	0.000
+tools/lcc/src/symbolic.c	vendored	existing third-party notice	tools/lcc/src/symbolic.c	1.000	-	0.000
+tools/lcc/src/token.h	vendored	existing third-party notice	tools/lcc/src/token.h	1.000	-	0.000
+tools/lcc/src/trace.c	vendored	existing third-party notice	tools/lcc/src/trace.c	1.000	-	0.000
+tools/lcc/src/tree.c	vendored	existing third-party notice	tools/lcc/src/tree.c	1.000	-	0.000
+tools/lcc/src/types.c	vendored	existing third-party notice	tools/lcc/src/types.c	1.000	-	0.000
 tools/md5_2_skX/doom3md5model.c	vendored	vendored module	tools/md5_2_skX/doom3md5model.c	0.999	-	0.000
 tools/md5_2_skX/loadtiki.c	vendored	vendored module	tools/md5_2_skX/loadtiki.c	1.000	-	0.000
 tools/md5_2_skX/md5_2_skX.c	vendored	vendored module	tools/md5_2_skX/md5_2_skX.c	0.999	-	0.000
@@ -1365,7 +1365,7 @@ tools/ommap/common/l3dslib.c	vendored	vendored module	tools/ommap/common/l3dslib
 tools/ommap/common/l3dslib.h	vendored	vendored module	tools/ommap/common/l3dslib.h	1.000	-	0.000
 tools/ommap/common/mathlib.c	vendored	vendored module	tools/ommap/common/mathlib.c	1.000	-	0.000
 tools/ommap/common/mathlib.h	vendored	vendored module	tools/ommap/common/mathlib.h	1.000	-	0.000
-tools/ommap/common/md4.c	vendored	vendored module	tools/ommap/common/md4.c	1.000	-	0.000
+tools/ommap/common/md4.c	vendored	existing third-party notice	tools/ommap/common/md4.c	1.000	-	0.000
 tools/ommap/common/mutex.c	vendored	vendored module	tools/ommap/common/mutex.c	1.000	-	0.000
 tools/ommap/common/mutex.h	vendored	vendored module	tools/ommap/common/mutex.h	1.000	-	0.000
 tools/ommap/common/polylib.c	vendored	vendored module	tools/ommap/common/polylib.c	1.000	-	0.000
@@ -1385,10 +1385,10 @@ tools/ommap/gldraw.c	vendored	vendored module	tools/ommap/gldraw.c	1.000	-	0.000
 tools/ommap/glfile.c	vendored	vendored module	tools/ommap/glfile.c	1.000	-	0.000
 tools/ommap/leakfile.c	vendored	vendored module	tools/ommap/leakfile.c	1.000	-	0.000
 tools/ommap/libs/cmdlib.h	vendored	vendored module	tools/ommap/libs/cmdlib.h	1.000	-	0.000
-tools/ommap/libs/cmdlib/cmdlib.cpp	vendored	vendored module	tools/ommap/libs/cmdlib/cmdlib.cpp	1.000	-	0.000
+tools/ommap/libs/cmdlib/cmdlib.cpp	vendored	existing third-party notice	tools/ommap/libs/cmdlib/cmdlib.cpp	1.000	-	0.000
 tools/ommap/libs/jpeg6/jchuff.h	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jchuff.h	1.000	-	0.000
 tools/ommap/libs/jpeg6/jcomapi.cpp	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jcomapi.cpp	1.000	-	0.000
-tools/ommap/libs/jpeg6/jconfig.h	vendored	vendored module	tools/ommap/libs/jpeg6/jconfig.h	1.000	-	0.000
+tools/ommap/libs/jpeg6/jconfig.h	vendored	existing third-party notice	tools/ommap/libs/jpeg6/jconfig.h	1.000	-	0.000
 tools/ommap/libs/jpeg6/jdapimin.cpp	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jdapimin.cpp	1.000	-	0.000
 tools/ommap/libs/jpeg6/jdapistd.cpp	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jdapistd.cpp	1.000	-	0.000
 tools/ommap/libs/jpeg6/jdatasrc.cpp	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jdatasrc.cpp	1.000	-	0.000
@@ -1415,13 +1415,13 @@ tools/ommap/libs/jpeg6/jmemnobs.cpp	vendored	recovered third-party notice	tools/
 tools/ommap/libs/jpeg6/jmemsys.h	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jmemsys.h	1.000	-	0.000
 tools/ommap/libs/jpeg6/jmorecfg.h	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jmorecfg.h	1.000	-	0.000
 tools/ommap/libs/jpeg6/jpegint.h	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jpegint.h	1.000	-	0.000
-tools/ommap/libs/jpeg6/jpgload.cpp	vendored	vendored module	tools/ommap/libs/jpeg6/jpgload.cpp	1.000	-	0.000
+tools/ommap/libs/jpeg6/jpgload.cpp	vendored	existing third-party notice	tools/ommap/libs/jpeg6/jpgload.cpp	1.000	-	0.000
 tools/ommap/libs/jpeg6/jutils.cpp	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jutils.cpp	1.000	-	0.000
 tools/ommap/libs/jpeg6/jversion.h	vendored	recovered third-party notice	tools/ommap/libs/jpeg6/jversion.h	1.000	-	0.000
 tools/ommap/libs/jpeglib.h	vendored	recovered third-party notice	tools/ommap/libs/jpeglib.h	1.000	-	0.000
 tools/ommap/libs/pak/pakstuff.cpp	vendored	vendored module	tools/ommap/libs/pak/pakstuff.cpp	1.000	-	0.000
-tools/ommap/libs/pak/unzip.cpp	vendored	vendored module	tools/ommap/libs/pak/unzip.cpp	1.000	-	0.000
-tools/ommap/libs/pak/unzip.h	vendored	vendored module	tools/ommap/libs/pak/unzip.h	1.000	-	0.000
+tools/ommap/libs/pak/unzip.cpp	vendored	existing third-party notice	tools/ommap/libs/pak/unzip.cpp	1.000	-	0.000
+tools/ommap/libs/pak/unzip.h	vendored	existing third-party notice	tools/ommap/libs/pak/unzip.h	1.000	-	0.000
 tools/ommap/libs/pakstuff.h	vendored	vendored module	tools/ommap/libs/pakstuff.h	1.000	-	0.000
 tools/ommap/libs/str.h	vendored	vendored module	tools/ommap/libs/str.h	1.000	dlls/game/str.h	0.132
 tools/ommap/light.c	vendored	vendored module	tools/ommap/light.c	1.000	-	0.000
@@ -1449,8 +1449,8 @@ tools/ommap/vis.c	vendored	vendored module	tools/ommap/vis.c	1.000	-	0.000
 tools/ommap/vis.h	vendored	vendored module	tools/ommap/vis.h	1.000	-	0.000
 tools/ommap/visflow.c	vendored	vendored module	tools/ommap/visflow.c	1.000	-	0.000
 tools/ommap/writebsp.c	vendored	vendored module	tools/ommap/writebsp.c	1.000	-	0.000
-tools/stringify.c	vendored	vendored module	tools/stringify.c	1.000	-	0.000
-tools/stringify.cpp	vendored	vendored module	tools/stringify.cpp	1.000	-	0.000
+tools/stringify.c	vendored	existing third-party notice	tools/stringify.c	1.000	-	0.000
+tools/stringify.cpp	vendored	existing third-party notice	tools/stringify.cpp	1.000	-	0.000
 uilib/editfield.h	gpl	recovered GPL banner	uilib/editfield.h	1.000	-	0.000
 uilib/limit_uiprobe.cpp	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
 uilib/limit_uiprobe.h	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
@@ -1475,9 +1475,9 @@ uilib/uifield.cpp	gpl	recovered GPL banner	uilib/uifield.cpp	0.697	-	0.000
 uilib/uifield.h	gpl	recovered GPL banner	uilib/uifield.h	0.800	-	0.000
 uilib/uifloatwnd.cpp	gpl	recovered GPL banner	uilib/uifloatwnd.cpp	0.915	-	0.000
 uilib/uifloatwnd.h	gpl	recovered GPL banner	uilib/uifloatwnd.h	0.979	-	0.000
-uilib/uifont.cpp	gpl	recovered GPL banner	uilib/uifont.cpp	0.336	-	0.000
-uilib/uifont.h	gpl	recovered GPL banner	uilib/uifont.h	0.626	-	0.000
-uilib/uilabel.cpp	gpl	recovered GPL banner	uilib/uilabel.cpp	0.364	-	0.000
+uilib/uifont.cpp	gpl	recovered GPL banner	uilib/uifont.cpp	0.326	-	0.000
+uilib/uifont.h	gpl	recovered GPL banner	uilib/uifont.h	0.602	-	0.000
+uilib/uilabel.cpp	gpl	recovered GPL banner	uilib/uilabel.cpp	0.363	-	0.000
 uilib/uilabel.h	gpl	recovered GPL banner	uilib/uilabel.h	0.565	-	0.000
 uilib/uilayout.cpp	gpl	recovered GPL banner	uilib/uilayout.cpp	0.713	-	0.000
 uilib/uilayout.h	gpl	recovered GPL banner	uilib/uilayout.h	0.718	-	0.000
@@ -1487,8 +1487,8 @@ uilib/uilistbox.cpp	gpl	recovered GPL banner	uilib/uilistbox.cpp	0.879	-	0.000
 uilib/uilistbox.h	gpl	recovered GPL banner	uilib/uilistbox.h	0.950	-	0.000
 uilib/uilistctrl.cpp	gpl	recovered GPL banner	uilib/uilistctrl.cpp	0.894	-	0.000
 uilib/uilistctrl.h	gpl	recovered GPL banner	uilib/uilistctrl.h	0.968	-	0.000
-uilib/uimenu.cpp	gpl	recovered GPL banner	uilib/uimenu.cpp	0.767	-	0.000
-uilib/uimenu.h	gpl	recovered GPL banner	uilib/uimenu.h	0.895	-	0.000
+uilib/uimenu.cpp	gpl	recovered GPL banner	uilib/uimenu.cpp	0.752	-	0.000
+uilib/uimenu.h	gpl	recovered GPL banner	uilib/uimenu.h	0.890	-	0.000
 uilib/uimledit.cpp	gpl	recovered GPL banner	uilib/uimledit.cpp	0.892	-	0.000
 uilib/uimledit.h	gpl	recovered GPL banner	uilib/uimledit.h	0.898	-	0.000
 uilib/uinotepad.cpp	gpl	recovered GPL banner	uilib/uinotepad.cpp	0.929	-	0.000
@@ -1516,10 +1516,10 @@ uilib/uiswitchbox.cpp	recon	port record names the retail binaries as the source	
 uilib/uitable.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 uilib/uivertscroll.cpp	gpl	recovered GPL banner	uilib/uivertscroll.cpp	0.834	-	0.000
 uilib/uivertscroll.h	gpl	recovered GPL banner	uilib/uivertscroll.h	0.800	-	0.000
-uilib/uiwidget.cpp	gpl	recovered GPL banner	uilib/uiwidget.cpp	0.504	-	0.000
-uilib/uiwidget.h	gpl	recovered GPL banner	uilib/uiwidget.h	0.553	-	0.000
+uilib/uiwidget.cpp	gpl	recovered GPL banner	uilib/uiwidget.cpp	0.493	-	0.000
+uilib/uiwidget.h	gpl	recovered GPL banner	uilib/uiwidget.h	0.544	-	0.000
 uilib/uiwidgets_ef2.h	recon	port record names the retail binaries as the source	-	0.000	-	0.000
-uilib/uiwinman.cpp	gpl	recovered GPL banner	uilib/uiwinman.cpp	0.824	-	0.000
-uilib/uiwinman.h	gpl	recovered GPL banner	uilib/uiwinman.h	0.927	-	0.000
+uilib/uiwinman.cpp	gpl	recovered GPL banner	uilib/uiwinman.cpp	0.785	-	0.000
+uilib/uiwinman.h	gpl	recovered GPL banner	uilib/uiwinman.h	0.889	-	0.000
 uilib/ulist.h	gpl	recovered GPL banner	uilib/ulist.h	1.000	-	0.000
 uilib/usignal.h	gpl	recovered GPL banner	uilib/usignal.h	1.000	-	0.000

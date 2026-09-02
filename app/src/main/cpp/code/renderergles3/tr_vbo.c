@@ -95,6 +95,41 @@ static int		s_tessRingNext;
 static GLuint	s_vboStream;
 static GLuint	s_eboStream;
 
+/* ---- the per-frame tessellation stream store -----------------------------
+ * The ring above writes every batch at offset 0 of one of eight stores, so a
+ * store is rewritten while draws that read it can still be in flight.  The
+ * frame store removes the reuse: one back end frame's stream is appended into a
+ * whole store, and the store is discarded once when the frame opens, so no byte
+ * written in a frame is one an earlier draw read and a send never waits on one.
+ * Three stores rotate, so the store being written is not the one the previous
+ * frames drew from.  A frame that overflows falls back to the ring byte for
+ * byte, so the drawn stream does not depend on the store's size. */
+#define RB_TESS_ARENA_COUNT		3
+#define RB_TESS_ARENA_ALIGN		32
+#define RB_TESS_ARENA_VBO_BYTES	( (GLsizeiptr)( (size_t)2u * 1024u * 1024u ) )
+#define RB_TESS_ARENA_EBO_BYTES	( (GLsizeiptr)( (size_t)1u * 1024u * 1024u ) )
+
+static GLuint	s_vboArena[RB_TESS_ARENA_COUNT];
+static GLuint	s_eboArena[RB_TESS_ARENA_COUNT];
+static GLuint	s_vaoArena;
+static GLuint	s_vaoStaticArena;
+static int		s_arenaNext;
+static GLuint	s_arenaVbo;
+static GLuint	s_arenaEbo;
+static GLintptr	s_arenaVOff;
+static GLintptr	s_arenaIOff;
+static qboolean	s_arenaInit;
+static qboolean	s_arenaActive;
+static qboolean	s_arenaFull;
+static int		s_arenaFrame = -1;
+static cvar_t	*s_arenaCvar;
+/* Batches the store could not hold, which the ring draws instead.  Printed with
+ * the send row so a capture names the arm it ran and how much of the frame the
+ * store actually took.  A fall of zero makes the comparison the whole frame; a
+ * fall equal to the batch count means the store took nothing and the row is
+ * describing the ring. */
+static int		s_arenaFall;
+
 static qboolean	s_vboInitialised;
 
 static rbVertex_t	s_tessStage[SHADER_MAX_VERTEXES];
@@ -128,10 +163,12 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	out->verts = s_sendVerts;
 	out->big = s_sendBig;
 	out->bigVerts = s_sendBigVerts;
+	out->fall = s_arenaFall;
 
 	s_sendBatches = s_sendRuns = s_sendSum = s_sendFirst = 0;
 	s_sendMax = s_sendGapMax = 0;
 	s_sendVerts = s_sendBig = s_sendBigVerts = 0;
+	s_arenaFall = 0;
 
 	return ( out->batches > 0 ) ? qtrue : qfalse;
 }
@@ -227,22 +264,34 @@ static float	s_streamST[2];
 
 static void RB_ImmResetCurrent( void );	
 
-static void RB_VBO_ConfigureAttribs( void )
+/* Point the five attributes of the bound VAO at `base` in the buffer the VAO
+ * already names.  The field offsets are the layout RB_VboPackRange writes. */
+static void RB_VboAttribsAt( GLintptr base )
 {
 	qglEnableVertexAttribArray( ATTR_POSITION );
-	qglVertexAttribPointer( ATTR_POSITION, 4, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE, ( const void * )0 );
+	qglVertexAttribPointer( ATTR_POSITION, 4, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE,
+							( const void * )(uintptr_t)( base + 0 ) );
 
 	qglEnableVertexAttribArray( ATTR_NORMAL );
-	qglVertexAttribPointer( ATTR_NORMAL, 4, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE, ( const void * )16 );
+	qglVertexAttribPointer( ATTR_NORMAL, 4, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE,
+							( const void * )(uintptr_t)( base + 16 ) );
 
 	qglEnableVertexAttribArray( ATTR_COLOR );
-	qglVertexAttribPointer( ATTR_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, RB_VERTEX_STRIDE, ( const void * )32 );
+	qglVertexAttribPointer( ATTR_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, RB_VERTEX_STRIDE,
+							( const void * )(uintptr_t)( base + 32 ) );
 
 	qglEnableVertexAttribArray( ATTR_TEXCOORD0 );
-	qglVertexAttribPointer( ATTR_TEXCOORD0, 2, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE, ( const void * )36 );
+	qglVertexAttribPointer( ATTR_TEXCOORD0, 2, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE,
+							( const void * )(uintptr_t)( base + 36 ) );
 
 	qglEnableVertexAttribArray( ATTR_TEXCOORD1 );
-	qglVertexAttribPointer( ATTR_TEXCOORD1, 2, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE, ( const void * )44 );
+	qglVertexAttribPointer( ATTR_TEXCOORD1, 2, GL_FLOAT, GL_FALSE, RB_VERTEX_STRIDE,
+							( const void * )(uintptr_t)( base + 44 ) );
+}
+
+static void RB_VBO_ConfigureAttribs( void )
+{
+	RB_VboAttribsAt( 0 );
 }
 
 void RB_VBO_Init( void )
@@ -289,6 +338,7 @@ void RB_VBO_Init( void )
 }
 
 static void RB_VboStaticShutdown( void );
+static void RB_VboArenaShutdown( void );
 
 void RB_VBO_Shutdown( void )
 {
@@ -308,6 +358,7 @@ void RB_VBO_Shutdown( void )
 	qglDeleteVertexArrays( 1, &s_vaoStream );
 
 	RB_VboStaticShutdown();
+	RB_VboArenaShutdown();
 
 	s_vboInitialised = qfalse;
 }
@@ -474,6 +525,14 @@ static void RB_VboStaticInit( void ) {
 		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[i] );
 		RB_VBO_ConfigureAttribs();
 	}
+
+	/* the same vertices drawn with the frame store's indices */
+	qglGenVertexArrays( 1, &s_vaoStaticArena );
+	RB_BindVAO( s_vaoStaticArena );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
+	RB_VBO_ConfigureAttribs();
+
 	RB_BindVAO( 0 );
 }
 
@@ -585,6 +644,172 @@ static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
 					  (GLsizeiptr)( ( size_t )k * sizeof( glIndex_t ) ), s_staticIdx );
 }
 
+/* ---- the frame store ------------------------------------------------------ */
+
+static void RB_VboArenaInit( void ) {
+	int		i;
+
+	if ( s_arenaInit ) {
+		return;
+	}
+
+	qglGenVertexArrays( 1, &s_vaoArena );
+	RB_BindVAO( s_vaoArena );
+
+	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
+		qglGenBuffers( 1, &s_vboArena[i] );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
+		qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
+
+		qglGenBuffers( 1, &s_eboArena[i] );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboArena[i] );
+		qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+	}
+
+	RB_VBO_ConfigureAttribs();
+
+	s_arenaNext = RB_TESS_ARENA_COUNT - 1;
+	s_arenaInit = qtrue;
+}
+
+static void RB_VboArenaShutdown( void ) {
+	int		i;
+
+	if ( !s_arenaInit ) {
+		return;
+	}
+
+	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
+		qglDeleteBuffers( 1, &s_vboArena[i] );
+		qglDeleteBuffers( 1, &s_eboArena[i] );
+	}
+	qglDeleteVertexArrays( 1, &s_vaoArena );
+	if ( s_vaoStaticArena ) {
+		qglDeleteVertexArrays( 1, &s_vaoStaticArena );
+		s_vaoStaticArena = 0;
+	}
+	s_arenaInit = qfalse;
+}
+
+void RB_VBO_BeginFrame( void ) {
+	if ( !s_arenaCvar ) {
+		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "1", 0 );
+	}
+	if ( !s_arenaCvar->integer ) {
+		s_arenaActive = qfalse;
+		s_arenaFull = qtrue;
+		return;
+	}
+
+	if ( !s_vboInitialised ) {
+		RB_VBO_Init();
+	}
+	RB_VboArenaInit();
+
+	/* One store per frame.  A mid-frame flush re-enters here with the commands
+	 * that are left, and must keep appending into the store the frame opened. */
+	if ( s_arenaActive && RB_FrameCount() == s_arenaFrame ) {
+		return;
+	}
+	s_arenaFrame = RB_FrameCount();
+
+	s_arenaNext = ( s_arenaNext + 1 ) % RB_TESS_ARENA_COUNT;
+	s_arenaVbo = s_vboArena[s_arenaNext];
+	s_arenaEbo = s_eboArena[s_arenaNext];
+
+	/* Discard the store this frame is about to fill: the driver may then hand
+	 * back storage no in-flight command reads instead of waiting for one. */
+	RB_BindVAO( s_vaoArena );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
+	qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
+	qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+
+	if ( s_vaoStaticArena ) {
+		RB_BindVAO( s_vaoStaticArena );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
+	}
+
+	s_arenaVOff = 0;
+	s_arenaIOff = 0;
+	s_arenaFull = qfalse;
+	s_arenaActive = qtrue;
+}
+
+/* Which arm the frame ran, and how much of it the store could not take.  Read
+ * by the send row so the log is self-describing: without it a capture says what
+ * happened but not which of the two was on. */
+int RB_VboArenaMode( void ) {
+	return s_arenaActive ? 1 : 0;
+}
+
+/* Append one batch to the frame store.  `staticVerts` says the vertex bytes are
+ * already resident in the static world buffer and only the composed index list is
+ * new.  Returns qfalse when the store has no room, which sends the batch to the
+ * ring unchanged. */
+static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int numIndexes,
+								 qboolean staticVerts, GLintptr *indexOffset ) {
+	GLintptr	vOff = 0;
+	GLsizeiptr	vBytes = 0;
+	GLintptr	iOff;
+	GLsizeiptr	iBytes;
+	const glIndex_t	*src;
+	int			k = 0;
+	int			i;
+
+	if ( !s_arenaActive ) {
+		return qfalse;
+	}
+	if ( s_arenaFull ) {
+		s_arenaFall++;
+		return qfalse;
+	}
+
+	iOff = (GLintptr)PAD( s_arenaIOff, RB_TESS_ARENA_ALIGN );
+
+	if ( staticVerts ) {
+		for ( i = 0; i < s_staticRecCount; i++ ) {
+			const rbStaticRec_t		*r = &s_staticRec[i];
+			const rbStaticRegion_t	*e = RB_StaticFind( r->surf );
+			int						j;
+
+			for ( j = 0; j < r->numIdx; j++ ) {
+				s_staticIdx[k++] = (glIndex_t)( e->first + ( indexes[r->idxStart + j] - r->vertStart ) );
+			}
+		}
+		src = s_staticIdx;
+		iBytes = (GLsizeiptr)( ( size_t )k * sizeof( glIndex_t ) );
+	} else {
+		vOff = (GLintptr)PAD( s_arenaVOff, RB_TESS_ARENA_ALIGN );
+		vBytes = (GLsizeiptr)( ( size_t )numVertexes * RB_VERTEX_STRIDE );
+		src = indexes;
+		iBytes = (GLsizeiptr)( ( size_t )numIndexes * sizeof( glIndex_t ) );
+	}
+
+	if ( vOff + vBytes > RB_TESS_ARENA_VBO_BYTES
+		 || iOff + iBytes > RB_TESS_ARENA_EBO_BYTES ) {
+		s_arenaFull = qtrue;
+		s_arenaFall++;
+		return qfalse;
+	}
+
+	RB_BindVAO( staticVerts ? s_vaoStaticArena : s_vaoArena );
+
+	if ( !staticVerts ) {
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
+		qglBufferSubData( GL_ARRAY_BUFFER, vOff, vBytes, s_tessStage );
+		RB_VboAttribsAt( vOff );
+		s_arenaVOff = (GLintptr)( vOff + vBytes );
+	}
+
+	/* the bound VAO's element binding names this frame's index store */
+	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, iOff, iBytes, src );
+	s_arenaIOff = (GLintptr)( iOff + iBytes );
+
+	*indexOffset = iOff;
+	return qtrue;
+}
+
 
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const glIndex_t *indexes, int numIndexes,
@@ -605,6 +830,8 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		int			subT0;
 		int			subT1;
 		qboolean	staticDraw;
+		qboolean	stored;
+		GLintptr	storedIndex = 0;
 
 		pack.input = input;
 		pack.texcoord0 = texcoord0;
@@ -624,10 +851,14 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 					 && RB_VboStaticBake();
 
 		subT0 = BE_On() ? BE_Microseconds() : 0;
-		if ( staticDraw ) {
-			RB_VboStaticSend( indexes, numIndexes );
-		} else {
-			RB_VboSendTess( input->numVertexes, indexes, numIndexes );
+		stored = RB_VboArenaSend( input->numVertexes, indexes, numIndexes, staticDraw,
+								  &storedIndex );
+		if ( !stored ) {
+			if ( staticDraw ) {
+				RB_VboStaticSend( indexes, numIndexes );
+			} else {
+				RB_VboSendTess( input->numVertexes, indexes, numIndexes );
+			}
 		}
 		subT1 = BE_On() ? BE_Microseconds() : 0;
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, subT1 - subT0 );
@@ -666,7 +897,12 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		}
 
 		subT0 = BE_On() ? BE_Microseconds() : 0;
-		qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
+		if ( stored ) {
+			qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT,
+							 ( const void * )(uintptr_t)storedIndex );
+		} else {
+			qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
+		}
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_draw, BE_Microseconds() - subT0 );
 
 		BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
