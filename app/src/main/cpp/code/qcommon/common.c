@@ -1602,6 +1602,7 @@ void Com_Init( char *commandLine ) {
 	com_viewlog = Cvar_Get( "viewlog", "0", CVAR_CHEAT );
 	com_speeds = Cvar_Get( "com_speeds", "0", 0 );
 	com_timedemo = Cvar_Get( "timedemo", "0", CVAR_CHEAT );
+	Cvar_Get( "mem_churnStats", "0", CVAR_ARCHIVE );
 	com_dedicated = Cvar_Get( "dedicated", "0", CVAR_LATCH );
 	com_introplayed = Cvar_Get( "com_introplayed", "0", CVAR_ARCHIVE );
 	com_sv_running = Cvar_Get( "sv_running", "0", CVAR_ROM );
@@ -2787,6 +2788,9 @@ void Com_Frame( void ) {
 					  smpFrameEnd - smpClientStart,
 					  smpAfterSpin - smpSpinStart,
 					  smpFrameEnd - smpFrameStart );
+
+	/* One [MEM:churn] row a second under `mem_churnStats 1`; off, and free, by default. */
+	Z_ChurnMeterFrame();
 
 	com_frameNumber++;
 }

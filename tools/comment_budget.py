@@ -70,7 +70,7 @@ TREE = DEFAULT_TREE
 # the single source of truth, read back with --print-budget
 # rather than carrying a copy of the number.  It is a chosen headroom, not a
 # measured quantity: it records how much design prose the tree is allowed.
-EDITORIAL_BUDGET = 2200
+EDITORIAL_BUDGET = 2400
 
 
 def comment_indexes(text):

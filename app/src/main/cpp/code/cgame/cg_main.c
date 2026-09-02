@@ -328,11 +328,13 @@ const char *CG_ConfigString(int index)
 
 void CG_GetRendererConfig(void)
 {
-    int dx, dy, dw, dh;
+    int dw, dh;
 
     cgi.GetGlconfig(&cgs.glconfig);
 
-    CG_AndroidDisplayRect(cgs.glconfig.vidWidth, cgs.glconfig.vidHeight, &dx, &dy, &dw, &dh);
+    // Only the rect's SIZE reaches the 2D scale: the cgame's 2D is drawn inside the
+    // View3D widget's own panel-local 2D window, which already carries the origin.
+    CG_AndroidDisplayRect(cgs.glconfig.vidWidth, cgs.glconfig.vidHeight, NULL, NULL, &dw, &dh);
     cgs.screenXScale  = (float)dw / 640.0;
     cgs.screenYScale  = (float)dh / 480.0;
 
