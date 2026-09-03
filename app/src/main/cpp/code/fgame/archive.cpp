@@ -30,6 +30,9 @@
 #define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
 #define PROBE_PRINT                       gi.Printf
 #include "../qcommon/qa_probe.h"
+#include <time.h>
+
+#define GRS_NOW() ( PROBE_On() ? ( long long )clock() * 1000000LL / CLOCKS_PER_SEC : 0 )
 
 enum
 {
@@ -862,7 +865,9 @@ Class * Archiver::ReadObject( void )
 	size_t	size;
 	qboolean isent;
 	int      type;
-	
+	long long t0, t1;
+
+	t0 = GRS_NOW();
 	CheckRead();
 	
 	type = ReadType();
@@ -873,7 +878,13 @@ Class * Archiver::ReadObject( void )
 	
 	size = ReadSize();
 	ArchiveString( &classname );
-	
+
+	t1 = GRS_NOW();
+	if ( t0 ) {
+		g_restoreSplitUs[ GRS_HEAD ] += t1 - t0;
+	}
+	t0 = t1;
+
 	cls = getClass( classname.c_str() );
 	if ( !cls )
 	{
@@ -899,11 +910,24 @@ Class * Archiver::ReadObject( void )
 	ArchiveInteger( &index );
 	objstart = readfile.Pos();
 
+	t1 = GRS_NOW();
+	if ( t0 ) {
+		g_restoreSplitUs[ GRS_CLASS ] += t1 - t0;
+	}
+	t0 = t1;
+
 	WIDGET_PROBE("archive", "obj [%d] %s size=%u @0x%lx type=%s\n", index, classname.c_str(),
 	           (unsigned)size, (unsigned long)objstart, (type == ARC_Entity) ? "Entity" : "Object");
 	
 	
 	obj = ( Class * )cls->newInstance();
+
+	t1 = GRS_NOW();
+	if ( t0 ) {
+		g_restoreSplitUs[ GRS_NEW ] += t1 - t0;
+	}
+	t0 = t1;
+
 	if ( !obj )
 	{
 		FileError( "Failed to on new instance of class %s.", classname.c_str() );
@@ -912,6 +936,13 @@ Class * Archiver::ReadObject( void )
 	{
 		obj->Archive( *this );
 	}
+
+	t1 = GRS_NOW();
+	if ( t0 ) {
+		g_restoreSplitUs[ GRS_ARCH ] += t1 - t0;
+		g_restoreSplitN[ GRS_ARCH ]++;
+	}
+	t0 = t1;
 	
 	if ( !fileerror )
 	{
@@ -930,6 +961,11 @@ Class * Archiver::ReadObject( void )
 	           (unsigned)size);
 	
 	classpointerList.AddObjectAt( index, obj );
+
+	t1 = GRS_NOW();
+	if ( t0 ) {
+		g_restoreSplitUs[ GRS_ADD ] += t1 - t0;
+	}
 	
 	return obj;
 }
