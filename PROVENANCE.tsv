@@ -1178,7 +1178,7 @@ renderergles3/tr_image.c	gpl	recovered GPL banner	renderergl1/tr_image.c	0.665	-
 renderergles3/tr_imm_decompose.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_init.c	gpl	recovered GPL banner	renderergl1/tr_init.c	0.691	-	0.000
 renderergles3/tr_light.c	gpl	recovered GPL banner	renderergl1/tr_light.c	0.223	-	0.000
-renderergles3/tr_local.h	gpl	recovered GPL banner	renderergl1/tr_local.h	0.750	-	0.000
+renderergles3/tr_local.h	gpl	recovered GPL banner	renderergl1/tr_local.h	0.749	-	0.000
 renderergles3/tr_main.c	gpl	recovered GPL banner	renderergl1/tr_main.c	0.850	-	0.000
 renderergles3/tr_marks.c	gpl	recovered GPL banner	renderergl1/tr_marks.c	0.651	-	0.000
 renderergles3/tr_model.cpp	gpl	recovered GPL banner	renderergl1/tr_model.cpp	0.430	-	0.000
@@ -1203,7 +1203,7 @@ renderergles3/tr_swipe.cpp	gpl	recovered GPL banner	renderergl1/tr_swipe.cpp	0.9
 renderergles3/tr_texcache.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_texcache.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_util.cpp	gpl	recovered GPL banner	renderergl1/tr_util.cpp	0.980	-	0.000
-renderergles3/tr_vbo.c	gpl	GLES3 backend renamed from the OpenMoHAA renderer	renderergl2/tr_vbo.c	0.076	-	0.000
+renderergles3/tr_vbo.c	gpl	GLES3 backend renamed from the OpenMoHAA renderer	renderergl2/tr_vbo.c	0.068	-	0.000
 renderergles3/tr_vbo.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_vbo_imm.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_world.c	gpl	recovered GPL banner	renderergl1/tr_world.c	0.536	-	0.000
