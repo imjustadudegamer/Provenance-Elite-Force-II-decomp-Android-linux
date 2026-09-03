@@ -2457,6 +2457,8 @@ typedef struct {
 	 * A frame whose `local` is zero is a frame the device-local arena did not
 	 * reach, which is the only reading that separates the two arms. */
 	int		writes, local, statics, multi, seq;
+	int		locVisits, locVtx, locIdx, locHash, locFirstAt;
+	unsigned locFirst, locWas, locNow;
 } beSendRow_t;
 
 qboolean	RB_VboSendTake( beSendRow_t *out );

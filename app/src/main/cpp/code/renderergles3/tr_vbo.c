@@ -114,6 +114,11 @@ static void RB_VboMultiDrawInit( void ) {
 	if ( resolve ) {
 		s_multiDraw = (rbMultiDrawElements_t)resolve( "glMultiDrawElementsEXT" );
 	}
+	/* a symbol is not an extension: Adreno 530 hands back a non-NULL address
+	 * for this one and advertises GL_EXT_multi_draw_arrays nowhere */
+	if ( s_multiDraw && !QGL_GLES3_HasExtension( "GL_EXT_multi_draw_arrays" ) ) {
+		s_multiDraw = NULL;
+	}
 }
 
 static GLuint	s_vboTessRing[RB_TESS_RING];
@@ -179,6 +184,17 @@ static int	s_sendLocal;
 static int	s_sendStatics;
 static int	s_sendMulti;
 static int	s_sendSeq;
+static int				s_locVisits;
+static int				s_locVtxMiss;
+static int				s_locIdxMiss;
+static int				s_locHashMiss;
+static const void		*s_locFirst;
+static int				s_locFirstAt;
+static unsigned			s_locWas, s_locNow;
+static int	s_sendLocVisits, s_sendLocVtx, s_sendLocIdx, s_sendLocHash;
+static int	s_sendLocFirstAt;
+static const void *s_sendLocFirst;
+static unsigned	s_sendLocWas, s_sendLocNow;
 
 qboolean RB_VboSendTake( beSendRow_t *out ) {
 	if ( !out ) {
@@ -201,11 +217,31 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	out->statics = s_sendStatics;
 	out->multi = s_sendMulti;
 	out->seq = s_sendSeq;
+	out->locVisits = s_sendLocVisits;
+	out->locVtx = s_sendLocVtx;
+	out->locIdx = s_sendLocIdx;
+	out->locHash = s_sendLocHash;
+	out->locFirstAt = s_sendLocFirstAt;
+	out->locFirst = (unsigned)(size_t)s_sendLocFirst;
+	out->locWas = s_sendLocWas;
+	out->locNow = s_sendLocNow;
 
 	s_sendBatches = s_sendRuns = s_sendSum = s_sendFirst = 0;
 	s_sendMax = s_sendGapMax = 0;
 	s_sendVerts = s_sendBig = s_sendBigVerts = 0;
 	s_sendWrites = s_sendLocal = s_sendStatics = s_sendMulti = s_sendSeq = 0;
+	s_sendLocVisits = s_locVisits;
+	s_sendLocVtx = s_locVtxMiss;
+	s_sendLocIdx = s_locIdxMiss;
+	s_sendLocHash = s_locHashMiss;
+	s_sendLocFirstAt = s_locFirstAt;
+	s_sendLocFirst = s_locFirst;
+	s_sendLocWas = s_locWas;
+	s_sendLocNow = s_locNow;
+	s_locVisits = s_locVtxMiss = s_locIdxMiss = s_locHashMiss = 0;
+	s_locFirst = NULL;
+	s_locFirstAt = 0;
+	s_locWas = s_locNow = 0;
 	s_arenaFall = 0;
 
 	return ( out->batches > 0 ) ? qtrue : qfalse;
@@ -463,6 +499,9 @@ typedef struct {
 	const void	*surf;		/* NULL = never used */
 	GLint		first;		/* first vertex of the region in the arena */
 	GLint		idxFirst;	/* first index of the region, same bake order */
+	int			numVerts;	/* the counts the region was baked with */
+	int			numIdx;
+	unsigned	idxHash;	/* FN1a of the baked block, never 0 */
 } rbStaticRegion_t;
 
 typedef struct {
@@ -578,6 +617,17 @@ static int RB_StaticBlock( const rbStaticRec_t *r, glIndex_t *dst, const glIndex
 		dst[j] = RB_StaticRebase( r, e, indexes[r->idxStart + j] );
 	}
 	return r->numIdx;
+}
+
+static unsigned RB_StaticHashBlock( const rbStaticRec_t *r, const glIndex_t *indexes ) {
+	const rbStaticRegion_t	*e = RB_StaticFind( r->surf );
+	unsigned				h = 2166136261u;
+	int						j;
+
+	for ( j = 0; j < r->numIdx; j++ ) {
+		h = ( h ^ (unsigned)RB_StaticRebase( r, e, indexes[r->idxStart + j] ) ) * 16777619u;
+	}
+	return h ? h : 1u;
 }
 
 static void RB_VboStaticInit( void ) {
@@ -702,6 +752,9 @@ static qboolean RB_VboStaticBake( const glIndex_t *indexes ) {
 		e->surf = r->surf;
 		e->first = s_staticVertsUsed;
 		e->idxFirst = s_staticIdxesUsed;
+		e->numVerts = r->numVerts;
+		e->numIdx = r->numIdx;
+		e->idxHash = RB_StaticHashBlock( r, indexes );
 		qglBufferSubData( GL_ARRAY_BUFFER,
 						  (GLintptr)( ( size_t )s_staticVertsUsed * sizeof( rbVertex_t ) ),
 						  (GLsizeiptr)( ( size_t )r->numVerts * sizeof( rbVertex_t ) ),
@@ -748,7 +801,7 @@ static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
  * the three.  The two index streams are the same bytes by construction, so the
  * fallback and this path cannot disagree, and no path here writes a byte a
  * pending draw reads. */
-static qboolean RB_VboStaticLocalPrepare( int numIndexes ) {
+static qboolean RB_VboStaticLocalPrepare( const glIndex_t *indexes, int numIndexes ) {
 	static cvar_t	*cvar;
 	int		i, k;
 
@@ -770,6 +823,27 @@ static qboolean RB_VboStaticLocalPrepare( int numIndexes ) {
 		const rbStaticRegion_t	*e = RB_StaticFind( r->surf );
 
 		if ( !e || e->surf != r->surf ) {
+			return qfalse;
+		}
+		s_locVisits++;
+		if ( e->numVerts != r->numVerts ) {
+			s_locVtxMiss++;
+			if ( !s_locFirst ) { s_locFirst = r->surf; s_locFirstAt = s_locVisits; }
+			return qfalse;
+		}
+		if ( e->numIdx != r->numIdx ) {
+			s_locIdxMiss++;
+			if ( !s_locFirst ) { s_locFirst = r->surf; s_locFirstAt = s_locVisits; }
+			return qfalse;
+		}
+		if ( e->idxHash != RB_StaticHashBlock( r, indexes ) ) {
+			s_locHashMiss++;
+			if ( !s_locFirst ) {
+				s_locFirst = r->surf;
+				s_locFirstAt = s_locVisits;
+				s_locWas = e->idxHash;
+				s_locNow = RB_StaticHashBlock( r, indexes );
+			}
 			return qfalse;
 		}
 		s_staticCounts[i] = (GLsizei)r->numIdx;
@@ -1019,7 +1093,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		writes = 0;
 		stored = qfalse;
 		if ( staticDraw ) {
-			localDraw = RB_VboStaticLocalPrepare( numIndexes );
+			localDraw = RB_VboStaticLocalPrepare( indexes, numIndexes );
 		}
 		if ( !localDraw ) {
 			stored = RB_VboArenaSend( input->numVertexes, indexes, numIndexes, staticDraw,
