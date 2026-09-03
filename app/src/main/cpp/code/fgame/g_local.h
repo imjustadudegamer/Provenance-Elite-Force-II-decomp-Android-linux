@@ -204,6 +204,17 @@ void G_ArchiveEdict(Archiver& arc, gentity_t *edict);
 
 void G_ArchiveClientRetail(Archiver& arc, gclient_t *client);
 
+/* Restore split; the accumulators are fed only while qa_probe is on. */
+enum {
+    GRS_HEAD, GRS_CLASS, GRS_NEW, GRS_ARCH, GRS_ADD,
+    GRS_EDICT, GRS_MODEL, GRS_ARCHTYPE, GRS_VARS, GRS_REST,
+    GRS_PROCINIT, GRS_STATEMAP, GRS_COUNT
+};
+extern long long g_restoreSplitUs[GRS_COUNT];
+extern long long g_restoreSplitN[GRS_COUNT];
+qboolean G_ModelCacheFirst(int modelindex);   /* false when this restore already ran that model */
+void     G_ModelCacheReset(void);
+
 const char *G_LocationNumToDispString(int iLocation);
 
 void G_CheckIntermissionExit(void);

@@ -27,6 +27,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "animate.h"
 #include "scriptmaster.h"
 
+#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
+#define PROBE_PRINT                 gi.Printf
+#include "../qcommon/qa_probe.h"
+#include <time.h>
+
+#define GRS_NOW() ( PROBE_On() ? ( long long )clock() * 1000000LL / CLOCKS_PER_SEC : 0 )
+
 static const char *MoveControl_Names[] = {
     "user",         
     "legs",         
@@ -1182,7 +1189,7 @@ StateMap *GetStatemap(
     qboolean           found = false;
     Conditional       *new_conditional;
     Conditional       *old_conditional;
-    Condition<Class>  *cond;
+    long long          t0 = GRS_NOW(), t1;
 
     for (i = 1; i <= cached_statemaps.NumObjects(); i++) {
         cache = &cached_statemaps.ObjectAt(i);
@@ -1215,9 +1222,8 @@ StateMap *GetStatemap(
         for (i = 1; i <= cache->conditionals->NumObjects(); i++) {
             old_conditional = cache->conditionals->ObjectAt(i);
 
-            cond = cache->statemap->getCondition(old_conditional->condition.name);
-
-            new_conditional = new Conditional(*cond);
+            /* The cached node already holds the resolved condition. */
+            new_conditional = new Conditional(old_conditional->condition);
 
             for (j = 1; j <= old_conditional->parmList.NumObjects(); j++) {
                 new_conditional->parmList.AddObject(old_conditional->parmList.ObjectAt(j));
@@ -1225,6 +1231,12 @@ StateMap *GetStatemap(
 
             conditionals->AddObject(new_conditional);
         }
+    }
+
+    t1 = GRS_NOW();
+    if (t0) {
+        g_restoreSplitUs[GRS_STATEMAP] += t1 - t0;
+        g_restoreSplitN[GRS_STATEMAP]++;
     }
 
     return cache->statemap;

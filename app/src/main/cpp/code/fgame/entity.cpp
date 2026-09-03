@@ -52,6 +52,9 @@
 #define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
 #define PROBE_PRINT                 gi.Printf
 #include "../qcommon/qa_probe.h"
+#include <time.h>
+
+#define GRS_NOW() ( PROBE_On() ? ( long long )clock() * 1000000LL / CLOCKS_PER_SEC : 0 )
 #include "misc.h"
 #include "specialfx.h"
 #include "object.h"
@@ -6697,6 +6700,9 @@ void Entity::Archive(Archiver& arc)
     qboolean true_bool = true;    
     qboolean false_bool = false;  
     int      i;
+    long long t0, t1;
+
+    t0 = GRS_NOW();
 
     arc.ArchiveVector(&_localOrigin);  
 
@@ -6707,10 +6713,23 @@ void Entity::Archive(Archiver& arc)
 
     G_ArchiveEdict(arc, edict);
 
+    t1 = GRS_NOW();
+    if (t0) {
+        g_restoreSplitUs[GRS_EDICT] += t1 - t0;
+        g_restoreSplitN[GRS_EDICT]++;
+    }
+    t0 = t1;
+
     arc.ArchiveString(&_archetype);
     if (arc.Loading()) {
         edict->s.archeTypeIndex = gi.archetypeindex(_archetype.c_str());
     }
+
+    t1 = GRS_NOW();
+    if (t0) {
+        g_restoreSplitUs[GRS_ARCHTYPE] += t1 - t0;
+    }
+    t0 = t1;
 
     arc.ArchiveBool(&_missionObjective);  
     arc.ArchiveString(&_targetPos);
@@ -6730,6 +6749,13 @@ void Entity::Archive(Archiver& arc)
     if (arc.Loading() && model.length()) {
         setModel(model.c_str());
     }
+
+    t1 = GRS_NOW();
+    if (t0) {
+        g_restoreSplitUs[GRS_MODEL] += t1 - t0;
+        g_restoreSplitN[GRS_MODEL]++;
+    }
+    t0 = t1;
 
     arc.ArchiveVector(&total_delta);  
     arc.ArchiveVector(&mins);
@@ -6786,6 +6812,13 @@ void Entity::Archive(Archiver& arc)
     arc.ArchiveString(&explosionModel);
 
     entityVars.Archive(arc);
+
+    t1 = GRS_NOW();
+    if (t0) {
+        g_restoreSplitUs[GRS_VARS] += t1 - t0;
+        g_restoreSplitN[GRS_VARS]++;
+    }
+    t0 = t1;
 
     arc.ArchiveUnsigned(&_affectingViewModes);
 
@@ -6954,6 +6987,12 @@ void Entity::Archive(Archiver& arc)
             useData = new UseData();
             useData->Archive(arc);
         }
+    }
+
+    t1 = GRS_NOW();
+    if (t0) {
+        g_restoreSplitUs[GRS_REST] += t1 - t0;
+        g_restoreSplitN[GRS_REST]++;
     }
 
 }
@@ -7897,11 +7936,20 @@ void Entity::ProcessInitCommands
 
 	{
    tiki_cmd_t cmds;
+   long long t0, t1;
 
    if ( LoadingSavegame && !cache )
       {
       return;
       }
+
+   /* A model's cache closure is per-model, so a restore runs it once. */
+   if ( LoadingSavegame && cache && !G_ModelCacheFirst( index ) )
+      {
+      return;
+      }
+
+   t0 = GRS_NOW();
 
    if ( gi.InitCommands( index, &cmds ) )
       {
@@ -7939,6 +7987,12 @@ void Entity::ProcessInitCommands
          edict->s.modelindex = savedindex;
          }
       }
+
+   t1 = GRS_NOW();
+   if ( t0 ) {
+      g_restoreSplitUs[GRS_PROCINIT] += t1 - t0;
+      g_restoreSplitN[GRS_PROCINIT]++;
+   }
 	}
 
 

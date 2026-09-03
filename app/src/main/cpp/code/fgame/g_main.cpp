@@ -141,9 +141,33 @@ void SV_AddBot_f(void);
 
 extern "C" void G_CleanupGame( qboolean restart );
 
+long long g_restoreSplitUs[GRS_COUNT];
+long long g_restoreSplitN[GRS_COUNT];
+
+static qboolean s_modelCacheDone[MAX_MODELS];
+
+void G_ModelCacheReset( void ) {
+	memset( s_modelCacheDone, 0, sizeof( s_modelCacheDone ) );
+}
+
+qboolean G_ModelCacheFirst( int modelindex ) {
+	if ( modelindex <= 0 || modelindex >= MAX_MODELS ) {
+		return qtrue;
+	}
+	if ( s_modelCacheDone[ modelindex ] ) {
+		return qfalse;
+	}
+	s_modelCacheDone[ modelindex ] = qtrue;
+	return qtrue;
+}
+
 extern "C" void G_InitGame( int startTime, int randomSeed )
 {
 	gi.DPrintf ("==== InitGame ====\n");
+
+	G_ModelCacheReset();
+	memset( g_restoreSplitUs, 0, sizeof( g_restoreSplitUs ) );
+	memset( g_restoreSplitN, 0, sizeof( g_restoreSplitN ) );
 
 	SV_Error = gi.Error;
 	gi.Error = G_Error;
@@ -1215,6 +1239,11 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
 
             GARCH_Stage(GARCH_L_WORLD);
 
+            if (PROBE_On()) {
+                memset(g_restoreSplitUs, 0, sizeof(g_restoreSplitUs));
+                memset(g_restoreSplitN, 0, sizeof(g_restoreSplitN));
+            }
+
             for (i = 0; i < num; i++) {
                 arc.ReadObject();
             }
@@ -1222,6 +1251,18 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
             GARCH_Stage(GARCH_L_ENTS);
 
             WIDGET_PROBE("archive", "stage: entity run done (%d entities)\n", num);
+            WIDGET_PROBE("archive",
+                "ent split us: robj head=%lld class=%lld new=%lld arch=%lld add=%lld"
+                " | edict=%lld model=%lld archtype=%lld vars=%lld rest=%lld"
+                " | procinit=%lld/%lld statemap=%lld/%lld nobj=%lld nent=%lld\n",
+                g_restoreSplitUs[GRS_HEAD], g_restoreSplitUs[GRS_CLASS], g_restoreSplitUs[GRS_NEW],
+                g_restoreSplitUs[GRS_ARCH], g_restoreSplitUs[GRS_ADD],
+                g_restoreSplitUs[GRS_EDICT], g_restoreSplitUs[GRS_MODEL],
+                g_restoreSplitUs[GRS_ARCHTYPE], g_restoreSplitUs[GRS_VARS],
+                g_restoreSplitUs[GRS_REST],
+                g_restoreSplitUs[GRS_PROCINIT], g_restoreSplitN[GRS_PROCINIT],
+                g_restoreSplitUs[GRS_STATEMAP], g_restoreSplitN[GRS_STATEMAP],
+                g_restoreSplitN[GRS_ARCH], g_restoreSplitN[GRS_EDICT]);
         }
 
         // BELOW the retail tail.  That is not cosmetic: it extends the stretch of the
@@ -1659,7 +1700,9 @@ extern "C" void G_CleanupGame( qboolean restart )
 	try
 	{
 		gi.DPrintf ("==== CleanupGame ====\n");
-		
+
+		G_ModelCacheReset();
+
 		level.CleanUp( restart );
 	}
 	
