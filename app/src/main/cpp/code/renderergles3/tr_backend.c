@@ -1885,6 +1885,11 @@ static void BE_MaybeRoll( void ) {
 					   send.max, send.gapMax, send.verts, send.big, send.bigVerts,
 					   RB_VboArenaMode(), send.fall,
 					   send.writes, send.local, send.statics, send.multi, send.seq );
+			ri.Printf( PRINT_ALL,
+					   "[BE:locIdx] visits=%d vtx=%d idx=%d hash=%d at=%d"
+					   " surf=0x%x was=0x%x now=0x%x\n",
+					   send.locVisits, send.locVtx, send.locIdx, send.locHash,
+					   send.locFirstAt, send.locFirst, send.locWas, send.locNow );
 		}
 	}
 
