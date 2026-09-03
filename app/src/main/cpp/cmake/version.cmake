@@ -43,6 +43,35 @@ else()
 	message(WARNING "The repository was not detected as a Git working directory. Git information will not be available in the game version number.")
 endif()
 
+# A build that carries uncommitted work must say so: two binaries from the same
+# commit with different working trees are not the same binary.
+if ("${GIT_IS_INSIDE_WORK}" STREQUAL "true")
+	execute_process(
+		COMMAND git status --porcelain
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+		OUTPUT_VARIABLE GIT_DIRTY_OUT
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+	)
+
+	if (NOT "${GIT_DIRTY_OUT}" STREQUAL "")
+		set(GIT_REVISION_DIRTY "-dirty")
+	else()
+		set(GIT_REVISION_DIRTY "")
+	endif()
+else()
+	set(GIT_REVISION_DIRTY "")
+endif()
+
+# The header is valid whatever git could or could not report, so the binary
+# always has a label and never shells out at run time.
+if (NOT GIT_REVISION_HASH_ABBREVIATED)
+	set(GIT_REVISION_HASH_ABBREVIATED "nogit")
+endif()
+
+if (NOT GIT_REVISION_HASH)
+	set(GIT_REVISION_HASH "nogit")
+endif()
+
 string(TIMESTAMP GIT_REVISION_DATE_TIME UTC)
 
 set(GIT_REVISION_DATE ${GIT_REVISION_DATE_TIME})
