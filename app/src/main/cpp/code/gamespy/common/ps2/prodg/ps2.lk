@@ -77,7 +77,7 @@ _fbss   equ     _bss_obj
 _end    equ     _bss_objend
 
 
-;       This group is for the scratchpad.
+;       This group is for the console on-chip scratch RAM.
 
         org 0x70000000
 
