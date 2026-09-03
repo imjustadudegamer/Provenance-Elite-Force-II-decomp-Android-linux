@@ -56,9 +56,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define PRODUCT_VERSION_NUMBER_STRING	XSTRING(PRODUCT_VERSION_MAJOR) "." XSTRING(PRODUCT_VERSION_MINOR) "." XSTRING(PRODUCT_VERSION_PATCH)
 
-#define PRODUCT_VERSION                 ""
+/* The version slot used to be the empty literal, so every capture's banner read
+ * "ProvenanceEF2  <platform> <date>" with the label missing.  The label is the
+ * number the APK carries plus the commit the build came from, stamped at
+ * configure time, so a capture names its own binary. */
+#define PRODUCT_VERSION                 PRODUCT_VERSION_NUMBER_STRING
 
-#define PRODUCT_VERSION_FULL        PRODUCT_VERSION
+#define PRODUCT_VERSION_FULL        PRODUCT_VERSION "+" GIT_REVISION_HASH_ABBREVIATED GIT_REVISION_DIRTY
 
 #define PRODUCT_NAME_FULL		    PRODUCT_NAME
 

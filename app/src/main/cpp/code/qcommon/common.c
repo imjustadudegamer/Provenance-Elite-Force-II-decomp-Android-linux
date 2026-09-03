@@ -2045,6 +2045,31 @@ static void SMP_ThermalProbe( int window ) {
 
 	Com_Printf( "[THERM:cpu] row=%d window=%dms elapsed=%dms cores=%d%s\n",
 				rows, window, Sys_Milliseconds() - first, cores, line );
+
+	/* The CPU cores say nothing about the GPU clock, and a run whose per-send
+	 * price is ten times another run's is otherwise indistinguishable from a
+	 * build regression. */
+	{
+		static const char *const gpuClkPath[4] = {
+			"/sys/class/kgsl/kgsl-3d0/gpuclk",
+			"/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq",
+			"/sys/kernel/gpu/gpu_clock",
+			"/sys/class/devfreq/gpufreq/cur_freq",
+		};
+		int		g, gpuKhz = -1;
+
+		for ( g = 0; g < 4 && gpuKhz < 0; g++ ) {
+			fp = fopen( gpuClkPath[g], "r" );
+			if ( !fp ) {
+				continue;
+			}
+			if ( fgets( buf, sizeof( buf ), fp ) ) {
+				gpuKhz = atoi( buf );
+			}
+			fclose( fp );
+		}
+		Com_Printf( "[THERM:gpu] row=%d window=%dms gpuclk_khz=%d\n", rows, window, gpuKhz );
+	}
 }
 
 static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int totalMsec ) {

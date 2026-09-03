@@ -17,6 +17,18 @@ android {
 
         versionCode = 10021
         versionName = file("src/main/cpp/VERSION").readText().trim()
+        // The name carries the commit the APK was built from, so two installs are
+        // distinguishable in a manifest dump.  versionCode stays the monotone
+        // release counter: moving it would re-extract the assets on every build.
+        versionNameSuffix = runCatching {
+            val sha = providers.exec {
+                commandLine("git", "rev-parse", "--short", "HEAD")
+            }.standardOutput.asText.get().trim()
+            val dirty = providers.exec {
+                commandLine("git", "status", "--porcelain")
+            }.standardOutput.asText.get().trim()
+            "+" + sha + (if (dirty.isEmpty()) "" else "-dirty")
+        }.getOrElse { "+nogit" }
 
         externalNativeBuild {
             cmake {

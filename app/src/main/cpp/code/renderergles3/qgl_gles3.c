@@ -16,6 +16,7 @@ root, for more details.
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
 #include "qgl_gles3.h"
+#include "../qcommon/q_version.h"
 #include "qgl_gles3_tokens.h" 
 
 #include <stdarg.h>
@@ -434,6 +435,11 @@ void QGL_GLES3_LogDeviceInfo(void)
 			 version ? version : "(null)");
 	GLES3_Log("[GLES3:glinfo] max_texture_size=%d max_texture_units=%d extensions=%d\n",
 			 maxTex, maxUnits, numExt);
+	GLES3_Log("[GLES3:build] version=\"%d.%d.%d+%s%s\" commit=\"%s\" dirty=\"%s\" date=\"%s\"\n",
+			 PRODUCT_VERSION_MAJOR, PRODUCT_VERSION_MINOR, PRODUCT_VERSION_PATCH,
+			 GIT_REVISION_HASH_ABBREVIATED, GIT_REVISION_DIRTY,
+			 GIT_REVISION_HASH_ABBREVIATED,
+			 ( GIT_REVISION_DIRTY[0] ? "yes" : "no" ), GIT_REVISION_DATE);
 }
 
 int QGL_GLES3_LoadProcs(int *staged)
