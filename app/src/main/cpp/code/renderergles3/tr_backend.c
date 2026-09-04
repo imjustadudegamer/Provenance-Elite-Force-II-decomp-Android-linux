@@ -1879,10 +1879,12 @@ static void BE_MaybeRoll( void ) {
 		if ( RB_VboSendTake( &send ) ) {
 			ri.Printf( PRINT_ALL,
 					   "[BE:send] window=%dms batches=%d runs=%d sum=%dus first=%dus mid=%dus"
-					   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d arena=%d fall=%d\n",
+					   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d arena=%d fall=%d"
+					   " w=%d loc=%d st=%d md=%d sq=%d\n",
 					   window, send.batches, send.runs, send.sum, send.first, send.mid,
 					   send.max, send.gapMax, send.verts, send.big, send.bigVerts,
-					   RB_VboArenaMode(), send.fall );
+					   RB_VboArenaMode(), send.fall,
+					   send.writes, send.local, send.statics, send.multi, send.seq );
 		}
 	}
 
