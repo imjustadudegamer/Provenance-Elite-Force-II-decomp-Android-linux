@@ -54,6 +54,14 @@ void QGL_GLES3_SetGetProcAddress(QGL_GLES3_GetProcAddress_t fn)
 	gles3_getproc = fn;
 }
 
+/* The table is core entry points only.  An optional extension the renderer gates
+ * at run time is resolved through this, so one resolver and its eglGetProcAddress
+ * fallback stay the only path to a driver symbol. */
+QGL_GLES3_GetProcAddress_t QGL_GLES3_GetGetProcAddress(void)
+{
+	return gles3_getproc;
+}
+
 int qglMajorVersion = 0, qglMinorVersion = 0;
 int qglesMajorVersion = 0, qglesMinorVersion = 0;
 

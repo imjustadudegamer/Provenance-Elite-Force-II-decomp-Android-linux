@@ -72,6 +72,7 @@ void QGL_GLES3_SetLogger(void (*fn)(const char *line));
 
 typedef void *(*QGL_GLES3_GetProcAddress_t)(const char *name);
 void QGL_GLES3_SetGetProcAddress(QGL_GLES3_GetProcAddress_t fn);
+QGL_GLES3_GetProcAddress_t QGL_GLES3_GetGetProcAddress(void);
 
 int QGL_GLES3_LoadProcs(int *staged);
 

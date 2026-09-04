@@ -2450,6 +2450,13 @@ typedef struct {
 	 * belongs in the row because the store's effect cannot be read without it:
 	 * the comparison is the store's only where this is zero. */
 	int		fall;
+	/* `writes` is every store write the send made, `local` the batches that made
+	 * none because their index blocks were already device-local, `statics` the
+	 * batches the static path accepted, `multi` those drawn by one multi-draw and
+ * `seq` those drawn one call a record because the context has no multi-draw.
+	 * A frame whose `local` is zero is a frame the device-local arena did not
+	 * reach, which is the only reading that separates the two arms. */
+	int		writes, local, statics, multi, seq;
 } beSendRow_t;
 
 qboolean	RB_VboSendTake( beSendRow_t *out );

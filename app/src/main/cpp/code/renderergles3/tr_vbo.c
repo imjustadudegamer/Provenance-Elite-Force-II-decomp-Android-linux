@@ -89,6 +89,33 @@ void RB_BindVAO( GLuint vao ) {
 		s_elementBufferBound = (GLuint)~0u;
 	}
 }
+
+/* ---- the optional multi-draw --------------------------------------------
+ * A static world batch is many BSP surfaces whose index blocks are baked into
+ * one device buffer.  Drawn one range per record they are one API call per
+ * record; drawn as one multi-draw they are one call for the batch, which is the
+ * shape the reference port's coalescing has.  GL_EXT_multi_draw_arrays is not a
+ * core entry point, so it is resolved at run time and a context without it keeps
+ * the composed-store path byte for byte. */
+typedef void (*rbMultiDrawElements_t)( GLenum mode, const GLsizei *count, GLenum type,
+									   const void *const *indices, GLsizei primcount );
+static rbMultiDrawElements_t	s_multiDraw;
+static qboolean					s_multiDrawReady;
+
+static void RB_VboMultiDrawInit( void ) {
+	QGL_GLES3_GetProcAddress_t	resolve;
+
+	if ( s_multiDrawReady ) {
+		return;
+	}
+	s_multiDrawReady = qtrue;
+
+	resolve = QGL_GLES3_GetGetProcAddress();
+	if ( resolve ) {
+		s_multiDraw = (rbMultiDrawElements_t)resolve( "glMultiDrawElementsEXT" );
+	}
+}
+
 static GLuint	s_vboTessRing[RB_TESS_RING];
 static GLuint	s_eboTessRing[RB_TESS_RING];
 static int		s_tessRingNext;
@@ -147,6 +174,11 @@ static int	s_sendGapMax;
 static int	s_sendVerts;
 static int	s_sendBig;
 static int	s_sendBigVerts;
+static int	s_sendWrites;
+static int	s_sendLocal;
+static int	s_sendStatics;
+static int	s_sendMulti;
+static int	s_sendSeq;
 
 qboolean RB_VboSendTake( beSendRow_t *out ) {
 	if ( !out ) {
@@ -164,10 +196,16 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	out->big = s_sendBig;
 	out->bigVerts = s_sendBigVerts;
 	out->fall = s_arenaFall;
+	out->writes = s_sendWrites;
+	out->local = s_sendLocal;
+	out->statics = s_sendStatics;
+	out->multi = s_sendMulti;
+	out->seq = s_sendSeq;
 
 	s_sendBatches = s_sendRuns = s_sendSum = s_sendFirst = 0;
 	s_sendMax = s_sendGapMax = 0;
 	s_sendVerts = s_sendBig = s_sendBigVerts = 0;
+	s_sendWrites = s_sendLocal = s_sendStatics = s_sendMulti = s_sendSeq = 0;
 	s_arenaFall = 0;
 
 	return ( out->batches > 0 ) ? qtrue : qfalse;
@@ -416,6 +454,7 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
  * the shadow pass, the generic or vertex-lit iterator, 2D -- is left on the
  * streaming path byte for byte as it was. */
 #define RB_STATIC_ARENA_VERTS	( ( 24u * 1024u * 1024u ) / (unsigned)sizeof( rbVertex_t ) )
+#define RB_STATIC_ARENA_IDXES	( RB_STATIC_ARENA_VERTS * 3u )
 #define RB_STATIC_HASH_BITS		14
 #define RB_STATIC_HASH_SIZE		( 1u << RB_STATIC_HASH_BITS )
 #define RB_STATIC_BATCH_MAX		4096
@@ -423,6 +462,7 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 typedef struct {
 	const void	*surf;		/* NULL = never used */
 	GLint		first;		/* first vertex of the region in the arena */
+	GLint		idxFirst;	/* first index of the region, same bake order */
 } rbStaticRegion_t;
 
 typedef struct {
@@ -435,14 +475,20 @@ typedef struct {
 
 static rbStaticRegion_t	s_staticHash[RB_STATIC_HASH_SIZE];
 static GLuint			s_staticVbo;
+static GLuint			s_staticEbo;
+static GLuint			s_vaoStaticLocal;
 static GLuint			s_staticVaoRing[RB_TESS_RING];
 static int				s_staticVertsUsed;
+static int				s_staticIdxesUsed;
 static qboolean			s_staticFull;
 
 static rbStaticRec_t	s_staticRec[RB_STATIC_BATCH_MAX];
 static int				s_staticRecCount;
 static qboolean			s_staticRecOverflow;
 static glIndex_t		s_staticIdx[SHADER_MAX_INDEXES];
+static glIndex_t		s_staticIdxStage[SHADER_MAX_INDEXES];
+static GLsizei			s_staticCounts[RB_STATIC_BATCH_MAX];
+static const void		*s_staticOffsets[RB_STATIC_BATCH_MAX];
 
 static void RB_VboStaticShutdown( void ) {
 	int		i;
@@ -451,11 +497,20 @@ static void RB_VboStaticShutdown( void ) {
 		for ( i = 0; i < RB_TESS_RING; i++ ) {
 			qglDeleteVertexArrays( 1, &s_staticVaoRing[i] );
 		}
+		if ( s_vaoStaticLocal ) {
+			qglDeleteVertexArrays( 1, &s_vaoStaticLocal );
+			s_vaoStaticLocal = 0;
+		}
 		qglDeleteBuffers( 1, &s_staticVbo );
 		s_staticVbo = 0;
 	}
+	if ( s_staticEbo ) {
+		qglDeleteBuffers( 1, &s_staticEbo );
+		s_staticEbo = 0;
+	}
 	Com_Memset( s_staticHash, 0, sizeof( s_staticHash ) );
 	s_staticVertsUsed = 0;
+	s_staticIdxesUsed = 0;
 	s_staticFull = qfalse;
 	RB_VboStaticReset();
 }
@@ -505,6 +560,26 @@ static rbStaticRegion_t *RB_StaticFind( const void *surf ) {
 	return NULL;
 }
 
+/* One source index of a recorded surface, rebased onto that surface's region of
+ * the vertex arena.  This is the only arithmetic that turns a batch index into a
+ * drawn index, and it is the same call in the bake and in the fallback compose,
+ * so the two index streams are the same bytes by construction. */
+static glIndex_t RB_StaticRebase( const rbStaticRec_t *r, const rbStaticRegion_t *e,
+								  glIndex_t local ) {
+	return (glIndex_t)( e->first + ( local - r->vertStart ) );
+}
+
+/* Copy one record's whole rebased index block to `dst`.  Returns the count. */
+static int RB_StaticBlock( const rbStaticRec_t *r, glIndex_t *dst, const glIndex_t *indexes ) {
+	const rbStaticRegion_t	*e = RB_StaticFind( r->surf );
+	int						j;
+
+	for ( j = 0; j < r->numIdx; j++ ) {
+		dst[j] = RB_StaticRebase( r, e, indexes[r->idxStart + j] );
+	}
+	return r->numIdx;
+}
+
 static void RB_VboStaticInit( void ) {
 	int		i;
 
@@ -516,6 +591,12 @@ static void RB_VboStaticInit( void ) {
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
 	qglBufferData( GL_ARRAY_BUFFER,
 				   ( GLsizeiptr )( ( size_t )RB_STATIC_ARENA_VERTS * sizeof( rbVertex_t ) ),
+				   NULL, GL_STATIC_DRAW );
+
+	qglGenBuffers( 1, &s_staticEbo );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_staticEbo );
+	qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )RB_STATIC_ARENA_IDXES * sizeof( glIndex_t ) ),
 				   NULL, GL_STATIC_DRAW );
 
 	for ( i = 0; i < RB_TESS_RING; i++ ) {
@@ -531,6 +612,13 @@ static void RB_VboStaticInit( void ) {
 	RB_BindVAO( s_vaoStaticArena );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
+	RB_VBO_ConfigureAttribs();
+
+	/* the same vertices drawn with the device-local baked index blocks */
+	qglGenVertexArrays( 1, &s_vaoStaticLocal );
+	RB_BindVAO( s_vaoStaticLocal );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_staticEbo );
 	RB_VBO_ConfigureAttribs();
 
 	RB_BindVAO( 0 );
@@ -585,10 +673,13 @@ static qboolean RB_StaticBatch( const shaderCommands_t *input, int numIndexes,
  * `s_tessStage`, which the caller packed with the shipping body over the same
  * range, so the arena holds exactly the streaming stream.  A surface that does
  * not fit is left unbaked and the batch falls back for good. */
-static qboolean RB_VboStaticBake( void ) {
+static qboolean RB_VboStaticBake( const glIndex_t *indexes ) {
 	int		i;
 
 	RB_VboStaticInit();
+	/* the local VAO names both arenas, so the two bakes below cannot land in a
+	 * store another VAO had bound */
+	RB_BindVAO( s_vaoStaticLocal );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
 
 	for ( i = 0; i < s_staticRecCount; i++ ) {
@@ -602,25 +693,37 @@ static qboolean RB_VboStaticBake( void ) {
 		if ( e->surf == r->surf ) {
 			continue;			/* already resident */
 		}
-		if ( s_staticVertsUsed + r->numVerts > (int)RB_STATIC_ARENA_VERTS ) {
+		if ( s_staticVertsUsed + r->numVerts > (int)RB_STATIC_ARENA_VERTS
+			 || s_staticIdxesUsed + r->numIdx > (int)RB_STATIC_ARENA_IDXES ) {
 			s_staticFull = qtrue;
 			return qfalse;
 		}
 
 		e->surf = r->surf;
 		e->first = s_staticVertsUsed;
+		e->idxFirst = s_staticIdxesUsed;
 		qglBufferSubData( GL_ARRAY_BUFFER,
 						  (GLintptr)( ( size_t )s_staticVertsUsed * sizeof( rbVertex_t ) ),
 						  (GLsizeiptr)( ( size_t )r->numVerts * sizeof( rbVertex_t ) ),
 						  s_tessStage + r->vertStart );
 		s_staticVertsUsed += r->numVerts;
+
+		/* the same rebase the composed send would have made, written once into a
+		 * device buffer the draws then read for the rest of the level */
+		RB_StaticBlock( r, s_staticIdxStage, indexes );
+		qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER,
+						  (GLintptr)( ( size_t )e->idxFirst * sizeof( glIndex_t ) ),
+						  (GLsizeiptr)( ( size_t )r->numIdx * sizeof( glIndex_t ) ),
+						  s_staticIdxStage );
+		s_staticIdxesUsed += r->numIdx;
 	}
 	return qtrue;
 }
 
 /* Compose the batch's index list against the arena and send only that.  The
  * indices are the batch's own triangles, rebased onto the region of the surface
- * each came from, so the drawn triangles and their order are unchanged. */
+ * each came from, so the drawn triangles and their order are unchanged.  It is
+ * the fallback for a batch the device-local blocks cannot draw in one call. */
 static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
 	int		slot = s_tessRingNext;
 	int		k = 0;
@@ -629,19 +732,77 @@ static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
 	s_tessRingNext = ( s_tessRingNext + 1 ) % RB_TESS_RING;
 
 	for ( i = 0; i < s_staticRecCount; i++ ) {
-		const rbStaticRec_t	*r = &s_staticRec[i];
-		const rbStaticRegion_t	*e = RB_StaticFind( r->surf );
-		int					j;
-
-		for ( j = 0; j < r->numIdx; j++ ) {
-			s_staticIdx[k++] = (glIndex_t)( e->first + ( indexes[r->idxStart + j] - r->vertStart ) );
-		}
+		k += RB_StaticBlock( &s_staticRec[i], s_staticIdx + k, indexes );
 	}
 
 	RB_BindVAO( s_staticVaoRing[slot] );
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
 	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
 					  (GLsizeiptr)( ( size_t )k * sizeof( glIndex_t ) ), s_staticIdx );
+}
+
+/* ---- the device-local static draw ----------------------------------------
+ * A batch whose records all sit in the baked arenas is drawn straight out of
+ * them: one call for a single record, one multi-draw where the context has the
+ * extension, one call a record where it does not -- and no store write on any of
+ * the three.  The two index streams are the same bytes by construction, so the
+ * fallback and this path cannot disagree, and no path here writes a byte a
+ * pending draw reads. */
+static qboolean RB_VboStaticLocalPrepare( int numIndexes ) {
+	static cvar_t	*cvar;
+	int		i, k;
+
+	if ( s_staticRecCount <= 0 ) {
+		return qfalse;
+	}
+	if ( !cvar ) {
+		cvar = ri.Cvar_Get( "r_tessLocal", "1", 0 );
+	}
+	if ( !cvar->integer ) {
+		return qfalse;
+	}
+
+	RB_VboMultiDrawInit();
+
+	k = 0;
+	for ( i = 0; i < s_staticRecCount; i++ ) {
+		const rbStaticRec_t		*r = &s_staticRec[i];
+		const rbStaticRegion_t	*e = RB_StaticFind( r->surf );
+
+		if ( !e || e->surf != r->surf ) {
+			return qfalse;
+		}
+		s_staticCounts[i] = (GLsizei)r->numIdx;
+		s_staticOffsets[i] = (const void *)(uintptr_t)( (size_t)e->idxFirst * sizeof( glIndex_t ) );
+		k += r->numIdx;
+	}
+	if ( k != numIndexes ) {
+		return qfalse;
+	}
+
+	RB_BindVAO( s_vaoStaticLocal );
+	return qtrue;
+}
+
+static void RB_VboStaticLocalDraw( void ) {
+	int		i;
+
+	if ( s_staticRecCount == 1 ) {
+		qglDrawElements( GL_TRIANGLES, s_staticCounts[0], GL_UNSIGNED_INT, s_staticOffsets[0] );
+		return;
+	}
+	if ( s_multiDraw ) {
+		s_multiDraw( GL_TRIANGLES, s_staticCounts, GL_UNSIGNED_INT, s_staticOffsets,
+					 (GLsizei)s_staticRecCount );
+		return;
+	}
+	/* No multi-draw on this context -- Adreno 530 and Mali-G715 both lack
+	 * GL_EXT_multi_draw_arrays, only a desktop driver has it.  One call a record
+	 * out of the baked blocks is still ZERO store writes, in record order, and
+	 * the store write it replaces costs 400-660 us against about 52 us a draw. */
+	for ( i = 0; i < s_staticRecCount; i++ ) {
+		qglDrawElements( GL_TRIANGLES, s_staticCounts[i], GL_UNSIGNED_INT, s_staticOffsets[i] );
+	}
 }
 
 /* ---- the frame store ------------------------------------------------------ */
@@ -830,7 +991,9 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		int			subT0;
 		int			subT1;
 		qboolean	staticDraw;
+		qboolean	localDraw = qfalse;
 		qboolean	stored;
+		int			writes;
 		GLintptr	storedIndex = 0;
 
 		pack.input = input;
@@ -844,20 +1007,31 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		JobPool_ParallelRange( input->numVertexes, RB_VBO_PACK_CHUNK, RB_VboPackRange, &pack );
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_pack, BE_Microseconds() - subT0 );
 
-		/* A static world batch is baked from that pack and drawn out of the
-		 * arena; everything else takes the streaming send unchanged. */
+		/* A static world batch is baked from that pack.  Where the bake left every
+		 * record in the device-local arenas the batch is drawn straight out of
+		 * them and the frame makes no store write at all; otherwise it takes the
+		 * composed send, which is the same index bytes. */
 		staticDraw = RB_StaticBatch( input, numIndexes, texcoord0, texcoord1,
 									 tcStrideFloats, colors, normals )
-					 && RB_VboStaticBake();
+					 && RB_VboStaticBake( indexes );
 
 		subT0 = BE_On() ? BE_Microseconds() : 0;
-		stored = RB_VboArenaSend( input->numVertexes, indexes, numIndexes, staticDraw,
-								  &storedIndex );
-		if ( !stored ) {
-			if ( staticDraw ) {
+		writes = 0;
+		stored = qfalse;
+		if ( staticDraw ) {
+			localDraw = RB_VboStaticLocalPrepare( numIndexes );
+		}
+		if ( !localDraw ) {
+			stored = RB_VboArenaSend( input->numVertexes, indexes, numIndexes, staticDraw,
+									  &storedIndex );
+			if ( stored ) {
+				writes = staticDraw ? 1 : 2;
+			} else if ( staticDraw ) {
 				RB_VboStaticSend( indexes, numIndexes );
+				writes = 1;
 			} else {
 				RB_VboSendTess( input->numVertexes, indexes, numIndexes );
+				writes = 2;
 			}
 		}
 		subT1 = BE_On() ? BE_Microseconds() : 0;
@@ -878,7 +1052,21 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 			gap = s_sendLast ? subT0 - s_sendLast : 0;
 			s_sendBatches++;
 			s_sendSum += phase;
+			s_sendWrites += writes;
 			s_sendVerts += input->numVertexes;
+			if ( staticDraw ) {
+				s_sendStatics++;
+			}
+			if ( localDraw ) {
+				s_sendLocal++;
+				if ( s_staticRecCount > 1 ) {
+					if ( s_multiDraw ) {
+						s_sendMulti++;
+					} else {
+						s_sendSeq++;
+					}
+				}
+			}
 			if ( input->numVertexes > 512 ) {
 				s_sendBig++;
 				s_sendBigVerts += input->numVertexes;
@@ -897,7 +1085,9 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		}
 
 		subT0 = BE_On() ? BE_Microseconds() : 0;
-		if ( stored ) {
+		if ( localDraw ) {
+			RB_VboStaticLocalDraw();
+		} else if ( stored ) {
 			qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT,
 							 ( const void * )(uintptr_t)storedIndex );
 		} else {
