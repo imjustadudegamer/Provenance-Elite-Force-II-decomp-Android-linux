@@ -2902,8 +2902,11 @@ void Entity::setAngles(Vector ang)
                 continue;
             }
             ent = (Entity *)G_GetEntity(bind_info->children[i]);
-            ent->setAngles();
-            VectorClear(ent->edict->s.netangles);
+            // A child number outlives the child; setAngles is a virtual call.
+            if (ent) {
+                ent->setAngles();
+                VectorClear(ent->edict->s.netangles);
+            }
             num--;
         }
     }
