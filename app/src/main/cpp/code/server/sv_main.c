@@ -540,7 +540,7 @@ static void SMP_SVFrameBudget( int totalMsec, int botMsec, int pingMsec, int gam
 	struct { const char *name; int sum; int max; } zone[SMP_SV_MAX_ZONES];
 
 	if ( !smp_serverStats ) {
-		smp_serverStats = Cvar_Get( "smp_serverStats", "1", 0 );
+		smp_serverStats = Cvar_Get( "smp_serverStats", "0", 0 );
 	}
 
 	if ( !smp_serverStats->integer ) {

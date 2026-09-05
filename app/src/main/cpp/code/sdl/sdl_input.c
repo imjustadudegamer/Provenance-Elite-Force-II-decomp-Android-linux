@@ -64,6 +64,14 @@ static qboolean     in_androidPauseOwned = qfalse;
 
 #define SMP_LIFECYCLE_PROBE_CAP 24
 static int smp_lifecycle_probe = 0;
+static cvar_t *smp_lifecycleStats;
+
+static qboolean SMP_LifecycleProbeOn( void ) {
+	if ( !smp_lifecycleStats ) {
+		smp_lifecycleStats = Cvar_Get( "smp_lifecycleStats", "0", 0 );
+	}
+	return ( smp_lifecycleStats && smp_lifecycleStats->integer ) ? qtrue : qfalse;
+}
 
 static int SDLCALL IN_AndroidLifecycleFilter( void *userdata, SDL_Event *e )
 {
@@ -1177,9 +1185,25 @@ static void IN_TouchReset( void )
 
 #define SMP_HOLDFIX_PROBE_CAP 8
 static int smp_holdfix_probe = 0;
+static cvar_t *smp_holdfixStats;
+
+static qboolean SMP_HoldfixProbeOn( void ) {
+	if ( !smp_holdfixStats ) {
+		smp_holdfixStats = Cvar_Get( "smp_holdfixStats", "0", 0 );
+	}
+	return ( smp_holdfixStats && smp_holdfixStats->integer ) ? qtrue : qfalse;
+}
 
 #define SMP_TAPCLICK_PROBE_CAP 8
 static int smp_tapclick_probe = 0;
+static cvar_t *smp_tapclickStats;
+
+static qboolean SMP_TapclickProbeOn( void ) {
+	if ( !smp_tapclickStats ) {
+		smp_tapclickStats = Cvar_Get( "smp_tapclickStats", "0", 0 );
+	}
+	return ( smp_tapclickStats && smp_tapclickStats->integer ) ? qtrue : qfalse;
+}
 
 static void IN_TouchReleaseGone( void )
 {
@@ -1199,7 +1223,7 @@ static void IN_TouchReleaseGone( void )
 			if ( tc_actionFinger[i] != (SDL_FingerID)-1 ) heldAfter++;
 	}
 
-	if ( ( heldBefore || tc_crouchToggled ) && smp_holdfix_probe < SMP_HOLDFIX_PROBE_CAP )
+	if ( SMP_HoldfixProbeOn() && ( heldBefore || tc_crouchToggled ) && smp_holdfix_probe < SMP_HOLDFIX_PROBE_CAP )
 	{
 		smp_holdfix_probe++;
 		Com_Printf( "[SMP:holdfix] %d overlay-off held_before=%d held_after=%d crouch=%d "
@@ -1553,6 +1577,7 @@ static void IN_ProcessEvents( void )
 						if ( in_guimouse && e.type == SDL_MOUSEBUTTONDOWN
 						     && ( cinematicRunning( ) || cls.state == CA_CINEMATIC
 						          || ( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) )
+						     && SMP_TapclickProbeOn()
 						     && smp_tapclick_probe < SMP_TAPCLICK_PROBE_CAP ) {
 							smp_tapclick_probe++;
 							Com_Printf( "[SMP:tapclick] %d delivered to the UI (cutscene up, "
@@ -1717,7 +1742,7 @@ void Sys_SendKeyEvents( void )
 			ownedAfter = in_androidPauseOwned ? 1 : 0;
 		}
 
-		if ( smp_lifecycle_probe < SMP_LIFECYCLE_PROBE_CAP )
+		if ( SMP_LifecycleProbeOn() && smp_lifecycle_probe < SMP_LIFECYCLE_PROBE_CAP )
 		{
 			smp_lifecycle_probe++;
 			Com_Printf( "[SMP:lifecycle] %d edge=%s applied=%d com_minimized=%d state=%d "

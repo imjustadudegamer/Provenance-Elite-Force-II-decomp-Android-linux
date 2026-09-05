@@ -540,7 +540,7 @@ void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, 
 	qboolean				heartbeat, needQuery, disagree;
 
 	if ( !s_cvar ) {
-		s_cvar = ri.Cvar_Get( "smp_vpProbe", "1", 0 );
+		s_cvar = ri.Cvar_Get( "smp_vpProbe", "0", 0 );
 	}
 	if ( !s_cvar || !s_cvar->integer || !R_ProbeStatsOn() ) {
 		return;
@@ -745,7 +745,7 @@ void RB_BeginDrawingView (void) {
 
 	{
 		static int s_gles3ViewLogged;
-		if ( s_gles3ViewLogged < 200 ) {
+		if ( R_ProbeStatsOn() && s_gles3ViewLogged < 200 ) {
 			vec4_t		cp;
 			qboolean	clipOn = RB_ClipPlane_Get( cp );
 			ri.Printf( PRINT_ALL, "[GLES3:view] portal=%d clip=%d in2D=%d fovX=%.1f\n",
@@ -1119,7 +1119,7 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 
 	{
 		static int s_gles3CineLogged;
-		if ( s_gles3CineLogged < 200 ) {
+		if ( R_ProbeStatsOn() && s_gles3CineLogged < 200 ) {
 			const byte *d = (const byte *)data;
 			ri.Printf( PRINT_ALL,
 				"[GLES3:cine] stretch x=%d y=%d w=%d h=%d cols=%d rows=%d comp=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x identityLight=%.3f\n",
@@ -1219,7 +1219,7 @@ void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int
 
 	{
 		static int s_gles3UpCineLogged;
-		if ( s_gles3UpCineLogged < 100 ) {
+		if ( R_ProbeStatsOn() && s_gles3UpCineLogged < 100 ) {
 			const byte *d = (const byte *)data;
 			ri.Printf( PRINT_ALL,
 				"[GLES3:cine] upload w=%d h=%d cols=%d rows=%d client=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x\n",
@@ -1842,6 +1842,7 @@ static void BE_Print( int family, int windowMs ) {
 
 static void BE_MaybeRoll( void ) {
 	int	now, window, i;
+	int	windowSurfs;
 
 	if ( !s_beWindowSet ) {
 		s_beWindowStart = SMP_RLoadNow();
@@ -1854,6 +1855,8 @@ static void BE_MaybeRoll( void ) {
 	if ( window < BE_WINDOW_MS && s_be[BE_FAM_BE].roots < BE_MAX_ROOTS ) {
 		return;
 	}
+
+	windowSurfs = s_be[BE_FAM_BE].cntSum[BE_BEC_surfs];	/* read before the reset */
 
 	for ( i = 0; i < BE_FAM_COUNT; i++ ) {
 		if ( s_be[i].roots < 1 || s_be[i].stopped ) {
@@ -1877,14 +1880,18 @@ static void BE_MaybeRoll( void ) {
 		beSendRow_t send;
 
 		if ( RB_VboSendTake( &send ) ) {
+			send.surfs = windowSurfs;
 			ri.Printf( PRINT_ALL,
 					   "[BE:send] window=%dms batches=%d runs=%d sum=%dus first=%dus mid=%dus"
 					   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d arena=%d fall=%d"
-					   " w=%d loc=%d st=%d md=%d sq=%d\n",
+					   " w=%d loc=%d st=%d md=%d sq=%d"
+					   " surfs=%d gw=%d gd=%d gi=%d gs=%d gr=%d rc=%d\n",
 					   window, send.batches, send.runs, send.sum, send.first, send.mid,
 					   send.max, send.gapMax, send.verts, send.big, send.bigVerts,
 					   RB_VboArenaMode(), send.fall,
-					   send.writes, send.local, send.statics, send.multi, send.seq );
+					   send.writes, send.local, send.statics, send.multi, send.seq,
+					   send.surfs, send.gateWorld, send.gateDlight, send.gateIter,
+					   send.gateSig, send.gateRec, send.recs );
 			ri.Printf( PRINT_ALL,
 					   "[BE:locIdx] visits=%d vtx=%d idx=%d hash=%d at=%d"
 					   " surf=0x%x was=0x%x now=0x%x\n",
@@ -2035,7 +2042,7 @@ void RB_ExecuteRenderCommands( const void *data ) {
 	{
 		static int smp_smpframe_rows = 0;
 
-		if ( smp_smpframe_rows < 8 || ( smp_smpframe_rows % 600 ) == 0 ) {
+		if ( R_ProbeStatsOn() && ( smp_smpframe_rows < 8 || ( smp_smpframe_rows % 600 ) == 0 ) ) {
 			ri.Printf( PRINT_ALL,
 					   "[SMP:smpframe] back=%d front=%d arena=%d frameCount=%d\n",
 					   RB_FrameSmpFrame(), tr.smpFrame, RB_FrameBoneArena(), RB_FrameCount() );

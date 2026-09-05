@@ -4665,7 +4665,7 @@ void ClientGameCommandManager::PlaySound(
         static int     movsnd_rows;
 
         if (!movsnd_movsnd) {
-            movsnd_movsnd = cgi.Cvar_Get("qa_movsnd", "1", 0);   
+            movsnd_movsnd = cgi.Cvar_Get("qa_movsnd", "0", 0);
         }
 
         movsnd_rows++;

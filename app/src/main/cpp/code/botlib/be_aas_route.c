@@ -75,7 +75,7 @@ static int LIMIT_RouteOn(void)
 {
 	if (limit_rtOn < 0)
 	{
-		limit_rtOn = LibVarValue("limit_stats", "1") != 0;
+		limit_rtOn = LibVarValue("limit_stats", "0") != 0;
 	} 
 	return limit_rtOn;
 } 

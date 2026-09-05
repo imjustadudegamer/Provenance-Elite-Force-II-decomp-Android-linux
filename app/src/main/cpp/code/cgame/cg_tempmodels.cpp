@@ -611,8 +611,13 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
 
         // lifecycle-beamstep -- THE GATE WAS UNREACHABLE, SO THE PROBE NEVER FIRED.  It required
         {
+            static cvar_t *bones_probe = NULL;
             static int bones_beamstep_reports = 0;
             const char *bones_step_model = p->modelname.c_str();
+
+            if (!bones_probe) {
+                bones_probe = cgi.Cvar_Get("qa_probe", "0", 0);
+            }
 
             if (bones_step_model && bones_step_model[0]
                 && (Q_stristr(bones_step_model, "fx")
@@ -622,7 +627,7 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
                     || Q_stristr(bones_step_model, "lines"))) {
                 Vector bones_step = p->cgd.velocity * ftime * scale + p->cgd.accel * ftimeSquared;
 
-                if (bones_beamstep_reports < 24) {
+                if (bones_probe->integer && bones_beamstep_reports < 24) {
                     bones_beamstep_reports++;
                     cgi.Printf(
                         "[BONES:beamstep] n=%d model='%s' step=(%.2f,%.2f,%.2f) ftime=%.5f "
@@ -1320,8 +1325,13 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         }
 
         {
+            static cvar_t *bones_probe = NULL;
             static int bones_beampart_reports = 0;
             const char *bones_em_model = m_spawnthing->GetModel();
+
+            if (!bones_probe) {
+                bones_probe = cgi.Cvar_Get("qa_probe", "0", 0);
+            }
             Vector      bones_skew;
 
             bones_skew = p->cgd.origin - m_spawnthing->cgd.origin;
@@ -1332,7 +1342,7 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
                     || Q_stristr(bones_em_model, "beam")
                     || Q_stristr(bones_em_model, "cylinder")
                     || Q_stristr(bones_em_model, "lines"))
-                && bones_beampart_reports < 24) {
+                && bones_probe->integer && bones_beampart_reports < 24) {
                 bones_beampart_reports++;
                 cgi.Printf(
                     "[BONES:beampart] n=%d em='%s' model='%s' skew=(%.1f,%.1f,%.1f) "

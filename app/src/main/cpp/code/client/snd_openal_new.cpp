@@ -1309,7 +1309,7 @@ static void SND_SndRow(
     static int     capped;
 
     if (!snd) {
-        snd = Cvar_Get("qa_snd", "1", 0);
+        snd = Cvar_Get("qa_snd", "0", 0);
     }
 
     if (!snd->integer) {

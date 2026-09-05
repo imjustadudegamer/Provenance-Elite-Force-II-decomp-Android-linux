@@ -2446,6 +2446,8 @@ typedef enum {
  * with [BE:ds] and [BE:be] instead of opening its own clock. */
 typedef struct {
 	int		batches, runs, sum, first, mid, max, gapMax, verts, big, bigVerts;
+	/* World surfaces in the window, the accumulator [BE:be] prints as `surfN'. */
+	int		surfs;
 	/* Batches the frame store could not hold and the ring drew instead.  It
 	 * belongs in the row because the store's effect cannot be read without it:
 	 * the comparison is the store's only where this is zero. */
@@ -2459,6 +2461,9 @@ typedef struct {
 	int		writes, local, statics, multi, seq;
 	int		locVisits, locVtx, locIdx, locHash, locFirstAt;
 	unsigned locFirst, locWas, locNow;
+	/* Gate rejections, one reason a batch (world, dlight, iterator, signature,
+	 * records); with `statics' they cover every batch.  `recs' is records seen. */
+	int		gateWorld, gateDlight, gateIter, gateSig, gateRec, recs;
 } beSendRow_t;
 
 qboolean	RB_VboSendTake( beSendRow_t *out );

@@ -27,7 +27,11 @@ root, for more details.
 #endif
 
 /* The probes are OFF unless `qa_probe' is 1  (set by hand
- * for a QA run); a release launch pays nothing for the per-event bookkeeping. */
+ * for a QA run); a release launch pays nothing for the per-event bookkeeping.
+ * qa_probe gates the per-EVENT recorders only: every per-frame and per-window
+ * instrument has its own cvar, and all of those default to 0 as well, so a default
+ * launch prints nothing.  smp_texCache stays
+ * 1 -- a feature. */
 #ifdef PROBE_ON_OVERRIDE
 static inline qboolean PROBE_On(void)
 {

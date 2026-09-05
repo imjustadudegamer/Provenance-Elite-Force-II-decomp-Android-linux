@@ -1040,6 +1040,11 @@ static void SMP_TexCacheProbeRow(const char* imgName, const smpTexCacheResult_t*
 	static int		s_count;
 	static qboolean	s_notice;
 	const char*		load;
+
+	/* the cache is a feature; its rows are an instrument like any other */
+	if (!R_ProbeStatsOn()) {
+		return;
+	}
 	const char*		store;
 	int				i;
 

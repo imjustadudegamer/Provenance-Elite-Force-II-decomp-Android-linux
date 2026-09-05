@@ -151,6 +151,17 @@ QGL_EXT_direct_state_access_PROCS;
 QGL_GLES3_CORE_PROCS;
 #undef GLE
 
+/* Core in a LATER ES than the 3.0 set: trapped as staged, so a 3.0 context still
+ * comes up. */
+#define GLE(ret, name, ...) \
+	static ret APIENTRY GLES3_trap_##name(__VA_ARGS__) \
+	{ \
+		GLES3_RecordMissing(#name, 0); \
+		return (ret)0; \
+	}
+QGL_GLES3_32_PROCS;
+#undef GLE
+
 static void APIENTRY GLES3_trap_ActiveTextureARB(GLenum texture)
 {
 	(void)texture;
@@ -192,6 +203,7 @@ QGL_ARB_framebuffer_object_PROCS;
 QGL_ARB_vertex_array_object_PROCS;
 QGL_EXT_direct_state_access_PROCS;
 QGL_GLES3_CORE_PROCS;
+QGL_GLES3_32_PROCS;
 #undef GLE
 
 void (APIENTRYP qglActiveTextureARB)(GLenum texture) = NULL;
@@ -225,8 +237,15 @@ QGL_GLES3_CORE_PROCS
 ;
 #undef GLE
 
+#define GLE(ret, name, ...) + 1
+static const int gles3_proc_core32 = 0
+QGL_GLES3_32_PROCS
+;
+#undef GLE
+
 int QGL_GLES3_TotalProcs(void) { return gles3_proc_total + 5; }
 int QGL_GLES3_CoreProcs(void) { return gles3_proc_core; }
+int QGL_GLES3_Core32Procs(void) { return gles3_proc_core32; }
 int QGL_GLES3_CoreMissing(void) { return gles3_core_missing; }
 int QGL_GLES3_StagedTraps(void) { return gles3_staged_traps; }
 int QGL_GLES3_StagedCapDrops(void) { return gles3_cap_drops; }
@@ -452,6 +471,12 @@ int QGL_GLES3_LoadProcs(int *staged)
 
 #define GLE(ret, name, ...) GLES3_BindOne("gl" #name, (void **)&qgl##name, (void *)GLES3_trap_##name, 1);
 	QGL_GLES3_CORE_PROCS;
+#undef GLE
+
+/* a later-ES core name is resolved through the same resolver and trapped the same
+ * way, but its absence is not a missing core entry point */
+#define GLE(ret, name, ...) GLES3_BindOne("gl" #name, (void **)&qgl##name, (void *)GLES3_trap_##name, 0);
+	QGL_GLES3_32_PROCS;
 #undef GLE
 
 #define GLE(ret, name, ...) GLES3_BindOne("gl" #name, (void **)&qgl##name, (void *)GLES3_trap_##name, 0);

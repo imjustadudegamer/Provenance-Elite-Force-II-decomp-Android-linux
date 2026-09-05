@@ -45,7 +45,7 @@ void SMP_SpawnEnter( const char *map, int ents ) {
 	int				i;
 
 	if ( !smp_spawnStats ) {
-		smp_spawnStats = gi.cvar( "smp_spawnStats", "1", 0 );
+		smp_spawnStats = gi.cvar( "smp_spawnStats", "0", 0 );
 	}
 
 	(void)map;

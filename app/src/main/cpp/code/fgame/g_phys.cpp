@@ -1134,6 +1134,15 @@ static int g_enttrash_movetype[MAX_GENTITIES];
 static int g_enttrash_frame[MAX_GENTITIES];
 static unsigned g_enttrash_scale[MAX_GENTITIES];
 
+static qboolean G_EntTrashProbeOn( void ) {
+	static cvar_t *enttrash_probe;
+
+	if ( !enttrash_probe ) {
+		enttrash_probe = gi.cvar( "qa_probe", "0", 0 );
+	}
+	return enttrash_probe->integer ? qtrue : qfalse;
+}
+
 static void G_EntTrash_Record( Entity *ent, int movetype )
 {
 	gentity_t *edict = ent->edict;
@@ -1148,10 +1157,22 @@ static void G_EntTrash_Record( Entity *ent, int movetype )
 		g_enttrash_movetype[ entnum ] = -2;
 	}
 
+	{
+		static cvar_t *enttrash_probe;
+
+		if ( !enttrash_probe ) {
+			enttrash_probe = gi.cvar( "qa_probe", "0", 0 );
+		}
+		if ( !enttrash_probe->integer ) {
+			return;
+		}
+	}
+
 	previous = g_enttrash_movetype[ entnum ];
 	g_enttrash_movetype[ entnum ] = movetype;
 	g_enttrash_frame[ entnum ] = level.framenum;
 
+	if ( G_EntTrashProbeOn() ) {
 	gi.Printf( "[UIVK:enttrash] movetype ent=%d class='%s' old=%d new=0x%08x(%d)"
 			   " size=%08x,%08x,%08x mass=0x%08x gravity=0x%08x"
 			   " inuse=%d linked=%d freetime=%.3f spawntime=%.3f"
@@ -1169,6 +1190,7 @@ static void G_EntTrash_Record( Entity *ent, int movetype )
 			   edict ? edict->spawntime : -1.0f,
 			   level.framenum,
 			   level.time );
+	}
 }
 
 static void G_EntTrash_Scale( Entity *ent )
@@ -1201,6 +1223,7 @@ static void G_EntTrash_Scale( Entity *ent )
 
 	g_enttrash_scale[ entnum ] = bits;
 
+	if ( G_EntTrashProbeOn() ) {
 	gi.Printf( "[UIVK:enttrash] scale ent=%d class='%s' scale=0x%08x alpha=0x%08x"
 			   " renderfx=0x%08x solid=%d modelindex=%d parent=%d"
 			   " frame=%d ltime=%.3f\n",
@@ -1214,6 +1237,7 @@ static void G_EntTrash_Scale( Entity *ent )
 			   edict->s.parent,
 			   level.framenum,
 			   level.time );
+	}
 }
 
 
