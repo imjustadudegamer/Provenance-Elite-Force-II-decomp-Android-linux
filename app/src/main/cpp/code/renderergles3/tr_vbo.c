@@ -896,7 +896,9 @@ static qboolean RB_VboStaticLocalPrepare( const glIndex_t *indexes, int numIndex
 		return qfalse;
 	}
 	if ( !cvar ) {
-		cvar = ri.Cvar_Get( "r_tessLocal", "1", 0 );
+		/* Default off: the device-local draw arm regressed frame time on Mali-class
+		 * GPUs relative to the composed send; set r_tessLocal 1 to re-enable. */
+		cvar = ri.Cvar_Get( "r_tessLocal", "0", 0 );
 	}
 	if ( !cvar->integer ) {
 		return qfalse;
@@ -1034,7 +1036,10 @@ static void RB_VboArenaShutdown( void ) {
 
 void RB_VBO_BeginFrame( void ) {
 	if ( !s_arenaCvar ) {
-		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "1", 0 );
+		/* Default off: one store per frame orphans two large buffers a frame, which
+		 * regressed frame time on Mali-class GPUs relative to the ring; set
+		 * r_tessArena 1 to re-enable. */
+		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
 	}
 	if ( !s_arenaCvar->integer ) {
 		s_arenaActive = qfalse;
