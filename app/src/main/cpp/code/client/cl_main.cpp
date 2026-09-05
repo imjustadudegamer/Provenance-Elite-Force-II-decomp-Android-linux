@@ -1614,12 +1614,12 @@ void CL_Frame ( int msec ) {
 	CL_CheckForResend();
 
 	{
-		static int s_loadhangParkMs = -100000;
+		static int s_loadstallParkMs = -100000;
 
 		if ( cls.state >= CA_CONNECTED && cls.state != CA_ACTIVE
-		     && cls.realtime >= s_loadhangParkMs + 1000 ) {
-			s_loadhangParkMs = cls.realtime;
-			LOADHANG_PROBE( "park",
+		     && cls.realtime >= s_loadstallParkMs + 1000 ) {
+			s_loadstallParkMs = cls.realtime;
+			LOADSTALL_PROBE( "park",
 			            "t=%d cls=%d clSid=%d svSid=%d msgSeq=%d cmdSeq=%d lastPkt=%d txSeq=%d paused=%d\n",
 			            cls.realtime, cls.state, cl.serverId, sv.serverId,
 			            clc.serverMessageSequence, clc.serverCommandSequence, clc.lastPacketTime,

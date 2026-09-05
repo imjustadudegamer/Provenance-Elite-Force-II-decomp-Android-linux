@@ -248,78 +248,78 @@ void UIWindowManager::setBackgroundWidget(UIWidget *widget)
 }
 
 typedef enum {
-    CRAUDIT_WALK_FOUND = 0,
-    CRAUDIT_WALK_NOT_FOUND,
-    CRAUDIT_WALK_TRUNCATED
-} crauditWalk_t;
+    RAWPTR_WALK_FOUND = 0,
+    RAWPTR_WALK_NOT_FOUND,
+    RAWPTR_WALK_TRUNCATED
+} rawptrWalk_t;
 
-static crauditWalk_t CRAUDIT_InTree(UIWidget *root, UIWidget *want, int depth, int *budget)
+static rawptrWalk_t RAWPTR_InTree(UIWidget *root, UIWidget *want, int depth, int *budget)
 {
     int i;
 
     if (!root || !want || !budget || *budget <= 0 || depth > 64) {
-        return CRAUDIT_WALK_TRUNCATED;     
+        return RAWPTR_WALK_TRUNCATED;     
     }
     if (root == want) {
-        return CRAUDIT_WALK_FOUND;
+        return RAWPTR_WALK_FOUND;
     }
 
     for (i = 1; i <= root->getChildren().NumObjects(); i++) {
-        crauditWalk_t r;
+        rawptrWalk_t r;
 
         if (--(*budget) <= 0) {
-            return CRAUDIT_WALK_TRUNCATED;
+            return RAWPTR_WALK_TRUNCATED;
         }
-        r = CRAUDIT_InTree(root->getChildren().ObjectAt(i), want, depth + 1, budget);
-        if (r == CRAUDIT_WALK_FOUND) {
-            return CRAUDIT_WALK_FOUND;
+        r = RAWPTR_InTree(root->getChildren().ObjectAt(i), want, depth + 1, budget);
+        if (r == RAWPTR_WALK_FOUND) {
+            return RAWPTR_WALK_FOUND;
         }
-        if (r == CRAUDIT_WALK_TRUNCATED) {
-            return CRAUDIT_WALK_TRUNCATED; 
+        if (r == RAWPTR_WALK_TRUNCATED) {
+            return RAWPTR_WALK_TRUNCATED; 
         }
     }
-    return CRAUDIT_WALK_NOT_FOUND;
+    return RAWPTR_WALK_NOT_FOUND;
 }
 
-static void CRAUDIT_CheckRawWidgetPointers(UIWidget **p, const char *name)
+static void RAWPTR_CheckRawWidgetPointers(UIWidget **p, const char *name)
 {
     static int    s_rows;
     static int    s_truncRows;
     static cvar_t *s_cvar;
     int           budget;
-    crauditWalk_t    r;
+    rawptrWalk_t    r;
 
     if (!p || !*p) {
         return;
     }
     if (!s_cvar) {
-        s_cvar = Cvar_Get("craudit_focusStats", "0", 0);
+        s_cvar = Cvar_Get("rawptr_focusStats", "0", 0);
     }
     if (s_cvar && !s_cvar->integer) {
         return;
     }
 
     budget = 4096;
-    r = CRAUDIT_InTree(&uWinMan, *p, 0, &budget);
+    r = RAWPTR_InTree(&uWinMan, *p, 0, &budget);
 
-    if (r == CRAUDIT_WALK_TRUNCATED) {
+    if (r == RAWPTR_WALK_TRUNCATED) {
         if (s_truncRows < 8) {
-            Com_Printf("[CRAUDIT:focus] WALK-TRUNCATED %s=%p budget|depth -> not cleared\n",
+            Com_Printf("[RAWPTR:focus] WALK-TRUNCATED %s=%p budget|depth -> not cleared\n",
                        name, (void *)*p);
         } else if (s_truncRows == 8) {
-            Com_Printf("[CRAUDIT:focus] capped at 8 truncation rows; further truncations are silent "
+            Com_Printf("[RAWPTR:focus] capped at 8 truncation rows; further truncations are silent "
                        "(nothing is ever cleared on a truncated walk)\n");
         }
         s_truncRows++;
         return;
     }
 
-    if (r == CRAUDIT_WALK_NOT_FOUND) {
+    if (r == RAWPTR_WALK_NOT_FOUND) {
         if (s_rows < 8) {
-            Com_Printf("[CRAUDIT:focus] STALE %s=%p is not in the widget tree -> cleared\n",
+            Com_Printf("[RAWPTR:focus] STALE %s=%p is not in the widget tree -> cleared\n",
                        name, (void *)*p);
         } else if (s_rows == 8) {
-            Com_Printf("[CRAUDIT:focus] capped at 8 rows; further stale pointers are cleared silently\n");
+            Com_Printf("[RAWPTR:focus] capped at 8 rows; further stale pointers are cleared silently\n");
         }
         s_rows++;
         *p = NULL;
@@ -332,9 +332,9 @@ void UIWindowManager::UpdateViews(void)
     int n;
     int x, y;
 
-    CRAUDIT_CheckRawWidgetPointers(&m_activeControl, "m_activeControl");
-    CRAUDIT_CheckRawWidgetPointers(&m_backgroundwidget, "m_backgroundwidget");
-    CRAUDIT_CheckRawWidgetPointers(&m_bindactive, "m_bindactive");
+    RAWPTR_CheckRawWidgetPointers(&m_activeControl, "m_activeControl");
+    RAWPTR_CheckRawWidgetPointers(&m_backgroundwidget, "m_backgroundwidget");
+    RAWPTR_CheckRawWidgetPointers(&m_bindactive, "m_bindactive");
 
     UI_ROOT_BEGIN(UI_FAM_DISP);
 

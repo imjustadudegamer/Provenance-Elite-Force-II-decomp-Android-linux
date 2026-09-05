@@ -18,12 +18,12 @@ cached on disk so a launch does not recompile them.
 
 `tr_program_table.inc` is generated data: one row per stage permutation the
 shipped shader corpus produces, plus rows for the expressible-but-unreachable
-arms. It is `#include`d five times by `tr_program.c`, once per section, and it is
-read as text by the shade census, so the C table and the audit record are one
-file. 
+arms. It is `#include`d five times by `tr_program.c`, once per section, and the
+C table and the audit record are one file.
 
 `glsl/gles3_glsl_embedded.h` is generated from the `.glsl` sources by
-`glsl/build_glsl.py`; the `.glsl` files are the sources of truth and the header must not drift from them.
+`glsl/build_glsl.py`; the `.glsl` files are the sources of truth and the header
+must not drift from them.
 
 ## Views and effects
 
@@ -36,5 +36,5 @@ class, are recorded with their addresses in the citation register.
 ## Probes
 
 `renderergles3` builds offline probe binaries (`gles3_firstlight`,
-`smp_hwtex_probe`, `progcache_probe`…) that compile and read back,
-and are never run.
+`smp_hwtex_probe`, `progcache_probe`, …) that link the shipping renderer
+sources and read back what they compile. They are never run.

@@ -14,8 +14,8 @@ SCOPE (the only files counted)
     app/make_zpak.py
 Generated output that is not tracked (`.build/`, `__pycache__/`, `.git/`) is
 never counted, so the figure is the same from a fresh checkout as from a working
-tree.  The same scope and the same exclusions are used by every tool in the
-suite that reasons about comments.
+tree.  The same scope and the same exclusions are used by every tool that
+reasons about comments.
 
 COMMENT LINE
     One lexer is used for every file in scope, whatever its extension: a line
@@ -57,7 +57,6 @@ SCOPE = (
     "app/src/main/cpp/code",
     "app/src/main/java/com/provenanceef2",
     "app/make_zpak.py",
-    ***REMOVED***
 )
 # A path is skipped when any of these components appears in it: vendored or
 # out-of-scope tool trees, and generated output that is not tracked.
@@ -67,9 +66,9 @@ TREE = DEFAULT_TREE
 
 # The editorial ceiling: body comments plus design headers, licence notices
 # exempt.  2,000 was the old ceiling; it was lifted to 2,200 and this constant is
-# the single source of truth, read back with --print-budget
-# rather than carrying a copy of the number.  It is a chosen headroom, not a
-# measured quantity: it records how much design prose the tree is allowed.
+# the single source of truth, read back with --print-budget rather than carried
+# as a copy elsewhere.  It is a chosen headroom, not a measured quantity: it
+# records how much design prose the tree is allowed.
 EDITORIAL_BUDGET = 2600
 
 

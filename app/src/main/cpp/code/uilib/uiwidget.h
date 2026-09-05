@@ -436,8 +436,8 @@ public:
     bool               getShow(void);
     class UColor       getBackgroundColor(void);
 
-    /* craudit-crashaudit: the child container, read-only, for the stale-raw-pointer
-       accessor; it exposes what retail's own Container<P8UIWidget> already is. */
+    /* Read-only child container for the stale-raw-pointer accessor; it exposes
+       what retail's own Container<P8UIWidget> already is. */
     Container<UIWidget *>& getChildren(void) { return m_children; }
     virtual void       setBackgroundColor(const UColor& color, WidgetState state, bool setbordercolor);
     class UBorderColor getBorderColor(void);

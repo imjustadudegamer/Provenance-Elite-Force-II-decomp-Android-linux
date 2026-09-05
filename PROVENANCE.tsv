@@ -89,7 +89,7 @@ cgame/cg_snapshot.c	gpl	recovered GPL banner	cgame/cg_snapshot.c	0.804	-	0.000
 cgame/cg_sound.cpp	gpl	recovered GPL banner	cgame/cg_sound.cpp	0.889	-	0.000
 cgame/cg_specialfx.cpp	gpl	recovered GPL banner	cgame/cg_specialfx.cpp	0.105	-	0.000
 cgame/cg_swipe.cpp	gpl	recovered GPL banner	cgame/cg_swipe.cpp	0.886	-	0.000
-cgame/cg_tempmodels.cpp	gpl	recovered GPL banner	cgame/cg_tempmodels.cpp	0.670	-	0.000
+cgame/cg_tempmodels.cpp	gpl	recovered GPL banner	cgame/cg_tempmodels.cpp	0.668	-	0.000
 cgame/cg_testemitter.cpp	gpl	recovered GPL banner	cgame/cg_testemitter.cpp	0.119	-	0.000
 cgame/cg_ui.cpp	gpl	recovered GPL banner	cgame/cg_ui.cpp	0.200	-	0.000
 cgame/cg_view.c	gpl	recovered GPL banner	cgame/cg_view.c	0.404	-	0.000
@@ -340,7 +340,7 @@ fgame/g_import_verify_gen.h	recon	no ancestor and no surviving notice	-	0.000	-	
 fgame/g_local.h	gpl	recovered GPL banner	fgame/g_local.h	0.822	dlls/game/g_local.h	0.073
 fgame/g_main.cpp	gpl	recovered GPL banner	fgame/g_main.cpp	0.384	dlls/game/g_main.cpp	0.107
 fgame/g_main.h	gpl	recovered GPL banner	fgame/g_main.h	0.809	dlls/game/g_main.h	0.282
-fgame/g_phys.cpp	gpl	recovered GPL banner	fgame/g_phys.cpp	0.655	dlls/game/g_phys.cpp	0.450
+fgame/g_phys.cpp	gpl	recovered GPL banner	fgame/g_phys.cpp	0.649	dlls/game/g_phys.cpp	0.446
 fgame/g_phys.h	gpl	recovered GPL banner	fgame/g_phys.h	0.606	dlls/game/g_phys.h	0.532
 fgame/g_public.h	gpl	recovered GPL banner	fgame/g_public.h	0.456	dlls/game/g_public.h	0.657
 fgame/g_spawn.cpp	sdk	port record names the EF2 SDK as the source	fgame/g_spawn.cpp	0.351	dlls/game/g_spawn.cpp	0.580
@@ -1081,7 +1081,7 @@ qcommon/cm_terrain_ef2.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0
 qcommon/cm_test.c	gpl	recovered GPL banner	qcommon/cm_test.c	0.995	-	0.000
 qcommon/cm_trace.c	gpl	recovered GPL banner	qcommon/cm_trace.c	0.945	-	0.000
 qcommon/cmd.c	gpl	recovered GPL banner	qcommon/cmd.c	0.965	-	0.000
-qcommon/common.c	gpl	recovered GPL banner	qcommon/common.c	0.657	-	0.000
+qcommon/common.c	gpl	recovered GPL banner	qcommon/common.c	0.648	-	0.000
 qcommon/crc.c	gpl	recovered GPL banner	qcommon/crc.c	0.985	-	0.000
 qcommon/crc.h	gpl	recovered GPL banner	qcommon/crc.h	0.833	-	0.000
 qcommon/cvar.c	gpl	recovered GPL banner	qcommon/cvar.c	0.890	-	0.000
@@ -1114,7 +1114,7 @@ qcommon/q_math.c	gpl	recovered GPL banner	qcommon/q_math.c	0.974	dlls/game/q_mat
 qcommon/q_platform.h	gpl	recovered GPL banner	qcommon/q_platform.h	0.892	-	0.000
 qcommon/q_shared.c	gpl	recovered GPL banner	qcommon/q_shared.c	0.973	dlls/game/q_shared.c	0.254
 qcommon/q_shared.h	gpl	recovered GPL banner	qcommon/q_shared.h	0.814	dlls/game/q_shared.h	0.490
-qcommon/q_version.h	gpl	recovered GPL banner	qcommon/q_version.h	0.730	-	0.000
+qcommon/q_version.h	gpl	recovered GPL banner	qcommon/q_version.h	0.762	-	0.000
 qcommon/qa_probe.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/qa_ui.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/qa_widget.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
@@ -1164,7 +1164,7 @@ renderergles3/qgl_gles3_tokens.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0
 renderergles3/qgl_linked.h	gpl	recovered GPL banner	renderergl1/qgl_linked.h	1.000	-	0.000
 renderergles3/smp_hwtex_probe.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/smp_texcache_probe.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderergles3/tr_backend.c	gpl	recovered GPL banner	renderergl1/tr_backend.c	0.556	-	0.000
+renderergles3/tr_backend.c	gpl	recovered GPL banner	renderergl1/tr_backend.c	0.554	-	0.000
 renderergles3/tr_bsp.c	gpl	recovered GPL banner	renderergl1/tr_bsp.c	0.543	-	0.000
 renderergles3/tr_cmds.c	gpl	recovered GPL banner	renderergl1/tr_cmds.c	0.719	-	0.000
 renderergles3/tr_curve.c	gpl	recovered GPL banner	renderergl1/tr_curve.c	0.865	-	0.000
@@ -1203,7 +1203,7 @@ renderergles3/tr_swipe.cpp	gpl	recovered GPL banner	renderergl1/tr_swipe.cpp	0.9
 renderergles3/tr_texcache.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_texcache.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_util.cpp	gpl	recovered GPL banner	renderergl1/tr_util.cpp	0.980	-	0.000
-renderergles3/tr_vbo.c	gpl	GLES3 backend renamed from the OpenMoHAA renderer	renderergl2/tr_vbo.c	0.068	-	0.000
+renderergles3/tr_vbo.c	gpl	GLES3 backend renamed from the OpenMoHAA renderer	renderergl2/tr_vbo.c	0.061	-	0.000
 renderergles3/tr_vbo.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_vbo_imm.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_world.c	gpl	recovered GPL banner	renderergl1/tr_world.c	0.536	-	0.000
@@ -1214,7 +1214,7 @@ script/scriptvariable.h	gpl	recovered GPL banner	script/scriptvariable.h	0.982	d
 sdl/sdl_gamma.c	gpl	recovered GPL banner	sdl/sdl_gamma.c	1.000	-	0.000
 sdl/sdl_glimp.c	gpl	recovered GPL banner	sdl/sdl_glimp.c	0.970	-	0.000
 sdl/sdl_icon.h	gpl	id Tech 3 lineage (standard GPL notice)	sdl/sdl_icon.h	0.040	-	0.000
-sdl/sdl_input.c	gpl	recovered GPL banner	sdl/sdl_input.c	0.691	-	0.000
+sdl/sdl_input.c	gpl	recovered GPL banner	sdl/sdl_input.c	0.685	-	0.000
 sdl/sdl_mouse.c	gpl	recovered GPL banner	sdl/sdl_mouse.c	0.560	-	0.000
 sdl/sdl_snd.c	gpl	recovered GPL banner	sdl/sdl_snd.c	0.956	-	0.000
 server/server.h	gpl	recovered GPL banner	server/server.h	0.533	-	0.000

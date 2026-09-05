@@ -894,7 +894,7 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 			}
 			else if ( serverId != sv.restartedServerId ) {
 				if ( !cl->gamestateTime || cl->gamestateTime + 5000 < svs.time ) {
-					LOADHANG_PROBE( "gssend",
+					LOADSTALL_PROBE( "gssend",
 					            "num=%d serverId=%d svSid=%d rsSid=%d gsTime=%d svs.time=%d cs=%d\n",
 					            (int)( cl - svs.clients ), serverId, sv.serverId, sv.restartedServerId,
 					            cl->gamestateTime, svs.time, cl->state );
@@ -910,7 +910,7 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 					SV_AddServerCommand( cl, "" );
 					SV_SendClientGameState( cl );
 				} else {
-					LOADHANG_PROBE( "gate",
+					LOADSTALL_PROBE( "gate",
 					            "BLOCKED num=%d serverId=%d svSid=%d rsSid=%d gsTime=%d svs.time=%d shutms=%d cs=%d\n",
 					            (int)( cl - svs.clients ), serverId, sv.serverId, sv.restartedServerId,
 					            cl->gamestateTime, svs.time,

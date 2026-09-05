@@ -31,8 +31,7 @@ and no fixed-function fog, so each of those becomes one of:
 THE TABLES
 ----------
   gles3StateDefs[]       one GLES3_STATE_DEF row per state word the shipped
-                         corpus carries -- the census asserts every shipped
-                         word matches a row
+                         corpus carries -- every shipped word must match a row
   gles3StateBitArms[]    every GLS_* nibble value GL_State can decode (audit)
   tr_program_table.inc   the shipped-content census: program keys, generator
                          arms, tcMod arms, acff arms, iterator families

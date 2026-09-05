@@ -820,7 +820,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 			named += s_spawnWins[ leg ];
 		}
 
-		LOADHANG_PROBE( "spawn",
+		LOADSTALL_PROBE( "spawn",
 						"total=%d map=%s mapload=%d cleanup=%d fsrestart=%d warm=%d baseline=%d resid=%d"
 						" cmap=%d svinit=%d spawnent=%d pure=%d cstrings=%d clients=%d mark=%d"
 						" win_name=%d win_setup=%d win_restore=%d win_tail=%d legs=%d\n",

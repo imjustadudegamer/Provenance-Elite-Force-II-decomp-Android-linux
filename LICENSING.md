@@ -141,6 +141,8 @@ If you fork or redistribute this repository or a build made from it:
 ## Checks in this repository
 
 - `tools/license_lint.py`, every source file carries its provenance notice, and
-
+  no file carries two conflicting notices.
+- `tools/ship_text_lint.py`, shipped markdown keeps one impersonal voice, and no
+  shipped text names a user home path or a `.cfg` outside the engine's own set.
 - `PROVENANCE.tsv`, the per-file ledger; `tools/provenance_ledger.py` regenerates
   and checks it against the ancestor corpora.

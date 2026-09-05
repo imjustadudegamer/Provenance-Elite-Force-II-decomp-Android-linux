@@ -46,9 +46,8 @@ GL1's state word is glStateBits (tr_local.h:2418-2492).  GLES3 renders it as
 a lookup into gles3StateDefs[] (one row per distinct word the shipped corpus
 carries, tr_program.c) plus GLES3_ApplyStateBits(), the replacement for
 GL_State() (tr_backend.c:263 in the GL1 renderer).  Every GL1 state word the
-shipped shaders carry must map to one of those rows;
-
-a shipped stage whose state word has no row renders undefined.
+shipped shaders carry must map to one of those rows; a shipped stage whose
+state word has no row renders undefined.
 
 TWO WRITERS, NO THREAD -- THE STATE OF THIS LAYER
 ------------------------------------------------

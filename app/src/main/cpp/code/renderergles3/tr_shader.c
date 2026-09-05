@@ -3301,7 +3301,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		// Stage 0 is the white image at CGEN_IDENTITY (v8[43] = 2) with a
 		// depth-mask-only state (v8[51] = 256); stage 1 is the image at
 		// CGEN_IDENTITY_LIGHTING (v8[111] = 1) modulated by the texture.  The two
-		// generators were swapped here against retail and then put back
+		// generators were swapped here against retail and then put back.
 		unfoggedStages[0].bundle[0].image[0] = tr.whiteImage;
 		unfoggedStages[0].active = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_IDENTITY;
