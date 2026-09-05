@@ -1064,12 +1064,14 @@ static void RB_VboArenaShutdown( void ) {
 
 void RB_VBO_BeginFrame( void ) {
 	if ( !s_arenaCvar ) {
-		/* 2 is the A/B: eight seconds of store, eight of ring, alternating for as
-		 * long as the session lasts.  The suspicion that the store regressed Mali
-		 * was never measured with an instrument that could see the send, so the
-		 * two arms now report side by side -- [BE:send] carries `arena=` and the
-		 * flip row below names the boundary, so one session reads both. */
-		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "2", 0 );
+		/* Default off, now measured rather than suspected: 0.3.15 ran both arms
+		 * eight seconds at a time and the store lost by ~15x on the same screen
+		 * (load-game menu, ring 43-48 ms/s of send over 2100-2475 batches, store
+		 * 670-745 ms/s over 913-1125), taking the menu from 30 to 13-16 fps.  The
+		 * per-send fresh orphan the ring does is cheaper on Mali than a subdata
+		 * into a store the frame just orphaned.  2 still alternates the arms for
+		 * a re-run; 1 forces the store. */
+		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
 	}
 	if ( s_arenaCvar->integer == 2 ) {
 		int		on = ( ri.Milliseconds() / 8000 ) & 1;
