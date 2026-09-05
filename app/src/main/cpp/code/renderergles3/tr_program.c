@@ -1487,25 +1487,37 @@ void GLES3_SetupStageUniforms( gles3Program_t *p, const shaderStage_t *pStage, c
 	cpuColor = GLES3_StageNeedsCPUColor( pStage );
 	cpuTexCoords = GLES3_StageNeedsCPUTexCoords( pStage );
 
-	if ( pStage->rgbGen == CGEN_GLOBAL_COLOR )
+	/* In 2D the quad already carries Draw_SetColor in a_Color (tr_draw.c writes
+	   it per vertex), so u_BaseColor stays 1: multiplying it in again squares
+	   the colour and the alpha, which is the black-button / half-alpha class.
+	   In 3D a_Color is the tess colour array, which a constant-colour stage
+	   never fills, so the uniform still has to carry it. */
+	if ( backEnd.in2D )
 	{
-		baseColor[0] = backEnd.color2D[0] / 255.0f;
-		baseColor[1] = backEnd.color2D[1] / 255.0f;
-		baseColor[2] = backEnd.color2D[2] / 255.0f;
+		baseColor[0] = baseColor[1] = baseColor[2] = baseColor[3] = 1.0f;
 	}
 	else
 	{
-		baseColor[0] = pStage->colorConst[0] / 255.0f;
-		baseColor[1] = pStage->colorConst[1] / 255.0f;
-		baseColor[2] = pStage->colorConst[2] / 255.0f;
-	}
-	if ( pStage->alphaGen == AGEN_GLOBAL_ALPHA )
-	{
-		baseColor[3] = backEnd.color2D[3] / 255.0f;
-	}
-	else
-	{
-		baseColor[3] = pStage->colorConst[3] / 255.0f;
+		if ( pStage->rgbGen == CGEN_GLOBAL_COLOR )
+		{
+			baseColor[0] = backEnd.color2D[0] / 255.0f;
+			baseColor[1] = backEnd.color2D[1] / 255.0f;
+			baseColor[2] = backEnd.color2D[2] / 255.0f;
+		}
+		else
+		{
+			baseColor[0] = pStage->colorConst[0] / 255.0f;
+			baseColor[1] = pStage->colorConst[1] / 255.0f;
+			baseColor[2] = pStage->colorConst[2] / 255.0f;
+		}
+		if ( pStage->alphaGen == AGEN_GLOBAL_ALPHA )
+		{
+			baseColor[3] = backEnd.color2D[3] / 255.0f;
+		}
+		else
+		{
+			baseColor[3] = pStage->colorConst[3] / 255.0f;
+		}
 	}
 	GLES3_SetUniform4fv( p, GLES3_U_BASECOLOR, baseColor );
 

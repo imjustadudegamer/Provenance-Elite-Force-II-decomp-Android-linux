@@ -1149,6 +1149,7 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 		GL_BindUnit0( tr.whiteImage );
 		p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
 		GLES3_SetBaseColor4f( p2d, 0.0f, 0.0f, 0.0f, 1.0f );
+		RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 		RB_ImmBegin( GL_TRIANGLES );
 		RB_ImmVertex2f( 0, 0 );
 		RB_ImmVertex2f( glConfig.vidWidth, 0 );
@@ -1165,6 +1166,9 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 		gles3Program_t	*p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
 
 		GLES3_SetBaseColor4f( p2d, tr.identityLight, tr.identityLight, tr.identityLight, 1.0f );
+		/* The frame quad is the colour the uniform states: the stream's current
+		   colour is a leftover from whatever 2D ran before the movie. */
+		RB_ImmColor4f( tr.identityLight, tr.identityLight, tr.identityLight, 1.0f );
 		RB_ImmBegin( GL_TRIANGLES );
 		RB_ImmTexCoord2f ( 0.5f / cols,  0.5f / rows );
 		RB_ImmVertex2f (x, y);
@@ -1583,6 +1587,7 @@ void RB_ShowImages( qboolean quiet ) {
 		}
 
 		GL_BindUnit0( image );
+		RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 		RB_ImmBegin (GL_TRIANGLES);
 		RB_ImmTexCoord2f( 0, 0 );
 		RB_ImmVertex2f( x, y );

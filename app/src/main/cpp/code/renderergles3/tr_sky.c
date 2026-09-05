@@ -338,6 +338,9 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 		GLES3_SetUniform1i( pSky, GLES3_U_SKYALPHAMODE, 0 );
 		GLES3_SetUniform2f( pSky, GLES3_U_SKYSCROLL, 0.0f, 0.0f );
 	}
+	/* The stream colour outlives the run that set it; a sky side that inherits
+	   whatever box or line ran last tints the whole dome. */
+	RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 
 	for ( t = mins[1]+HALF_SKY_SUBDIVISIONS; t < maxs[1]+HALF_SKY_SUBDIVISIONS; t++ )
 	{
