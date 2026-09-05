@@ -769,6 +769,10 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
     record = glConfig.smpActive ? 1 : 0;
 
     if (!record) {
+        /* The string opens its own surface below, and RB_BeginSurface resets the
+           tess -- so the 2D batch has to be drawn first or every quad appended
+           since the last flush is dropped on the floor. */
+        RB_2D_Flush();
         R_FlushRenderCommands();
     }
 

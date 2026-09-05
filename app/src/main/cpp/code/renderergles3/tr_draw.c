@@ -24,6 +24,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_local.h"
 #include "gles3_g1_api.h"
 
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 vec4_t r_colorWhite = { 1.0, 1.0, 1.0, 1.0 };
 
 /* Front-end copy of backEnd.color2D, so an entry point reads the colour it
@@ -44,8 +48,224 @@ void R_Invalidate2DWindowCache( void ) {
 	r_scissor2DValid = qfalse;
 }
 
+/* ---- [2D:stall] per-call accounting of the 2D entry points ----------------
+ * A menu frame's cost is charged to whichever widget calls in here, and the
+ * widget probe only sees the widget's total.  This splits that total per entry
+ * point and separates the flush prefix -- which, with a single-threaded back
+ * end, executes the recorded frame inline -- from the immediate body, so one
+ * device run names the blocking call instead of inferring it from widget
+ * self-times.  Every read is behind the master probe gate. */
+typedef enum {
+	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
+	D2P_tilepicoffset, D2P_trianglepic, D2P_bgsub, D2P_bgpixels, D2P_box,
+	D2P_lineloop, D2P_setwindow, D2P_scissor, D2P_shadertime,
+	D2P_SLOTS
+} d2phase_t;
+
+static const char *s_d2Name[D2P_SLOTS] = {
+	"flush", "setcolor", "stretchpic", "stretchpic2", "tilepic",
+	"tilepicoffset", "trianglepic", "bgsub", "bgpixels", "box",
+	"lineloop", "setwindow", "scissor", "shadertime"
+};
+
+typedef struct { int calls; int usec; int max; } d2row_t;
+static d2row_t	s_d2[D2P_SLOTS];
+static int		s_d2WinStart;
+static int		s_d2WinFrame;
+static cvar_t  *s_d2Cvar;
+static int		s_d2Stall;
+static int		s_d2StallShown;
+
+/* Surfaces the batch actually issued, so the row shows the collapse: calls is
+   what the UI asked for, draws is what reached the driver. */
+static int		s_d2Batches;
+
+static qboolean D2_On( void ) {
+	if ( !s_d2Cvar ) {
+		s_d2Cvar = ri.Cvar_Get( "d2_stallStats", "1", 0 );
+	}
+	return ( PROBE_On() && s_d2Cvar && s_d2Cvar->integer ) ? qtrue : qfalse;
+}
+
+static int D2_T0( void ) {
+	return D2_On() ? BE_Microseconds() : 0;
+}
+
+static void D2_End( int slot, int t0 ) {
+	d2row_t	*r;
+	int		usec;
+
+	if ( !t0 ) {
+		return;
+	}
+
+	usec = BE_Microseconds() - t0;
+	r    = &s_d2[slot];
+	r->calls++;
+	r->usec += usec;
+	if ( usec > r->max ) {
+		r->max = usec;
+	}
+
+	/* A single call that outcosts a whole frame is the disease; name it before
+	   the roll drowns it in means.  First 8, then one in 64. */
+	if ( usec >= 2000 ) {
+		s_d2Stall++;
+		if ( s_d2StallShown < 8 || ( s_d2Stall % 64 ) == 0 ) {
+			s_d2StallShown++;
+			ri.Printf( PRINT_ALL, "[2D:stall] call=%s usec=%d calls=%d flushMax=%d f=%d\n",
+					   s_d2Name[slot], usec, r->calls, s_d2[D2P_flush].max,
+					   RB_FrameCount() );
+		}
+	}
+}
+
+/* The prefix every immediate 2D call shares.  Under a single-threaded back end
+   this runs the recorded frame, so its cost belongs to whichever widget called
+   first, which is exactly what the widget self-times were charging.  Returns 0
+   on the recorded path so the caller's D2_End is a no-op there. */
+static int D2_Prepare( void ) {
+	if ( glConfig.smpActive ) {
+		return 0;
+	} else {
+		int	f0 = D2_T0();
+		int	t0;
+
+		/* Draw the batch only when a recorded scene is actually waiting, so a
+		   menu model the UI submits mid-walk still lands *behind* the quads
+		   drawn before it.  With nothing pending there is nothing to order
+		   against, and flushing would break the batch on every call. */
+		if ( R_PendingRenderCommands() ) {
+			RB_2D_Flush();
+		}
+
+		R_SyncRenderThread();
+		R_IssuePendingRenderCommands();
+		D2_End( D2P_flush, f0 );
+
+		t0 = D2_T0();
+		return t0;
+	}
+}
+
+static void D2_Roll( void ) {
+	int		now, win, i, sum, sumCalls;
+	int		frames;
+
+	if ( !D2_On() ) {
+		return;
+	}
+
+	now = BE_Microseconds();
+	if ( !s_d2WinStart ) {
+		s_d2WinStart = now;
+		s_d2WinFrame = RB_FrameCount();
+		return;
+	}
+
+	win = ( now - s_d2WinStart ) / 1000;
+	if ( win < 1000 ) {
+		return;
+	}
+	frames = RB_FrameCount() - s_d2WinFrame;
+	if ( frames < 1 ) {
+		frames = 1;
+	}
+
+	sum = sumCalls = 0;
+	for ( i = 0; i < D2P_SLOTS; i++ ) {
+		sum += s_d2[i].usec;
+		sumCalls += s_d2[i].calls;
+	}
+
+	ri.Printf( PRINT_ALL, "[2D:sum] window=%dms frames=%d calls=%d draws=%d sum=%dus flush=%dus"
+			   " body=%dus max=",
+			   win, frames, sumCalls, s_d2Batches, sum, s_d2[D2P_flush].usec, sum - s_d2[D2P_flush].usec );
+	for ( i = 0; i < D2P_SLOTS; i++ ) {
+		ri.Printf( PRINT_ALL, "%s=%d/%d%s", s_d2Name[i], s_d2[i].usec, s_d2[i].max,
+				   ( i + 1 < D2P_SLOTS ) ? " " : "\n" );
+	}
+
+	memset( s_d2, 0, sizeof( s_d2 ) );
+	s_d2Batches = 0;
+	s_d2WinStart = now;
+	s_d2WinFrame = RB_FrameCount();
+	s_d2StallShown = 0;
+}
+
 /* ---- the 2D bodies: run directly when the back end is single-threaded, and
  * replayed on the render thread when the same call was recorded ---- */
+
+/* ---- the 2D batch ---------------------------------------------------------
+ * A UI pass issued 400-650 of these calls a frame and every one was a complete
+ * surface of its own: program and state setup, a buffer re-specification and a
+ * draw.  That per-call price is the menu's whole frame -- 70-115 us typical,
+ * single calls spiking into milliseconds -- so quads now append to one open
+ * surface and the surface is ended only when the shader, the primitive kind or
+ * the view changes.  Draw order survives because every change flushes first;
+ * colour never flushes, because it is baked per vertex. */
+
+static shader_t *s_2dBatchShader;
+static qboolean  s_2dBatchOpen;
+static qboolean  s_2dTriOpen;
+static int       s_2dTriBlend;
+static byte      s_2dTriColor[4];
+
+void RB_2D_Flush( void ) {
+	if ( s_2dBatchOpen ) {
+		RB_EndSurface();
+		s_2dBatchOpen   = qfalse;
+		s_2dBatchShader = NULL;
+		s_d2Batches++;
+	}
+	if ( s_2dTriOpen ) {
+		RB_ImmEndDeferred();
+		s_2dTriOpen = qfalse;
+		s_d2Batches++;
+	}
+}
+
+static void RB_2D_Batch( shader_t *shader ) {
+	if ( s_2dBatchOpen && s_2dBatchShader == shader ) {
+		return;
+	}
+
+	RB_2D_Flush();
+	RB_BeginSurface( shader, 0 );
+	s_2dBatchOpen   = qtrue;
+	s_2dBatchShader = shader;
+}
+
+/* Four vertices, six indexes: the same two triangles the strip form built,
+   minus the per-quad surface.  The vertices go through RB_Vertex2f so the
+   current colour and texcoord reach the store exactly as they did. */
+static void RB_2D_BatchQuad( shader_t *shader, const float (*xy)[2], const float (*st)[2] ) {
+	int b, i;
+
+	RB_2D_Batch( shader );
+
+	if ( tess.numVertexes + 4 >= SHADER_MAX_VERTEXES - 1 || tess.numIndexes + 6 >= SHADER_MAX_INDEXES - 1 ) {
+		RB_2D_Flush();
+		RB_BeginSurface( shader, 0 );
+		s_2dBatchOpen   = qtrue;
+		s_2dBatchShader = shader;
+	}
+
+	b = tess.numVertexes;
+
+	for ( i = 0; i < 4; i++ ) {
+		RB_Texcoord2f( st[i][0], st[i][1] );
+		RB_Vertex2f( xy[i][0], xy[i][1] );
+	}
+
+	tess.indexes[tess.numIndexes + 0] = b + 0;
+	tess.indexes[tess.numIndexes + 1] = b + 1;
+	tess.indexes[tess.numIndexes + 2] = b + 2;
+	tess.indexes[tess.numIndexes + 3] = b + 1;
+	tess.indexes[tess.numIndexes + 4] = b + 3;
+	tess.indexes[tess.numIndexes + 5] = b + 2;
+	tess.numIndexes += 6;
+}
 
 void RB_2D_SetColor( const byte *rgba ) {
 	backEnd.color2D[0] = rgba[0];
@@ -56,28 +276,23 @@ void RB_2D_SetColor( const byte *rgba ) {
 }
 
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 ) {
+	float xy[4][2], st[4][2];
+
 	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
-	RB_BeginSurface(shader, 0);
 
-	RB_Texcoord2f(s1, t1);
-	RB_Vertex2f(x, y);
+	xy[0][0] = x;     xy[0][1] = y;     st[0][0] = s1; st[0][1] = t1;
+	xy[1][0] = x + w; xy[1][1] = y;     st[1][0] = s2; st[1][1] = t1;
+	xy[2][0] = x;     xy[2][1] = y + h; st[2][0] = s1; st[2][1] = t2;
+	xy[3][0] = x + w; xy[3][1] = y + h; st[3][0] = s2; st[3][1] = t2;
 
-	RB_Texcoord2f(s2, t1);
-	RB_Vertex2f(x + w, y);
-
-	RB_Texcoord2f(s1, t2);
-	RB_Vertex2f(x, y + h);
-
-	RB_Texcoord2f(s2, t2);
-	RB_Vertex2f(x + w, y + h);
-
-	RB_StreamEnd();
+	RB_2D_BatchQuad( shader, xy, st );
 }
 
 void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy ) {
 	float halfWidth, halfHeight;
 	float scaledWidth1, scaledHeight1;
 	float scaledWidth2, scaledHeight2;
+	float xy[4][2], st[4][2];
 
 	halfWidth = w * 0.5f;
 	halfHeight = h * 0.5f;
@@ -87,61 +302,50 @@ void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, fl
 	scaledHeight2 = halfHeight * sy;
 
 	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
-	RB_BeginSurface(shader, 0);
 
-	RB_Texcoord2f(s1, t1);
-	RB_Vertex3f(x + halfWidth - (scaledWidth2 + -scaledHeight2), y + halfWidth - scaledHeight1 - scaledWidth1, 0);
+	xy[0][0] = x + halfWidth - (scaledWidth2 + -scaledHeight2);
+	xy[0][1] = y + halfWidth - scaledHeight1 - scaledWidth1;
+	st[0][0] = s1; st[0][1] = t1;
 
-	RB_Texcoord2f(t2, t1);
-	RB_Vertex3f(scaledWidth2 - -scaledHeight2 + x + halfWidth, scaledWidth1 - scaledHeight1 + y + halfWidth, 0);
+	xy[1][0] = scaledWidth2 - -scaledHeight2 + x + halfWidth;
+	xy[1][1] = scaledWidth1 - scaledHeight1 + y + halfWidth;
+	st[1][0] = t2; st[1][1] = t1;
 
-	RB_Texcoord2f(s1, s2);
-	RB_Vertex3f(x+ halfWidth - (scaledWidth2 + scaledHeight2), scaledHeight1 - scaledWidth1 + y + halfWidth, 0);
+	xy[2][0] = x + halfWidth - (scaledWidth2 + scaledHeight2);
+	xy[2][1] = scaledHeight1 - scaledWidth1 + y + halfWidth;
+	st[2][0] = s1; st[2][1] = s2;
 
-	RB_Texcoord2f(t2, s2);
-	RB_Vertex3f(scaledWidth2 - scaledHeight2 + x + halfWidth, scaledWidth1 + scaledHeight1 + y + halfWidth, 0);
+	xy[3][0] = scaledWidth2 - scaledHeight2 + x + halfWidth;
+	xy[3][1] = scaledWidth1 + scaledHeight1 + y + halfWidth;
+	st[3][0] = t2; st[3][1] = s2;
 
-	RB_StreamEnd();
+	RB_2D_BatchQuad( shader, xy, st );
 }
 
 void RB_2D_TilePic( shader_t *shader, float x, float y, float w, float h, float picw, float pich ) {
+	float xy[4][2], st[4][2];
+
 	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
 
-	RB_StreamBegin(shader);
+	xy[0][0] = x;     xy[0][1] = y;     st[0][0] = x / picw;         st[0][1] = y / pich;
+	xy[1][0] = x + w; xy[1][1] = y;     st[1][0] = (x + w) / picw;   st[1][1] = y / pich;
+	xy[2][0] = x;     xy[2][1] = y + h; st[2][0] = x / picw;         st[2][1] = (y + h) / pich;
+	xy[3][0] = x + w; xy[3][1] = y + h; st[3][0] = (x + w) / picw;   st[3][1] = (y + h) / pich;
 
-	RB_Texcoord2f(x / picw, y / pich);
-	RB_Vertex2f(x, y);
-
-	RB_Texcoord2f((x + w) / picw, y / pich);
-	RB_Vertex2f(x + w, y);
-
-	RB_Texcoord2f(x / picw, (y + h) / pich);
-	RB_Vertex2f(x, y + h);
-
-	RB_Texcoord2f((x + w) / picw, (y + h) / pich);
-	RB_Vertex2f(x + w, y + h);
-
-	RB_StreamEnd();
+	RB_2D_BatchQuad( shader, xy, st );
 }
 
 void RB_2D_TilePicOffset( shader_t *shader, float x, float y, float w, float h, float picw, float pich, int offsetX, int offsetY ) {
+	float xy[4][2], st[4][2];
+
 	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
 
-	RB_StreamBegin(shader);
+	xy[0][0] = x + offsetX;     xy[0][1] = y + offsetY;     st[0][0] = x / picw;       st[0][1] = y / pich;
+	xy[1][0] = x + offsetX + w; xy[1][1] = y + offsetY;     st[1][0] = (x + w) / picw; st[1][1] = y / pich;
+	xy[2][0] = x + offsetX;     xy[2][1] = y + offsetY + h; st[2][0] = x / picw;       st[2][1] = (y + h) / pich;
+	xy[3][0] = x + offsetX + w; xy[3][1] = y + offsetY + h; st[3][0] = (x + w) / picw; st[3][1] = (y + h) / pich;
 
-	RB_Texcoord2f(x / picw, y / pich);
-	RB_Vertex2f(x + offsetX, y + offsetY);
-
-	RB_Texcoord2f((x + w) / picw, y / pich);
-	RB_Vertex2f(x + offsetX + w, y + offsetY);
-
-	RB_Texcoord2f(x / picw, (y + h) / pich);
-	RB_Vertex2f(x + offsetX, y + offsetY + h);
-
-	RB_Texcoord2f((x + w) / picw, (y + h) / pich);
-	RB_Vertex2f(x + offsetX + w, y + offsetY + h);
-
-	RB_StreamEnd();
+	RB_2D_BatchQuad( shader, xy, st );
 }
 
 void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t vTexCoords[3] ) {
@@ -149,6 +353,7 @@ void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t 
 
 	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
 
+	RB_2D_Flush();
 	RB_BeginSurface(shader, 0);
 
 	for (i = 0; i < 3; i++) {
@@ -161,26 +366,41 @@ void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t 
 
 void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	gles3Program_t	*p2d;
+	int				 wantBlend = blend ? 1 : 0;
 
-	if ( blend ) {
-		GLES3_ApplyStateBits(GLS_DEPTHTEST_DISABLE | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_SRCBLEND_SRC_ALPHA);
-	} else {
-		GLES3_ApplyStateBits(GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
+	/* A solid box is six vertices of one GL_TRIANGLES run, so consecutive boxes
+	   share the run and the program setup; the blend state is the only thing
+	   that splits it.  The run is flushed by RB_ImmBegin when it fills, and the
+	   tess batch is flushed first because the two live in different stores. */
+	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) {
+		RB_2D_Flush();
+
+		if ( blend ) {
+			GLES3_ApplyStateBits(GLS_DEPTHTEST_DISABLE | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_SRCBLEND_SRC_ALPHA);
+		} else {
+			GLES3_ApplyStateBits(GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
+		}
+
+		GL_BindUnit0( tr.whiteImage );
+		p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
+		GLES3_SetBaseColor4f( p2d, backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,
+							  backEnd.color2D[2] / 255.0f, backEnd.color2D[3] / 255.0f );
+
+		RB_ImmBegin( GL_TRIANGLES );
+		s_2dTriOpen  = qtrue;
+		s_2dTriBlend = wantBlend;
+		s_2dTriColor[0] = backEnd.color2D[0];
+		s_2dTriColor[1] = backEnd.color2D[1];
+		s_2dTriColor[2] = backEnd.color2D[2];
+		s_2dTriColor[3] = backEnd.color2D[3];
 	}
 
-	GL_BindUnit0( tr.whiteImage );
-	p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
-	GLES3_SetBaseColor4f( p2d, backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,
-						  backEnd.color2D[2] / 255.0f, backEnd.color2D[3] / 255.0f );
-
-	RB_ImmBegin( GL_TRIANGLES );
 	RB_ImmVertex2f(x, y);
 	RB_ImmVertex2f(x + w, y);
 	RB_ImmVertex2f(x + w, y + h);
 	RB_ImmVertex2f(x, y);
 	RB_ImmVertex2f(x + w, y + h);
 	RB_ImmVertex2f(x, y + h);
-	RB_ImmEnd();
 }
 
 static void RB_DrawStippledLine2D( float x0, float y0, float x1, float y1,
@@ -245,6 +465,19 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
 }
 
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {
+	/* The same tuple the batch was opened under is already in force: keep the
+	   batch open and issue nothing.  This is what turns a per-widget viewport
+	   into a per-change one, which is most of the batch's win. */
+	if ( r_window2DValid && r_scissor2DValid &&
+		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&
+		 r_window2DOrtho[0] == left && r_window2DOrtho[1] == right && r_window2DOrtho[2] == bottom &&
+		 r_window2DOrtho[3] == top && r_window2DOrtho[4] == n && r_window2DOrtho[5] == f &&
+		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == w && r_scissor2D[3] == h ) {
+		return;
+	}
+
+	RB_2D_Flush();
+
 	qglViewport(x, y, w, h);
 	qglScissor(x, y, w, h);
 	SMP_VpProbe( "2d", "Set2DWindow/arg", x, y, w, h, 0, qtrue );
@@ -255,24 +488,42 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 	GL_Cull( CT_TWO_SIDED );
 	RB_ClipPlane_Disable();
 
+	r_window2DValid = qtrue;
+	r_window2D[0] = x; r_window2D[1] = y; r_window2D[2] = w; r_window2D[3] = h;
+	r_window2DOrtho[0] = left; r_window2DOrtho[1] = right; r_window2DOrtho[2] = bottom;
+	r_window2DOrtho[3] = top; r_window2DOrtho[4] = n; r_window2DOrtho[5] = f;
+	r_scissor2DValid = qtrue;
+	r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = w; r_scissor2D[3] = h;
+
 	if (!backEnd.in2D)
 	{
 		backEnd.refdef.time = ri.Milliseconds();
 		backEnd.in2D = qtrue;
 		backEnd.refdef.floatTime = backEnd.refdef.time / 1000.0;
-        backEnd.shaderStartTime = 0; 
+        backEnd.shaderStartTime = 0;
 	}
 }
 
 void RB_2D_Scissor( int x, int y, int width, int height ) {
+	if ( r_scissor2DValid &&
+		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == width && r_scissor2D[3] == height ) {
+		return;
+	}
+
+	RB_2D_Flush();
+
 	qglEnable(GL_SCISSOR_TEST);
 	qglScissor(x, y, width, height);
 	SMP_VpProbe( "scissor", "RE_Scissor/arg", x, y, width, height, 0, qfalse );
+
+	r_scissor2DValid = qtrue;
+	r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = width; r_scissor2D[3] = height;
 }
 
 void RB_2D_ShaderTime( float startTime ) {
 	if (backEnd.in2D)
 	{
+		RB_2D_Flush();
 		backEnd.shaderStartTime = startTime;
 	}
 }
@@ -280,9 +531,13 @@ void RB_2D_ShaderTime( float startTime ) {
 /* ---- entry points: record under r_smp, run the body otherwise ---- */
 
 void Draw_SetColor(const vec4_t rgba) {
+	int	t0 = D2_T0();
+
 	if (!rgba) {
 		rgba = r_colorWhite;
 	}
+
+	D2_Roll();
 
 	r_color2D[0] = (byte)(rgba[0] * tr.identityLightByte);
 	r_color2D[1] = (byte)(rgba[1] * tr.identityLightByte);
@@ -310,7 +565,16 @@ void Draw_SetColor(const vec4_t rgba) {
 		return;
 	}
 
+	/* A solid box's colour is a uniform captured when its GL_TRIANGLES run
+	   opened, so a genuine colour change has to end the run before the new
+	   colour reaches the next box. */
+	if ( s_2dTriOpen && memcmp( s_2dTriColor, r_color2D, sizeof( s_2dTriColor ) ) != 0 ) {
+		RB_2D_Flush();
+	}
+
 	RB_2D_SetColor( r_color2D );
+
+	D2_End( D2P_setcolor, t0 );
 }
 
 void R_ChangeTextColor(int index) {
@@ -329,11 +593,7 @@ void R_ChangeTextColor(int index) {
 
 void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, float s2, float t2, qhandle_t hShader) {
 	shader_t* shader;
-
-	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
-	}
+	int		t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -360,15 +620,13 @@ void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, flo
 	}
 
 	RB_2D_StretchPic( shader, x, y, w, h, s1, t1, s2, t2 );
+
+	D2_End( D2P_stretchpic, t0 );
 }
 
 void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy, qhandle_t hShader) {
 	shader_t* shader;
-
-	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
-	}
+	int		t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -396,16 +654,14 @@ void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, fl
 	}
 
 	RB_2D_StretchPic2( shader, x, y, w, h, s1, t1, s2, t2, sx, sy );
+
+	D2_End( D2P_stretchpic2, t0 );
 }
 
 void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 	shader_t* shader;
 	float		picw, pich;
-
-	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
-	}
+	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -436,16 +692,14 @@ void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 	}
 
 	RB_2D_TilePic( shader, x, y, w, h, picw, pich );
+
+	D2_End( D2P_tilepic, t0 );
 }
 
 void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, int offsetX, int offsetY) {
 	shader_t* shader;
 	float		picw, pich;
-
-	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
-	}
+	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -476,15 +730,13 @@ void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, i
 	}
 
 	RB_2D_TilePicOffset( shader, x, y, w, h, picw, pich, offsetX, offsetY );
+
+	D2_End( D2P_tilepicoffset, t0 );
 }
 
 void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhandle_t hShader) {
 	shader_t* shader;
-
-	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
-	}
+	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -506,6 +758,8 @@ void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhand
 	}
 
 	RB_2D_TrianglePic( shader, vPoints, vTexCoords );
+
+	D2_End( D2P_trianglepic, t0 );
 }
 
 void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
@@ -636,14 +890,16 @@ void RE_DrawBackground_DrawPixels(int cols, int rows, int bgr, byte* data) {
 }
 
 void AddBox(float x, float y, float w, float h) {
+	int		t0;
+
 	if (!r_draw2d->integer) {
 		return;
 	}
 
 	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
+		t0 = D2_Prepare();
 		RB_2D_Box( x, y, w, h, qfalse );
+		D2_End( D2P_box, t0 );
 		return;
 	}
 
@@ -659,14 +915,16 @@ void AddBox(float x, float y, float w, float h) {
 }
 
 void DrawBox(float x, float y, float w, float h) {
+	int		t0;
+
 	if (!r_draw2d->integer) {
 		return;
 	}
 
 	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
+		t0 = D2_Prepare();
 		RB_2D_Box( x, y, w, h, qtrue );
+		D2_End( D2P_box, t0 );
 		return;
 	}
 
@@ -682,14 +940,16 @@ void DrawBox(float x, float y, float w, float h) {
 }
 
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask) {
+	int		t0;
+
 	if (!r_draw2d->integer) {
 		return;
 	}
 
 	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
+		t0 = D2_Prepare();
 		RB_2D_LineLoop( points, count, stipple_factor, stipple_mask );
+		D2_End( D2P_lineloop, t0 );
 		return;
 	}
 
@@ -712,10 +972,12 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
 }
 
 void Set2DWindow(int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f) {
+	int		t0;
+
 	if ( !glConfig.smpActive ) {
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
+		t0 = D2_Prepare();
 		RB_2D_SetWindow( x, y, w, h, left, right, bottom, top, n, f );
+		D2_End( D2P_setwindow, t0 );
 		return;
 	}
 
@@ -747,8 +1009,12 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 }
 
 void RE_Scissor(int x, int y, int width, int height) {
+	int		t0;
+
 	if ( !glConfig.smpActive ) {
+		t0 = D2_T0();
 		RB_2D_Scissor( x, y, width, height );
+		D2_End( D2P_scissor, t0 );
 		return;
 	}
 
@@ -773,7 +1039,10 @@ void RE_Scissor(int x, int y, int width, int height) {
 void Set2DInitialShaderTime(float startTime)
 {
 	if ( !glConfig.smpActive ) {
+		int		t0 = D2_T0();
+
 		RB_2D_ShaderTime( startTime );
+		D2_End( D2P_shadertime, t0 );
 		return;
 	}
 

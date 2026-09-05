@@ -209,6 +209,13 @@ void RB_RenderThread( void ) {
 }
 
 
+/* Whether a recorded scene is waiting.  The 2D batch asks this instead of
+   flushing blind: with nothing pending there is nothing to order against, and
+   flushing then would break the batch every call and win nothing. */
+qboolean R_PendingRenderCommands( void ) {
+	return ( tr.registered && backEndData->commands.used != 0 ) ? qtrue : qfalse;
+}
+
 void R_IssuePendingRenderCommands( void ) {
 	if ( !tr.registered ) {
 		return;
@@ -464,6 +471,11 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec ) {
 	if ( !tr.registered ) {
 		return;
 	}
+
+	/* The 2D pass ended: the batched quads draw now, into this frame's buffer
+	   and under the 2D view, rather than leaking into the next one. */
+	RB_2D_Flush();
+
 	cmd = R_GetCommandBufferReserved( sizeof( *cmd ), 0 );
 	if ( !cmd ) {
 		return;

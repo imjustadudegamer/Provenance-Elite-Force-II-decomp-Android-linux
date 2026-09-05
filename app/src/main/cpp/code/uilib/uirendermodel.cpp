@@ -248,6 +248,8 @@ UIRenderModel::UIRenderModel()
     m_fitScale = 1.0f;
     m_precache = false;
 
+    m_modelHandle = 0;
+
     VectorClear(m_offset);
     VectorClear(m_rotateOffset);
     VectorClear(m_angles);
@@ -353,7 +355,14 @@ void UIRenderModel::Draw(void)
         return;
     }
 
-    handle = re.RegisterModel(modelName);
+    handle = m_modelHandle;
+
+    if (!handle || m_resolvedModel != modelName) {
+        m_resolvedModel = modelName;
+        handle          = re.RegisterModel(modelName);
+        m_modelHandle   = handle;
+    }
+
     if (!handle) {
         {
             static int menu3dmvk_nohandle;
@@ -366,6 +375,11 @@ void UIRenderModel::Draw(void)
 
     tiki = re.R_Model_GetHandle(handle);
     if (!tiki) {
+        /* A stale handle -- a renderer restart emptied the model table, and
+           GetModelByHandle answered with the default BAD model.  Drop the memo
+           so the next draw re-registers against the live table. */
+        m_modelHandle   = 0;
+        m_resolvedModel = str();
         {
             static int menu3dmvk_notiki;
             if (PROBE_Throttle(&menu3dmvk_notiki, 4, 300)) {

@@ -306,6 +306,19 @@ static int limit_walkSelf(limit_walk_t *w, int t0, int zoneSelf, int counter,
 	limit_zoneAdd(LIMIT_FAM_VW, zoneSelf, self);
 	limit_cntBump(LIMIT_FAM_VW, counter, 1);
 
+	/* A widget whose own body outcosts a frame is the disease: this names it, so
+	   a run pairs the widget with the [2D:stall] row that landed inside it.
+	   First 8, then one in 32 -- the row cap keeps a slow menu from flooding. */
+	if (!isUpdate && self >= 1500) {
+		static int s_stallN;
+
+		s_stallN++;
+		if (s_stallN <= 8 || (s_stallN % 32) == 0) {
+			Com_Printf("[UI:stall] cls='%s' inst='%s' usec=%d depth=%d n=%d\n",
+					   classname, name ? name : "", self, w->depth, s_stallN);
+		}
+	}
+
 	tenths = self / 100;
 
 	if (isUpdate) {
