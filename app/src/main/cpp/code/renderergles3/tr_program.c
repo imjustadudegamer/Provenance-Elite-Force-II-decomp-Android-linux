@@ -1883,29 +1883,52 @@ typedef struct {
 } gles3CensusKey_t;
 
 typedef struct {
-	gles3CensusKey_t	*keys;			
-	int				*hash;			
+	gles3CensusKey_t	*keys;
+	int				*hash;
 	int				 numKeys;
 	int				 printedThisFrame;
 	int				 lastFrame;
 	int				 lastSummaryFrame;
 	unsigned		 totalDraws;
-	unsigned		 budgetSuppressed;	
-	unsigned		 capacityDropped;	
+	unsigned		 budgetSuppressed;
+	unsigned		 capacityDropped;
 	unsigned		 truncatedKeys;
 	qboolean		 noticeDone;
+	unsigned		 generation;
 } gles3Census_t;
 
 static gles3Census_t	s_gles3Census3D;
 static gles3Census_t	s_gles3Census2D;
+static unsigned			s_censusGeneration;
+
+/* A key keeps shader_t::name, image_t::imgName and the program name as raw
+   pointers it cannot own, and GLES3_CensusKeyEqual dereferences them.  Every
+   Hunk_Clear frees the first two, so the cache is dropped at the same
+   invalidation that flushes the 2D batch instead of compared against freed
+   pages.  Pixel 8, 0.3.8: signal 11 SEGV_ACCERR in Q_stricmp off
+   GLES3_DrawStage four seconds after "Unloading ClientGame". */
+void GLES3_CensusInvalidate( void ) {
+	s_censusGeneration++;
+}
 
 static void GLES3_CensusInit( gles3Census_t *c ) {
 	if ( c->keys ) {
-		return;
+		int		i;
+
+		if ( c->generation == s_censusGeneration ) {
+			return;
+		}
+		for ( i = 0; i < c->numKeys; i++ ) {
+			ri.Free( c->keys[i].key );
+		}
+		ri.Free( c->keys );
+		ri.Free( c->hash );
+		c->keys = NULL;
 	}
 	c->keys = (gles3CensusKey_t *)ri.Malloc( sizeof( gles3CensusKey_t ) * GLES3_CENSUS_MAXKEYS );
 	c->hash = (int *)ri.Malloc( sizeof( int ) * GLES3_CENSUS_HASHSIZE );
 	Com_Memset( c->hash, 0, sizeof( int ) * GLES3_CENSUS_HASHSIZE );
+	c->generation = s_censusGeneration;
 	c->numKeys = 0;
 	c->printedThisFrame = 0;
 	c->lastFrame = -1;

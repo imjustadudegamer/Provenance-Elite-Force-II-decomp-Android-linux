@@ -347,6 +347,9 @@ void		GLES3_BeginSunflare( void );
 void		GLES3_BeginShadow( void );		
 void		GLES3_SetBaseColor4f( gles3Program_t *p, float r, float g, float b, float a );
 
+/* Drops the draw census, whose keys hold hunk-owned name pointers. */
+void		GLES3_CensusInvalidate( void );
+
 void		GLES3_WireBegin( void );
 void		GLES3_WireVertex( const float *xyz, const float *rgba );
 void		GLES3_WireEnd( GLenum mode );

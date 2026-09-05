@@ -1452,6 +1452,7 @@ void RE_Shutdown( qboolean destroyWindow ) {
 	tr.registered = qfalse;
 
 	R_ShutdownShadows();
+	RB_2D_OwnersPurged();
 	R_ShutdownShaders();
 	GLES3_ProgramsShutdown();
 	R_ShutdownLensflares();
@@ -1494,6 +1495,10 @@ void RE_BeginRegistration(glconfig_t* glconfigOut) {
 
 	// (@0x00028D50), and the order matters: sprite_t and bmodel_t are hunk allocations
 	R_FreeNonTikiModels();
+
+	/* The 2D batch and the draw census hold hunk-owned names; draw the batch
+	   while its shader is still live before the hunk takes it back. */
+	RB_2D_OwnersPurged();
 
 	ri.Hunk_Clear();
 

@@ -1649,6 +1649,9 @@ void RB_2D_ShaderTime( float startTime );
  * recorded, so a skipped duplicate can never leave 3D state in force. */
 void R_Invalidate2DWindowCache( void );
 void RB_2D_Flush( void );
+/* Draws the 2D batch and drops the draw census before a Hunk_Clear frees the
+ * names both hold.  The one invalidation point for renderer-owned names. */
+void RB_2D_OwnersPurged( void );
 qboolean R_PendingRenderCommands( void );
 
 void RE_StretchRaw(int x, int y, int w, int h, int cols, int rows, int components, const byte* data, qboolean dirty);
