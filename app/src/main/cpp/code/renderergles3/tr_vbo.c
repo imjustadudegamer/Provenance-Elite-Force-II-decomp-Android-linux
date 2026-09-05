@@ -463,6 +463,21 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 
 	RB_BindVAO( s_vaoTessRing[slot] );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
+#ifdef __ANDROID__
+	/* Android: fresh-orphan the pair per send.  glBufferSubData into a
+	 * persistent buffer the GPU last read an age ago stalls the writer for the
+	 * drain, and the menu's sparse sends paid 40-60 ms a write.  glBufferData
+	 * replaces the storage, the writer gets fresh memory, and the VAO keeps its
+	 * binding because only the storage moves. */
+	qglBufferData( GL_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
+				   s_tessStage, GL_STREAM_DRAW );
+
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
+	qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
+				   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
+				   indexes, GL_STREAM_DRAW );
+#else
 	qglBufferSubData( GL_ARRAY_BUFFER, 0,
 					  ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
 					  s_tessStage );
@@ -471,6 +486,7 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
 					  ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
 					  indexes );
+#endif
 }
 
 /* ---- static world vertex arena ------------------------------------------
@@ -881,8 +897,15 @@ static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
 
 	RB_BindVAO( s_staticVaoRing[slot] );
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
+#ifdef __ANDROID__
+	/* Android: fresh-orphan, the same medicine the tess ring takes. */
+	qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
+				   (GLsizeiptr)( ( size_t )k * sizeof( glIndex_t ) ), s_staticIdx,
+				   GL_STREAM_DRAW );
+#else
 	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
 					  (GLsizeiptr)( ( size_t )k * sizeof( glIndex_t ) ), s_staticIdx );
+#endif
 }
 
 /* ---- the device-local static draw ----------------------------------------
@@ -1550,6 +1573,13 @@ void RB_ImmEnd( void )
 void RB_ImmEndDeferred( void )
 {
 	s_streamOpenRec = -1;
+}
+
+/* The deferred 2D box run needs to know what it is about to be charged for, so
+   a coverage check can prove every vertex the UI asked for was drawn. */
+int RB_ImmStreamVerts( void )
+{
+	return s_streamNumVerts;
 }
 
 static qboolean	s_clipPlaneEnabled;

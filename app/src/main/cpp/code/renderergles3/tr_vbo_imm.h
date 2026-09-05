@@ -55,6 +55,7 @@ void RB_ImmEnd( void );
 void RB_ImmFlush( void );
 
 void RB_ImmEndDeferred( void );
+int  RB_ImmStreamVerts( void );
 
 #ifdef __cplusplus
 }

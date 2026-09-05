@@ -150,6 +150,13 @@ static void DrawNormals (shaderCommands_t *input, int pass) {
 void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	shader_t	*state;
 
+	/* Opening a surface resets the tess, which would silently discard anything
+	   the 2D batch still holds.  Drawing it first is the one rule that covers
+	   every caller of this function, including the ones that are not the 2D
+	   path: a batch is only ever open on the thread that opened it, so this is
+	   a no-op for the 3D pass. */
+	RB_2D_Flush();
+
 	state = shader->remappedShader ? shader->remappedShader : shader;
 
 	tess.numIndexes = 0;
