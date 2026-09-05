@@ -2630,11 +2630,19 @@ void Com_Frame( void ) {
 		timeBeforeFirstEvents = Sys_Milliseconds ();
 	}
 
+#ifdef __ANDROID__
+    /* Android: pinned to 60.  The uncapped arm was diagnosis scaffolding for the
+     * menu swing; the swing was the 2D per-call cost, now batched, so the cap
+     * comes back.  Fixed rather than read off com_maxfps, whose archived value
+     * is 85 and would oversubmit against a 60 Hz panel. */
+    minMsec = 1000 / 60;
+#else
     if ( com_dedicated->integer || com_maxfps->integer <= 0 || com_timedemo->integer ) {
         minMsec = 1;
     } else {
         minMsec = 1000 / com_maxfps->integer;
     }
+#endif
 
     if ( minMsec < 1 ) {
         minMsec = 1;
