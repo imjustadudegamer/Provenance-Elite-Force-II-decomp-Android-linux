@@ -371,7 +371,7 @@ void CG_PrepRefresh(void)
     cgi.Cmd_Stuff("ui_enableinventory\n");
     CGP_LEG_END(4);
 
-    LOADHANG_PROBE("cgprep",
+    LOADSTALL_PROBE("cgprep",
                    "total=%d world=%d inline=%d media=%d sweep=%d tail=%d"
                    " inlineN=%d cgsounds=%d walkFrames=%d walkEmpty=%d walkCmd=%d walkHit=%d\n",
                    s_cgpLegs[0] + s_cgpLegs[1] + s_cgpLegs[2] + s_cgpLegs[3] + s_cgpLegs[4],
@@ -537,7 +537,7 @@ void CG_GameStateReceived(void)
     CG_Precache();  
     CGG_LEG_END(9);
 
-    LOADHANG_PROBE("cgsplit",
+    LOADSTALL_PROBE("cgsplit",
                    "total=%d memset=%d renderer=%d getgs=%d loading=%d serverinfo=%d"
                    " cmap=%d marks=%d sounds=%d prep=%d precache=%d"
                    " models=%d tikis=%d soundsN=%d lightstyles=%d players=%d cfgstrs=%d\n",
@@ -636,7 +636,7 @@ void CG_Init(clientGameImport_t *imported, int serverMessageNum, int serverComma
 
     cg.cachedViewMode = -1;
 
-    LOADHANG_PROBE( "cginit",
+    LOADSTALL_PROBE( "cginit",
                     "total=%d cvars=%d events=%d cmds=%d gamestate=%d console=%d footprint=%d\n",
                     cgi.Milliseconds() - cginitT0,
                     s_cginitLegs[ 0 ], s_cginitLegs[ 1 ], s_cginitLegs[ 2 ],

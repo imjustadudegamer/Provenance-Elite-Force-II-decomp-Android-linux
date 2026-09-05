@@ -26,8 +26,8 @@ root, for more details.
 #error "define PROBE_PRINT before including qa_probe.h"
 #endif
 
-/* The probes are OFF unless `qa_probe' is 1  (set by hand
- * for a QA run); a release launch pays nothing for the per-event bookkeeping.
+/* The probes are OFF unless `qa_probe' is 1, set by hand for a QA run; a release
+ * launch pays nothing for the per-event bookkeeping.
  * qa_probe gates the per-EVENT recorders only: every per-frame and per-window
  * instrument has its own cvar, and all of those default to 0 as well, so a default
  * launch prints nothing.  smp_texCache stays
@@ -91,7 +91,7 @@ static inline qboolean PROBE_Throttle(int *counter, int first, int every)
 // happened.  These links use Com_Printf, which retail's reset does not touch.
 #define WIDGETM1_PROBE(tag, ...) PROBE_EMIT("[WIDGET:M1:", tag, __VA_ARGS__)
 
-#define LOADHANG_PROBE(tag, ...) PROBE_EMIT("[LOADHANG:", tag, __VA_ARGS__)
+#define LOADSTALL_PROBE(tag, ...) PROBE_EMIT("[LOADSTALL:", tag, __VA_ARGS__)
 
 #include <stdlib.h>
 

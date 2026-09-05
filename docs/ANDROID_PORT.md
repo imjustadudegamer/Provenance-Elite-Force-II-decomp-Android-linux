@@ -66,7 +66,8 @@ stays at retail's 0.60: raising dialogue alone meets the target, so the effects
 side is untouched. `s_dialogvolume` is `CVAR_ARCHIVE`, so the value also ships as
 `seta s_dialogvolume 0.96` in `EF2_ANDROID_DEFAULT_COMMANDS` (with
 `ANDROID_DEFAULTS_VERSION` bumped) for an install whose `config.cfg` already
-
+archived retail's 0.60. Both gains are computed from the port's own source
+arithmetic, before and after; the default must not be "corrected" back to 0.60.
 
 ### In-game HUD scale
 

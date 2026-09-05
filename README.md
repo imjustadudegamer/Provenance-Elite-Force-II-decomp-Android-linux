@@ -158,7 +158,6 @@ The Linux build is in [Linux](#linux) above. Its output lands in
 `build-linux-gles3/Release/`. The gate for every change is a clean rebuild at
 0 warnings and 0 errors, and `ldd -r` reporting 0 undefined symbols on all five.
 
-
 ## Documentation
 
 Start at `docs/ARCHITECTURE.md`. `docs/BUILD.md` covers both targets,

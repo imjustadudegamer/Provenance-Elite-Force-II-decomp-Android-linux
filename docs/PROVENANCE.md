@@ -30,30 +30,28 @@ machine-checked:
   `renderergl1/` backends by filename, because the port's renderer is a renamed
   GLES 3.0 descendant of them, not port-original code.
 - `LICENSING.md` states what each bucket means and why no single licence covers
-  the tree. `tools/license_lint.py`,
-  fails if a file carries no notice or two conflicting ones.
+  the tree. `tools/license_lint.py` fails if a file carries no notice or two
+  conflicting ones.
 
 ## The citation register
 
-The reverse-engineering claims and the source comments that carried them are
-recorded in `personal/RE_REFERENCE_CITATIONS.tsv`, one row per comment
-(`file`, `line`, `kind`, `comment`). A claim stays recorded there,
-checkable in the tree that carries it. The
+The reverse-engineering claims are recorded in
+`personal/RE_REFERENCE_CITATIONS.tsv`, one row per claim (`file`, `line`,
+`kind`, `comment`), so a claim stays checkable in the tree that carries it. The
 fuller engineering notes are kept off the repository, on disk only.
 
 ## Evidence is untracked
 
 The decompile corpus, the retail binary and the SDK source are retail-derived
 and are never published, so `personal/evidence/` and `personal/oracle/` are
-gitignored and live on disk only. The tooling says so loudly
-corpus is absent.
+gitignored and live on disk only. The tooling that reads them says so loudly
+when a corpus is absent.
 
 ## Rules on this tree
 
-- **Nothing is executed to prove a claim.** Nothing in the tree runs
-  the game, an engine binary, a probe or a first-light executable. Evidence comes
-  from static reads, raw-word assertions, offline replays of the shipping code
-  and shipped-asset censuses. 
+- **Nothing is executed to prove a claim.** Nothing in the tree runs the game,
+  an engine binary, a probe or a first-light executable. Evidence comes from
+  static reads, raw-word assertions and shipped-asset censuses.
 - **No log carries a network address.** Diagnostics keep the port, the state and
   the failure reason; the address-free form is `NET_AdrToLogString`.
 - **Startup logging is minimal.** The engine prints the device model and the CPU

@@ -168,7 +168,7 @@ endif()
 # loader (qgl_gles3.c) and the SAME first-light core (gles3_firstlight.c) as
 # the renderer, and prints the [GLES3:firstlight] rows from actual pixel
 # readback.  It exists so the gate proves first light with pixels instead of
-# trusting that the marker string 
+# trusting that the marker string is in the .so.
 # ---------------------------------------------------------------------------
 if(NOT ANDROID AND NOT EMSCRIPTEN)
     add_executable(gles3_firstlight
@@ -197,7 +197,8 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
     # smp-texcache: the cache probe links the SAME tr_texcache.c and the SAME
     # tr_hwtex.c chain builder the renderer ships -- tr_texcache.c is compiled
     # with SMP_TEXCACHE_STANDALONE so it drops only the ri adapter, and the
-    # probe supplies a host-filesystem IO table.  So the cache logic it certifies (key, header, validation, fallback, eviction) is the
+    # probe supplies a host-filesystem IO table.  So the cache logic it
+    # certifies (key, header, validation, fallback, eviction) is the
     # logic that ships, and the bytes it round-trips are the bytes the renderer
     # uploads.
     add_executable(smp_texcache_probe
@@ -214,7 +215,8 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
     # ships (compiled with PROGCACHE_STANDALONE, which drops only the
     # engine adapter) and drives it through the two vtables with a fake driver
     # and a host filesystem.  So the format, the fingerprint, the key
-    # derivation, the restore verification and the fallback it certifies are the ones that ship.
+    # derivation, the restore verification and the fallback it certifies are the
+    # ones that ship.
     add_executable(progcache_probe
         ${SOURCE_DIR}/renderergles3/progcache_probe.c
         ${SOURCE_DIR}/renderergles3/tr_program_cache.c)
@@ -229,7 +231,7 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
     # -- retrievable hint -> delete the shaders -> glGetProgramBinary ->
     # glProgramBinary into a fresh program -> an IDENTICAL interface -- is
     # tested here and not only against the fake driver.  It exits 77 when the
-    # host has no ES3 context, and callers treat that as SKIP.
+    # host has no ES3 context, which callers treat as SKIP.
     add_executable(progcache_gl_probe
         ${SOURCE_DIR}/renderergles3/progcache_gl_probe.c
         ${SOURCE_DIR}/renderergles3/tr_program_cache.c)

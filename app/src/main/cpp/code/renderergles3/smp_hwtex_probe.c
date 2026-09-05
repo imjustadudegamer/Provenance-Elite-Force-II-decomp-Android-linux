@@ -456,7 +456,7 @@ int main(void)
 			}
 		}
 		if (g_fault) {
-			printf("  [self-check: encoder input corrupted, comparison must FAIL]\n");
+			printf("  [self-check: encoder input corrupted, the comparison must FAIL]\n");
 		}
 		if (gpu_decode(W, H, fmt, enc, nb * SMP_TEXC_BLOCK_BYTES, got) == 0) {
 			report(tag, ref, got, W, H);

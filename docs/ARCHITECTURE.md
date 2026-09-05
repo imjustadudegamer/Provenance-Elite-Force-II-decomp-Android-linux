@@ -14,7 +14,7 @@ one tree.
 | `app/src/main/cpp/` | **all native source**: the engine modules, the renderer, the vendored third-party libraries, the CMake build |
 | `docs/` | project documentation (this file, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`) and `docs/closeouts/` for historical material |
 | `docs/scripts/` | the build/capture wrappers |
-| `tools/` | release tooling: the notice codemod, `license_lint.py`, `provenance_ledger.py` |
+| `tools/` | release tooling: the notice codemod, `license_lint.py`, `ship_text_lint.py`, `provenance_ledger.py` |
 | `LICENSING.md`, `PROVENANCE.tsv`, `COPYING.txt` | the licence statement, the per-file provenance ledger and the GPLv2 text. `docs/EF2-SDK-licenseAgreement.txt` is the Ritual SDK agreement, shipped verbatim |
 | `personal/evidence/`, `personal/oracle/` | untracked, on-disk-only material: the Mac PPC decompile corpus, the retail binary, the capture corpora |
 

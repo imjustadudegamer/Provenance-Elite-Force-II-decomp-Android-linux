@@ -380,7 +380,7 @@ void CL_ParseGamestate( msg_t *msg ) {
 
 	WIDGETM1_PROBE( "gs", "PREV state=%d serverId=%d checksumFeed=%d", cls.state, cl.serverId, clc.checksumFeed );
 
-	LOADHANG_PROBE( "gsparse", "state=%d serverId=%d checksumFeed=%d realtime=%d\n",
+	LOADSTALL_PROBE( "gsparse", "state=%d serverId=%d checksumFeed=%d realtime=%d\n",
 	            cls.state, cl.serverId, clc.checksumFeed, cls.realtime );
 
 	clc.connectPacketCount = 0;

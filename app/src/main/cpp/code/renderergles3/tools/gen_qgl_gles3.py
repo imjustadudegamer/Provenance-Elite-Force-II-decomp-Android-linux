@@ -23,9 +23,9 @@
 # QGL_GLES3_32_PROCS is expanded the same four ways beside it.  One source of
 # truth, so "declared but never defined" cannot happen.
 #
-# RE-RUN CHECK (armed): re-running this
-# script and diffs the result against the committed file.  If a Khronos header
-# on the machine disagrees with the committed header, the diff shows it.
+# RE-RUN CHECK: re-running this script and diffing the result against the
+# committed file shows a Khronos header on the machine that disagrees with the
+# committed one.
 #
 # Usage:
 #   python3 tools/gen_qgl_gles3.py [path-to-gl3.h] [path-to-gl32.h] > qgl_gles3_procs.h
@@ -87,10 +87,9 @@ def gl3_prototypes(path):
 def renderer_call_sites():
     """Every `qgl<Name>(' the renderer's own sources spell out.
 
-    Every qgl name the renderer every qgl name the renderer
-    references is declared by the loader, so the derivation here has to be the
-    same walk over the same files: one regex, every .c/.cpp/.h under
-    renderergles3, comments and strings included.
+    Every qgl name the renderer references must be declared by the loader, so
+    this walks the renderer the way a reader would: one regex, every
+    .c/.cpp/.h under renderergles3, comments and strings included.
     """
     used = set()
     call = re.compile(r"\bqgl([A-Za-z0-9_]+)\s*\(")
