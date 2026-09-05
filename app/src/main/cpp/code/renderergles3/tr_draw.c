@@ -58,14 +58,14 @@ void R_Invalidate2DWindowCache( void ) {
 typedef enum {
 	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
 	D2P_tilepicoffset, D2P_trianglepic, D2P_bgsub, D2P_bgpixels, D2P_box,
-	D2P_lineloop, D2P_setwindow, D2P_scissor, D2P_shadertime,
+	D2P_lineloop, D2P_setwindow, D2P_scissor, D2P_shadertime, D2P_drawstring,
 	D2P_SLOTS
 } d2phase_t;
 
 static const char *s_d2Name[D2P_SLOTS] = {
 	"flush", "setcolor", "stretchpic", "stretchpic2", "tilepic",
 	"tilepicoffset", "trianglepic", "bgsub", "bgpixels", "box",
-	"lineloop", "setwindow", "scissor", "shadertime"
+	"lineloop", "setwindow", "scissor", "shadertime", "drawstring"
 };
 
 typedef struct { int calls; int usec; int max; } d2row_t;
@@ -587,6 +587,15 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 
 	if (!backEnd.in2D)
 	{
+		/* The 3D view is still what is on screen here: the viewport has not been
+		   moved and no 2D quad has been issued since it finished. */
+		{
+			GLint	vp[4];
+
+			qglGetIntegerv( GL_VIEWPORT, vp );
+			GLES3_PixelProbe( "view", vp[0] + vp[2] / 2 - 8, vp[1] + vp[3] / 2 - 8, 16, 16 );
+		}
+
 		backEnd.refdef.time = ri.Milliseconds();
 		backEnd.in2D = qtrue;
 		backEnd.refdef.floatTime = backEnd.refdef.time / 1000.0;
@@ -619,6 +628,18 @@ void RB_2D_ShaderTime( float startTime ) {
 }
 
 /* ---- entry points: record under r_smp, run the body otherwise ---- */
+
+/* A string's renderer cost, in the same roll as the quads.  The load-game menu
+ * draws ~29 labels a frame and the UI probe charges the whole of it to
+ * UIFakkLabel; without this slot the roll cannot say how much of that is the
+ * renderer and how much is the widget's own measure-and-wrap work. */
+void D2_StringBegin( int *t0 ) {
+	*t0 = D2_T0();
+}
+
+void D2_StringEnd( int t0 ) {
+	D2_End( D2P_drawstring, t0 );
+}
 
 void Draw_SetColor(const vec4_t rgba) {
 	int	t0 = D2_T0();

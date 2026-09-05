@@ -443,6 +443,13 @@ static void FillCloudySkySide( const int mins[2], const int maxs[2], qboolean ad
 			tess.texCoords[tess.numVertexes][0][0] = s_skyTexCoords[t][s][0];
 			tess.texCoords[tess.numVertexes][0][1] = s_skyTexCoords[t][s][1];
 
+			/* Same class as the font glyph quad: these vertices bypass
+			   addTriangle, so the dome drew in the last colour in the array. */
+			tess.vertexColors[tess.numVertexes][0] = 255;
+			tess.vertexColors[tess.numVertexes][1] = 255;
+			tess.vertexColors[tess.numVertexes][2] = 255;
+			tess.vertexColors[tess.numVertexes][3] = 255;
+
 			tess.numVertexes++;
 
 			if ( tess.numVertexes >= SHADER_MAX_VERTEXES )
@@ -452,9 +459,11 @@ static void FillCloudySkySide( const int mins[2], const int maxs[2], qboolean ad
 		}
 	}
 
+	tess.vertexColorValid = qtrue;
+
 	if ( addIndexes ) {
 		for ( t = 0; t < tHeight-1; t++ )
-		{	
+		{
 			for ( s = 0; s < sWidth-1; s++ )
 			{
 				tess.indexes[tess.numIndexes] = vertexStart + s + t * ( sWidth );

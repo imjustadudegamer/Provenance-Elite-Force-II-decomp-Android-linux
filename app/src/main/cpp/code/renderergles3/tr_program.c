@@ -1521,8 +1521,21 @@ void GLES3_SetupStageUniforms( gles3Program_t *p, const shaderStage_t *pStage, c
 	}
 	GLES3_SetUniform4fv( p, GLES3_U_BASECOLOR, baseColor );
 
-	GLES3_SetUniform1i( p, GLES3_U_COLORGEN, cpuColor ? (int)CGEN_EXACT_VERTEX : (int)pStage->rgbGen );
-	GLES3_SetUniform1i( p, GLES3_U_ALPHAGEN, cpuColor ? (int)AGEN_SKIP : (int)pStage->alphaGen );
+	/* In 2D every quad already carries Draw_SetColor per vertex, and u_BaseColor
+	   is pinned to 1 above -- so a CGEN_GLOBAL_COLOR / AGEN_GLOBAL_ALPHA arm here
+	   would read that 1 and draw the atlas's own colour, which for the font pages
+	   is white.  Read the vertex instead: the same arms the CPU-colour arm uses.
+	   In 3D u_BaseColor carries the global colour, exactly as before. */
+	if ( backEnd.in2D && !cpuColor )
+	{
+		GLES3_SetUniform1i( p, GLES3_U_COLORGEN, (int)CGEN_EXACT_VERTEX );
+		GLES3_SetUniform1i( p, GLES3_U_ALPHAGEN, (int)AGEN_SKIP );
+	}
+	else
+	{
+		GLES3_SetUniform1i( p, GLES3_U_COLORGEN, cpuColor ? (int)CGEN_EXACT_VERTEX : (int)pStage->rgbGen );
+		GLES3_SetUniform1i( p, GLES3_U_ALPHAGEN, cpuColor ? (int)AGEN_SKIP : (int)pStage->alphaGen );
+	}
 
 	GLES3_SetUniform1f( p, GLES3_U_ALPHAMIN, pStage->alphaMin );
 	GLES3_SetUniform1f( p, GLES3_U_ALPHAMAX, pStage->alphaMax );
@@ -2379,6 +2392,52 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		k.vc0        = *(const unsigned *)&input->vertexColors[0];
 
 		GLES3_DrawCensusKey( &k, backEnd.in2D ? qtrue : qfalse );
+	}
+
+	/* Where a 3D surface actually lands on screen.  The menu's ship submits its
+	   draws every frame and reaches no pixel; a box off [0,1]x[0,1] names the
+	   loss a transform/position loss and a box inside one names a raster loss. */
+	if ( !backEnd.in2D && input->numVertexes > 0 && R_ProbeStatsOn()
+		 && !Q_stricmpn( shader->name, "menu/", 5 ) )
+	{
+		static int	s_gles3BBoxRows;
+		const float	*mv = RB_GetModelViewMatrix();
+		const float	*proj = RB_GetProjectionMatrix();
+		float		mvp[16], px, py, pz, pw;
+		float		minx, miny, minz, maxx, maxy, maxz, minw, maxw;
+		int			v;
+
+		GLES3_Mat4Mul( mvp, proj, mv );
+
+		minx = miny = minz = minw = 1e30f;
+		maxx = maxy = maxz = maxw = -1e30f;
+		for ( v = 0; v < input->numVertexes; v++ )
+		{
+			const float *p = input->xyz[v];
+
+			px = mvp[0] * p[0] + mvp[4] * p[1] + mvp[8]  * p[2] + mvp[12];
+			py = mvp[1] * p[0] + mvp[5] * p[1] + mvp[9]  * p[2] + mvp[13];
+			pz = mvp[2] * p[0] + mvp[6] * p[1] + mvp[10] * p[2] + mvp[14];
+			pw = mvp[3] * p[0] + mvp[7] * p[1] + mvp[11] * p[2] + mvp[15];
+
+			if ( px < minx ) minx = px;
+			if ( px > maxx ) maxx = px;
+			if ( py < miny ) miny = py;
+			if ( py > maxy ) maxy = py;
+			if ( pz < minz ) minz = pz;
+			if ( pz > maxz ) maxz = pz;
+			if ( pw < minw ) minw = pw;
+			if ( pw > maxw ) maxw = pw;
+		}
+
+		s_gles3BBoxRows++;
+		if ( s_gles3BBoxRows <= 12 || ( s_gles3BBoxRows % 240 ) == 0 )
+		{
+			ri.Printf( PRINT_ALL,
+				"[GLES3:bbox] sh=%s n=%d ndc=(%.3f..%.3f, %.3f..%.3f, %.3f..%.3f) w=(%.3f..%.3f) f=%d\n",
+				shader->name, input->numVertexes,
+				minx, maxx, miny, maxy, minz, maxz, minw, maxw, RB_FrameCount() );
+		}
 	}
 
 	if ( shader == tr.defaultShader )

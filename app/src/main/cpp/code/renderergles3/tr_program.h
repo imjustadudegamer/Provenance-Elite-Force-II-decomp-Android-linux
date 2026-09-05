@@ -340,7 +340,8 @@ void		GLES3_BindProgram( gles3Program_t *p );
 void		GLES3_RefreshClipPlane( void );
 
 gles3Program_t	*GLES3_BeginFamily( unsigned family, int texEnv );
-void		GLES3_Begin2D( int texEnv );		
+void		GLES3_PixelProbe( const char *src, int x, int y, int w, int h );
+void		GLES3_Begin2D( int texEnv );
 void		GLES3_BeginWire( void );		
 void		GLES3_BeginSprite( void );		
 void		GLES3_BeginSunflare( void );		

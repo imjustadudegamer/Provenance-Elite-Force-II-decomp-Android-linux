@@ -853,6 +853,8 @@ skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
     skelAnimDataGameHeader_t *finishedHeader;
     char                     *buffer;
     char                      npath[256];
+    int                       t0;
+    int                       r0;
 
     Skel_ExtractFileExtension(path, extension);
 
@@ -860,15 +862,21 @@ skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
         Com_DPrintf("Skeletor CacheAnimSkel: %s: File extension unknown.  Attempting to open as skc file\n", path);
     }
 
+    t0 = TIKI_SkelRollStart();
+
     Q_strncpyz(npath, "newanim/", sizeof(npath));
     Q_strcat(npath, sizeof(npath), path);
 
+    r0 = Com_Milliseconds();
     iBuffLength = TIKI_ReadFileEx(npath, (void **)&buffer, qtrue);
+    TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0);
     if (iBuffLength > 0) {
         finishedHeader = skeletor_c::LoadProcessedAnim(npath, buffer, iBuffLength, path);
         TIKI_FreeFile(buffer);
     } else {
+        r0 = Com_Milliseconds();
         iBuffLength = TIKI_ReadFileEx(path, (void **)&pHeader, qtrue);
+        TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0);
         if (iBuffLength <= 0) {
             Com_DPrintf("Skeletor CacheAnimSkel: Could not open binary file %s\n", path);
             return NULL;
@@ -917,6 +925,8 @@ skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
 
         TIKI_FreeFile(pHeader);
     }
+
+    TIKI_SkelRollEnd(t0);
 
     Com_sprintf(tempName, sizeof(tempName), "g%s", path);
     UI_LoadResource(tempName);

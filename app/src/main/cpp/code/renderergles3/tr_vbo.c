@@ -155,6 +155,8 @@ static qboolean	s_arenaActive;
 static qboolean	s_arenaFull;
 static int		s_arenaFrame = -1;
 static cvar_t	*s_arenaCvar;
+/* The A/B arm the frame is on: 1 while the per-frame store is it. */
+static int		 s_arenaAlternate = -1;
 /* Batches the store could not hold, which the ring drew instead. */
 static int		s_arenaFall;
 
@@ -1062,12 +1064,27 @@ static void RB_VboArenaShutdown( void ) {
 
 void RB_VBO_BeginFrame( void ) {
 	if ( !s_arenaCvar ) {
-		/* Default off: one store per frame orphans two large buffers a frame, which
-		 * regressed frame time on Mali-class GPUs relative to the ring; set
-		 * r_tessArena 1 to re-enable. */
-		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
+		/* 2 is the A/B: eight seconds of store, eight of ring, alternating for as
+		 * long as the session lasts.  The suspicion that the store regressed Mali
+		 * was never measured with an instrument that could see the send, so the
+		 * two arms now report side by side -- [BE:send] carries `arena=` and the
+		 * flip row below names the boundary, so one session reads both. */
+		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "2", 0 );
 	}
-	if ( !s_arenaCvar->integer ) {
+	if ( s_arenaCvar->integer == 2 ) {
+		int		on = ( ri.Milliseconds() / 8000 ) & 1;
+
+		if ( on != s_arenaAlternate ) {
+			s_arenaAlternate = on;
+			ri.Printf( PRINT_ALL, "[BE:arm] r_tessArena A/B -> %s f=%d\n",
+					   on ? "store" : "ring", RB_FrameCount() );
+		}
+		if ( !on ) {
+			s_arenaActive = qfalse;
+			s_arenaFull = qtrue;
+			return;
+		}
+	} else if ( !s_arenaCvar->integer ) {
 		s_arenaActive = qfalse;
 		s_arenaFull = qtrue;
 		return;
