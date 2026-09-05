@@ -289,11 +289,7 @@ void RB_2D_Flush( void ) {
 	}
 }
 
-/* Ownership is the rule the crash came from: the open batch holds a shader_t *
-   and the deferred box run holds a program uniform, and both outlive a Hunk_Clear
-   that frees the shader under them.  RE_BeginRegistration and R_Shutdown call
-   this before they free, so the batch is drawn while its shader is still live
-   and nothing is left dangling across the purge. */
+/* The open batch holds a shader_t * that a purge frees; draw it first. */
 void RB_2D_OwnersPurged( void ) {
 	RB_2D_Flush();
 	GLES3_CensusInvalidate();
@@ -446,15 +442,9 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	gles3Program_t	*p2d;
 	int				 wantBlend = blend ? 1 : 0;
 
-	/* A solid box is six vertices of one GL_TRIANGLES run, so consecutive boxes
-	   share the run and the program setup; the blend state is the only thing
-	   that splits it.  Colour is per vertex like the quads': it went through
-	   u_BaseColor, which is a uniform on the one 2D family program and so
-	   shared with RE_DrawBackground_*, which writes 1,1,1,1 into it -- a box
-	   run left open across a background draw came out uncoloured and the
-	   background came out in the box's colour.  The run is flushed by
-	   RB_ImmBegin when it fills, and the tess batch is flushed first because
-	   the two live in different stores. */
+	/* Consecutive boxes share one run and its program setup; blend splits it.
+	   Colour is per vertex: u_BaseColor is a uniform on the one 2D family
+	   program, shared with RE_DrawBackground_*. */
 	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) {
 		RB_2D_Flush();
 
@@ -655,10 +645,7 @@ void Draw_SetColor(const vec4_t rgba) {
 		return;
 	}
 
-	/* Colour reaches both stores per vertex -- the quads through RB_Color4f, the
-	   boxes through RB_ImmColor4f -- so a colour change splits neither, and this
-	   is the call that cost 299 of the menu's 366 ms of body when it flushed the
-	   batch on every change. */
+	/* Colour is per vertex in both stores, so a change splits neither. */
 	RB_2D_SetColor( r_color2D );
 
 	D2_End( D2P_setcolor, t0 );
@@ -899,9 +886,7 @@ void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
 	{
 		gles3Program_t	*p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
 
-		/* The 2D family program's colour is per vertex everywhere now, so the
-		   background states its multiplier instead of inheriting whatever the
-		   last user of this program left in the uniform. */
+		/* State the multiplier rather than inherit whatever ran last. */
 		GLES3_SetBaseColor4f( p2d, 1.0f, 1.0f, 1.0f, 1.0f );
 		RB_ImmBegin( GL_TRIANGLES );
 

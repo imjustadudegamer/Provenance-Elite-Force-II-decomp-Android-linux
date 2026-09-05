@@ -2365,8 +2365,7 @@ void Entity::setModel(const char *mdl)
         g_restoreSplitUs[GRS_NUMSURF] += GRS_NOW() - ns0;
         g_restoreSplitN[GRS_NUMSURF]++;
 
-        /* One row per model leg that outcosts a frame.  The aggregate names the
-           call; only this names the model, and the fix is per model. */
+        /* The aggregate names the call; only this names the model. */
         if (PROBE_On() && LoadingSavegame) {
             long long leg = GRS_NOW() - leg0;
 

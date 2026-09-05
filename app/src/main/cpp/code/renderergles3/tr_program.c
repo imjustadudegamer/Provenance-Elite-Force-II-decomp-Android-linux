@@ -1867,20 +1867,22 @@ static unsigned GLES3_CensusHashKey( const gles3DrawKey_t *k ) {
 	return h;
 }
 
-static qboolean GLES3_CensusKeyEqual( const gles3DrawKey_t *a, const gles3DrawKey_t *b ) {
-	return ( a->defines == b->defines && a->stateBits == b->stateBits
-		  && a->vc0 == b->vc0 && a->rgbGen == b->rgbGen && a->alphaGen == b->alphaGen
-		  && a->tcGen0 == b->tcGen0 && a->tcGen1 == b->tcGen1
-		  && a->cpuColor == b->cpuColor && a->cpuTexCoords == b->cpuTexCoords
-		  && !Q_stricmp( a->shader, b->shader ) && !Q_stricmp( a->prog, b->prog )
-		  && !Q_stricmp( a->img0, b->img0 ) && !Q_stricmp( a->img1, b->img1 ) ) ? qtrue : qfalse;
-}
-
 typedef struct {
-	char		*key;			
+	char		*key;
 	unsigned	count;
-	gles3DrawKey_t k;		
+	unsigned	hash;
+	gles3DrawKey_t k;
 } gles3CensusKey_t;
+
+/* A key's strings are raw pointers it does not own; the slot hash is the identity. */
+static qboolean GLES3_CensusKeyEqual( const gles3CensusKey_t *a, const gles3DrawKey_t *b,
+									  unsigned hash ) {
+	return ( a->hash == hash
+		  && a->k.defines == b->defines && a->k.stateBits == b->stateBits
+		  && a->k.vc0 == b->vc0 && a->k.rgbGen == b->rgbGen && a->k.alphaGen == b->alphaGen
+		  && a->k.tcGen0 == b->tcGen0 && a->k.tcGen1 == b->tcGen1
+		  && a->k.cpuColor == b->cpuColor && a->k.cpuTexCoords == b->cpuTexCoords ) ? qtrue : qfalse;
+}
 
 typedef struct {
 	gles3CensusKey_t	*keys;
@@ -1901,12 +1903,7 @@ static gles3Census_t	s_gles3Census3D;
 static gles3Census_t	s_gles3Census2D;
 static unsigned			s_censusGeneration;
 
-/* A key keeps shader_t::name, image_t::imgName and the program name as raw
-   pointers it cannot own, and GLES3_CensusKeyEqual dereferences them.  Every
-   Hunk_Clear frees the first two, so the cache is dropped at the same
-   invalidation that flushes the 2D batch instead of compared against freed
-   pages.  Pixel 8, 0.3.8: signal 11 SEGV_ACCERR in Q_stricmp off
-   GLES3_DrawStage four seconds after "Unloading ClientGame". */
+/* Bounds the cache to one registration's names; equality no longer reads them. */
 void GLES3_CensusInvalidate( void ) {
 	s_censusGeneration++;
 }
@@ -2023,8 +2020,8 @@ static void GLES3_DrawCensusKey( const gles3DrawKey_t *k, qboolean in2D ) {
 	slot = (int)( h & ( GLES3_CENSUS_HASHSIZE - 1 ) );
 	while ( c->hash[slot] ) {
 		idx = c->hash[slot] - 1;
-		if ( GLES3_CensusKeyEqual( &c->keys[idx].k, k ) ) {
-			c->keys[idx].count++;			
+		if ( GLES3_CensusKeyEqual( &c->keys[idx], k, h ) ) {
+			c->keys[idx].count++;
 			goto summary;
 		}
 		slot = ( slot + 1 ) & ( GLES3_CENSUS_HASHSIZE - 1 );
@@ -2059,6 +2056,7 @@ static void GLES3_DrawCensusKey( const gles3DrawKey_t *k, qboolean in2D ) {
 		Com_Memcpy( c->keys[idx].key, key, len );
 		c->keys[idx].key[len] = '\0';
 		c->keys[idx].count = 1;
+		c->keys[idx].hash = h;
 		c->keys[idx].k = *k;
 		c->hash[slot] = idx + 1;
 	}

@@ -1291,9 +1291,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 			s_sendWrites += writes;
 			s_sendVerts += input->numVertexes;
 
-			/* [BE:send] put 335 ms of a second window in the upload phase and
-			   could not say which arm paid.  A single phase that outcosts a
-			   frame is the wobble; name the arm before the roll drowns it. */
+			/* A phase that outcosts a frame is the wobble; name the arm. */
 			if ( phase >= 2000 ) {
 				s_sendStalls++;
 				if ( s_sendStallShown < 8 || ( s_sendStalls % 64 ) == 0 ) {
