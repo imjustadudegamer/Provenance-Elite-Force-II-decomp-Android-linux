@@ -36,6 +36,15 @@ extern "C" {
     void TIKI_FreeFile(void *buffer);
     int  TIKI_ReadFileEx(const char *qpath, void **buffer, qboolean quiet);
 
+    int  TIKI_SkelRollStart( void );
+    void TIKI_SkelRollRead( int bytes, int ms );
+    void TIKI_SkelRollEnd( int t0 );
+
+    int  TIKI_Millis( void );
+    void TIKI_TikiRollParse( int ms );
+    void TIKI_TikiRollBuild( int ms );
+    void TIKI_TikiRoll( void );
+
     void TIKI_UpdateScreen(void);
 
 #ifdef __cplusplus

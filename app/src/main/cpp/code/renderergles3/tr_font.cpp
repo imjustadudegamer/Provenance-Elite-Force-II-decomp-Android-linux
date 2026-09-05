@@ -739,9 +739,10 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
     float charHeight;
     float startx, starty;
     int i;
-    int curPage; 
+    int curPage;
     float fWidthScale, fHeightScale;
     int record;
+    int s_fontStringT0 = 0;
 
     i = 0;
     startx = x;
@@ -772,6 +773,7 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         /* The string opens its own surface below, and RB_BeginSurface resets the
            tess -- so the 2D batch has to be drawn first or every quad appended
            since the last flush is dropped on the floor. */
+        D2_StringBegin(&s_fontStringT0);
         RB_2D_Flush();
         R_FlushRenderCommands();
     }
@@ -938,6 +940,22 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
             }
 
             x += s_fontGeneralScale * loc->size[0] * 256.0;
+
+            /* The glyph quad bypasses addTriangle, so without this it draws in
+               whatever colour the previous surface left in the array -- white
+               text on a white button.  Same bytes the 2D quads carry. */
+            {
+                int v;
+
+                for (v = 0; v < 4; v++) {
+                    tess.vertexColors[tess.numVertexes + v][0] = backEnd.color2D[0];
+                    tess.vertexColors[tess.numVertexes + v][1] = backEnd.color2D[1];
+                    tess.vertexColors[tess.numVertexes + v][2] = backEnd.color2D[2];
+                    tess.vertexColors[tess.numVertexes + v][3] = backEnd.color2D[3];
+                }
+                tess.vertexColorValid = qtrue;
+            }
+
             tess.numVertexes += 4;
             tess.numIndexes += 6;
             break;
@@ -950,6 +968,11 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         } else {
             RB_EndSurface();
         }
+    }
+
+    if (s_fontStringT0) {
+        D2_StringEnd(s_fontStringT0);
+        s_fontStringT0 = 0;
     }
 }
 

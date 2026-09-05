@@ -1649,6 +1649,8 @@ void RB_2D_ShaderTime( float startTime );
  * recorded, so a skipped duplicate can never leave 3D state in force. */
 void R_Invalidate2DWindowCache( void );
 void RB_2D_Flush( void );
+void D2_StringBegin( int *t0 );
+void D2_StringEnd( int t0 );
 /* Draws the batch and drops the census before a purge frees the names they hold. */
 void RB_2D_OwnersPurged( void );
 qboolean R_PendingRenderCommands( void );

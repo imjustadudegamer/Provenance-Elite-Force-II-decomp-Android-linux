@@ -40,6 +40,69 @@ static float	s_flipMatrix[16] = {
 	0, 0, 0, 1
 };
 
+/* ---- [GLES3:pix] what the framebuffer actually holds ----------------------
+ * A submitted draw that produces no pixels is invisible from the command list:
+ * the menu 3D view submits 13 draws a frame and the operator sees neither the
+ * dome nor the ship.  Two readbacks name the screen -- one the moment the 3D
+ * view hands back to 2D (so the pixels can only be the 3D pass), one at swap
+ * (so they are what the operator gets).  Mean RGB is enough to tell the panel
+ * art from the clear colour from a textured model. */
+void GLES3_PixelProbe( const char *src, int x, int y, int w, int h ) {
+	static cvar_t		*cvar;
+	static struct {
+		const char	*name;
+		int			rows;
+	}					 seen[6];
+	static int			 seenN;
+	byte				*buf;
+	int				 i, n, r, g, b, a, opaque, slot;
+
+	if ( !cvar ) {
+		cvar = PROBE_GET( "pix_probe", "1", 0 );
+	}
+	if ( !cvar->integer || !PROBE_On() || w < 1 || h < 1 ) {
+		return;
+	}
+
+	for ( slot = 0; slot < seenN; slot++ ) {
+		if ( !strcmp( seen[slot].name, src ) ) {
+			break;
+		}
+	}
+	if ( slot == seenN && seenN < (int)( sizeof( seen ) / sizeof( seen[0] ) ) ) {
+		seen[seenN].name = src;
+		seen[seenN].rows = 0;
+		seenN++;
+	}
+	if ( slot == seenN ) {
+		return;
+	}
+
+	seen[slot].rows++;
+	if ( seen[slot].rows > 4 && ( seen[slot].rows % 120 ) != 0 ) {
+		return;
+	}
+
+	n = w * h;
+	buf = ri.Hunk_AllocateTempMemory( n * 4 );
+	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
+	r = g = b = a = opaque = 0;
+	for ( i = 0; i < n; i++ ) {
+		r += buf[i * 4 + 0];
+		g += buf[i * 4 + 1];
+		b += buf[i * 4 + 2];
+		a += buf[i * 4 + 3];
+		if ( buf[i * 4 + 3] == 255 ) {
+			opaque++;
+		}
+	}
+	ri.Hunk_FreeTempMemory( buf );
+
+	ri.Printf( PRINT_ALL,
+			   "[GLES3:pix] src=%s rect=%d,%d %dx%d mean=%d,%d,%d a=%d opaque=%d/%d f=%d\n",
+			   src, x, y, w, h, r / n, g / n, b / n, a / n, opaque, n, RB_FrameCount() );
+}
+
 void GL_SetFogColor(const vec4_t fColor) {
 	glState.fFogColor[0] = fColor[0];
 	glState.fFogColor[1] = fColor[1];
@@ -668,6 +731,11 @@ void RB_BeginDrawingView (void) {
 	}
 
 	backEnd.in2D = qfalse;
+
+	/* A 2D rect cached here survives the 3D pass it was taken under, and the
+	   next 2D call would then skip re-issuing a scissor the 3D pass overwrote.
+	   Nothing in a view can reuse one, so drop the pair here. */
+	R_Invalidate2DWindowCache();
 
 	SetViewportAndScissor();
 
@@ -1672,6 +1740,8 @@ const void	*RB_SwapBuffers( const void *data ) {
 		qglFinish();
 	}
 
+	GLES3_PixelProbe( "swap", glConfig.vidWidth / 2 - 8, glConfig.vidHeight / 2 - 8, 16, 16 );
+	GLES3_PixelProbe( "swap-q", glConfig.vidWidth / 4 - 8, glConfig.vidHeight / 4 - 8, 16, 16 );
 	GLimp_LogComment( "***************** RB_SwapBuffers *****************\n\n\n" );
 
 	GLimp_EndFrame();

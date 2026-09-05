@@ -197,7 +197,7 @@ dtiki_t *TIKI_RegisterTikiFlags(const char *path, qboolean use)
 {
     dtiki_t     *tiki     = NULL;
     dtikianim_t *tikianim = NULL;
-    const char  *next_path;
+    int          t0;    const char  *next_path;
     str          key;
     str          value;
     const char  *name;
@@ -242,11 +242,16 @@ dtiki_t *TIKI_RegisterTikiFlags(const char *path, qboolean use)
         }
     }
 
+    t0 = TIKI_Millis();
     tikianim = TIKI_RegisterTikiAnimFlags(filename, use);
+    TIKI_TikiRollParse(TIKI_Millis() - t0);
+
+    t0 = TIKI_Millis();
     if (tikianim) {
         size_t defsize = 0;
 
         tiki = TIKI_LoadTikiModel(tikianim, full_filename, &defsize);
+        TIKI_TikiRollBuild(TIKI_Millis() - t0);
         if (tiki) {
             int row;
 
@@ -274,6 +279,7 @@ int TIKI_RegisterTiki(const char *path)
     dtiki_t *tiki;
     int      i;
 
+    TIKI_TikiRoll();
     for (i = 0; i < TIKI_MAX_DEFS; i++) {
         if (s_tikis[i].tiki && !Q_stricmp(s_tikis[i].name, path)) {
             if (s_tikis[i].tiki->a) {
