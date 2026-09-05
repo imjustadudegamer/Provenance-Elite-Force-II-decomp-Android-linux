@@ -26,11 +26,11 @@ root, for more details.
 #error "define PROBE_PRINT before including qa_probe.h"
 #endif
 
-/* The probes are OFF unless `qa_probe' is 1, set by hand for a QA run; a release
- * launch pays nothing for the per-event bookkeeping.
- * qa_probe gates the per-EVENT recorders only: every per-frame and per-window
- * instrument has its own cvar, and all of those default to 0 as well, so a default
- * launch prints nothing.  smp_texCache stays
+/* `qa_probe' is the MASTER instrument switch: 0 silences every probe family,
+ * 1 arms them all.  The family cvars (smp_frameStats, smp_loadStats, be_stats,
+ * ui_stats, smp_serverStats, mem_churnStats, smp_vpProbe, smp_shaderProbe) are
+ * fine-grained overrides that only matter while the master is on; every family
+ * also answers to the master at its gate.  smp_texCache stays
  * 1 -- a feature. */
 #ifdef PROBE_ON_OVERRIDE
 static inline qboolean PROBE_On(void)
@@ -43,7 +43,7 @@ static inline qboolean PROBE_On(void)
 	static cvar_t *v;
 
 	if (!v) {
-		v = PROBE_GET("qa_probe", "0", 0);
+		v = PROBE_GET("qa_probe", "1", 0);
 	}
 	return (v && v->integer) ? qtrue : qfalse;
 }

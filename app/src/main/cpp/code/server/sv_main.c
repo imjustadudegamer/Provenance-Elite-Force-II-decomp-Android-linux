@@ -540,10 +540,10 @@ static void SMP_SVFrameBudget( int totalMsec, int botMsec, int pingMsec, int gam
 	struct { const char *name; int sum; int max; } zone[SMP_SV_MAX_ZONES];
 
 	if ( !smp_serverStats ) {
-		smp_serverStats = Cvar_Get( "smp_serverStats", "0", 0 );
+		smp_serverStats = Cvar_Get( "smp_serverStats", "1", 0 );
 	}
 
-	if ( !smp_serverStats->integer ) {
+	if ( !smp_serverStats->integer || !Cvar_VariableIntegerValue( "qa_probe" ) ) {
 		smp_svFrames = 0;
 		smp_svWindowStart = 0;
 		smp_svTotal = smp_svTotalMax = 0;

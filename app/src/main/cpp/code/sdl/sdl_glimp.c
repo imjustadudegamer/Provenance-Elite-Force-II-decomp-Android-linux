@@ -744,7 +744,11 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		qglClear( GL_COLOR_BUFFER_BIT );
 		SDL_GL_SwapWindow( SDL_window );
 
+#ifdef __ANDROID__
+		if( SDL_GL_SetSwapInterval( 0 ) == -1 )	/* Android: vsync forced off; see gl_gles3_platform.c */
+#else
 		if( SDL_GL_SetSwapInterval( r_swapInterval->integer ) == -1 )
+#endif
 		{
 			ri.Printf( PRINT_DEVELOPER, "SDL_GL_SetSwapInterval failed: %s\n", SDL_GetError( ) );
 		}

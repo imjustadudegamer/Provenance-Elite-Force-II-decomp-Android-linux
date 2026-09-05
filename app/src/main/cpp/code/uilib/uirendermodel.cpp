@@ -17,7 +17,7 @@ Elite Force II SDK agreement.  See LICENSING.md.
 // MENU3D MENU3D TEMP PROBE (change menu3d-menu3d, tree-only, NEVER merge): one
 #define PROBE_GET(name, def, flags) ((cvar_t *)0)
 #define PROBE_PRINT                 Com_Printf
-#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "0")) != 0)
+#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "1")) != 0)
 #include "../qcommon/qa_probe.h"
 
 

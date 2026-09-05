@@ -301,7 +301,14 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		}
 	}
 
+#ifdef __ANDROID__
+	/* Android: vsync is forced off.  A pending swap stalls every subsequent GL
+	 * call on this driver -- buffer writes included -- so a vsync'd sparse frame
+	 * pays the swap inside its writes.  The cvar stays; desktop honours it. */
+	SDL_GL_SetSwapInterval( 0 );
+#else
 	SDL_GL_SetSwapInterval(r_swapInterval->integer);
+#endif
 
 	return qtrue;
 }
@@ -505,8 +512,16 @@ void GLimp_Init(qboolean fixedFunction)
 	gles3_gles3_allow_missing_core =
 		ri.Cvar_Get("gles3_gles3_allow_missing_core", "0", CVAR_TEMP);
 
+#ifdef __ANDROID__
+	/* Android: the full-screen-antialiasing cvars are forced off.  The GLES
+	 * surface never carries multisample attributes, so they were inert anyway;
+	 * pinning them keeps the video menu honest. */
+	r_ati_fsaa_samples = ri.Cvar_Get("r_ati_fsaa_samples", "0", CVAR_ARCHIVE);
+	r_nv_fsaa_samples = ri.Cvar_Get("r_nv_fsaa_samples", "0", CVAR_ARCHIVE | CVAR_LATCH);
+#else
 	r_ati_fsaa_samples = ri.Cvar_Get("r_ati_fsaa_samples", "0", CVAR_ARCHIVE);
 	r_nv_fsaa_samples = ri.Cvar_Get("r_nv_fsaa_samples", "4", CVAR_ARCHIVE | CVAR_LATCH);
+#endif
 
 	if (ri.Cvar_VariableIntegerValue("com_abnormalExit")) {
 		ri.Cvar_Set("r_mode", va("%d", R_MODE_FALLBACK));
@@ -679,7 +694,7 @@ static int	smp_rloadRegBrackets;
 
 int SMP_RLoadNow( void ) {
 	if ( !smp_rloadStats ) {
-		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "0", 0 );
+		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "1", 0 );
 	}
 	return (int)SDL_GetTicks();
 }
@@ -777,7 +792,7 @@ static Uint64	s_bePerUs = 1;
 
 int BE_Armed( void ) {
 	if ( !s_beStats ) {
-		s_beStats = ri.Cvar_Get( "be_stats", "0", 0 );
+		s_beStats = ri.Cvar_Get( "be_stats", "1", 0 );
 	}
 	return ( s_beStats && s_beStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
 }

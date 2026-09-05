@@ -3012,7 +3012,7 @@ void Entity::DamageEvent(Event *ev)
         return;
     }
 
-    if (gi.cvar("qa_probe", "0", 0)->integer && (isSubclassOf(Actor) || isClient())) {
+    if (gi.cvar("qa_probe", "1", 0)->integer && (isSubclassOf(Actor) || isClient())) {
         gi.Printf("[UIVK:dmg] tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f wasdead=%d vic=%s\n",
                   entnum,
                   attacker->entnum,

@@ -27,7 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define PROBE_GET(name, def, flags) ((cvar_t *)0)
 #define PROBE_PRINT                 Com_Printf
-#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "0")) != 0)  
+#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "1")) != 0)  
 #include "../qcommon/qa_probe.h"
 
 #include "../qcommon/qa_ui.h"
