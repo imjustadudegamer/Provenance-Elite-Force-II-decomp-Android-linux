@@ -222,7 +222,6 @@ static qboolean  s_2dBatchOpen;
 static int       s_2dBatchVerts;
 static qboolean  s_2dTriOpen;
 static int       s_2dTriBlend;
-static byte      s_2dTriColor[4];
 static int       s_2dTriVerts;
 static int       s_2dTriBase;
 
@@ -288,6 +287,16 @@ void RB_2D_Flush( void ) {
 		s_d2VertsDrawn += got;
 		RB_ImmFlush();
 	}
+}
+
+/* Ownership is the rule the crash came from: the open batch holds a shader_t *
+   and the deferred box run holds a program uniform, and both outlive a Hunk_Clear
+   that frees the shader under them.  RE_BeginRegistration and R_Shutdown call
+   this before they free, so the batch is drawn while its shader is still live
+   and nothing is left dangling across the purge. */
+void RB_2D_OwnersPurged( void ) {
+	RB_2D_Flush();
+	GLES3_CensusInvalidate();
 }
 
 static void RB_2D_Batch( shader_t *shader ) {
@@ -439,8 +448,13 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 
 	/* A solid box is six vertices of one GL_TRIANGLES run, so consecutive boxes
 	   share the run and the program setup; the blend state is the only thing
-	   that splits it.  The run is flushed by RB_ImmBegin when it fills, and the
-	   tess batch is flushed first because the two live in different stores. */
+	   that splits it.  Colour is per vertex like the quads': it went through
+	   u_BaseColor, which is a uniform on the one 2D family program and so
+	   shared with RE_DrawBackground_*, which writes 1,1,1,1 into it -- a box
+	   run left open across a background draw came out uncoloured and the
+	   background came out in the box's colour.  The run is flushed by
+	   RB_ImmBegin when it fills, and the tess batch is flushed first because
+	   the two live in different stores. */
 	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) {
 		RB_2D_Flush();
 
@@ -452,19 +466,17 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 
 		GL_BindUnit0( tr.whiteImage );
 		p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
-		GLES3_SetBaseColor4f( p2d, backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,
-							  backEnd.color2D[2] / 255.0f, backEnd.color2D[3] / 255.0f );
+		GLES3_SetBaseColor4f( p2d, 1.0f, 1.0f, 1.0f, 1.0f );
 
 		RB_ImmBegin( GL_TRIANGLES );
 		s_2dTriOpen  = qtrue;
 		s_2dTriBlend = wantBlend;
 		s_2dTriVerts = 0;
 		s_2dTriBase  = RB_ImmStreamVerts();
-		s_2dTriColor[0] = backEnd.color2D[0];
-		s_2dTriColor[1] = backEnd.color2D[1];
-		s_2dTriColor[2] = backEnd.color2D[2];
-		s_2dTriColor[3] = backEnd.color2D[3];
 	}
+
+	RB_ImmColor4f( backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,
+				   backEnd.color2D[2] / 255.0f, backEnd.color2D[3] / 255.0f );
 
 	RB_ImmVertex2f(x, y);
 	RB_ImmVertex2f(x + w, y);
@@ -643,13 +655,10 @@ void Draw_SetColor(const vec4_t rgba) {
 		return;
 	}
 
-	/* A solid box's colour is a uniform captured when its GL_TRIANGLES run
-	   opened, so a genuine colour change has to end the run before the new
-	   colour reaches the next box. */
-	if ( s_2dTriOpen && memcmp( s_2dTriColor, r_color2D, sizeof( s_2dTriColor ) ) != 0 ) {
-		RB_2D_Flush();
-	}
-
+	/* Colour reaches both stores per vertex -- the quads through RB_Color4f, the
+	   boxes through RB_ImmColor4f -- so a colour change splits neither, and this
+	   is the call that cost 299 of the menu's 366 ms of body when it flushed the
+	   batch on every change. */
 	RB_2D_SetColor( r_color2D );
 
 	D2_End( D2P_setcolor, t0 );
@@ -890,7 +899,10 @@ void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
 	{
 		gles3Program_t	*p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
 
-		(void)p2d;
+		/* The 2D family program's colour is per vertex everywhere now, so the
+		   background states its multiplier instead of inheriting whatever the
+		   last user of this program left in the uniform. */
+		GLES3_SetBaseColor4f( p2d, 1.0f, 1.0f, 1.0f, 1.0f );
 		RB_ImmBegin( GL_TRIANGLES );
 
 		RB_ImmTexCoord2f(0.5 / (GLfloat)cols, ((GLfloat)rows - 0.5) / rows);
