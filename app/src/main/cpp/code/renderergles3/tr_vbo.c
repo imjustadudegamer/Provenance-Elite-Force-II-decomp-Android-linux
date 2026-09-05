@@ -91,12 +91,8 @@ void RB_BindVAO( GLuint vao ) {
 }
 
 /* ---- the optional multi-draw --------------------------------------------
- * A static world batch is many BSP surfaces whose index blocks are baked into
- * one device buffer.  Drawn one range per record they are one API call per
- * record; drawn as one multi-draw they are one call for the batch, which is the
- * shape the reference port's coalescing has.  GL_EXT_multi_draw_arrays is not a
- * core entry point, so it is resolved at run time and a context without it keeps
- * the composed-store path byte for byte. */
+ * GL_EXT_multi_draw_arrays is not core, so it is resolved at run time and a
+ * context without it keeps the composed-store path byte for byte. */
 typedef void (*rbMultiDrawElements_t)( GLenum mode, const GLsizei *count, GLenum type,
 									   const void *const *indices, GLsizei primcount );
 static rbMultiDrawElements_t	s_multiDraw;
@@ -114,8 +110,8 @@ static void RB_VboMultiDrawInit( void ) {
 	if ( resolve ) {
 		s_multiDraw = (rbMultiDrawElements_t)resolve( "glMultiDrawElementsEXT" );
 	}
-	/* a symbol is not an extension: Adreno 530 hands back a non-NULL address
-	 * for this one and advertises GL_EXT_multi_draw_arrays nowhere */
+	/* a symbol is not an extension: a driver can hand back a non-NULL address
+	 * for a name it does not advertise */
 	if ( s_multiDraw && !QGL_GLES3_HasExtension( "GL_EXT_multi_draw_arrays" ) ) {
 		s_multiDraw = NULL;
 	}
@@ -128,16 +124,20 @@ static GLuint	s_vboStream;
 static GLuint	s_eboStream;
 
 /* ---- the per-frame tessellation stream store -----------------------------
- * The ring above writes every batch at offset 0 of one of eight stores, so a
- * store is rewritten while draws that read it can still be in flight.  The
- * frame store removes the reuse: one back end frame's stream is appended into a
- * whole store, and the store is discarded once when the frame opens, so no byte
- * written in a frame is one an earlier draw read and a send never waits on one.
- * Three stores rotate, so the store being written is not the one the previous
- * frames drew from.  A frame that overflows falls back to the ring byte for
- * byte, so the drawn stream does not depend on the store's size. */
+ * One back end frame's stream is appended into a whole store discarded once when
+ * the frame opens, three stores rotate, and a frame that overflows falls back to
+ * the ring byte for byte. */
 #define RB_TESS_ARENA_COUNT		3
 #define RB_TESS_ARENA_ALIGN		32
+/* PAD is power-of-two only and a whole vertex cannot be one: the store's vertex
+ * stream needs this general form. */
+#define RB_TESS_ARENA_VALIGN	( (GLintptr)( RB_VERTEX_STRIDE * ( RB_TESS_ARENA_ALIGN / 4 ) ) )
+typedef char rb_arena_valign_is_vertex_aligned[
+	( ( RB_VERTEX_STRIDE * ( RB_TESS_ARENA_ALIGN / 4 ) ) % RB_VERTEX_STRIDE ) == 0 ? 1 : -1 ];
+
+static GLintptr RB_VboAlignUp( GLintptr v, GLintptr align ) {
+	return ( ( v + align - 1 ) / align ) * align;
+}
 #define RB_TESS_ARENA_VBO_BYTES	( (GLsizeiptr)( (size_t)2u * 1024u * 1024u ) )
 #define RB_TESS_ARENA_EBO_BYTES	( (GLsizeiptr)( (size_t)1u * 1024u * 1024u ) )
 
@@ -155,11 +155,7 @@ static qboolean	s_arenaActive;
 static qboolean	s_arenaFull;
 static int		s_arenaFrame = -1;
 static cvar_t	*s_arenaCvar;
-/* Batches the store could not hold, which the ring draws instead.  Printed with
- * the send row so a capture names the arm it ran and how much of the frame the
- * store actually took.  A fall of zero makes the comparison the whole frame; a
- * fall equal to the batch count means the store took nothing and the row is
- * describing the ring. */
+/* Batches the store could not hold, which the ring drew instead. */
 static int		s_arenaFall;
 
 static qboolean	s_vboInitialised;
@@ -184,6 +180,13 @@ static int	s_sendLocal;
 static int	s_sendStatics;
 static int	s_sendMulti;
 static int	s_sendSeq;
+/* One rejection reason per batch, in the gate's own order. */
+static int	s_sendGateWorld;
+static int	s_sendGateDlight;
+static int	s_sendGateIter;
+static int	s_sendGateSig;
+static int	s_sendGateRec;
+static int	s_sendGateRecs;
 static int				s_locVisits;
 static int				s_locVtxMiss;
 static int				s_locIdxMiss;
@@ -225,11 +228,19 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	out->locFirst = (unsigned)(size_t)s_sendLocFirst;
 	out->locWas = s_sendLocWas;
 	out->locNow = s_sendLocNow;
+	out->gateWorld = s_sendGateWorld;
+	out->gateDlight = s_sendGateDlight;
+	out->gateIter = s_sendGateIter;
+	out->gateSig = s_sendGateSig;
+	out->gateRec = s_sendGateRec;
+	out->recs = s_sendGateRecs;
 
 	s_sendBatches = s_sendRuns = s_sendSum = s_sendFirst = 0;
 	s_sendMax = s_sendGapMax = 0;
 	s_sendVerts = s_sendBig = s_sendBigVerts = 0;
 	s_sendWrites = s_sendLocal = s_sendStatics = s_sendMulti = s_sendSeq = 0;
+	s_sendGateWorld = s_sendGateDlight = s_sendGateIter = 0;
+	s_sendGateSig = s_sendGateRec = s_sendGateRecs = 0;
 	s_sendLocVisits = s_locVisits;
 	s_sendLocVtx = s_locVtxMiss;
 	s_sendLocIdx = s_locIdxMiss;
@@ -637,6 +648,10 @@ static void RB_VboStaticInit( void ) {
 		return;
 	}
 
+	/* The element binding is VAO state and a VAO is live here: allocate with
+	 * none bound, bind at the point of use. */
+	RB_BindVAO( 0 );
+
 	qglGenBuffers( 1, &s_staticVbo );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
 	qglBufferData( GL_ARRAY_BUFFER,
@@ -719,6 +734,81 @@ static qboolean RB_StaticBatch( const shaderCommands_t *input, int numIndexes,
 	return qtrue;
 }
 
+/* Why the gate refused -- its own conditions, its own order.  Instrument only:
+ * runs under BE_On() and decides nothing. */
+enum {
+	RB_GATE_accepted = 0,
+	RB_GATE_world,
+	RB_GATE_dlight,
+	RB_GATE_iter,
+	RB_GATE_sig,
+	RB_GATE_records
+};
+
+static int RB_StaticGateReason( const shaderCommands_t *input, int numIndexes,
+								const float *texcoord0, const float *texcoord1,
+								int tcStrideFloats, const unsigned char *colors,
+								const float *normals ) {
+	int		i, v, n;
+
+	if ( input != &tess ) {
+		return RB_GATE_sig;
+	}
+	if ( backEnd.currentEntity != &tr.worldEntity ) {
+		return RB_GATE_world;
+	}
+	if ( tess.dlightBits ) {
+		return RB_GATE_dlight;
+	}
+	if ( tess.currentStageIteratorFunc != RB_StageIteratorLightmappedMultitextureUnfogged ) {
+		return RB_GATE_iter;
+	}
+	if ( r_showtris->integer || r_shownormals->integer
+		 || tcStrideFloats != 4
+		 || texcoord0 != (const float *)input->texCoords[0][0]
+		 || texcoord1 != (const float *)input->texCoords[0][0] + 2
+		 || colors != (const unsigned char *)tess.constantColor255
+		 || normals != input->normal[0]
+		 || input->numVertexes > SHADER_MAX_VERTEXES || numIndexes > SHADER_MAX_INDEXES ) {
+		return RB_GATE_sig;
+	}
+	if ( s_staticRecCount <= 0 || s_staticRecOverflow ) {
+		return RB_GATE_records;
+	}
+
+	/* the same tiling test the gate makes */
+	v = 0;
+	n = 0;
+	for ( i = 0; i < s_staticRecCount; i++ ) {
+		if ( s_staticRec[i].vertStart != v || s_staticRec[i].idxStart != n ) {
+			return RB_GATE_records;
+		}
+		v += s_staticRec[i].numVerts;
+		n += s_staticRec[i].numIdx;
+	}
+	if ( v != input->numVertexes || n != numIndexes ) {
+		return RB_GATE_records;
+	}
+	return RB_GATE_accepted;
+}
+
+/* One reason a batch, under the instrument gate only. */
+static void RB_StaticGateAccount( const shaderCommands_t *input, int numIndexes,
+								  const float *texcoord0, const float *texcoord1,
+								  int tcStrideFloats, const unsigned char *colors,
+								  const float *normals ) {
+	switch ( RB_StaticGateReason( input, numIndexes, texcoord0, texcoord1,
+								  tcStrideFloats, colors, normals ) ) {
+	case RB_GATE_world:		s_sendGateWorld++;	break;
+	case RB_GATE_dlight:	s_sendGateDlight++;	break;
+	case RB_GATE_iter:		s_sendGateIter++;	break;
+	case RB_GATE_sig:		s_sendGateSig++;	break;
+	case RB_GATE_records:	s_sendGateRec++;	break;
+	default:									break;
+	}
+	s_sendGateRecs += s_staticRecCount;
+}
+
 /* Bake every recorded surface that is not in the arena yet.  The bytes come from
  * `s_tessStage`, which the caller packed with the shipping body over the same
  * range, so the arena holds exactly the streaming stream.  A surface that does
@@ -731,6 +821,7 @@ static qboolean RB_VboStaticBake( const glIndex_t *indexes ) {
 	 * store another VAO had bound */
 	RB_BindVAO( s_vaoStaticLocal );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_staticEbo );
 
 	for ( i = 0; i < s_staticRecCount; i++ ) {
 		const rbStaticRec_t	*r = &s_staticRec[i];
@@ -795,12 +886,8 @@ static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
 }
 
 /* ---- the device-local static draw ----------------------------------------
- * A batch whose records all sit in the baked arenas is drawn straight out of
- * them: one call for a single record, one multi-draw where the context has the
- * extension, one call a record where it does not -- and no store write on any of
- * the three.  The two index streams are the same bytes by construction, so the
- * fallback and this path cannot disagree, and no path here writes a byte a
- * pending draw reads. */
+ * One call a record, one multi-draw where the context has the extension, and no
+ * store write on either path. */
 static qboolean RB_VboStaticLocalPrepare( const glIndex_t *indexes, int numIndexes ) {
 	static cvar_t	*cvar;
 	int		i, k;
@@ -855,6 +942,7 @@ static qboolean RB_VboStaticLocalPrepare( const glIndex_t *indexes, int numIndex
 	}
 
 	RB_BindVAO( s_vaoStaticLocal );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_staticEbo );
 	return qtrue;
 }
 
@@ -870,16 +958,34 @@ static void RB_VboStaticLocalDraw( void ) {
 					 (GLsizei)s_staticRecCount );
 		return;
 	}
-	/* No multi-draw on this context -- Adreno 530 and Mali-G715 both lack
-	 * GL_EXT_multi_draw_arrays, only a desktop driver has it.  One call a record
-	 * out of the baked blocks is still ZERO store writes, in record order, and
-	 * the store write it replaces costs 400-660 us against about 52 us a draw. */
+	/* No multi-draw on this context: one call a record out of the baked blocks is
+	 * still ZERO store writes, in record order. */
 	for ( i = 0; i < s_staticRecCount; i++ ) {
 		qglDrawElements( GL_TRIANGLES, s_staticCounts[i], GL_UNSIGNED_INT, s_staticOffsets[i] );
 	}
 }
 
 /* ---- the frame store ------------------------------------------------------ */
+
+/* Base-vertex drawing needs the entry point resolved AND a context it is core
+ * in: a symbol is not an implementation. */
+static qboolean	s_baseVertexDraw;
+static qboolean	s_baseVertexTested;
+
+static void RB_VboBaseVertexInit( void ) {
+	if ( s_baseVertexTested ) {
+		return;
+	}
+	s_baseVertexTested = qtrue;
+	s_baseVertexDraw = qfalse;
+	if ( !qglDrawElementsBaseVertex ) {
+		return;
+	}
+	if ( !QGLES_VERSION_ATLEAST( 3, 2 ) ) {
+		return;
+	}
+	s_baseVertexDraw = qtrue;
+}
 
 static void RB_VboArenaInit( void ) {
 	int		i;
@@ -940,6 +1046,7 @@ void RB_VBO_BeginFrame( void ) {
 		RB_VBO_Init();
 	}
 	RB_VboArenaInit();
+	RB_VboBaseVertexInit();
 
 	/* One store per frame.  A mid-frame flush re-enters here with the commands
 	 * that are left, and must keep appending into the store the frame opened. */
@@ -959,6 +1066,11 @@ void RB_VBO_BeginFrame( void ) {
 	qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
 	qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+
+	/* Base-vertex arm: the pointers are captured once per store, at offset 0. */
+	if ( s_baseVertexDraw ) {
+		RB_VBO_ConfigureAttribs();
+	}
 
 	if ( s_vaoStaticArena ) {
 		RB_BindVAO( s_vaoStaticArena );
@@ -981,9 +1093,11 @@ int RB_VboArenaMode( void ) {
 /* Append one batch to the frame store.  `staticVerts` says the vertex bytes are
  * already resident in the static world buffer and only the composed index list is
  * new.  Returns qfalse when the store has no room, which sends the batch to the
- * ring unchanged. */
+ * ring unchanged.  On success `*baseVertex` is the vertex the batch's index list
+ * is relative to: zero where the vertices were already absolute (the static
+ * arena), the store offset in vertices where they were just uploaded. */
 static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int numIndexes,
-								 qboolean staticVerts, GLintptr *indexOffset ) {
+								 qboolean staticVerts, GLintptr *indexOffset, int *baseVertex ) {
 	GLintptr	vOff = 0;
 	GLsizeiptr	vBytes = 0;
 	GLintptr	iOff;
@@ -1015,7 +1129,7 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 		src = s_staticIdx;
 		iBytes = (GLsizeiptr)( ( size_t )k * sizeof( glIndex_t ) );
 	} else {
-		vOff = (GLintptr)PAD( s_arenaVOff, RB_TESS_ARENA_ALIGN );
+		vOff = RB_VboAlignUp( s_arenaVOff, RB_TESS_ARENA_VALIGN );
 		vBytes = (GLsizeiptr)( ( size_t )numVertexes * RB_VERTEX_STRIDE );
 		src = indexes;
 		iBytes = (GLsizeiptr)( ( size_t )numIndexes * sizeof( glIndex_t ) );
@@ -1030,14 +1144,23 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 
 	RB_BindVAO( staticVerts ? s_vaoStaticArena : s_vaoArena );
 
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );	/* at the point of use */
+
 	if ( !staticVerts ) {
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
 		qglBufferSubData( GL_ARRAY_BUFFER, vOff, vBytes, s_tessStage );
-		RB_VboAttribsAt( vOff );
+		if ( s_baseVertexDraw ) {
+			/* the store VAO holds the pointers; the offset goes with the draw */
+			*baseVertex = (int)( vOff / RB_VERTEX_STRIDE );
+		} else {
+			RB_VboAttribsAt( vOff );
+			*baseVertex = 0;
+		}
 		s_arenaVOff = (GLintptr)( vOff + vBytes );
+	} else {
+		*baseVertex = 0;
 	}
 
-	/* the bound VAO's element binding names this frame's index store */
 	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, iOff, iBytes, src );
 	s_arenaIOff = (GLintptr)( iOff + iBytes );
 
@@ -1068,6 +1191,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		qboolean	localDraw = qfalse;
 		qboolean	stored;
 		int			writes;
+		int			storedBase = 0;
 		GLintptr	storedIndex = 0;
 
 		pack.input = input;
@@ -1089,6 +1213,13 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 									 tcStrideFloats, colors, normals )
 					 && RB_VboStaticBake( indexes );
 
+		if ( BE_On() ) {
+			/* which condition refused the batch; the acceptances are the row's own
+			 * `st`, so reasons plus st is the batch count */
+			RB_StaticGateAccount( input, numIndexes, texcoord0, texcoord1,
+								  tcStrideFloats, colors, normals );
+		}
+
 		subT0 = BE_On() ? BE_Microseconds() : 0;
 		writes = 0;
 		stored = qfalse;
@@ -1097,7 +1228,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		}
 		if ( !localDraw ) {
 			stored = RB_VboArenaSend( input->numVertexes, indexes, numIndexes, staticDraw,
-									  &storedIndex );
+									  &storedIndex, &storedBase );
 			if ( stored ) {
 				writes = staticDraw ? 1 : 2;
 			} else if ( staticDraw ) {
@@ -1162,8 +1293,13 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		if ( localDraw ) {
 			RB_VboStaticLocalDraw();
 		} else if ( stored ) {
-			qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT,
-							 ( const void * )(uintptr_t)storedIndex );
+			if ( storedBase ) {
+				qglDrawElementsBaseVertex( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT,
+										   ( const void * )(uintptr_t)storedIndex, storedBase );
+			} else {
+				qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT,
+								 ( const void * )(uintptr_t)storedIndex );
+			}
 		} else {
 			qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
 		}

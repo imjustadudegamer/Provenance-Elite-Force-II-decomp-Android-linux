@@ -195,7 +195,7 @@ void RB_RenderThread( void ) {
 		{
 			static int smp_mcore_render_rows = 0;
 
-			if ( smp_mcore_render_rows < 8 || ( smp_mcore_render_rows % 600 ) == 0 ) {
+			if ( R_ProbeStatsOn() && ( smp_mcore_render_rows < 8 || ( smp_mcore_render_rows % 600 ) == 0 ) ) {
 				ri.Printf( PRINT_ALL,
 						   "[SMP:smphandoff] side=render back=%d front=%d arena=%d owner=%d\n",
 						   frame->smpFrame, tr.smpFrame, frame->boneArena,

@@ -469,7 +469,7 @@ static void GLES3_ProgCacheRow( const char *why )
 	progcacheProgCacheStats_t	st;
 	char					body[384];
 
-	if ( !PROGCACHE_ProgCache_On() )
+	if ( !PROGCACHE_ProgCache_On() || !R_ProbeStatsOn() )
 	{
 		return;
 	}
@@ -496,7 +496,8 @@ static void GLES3_ProgCacheInitRow( void )
 	char					body[384];
 	cvar_t					*home;
 
-	if ( !PROGCACHE_ProgCache_On() || s_progcacheRows >= PROGCACHE_PROGCACHE_MAX_ROWS )
+	if ( !PROGCACHE_ProgCache_On() || !R_ProbeStatsOn()
+		|| s_progcacheRows >= PROGCACHE_PROGCACHE_MAX_ROWS )
 	{
 		return;
 	}
@@ -507,6 +508,79 @@ static void GLES3_ProgCacheInitRow( void )
 			   body, PROGCACHE_PROGCACHE_FILE,
 			   ( home && home->string[0] ) ? home->string : "(unset)" );
 	s_progcacheRows++;
+}
+
+/* defines -> the index of the first program carrying it.  The linear walk this
+ * replaces returned the first match in creation order, so the table is filled
+ * first-wins and never rewritten, which is what keeps the answer identical. */
+#define GLES3_PROG_HASH_BITS	10
+#define GLES3_PROG_HASH_SIZE	( 1u << GLES3_PROG_HASH_BITS )
+
+typedef struct {
+	unsigned	defines;
+	int			index;		/* -1 empty */
+} gles3ProgHash_t;
+
+static gles3ProgHash_t	s_progHash[GLES3_PROG_HASH_SIZE];
+
+static unsigned GLES3_ProgHashSlot( unsigned defines )
+{
+	return ( defines * 2654435761u ) >> ( 32 - GLES3_PROG_HASH_BITS );
+}
+
+static void GLES3_ProgHashReset( void )
+{
+	int		i;
+
+	for ( i = 0; i < GLES3_PROG_HASH_SIZE; i++ )
+	{
+		s_progHash[i].index = -1;
+	}
+}
+
+/* The index the walk would have returned, or -1. */
+static int GLES3_ProgHashFind( unsigned defines )
+{
+	unsigned	slot = GLES3_ProgHashSlot( defines );
+	int			i;
+
+	for ( i = 0; i < GLES3_PROG_HASH_SIZE; i++ )
+	{
+		gles3ProgHash_t	*e = &s_progHash[( slot + i ) & ( GLES3_PROG_HASH_SIZE - 1 )];
+
+		if ( e->index < 0 )
+		{
+			return -1;
+		}
+		if ( e->defines == defines )
+		{
+			return e->index;
+		}
+	}
+	return -1;
+}
+
+static void GLES3_ProgHashInsert( unsigned defines, int index )
+{
+	unsigned	slot = GLES3_ProgHashSlot( defines );
+	int			i;
+
+	for ( i = 0; i < GLES3_PROG_HASH_SIZE; i++ )
+	{
+		gles3ProgHash_t	*e = &s_progHash[( slot + i ) & ( GLES3_PROG_HASH_SIZE - 1 )];
+
+		if ( e->index >= 0 )
+		{
+			if ( e->defines == defines )
+			{
+				return;		/* first wins, as the walk did */
+			}
+			continue;
+		}
+		e->defines = defines;
+		e->index = index;
+		return;
+	}
 }
 
 static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned defines )
@@ -538,7 +612,7 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 	if ( s_registrationClosed )
 	{
 		gles3ProgramsCreatedAfterReg++;
-		if ( s_progCreateProbeRows < 8 )
+		if ( R_ProbeStatsOn() && s_progCreateProbeRows < 8 )
 		{
 			s_progCreateProbeRows++;
 			ri.Printf( PRINT_WARNING,
@@ -637,6 +711,7 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 	BE_RootEnd( BE_FAM_PROG );
 
 	gles3NumPrograms++;
+	GLES3_ProgHashInsert( defines, gles3NumPrograms - 1 );
 	return p;
 }
 
@@ -648,6 +723,7 @@ void GLES3_ProgramsInit( void )
 	}
 	gles3NumPrograms = 0;
 	Com_Memset( gles3Programs, 0, sizeof( gles3Programs ) );
+	GLES3_ProgHashReset();
 	glState.currentProgram = 0;
 	GLES3_CreateWaveTable();
 
@@ -699,6 +775,7 @@ void GLES3_ProgramsShutdown( void )
 	}
 	gles3NumPrograms = 0;
 	Com_Memset( gles3Programs, 0, sizeof( gles3Programs ) );
+	GLES3_ProgHashReset();
 	Com_Memset( s_unifCache, 0, sizeof( s_unifCache ) );
 	glState.currentProgram = 0;
 	GLES3_DestroyWaveTable();
@@ -783,12 +860,10 @@ gles3Program_t *GLES3_GetProgram( unsigned defines )
 		GLES3_CreateWaveTable();
 	}
 
-	for ( i = 0; i < gles3NumPrograms; i++ )
+	i = GLES3_ProgHashFind( defines );
+	if ( i >= 0 )
 	{
-		if ( gles3Programs[i].defines == defines )
-		{
-			return &gles3Programs[i];
-		}
+		return &gles3Programs[i];
 	}
 
 	family = defines & GLP_FAMILY_MASK;
@@ -1860,9 +1935,13 @@ static const char *GLES3_CensusShaderName( const char *key ) {
 }
 
 static void GLES3_CensusSummary( gles3Census_t *c, qboolean in2D ) {
-	char		 top[10][80];	
+	char		 top[10][80];
 	unsigned	 topCount[10];
 	int			 i, k;
+
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
 
 	for ( i = 0; i < 10; i++ ) {
 		top[i][0] = '\0';
@@ -2005,7 +2084,7 @@ void GLES3_FullbrightNote( void )
 		s_nvFrame = tr.frameCount;
 		if ( tr.frameCount % 60 == 0 ) {
 			if ( !s_nvCvar ) {
-				s_nvCvar = ri.Cvar_Get( "nightvision_nvStats", "1", 0 );
+				s_nvCvar = ri.Cvar_Get( "nightvision_nvStats", "0", 0 );
 			}
 			if ( s_nvCvar && s_nvCvar->integer ) {
 				if ( s_nvRows == 200 ) {
@@ -2105,7 +2184,7 @@ void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 	}
 
 	if ( !s_surfCvar ) {
-		s_surfCvar = ri.Cvar_Get( "lifecycle_surfStats", "1", 0 );
+		s_surfCvar = ri.Cvar_Get( "lifecycle_surfStats", "0", 0 );
 	}
 
 	if ( !s_surfCvar || !s_surfCvar->integer || !R_ProbeStatsOn() ) {
@@ -2560,7 +2639,7 @@ gles3Program_t *GLES3_BeginFamily( unsigned family, int texEnv )
 
 	{
 		static int s_gles3FamLogged;
-		if ( s_gles3FamLogged < 150 ) {
+		if ( R_ProbeStatsOn() && s_gles3FamLogged < 150 ) {
 			ri.Printf( PRINT_ALL, "[GLES3:fam] family=%u texEnv=%d prog=%s curTMU=%d unit0tex=%d\n",
 				family, texEnv, p->name, glState.currenttmu, glState.currenttextures[0] );
 			s_gles3FamLogged++;

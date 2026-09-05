@@ -1320,8 +1320,10 @@ static void Com_AndroidAdoptRetailSaveUser( char *configname, int confignameSize
 	if ( adopted ) {
 		Q_strncpyz( configname, adopted, confignameSize );
 		Q_strcat( configname, confignameSize, ".cfg" );
-		Com_Printf( "[EFFECTS:saveid] Android has no OS user; adopted the retail save "
-			"profile '%s' so retail's saves resolve\n", adopted );
+		if ( PROBE_On() ) {
+			Com_Printf( "[EFFECTS:saveid] Android has no OS user; adopted the retail save "
+				"profile '%s' so retail's saves resolve\n", adopted );
+		}
 	}
 
 	FS_FreeFileList( saveDirs );
@@ -1354,7 +1356,9 @@ static void Com_MigrateLegacySaveFolder( void )
 		FS_FreeFile( buf );
 
 		FS_Remove_HomeData( from );
-		Com_Printf( "[EFFECTS:saveid] migrated legacy save file '%s' -> '%s'\n", from, to );
+		if ( PROBE_On() ) {
+			Com_Printf( "[EFFECTS:saveid] migrated legacy save file '%s' -> '%s'\n", from, to );
+		}
 	}
 	FS_FreeFileList( files );
 }
@@ -1973,6 +1977,63 @@ static void SMP_LoadPrint( int frames, int window ) {
  * cannot tell a code regression from a throttled part without this row.  Sampling
  * is one window roll (a few sysfs reads per second) and only under the probe gate.
  */
+/* GPU clock sources, in the order tried; `hz' marks a node reporting Hz. */
+typedef struct {
+	const char	*path;
+	const char	*name;
+	int			hz;
+} gpuClkSource_t;
+
+#define SMP_GPUCLK_SOURCES	5
+
+static const gpuClkSource_t s_gpuClkSource[SMP_GPUCLK_SOURCES] = {
+	{ "/sys/class/devfreq/b00000.qcom,kgsl-3d0/cur_freq", "devfreq-kgsl", 1 },
+	{ "/sys/class/kgsl/kgsl-3d0/gpuclk",                  "kgsl-gpuclk",  0 },
+	{ "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq",        "kgsl-devfreq", 0 },
+	{ "/sys/kernel/gpu/gpu_clock",                        "kernel-gpu",   0 },
+	{ "/sys/class/devfreq/gpufreq/cur_freq",              "devfreq-gpu",  0 },
+};
+
+/* First source that opens and holds a number, in kHz; `*srcUsed` is -1 if none. */
+static int SMP_GpuClockKhz( const gpuClkSource_t *src, int count, int *srcUsed ) {
+	FILE	*fp;
+	char	buf[64];
+	int		g, khz = -1;
+
+	if ( srcUsed ) {
+		*srcUsed = -1;
+	}
+	if ( !src || count <= 0 ) {
+		return -1;
+	}
+
+	for ( g = 0; g < count && khz < 0; g++ ) {
+		if ( !src[g].path ) {
+			continue;
+		}
+		fp = fopen( src[g].path, "r" );
+		if ( !fp ) {
+			continue;
+		}
+		if ( fgets( buf, sizeof( buf ), fp ) ) {
+			khz = atoi( buf );
+			if ( khz > 0 ) {
+				if ( src[g].hz ) {
+					/* devfreq reports Hz; the row is kHz */
+					khz /= 1000;
+				}
+				if ( srcUsed ) {
+					*srcUsed = g;
+				}
+			} else {
+				khz = -1;
+			}
+		}
+		fclose( fp );
+	}
+	return khz;
+}
+
 static void SMP_ThermalProbe( int window ) {
 	static int	rows;
 	static int	first;
@@ -2046,29 +2107,15 @@ static void SMP_ThermalProbe( int window ) {
 	Com_Printf( "[THERM:cpu] row=%d window=%dms elapsed=%dms cores=%d%s\n",
 				rows, window, Sys_Milliseconds() - first, cores, line );
 
-	/* The CPU cores say nothing about the GPU clock, and a run whose per-send
-	 * price is ten times another run's is otherwise indistinguishable from a
-	 * build regression. */
+	/* The row names the source that answered, so a capture knows the units. */
 	{
-		static const char *const gpuClkPath[4] = {
-			"/sys/class/kgsl/kgsl-3d0/gpuclk",
-			"/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq",
-			"/sys/kernel/gpu/gpu_clock",
-			"/sys/class/devfreq/gpufreq/cur_freq",
-		};
-		int		g, gpuKhz = -1;
+		int		gpuKhz = -1;
+		int		src = -1;
 
-		for ( g = 0; g < 4 && gpuKhz < 0; g++ ) {
-			fp = fopen( gpuClkPath[g], "r" );
-			if ( !fp ) {
-				continue;
-			}
-			if ( fgets( buf, sizeof( buf ), fp ) ) {
-				gpuKhz = atoi( buf );
-			}
-			fclose( fp );
-		}
-		Com_Printf( "[THERM:gpu] row=%d window=%dms gpuclk_khz=%d\n", rows, window, gpuKhz );
+		gpuKhz = SMP_GpuClockKhz( s_gpuClkSource, SMP_GPUCLK_SOURCES, &src );
+		Com_Printf( "[THERM:gpu] row=%d window=%dms gpuclk_khz=%d src=%s\n", rows, window,
+					gpuKhz, ( src >= 0 && src < SMP_GPUCLK_SOURCES ) ? s_gpuClkSource[src].name
+																	 : "none" );
 	}
 }
 
@@ -2088,10 +2135,10 @@ static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int t
 	struct { const char *name; int sum; int max; } zone[SMP_BUDGET_MAX_ZONES];
 
 	if ( !smp_frameStats ) {
-		smp_frameStats = Cvar_Get( "smp_frameStats", "1", 0 );
+		smp_frameStats = Cvar_Get( "smp_frameStats", "0", 0 );
 	}
 	if ( !smp_loadStats ) {
-		smp_loadStats = Cvar_Get( "smp_loadStats", "1", 0 );
+		smp_loadStats = Cvar_Get( "smp_loadStats", "0", 0 );
 	}
 
 	smp_loadOn = smp_loadStats->integer;
@@ -2289,7 +2336,7 @@ void UI_On( void ) {
 	static cvar_t *v;
 
 	if ( !v ) {
-		v = Cvar_Get( "ui_stats", "1", 0 );
+		v = Cvar_Get( "ui_stats", "0", 0 );
 	}
 
 	ui_statsOn = ( v && v->integer ) ? 1 : 0;

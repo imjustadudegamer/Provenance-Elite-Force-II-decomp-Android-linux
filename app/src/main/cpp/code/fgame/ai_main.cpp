@@ -1152,7 +1152,7 @@ static void SMP_BotBudget( int totalMsec, int spawnMsec, int libstartMsec, int u
 	struct { const char *name; int sum; int max; } zone[SMP_BOT_MAX_ZONES];
 
 	if ( !smp_botStats ) {
-		smp_botStats = gi.cvar( "smp_botStats", "1", 0 );
+		smp_botStats = gi.cvar( "smp_botStats", "0", 0 );
 	}
 
 	if ( !smp_botStats || !smp_botStats->integer ) {
@@ -1276,7 +1276,7 @@ static int UI_BotAIOn( void ) {
 	cvar_t *v;
 
 	if ( ui_baiOn < 0 ) {
-		v = gi.cvar( "ui_stats", "1", 0 );
+		v = gi.cvar( "ui_stats", "0", 0 );
 		ui_baiOn = ( v && v->integer ) ? 1 : 0;
 	}
 
@@ -1447,7 +1447,7 @@ static int LIMIT_BotOn( void ) {
 
 static void LIMIT_BotSyncSwitch( void ) {
 	if ( !limit_bStats ) {
-		limit_bStats = gi.cvar( "limit_stats", "1", 0 );
+		limit_bStats = gi.cvar( "limit_stats", "0", 0 );
 	}
 	if ( limit_bStats && limit_bStats->integer != limit_bStatsLast ) {
 		char v[2];

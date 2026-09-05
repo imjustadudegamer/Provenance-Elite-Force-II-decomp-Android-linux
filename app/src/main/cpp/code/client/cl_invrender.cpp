@@ -328,7 +328,7 @@ void CL_Draw3DModel(
 
     {
         static int uiparityuivp3d;
-        if ((uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d, 2, 120)) {
+        if (PROBE_On() && (uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d, 2, 120)) {
             Com_Printf(
                 "[UIPARITY:uivp3d] cl3d model=%d refdef %d,%d %dx%d | origin %d,%d rect %dx%d surface %dx%d\n",
                 model, inv_refdef.x, inv_refdef.y, inv_refdef.width, inv_refdef.height,

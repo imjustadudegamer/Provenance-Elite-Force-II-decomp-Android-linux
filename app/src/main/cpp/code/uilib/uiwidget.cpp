@@ -1822,12 +1822,12 @@ void UIWidget::LayoutBgColor(Event *ev)
         static int     shadow_invRows;
 
         if (!shadow_inv) {
-            shadow_inv = Cvar_Get("shadow_invStats", "1", 0);
+            shadow_inv = Cvar_Get("shadow_invStats", "0", 0);
         }
         if (shadow_inv && shadow_inv->integer && shadow_invRows < 8
             && getName() && !Q_stricmp(getName(), "InventoryBar")) {
             UColor c = getBackgroundColor();
-            Com_Printf("[SHADOW:inv] bgcolor= event on '%s' -> bg=(%.3f,%.3f,%.3f,%.3f)\n",
+            if (PROBE_On()) Com_Printf("[SHADOW:inv] bgcolor= event on '%s' -> bg=(%.3f,%.3f,%.3f,%.3f)\n",
                        getName(), c.r, c.g, c.b, c.a);
             shadow_invRows++;
         }

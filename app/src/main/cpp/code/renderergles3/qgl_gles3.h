@@ -36,6 +36,7 @@ extern "C" {
 
 #define GLE(ret, name, ...) typedef ret APIENTRY name##proc(__VA_ARGS__);
 QGL_GLES3_CORE_PROCS;
+QGL_GLES3_32_PROCS;
 #undef GLE
 
 #ifdef __cplusplus
@@ -44,6 +45,7 @@ QGL_GLES3_CORE_PROCS;
 #define GLE(ret, name, ...) extern name##proc *qgl##name;
 #endif
 QGL_GLES3_CORE_PROCS;
+QGL_GLES3_32_PROCS;
 #undef GLE
 
 #ifdef __cplusplus
@@ -78,6 +80,7 @@ int QGL_GLES3_LoadProcs(int *staged);
 
 int QGL_GLES3_TotalProcs(void);
 int QGL_GLES3_CoreProcs(void);
+int QGL_GLES3_Core32Procs(void);
 int QGL_GLES3_CoreMissing(void);
 int QGL_GLES3_StagedTraps(void);
 

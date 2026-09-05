@@ -293,7 +293,7 @@ static void CRAUDIT_CheckRawWidgetPointers(UIWidget **p, const char *name)
         return;
     }
     if (!s_cvar) {
-        s_cvar = Cvar_Get("craudit_focusStats", "1", 0);
+        s_cvar = Cvar_Get("craudit_focusStats", "0", 0);
     }
     if (s_cvar && !s_cvar->integer) {
         return;

@@ -114,8 +114,21 @@ static void *GLES3_ResolveProc(const char *name)
 	return p;
 }
 
+/* The loader's per-event rows are instruments; the identity and condition rows
+ * are not, and print regardless. */
 static void GLES3_LogToEngine(const char *line)
 {
+	static const char *const eventRows[2] = { "[GLES3:glfixed]", "[GLES3:glcap]" };
+	size_t i;
+
+	for (i = 0; i < sizeof(eventRows) / sizeof(eventRows[0]); i++) {
+		if (strncmp(line, eventRows[i], strlen(eventRows[i])) == 0) {
+			if (!R_ProbeStatsOn()) {
+				return;
+			}
+			break;
+		}
+	}
 	ri.Printf(PRINT_ALL, "%s", line);
 }
 
@@ -218,8 +231,9 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 					  qglesMajorVersion, qglesMinorVersion,
 					  grantedRenderer ? grantedRenderer : "(null)");
 		}
-		ri.Printf(PRINT_ALL, "[GLES3:gles3] procs=%d core=%d core_missing=%d staged_desktop_traps=%d\n",
-				  QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), missingCore, staged);
+		ri.Printf(PRINT_ALL, "[GLES3:gles3] procs=%d core=%d core32=%d core_missing=%d staged_desktop_traps=%d\n",
+				  QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), QGL_GLES3_Core32Procs(),
+				  missingCore, staged);
 		if (missingCore > 0) {
 			ri.Printf(PRINT_ALL, "[GLES3:glmissing] core_list=%s\n",
 					  QGL_GLES3_CoreMissingList());
@@ -565,7 +579,7 @@ static void GLES3_ContextAttest(void)
 	minimized = ri.Cvar_VariableIntegerValue("com_minimized");
 
 	if (lastMinimized < 0 || (lastMinimized && !minimized)) {
-		if (rows < SMP_CTX_PROBE_CAP + 1) {
+		if (R_ProbeStatsOn() && rows < SMP_CTX_PROBE_CAP + 1) {
 			qglGetIntegerv(GL_CURRENT_PROGRAM, &prog);
 			err = qglGetError();
 			rows++;
@@ -665,7 +679,7 @@ static int	smp_rloadRegBrackets;
 
 int SMP_RLoadNow( void ) {
 	if ( !smp_rloadStats ) {
-		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "1", 0 );
+		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "0", 0 );
 	}
 	return (int)SDL_GetTicks();
 }
@@ -679,7 +693,7 @@ static void SMP_RLoadFlush( int window ) {
 	char	line[1024], part[64];
 	int		i, mean10, frames, unacctW;
 
-	if ( smp_rloadStopped ) {
+	if ( smp_rloadStopped || !SMP_RLoadArmed() ) {
 		return;
 	}
 
@@ -763,7 +777,7 @@ static Uint64	s_bePerUs = 1;
 
 int BE_Armed( void ) {
 	if ( !s_beStats ) {
-		s_beStats = ri.Cvar_Get( "be_stats", "1", 0 );
+		s_beStats = ri.Cvar_Get( "be_stats", "0", 0 );
 	}
 	return ( s_beStats && s_beStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
 }

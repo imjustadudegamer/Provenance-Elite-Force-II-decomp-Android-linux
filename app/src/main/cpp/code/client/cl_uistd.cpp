@@ -2511,7 +2511,7 @@ UIInventoryBar::UIInventoryBar()
         static int     shadow_invRows;
 
         if (!shadow_inv) {
-            shadow_inv = Cvar_Get("shadow_invStats", "1", 0);
+            shadow_inv = Cvar_Get("shadow_invStats", "0", 0);
         }
         if (shadow_inv && shadow_inv->integer && shadow_invRows < 8) {
             UColor c = getBackgroundColor();
@@ -3529,7 +3529,7 @@ void UIDialogTextConsole::Draw(void)
                 static int s_smpDialogRows;
                 static int s_smpDialogLastMs = -100000;
 
-                if (s_smpDialogRows < SMP_DIALOG_MAX
+                if (PROBE_On() && s_smpDialogRows < SMP_DIALOG_MAX
                     && cls.realtime - s_smpDialogLastMs >= 500) {
                     s_smpDialogLastMs = cls.realtime;
                     s_smpDialogRows++;
@@ -3562,7 +3562,7 @@ void UIDialogTextConsole::Draw(void)
                 static int s_smpDialogFitRows;
                 static int s_smpDialogFitLastMs = -100000;
 
-                if (s_smpDialogFitRows < SMP_DIALOG_MAX
+                if (PROBE_On() && s_smpDialogFitRows < SMP_DIALOG_MAX
                     && cls.realtime - s_smpDialogFitLastMs >= 500) {
                     s_smpDialogFitLastMs = cls.realtime;
                     s_smpDialogFitRows++;

@@ -253,7 +253,7 @@ int BE_CgFrameOpen( void )
 	static cvar_t *stats;
 
 	if ( !stats ) {
-		stats = cgi.Cvar_Get( "ui_stats", "1", 0 );
+		stats = cgi.Cvar_Get( "ui_stats", "0", 0 );
 	}
 
 	be_cgOn = ( stats && stats->integer ) ? 1 : 0;
