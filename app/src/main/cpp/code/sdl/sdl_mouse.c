@@ -53,17 +53,23 @@ qboolean IN_IsCursorActive(void)
 /* Touch and gamepad input reach the UI on Android, but neither is a pointer, so
    neither may raise one.  Only a real mouse event sets this, and it stays set
    once one has arrived. */
+#ifndef __ANDROID__
 static qboolean in_realmouse = qfalse;
+#endif
 
 void IN_NoteRealMouse(void)
 {
+#ifndef __ANDROID__
     in_realmouse = qtrue;
+#endif
 }
 
 qboolean IN_HasRealMouse(void)
 {
 #ifdef __ANDROID__
-    return in_realmouse;
+    /* Android ships no pointer: no event and no state may raise one, so the
+       answer is a constant and every cursor consumer is covered by it. */
+    return qfalse;
 #else
     return qtrue;
 #endif

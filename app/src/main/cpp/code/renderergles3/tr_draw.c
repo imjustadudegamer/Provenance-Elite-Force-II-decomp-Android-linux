@@ -352,7 +352,9 @@ void RB_2D_SetColor( const byte *rgba ) {
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 ) {
 	float xy[4][2], st[4][2];
 
-	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
+	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
+	   would draw in (byte)(c*255 mod 256). */
+	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x;     xy[0][1] = y;     st[0][0] = s1; st[0][1] = t1;
 	xy[1][0] = x + w; xy[1][1] = y;     st[1][0] = s2; st[1][1] = t1;
@@ -375,7 +377,9 @@ void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, fl
 	scaledWidth2 = halfWidth * sx;
 	scaledHeight2 = halfHeight * sy;
 
-	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
+	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
+	   would draw in (byte)(c*255 mod 256). */
+	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x + halfWidth - (scaledWidth2 + -scaledHeight2);
 	xy[0][1] = y + halfWidth - scaledHeight1 - scaledWidth1;
@@ -399,7 +403,9 @@ void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, fl
 void RB_2D_TilePic( shader_t *shader, float x, float y, float w, float h, float picw, float pich ) {
 	float xy[4][2], st[4][2];
 
-	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
+	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
+	   would draw in (byte)(c*255 mod 256). */
+	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x;     xy[0][1] = y;     st[0][0] = x / picw;         st[0][1] = y / pich;
 	xy[1][0] = x + w; xy[1][1] = y;     st[1][0] = (x + w) / picw;   st[1][1] = y / pich;
@@ -412,7 +418,9 @@ void RB_2D_TilePic( shader_t *shader, float x, float y, float w, float h, float 
 void RB_2D_TilePicOffset( shader_t *shader, float x, float y, float w, float h, float picw, float pich, int offsetX, int offsetY ) {
 	float xy[4][2], st[4][2];
 
-	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
+	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
+	   would draw in (byte)(c*255 mod 256). */
+	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x + offsetX;     xy[0][1] = y + offsetY;     st[0][0] = x / picw;       st[0][1] = y / pich;
 	xy[1][0] = x + offsetX + w; xy[1][1] = y + offsetY;     st[1][0] = (x + w) / picw; st[1][1] = y / pich;
@@ -425,7 +433,9 @@ void RB_2D_TilePicOffset( shader_t *shader, float x, float y, float w, float h, 
 void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t vTexCoords[3] ) {
 	int i;
 
-	RB_Color4f(backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3]);
+	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
+	   would draw in (byte)(c*255 mod 256). */
+	RB_Color4bv(backEnd.color2D);
 
 	RB_2D_Flush();
 	RB_BeginSurface(shader, 0);
@@ -888,6 +898,7 @@ void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
 
 		/* State the multiplier rather than inherit whatever ran last. */
 		GLES3_SetBaseColor4f( p2d, 1.0f, 1.0f, 1.0f, 1.0f );
+		RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 		RB_ImmBegin( GL_TRIANGLES );
 
 		RB_ImmTexCoord2f(0.5 / (GLfloat)cols, ((GLfloat)rows - 0.5) / rows);
@@ -954,6 +965,7 @@ void RE_DrawBackground_DrawPixels(int cols, int rows, int bgr, byte* data) {
 	p2d = GLES3_BeginFamily( GLP_FAMILY_2D, 1 );
 	GLES3_SetBaseColor4f( p2d, 1.0f, 1.0f, 1.0f, 1.0f );
 
+	RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 	RB_ImmBegin( GL_TRIANGLES );
 	RB_ImmTexCoord2f( 0, 0 ); RB_ImmVertex2f( 0, 0 );
 	RB_ImmTexCoord2f( 1, 0 ); RB_ImmVertex2f( qw, 0 );
