@@ -5403,7 +5403,7 @@ void Actor::Killed(Event *ev)
             || means_of_death == MOD_PLASMASHOTGUN)) {
         float chance = G_Random();
 
-        if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "0", 0)->integer) {
+        if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "1", 0)->integer) {
             gi.Printf("[UIVK:nanseed] ent=%d mod=%d(%s) roll=%.3f take=%d "
                       "org=(%.1f,%.1f,%.1f) vel=(%.1f,%.1f,%.1f) atk=%d "
                       "atkorg=(%.1f,%.1f,%.1f) mass=%d scale=%.6g mv=%d ge=%d "
@@ -5436,7 +5436,7 @@ void Actor::Killed(Event *ev)
             attackerToSelf *= deathKnockbackHorizontalValue;
             velocity = attackerToSelf;
 
-            if (getenv("EF2_KNOCKBACK") && gi.cvar("qa_probe", "0", 0)->integer) {
+            if (getenv("EF2_KNOCKBACK") && gi.cvar("qa_probe", "1", 0)->integer) {
                 Vector uivk_kb_raw = origin - attacker->origin;
                 int    uivk_kb_ge  = -1;
 
@@ -5722,7 +5722,7 @@ qboolean Actor::SetAnim(const str& anim, Event *ev, bodypart_t part, const float
 
 
     if (num != -1) {
-        if (gi.cvar("qa_probe", "0", 0)->integer && !strncmp(anim.c_str(), "assimilate", 10)) {
+        if (gi.cvar("qa_probe", "1", 0)->integer && !strncmp(anim.c_str(), "assimilate", 10)) {
             Entity *gameplay_enemy = enemyManager ? enemyManager->GetCurrentEnemy() : NULL;
             float   gameplay_dist  = (gameplay_enemy ? (gameplay_enemy->centroid - centroid).length() : -1.0f);
 
@@ -6101,7 +6101,7 @@ void Actor::Dead(Event *ev)
 
             uivk_dw_n = uivk_dw_calls[entnum]++;
 
-            if (uivk_dw_n > 0 && gi.cvar("qa_probe", "0", 0)->integer) {
+            if (uivk_dw_n > 0 && gi.cvar("qa_probe", "1", 0)->integer) {
                 int uivk_dw_ge = -1;
 
                 if (groundentity) {
@@ -14679,7 +14679,7 @@ void Actor::MeleeEvent( Event *ev )
 
 	if ( GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_ON ) && GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_DAMAGED ) )
 		{
-		if ( gi.cvar("qa_probe", "0", 0)->integer )
+		if ( gi.cvar("qa_probe", "1", 0)->integer )
 			gi.Printf( "[GAMEPLAY:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_once_already_damaged\n",
 					   entnum, model.c_str(), ( ev->NumArgs() > 2 ) ? ev->GetString( 3 ) : "-",
 					   ( ev->NumArgs() > 0 ) ? ev->GetFloat( 1 ) : 0.0f );
@@ -14688,7 +14688,7 @@ void Actor::MeleeEvent( Event *ev )
 
 	if ( !GetActorFlag( ACTOR_FLAG_DAMAGE_ALLOWED ) )
 		{
-		if ( gi.cvar("qa_probe", "0", 0)->integer )
+		if ( gi.cvar("qa_probe", "1", 0)->integer )
 			gi.Printf( "[GAMEPLAY:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_not_allowed\n",
 					   entnum, model.c_str(), ( ev->NumArgs() > 2 ) ? ev->GetString( 3 ) : "-",
 					   ( ev->NumArgs() > 0 ) ? ev->GetFloat( 1 ) : 0.0f );

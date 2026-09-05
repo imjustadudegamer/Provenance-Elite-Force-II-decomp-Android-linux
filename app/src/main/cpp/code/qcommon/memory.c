@@ -134,7 +134,7 @@ void Z_ChurnMeterFrame( void ) {
 	int			now, window;
 	long long	allocs, frees, bytes;
 
-	if ( !Cvar_VariableIntegerValue( "mem_churnStats" ) ) {
+	if ( !Cvar_VariableIntegerValue( "mem_churnStats" ) || !Cvar_VariableIntegerValue( "qa_probe" ) ) {
 		Z_ChurnReset();
 		windowStart = 0;
 		return;

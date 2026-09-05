@@ -1276,7 +1276,7 @@ static int UI_BotAIOn( void ) {
 	cvar_t *v;
 
 	if ( ui_baiOn < 0 ) {
-		v = gi.cvar( "ui_stats", "0", 0 );
+		v = gi.cvar( "ui_stats", "1", 0 );
 		ui_baiOn = ( v && v->integer ) ? 1 : 0;
 	}
 

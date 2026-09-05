@@ -540,7 +540,7 @@ void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, 
 	qboolean				heartbeat, needQuery, disagree;
 
 	if ( !s_cvar ) {
-		s_cvar = ri.Cvar_Get( "smp_vpProbe", "0", 0 );
+		s_cvar = ri.Cvar_Get( "smp_vpProbe", "1", 0 );
 	}
 	if ( !s_cvar || !s_cvar->integer || !R_ProbeStatsOn() ) {
 		return;

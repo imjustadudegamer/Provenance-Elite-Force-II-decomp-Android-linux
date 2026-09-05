@@ -1606,7 +1606,7 @@ void Com_Init( char *commandLine ) {
 	com_viewlog = Cvar_Get( "viewlog", "0", CVAR_CHEAT );
 	com_speeds = Cvar_Get( "com_speeds", "0", 0 );
 	com_timedemo = Cvar_Get( "timedemo", "0", CVAR_CHEAT );
-	Cvar_Get( "mem_churnStats", "0", CVAR_ARCHIVE );
+	Cvar_Get( "mem_churnStats", "1", CVAR_ARCHIVE );
 	com_dedicated = Cvar_Get( "dedicated", "0", CVAR_LATCH );
 	com_introplayed = Cvar_Get( "com_introplayed", "0", CVAR_ARCHIVE );
 	com_sv_running = Cvar_Get( "sv_running", "0", CVAR_ROM );
@@ -2135,15 +2135,15 @@ static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int t
 	struct { const char *name; int sum; int max; } zone[SMP_BUDGET_MAX_ZONES];
 
 	if ( !smp_frameStats ) {
-		smp_frameStats = Cvar_Get( "smp_frameStats", "0", 0 );
+		smp_frameStats = Cvar_Get( "smp_frameStats", "1", 0 );
 	}
 	if ( !smp_loadStats ) {
-		smp_loadStats = Cvar_Get( "smp_loadStats", "0", 0 );
+		smp_loadStats = Cvar_Get( "smp_loadStats", "1", 0 );
 	}
 
-	smp_loadOn = smp_loadStats->integer;
+	smp_loadOn = ( smp_loadStats->integer && PROBE_On() ) ? 1 : 0;
 
-	if ( !smp_frameStats->integer ) {
+	if ( !smp_frameStats->integer || !PROBE_On() ) {
 		smp_budgetFrames = 0;
 		smp_budgetWindowStart = 0;
 		smp_budgetAudio = smp_budgetAudioMax = 0;
@@ -2336,10 +2336,10 @@ void UI_On( void ) {
 	static cvar_t *v;
 
 	if ( !v ) {
-		v = Cvar_Get( "ui_stats", "0", 0 );
+		v = Cvar_Get( "ui_stats", "1", 0 );
 	}
 
-	ui_statsOn = ( v && v->integer ) ? 1 : 0;
+	ui_statsOn = ( v && v->integer && PROBE_On() ) ? 1 : 0;
 }
 
 static void UI_Reset( int family );
