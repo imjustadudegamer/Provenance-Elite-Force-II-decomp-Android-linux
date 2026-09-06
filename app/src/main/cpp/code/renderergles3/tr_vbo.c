@@ -187,6 +187,8 @@ static int	s_sendGateIter;
 static int	s_sendGateSig;
 static int	s_sendGateRec;
 static int	s_sendGateRecs;
+static int	s_sendStalls;
+static int	s_sendStallShown;
 static int				s_locVisits;
 static int				s_locVtxMiss;
 static int				s_locIdxMiss;
@@ -239,6 +241,7 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	s_sendMax = s_sendGapMax = 0;
 	s_sendVerts = s_sendBig = s_sendBigVerts = 0;
 	s_sendWrites = s_sendLocal = s_sendStatics = s_sendMulti = s_sendSeq = 0;
+	s_sendStalls = s_sendStallShown = 0;
 	s_sendGateWorld = s_sendGateDlight = s_sendGateIter = 0;
 	s_sendGateSig = s_sendGateRec = s_sendGateRecs = 0;
 	s_sendLocVisits = s_locVisits;
@@ -1287,6 +1290,21 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 			s_sendSum += phase;
 			s_sendWrites += writes;
 			s_sendVerts += input->numVertexes;
+
+			/* [BE:send] put 335 ms of a second window in the upload phase and
+			   could not say which arm paid.  A single phase that outcosts a
+			   frame is the wobble; name the arm before the roll drowns it. */
+			if ( phase >= 2000 ) {
+				s_sendStalls++;
+				if ( s_sendStallShown < 8 || ( s_sendStalls % 64 ) == 0 ) {
+					s_sendStallShown++;
+					ri.Printf( PRINT_ALL,
+							   "[BE:stall] arm=%s verts=%d idx=%d usec=%d gap=%dus w=%d f=%d\n",
+							   localDraw ? "local" : ( stored ? "arena" : ( staticDraw ? "static" : "tess" ) ),
+							   input->numVertexes, numIndexes, phase, gap, writes,
+							   RB_FrameCount() );
+				}
+			}
 			if ( staticDraw ) {
 				s_sendStatics++;
 			}

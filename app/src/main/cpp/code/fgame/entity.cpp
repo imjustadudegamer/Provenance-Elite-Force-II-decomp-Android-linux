@@ -2347,6 +2347,7 @@ void Entity::setModel(const char *mdl)
     /* The model leg is the restore's whole cost and this is the engine call
        inside it, so it carries its own split rather than letting the leg report
        one number for four different jobs. */
+    long long leg0 = GRS_NOW();
     {
         long long st0 = GRS_NOW();
 
@@ -2363,6 +2364,23 @@ void Entity::setModel(const char *mdl)
 
         g_restoreSplitUs[GRS_NUMSURF] += GRS_NOW() - ns0;
         g_restoreSplitN[GRS_NUMSURF]++;
+
+        /* One row per model leg that outcosts a frame.  The aggregate names the
+           call; only this names the model, and the fix is per model. */
+        if (PROBE_On() && LoadingSavegame) {
+            long long leg = GRS_NOW() - leg0;
+
+            if (leg >= 10000) {
+                static int s_rows;
+
+                s_rows++;
+                if (s_rows <= 48 || (s_rows % 32) == 0) {
+                    WIDGET_PROBE("archive",
+                        "model leg %dus idx=%d surf=%d '%s'\n",
+                        ( int )leg, edict->s.modelindex, numsurfaces, model.c_str());
+                }
+            }
+        }
 
         if (!LoadingSavegame) {
             Event *ev;
