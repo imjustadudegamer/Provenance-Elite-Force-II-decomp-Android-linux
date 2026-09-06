@@ -1254,7 +1254,8 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
             WIDGET_PROBE("archive",
                 "ent split us: robj head=%lld class=%lld new=%lld arch=%lld add=%lld"
                 " | edict=%lld model=%lld archtype=%lld vars=%lld rest=%lld"
-                " | procinit=%lld/%lld statemap=%lld/%lld nobj=%lld nent=%lld\n",
+                " | procinit=%lld/%lld statemap=%lld/%lld nobj=%lld nent=%lld"
+                " | model legs: setmodel=%lld/%lld numsurf=%lld/%lld\n",
                 g_restoreSplitUs[GRS_HEAD], g_restoreSplitUs[GRS_CLASS], g_restoreSplitUs[GRS_NEW],
                 g_restoreSplitUs[GRS_ARCH], g_restoreSplitUs[GRS_ADD],
                 g_restoreSplitUs[GRS_EDICT], g_restoreSplitUs[GRS_MODEL],
@@ -1262,7 +1263,9 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
                 g_restoreSplitUs[GRS_REST],
                 g_restoreSplitUs[GRS_PROCINIT], g_restoreSplitN[GRS_PROCINIT],
                 g_restoreSplitUs[GRS_STATEMAP], g_restoreSplitN[GRS_STATEMAP],
-                g_restoreSplitN[GRS_ARCH], g_restoreSplitN[GRS_EDICT]);
+                g_restoreSplitN[GRS_ARCH], g_restoreSplitN[GRS_EDICT],
+                g_restoreSplitUs[GRS_SETMODEL], g_restoreSplitN[GRS_SETMODEL],
+                g_restoreSplitUs[GRS_NUMSURF], g_restoreSplitN[GRS_NUMSURF]);
         }
 
         // BELOW the retail tail.  That is not cosmetic: it extends the stretch of the

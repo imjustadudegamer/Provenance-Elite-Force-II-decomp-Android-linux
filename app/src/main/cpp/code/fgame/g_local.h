@@ -208,7 +208,10 @@ void G_ArchiveClientRetail(Archiver& arc, gclient_t *client);
 enum {
     GRS_HEAD, GRS_CLASS, GRS_NEW, GRS_ARCH, GRS_ADD,
     GRS_EDICT, GRS_MODEL, GRS_ARCHTYPE, GRS_VARS, GRS_REST,
-    GRS_PROCINIT, GRS_STATEMAP, GRS_COUNT
+    GRS_PROCINIT, GRS_STATEMAP,
+    /* The model leg is the whole restore cost and setModel is four engine
+       calls inside it; these name which one pays. */
+    GRS_SETMODEL, GRS_NUMSURF, GRS_COUNT
 };
 extern long long g_restoreSplitUs[GRS_COUNT];
 extern long long g_restoreSplitN[GRS_COUNT];
