@@ -2344,10 +2344,25 @@ void Entity::setModel(const char *mdl)
 
     model = temp;
 
-    setModel();
+    /* The model leg is the restore's whole cost and this is the engine call
+       inside it, so it carries its own split rather than letting the leg report
+       one number for four different jobs. */
+    {
+        long long st0 = GRS_NOW();
+
+        setModel();
+
+        g_restoreSplitUs[GRS_SETMODEL] += GRS_NOW() - st0;
+        g_restoreSplitN[GRS_SETMODEL]++;
+    }
 
     if (gi.IsModel(edict->s.modelindex)) {
-        numsurfaces = gi.NumSurfaces(edict->s.modelindex);  
+        long long ns0 = GRS_NOW();
+
+        numsurfaces = gi.NumSurfaces(edict->s.modelindex);
+
+        g_restoreSplitUs[GRS_NUMSURF] += GRS_NOW() - ns0;
+        g_restoreSplitN[GRS_NUMSURF]++;
 
         if (!LoadingSavegame) {
             Event *ev;
