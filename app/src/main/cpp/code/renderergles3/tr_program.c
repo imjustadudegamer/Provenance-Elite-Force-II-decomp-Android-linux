@@ -1522,14 +1522,19 @@ void GLES3_SetupStageUniforms( gles3Program_t *p, const shaderStage_t *pStage, c
 	GLES3_SetUniform4fv( p, GLES3_U_BASECOLOR, baseColor );
 
 	/* In 2D every quad already carries Draw_SetColor per vertex, and u_BaseColor
-	   is pinned to 1 above -- so a CGEN_GLOBAL_COLOR / AGEN_GLOBAL_ALPHA arm here
-	   would read that 1 and draw the atlas's own colour, which for the font pages
-	   is white.  Read the vertex instead: the same arms the CPU-colour arm uses.
-	   In 3D u_BaseColor carries the global colour, exactly as before. */
+	   is pinned to 1 above -- so the two arms that read that uniform read 1 and
+	   the quad draws in the atlas's own colour, which for a font page is white.
+	   Those two arms read the vertex instead, exactly as the CPU-colour arm does;
+	   every other gen keeps its own meaning.  In 3D u_BaseColor carries the
+	   global colour, exactly as before. */
 	if ( backEnd.in2D && !cpuColor )
 	{
-		GLES3_SetUniform1i( p, GLES3_U_COLORGEN, (int)CGEN_EXACT_VERTEX );
-		GLES3_SetUniform1i( p, GLES3_U_ALPHAGEN, (int)AGEN_SKIP );
+		GLES3_SetUniform1i( p, GLES3_U_COLORGEN,
+							pStage->rgbGen == CGEN_GLOBAL_COLOR ? (int)CGEN_EXACT_VERTEX
+																: (int)pStage->rgbGen );
+		GLES3_SetUniform1i( p, GLES3_U_ALPHAGEN,
+							pStage->alphaGen == AGEN_GLOBAL_ALPHA ? (int)AGEN_SKIP
+																  : (int)pStage->alphaGen );
 	}
 	else
 	{
