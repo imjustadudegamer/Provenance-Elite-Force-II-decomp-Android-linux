@@ -27,6 +27,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/vector.h"
 #include "../tiki/tiki_skan.h"
 
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 #define LL(x) x = LittleLong(x)
 
 qboolean   g_bInfoworldtris = qfalse;
@@ -987,6 +991,18 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
         }
 
         if (TIKI_Skel_Bones_Cursor[boneArena] + skel->numBones > MAX_SKELBONES) {
+            /* A bail here drops the surface silently: PRINT_DEVELOPER never
+             * reaches a device log, and a dropped skel surface is the flat-blue /
+             * missing-model end state.  Name it at the master gate, throttled. */
+            static int skelbail_rows;
+            if (PROBE_Throttle(&skelbail_rows, 4, 240)) {
+                ri.Printf(
+                    PRINT_ALL,
+                    "[GLES3:skelbail] arena=%d cursor=%d bones=%d model='%s' f=%d\n",
+                    boneArena, TIKI_Skel_Bones_Cursor[boneArena], skel->numBones,
+                    tiki->a->name ? tiki->a->name : "?", RB_FrameCount()
+                );
+            }
             ri.Printf(
                 PRINT_DEVELOPER, "R_AddSkelSurfaces: too many skeleton models visible on '%s'\n", tiki->a->name
             );
