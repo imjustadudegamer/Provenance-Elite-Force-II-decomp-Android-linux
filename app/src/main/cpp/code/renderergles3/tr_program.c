@@ -933,6 +933,24 @@ unsigned GLES3_StageDefines_Full( const shaderStage_t *pStage, const shader_t *s
 	{
 		d |= GLP_NORMAL;
 	}
+	/* The whole class, not just the colour arms: four tcGen arms read the
+	   surface normal inside the shader (tr_shader.c:1462-1487 sets retail's
+	   own needsNormal for exactly them), and AGEN_DOT/ONE_MINUS_DOT_VIEW do
+	   too.  Without GLP_NORMAL the shader's `nrm' is the constant vec3(0,0,1)
+	   and every such stage samples one texel of its map for the whole surface
+	   -- the menu hull's env_diffused stage drew a flat colour. */
+	if ( tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED || tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED2
+		|| tc0 == (unsigned)TCGEN_ANGLE_BASED_ENVIRONMENT || tc0 == (unsigned)TCGEN_SUN_REFLECTION
+		|| ( bundleCount == 2
+			 && ( tc1 == (unsigned)TCGEN_ENVIRONMENT_MAPPED || tc1 == (unsigned)TCGEN_ENVIRONMENT_MAPPED2
+				  || tc1 == (unsigned)TCGEN_ANGLE_BASED_ENVIRONMENT || tc1 == (unsigned)TCGEN_SUN_REFLECTION ) ) )
+	{
+		d |= GLP_NORMAL;
+	}
+	if ( shader && shader->needsNormal )
+	{
+		d |= GLP_NORMAL;
+	}
 	if ( rgbGen == (unsigned)CGEN_WAVEFORM || rgbGen == (unsigned)CGEN_MULTIPLY_BY_WAVEFORM
 		|| alphaGen == (unsigned)AGEN_WAVEFORM )
 	{
