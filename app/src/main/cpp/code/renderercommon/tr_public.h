@@ -333,6 +333,10 @@ typedef struct {
 
     // PORT-ONLY (retail had no on-disk cache to evict), appended after the budget
     void (*FS_RemoveHomeData)( const char *qpath );
+
+    // PORT-ONLY (retail had one hunk).  The renderer registers a callback that
+    // runs before any pool that holds renderer names is freed.
+    void (*Hunk_ClearNotify)( void (*fn)( void ) );
 } refimport_t;
 
 

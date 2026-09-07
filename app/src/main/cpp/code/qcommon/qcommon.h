@@ -794,6 +794,7 @@ void Z_ChurnReset( void );
 void Z_ChurnMeterFrame( void );
 
 void Hunk_Clear( void );
+void Hunk_SetClearNotify( void (*fn)( void ) );
 void Hunk_ClearToMark( void );
 void Hunk_SetMark( void );
 qboolean Hunk_CheckMark( void );

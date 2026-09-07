@@ -1310,6 +1310,11 @@ void R_Init( void ) {
 	Com_Memset( &backEnd, 0, sizeof( backEnd ) );
 	Com_Memset( &tess, 0, sizeof( tess ) );
 
+	/* The .so is never unloaded, so one registration covers the process. */
+	if ( ri.Hunk_ClearNotify ) {
+		ri.Hunk_ClearNotify( RB_2D_OwnersPurged );
+	}
+
 	backEnd.currentSphere = &backEnd.sphere;
 
 
@@ -1452,7 +1457,6 @@ void RE_Shutdown( qboolean destroyWindow ) {
 	tr.registered = qfalse;
 
 	R_ShutdownShadows();
-	RB_2D_OwnersPurged();
 	R_ShutdownShaders();
 	GLES3_ProgramsShutdown();
 	R_ShutdownLensflares();
@@ -1495,9 +1499,6 @@ void RE_BeginRegistration(glconfig_t* glconfigOut) {
 
 	// (@0x00028D50), and the order matters: sprite_t and bmodel_t are hunk allocations
 	R_FreeNonTikiModels();
-
-	/* Names the batch holds die below. */
-	RB_2D_OwnersPurged();
 
 	ri.Hunk_Clear();
 

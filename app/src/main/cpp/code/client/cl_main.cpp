@@ -1769,7 +1769,16 @@ void* CL_RefStaticMallocTemp(int size) {
 	return Hunk_AllocateTempMemory(size);
 }
 
+static void (*s_refHunkClearNotify)( void );
+
+void CL_RefHunkClearNotify( void (*fn)( void ) ) {
+	s_refHunkClearNotify = fn;
+}
+
 void CL_RefStaticClear( void ) {
+	if ( s_refHunkClearNotify ) {
+		s_refHunkClearNotify();
+	}
 	Z_FreeTags( TAG_STATIC_RENDERER );
 }
 
@@ -1888,6 +1897,7 @@ void CL_InitRef( void ) {
 	ri.Free = CL_RefFree;
 	ri.Clear = CL_RefClear;
     ri.Hunk_Clear = CL_RefStaticClear;
+    ri.Hunk_ClearNotify = CL_RefHunkClearNotify;
 #ifdef HUNK_DEBUG
     ri.Hunk_AllocDebug = CL_RefStaticMallocDebug;
 #else

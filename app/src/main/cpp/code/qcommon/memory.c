@@ -457,7 +457,17 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 	return ptr;
 }
 
+static void (*s_hunkClearNotify)( void );
+
+/* Freed with the pool.  See Hunk_Clear. */
+void Hunk_SetClearNotify( void ( *fn )( void ) ) {
+	s_hunkClearNotify = fn;
+}
+
 void Hunk_Clear( void ) {
+	if ( s_hunkClearNotify ) {
+		s_hunkClearNotify();
+	}
 	Z_FreeTags( TAG_STATIC );
 }
 
