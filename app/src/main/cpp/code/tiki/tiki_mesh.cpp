@@ -35,6 +35,9 @@ static_assert(
     sizeof(TIKI_Skel_Bones_Arena[0]) / sizeof(TIKI_Skel_Bones_Arena[0][0]) == TIKI_BONE_CACHE,
     "each bone arena must hold exactly retail's TIKI_BONE_CACHE rows"
 );
+/* The callers index by front-end frame parity, which alternates 0 and 1; a single
+ * arena makes every odd frame an out-of-bounds pose and an out-of-bounds reset. */
+static_assert(TIKI_BONE_ARENAS >= 2, "the pose and the reset index the arenas by smpFrame parity");
 
 void TIKI_Reset_Caches_Arena(int arena)
 {
