@@ -58,6 +58,27 @@ typedef struct {
 static tikidef_t s_tikis[TIKI_MAX_DEFS];
 static int       s_numTiKis;
 
+/* ---- the parse/build result outlives the level ---------------------------
+ * CL_ShutdownAll runs on every map load and save restore and it called
+ * TIKI_FreeAll, which threw away every dtikianim_t and dtiki_t.  The next
+ * level then re-parsed and re-built the same models from nothing, and the
+ * measured split put build -- TIKI_LoadTikiModel -- at about 70% of that leg
+ * and parse at 25%.  The retained set is bounded by the game's own model list,
+ * so keeping the two caches costs a fixed few MB and turns a warm registration
+ * into a name lookup.  What is still dropped is everything per-level:
+ * tiki->skeletor (recreated on demand by TIKI_GetSkeletor) and the whole
+ * skelcache, which is the 55 MB animation set.  tiki_keepLoaded 0 restores
+ * retail's teardown. */
+static cvar_t *s_tikiKeepLoaded;
+
+static qboolean TIKI_KeepLoaded(void)
+{
+    if (!s_tikiKeepLoaded) {
+        s_tikiKeepLoaded = Cvar_Get("tiki_keepLoaded", "1", 0);
+    }
+    return s_tikiKeepLoaded && s_tikiKeepLoaded->integer ? qtrue : qfalse;
+}
+
 template<>
 int HashCode<pchar>(const pchar& key)
 {
@@ -345,6 +366,57 @@ void TIKI_FreeAll()
     dtiki_t      *tiki;
     dtikianim_t  *tikianim;
     int           i;
+    int           kept = 0;
+
+    if (tikicache && TIKI_KeepLoaded()) {
+        con_map_enum<pchar, dtiki_t *> en = *tikicache;
+
+        for (entry = en.NextValue(); entry != NULL; entry = en.NextValue()) {
+            skeletor_c *skeletor;
+
+            tiki     = *entry;
+            skeletor = (skeletor_c *)tiki->skeletor;
+            if (skeletor) {
+                delete skeletor;
+                tiki->skeletor = NULL;
+            }
+            kept++;
+        }
+
+        /* Drop the converted animation data through the same use-count walk the
+           teardown uses, so the retained dtikianim_t's tanMesh rows stay
+           consistent with skelcache and a warm level re-pages on demand. */
+        if (tikianimcache) {
+            con_map_enum<pchar, dtikianim_t *> enanim = *tikianimcache;
+
+            for (entryanim = enanim.NextValue(); entryanim != NULL;
+                 entryanim = enanim.NextValue()) {
+                tikianim = *entryanim;
+
+                if (tikianim->tanMesh) {
+                    int tanAnimIdx;
+
+                    for (tanAnimIdx = 0; tanAnimIdx < tikianim->num_anims; tanAnimIdx++) {
+                        const int tanRow = tikianim->tanMesh[tanAnimIdx];
+
+                        if (tanRow >= 0 && tanRow <= cache_maxskel && skelcache[tanRow].skel) {
+                            if (skelcache[tanRow].numuses > 0) {
+                                skelcache[tanRow].numuses--;
+                            }
+                            if (skelcache[tanRow].numuses <= 0) {
+                                TIKI_FreeSkel(tanRow);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        TIKI_TikiRollKeep(kept);
+
+        tiki_loading = true;
+        return;
+    }
 
     if (tikicache) {
         con_map_enum<pchar, dtiki_t *> en = *tikicache;

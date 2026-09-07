@@ -43,13 +43,16 @@ vec2 GLES3_TexGen0(vec3 pos, vec3 nrm)
 		vec3 viewer = normalize(u_ViewOrigin - pos);
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
-		return vec2(0.5 + refl.y * 0.5, 0.5 - refl.z * 0.5);
+		/* retail is K*(r+1) with K = 1: a [0,2] wrap, not a [0,1] sphere map.
+		   retail's own menu capture pins the Intrepid base stage's st at
+		   0.0029..1.9837 / 0.0092..1.9919 over 1034 vertices. */
+		return vec2(1.0 + refl.y, 1.0 - refl.z);
 	}
 	if (u_TCGen0 == 7) {							/* ANGLE_BASED_ENVIRONMENT :1496 */
 		vec3 viewer = normalize(u_EntityAxis[0]);
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
-		return vec2(0.5 + refl.y * 0.5, 0.5 - refl.z * 0.5);
+		return vec2(1.0 + refl.y, 1.0 - refl.z);
 	}
 	if (u_TCGen0 == 6) {							/* ENVIRONMENT_MAPPED2 :1493 */
 		/* tr_shade_calc.c:1418-1451.  The worldReflected terms are computed by

@@ -44,6 +44,7 @@ extern "C" {
     void TIKI_TikiRollParse( int ms );
     void TIKI_TikiRollBuild( int ms );
     void TIKI_TikiRoll( void );
+    void TIKI_TikiRollKeep( int kept );
 
     void TIKI_UpdateScreen(void);
 

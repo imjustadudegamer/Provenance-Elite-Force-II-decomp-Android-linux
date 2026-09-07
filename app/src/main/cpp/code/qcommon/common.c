@@ -2631,11 +2631,11 @@ void Com_Frame( void ) {
 	}
 
 #ifdef __ANDROID__
-    /* Android: pinned to 60.  The uncapped arm was diagnosis scaffolding for the
-     * menu swing; the swing was the 2D per-call cost, now batched, so the cap
-     * comes back.  Fixed rather than read off com_maxfps, whose archived value
-     * is 85 and would oversubmit against a 60 Hz panel. */
-    minMsec = 1000 / 60;
+    /* Android: uncapped by order.  The 60 re-lock was the menuhunt fix for a
+     * swing whose cause is now the batched 2D path, so the limiter no longer
+     * earns its frame.  minMsec 1 is the engine's own "no limit" and leaves the
+     * swap as the only governor; the archived com_maxfps 85 is not read here. */
+    minMsec = 1;
 #else
     if ( com_dedicated->integer || com_maxfps->integer <= 0 || com_timedemo->integer ) {
         minMsec = 1;

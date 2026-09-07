@@ -169,3 +169,11 @@ void TIKI_TikiRoll( void )
                 now - s_tikiTiki.rollAt );
     memset( &s_tikiTiki, 0, sizeof( s_tikiTiki ) );
 }
+
+/* Names the set the keep-loaded arm retained at an unload, so a warm restore
+ * reads `kept=N` and a `[TIKI:tiki] regs=0` window after it instead of the
+ * cold parse/build figures. */
+void TIKI_TikiRollKeep( int kept )
+{
+    Com_Printf( "[TIKI:keep] kept=%d\n", kept );
+}

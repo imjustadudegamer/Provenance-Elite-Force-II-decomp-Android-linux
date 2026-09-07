@@ -1381,6 +1381,93 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 }
 
 
+/* ---- [GLES3:pixd] what one 3D draw adds to the framebuffer ---------------
+ * The menu's 3D view submits 13 draws a frame whose surface counts, clip
+ * boxes, draw order, stage blend and clear all match retail's own captured
+ * frame, and the screen keeps the 2D background.  A submit that reaches no
+ * pixel is invisible from the command list, so the first "menu/" draw of a
+ * frame is followed by one small readback plus the live GL state it ran under.
+ * Pixels here and none at [GLES3:pix] means a later draw overwrote; none here
+ * means this draw is the loss and the state names which one. */
+static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
+{
+	static int	s_frame;
+	static int	s_rows;
+	GLint		vp[4], sc[4];
+	GLint		src, dst, dfn, cullmode, frontface;
+	GLint		attr[5];
+	GLboolean	dtest, dmask, blend, cullen;
+	GLboolean	dmaskRaw;
+	GLuint		errBefore, errAfter;
+	byte		buf[8 * 8 * 4];
+	int			x, y, w, h, i, n, r, g, b, a;
+
+	if ( !R_ProbeStatsOn() || backEnd.in2D || !input || !input->shader ) {
+		return;
+	}
+	if ( Q_stricmpn( input->shader->name, "menu/", 5 ) ) {
+		return;
+	}
+	if ( numIndexes <= 0 ) {
+		return;
+	}
+	if ( (int)RB_FrameCount() == s_frame ) {
+		return;
+	}
+	s_frame = (int)RB_FrameCount();
+	s_rows++;
+	if ( s_rows > 4 && ( s_rows % 240 ) != 0 ) {
+		return;
+	}
+
+	qglGetIntegerv( GL_VIEWPORT, vp );
+	qglGetIntegerv( GL_SCISSOR_BOX, sc );
+	w = 8;
+	h = 8;
+	x = vp[0] + ( vp[2] - w ) / 2;
+	y = vp[1] + ( vp[3] - h ) / 2;
+
+	qglGetIntegerv( GL_BLEND_SRC_RGB, &src );
+	qglGetIntegerv( GL_BLEND_DST_RGB, &dst );
+	qglGetIntegerv( GL_DEPTH_FUNC, &dfn );
+	qglGetIntegerv( GL_CULL_FACE_MODE, &cullmode );
+	qglGetIntegerv( GL_FRONT_FACE, &frontface );
+	dtest = qglIsEnabled( GL_DEPTH_TEST );
+	qglGetBooleanv( GL_DEPTH_WRITEMASK, &dmaskRaw );
+	dmask = dmaskRaw;
+	blend = qglIsEnabled( GL_BLEND );
+	cullen = qglIsEnabled( GL_CULL_FACE );
+	for ( i = 0; i < 5; i++ ) {
+		qglGetVertexAttribiv( ATTR_POSITION + i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &attr[i] );
+	}
+	errBefore = qglGetError();
+
+	Com_Memset( buf, 0, sizeof( buf ) );
+	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
+
+	errAfter = qglGetError();
+	n = w * h;
+	r = g = b = a = 0;
+	for ( i = 0; i < n; i++ ) {
+		r += buf[i * 4 + 0];
+		g += buf[i * 4 + 1];
+		b += buf[i * 4 + 2];
+		a += buf[i * 4 + 3];
+	}
+
+	ri.Printf( PRINT_ALL,
+		"[GLES3:pixd] sh=%s idx=%d rect=%d,%d mean=%d,%d,%d a=%d"
+		" vp=%d,%d,%dx%d sc=%d,%d,%dx%d"
+		" blend=%d src=0x%x dst=0x%x dtest=%d dmask=%d dfunc=0x%x"
+		" cull=%d mode=0x%x front=0x%x attr=%d%d%d%d%d err=%d/%d f=%d\n",
+		input->shader->name, numIndexes, x, y, r / n, g / n, b / n, a / n,
+		vp[0], vp[1], vp[2], vp[3], sc[0], sc[1], sc[2], sc[3],
+		(int)blend, (unsigned)src, (unsigned)dst, dtest ? 1 : 0, dmask ? 1 : 0,
+		(unsigned)dfn, (int)cullen, (unsigned)cullmode, (unsigned)frontface,
+		attr[0], attr[1], attr[2], attr[3], attr[4],
+		(unsigned)errBefore, (unsigned)errAfter, RB_FrameCount() );
+}
+
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const glIndex_t *indexes, int numIndexes,
 							const float *texcoord0, const float *texcoord1, int tcStrideFloats,
@@ -1528,6 +1615,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		} else {
 			qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
 		}
+		RB_MenuDrawProbe( input, numIndexes );
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_draw, BE_Microseconds() - subT0 );
 
 		BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
