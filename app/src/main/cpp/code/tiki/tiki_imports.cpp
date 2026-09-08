@@ -130,6 +130,7 @@ typedef struct {
     int regs;
     int parseMs;
     int buildMs;
+    int warm;
     int rollAt;
 } tikiTikiRoll_t;
 
@@ -157,6 +158,14 @@ void TIKI_TikiRollBuild( int ms )
     }
 }
 
+void TIKI_TikiRollWarm( void )
+{
+    s_tikiTiki.warm++;
+    if ( !s_tikiTiki.rollAt ) {
+        s_tikiTiki.rollAt = Com_Milliseconds();
+    }
+}
+
 void TIKI_TikiRoll( void )
 {
     int now = Com_Milliseconds();
@@ -164,15 +173,19 @@ void TIKI_TikiRoll( void )
     if ( !s_tikiTiki.rollAt || now - s_tikiTiki.rollAt < 1000 ) {
         return;
     }
-    Com_Printf( "[TIKI:tiki] regs=%d parse=%dms build=%dms win=%dms\n",
+    Com_Printf( "[TIKI:tiki] regs=%d parse=%dms build=%dms warm=%d win=%dms\n",
                 s_tikiTiki.regs, s_tikiTiki.parseMs, s_tikiTiki.buildMs,
-                now - s_tikiTiki.rollAt );
+                s_tikiTiki.warm, now - s_tikiTiki.rollAt );
     memset( &s_tikiTiki, 0, sizeof( s_tikiTiki ) );
 }
 
 /* Names the set the keep-loaded arm retained at an unload, so a warm restore
- * reads `kept=N` and a `[TIKI:tiki] regs=0` window after it instead of the
- * cold parse/build figures. */
+ * reads `kept=N` and a `[TIKI:tiki]` window with `warm=` after it instead of
+ * the cold parse/build figures.  The warm counter on the roll row is the
+ * always-on half: 0.3.19's keep branch never reached its own row (the unload
+ * did not go through TIKI_FreeAll) while the cache was demonstrably working --
+ * build=65ms and 37ms for 28 and 33 registrations against 0.3.18's 2255ms for
+ * 7 -- so the effect now reports from the hit path, which always runs. */
 void TIKI_TikiRollKeep( int kept )
 {
     Com_Printf( "[TIKI:keep] kept=%d\n", kept );

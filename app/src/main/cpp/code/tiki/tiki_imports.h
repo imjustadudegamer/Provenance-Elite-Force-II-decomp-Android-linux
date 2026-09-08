@@ -43,6 +43,7 @@ extern "C" {
     int  TIKI_Millis( void );
     void TIKI_TikiRollParse( int ms );
     void TIKI_TikiRollBuild( int ms );
+    void TIKI_TikiRollWarm( void );
     void TIKI_TikiRoll( void );
     void TIKI_TikiRollKeep( int kept );
 
