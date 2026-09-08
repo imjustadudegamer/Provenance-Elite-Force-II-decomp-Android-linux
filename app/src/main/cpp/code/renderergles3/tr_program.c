@@ -2410,12 +2410,15 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		const float	*proj = RB_GetProjectionMatrix();
 		float		mvp[16], px, py, pz, pw;
 		float		minx, miny, minz, maxx, maxy, maxz, minw, maxw;
-		int			v;
+		float		mins0, mins1, maxs0, maxs1;
+		int			v, nan;
 
 		GLES3_Mat4Mul( mvp, proj, mv );
 
 		minx = miny = minz = minw = 1e30f;
 		maxx = maxy = maxz = maxw = -1e30f;
+		mins0 = mins1 = maxs0 = maxs1 = 0.0f;
+		nan = 0;
 		for ( v = 0; v < input->numVertexes; v++ )
 		{
 			const float *p = input->xyz[v];
@@ -2433,15 +2436,36 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 			if ( pz > maxz ) maxz = pz;
 			if ( pw < minw ) minw = pw;
 			if ( pw > maxw ) maxw = pw;
+
+			if ( v == 0 )
+			{
+				mins0 = maxs0 = input->texCoords[0][0][0];
+				mins1 = maxs1 = input->texCoords[0][0][1];
+			}
+			else
+			{
+				float s = input->texCoords[0][0][0];
+				float t = input->texCoords[0][0][1];
+
+				/* A NaN fails every comparison, so the running box never grows:
+				 * "max stayed below min" is the NaN detector. */
+				if ( s < mins0 ) mins0 = s;
+				if ( s > maxs0 ) maxs0 = s;
+				if ( t < mins1 ) mins1 = t;
+				if ( t > maxs1 ) maxs1 = t;
+				if ( !( maxs0 >= mins0 ) || !( maxs1 >= mins1 ) ) nan = 1;
+			}
 		}
 
 		s_gles3BBoxRows++;
 		if ( s_gles3BBoxRows <= 12 || ( s_gles3BBoxRows % 240 ) == 0 )
 		{
 			ri.Printf( PRINT_ALL,
-				"[GLES3:bbox] sh=%s n=%d ndc=(%.3f..%.3f, %.3f..%.3f, %.3f..%.3f) w=(%.3f..%.3f) f=%d\n",
+				"[GLES3:bbox] sh=%s n=%d ndc=(%.3f..%.3f, %.3f..%.3f, %.3f..%.3f) w=(%.3f..%.3f)"
+				" st=(%.3f..%.3f, %.3f..%.3f) nan=%d f=%d\n",
 				shader->name, input->numVertexes,
-				minx, maxx, miny, maxy, minz, maxz, minw, maxw, RB_FrameCount() );
+				minx, maxx, miny, maxy, minz, maxz, minw, maxw,
+				mins0, maxs0, mins1, maxs1, nan, RB_FrameCount() );
 		}
 	}
 
