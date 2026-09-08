@@ -259,6 +259,7 @@ dtiki_t *TIKI_RegisterTikiFlags(const char *path, qboolean use)
 
         t = tikicache->find(full_filename);
         if (t) {
+            TIKI_TikiRollWarm();
             return *t;
         }
     }

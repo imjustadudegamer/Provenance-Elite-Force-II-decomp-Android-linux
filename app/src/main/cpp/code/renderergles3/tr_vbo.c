@@ -157,10 +157,28 @@ static int		s_arenaFrame = -1;
 static cvar_t	*s_arenaCvar;
 /* The arm switch: 1 mapped store, 0 ring.  `r_tessArena' is the legacy override. */
 static cvar_t	*s_mapCvar;
+/* The ring's own send shape.  0 is `glBufferSubData' into the persistent slot
+ * the VAO already points at -- the shape the menu rendered correctly under
+ * before 0.3.5.  1 is the 0.3.5 fresh-orphan `glBufferData' per send, which
+ * re-specifies the storage of a buffer the bound VAO's attribute pointers name
+ * while that VAO is the one bound; the 0.3.19 session caught the menu's ship
+ * drawing nothing under exactly perfect state and `attr=11111`, so the shape is
+ * now opt-in and the burden of proof is on it. */
+static cvar_t	*s_freshCvar;
+/* Latched at the first send.  The two shapes are not mixable within a session:
+ * the orphan leaves a slot's storage sized to whatever batch last used it, so a
+ * sub-data send that arrives after one would write past it.  Flipping
+ * r_tessFresh mid-session therefore does nothing until the next map load. */
+static qboolean	s_freshLatched;
+static qboolean	s_fresh;
 /* The A/B arm the frame is on: 1 while the per-frame store is it. */
 static int		 s_arenaAlternate = -1;
 /* Batches the store could not hold, which the ring drew instead. */
 static int		s_arenaFall;
+/* The arm row's own state, so a capture that starts mid-session still sees
+ * which arm ran. */
+static qboolean	s_armPrinted;
+static int		s_armMode = -1;
 
 /* ---- the mapped store (r_tessArena 4) -------------------------------------
  * The ring's per-send price is the allocation: `glBufferData' with the batch's
@@ -507,32 +525,45 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 
 	s_tessRingNext = ( s_tessRingNext + 1 ) % RB_TESS_RING;
 
+	if ( !s_freshLatched ) {
+		if ( !s_freshCvar ) {
+			s_freshCvar = ri.Cvar_Get( "r_tessFresh", "0", 0 );
+		}
+		s_fresh       = s_freshCvar->integer ? qtrue : qfalse;
+		s_freshLatched = qtrue;
+	}
+
 	RB_BindVAO( s_vaoTessRing[slot] );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
-#ifdef __ANDROID__
-	/* Android: fresh-orphan the pair per send.  glBufferSubData into a
-	 * persistent buffer the GPU last read an age ago stalls the writer for the
-	 * drain, and the menu's sparse sends paid 40-60 ms a write.  glBufferData
-	 * replaces the storage, the writer gets fresh memory, and the VAO keeps its
-	 * binding because only the storage moves. */
-	qglBufferData( GL_ARRAY_BUFFER,
-				   ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
-				   s_tessStage, GL_STREAM_DRAW );
+	if ( s_fresh ) {
+		/* Opt-in: fresh-orphan the pair per send.  glBufferSubData into a
+		 * persistent buffer the GPU last read an age ago stalls the writer for
+		 * the drain, and the menu's sparse sends paid 40-60 ms a write, so
+		 * 0.3.5 shipped this.  glBufferData replaces the storage, and it does
+		 * so with the slot VAO bound -- which is the order the 0.3.19 session
+		 * caught producing no geometry from healthy arrays. */
+		qglBufferData( GL_ARRAY_BUFFER,
+					   ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
+					   s_tessStage, GL_STREAM_DRAW );
 
-	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
-	qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
-				   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
-				   indexes, GL_STREAM_DRAW );
-#else
-	qglBufferSubData( GL_ARRAY_BUFFER, 0,
-					  ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
-					  s_tessStage );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
+		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
+					   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
+					   indexes, GL_STREAM_DRAW );
+	} else {
+		/* The default, and the shape the menu rendered correctly under before
+		 * 0.3.5: write the batch into the storage the bound VAO's pointers
+		 * already name.  No storage is re-specified, so the VAO cannot be
+		 * left naming a store the driver has since replaced. */
+		qglBufferSubData( GL_ARRAY_BUFFER, 0,
+						  ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
+						  s_tessStage );
 
-	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
-	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
-					  ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
-					  indexes );
-#endif
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboTessRing[slot] );
+		qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
+						  ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
+						  indexes );
+	}
 }
 
 /* ---- static world vertex arena ------------------------------------------
@@ -1192,18 +1223,43 @@ void RB_VBO_BeginFrame( void ) {
 		 * override, because the device's config.cfg already carries a value for
 		 * the older name: 0.3.15 registered it default 2 and 0.3.16 default 0, so
 		 * a Cvar_Get on it now returns whatever that session left and a new
-		 * default never reaches the code -- which is exactly why 0.3.17 ran the
-		 * ring (arena=0, no stand-down row) for a whole session.  A name the
-		 * config has never seen cannot be overridden by it. */
+		 * default never reaches the code.  0.3.18 tested the override as
+		 * `!legacy', so the 2 the config carried away still suppressed the
+		 * switch and 0.3.19 ran the ring for a whole session again.  Only the
+		 * two arms r_tessMap does not name are forced now: 1 the per-frame
+		 * store, 2 the alternating A/B. */
 		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
 		s_mapCvar   = ri.Cvar_Get( "r_tessMap", "1", 0 );
-
-		ri.Printf( PRINT_ALL, "[BE:arm] store: map=%d legacy=%d -> %s\n",
-				   s_mapCvar->integer, s_arenaCvar->integer,
-				   ( s_mapCvar->integer && !s_arenaCvar->integer ) ? "mapped"
-				   : ( s_arenaCvar->integer == 1 ) ? "per-frame store" : "ring" );
+		s_freshCvar = ri.Cvar_Get( "r_tessFresh", "0", 0 );
 	}
-	s_arenaMapped = ( s_mapCvar && s_mapCvar->integer && !s_arenaCvar->integer ) ? qtrue : qfalse;
+
+	{
+		int	legacy = s_arenaCvar ? s_arenaCvar->integer : 0;
+		int	map    = s_mapCvar ? s_mapCvar->integer : 0;
+		int	mode;
+
+		s_arenaMapped = ( map && legacy != 1 && legacy != 2 ) ? qtrue : qfalse;
+
+		mode = s_arenaMapped ? 2 : ( legacy ? legacy : 0 );
+
+		/* Every capture must be able to say which arm ran.  The row names the
+		 * resolution once, then again whenever it changes and again every 600
+		 * frames, so a log that starts mid-session still carries it -- 0.3.19's
+		 * log began at frame 2965 and had none, which is why the arm question
+		 * had to be answered by inference. */
+		if ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) {
+			ri.Printf( PRINT_ALL,
+					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s f=%d\n",
+					   map, legacy, s_freshLatched ? ( s_fresh ? 1 : 0 ) : ( s_freshCvar ? s_freshCvar->integer : 0 ),
+					   s_arenaMapped ? "mapped"
+					   : ( legacy == 1 ) ? "per-frame store"
+					   : ( legacy == 2 ) ? "a/b" : "ring",
+					   RB_FrameCount() );
+			s_armPrinted = qtrue;
+			s_armMode    = mode;
+		}
+	}
+
 	if ( s_arenaCvar->integer == 2 ) {
 		int		on = ( ri.Milliseconds() / 8000 ) & 1;
 
