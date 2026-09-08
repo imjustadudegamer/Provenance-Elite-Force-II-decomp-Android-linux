@@ -162,6 +162,18 @@ QGL_GLES3_CORE_PROCS;
 QGL_GLES3_32_PROCS;
 #undef GLE
 
+/* An extension entry point the send path gates on: absent on a driver without
+ * GL_EXT_buffer_storage, and the arm stands down rather than drawing from a map
+ * the draw is not allowed to read. */
+#define GLE(ret, name, ...) \
+	static ret APIENTRY GLES3_trap_##name(__VA_ARGS__) \
+	{ \
+		GLES3_RecordMissing(#name, 0); \
+		return (ret)0; \
+	}
+QGL_EXT_buffer_storage_PROCS;
+#undef GLE
+
 static void APIENTRY GLES3_trap_ActiveTextureARB(GLenum texture)
 {
 	(void)texture;
@@ -204,6 +216,7 @@ QGL_ARB_vertex_array_object_PROCS;
 QGL_EXT_direct_state_access_PROCS;
 QGL_GLES3_CORE_PROCS;
 QGL_GLES3_32_PROCS;
+QGL_EXT_buffer_storage_PROCS;
 #undef GLE
 
 void (APIENTRYP qglActiveTextureARB)(GLenum texture) = NULL;
@@ -494,6 +507,7 @@ int QGL_GLES3_LoadProcs(int *staged)
 	QGL_ARB_framebuffer_object_PROCS;
 	QGL_ARB_vertex_array_object_PROCS;
 	QGL_EXT_direct_state_access_PROCS;
+	QGL_EXT_buffer_storage_PROCS;
 #undef GLE
 
 	GLES3_BindOne("glActiveTextureARB", (void **)&qglActiveTextureARB, (void *)GLES3_trap_ActiveTextureARB, 0);

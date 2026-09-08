@@ -192,4 +192,8 @@ root, for more details.
 	GLE(void, DrawElementsBaseVertex, GLenum mode, GLsizei count, GLenum type, const void *indices, GLint basevertex) \
 	/* end QGL_GLES3_32_PROCS */
 
+#define QGL_EXT_buffer_storage_PROCS \
+	GLE(void, BufferStorageEXT, GLenum target, GLsizeiptr size, const void *data, GLbitfield flags) \
+	/* end QGL_EXT_buffer_storage_PROCS */
+
 #endif /* GLES3_QGL_GLES3_PROCS_H */
