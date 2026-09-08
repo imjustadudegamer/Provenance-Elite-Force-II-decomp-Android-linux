@@ -37,6 +37,7 @@ extern "C" {
 #define GLE(ret, name, ...) typedef ret APIENTRY name##proc(__VA_ARGS__);
 QGL_GLES3_CORE_PROCS;
 QGL_GLES3_32_PROCS;
+QGL_EXT_buffer_storage_PROCS;
 #undef GLE
 
 #ifdef __cplusplus
@@ -46,6 +47,18 @@ QGL_GLES3_32_PROCS;
 #endif
 QGL_GLES3_CORE_PROCS;
 QGL_GLES3_32_PROCS;
+#undef GLE
+
+#ifdef __cplusplus
+#define GLE(ret, name, ...) extern "C" name##proc *qgl##name;
+#else
+#define GLE(ret, name, ...) extern name##proc *qgl##name;
+#endif
+/* GL_EXT_buffer_storage.  Not core in ES 3.0/3.2, and the one optional entry
+ * point the send path gates on: a persistently mapped store is the only way to
+ * write a batch as a memcpy and still draw from the same buffer, because a
+ * non-persistent map forbids the draw that reads it. */
+QGL_EXT_buffer_storage_PROCS;
 #undef GLE
 
 #ifdef __cplusplus

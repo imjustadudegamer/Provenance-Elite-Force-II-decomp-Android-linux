@@ -160,6 +160,45 @@ static int		 s_arenaAlternate = -1;
 /* Batches the store could not hold, which the ring drew instead. */
 static int		s_arenaFall;
 
+/* ---- the mapped store (r_tessArena 4) -------------------------------------
+ * The ring's per-send price is the allocation: `glBufferData' with the batch's
+ * own size hands the driver a fresh block 220 times a frame, and the stall is
+ * size-independent (a 12-vertex send cost 11.8 ms).  This arm allocates each
+ * store once through GL_EXT_buffer_storage and maps it persistently, so a batch
+ * is a memcpy and the frame issues no driver call for the send at all.
+ *
+ * Persistent is not a preference here.  An ordinary glMapBufferRange mapping
+ * forbids the draw that reads the buffer while it is mapped (ES 3.0 §6.3.1), and
+ * the draw is the very next thing this path does, so the only mapping that works
+ * is one that stays live -- hence the extension gate: without it the arm stands
+ * down and the ring runs.
+ *
+ * Three stores rotate by frame, which is what keeps the unsynchronised write
+ * honest: a store is reused three frames after the GPU last read it.  A fence per
+ * store says when that is not true, and the frame takes the orphan-and-remap
+ * path -- one frame of the old store's price -- instead of writing memory the GPU
+ * is still reading. */
+#ifndef GL_MAP_PERSISTENT_BIT_EXT
+#define GL_MAP_PERSISTENT_BIT_EXT	0x0040
+#endif
+#ifndef GL_MAP_COHERENT_BIT_EXT
+#define GL_MAP_COHERENT_BIT_EXT		0x0080
+#endif
+#define RB_TESS_STORE_FLAGS	( GL_MAP_WRITE_BIT_EXT | GL_MAP_PERSISTENT_BIT_EXT | GL_MAP_COHERENT_BIT_EXT )
+#define RB_TESS_MAP_FENCES	RB_TESS_ARENA_COUNT
+static qboolean		s_arenaMapped;
+/* Latched once the driver refuses the store, so a session without the extension
+ * stops asking rather than probing it every frame. */
+static qboolean		s_arenaMapDead;
+static byte		   *s_arenaMapV[RB_TESS_MAP_FENCES];
+static byte		   *s_arenaMapI[RB_TESS_MAP_FENCES];
+static GLsync		s_arenaFence[RB_TESS_MAP_FENCES];
+static int			s_arenaMappedSlot = -1;
+static qboolean		s_arenaMappedOrphan;
+/* Frames the fence sent to the orphan path, and batches it carried. */
+static int			s_arenaMapOrphans;
+static int			s_arenaMapBatches;
+
 static qboolean	s_vboInitialised;
 
 static rbVertex_t	s_tessStage[SHADER_MAX_VERTEXES];
@@ -1017,6 +1056,31 @@ static void RB_VboBaseVertexInit( void ) {
 	s_baseVertexDraw = qtrue;
 }
 
+/* Allocate the store immutably and map it for the life of the buffer.  A refused
+ * allocation leaves the pointers null, which is the arm's stand-down. */
+static qboolean RB_VboArenaMapPair( int slot ) {
+	if ( !qglBufferStorageEXT ) {
+		return qfalse;
+	}
+
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[slot] );
+	qglBufferStorageEXT( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, RB_TESS_STORE_FLAGS );
+	s_arenaMapV[slot] = (byte *)qglMapBufferRange( GL_ARRAY_BUFFER, 0, RB_TESS_ARENA_VBO_BYTES,
+												   RB_TESS_STORE_FLAGS );
+
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboArena[slot] );
+	qglBufferStorageEXT( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, RB_TESS_STORE_FLAGS );
+	s_arenaMapI[slot] = (byte *)qglMapBufferRange( GL_ELEMENT_ARRAY_BUFFER, 0, RB_TESS_ARENA_EBO_BYTES,
+												   RB_TESS_STORE_FLAGS );
+
+	if ( !s_arenaMapV[slot] || !s_arenaMapI[slot] ) {
+		s_arenaMapV[slot] = NULL;
+		s_arenaMapI[slot] = NULL;
+		return qfalse;
+	}
+	return qtrue;
+}
+
 static void RB_VboArenaInit( void ) {
 	int		i;
 
@@ -1028,19 +1092,77 @@ static void RB_VboArenaInit( void ) {
 	RB_BindVAO( s_vaoArena );
 
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
+		/* No storage here on purpose.  The mapped arm allocates immutably in
+		 * RB_VboArenaMapPair and a store already allocated immutably cannot be
+		 * re-specified; the other two arms take their storage from the per-frame
+		 * orphan in RB_VBO_BeginFrame, which is the only write they make. */
 		qglGenBuffers( 1, &s_vboArena[i] );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
-		qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
 
 		qglGenBuffers( 1, &s_eboArena[i] );
 		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboArena[i] );
-		qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+
+		s_arenaMapV[i] = NULL;
+		s_arenaMapI[i] = NULL;
+		s_arenaFence[i] = NULL;
 	}
 
+	/* The attribute pointers are offsets, but the pointer calls still need a
+	 * buffer bound to the target to attach to. */
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[0] );
 	RB_VBO_ConfigureAttribs();
 
 	s_arenaNext = RB_TESS_ARENA_COUNT - 1;
 	s_arenaInit = qtrue;
+}
+
+/* A store the fence has not released goes the orphan route: the storage is
+ * replaced and a fresh mapping taken, so the frame pays the allocation the map
+ * exists to avoid rather than writing memory the GPU is still reading. */
+static qboolean RB_VboArenaSlotReady( int slot ) {
+	if ( s_arenaFence[slot] ) {
+		GLenum	r = qglClientWaitSync( s_arenaFence[slot], 0, 0 );
+
+		qglDeleteSync( s_arenaFence[slot] );
+		s_arenaFence[slot] = NULL;
+
+		if ( r != GL_ALREADY_SIGNALED && r != GL_WAIT_FAILED ) {
+			return qfalse;
+		}
+	}
+	return qtrue;
+}
+
+static void RB_VboArenaMapFrame( void ) {
+	int		slot = s_arenaNext;
+
+	s_arenaMappedSlot = slot;
+	s_arenaMappedOrphan = qfalse;
+
+	/* First use of the store: allocate it immutably and map it for its life.
+	 * A refusal stands the arm down for the session and the ring runs instead --
+	 * the map is a requirement of this arm, not a fallback it can skip. */
+	if ( !s_arenaMapV[slot] ) {
+		if ( s_arenaMapDead || !RB_VboArenaMapPair( slot ) ) {
+			if ( !s_arenaMapDead ) {
+				s_arenaMapDead = qtrue;
+				ri.Printf( PRINT_ALL, "[BE:arm] r_tessArena 4 stood down: no persistent store, ring runs\n" );
+			}
+			s_arenaFull   = qtrue;
+			s_arenaActive = qfalse;
+		}
+		return;
+	}
+
+	/* Immutable storage is not re-specified: a store the GPU is still reading is
+	 * simply not used this frame, and its batches take the ring.  That is the
+	 * fence's whole job -- it prices the rare overtake at the ring's own rate
+	 * instead of at a sync or at a write to memory the GPU is still reading. */
+	if ( !RB_VboArenaSlotReady( slot ) ) {
+		s_arenaMapOrphans++;
+		s_arenaMappedOrphan = qtrue;
+		s_arenaFull         = qtrue;
+	}
 }
 
 static void RB_VboArenaShutdown( void ) {
@@ -1064,15 +1186,15 @@ static void RB_VboArenaShutdown( void ) {
 
 void RB_VBO_BeginFrame( void ) {
 	if ( !s_arenaCvar ) {
-		/* Default off, now measured rather than suspected: 0.3.15 ran both arms
-		 * eight seconds at a time and the store lost by ~15x on the same screen
-		 * (load-game menu, ring 43-48 ms/s of send over 2100-2475 batches, store
-		 * 670-745 ms/s over 913-1125), taking the menu from 30 to 13-16 fps.  The
-		 * per-send fresh orphan the ring does is cheaper on Mali than a subdata
-		 * into a store the frame just orphaned.  2 still alternates the arms for
-		 * a re-run; 1 forces the store. */
-		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
+		/* 4 is the mapped store and the default: the ring's per-send price is the
+		 * allocation `glBufferData' performs 220 times a frame, and a mapped store
+		 * turns a batch into a memcpy.  0 is the ring, which 0.3.15 measured 15x
+		 * ahead of the per-frame-orphaned store (2 alternates them); 1 forces that
+		 * store.  A refused map or a store the fence has not released falls back,
+		 * so the arm can only cost what the ring costs. */
+		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "4", 0 );
 	}
+	s_arenaMapped = ( s_arenaCvar->integer == 4 ) ? qtrue : qfalse;
 	if ( s_arenaCvar->integer == 2 ) {
 		int		on = ( ri.Milliseconds() / 8000 ) & 1;
 
@@ -1109,13 +1231,30 @@ void RB_VBO_BeginFrame( void ) {
 	s_arenaVbo = s_vboArena[s_arenaNext];
 	s_arenaEbo = s_eboArena[s_arenaNext];
 
-	/* Discard the store this frame is about to fill: the driver may then hand
-	 * back storage no in-flight command reads instead of waiting for one. */
 	RB_BindVAO( s_vaoArena );
-	RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
-	qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
-	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
-	qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+
+	/* The previous mapped store is closed out and its fence planted before this
+	 * one opens, so the GPU's read of it is ordered against this frame's write. */
+	if ( s_arenaMapped && s_arenaMappedSlot >= 0 && s_arenaMapV[s_arenaMappedSlot] ) {
+		if ( s_arenaFence[s_arenaMappedSlot] ) {
+			qglDeleteSync( s_arenaFence[s_arenaMappedSlot] );
+		}
+		s_arenaFence[s_arenaMappedSlot] = qglFenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 );
+	}
+
+	if ( s_arenaMapped ) {
+		RB_VboArenaMapFrame();
+		if ( !s_arenaActive ) {
+			return;
+		}
+	} else {
+		/* Discard the store this frame is about to fill: the driver may then hand
+		 * back storage no in-flight command reads instead of waiting for one. */
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
+		qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
+		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
+		qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+	}
 
 	/* Base-vertex arm: the pointers are captured once per store, at offset 0. */
 	if ( s_baseVertexDraw ) {
@@ -1137,7 +1276,11 @@ void RB_VBO_BeginFrame( void ) {
  * by the send row so the log is self-describing: without it a capture says what
  * happened but not which of the two was on. */
 int RB_VboArenaMode( void ) {
-	return s_arenaActive ? 1 : 0;
+	if ( !s_arenaActive ) {
+		return 0;
+	}
+	/* The [BE:send] row's `arena=`: 0 ring, 1 per-frame store, 2 mapped store. */
+	return s_arenaMapped ? 2 : 1;
 }
 
 /* Append one batch to the frame store.  `staticVerts` says the vertex bytes are
@@ -1198,7 +1341,12 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 
 	if ( !staticVerts ) {
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
-		qglBufferSubData( GL_ARRAY_BUFFER, vOff, vBytes, s_tessStage );
+		if ( s_arenaMapped ) {
+			/* A copy, not a call: the store is mapped for the whole frame. */
+			Com_Memcpy( s_arenaMapV[s_arenaMappedSlot] + vOff, s_tessStage, (size_t)vBytes );
+		} else {
+			qglBufferSubData( GL_ARRAY_BUFFER, vOff, vBytes, s_tessStage );
+		}
 		if ( s_baseVertexDraw ) {
 			/* the store VAO holds the pointers; the offset goes with the draw */
 			*baseVertex = (int)( vOff / RB_VERTEX_STRIDE );
@@ -1211,8 +1359,13 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 		*baseVertex = 0;
 	}
 
-	qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, iOff, iBytes, src );
+	if ( s_arenaMapped ) {
+		Com_Memcpy( s_arenaMapI[s_arenaMappedSlot] + iOff, src, (size_t)iBytes );
+	} else {
+		qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, iOff, iBytes, src );
+	}
 	s_arenaIOff = (GLintptr)( iOff + iBytes );
+	s_arenaMapBatches++;
 
 	*indexOffset = iOff;
 	return qtrue;
