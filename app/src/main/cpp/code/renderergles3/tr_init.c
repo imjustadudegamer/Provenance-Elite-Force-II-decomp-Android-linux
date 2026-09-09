@@ -65,6 +65,7 @@ cvar_t	*r_smp;
 
 cvar_t	*r_ignorehwgamma;
 cvar_t	*r_measureOverdraw;
+cvar_t	*r_depthFuncAlways;
 
 cvar_t	*r_inGameVideo;
 cvar_t	*r_fastsky;
@@ -843,6 +844,8 @@ void GL_SetDefaultState( void )
 
 	qglDepthMask( GL_TRUE );
 	qglDisable( GL_DEPTH_TEST );
+	GLES3_DepthStateReset();
+	GLES3_StencilStateReset();
 	qglEnable( GL_SCISSOR_TEST );
 	qglDisable( GL_CULL_FACE );
 	qglDisable( GL_BLEND );
@@ -1210,6 +1213,7 @@ void R_Register( void )
 	r_smp = ri.Cvar_Get ("r_smp", "0", CVAR_ARCHIVE | CVAR_LATCH);
 
 	r_measureOverdraw = ri.Cvar_Get( "r_measureOverdraw", "0", CVAR_CHEAT );
+	r_depthFuncAlways = ri.Cvar_Get( "r_depthFuncAlways", "0", CVAR_CHEAT );
 	r_norefresh = ri.Cvar_Get("r_norefresh", "0", CVAR_CHEAT);
 	r_drawentities = ri.Cvar_Get("r_drawentities", "1", CVAR_CHEAT);
 	r_drawcurves = ri.Cvar_Get("r_drawcurves", "1", CVAR_CHEAT);

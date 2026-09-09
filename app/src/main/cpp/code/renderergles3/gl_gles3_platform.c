@@ -479,15 +479,25 @@ static void GLES3_InitExtensions(void)
 	ri.Printf(PRINT_ALL, "MAX_TEXTURE_SIZE: %d\n", glConfig.maxTextureSize);
 	ri.Printf(PRINT_ALL, "MAX_TEXTURE_UNITS: %d\n", glConfig.numTextureUnits);
 
-	textureFilterAnisotropic = aniso ? qtrue : qfalse;
+	textureFilterAnisotropic = qfalse;	/* retail gates the flag on r_anisotropicFiltering */
 	maxAnisotropy = 0;
 	if (aniso) {
-		GLfloat maxA = 0.0f;
-		qglGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxA);
-		maxAnisotropy = (int)maxA;
+		if (r_anisotropicFiltering->integer) {
+			GLfloat maxA = 0.0f;
+			qglGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxA);
+			maxAnisotropy = (int)maxA;
+			if (maxAnisotropy <= 0) {
+				maxAnisotropy = 0;
+				ri.Printf(PRINT_ALL, "...GL_EXT_texture_filter_anisotropic not properly supported!\n");
+			} else {
+				textureFilterAnisotropic = qtrue;
+				ri.Printf(PRINT_ALL, "...using GL_EXT_texture_filter_anisotropic (max: %i)\n",
+						  maxAnisotropy);
+			}
+		} else {
+			ri.Printf(PRINT_ALL, "...ignoring GL_EXT_texture_filter_anisotropic\n");
+		}
 	}
-	ri.Printf(PRINT_ALL, "...using GL_EXT_texture_filter_anisotropic (max: %i)\n",
-			  maxAnisotropy);
 
 	ri.Printf(PRINT_ALL, "[GLES3:glcaps] env_add=%d env_combine=%d cube_map=1\n",
 			  glConfig.textureEnvAddAvailable ? 1 : 0,

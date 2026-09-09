@@ -143,8 +143,16 @@ static GLintptr RB_VboAlignUp( GLintptr v, GLintptr align ) {
 
 static GLuint	s_vboArena[RB_TESS_ARENA_COUNT];
 static GLuint	s_eboArena[RB_TESS_ARENA_COUNT];
-static GLuint	s_vaoArena;
-static GLuint	s_vaoStaticArena;
+/* One VAO a store.  The three stores rotate by frame, and the attribute
+ * pointers are VAO state: one VAO shared across the rotation names whichever
+ * store it was captured against, so the draw reads a frame's bytes out of that
+ * store instead of out of the one the frame had just written -- which is the
+ * first two frames of every rotation drawn from a store the previous frames
+ * filled, and the reason a mapped store that carries correctly can still render
+ * garbage.  tools/arena_store_harness's `mapped` case holds this shape up and
+ * fails on it. */
+static GLuint	s_vaoArena[RB_TESS_ARENA_COUNT];
+static GLuint	s_vaoStaticArena[RB_TESS_ARENA_COUNT];
 static int		s_arenaNext;
 static GLuint	s_arenaVbo;
 static GLuint	s_arenaEbo;
@@ -155,15 +163,22 @@ static qboolean	s_arenaActive;
 static qboolean	s_arenaFull;
 static int		s_arenaFrame = -1;
 static cvar_t	*s_arenaCvar;
-/* The arm switch: 1 mapped store, 0 ring.  `r_tessArena' is the legacy override. */
+/* The arm switch: 0 ring, 1 mapped store.  `r_tessArena' is the legacy override.
+ * 0.3.20/0.3.21 shipped 1 and the first live arm stood down before its own row
+ * could print, so the session logged "mapped" over a ring; until the store
+ * carries on a host harness it stays opt-in. */
 static cvar_t	*s_mapCvar;
-/* The ring's own send shape.  0 is `glBufferSubData' into the persistent slot
- * the VAO already points at -- the shape the menu rendered correctly under
- * before 0.3.5.  1 is the 0.3.5 fresh-orphan `glBufferData' per send, which
- * re-specifies the storage of a buffer the bound VAO's attribute pointers name
- * while that VAO is the one bound; the 0.3.19 session caught the menu's ship
- * drawing nothing under exactly perfect state and `attr=11111`, so the shape is
- * now opt-in and the burden of proof is on it. */
+/* The arm as the cvars ask for it, before the store's own verdict.  `fall=' is
+ * counted against this, not against the verdict: a store that was asked for and
+ * refused every batch is the case the counter exists for. */
+static qboolean	s_arenaArmed;
+/* The ring's own send shape.  1 is the fresh-orphan `glBufferData' per send and
+ * the default: the same-view A/B measured 47,093 us/window against 381,283 for
+ * the sub-data shape, because Mali prices a write into a buffer the GPU last
+ * read eight batches ago as a drain.  The storage re-specification now happens
+ * with the default VAO bound and the slot's own VAO opens after it, which is
+ * the order bc60397 gave the store and the one the 0.3.19 session found the
+ * old shape missing.  0 is the sub-data shape, kept for the A/B. */
 static cvar_t	*s_freshCvar;
 /* Latched at the first send.  The two shapes are not mixable within a session:
  * the orphan leaves a slot's storage sized to whatever batch last used it, so a
@@ -220,6 +235,8 @@ static int			s_arenaMapOrphans;
 static int			s_arenaMapBatches;
 
 static qboolean	s_vboInitialised;
+static qboolean	s_clipPlaneEnabled;
+static vec4_t	s_clipPlane;
 
 static rbVertex_t	s_tessStage[SHADER_MAX_VERTEXES];
 
@@ -250,6 +267,10 @@ static int	s_sendGateRec;
 static int	s_sendGateRecs;
 static int	s_sendStalls;
 static int	s_sendStallShown;
+/* The 2D share of the row: the menu's sends are 2D and the load menu's frame is
+   their cost, so the one-write-per-pass acceptance is this pair. */
+static int	s_send2D;
+static int	s_send2DSum;
 static int				s_locVisits;
 static int				s_locVtxMiss;
 static int				s_locIdxMiss;
@@ -297,6 +318,8 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	out->gateSig = s_sendGateSig;
 	out->gateRec = s_sendGateRec;
 	out->recs = s_sendGateRecs;
+	out->d2Batches = s_send2D;
+	out->d2Sum = s_send2DSum;
 
 	s_sendBatches = s_sendRuns = s_sendSum = s_sendFirst = 0;
 	s_sendMax = s_sendGapMax = 0;
@@ -304,6 +327,7 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	s_sendWrites = s_sendLocal = s_sendStatics = s_sendMulti = s_sendSeq = 0;
 	s_sendStalls = s_sendStallShown = 0;
 	s_sendGateWorld = s_sendGateDlight = s_sendGateIter = 0;
+	s_send2D = s_send2DSum = 0;
 	s_sendGateSig = s_sendGateRec = s_sendGateRecs = 0;
 	s_sendLocVisits = s_locVisits;
 	s_sendLocVtx = s_locVtxMiss;
@@ -488,6 +512,7 @@ void RB_VBO_Init( void )
 
 static void RB_VboStaticShutdown( void );
 static void RB_VboArenaShutdown( void );
+static void RB_VboStaticArenaVao( int i );
 
 void RB_VBO_Shutdown( void )
 {
@@ -516,9 +541,9 @@ void RB_VBO_Shutdown( void )
  * sends of a batch share their slot, so the pair a draw reads is the pair just
  * written and the pair the next send writes is eight batches old.  Both sizes and
  * both payloads are the batch's exact values, no padding: the allocation is the
- * structural maximum and the upload is the batch.  The call set is two
- * glBufferSubData sends plus the same bind calls; no call re-specifies storage,
- * and there is no fence, map or flush. */
+ * structural maximum and the upload is the batch.  The fresh arm's call set is
+ * two glBufferData plus the same bind calls; the subdata arm's is two
+ * glBufferSubData.  Neither maps and neither fences. */
 static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIndexes )
 {
 	int		slot = s_tessRingNext;
@@ -527,21 +552,22 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 
 	if ( !s_freshLatched ) {
 		if ( !s_freshCvar ) {
-			s_freshCvar = ri.Cvar_Get( "r_tessFresh", "0", 0 );
+			s_freshCvar = ri.Cvar_Get( "r_tessFresh", "1", 0 );
 		}
 		s_fresh       = s_freshCvar->integer ? qtrue : qfalse;
 		s_freshLatched = qtrue;
 	}
 
-	RB_BindVAO( s_vaoTessRing[slot] );
-	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 	if ( s_fresh ) {
-		/* Opt-in: fresh-orphan the pair per send.  glBufferSubData into a
-		 * persistent buffer the GPU last read an age ago stalls the writer for
-		 * the drain, and the menu's sparse sends paid 40-60 ms a write, so
-		 * 0.3.5 shipped this.  glBufferData replaces the storage, and it does
-		 * so with the slot VAO bound -- which is the order the 0.3.19 session
-		 * caught producing no geometry from healthy arrays. */
+		/* The 8x arm, measured 47,093 vs 381,283 us/window on the identical
+		 * view: glBufferSubData into a buffer the GPU last read an age ago
+		 * stalls the writer for the drain, so the pair is orphaned per send
+		 * instead.  The re-specification happens with the default VAO bound
+		 * and the slot's opens after it -- the same order bc60397 gave the
+		 * store, and the one the 0.3.19 session caught a driver mishandling
+		 * when the orphan ran under the VAO whose pointers name the buffer. */
+		RB_BindVAO( 0 );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 		qglBufferData( GL_ARRAY_BUFFER,
 					   ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
 					   s_tessStage, GL_STREAM_DRAW );
@@ -550,7 +576,11 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 		qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
 					   ( GLsizeiptr )( ( size_t )numIndexes * sizeof( glIndex_t ) ),
 					   indexes, GL_STREAM_DRAW );
+
+		RB_BindVAO( s_vaoTessRing[slot] );
 	} else {
+		RB_BindVAO( s_vaoTessRing[slot] );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 		/* The default, and the shape the menu rendered correctly under before
 		 * 0.3.5: write the batch into the storage the bound VAO's pointers
 		 * already name.  No storage is re-specified, so the VAO cannot be
@@ -765,12 +795,13 @@ static void RB_VboStaticInit( void ) {
 		RB_VBO_ConfigureAttribs();
 	}
 
-	/* the same vertices drawn with the frame store's indices */
-	qglGenVertexArrays( 1, &s_vaoStaticArena );
-	RB_BindVAO( s_vaoStaticArena );
-	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
-	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
-	RB_VBO_ConfigureAttribs();
+	/* The VAOs that draw the static arena out of the frame store's index blocks
+	 * belong to RB_VboArenaInit: they name a store's own element buffer, and a
+	 * store rotates.  If the arena init has not run yet there is nothing to
+	 * make here, and it makes them on its own first pass. */
+	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
+		RB_VboStaticArenaVao( i );
+	}
 
 	/* the same vertices drawn with the device-local baked index blocks */
 	qglGenVertexArrays( 1, &s_vaoStaticLocal );
@@ -1089,10 +1120,21 @@ static void RB_VboBaseVertexInit( void ) {
 	s_baseVertexDraw = qtrue;
 }
 
+/* Why the store was refused, for the stand-down row.  0.3.21's session ended on
+ * `ran=0 fall=0 arena=0` with no stand-down row anywhere in the capture, because
+ * the row printed once at the first frame and the capture began three thousand
+ * frames later; the one question the acceptance had -- extension absent, or
+ * present and the map refused -- went into the log's missing first line.  The
+ * reason is now a field of the state, and the arm row prints it on the same
+ * 600-frame cadence the arm itself uses. */
+static int		s_arenaMapWhy;		/* 0 none, 1 no entry point, 2 map refused */
+static GLenum	s_arenaMapErr;
+
 /* Allocate the store immutably and map it for the life of the buffer.  A refused
  * allocation leaves the pointers null, which is the arm's stand-down. */
 static qboolean RB_VboArenaMapPair( int slot ) {
 	if ( !qglBufferStorageEXT ) {
+		s_arenaMapWhy = 1;
 		return qfalse;
 	}
 
@@ -1107,11 +1149,32 @@ static qboolean RB_VboArenaMapPair( int slot ) {
 												   RB_TESS_STORE_FLAGS );
 
 	if ( !s_arenaMapV[slot] || !s_arenaMapI[slot] ) {
+		/* Both stores are left allocated-but-unmapped here; the driver's own
+		 * error is the only thing that says why, so take it before anything
+		 * else can clear it. */
+		s_arenaMapWhy	= 2;
+		s_arenaMapErr	= qglGetError();
 		s_arenaMapV[slot] = NULL;
 		s_arenaMapI[slot] = NULL;
 		return qfalse;
 	}
 	return qtrue;
+}
+
+/* The VAO that draws the static world's vertices out of store `i's index blocks.
+ * It is made here and again from RB_VboStaticInit, whichever runs second: it
+ * needs both the static vertex arena and the store, and neither is ordered
+ * against the other. */
+static void RB_VboStaticArenaVao( int i ) {
+	if ( s_vaoStaticArena[i] ) {
+		return;
+	}
+	qglGenVertexArrays( 1, &s_vaoStaticArena[i] );
+	RB_BindVAO( s_vaoStaticArena[i] );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboArena[i] );
+	RB_VBO_ConfigureAttribs();
+	RB_BindVAO( 0 );
 }
 
 static void RB_VboArenaInit( void ) {
@@ -1120,9 +1183,6 @@ static void RB_VboArenaInit( void ) {
 	if ( s_arenaInit ) {
 		return;
 	}
-
-	qglGenVertexArrays( 1, &s_vaoArena );
-	RB_BindVAO( s_vaoArena );
 
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
 		/* No storage here on purpose.  The mapped arm allocates immutably in
@@ -1138,17 +1198,28 @@ static void RB_VboArenaInit( void ) {
 		s_arenaMapV[i] = NULL;
 		s_arenaMapI[i] = NULL;
 		s_arenaFence[i] = NULL;
-	}
 
-	/* The attribute pointers are offsets, but the pointer calls still need a
-	 * buffer bound to the target to attach to. */
-	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[0] );
-	RB_VBO_ConfigureAttribs();
+		/* The attribute pointers are offsets, but the pointer calls still need a
+		 * buffer bound to the target to attach to -- and each store's pointers
+		 * must name that store, so the capture is per store and not once. */
+		qglGenVertexArrays( 1, &s_vaoArena[i] );
+		RB_BindVAO( s_vaoArena[i] );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
+		RB_VBO_ConfigureAttribs();
+
+		if ( s_staticVbo ) {
+			RB_VboStaticArenaVao( i );
+		}
+	}
+	RB_BindVAO( 0 );
 
 	s_arenaNext = RB_TESS_ARENA_COUNT - 1;
 	s_arenaInit = qtrue;
 }
 
+/* A store the fence has not released goes the orphan route: the storage is
+ * replaced and a fresh mapping taken, so the frame pays the allocation the map
+ * exists to avoid rather than writing memory the GPU is still reading. */
 /* A store the fence has not released goes the orphan route: the storage is
  * replaced and a fresh mapping taken, so the frame pays the allocation the map
  * exists to avoid rather than writing memory the GPU is still reading. */
@@ -1159,7 +1230,14 @@ static qboolean RB_VboArenaSlotReady( int slot ) {
 		qglDeleteSync( s_arenaFence[slot] );
 		s_arenaFence[slot] = NULL;
 
-		if ( r != GL_ALREADY_SIGNALED && r != GL_WAIT_FAILED ) {
+		/* ALREADY_SIGNALED and CONDITION_SATISFIED are both "the GPU is done":
+		 * the second is what a zero timeout returns when the wait itself is what
+		 * finished it.  Taking only the first made every frame that had to wait
+		 * at all pay the ring as well, for a store that was in fact released --
+		 * which is the difference between the fence pricing an overtake and the
+		 * fence pricing the ordinary case. */
+		if ( r != GL_ALREADY_SIGNALED && r != GL_CONDITION_SATISFIED
+			 && r != GL_WAIT_FAILED ) {
 			return qfalse;
 		}
 	}
@@ -1179,7 +1257,14 @@ static void RB_VboArenaMapFrame( void ) {
 		if ( s_arenaMapDead || !RB_VboArenaMapPair( slot ) ) {
 			if ( !s_arenaMapDead ) {
 				s_arenaMapDead = qtrue;
-				ri.Printf( PRINT_ALL, "[BE:arm] r_tessArena 4 stood down: no persistent store, ring runs\n" );
+				/* The reason is the acceptance: 1 no entry point (the extension
+				 * is genuinely absent), 2 the driver refused the allocation or
+				 * the map, with its own error beside it. */
+				ri.Printf( PRINT_ALL,
+						   "[BE:arm] store stood down (%s glerror=0x%x): ring runs, fall counts\n",
+						   s_arenaMapWhy == 1 ? "no GL_EXT_buffer_storage"
+											  : "persistent map refused",
+						   (unsigned)s_arenaMapErr );
 			}
 			s_arenaFull   = qtrue;
 			s_arenaActive = qfalse;
@@ -1205,19 +1290,63 @@ static void RB_VboArenaShutdown( void ) {
 		return;
 	}
 
+	/* The mapped store's bookkeeping has to die with the buffers it names.  It
+	 * did not: the map pointers and the stand-down latch are file statics and
+	 * survived this function, so the next init saw `s_arenaMapV[slot] != NULL`,
+	 * took the already-mapped branch and never re-mapped, never re-probed and
+	 * never re-printed -- which is why 0.3.20's arm row said "mapped" for a
+	 * whole session while every [BE:send] window read arena=0 and the stand-down
+	 * row appeared nowhere in the capture. */
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
+		if ( s_arenaFence[i] ) {
+			qglDeleteSync( s_arenaFence[i] );
+			s_arenaFence[i] = NULL;
+		}
+		/* A persistent mapping is dropped explicitly, with its own buffer bound:
+		 * deleting a mapped buffer is legal and implicitly unmaps it, but this
+		 * is the one place the map's lifetime is ended and saying so is cheaper
+		 * than a driver that disagrees. */
+		if ( s_arenaMapV[i] ) {
+			RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
+			qglUnmapBuffer( GL_ARRAY_BUFFER );
+		}
+		if ( s_arenaMapI[i] ) {
+			RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboArena[i] );
+			qglUnmapBuffer( GL_ELEMENT_ARRAY_BUFFER );
+		}
+		s_arenaMapV[i] = NULL;
+		s_arenaMapI[i] = NULL;
 		qglDeleteBuffers( 1, &s_vboArena[i] );
 		qglDeleteBuffers( 1, &s_eboArena[i] );
 	}
-	qglDeleteVertexArrays( 1, &s_vaoArena );
-	if ( s_vaoStaticArena ) {
-		qglDeleteVertexArrays( 1, &s_vaoStaticArena );
-		s_vaoStaticArena = 0;
+	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
+		qglDeleteVertexArrays( 1, &s_vaoArena[i] );
+		if ( s_vaoStaticArena[i] ) {
+			qglDeleteVertexArrays( 1, &s_vaoStaticArena[i] );
+			s_vaoStaticArena[i] = 0;
+		}
 	}
-	s_arenaInit = qfalse;
+	s_arenaInit         = qfalse;
+	s_arenaActive       = qfalse;
+	s_arenaFull         = qtrue;
+	s_arenaFrame        = -1;
+	s_arenaNext         = 0;
+	s_arenaVOff         = 0;
+	s_arenaIOff         = 0;
+	s_arenaMappedSlot   = -1;
+	s_arenaMappedOrphan = qfalse;
+	s_arenaMapDead      = qfalse;
+	s_arenaMapWhy       = 0;
+	s_arenaMapErr       = GL_NO_ERROR;
+	s_arenaMapOrphans   = 0;
+	s_arenaMapBatches   = 0;
+	s_armPrinted        = qfalse;
+	s_armMode           = -1;
 }
 
 void RB_VBO_BeginFrame( void ) {
+	GLuint	vaoOnEntry;
+
 	if ( !s_arenaCvar ) {
 		/* `r_tessMap' is the arm switch and `r_tessArena' only the legacy
 		 * override, because the device's config.cfg already carries a value for
@@ -1227,10 +1356,16 @@ void RB_VBO_BeginFrame( void ) {
 		 * `!legacy', so the 2 the config carried away still suppressed the
 		 * switch and 0.3.19 ran the ring for a whole session again.  Only the
 		 * two arms r_tessMap does not name are forced now: 1 the per-frame
-		 * store, 2 the alternating A/B. */
+		 * store, 2 the alternating A/B.
+		 *
+		 * The default is 0.  0.3.21 shipped 1 and the first live arm stood down
+		 * before its own row could print, so the session logged "mapped" over a
+		 * ring and gameplay paid the ring's price with the store's overhead on
+		 * top.  The store stays in the tree behind the cvar and is re-armed only
+		 * when tools/arena_store_harness has carried it on a host context. */
 		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
-		s_mapCvar   = ri.Cvar_Get( "r_tessMap", "1", 0 );
-		s_freshCvar = ri.Cvar_Get( "r_tessFresh", "0", 0 );
+		s_mapCvar   = ri.Cvar_Get( "r_tessMap", "0", 0 );
+		s_freshCvar = ri.Cvar_Get( "r_tessFresh", "1", 0 );
 	}
 
 	{
@@ -1238,7 +1373,12 @@ void RB_VBO_BeginFrame( void ) {
 		int	map    = s_mapCvar ? s_mapCvar->integer : 0;
 		int	mode;
 
-		s_arenaMapped = ( map && legacy != 1 && legacy != 2 ) ? qtrue : qfalse;
+		s_arenaArmed  = ( map && legacy != 1 && legacy != 2 ) ? qtrue : qfalse;
+		/* A store the driver refused is not the arm any more: the ring is.  It
+		 * still reads as armed in the row's `dead=` field, so the capture says
+		 * "asked for the store, got the ring" instead of silently reporting the
+		 * ring as a choice. */
+		s_arenaMapped = ( s_arenaArmed && !s_arenaMapDead ) ? qtrue : qfalse;
 
 		mode = s_arenaMapped ? 2 : ( legacy ? legacy : 0 );
 
@@ -1246,15 +1386,22 @@ void RB_VBO_BeginFrame( void ) {
 		 * resolution once, then again whenever it changes and again every 600
 		 * frames, so a log that starts mid-session still carries it -- 0.3.19's
 		 * log began at frame 2965 and had none, which is why the arm question
-		 * had to be answered by inference. */
+		 * had to be answered by inference.  `ran=` is RB_VboArenaMode, what the
+		 * previous frame actually used, not the intent: 0.3.20 said "mapped"
+		 * for a whole session while every [BE:send] window read arena=0,
+		 * because the stand-down had printed once, before that capture began,
+		 * and the latch survives a renderer re-init.  `dead=` and `why=` carry
+		 * the stand-down on the same cadence, which is the one row 0.3.21's
+		 * capture needed and did not get. */
 		if ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) {
 			ri.Printf( PRINT_ALL,
-					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s f=%d\n",
+					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s ran=%d dead=%d why=%d(0x%x) f=%d\n",
 					   map, legacy, s_freshLatched ? ( s_fresh ? 1 : 0 ) : ( s_freshCvar ? s_freshCvar->integer : 0 ),
 					   s_arenaMapped ? "mapped"
 					   : ( legacy == 1 ) ? "per-frame store"
 					   : ( legacy == 2 ) ? "a/b" : "ring",
-					   RB_FrameCount() );
+					   RB_VboArenaMode(), s_arenaMapDead ? 1 : 0,
+					   s_arenaMapWhy, (unsigned)s_arenaMapErr, RB_FrameCount() );
 			s_armPrinted = qtrue;
 			s_armMode    = mode;
 		}
@@ -1292,11 +1439,25 @@ void RB_VBO_BeginFrame( void ) {
 	}
 	s_arenaFrame = RB_FrameCount();
 
+	/* The frame's own refusals are decided below, in the fence check and in the
+	 * send's room test; the flag is cleared here and nowhere else, because
+	 * clearing it after the fence check erased the very refusal it had just
+	 * made -- a store the GPU was still reading was marked usable and the frame
+	 * wrote it, which is the write the fence exists to prevent. */
+	s_arenaFull = qfalse;
+
 	s_arenaNext = ( s_arenaNext + 1 ) % RB_TESS_ARENA_COUNT;
 	s_arenaVbo = s_vboArena[s_arenaNext];
 	s_arenaEbo = s_eboArena[s_arenaNext];
 
-	RB_BindVAO( s_vaoArena );
+	/* The store's VAO is opened for a frame that uses it, and after its storage
+	 * is decided: the orphan arm below re-specifies that storage, and the 0.3.19
+	 * session caught a driver leaving a VAO's pointers behind a storage that was
+	 * replaced under it.  When the store is refused the frame must not be left
+	 * standing on it either: `s_vboArena[0]' has no storage on the mapped arm
+	 * until the map succeeds, so the pointers `RB_VboArenaInit' captured name
+	 * nothing.  The state on entry is put back instead. */
+	vaoOnEntry = r_vaoBound;
 
 	/* The previous mapped store is closed out and its fence planted before this
 	 * one opens, so the GPU's read of it is ordered against this frame's write. */
@@ -1308,17 +1469,24 @@ void RB_VBO_BeginFrame( void ) {
 	}
 
 	if ( s_arenaMapped ) {
+		RB_BindVAO( s_vaoArena[s_arenaNext] );
 		RB_VboArenaMapFrame();
 		if ( !s_arenaActive ) {
+			RB_BindVAO( vaoOnEntry );
 			return;
 		}
 	} else {
 		/* Discard the store this frame is about to fill: the driver may then hand
-		 * back storage no in-flight command reads instead of waiting for one. */
+		 * back storage no in-flight command reads instead of waiting for one.
+		 * The element binding is VAO state, so the re-specification happens with
+		 * the default VAO bound -- the store's own EBO is bound at the point of
+		 * use, and no other VAO is left naming it. */
+		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
 		qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
 		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
 		qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+		RB_BindVAO( s_vaoArena[s_arenaNext] );
 	}
 
 	/* Base-vertex arm: the pointers are captured once per store, at offset 0. */
@@ -1326,14 +1494,13 @@ void RB_VBO_BeginFrame( void ) {
 		RB_VBO_ConfigureAttribs();
 	}
 
-	if ( s_vaoStaticArena ) {
-		RB_BindVAO( s_vaoStaticArena );
+	if ( s_vaoStaticArena[s_arenaNext] ) {
+		RB_BindVAO( s_vaoStaticArena[s_arenaNext] );
 		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
 	}
 
 	s_arenaVOff = 0;
 	s_arenaIOff = 0;
-	s_arenaFull = qfalse;
 	s_arenaActive = qtrue;
 }
 
@@ -1365,6 +1532,15 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 	int			i;
 
 	if ( !s_arenaActive ) {
+		/* An armed store that is not there counts as a refusal, not as silence:
+		 * 0.3.21's session read `fall=0` beside `ran=0` and so read as "the store
+		 * carried the frame and nothing fell back", when in fact every batch in
+		 * the game went to the ring because the store had stood down before the
+		 * capture began.  A store that was never asked for (r_tessMap 0) is not
+		 * a refusal and counts nothing. */
+		if ( s_arenaArmed ) {
+			s_arenaFall++;
+		}
 		return qfalse;
 	}
 	if ( s_arenaFull ) {
@@ -1400,7 +1576,15 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 		return qfalse;
 	}
 
-	RB_BindVAO( staticVerts ? s_vaoStaticArena : s_vaoArena );
+	{
+		/* The store this frame opened.  `s_arenaMappedSlot' is the mapped arm's
+		 * own record of it and is only written on that arm, so the per-frame and
+		 * A/B arms -- which open a store and never map one -- would read a -1
+		 * out of it; the rotation is the store either way. */
+		int		slot = s_arenaInit ? s_arenaNext : 0;
+
+		RB_BindVAO( staticVerts ? s_vaoStaticArena[slot] : s_vaoArena[slot] );
+	}
 
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );	/* at the point of use */
 
@@ -1438,13 +1622,14 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 
 
 /* ---- [GLES3:pixd] what one 3D draw adds to the framebuffer ---------------
- * The menu's 3D view submits 13 draws a frame whose surface counts, clip
- * boxes, draw order, stage blend and clear all match retail's own captured
- * frame, and the screen keeps the 2D background.  A submit that reaches no
- * pixel is invisible from the command list, so the first "menu/" draw of a
- * frame is followed by one small readback plus the live GL state it ran under.
- * Pixels here and none at [GLES3:pix] means a later draw overwrote; none here
- * means this draw is the loss and the state names which one. */
+ * The menu's 3D view submits 13 draws a frame whose counts, order, blend and
+ * clear all match retail's own captured frame, and the screen keeps the 2D
+ * background.  A submit that reaches no pixel is invisible from the command
+ * list, so the first "menu/" draw of a frame is followed by one small readback
+ * plus the live GL state it ran under; GLES3_ModelPixelAtSwap re-reads it. */
+static int	s_menuProbeX, s_menuProbeY, s_menuProbeR, s_menuProbeG, s_menuProbeB;
+static qboolean s_menuProbeRect;
+
 static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 {
 	static int	s_frame;
@@ -1452,8 +1637,16 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	GLint		vp[4], sc[4];
 	GLint		src, dst, dfn, cullmode, frontface;
 	GLint		attr[5];
-	GLboolean	dtest, dmask, blend, cullen;
-	GLboolean	dmaskRaw;
+	GLint		curProg, atest;
+	GLfloat		drange[2], dclear, poffFactor, poffUnits, zbuf[8 * 8];
+	GLfloat		zsum;
+	GLuint		zraw[8 * 8];
+	qboolean	depthOk;
+	GLint		dbits;
+	GLboolean	dtest, dmask, blend, cullen, poff;
+	GLboolean	dmaskRaw, stenRaw;
+	GLint		sfunc, sref, smask;
+	GLfloat		sclear;
 	GLuint		errBefore, errAfter;
 	byte		buf[8 * 8 * 4];
 	int			x, y, w, h, i, n, r, g, b, a;
@@ -1480,6 +1673,7 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	qglGetIntegerv( GL_SCISSOR_BOX, sc );
 	w = 8;
 	h = 8;
+	n = w * h;
 	x = vp[0] + ( vp[2] - w ) / 2;
 	y = vp[1] + ( vp[3] - h ) / 2;
 
@@ -1496,13 +1690,97 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	for ( i = 0; i < 5; i++ ) {
 		qglGetVertexAttribiv( ATTR_POSITION + i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &attr[i] );
 	}
+	/* The gates a colour readback cannot see, and what is left now that state,
+	 * bytes, winding and attributes all came back clean.  `depth` is what the
+	 * depth buffer holds at this pixel: a clear that never landed, or a surface
+	 * that wrote near zero ahead of this one, rejects every fragment through
+	 * LEQUAL while every queried state reads correct.  `dr` is the range the
+	 * fragments are squeezed into (RB_StageIteratorSky pins it to a single
+	 * value), `clear` is what the last glClearDepth asked for, and `atest` is
+	 * the fragment-stage discard that fires before the depth test at all. */
+	qglGetFloatv( GL_DEPTH_RANGE, drange );
+	qglGetFloatv( GL_DEPTH_CLEAR_VALUE, &dclear );
+	qglGetIntegerv( GL_DEPTH_BITS, &dbits );
+	qglGetBooleanv( GL_STENCIL_TEST, &stenRaw );
+	qglGetIntegerv( GL_STENCIL_FUNC, &sfunc );
+	qglGetIntegerv( GL_STENCIL_REF, &sref );
+	qglGetIntegerv( GL_STENCIL_VALUE_MASK, &smask );
+	qglGetFloatv( GL_STENCIL_CLEAR_VALUE, &sclear );
+	poff = qglIsEnabled( GL_POLYGON_OFFSET_FILL );
+	qglGetFloatv( GL_POLYGON_OFFSET_FACTOR, &poffFactor );
+	qglGetFloatv( GL_POLYGON_OFFSET_UNITS, &poffUnits );
+	qglGetIntegerv( GL_CURRENT_PROGRAM, &curProg );
+	atest = -9999;
+	if ( curProg ) {
+		GLint loc = qglGetUniformLocation( curProg, "u_AlphaTest" );
+		if ( loc >= 0 ) {
+			qglGetUniformiv( curProg, loc, &atest );
+		}
+	}
 	errBefore = qglGetError();
 
 	Com_Memset( buf, 0, sizeof( buf ) );
 	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
 
+	/* The depth plane.  0.3.21 asked for it as GL_FLOAT whatever the attachment
+	 * was, and the device answered GL_INVALID_ENUM (0x500) -- which is exactly
+	 * what the 0.3.21 rows carry in `err=0/1280` -- so `zbuf` kept its memset and
+	 * the row reported `depth=0.0000` as a measurement.  That read convicted the
+	 * depth gate on a zero the read had produced itself, and the section of the
+	 * mega4 report built on it is withdrawn here.  The type now follows the
+	 * attachment's own precision, the read's error is taken before anything can
+	 * clear it, and a read that did not happen prints as -1 rather than as a
+	 * value. */
+	depthOk = qfalse;
+	zsum = 0.0f;
+	switch ( dbits ) {
+	case 32:
+		Com_Memset( zbuf, 0, sizeof( zbuf ) );
+		qglReadPixels( x, y, w, h, GL_DEPTH_COMPONENT, GL_FLOAT, zbuf );
+		if ( qglGetError() == GL_NO_ERROR ) {
+			depthOk = qtrue;
+			for ( i = 0; i < n; i++ ) {
+				zsum += zbuf[i];
+			}
+		}
+		break;
+	case 24:
+	case 16:
+		Com_Memset( zraw, 0, sizeof( zraw ) );
+		qglReadPixels( x, y, w, h, GL_DEPTH_COMPONENT,
+					   ( dbits == 24 ) ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, zraw );
+		if ( qglGetError() == GL_NO_ERROR ) {
+			/* A 24-bit plane handed back as UNSIGNED_INT may come back scaled to
+			 * the 32-bit type rather than to the attachment's own 24; the top
+			 * eight bits say which.  Either way the number is the depth, and the
+			 * row says which convention was used so the value is readable. */
+			unsigned	wide = 0;
+			double		denom = ( dbits == 24 ) ? 16777215.0 : 65535.0;
+			for ( i = 0; i < n; i++ ) {
+				unsigned	v = zraw[i];
+				if ( v & 0xFF000000u ) {
+					wide++;
+				}
+				zsum += (float)( (double)( v & 0x00FFFFFFu ) / denom );
+			}
+			if ( wide ) {
+				zsum = 0.0f;
+				for ( i = 0; i < n; i++ ) {
+					zsum += (float)( (double)zraw[i] / 4294967295.0 );
+				}
+			}
+			depthOk = qtrue;
+		}
+		break;
+	default:
+		/* No depth attachment to read. */
+		break;
+	}
+	if ( !depthOk ) {
+		zsum = -1.0f * n;
+	}
+
 	errAfter = qglGetError();
-	n = w * h;
 	r = g = b = a = 0;
 	for ( i = 0; i < n; i++ ) {
 		r += buf[i * 4 + 0];
@@ -1511,17 +1789,62 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 		a += buf[i * 4 + 3];
 	}
 
+	/* Remember the rect and this read for the swap's re-read. */
+	s_menuProbeX = x;
+	s_menuProbeY = y;
+	s_menuProbeR = r / n;
+	s_menuProbeG = g / n;
+	s_menuProbeB = b / n;
+	s_menuProbeRect = qtrue;
+
 	ri.Printf( PRINT_ALL,
 		"[GLES3:pixd] sh=%s idx=%d rect=%d,%d mean=%d,%d,%d a=%d"
-		" vp=%d,%d,%dx%d sc=%d,%d,%dx%d"
+		" vp=%d,%d,%dx%d sc=%d,%d,%dx%d scen=%d"
 		" blend=%d src=0x%x dst=0x%x dtest=%d dmask=%d dfunc=0x%x"
-		" cull=%d mode=0x%x front=0x%x attr=%d%d%d%d%d err=%d/%d f=%d\n",
+		" dbits=%d depth=%.4f clear=%.3f dr=%.3f,%.3f"
+		" sten=%d sfunc=0x%x sref=%d smask=0x%x sclear=%.1f"
+		" cull=%d mode=0x%x front=0x%x poff=%d(%.1f,%.1f) atest=%d clip=%d"
+		" attr=%d%d%d%d%d err=%d/%d f=%d\n",
 		input->shader->name, numIndexes, x, y, r / n, g / n, b / n, a / n,
 		vp[0], vp[1], vp[2], vp[3], sc[0], sc[1], sc[2], sc[3],
+		qglIsEnabled( GL_SCISSOR_TEST ) ? 1 : 0,
 		(int)blend, (unsigned)src, (unsigned)dst, dtest ? 1 : 0, dmask ? 1 : 0,
-		(unsigned)dfn, (int)cullen, (unsigned)cullmode, (unsigned)frontface,
+		(unsigned)dfn,
+		dbits, zsum / n, dclear, drange[0], drange[1],
+		(int)stenRaw, (unsigned)sfunc, sref, (unsigned)smask, sclear,
+		(int)cullen, (unsigned)cullmode, (unsigned)frontface,
+		poff ? 1 : 0, poffFactor, poffUnits, atest,
+		s_clipPlaneEnabled ? 1 : 0,
 		attr[0], attr[1], attr[2], attr[3], attr[4],
 		(unsigned)errBefore, (unsigned)errAfter, RB_FrameCount() );
+}
+
+/* The rect [GLES3:pixd] read mid-view, re-read at swap. */
+void GLES3_ModelPixelAtSwap( void )
+{
+	byte	buf[8 * 8 * 4];
+	int		i, n, r, g, b;
+
+	if ( !R_ProbeStatsOn() || !s_menuProbeRect ) {
+		return;
+	}
+	s_menuProbeRect = qfalse;
+
+	n = 8 * 8;
+	qglReadPixels( s_menuProbeX, s_menuProbeY, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, buf );
+	r = g = b = 0;
+	for ( i = 0; i < n; i++ ) {
+		r += buf[i * 4 + 0];
+		g += buf[i * 4 + 1];
+		b += buf[i * 4 + 2];
+	}
+
+	ri.Printf( PRINT_ALL,
+			   "[GLES3:pixm] rect=%d,%d post3d=%d,%d,%d swap=%d,%d,%d %s f=%d\n",
+			   s_menuProbeX, s_menuProbeY,
+			   s_menuProbeR, s_menuProbeG, s_menuProbeB, r / n, g / n, b / n,
+			   ( r / n != s_menuProbeR || g / n != s_menuProbeG || b / n != s_menuProbeB )
+			   ? "OVERWROTE" : "same", RB_FrameCount() );
 }
 
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
@@ -1612,6 +1935,10 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 			gap = s_sendLast ? subT0 - s_sendLast : 0;
 			s_sendBatches++;
 			s_sendSum += phase;
+			if ( backEnd.in2D ) {
+				s_send2D++;
+				s_send2DSum += phase;
+			}
 			s_sendWrites += writes;
 			s_sendVerts += input->numVertexes;
 
@@ -1922,9 +2249,6 @@ int RB_ImmStreamVerts( void )
 {
 	return s_streamNumVerts;
 }
-
-static qboolean	s_clipPlaneEnabled;
-static vec4_t	s_clipPlane;
 
 void RB_ClipPlane_Disable( void )
 {

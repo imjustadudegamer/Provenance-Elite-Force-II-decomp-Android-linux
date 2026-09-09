@@ -1366,6 +1366,14 @@ extern cvar_t	*r_allowGeometryDeforms;
 extern cvar_t	*r_texturebits;			
 
 extern cvar_t	*r_measureOverdraw;		
+extern cvar_t	*r_depthFuncAlways;		/* diagnostic: the depth comparator is GL_ALWAYS */
+void		GLES3_DepthState( qboolean test, qboolean write );
+void		GLES3_DepthStateReset( void );
+qboolean	GLES3_DepthGate2D( void );
+void		GLES3_DepthGate2DTake( void );
+void		GLES3_StencilState( qboolean test, GLint func, GLint ref, GLuint mask );
+void		GLES3_StencilStateReset( void );
+void		GLES3_DepthFuncApply( GLenum func );
 
 extern cvar_t	*r_lodscale;
 
@@ -2470,6 +2478,10 @@ typedef struct {
 	/* Gate rejections, one reason a batch (world, dlight, iterator, signature,
 	 * records); with `statics' they cover every batch.  `recs' is records seen. */
 	int		gateWorld, gateDlight, gateIter, gateSig, gateRec, recs;
+	/* The 2D share of `batches'/`sum'.  The menu's sends are 2D and the load
+	 * menu's frame is their cost, so the one-write-per-pass acceptance is this
+	 * pair and not the whole row. */
+	int		d2Batches, d2Sum;
 } beSendRow_t;
 
 qboolean	RB_VboSendTake( beSendRow_t *out );

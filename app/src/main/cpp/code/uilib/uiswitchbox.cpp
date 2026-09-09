@@ -14,6 +14,11 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #include "../qcommon/stringresource.h"
 #include "uibutton.h"
 
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "1")) != 0)
+#include "../qcommon/qa_probe.h"
+
 
 typedef struct switchoption_s {
     str label;       
@@ -222,6 +227,10 @@ void UISwitchBox::displayOption(int index, bool bStuff)
 
     if (opt->command.length() && bStuff) {
         str stuff = opt->command + "\n";
+        if (PROBE_On()) {
+            PROBE_PRINT("[UI:switchopt] %s='%s'\n", m_cvarname.c_str(),
+                        opt->command.c_str());
+        }
         uii.Cmd_Stuff(stuff.c_str());
     }
 }

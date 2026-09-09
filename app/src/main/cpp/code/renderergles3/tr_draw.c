@@ -289,10 +289,11 @@ void RB_2D_Flush( void ) {
 	}
 }
 
-/* The open batch holds a shader_t * that a purge frees; draw it first. */
+/* The open batch holds a shader_t * that a purge frees; draw it first.  The
+   draw census stays: its keys own their strings, so no purge reaches them and
+   dropping it here cost the menu-model draws their state matching. */
 void RB_2D_OwnersPurged( void ) {
 	RB_2D_Flush();
-	GLES3_CensusInvalidate();
 }
 
 static void RB_2D_Batch( shader_t *shader ) {
@@ -556,9 +557,9 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
 
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {
 	/* The same tuple the batch was opened under is already in force: keep the
-	   batch open and issue nothing.  This is what turns a per-widget viewport
-	   into a per-change one, which is most of the batch's win. */
-	if ( r_window2DValid && r_scissor2DValid &&
+	   batch open and issue nothing.  A 3D pass leaves the depth gate open and
+	   the 2D pass runs with it shut, or its z=0 quads write half depth. */
+	if ( GLES3_DepthGate2D() && r_window2DValid && r_scissor2DValid &&
 		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&
 		 r_window2DOrtho[0] == left && r_window2DOrtho[1] == right && r_window2DOrtho[2] == bottom &&
 		 r_window2DOrtho[3] == top && r_window2DOrtho[4] == n && r_window2DOrtho[5] == f &&
@@ -577,6 +578,7 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 	GLES3_ApplyStateBits(GLS_DEPTHTEST_DISABLE | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_SRCBLEND_SRC_ALPHA);
 	GL_Cull( CT_TWO_SIDED );
 	RB_ClipPlane_Disable();
+	GLES3_DepthGate2DTake();
 
 	r_window2DValid = qtrue;
 	r_window2D[0] = x; r_window2D[1] = y; r_window2D[2] = w; r_window2D[3] = h;

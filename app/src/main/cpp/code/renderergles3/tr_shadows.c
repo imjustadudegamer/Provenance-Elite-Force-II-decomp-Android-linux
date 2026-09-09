@@ -183,6 +183,10 @@ void RB_ShadowTessEnd( void ) {
 		R_AddEdgeDef( i3, i1, facing[ i ] );
 	}
 
+	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
+		return;	/* no world, no shadow volume, nothing may arm the stencil */
+	}
+
 	GL_BindUnit0( tr.whiteImage );
 	qglEnable( GL_CULL_FACE );
 	glState.faceCulling = -1;
@@ -191,8 +195,7 @@ void RB_ShadowTessEnd( void ) {
 
 	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
 
-	qglEnable( GL_STENCIL_TEST );
-	qglStencilFunc( GL_ALWAYS, 1, 255 );
+	GLES3_StencilState( qtrue, GL_ALWAYS, 1, 255 );
 
 	if ( backEnd.viewParms.isMirror ) {
 		qglCullFace( GL_FRONT );
@@ -231,8 +234,11 @@ void RB_ShadowFinish( void ) {
 	if ( glConfig.stencilBits < 4 ) {
 		return;
 	}
-	qglEnable( GL_STENCIL_TEST );
-	qglStencilFunc( GL_NOTEQUAL, 0, 255 );
+	/* No shadow volume wrote the plane here, so arming left a stale comparator. */
+	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
+		return;
+	}
+	GLES3_StencilState( qtrue, GL_NOTEQUAL, 0, 255 );
 
 	RB_ClipPlane_Disable();
 	qglDisable (GL_CULL_FACE);
@@ -258,5 +264,5 @@ void RB_ShadowFinish( void ) {
 	RB_ImmFlush();
 
 	RB_ImmColor4f( 1, 1, 1, 1 );
-	qglDisable( GL_STENCIL_TEST );
+	GLES3_StencilState( qfalse, GL_ALWAYS, 0, 255 );
 }

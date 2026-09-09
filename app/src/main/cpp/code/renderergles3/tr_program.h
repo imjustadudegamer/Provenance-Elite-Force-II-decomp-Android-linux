@@ -341,6 +341,7 @@ void		GLES3_RefreshClipPlane( void );
 
 gles3Program_t	*GLES3_BeginFamily( unsigned family, int texEnv );
 void		GLES3_PixelProbe( const char *src, int x, int y, int w, int h );
+void		GLES3_ModelPixelAtSwap( void );
 void		GLES3_Begin2D( int texEnv );
 void		GLES3_BeginWire( void );		
 void		GLES3_BeginSprite( void );		
@@ -348,8 +349,8 @@ void		GLES3_BeginSunflare( void );
 void		GLES3_BeginShadow( void );		
 void		GLES3_SetBaseColor4f( gles3Program_t *p, float r, float g, float b, float a );
 
-/* Drops the draw census, whose keys hold hunk-owned name pointers. */
-void		GLES3_CensusInvalidate( void );
+/* Frees the draw census's owned key strings.  Renderer lifetime, not per purge. */
+void		GLES3_CensusShutdownAll( void );
 
 void		GLES3_WireBegin( void );
 void		GLES3_WireVertex( const float *xyz, const float *rgba );
