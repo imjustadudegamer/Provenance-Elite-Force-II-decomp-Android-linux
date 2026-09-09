@@ -93,6 +93,15 @@ def main():
             print("   repoint: %d widget(s) -> %s" % (len(gate), [(w["title"], w["stuff"]) for w in gate]))
             if len(gate) != 1:
                 problems.append("repoint matched %d widgets" % len(gate))
+        if menu == "GameOptions":
+            orphan = [w for w in widgets if w["class"].lower() == "pulldownmenucontainer"
+                      and (w["rect"] or "").split()[:3] == ["586", "231", "16"]]
+            print("   hide by rect: %s" % [(w["class"], (w["rect"] or "").strip()) for w in orphan])
+            if len(orphan) != 1:
+                problems.append("rect hide matched %d widgets" % len(orphan))
+        for widget in widgets:
+            if widget["class"].lower() == "pulldownmenucontainer":
+                print("   [pulldown] name=%-14r rect=%s" % (widget["name"], (widget["rect"] or "").strip()))
 
     print()
     if problems:
