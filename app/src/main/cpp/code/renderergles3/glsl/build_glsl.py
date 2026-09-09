@@ -320,6 +320,12 @@ def main():
         0x00200040,                    # GLP_TEXENV_ADD         | GLP_LIGHTMAP
         0x00100040,                    # GLP_ALPHATEST          | GLP_LIGHTMAP
     ])
+    # GLES3_StageDefines_Full ORs GLP_NORMAL into a stage whenever the tcGen arm
+    # reads the surface normal or the shader's own needsNormal is set, which
+    # produces (family | mask | 0x4000) combinations no table row carries.  Seed
+    # them so a permutation the renderer can ask for compiles here, not on a
+    # device.
+    masks = masks | {m | 0x4000 for m in masks}
     embedded = build()
     fails = validate(masks)
     lfails = validate_links(masks)
