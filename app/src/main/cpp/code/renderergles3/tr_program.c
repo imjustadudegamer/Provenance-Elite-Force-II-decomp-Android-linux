@@ -2411,6 +2411,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		float		mvp[16], px, py, pz, pw;
 		float		minx, miny, minz, maxx, maxy, maxz, minw, maxw;
 		float		mins0, mins1, maxs0, maxs1;
+		float		minnx, minny, minnz, maxnx, maxny, maxnz;
 		int			v, nan;
 
 		GLES3_Mat4Mul( mvp, proj, mv );
@@ -2439,13 +2440,16 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 
 			if ( v == 0 )
 			{
-				mins0 = maxs0 = input->texCoords[0][0][0];
-				mins1 = maxs1 = input->texCoords[0][0][1];
+				mins0 = maxs0 = input->texCoords[ v ][ 0 ][ 0 ];
+				mins1 = maxs1 = input->texCoords[ v ][ 0 ][ 1 ];
+				minnx = maxnx = input->normal[ v ][ 0 ];
+				minny = maxny = input->normal[ v ][ 1 ];
+				minnz = maxnz = input->normal[ v ][ 2 ];
 			}
 			else
 			{
-				float s = input->texCoords[0][0][0];
-				float t = input->texCoords[0][0][1];
+				float s = input->texCoords[ v ][ 0 ][ 0 ];
+				float t = input->texCoords[ v ][ 0 ][ 1 ];
 
 				/* A NaN fails every comparison, so the running box never grows:
 				 * "max stayed below min" is the NaN detector. */
@@ -2454,6 +2458,13 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 				if ( t < mins1 ) mins1 = t;
 				if ( t > maxs1 ) maxs1 = t;
 				if ( !( maxs0 >= mins0 ) || !( maxs1 >= mins1 ) ) nan = 1;
+
+				if ( input->normal[ v ][ 0 ] < minnx ) minnx = input->normal[ v ][ 0 ];
+				if ( input->normal[ v ][ 0 ] > maxnx ) maxnx = input->normal[ v ][ 0 ];
+				if ( input->normal[ v ][ 1 ] < minny ) minny = input->normal[ v ][ 1 ];
+				if ( input->normal[ v ][ 1 ] > maxny ) maxny = input->normal[ v ][ 1 ];
+				if ( input->normal[ v ][ 2 ] < minnz ) minnz = input->normal[ v ][ 2 ];
+				if ( input->normal[ v ][ 2 ] > maxnz ) maxnz = input->normal[ v ][ 2 ];
 			}
 		}
 
@@ -2462,10 +2473,11 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		{
 			ri.Printf( PRINT_ALL,
 				"[GLES3:bbox] sh=%s n=%d ndc=(%.3f..%.3f, %.3f..%.3f, %.3f..%.3f) w=(%.3f..%.3f)"
-				" st=(%.3f..%.3f, %.3f..%.3f) nan=%d f=%d\n",
+				" st=(%.3f..%.3f, %.3f..%.3f) nrm=(%.2f..%.2f, %.2f..%.2f, %.2f..%.2f) nan=%d f=%d\n",
 				shader->name, input->numVertexes,
 				minx, maxx, miny, maxy, minz, maxz, minw, maxw,
-				mins0, maxs0, mins1, maxs1, nan, RB_FrameCount() );
+				mins0, maxs0, mins1, maxs1,
+				minnx, maxnx, minny, maxny, minnz, maxnz, nan, RB_FrameCount() );
 		}
 	}
 
