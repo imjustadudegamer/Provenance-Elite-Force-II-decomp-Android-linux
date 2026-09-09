@@ -155,6 +155,8 @@ static qboolean	s_arenaActive;
 static qboolean	s_arenaFull;
 static int		s_arenaFrame = -1;
 static cvar_t	*s_arenaCvar;
+/* The arm switch: 1 mapped store, 0 ring.  `r_tessArena' is the legacy override. */
+static cvar_t	*s_mapCvar;
 /* The A/B arm the frame is on: 1 while the per-frame store is it. */
 static int		 s_arenaAlternate = -1;
 /* Batches the store could not hold, which the ring drew instead. */
@@ -1186,15 +1188,22 @@ static void RB_VboArenaShutdown( void ) {
 
 void RB_VBO_BeginFrame( void ) {
 	if ( !s_arenaCvar ) {
-		/* 4 is the mapped store and the default: the ring's per-send price is the
-		 * allocation `glBufferData' performs 220 times a frame, and a mapped store
-		 * turns a batch into a memcpy.  0 is the ring, which 0.3.15 measured 15x
-		 * ahead of the per-frame-orphaned store (2 alternates them); 1 forces that
-		 * store.  A refused map or a store the fence has not released falls back,
-		 * so the arm can only cost what the ring costs. */
-		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "4", 0 );
+		/* `r_tessMap' is the arm switch and `r_tessArena' only the legacy
+		 * override, because the device's config.cfg already carries a value for
+		 * the older name: 0.3.15 registered it default 2 and 0.3.16 default 0, so
+		 * a Cvar_Get on it now returns whatever that session left and a new
+		 * default never reaches the code -- which is exactly why 0.3.17 ran the
+		 * ring (arena=0, no stand-down row) for a whole session.  A name the
+		 * config has never seen cannot be overridden by it. */
+		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
+		s_mapCvar   = ri.Cvar_Get( "r_tessMap", "1", 0 );
+
+		ri.Printf( PRINT_ALL, "[BE:arm] store: map=%d legacy=%d -> %s\n",
+				   s_mapCvar->integer, s_arenaCvar->integer,
+				   ( s_mapCvar->integer && !s_arenaCvar->integer ) ? "mapped"
+				   : ( s_arenaCvar->integer == 1 ) ? "per-frame store" : "ring" );
 	}
-	s_arenaMapped = ( s_arenaCvar->integer == 4 ) ? qtrue : qfalse;
+	s_arenaMapped = ( s_mapCvar && s_mapCvar->integer && !s_arenaCvar->integer ) ? qtrue : qfalse;
 	if ( s_arenaCvar->integer == 2 ) {
 		int		on = ( ri.Milliseconds() / 8000 ) & 1;
 
@@ -1208,7 +1217,7 @@ void RB_VBO_BeginFrame( void ) {
 			s_arenaFull = qtrue;
 			return;
 		}
-	} else if ( !s_arenaCvar->integer ) {
+	} else if ( !s_arenaMapped && !s_arenaCvar->integer ) {
 		s_arenaActive = qfalse;
 		s_arenaFull = qtrue;
 		return;
