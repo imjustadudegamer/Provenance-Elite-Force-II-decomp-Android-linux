@@ -44,9 +44,8 @@ static float	s_flipMatrix[16] = {
  * A submitted draw that produces no pixels is invisible from the command list:
  * the menu 3D view submits 13 draws a frame and the operator sees neither the
  * dome nor the ship.  Two readbacks name the screen -- one the moment the 3D
- * view hands back to 2D (so the pixels can only be the 3D pass), one at swap
- * (so they are what the operator gets).  Mean RGB is enough to tell the panel
- * art from the clear colour from a textured model. */
+ * view hands back to 2D, one at swap.  Mean RGB tells the panel art from the
+ * clear colour from a textured model. */
 void GLES3_PixelProbe( const char *src, int x, int y, int w, int h ) {
 	static cvar_t		*cvar;
 	static struct {
@@ -309,6 +308,83 @@ unsigned long RF_ForceAlphaStateBits( unsigned long stateBits )
 	return stateBits;
 }
 
+static qboolean	s_depthTest = qtrue;
+static qboolean	s_depthWrite = qtrue;
+static qboolean	s_depth2D = qfalse;	/* the 2D window's state block ran last */
+
+qboolean GLES3_DepthGate2D( void )
+{
+	return s_depth2D;
+}
+
+void GLES3_DepthGate2DTake( void )
+{
+	s_depth2D = qtrue;
+}
+
+void GLES3_DepthState( qboolean test, qboolean write )
+{
+	if ( test != s_depthTest )
+	{
+		if ( test ) {
+			qglEnable( GL_DEPTH_TEST );
+		} else {
+			qglDisable( GL_DEPTH_TEST );
+		}
+		s_depthTest = test;
+	}
+	if ( write != s_depthWrite )
+	{
+		qglDepthMask( write ? GL_TRUE : GL_FALSE );
+		s_depthWrite = write;
+	}
+	if ( test ) {
+		s_depth2D = qfalse;	/* the gate is open again: 2D has to shut it */
+	}
+}
+
+void GLES3_DepthStateReset( void )
+{
+	s_depthTest  = qtrue;
+	s_depthWrite = qtrue;
+	s_depth2D    = qfalse;
+}
+
+static qboolean	s_stenTest = qfalse;	/* the stencil gate, same discipline */
+static GLint	s_stenFunc = GL_ALWAYS;
+static GLint	s_stenRef  = 0;
+static GLuint	s_stenMask = 255;
+
+void GLES3_StencilState( qboolean test, GLint func, GLint ref, GLuint mask )
+{
+	if ( test != s_stenTest )
+	{
+		if ( test ) {
+			qglEnable( GL_STENCIL_TEST );
+		} else {
+			qglDisable( GL_STENCIL_TEST );
+		}
+		s_stenTest = test;
+	}
+	if ( func != s_stenFunc || ref != s_stenRef || mask != s_stenMask )
+	{
+		qglStencilFunc( func, ref, mask );
+		s_stenFunc = func;
+		s_stenRef  = ref;
+		s_stenMask = mask;
+	}
+}
+
+void GLES3_StencilStateReset( void )
+{
+	GLES3_StencilState( qfalse, GL_ALWAYS, 0, 255 );
+}
+
+void GLES3_DepthFuncApply( GLenum func )
+{
+	qglDepthFunc( ( r_depthFuncAlways && r_depthFuncAlways->integer ) ? GL_ALWAYS : func );
+}
+
 void GL_State( unsigned long stateBits )
 {
 	unsigned long diff;
@@ -319,7 +395,6 @@ void GL_State( unsigned long stateBits )
 	{
 		return;
 	}
-
 	if ( ( diff & GLS_CUBEMAP ) && glConfig.cubeMapAvailable )
 	{
 		if ( stateBits & GLS_CUBEMAP )
@@ -342,11 +417,11 @@ void GL_State( unsigned long stateBits )
 	{
 		if ( stateBits & GLS_DEPTHFUNC_EQUAL )
 		{
-			qglDepthFunc( GL_EQUAL );
+			GLES3_DepthFuncApply( GL_EQUAL );
 		}
 		else
 		{
-			qglDepthFunc( GL_LEQUAL );
+			GLES3_DepthFuncApply( GL_LEQUAL );
 		}
 	}
 
@@ -434,14 +509,8 @@ void GL_State( unsigned long stateBits )
 
 	if ( diff & GLS_DEPTHMASK_TRUE )
 	{
-		if ( stateBits & GLS_DEPTHMASK_TRUE )
-		{
-			qglDepthMask( GL_TRUE );
-		}
-		else
-		{
-			qglDepthMask( GL_FALSE );
-		}
+		GLES3_DepthState( ( stateBits & GLS_DEPTHTEST_DISABLE ) ? qfalse : qtrue,
+						 ( stateBits & GLS_DEPTHMASK_TRUE ) ? qtrue : qfalse );
 	}
 
 	if ( diff & GLS_POLYMODE_LINE )
@@ -450,14 +519,8 @@ void GL_State( unsigned long stateBits )
 
 	if ( diff & GLS_DEPTHTEST_DISABLE )
 	{
-		if ( stateBits & GLS_DEPTHTEST_DISABLE )
-		{
-			qglDisable( GL_DEPTH_TEST );
-		}
-		else
-		{
-			qglEnable( GL_DEPTH_TEST );
-		}
+		GLES3_DepthState( ( stateBits & GLS_DEPTHTEST_DISABLE ) ? qfalse : qtrue,
+						 ( stateBits & GLS_DEPTHMASK_TRUE ) ? qtrue : qfalse );
 	}
 
 	if ((diff & GLS_MULTITEXTURE_ENV) || (diff & GLS_MULTITEXTURE))
@@ -730,20 +793,28 @@ void RB_BeginDrawingView (void) {
 		glState.finishCalled = qtrue;
 	}
 
+	/* The 2D pass ends here: its pending work draws now, under the 2D window and
+	   its shut depth gate.  Left to the first RB_BeginSurface it landed inside
+	   the view, after the depth clear, and the menu's widget painted over the ship. */
+	RB_2D_Flush();
+
 	backEnd.in2D = qfalse;
 
-	/* A 2D rect cached here survives the 3D pass it was taken under, and the
-	   next 2D call would then skip re-issuing a scissor the 3D pass overwrote.
-	   Nothing in a view can reuse one, so drop the pair here. */
+	/* A 2D rect cached here survives the 3D pass, and the next 2D call would
+	   then skip re-issuing a scissor that pass overwrote: drop the pair. */
 	R_Invalidate2DWindowCache();
 
 	SetViewportAndScissor();
 
 
+	GLES3_DepthState( qtrue, qtrue );	/* the 3D pass opens its gate, as retail's does */
+	GLES3_StencilState( qfalse, GL_ALWAYS, 0, 255 );	/* retail's traced menu issues no stencil call */
 	GL_State( GLS_DEFAULT );
 	clearBits = GL_DEPTH_BUFFER_BIT;
 
-	if ( r_measureOverdraw->integer || r_shadows->integer == 2 )
+	/* Retail's menu frame clears DEPTH only; the UI's 3D view builds no volume. */
+	if ( !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL )
+		 && ( r_measureOverdraw->integer || r_shadows->integer == 2 ) )
 	{
 		clearBits |= GL_STENCIL_BUFFER_BIT;
 	}
@@ -765,6 +836,8 @@ void RB_BeginDrawingView (void) {
 		}
 	}
 	qglClear( clearBits );
+
+	GLES3_DepthFuncApply( GL_LEQUAL );	/* pinned per view for the A/B cvar */
 
 	SMP_VpProbe( "clear", "RB_BeginDrawingView/qglClear",
 		backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
@@ -1742,6 +1815,7 @@ const void	*RB_SwapBuffers( const void *data ) {
 
 	GLES3_PixelProbe( "swap", glConfig.vidWidth / 2 - 8, glConfig.vidHeight / 2 - 8, 16, 16 );
 	GLES3_PixelProbe( "swap-q", glConfig.vidWidth / 4 - 8, glConfig.vidHeight / 4 - 8, 16, 16 );
+	GLES3_ModelPixelAtSwap();
 	GLimp_LogComment( "***************** RB_SwapBuffers *****************\n\n\n" );
 
 	GLimp_EndFrame();
@@ -1960,11 +2034,13 @@ static void BE_MaybeRoll( void ) {
 					   "[BE:send] window=%dms batches=%d runs=%d sum=%dus first=%dus mid=%dus"
 					   " max=%dus gapMax=%dus verts=%d big=%d bigVerts=%d arena=%d fall=%d"
 					   " w=%d loc=%d st=%d md=%d sq=%d"
+					   " d2=%d d2sum=%dus"
 					   " surfs=%d gw=%d gd=%d gi=%d gs=%d gr=%d rc=%d\n",
 					   window, send.batches, send.runs, send.sum, send.first, send.mid,
 					   send.max, send.gapMax, send.verts, send.big, send.bigVerts,
 					   RB_VboArenaMode(), send.fall,
 					   send.writes, send.local, send.statics, send.multi, send.seq,
+					   send.d2Batches, send.d2Sum,
 					   send.surfs, send.gateWorld, send.gateDlight, send.gateIter,
 					   send.gateSig, send.gateRec, send.recs );
 			ri.Printf( PRINT_ALL,

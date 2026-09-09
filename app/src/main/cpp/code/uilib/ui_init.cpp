@@ -23,6 +23,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "ui_local.h"
 
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "1")) != 0)
+#include "../qcommon/qa_probe.h"
+
 uidef_t     uid;
 uiexport_t  uie;
 uiimport_t  uii;
@@ -101,6 +106,9 @@ void UI_SetCvarInt(const char *cvar, int value)
     char s[16];
 
     Com_sprintf(s, sizeof(s), "%d", value);
+    if (PROBE_On()) {
+        PROBE_PRINT("[UI:cvarset] %s='%s'\n", cvar, s);
+    }
     uii.Cvar_Set(cvar, s);
 }
 
@@ -109,6 +117,9 @@ void UI_SetCvarFloat(const char *cvar, float value)
     char s[16];
 
     Com_sprintf(s, sizeof(s), "%f", value);
+    if (PROBE_On()) {
+        PROBE_PRINT("[UI:cvarset] %s='%s'\n", cvar, s);
+    }
     uii.Cvar_Set(cvar, s);
 }
 

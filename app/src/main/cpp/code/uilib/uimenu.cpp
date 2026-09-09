@@ -248,7 +248,6 @@ UIWidget *Menu::GetContainerWidget(void)
     }
 }
 
-// PAINT TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  MenuManager::ShowMenu's
 int Menu::GetWidgetCount(void)
 {
     return m_itemlist.NumObjects();
@@ -307,7 +306,6 @@ UIWidget *Menu::GetNamedWidget(const char *pszName)
     return NULL;
 }
 
-// STALE one and re-run an edge retail would not run.  The two reads are now
 void Menu::Update(void)
 {
     int       i;
@@ -454,10 +452,14 @@ void Menu::SaveCVars(void)
 
         if (wid->m_cvarname.length()) {
             const char *ret = UI_GetCvarString(wid->m_cvarname, NULL);
-            if (ret) {
+            if (ret && *ret) {
                 wid->m_cvarvalue = ret;
             } else {
                 wid->m_cvarvalue = "";
+            }
+            if (PROBE_On()) {
+                PROBE_PRINT("[UI:cvarsave] menu='%s' %s='%s'\n", m_name.c_str(),
+                            wid->m_cvarname.c_str(), wid->m_cvarvalue.c_str());
             }
         }
     }
@@ -473,6 +475,18 @@ void Menu::RestoreCVars(void)
         UIWidget *wid = m_itemlist.ObjectAt(i);
 
         if (wid->m_cvarname.length()) {
+            // Cvar_Set2("") zeroes the cvar: an empty save must not round-trip.
+            if (!wid->m_cvarvalue.length()) {
+                if (PROBE_On()) {
+                    PROBE_PRINT("[UI:cvarrestore] menu='%s' %s SKIP(empty)\n",
+                                m_name.c_str(), wid->m_cvarname.c_str());
+                }
+                continue;
+            }
+            if (PROBE_On()) {
+                PROBE_PRINT("[UI:cvarrestore] menu='%s' %s='%s'\n", m_name.c_str(),
+                            wid->m_cvarname.c_str(), wid->m_cvarvalue.c_str());
+            }
             uii.Cvar_Set(wid->m_cvarname, wid->m_cvarvalue);
         }
     }
@@ -532,6 +546,9 @@ void Menu::CheckRestart(void)
     qboolean do_ter_restart = false;
     int      i;
     int      n;
+    const char *latchname = "";
+    const char *sndname   = "";
+    const char *tername   = "";
 
     n = m_itemlist.NumObjects();
     for (i = 1; i <= n; i++) {
@@ -543,36 +560,41 @@ void Menu::CheckRestart(void)
                 if (str::icmp(wid->m_cvarvalue, cvar->latchedString)) {
                     if (cvar->flags & CVAR_LATCH) {
                         do_restart = true;
+                        latchname = wid->m_cvarname.c_str();
                     } else if (cvar->flags & CVAR_SOUND_LATCH) {
                         do_snd_restart = true;
+                        sndname = wid->m_cvarname.c_str();
                     } else if (cvar->flags & CVAR_TERRAIN_LATCH) {
                         do_ter_restart = true;
+                        tername = wid->m_cvarname.c_str();
                     }
                 }
             }
         }
     }
 
+    if (PROBE_On()) {
+        PROBE_PRINT("[UI:checkrestart] menu='%s' latch=%s snd=%s ter=%s -> %s\n",
+                    m_name.c_str(),
+                    do_restart ? latchname : "-",
+                    do_snd_restart ? sndname : "-",
+                    do_ter_restart ? tername : "-",
+                    do_restart ? "vid_restart"
+                               : (do_snd_restart || do_ter_restart) ? "snd/ter_restart"
+                                                                    : "none");
+    }
+
+    // Retail: LATCH -> vid_restart (CheckRestart @0x0006DEB0); the old Android arm dropped it.
     if (do_restart) {
-#ifdef __ANDROID__
-        if (do_snd_restart) {
-            uii.Cmd_Stuff("snd_restart\n");
-        }
-
-        if (do_ter_restart) {
-            uii.Cmd_Stuff("ter_restart\n");
-        }
-#else
         uii.Cmd_Stuff("vid_restart\n");
-#endif
-    } else {
-        if (do_snd_restart) {
-            uii.Cmd_Stuff("snd_restart\n");
-        }
+    }
 
-        if (do_ter_restart) {
-            uii.Cmd_Stuff("ter_restart\n");
-        }
+    if (do_snd_restart) {
+        uii.Cmd_Stuff("snd_restart\n");
+    }
+
+    if (do_ter_restart) {
+        uii.Cmd_Stuff("ter_restart\n");
     }
 }
 
