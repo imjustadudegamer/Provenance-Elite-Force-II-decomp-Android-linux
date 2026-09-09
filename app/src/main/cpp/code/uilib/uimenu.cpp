@@ -1491,27 +1491,47 @@ static void AdaptTouchSection(UIWidget *container)
         return;
     }
 
-    header = AdaptWidget(container, "Label", "TouchSectionTitle", 46, 124, 325, 16);
+    header = AdaptWidget(container, "Label", "TouchSectionTitle", 46, 87, 325, 16);
     AdaptCommand(header, "title", "Touch Controls", NULL);
     AdaptCommand(header, "fgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
     AdaptCommand(header, "bgcolor", "0.278", "0.365", "0.510", "1.000", NULL);
     AdaptCommand(header, "borderstyle", "3D_BORDER", NULL);
 
-    box = AdaptWidget(container, "Widget", "TouchSectionBox", 46, 140, 325, 104);
+    box = AdaptWidget(container, "Widget", "TouchSectionBox", 46, 107, 325, 112);
     AdaptCommand(box, "fgcolor", "1", "1", "1", "1", NULL);
     AdaptCommand(box, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
     AdaptCommand(box, "borderstyle", "OUTLINE_BORDER", NULL);
     AdaptCommand(box, "borderwidth", "1", NULL);
     AdaptCommand(box, "bordercolor", "0.278", "0.365", "0.510", "1.000", NULL);
 
-    AdaptTouchSlider(container, "TouchLook", 148, "Touch Look Sensitivity", "cl_touchLook",
+    AdaptTouchSlider(container, "TouchLook", 115, "Touch Look Sensitivity", "cl_touchLook",
                      "0.5", "6.0", "0.1", "Look sensitivity on the touch pad");
-    AdaptTouchSlider(container, "TouchScale", 172, "Touch Control Scale", "cl_touchScale",
+    AdaptTouchSlider(container, "TouchScale", 139, "Touch Control Scale", "cl_touchScale",
                      "0.6", "2.0", "0.05", "Size of the touch controls");
-    AdaptTouchSlider(container, "TouchOpacity", 196, "Touch Overlay Opacity", "cl_touchOpacity",
+    AdaptTouchSlider(container, "TouchOpacity", 163, "Touch Overlay Opacity", "cl_touchOpacity",
                      "0.1", "1.0", "0.05", "Opacity of the touch controls");
-    AdaptTouchCheckbox(container, "TouchCrouchToggle", 220, "Crouch Toggle", "cl_crouchToggle",
+    AdaptTouchCheckbox(container, "TouchCrouchToggle", 187, "Crouch Toggle", "cl_crouchToggle",
                        "Tap crouch to hold it down");
+}
+
+static void AdaptHideAt(UIWidget *container, float x, float y, float w, float h)
+{
+    Container<UIWidget *>& children = container->getChildren();
+    int                    i;
+
+    for (i = 1; i <= children.NumObjects(); i++) {
+        UIWidget *wid   = children.ObjectAt(i);
+        UIRect2D  frame = wid->getFrame();
+
+        if (!wid->isSubclassOf(UIPulldownMenuContainer)) {
+            continue;
+        }
+
+        if (fabsf(frame.pos.x - x) < 0.5f && fabsf(frame.pos.y - y) < 0.5f
+            && fabsf(frame.size.width - w) < 0.5f && fabsf(frame.size.height - h) < 0.5f) {
+            wid->Disable();   // frames are still authored here, before ChangeResolution
+        }
+    }
 }
 
 static void AdaptRepointCommand(UIWidget *container, const char *from, const char *to)
@@ -1551,6 +1571,10 @@ void UI_AdaptSettingsMenus(void)
 
         if (!stricmp(container->getName(), "video")) {
             AdaptRepointCommand(container, "promptadvancedvideo", "transitionmenu advancedvideo 0");
+        }
+
+        if (!stricmp(container->getName(), "GameOptions")) {
+            AdaptHideAt(container, 586, 231, 16, 16);   // the data-rate pulldown: no name, no cvar, no title
         }
 
         if (!stricmp(container->getName(), "controls")) {

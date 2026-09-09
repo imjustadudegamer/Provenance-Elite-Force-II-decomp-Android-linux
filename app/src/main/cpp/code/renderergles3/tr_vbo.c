@@ -567,9 +567,8 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 		 * view: glBufferSubData into a buffer the GPU last read an age ago
 		 * stalls the writer for the drain, so the pair is orphaned per send
 		 * instead.  The re-specification happens with the default VAO bound
-		 * and the slot's opens after it -- the same order bc60397 gave the
-		 * store, and the one the 0.3.19 session caught a driver mishandling
-		 * when the orphan ran under the VAO whose pointers name the buffer. */
+		 * and the slot's opens after it -- the order bc60397 gave the store,
+		 * and the one a driver was caught mishandling under the slot's VAO. */
 		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 		qglBufferData( GL_ARRAY_BUFFER,
@@ -587,8 +586,7 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 		/* The default, and the shape the menu rendered correctly under before
 		 * 0.3.5: write the batch into the storage the bound VAO's pointers
-		 * already name.  No storage is re-specified, so the VAO cannot be
-		 * left naming a store the driver has since replaced. */
+		 * already name, so no VAO is left naming storage the driver replaced. */
 		qglBufferSubData( GL_ARRAY_BUFFER, 0,
 						  ( GLsizeiptr )( ( size_t )numVertexes * RB_VERTEX_STRIDE ),
 						  s_tessStage );
@@ -1141,14 +1139,40 @@ static void RB_VboBaseVertexInit( void ) {
  * present and the map refused -- went into the log's missing first line.  The
  * reason is now a field of the state, and the arm row prints it on the same
  * 600-frame cadence the arm itself uses. */
-static int		s_arenaMapWhy;		/* 0 none, 1 no entry point, 2 map refused */
+/* Why the store is not the arm: the number is the state, the name is what the
+ * row prints.  0 is what the 2026-10-07 PC capture read 208 times -- the arm
+ * was never asked for, `r_tessMap' shipped disarmed, so it is not a refusal. */
+enum {
+	RB_ARM_ASKED = 0,
+	RB_ARM_UNARMED,		/* r_tessMap 0: the ring is the arm by setting */
+	RB_ARM_VETOED,		/* r_tessArena 1|2 named another arm and won */
+	RB_ARM_NOEXT,		/* no GL_EXT_buffer_storage entry point */
+	RB_ARM_REFUSED,		/* the driver refused the allocation or the map */
+	RB_ARM_ORPHAN		/* armed and mapped, but the frame's fence held */
+};
+
+static const char *RB_ArmWhyName( int why ) {
+	switch ( why ) {
+	case RB_ARM_ASKED:	return "asked";
+	case RB_ARM_UNARMED:	return "r_tessMap 0";
+	case RB_ARM_VETOED:	return "r_tessArena override";
+	case RB_ARM_NOEXT:	return "no GL_EXT_buffer_storage";
+	case RB_ARM_REFUSED:	return "allocation refused";
+	case RB_ARM_ORPHAN:	return "fence held, store skipped";
+	default:			return "unknown";
+	}
+}
+
+static int		s_arenaMapWhy;		/* RB_ARM_*, printed by name */
 static GLenum	s_arenaMapErr;
+/* Decided once per init: after that the map is either taken or latched dead. */
+static qboolean	s_armWhyLatched;
 
 /* Allocate the store immutably and map it for the life of the buffer.  A refused
  * allocation leaves the pointers null, which is the arm's stand-down. */
 static qboolean RB_VboArenaMapPair( int slot ) {
 	if ( !qglBufferStorageEXT ) {
-		s_arenaMapWhy = 1;
+		s_arenaMapWhy = RB_ARM_NOEXT;
 		return qfalse;
 	}
 
@@ -1166,7 +1190,7 @@ static qboolean RB_VboArenaMapPair( int slot ) {
 		/* Both stores are left allocated-but-unmapped here; the driver's own
 		 * error is the only thing that says why, so take it before anything
 		 * else can clear it. */
-		s_arenaMapWhy	= 2;
+		s_arenaMapWhy	= RB_ARM_REFUSED;
 		s_arenaMapErr	= qglGetError();
 		s_arenaMapV[slot] = NULL;
 		s_arenaMapI[slot] = NULL;
@@ -1237,9 +1261,6 @@ static void RB_VboArenaInit( void ) {
 /* A store the fence has not released goes the orphan route: the storage is
  * replaced and a fresh mapping taken, so the frame pays the allocation the map
  * exists to avoid rather than writing memory the GPU is still reading. */
-/* A store the fence has not released goes the orphan route: the storage is
- * replaced and a fresh mapping taken, so the frame pays the allocation the map
- * exists to avoid rather than writing memory the GPU is still reading. */
 static qboolean RB_VboArenaSlotReady( int slot ) {
 	if ( s_arenaFence[slot] ) {
 		GLenum	r = qglClientWaitSync( s_arenaFence[slot], 0, 0 );
@@ -1274,12 +1295,9 @@ static void RB_VboArenaMapFrame( void ) {
 		if ( s_arenaMapDead || !RB_VboArenaMapPair( slot ) ) {
 			if ( !s_arenaMapDead ) {
 				s_arenaMapDead = qtrue;
-				/* The reason is the acceptance: 1 no entry point (the extension
-				 * is genuinely absent), 2 the driver refused the allocation or
-				 * the map, with its own error beside it. */
 				ri.Printf( PRINT_ALL,
 						   "[BE:arm] store stood down (%s glerror=0x%x): ring runs, fall counts\n",
-						   s_arenaMapWhy == 1 ? "no GL_EXT_buffer_storage"
+						   s_arenaMapWhy == RB_ARM_NOEXT ? "no GL_EXT_buffer_storage"
 											  : "persistent map refused",
 						   (unsigned)s_arenaMapErr );
 			}
@@ -1297,6 +1315,10 @@ static void RB_VboArenaMapFrame( void ) {
 		s_arenaMapOrphans++;
 		s_arenaMappedOrphan = qtrue;
 		s_arenaFull         = qtrue;
+		/* The arm is still the store; this frame's batches are the ring's. */
+		s_arenaMapWhy = RB_ARM_ORPHAN;
+	} else if ( s_arenaMapWhy == RB_ARM_ORPHAN ) {
+		s_arenaMapWhy = RB_ARM_ASKED;
 	}
 }
 
@@ -1307,13 +1329,10 @@ static void RB_VboArenaShutdown( void ) {
 		return;
 	}
 
-	/* The mapped store's bookkeeping has to die with the buffers it names.  It
-	 * did not: the map pointers and the stand-down latch are file statics and
-	 * survived this function, so the next init saw `s_arenaMapV[slot] != NULL`,
-	 * took the already-mapped branch and never re-mapped, never re-probed and
-	 * never re-printed -- which is why 0.3.20's arm row said "mapped" for a
-	 * whole session while every [BE:send] window read arena=0 and the stand-down
-	 * row appeared nowhere in the capture. */
+	/* The map pointers and the stand-down latch are file statics, so they die
+	 * here: a survivor made the next init take the already-mapped branch, never
+	 * re-map, never re-probe and never re-print, which is why 0.3.20's arm row
+	 * said "mapped" for a session whose [BE:send] windows all read arena=0. */
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
 		if ( s_arenaFence[i] ) {
 			qglDeleteSync( s_arenaFence[i] );
@@ -1355,6 +1374,7 @@ static void RB_VboArenaShutdown( void ) {
 	s_arenaMapDead      = qfalse;
 	s_arenaMapWhy       = 0;
 	s_arenaMapErr       = GL_NO_ERROR;
+	s_armWhyLatched     = qfalse;
 	s_arenaMapOrphans   = 0;
 	s_arenaMapBatches   = 0;
 	s_armPrinted        = qfalse;
@@ -1375,13 +1395,18 @@ void RB_VBO_BeginFrame( void ) {
 		 * two arms r_tessMap does not name are forced now: 1 the per-frame
 		 * store, 2 the alternating A/B.
 		 *
-		 * The default is 0.  0.3.21 shipped 1 and the first live arm stood down
-		 * before its own row could print, so the session logged "mapped" over a
-		 * ring and gameplay paid the ring's price with the store's overhead on
-		 * top.  The store stays in the tree behind the cvar and is re-armed only
-		 * when tools/arena_store_harness has carried it on a host context. */
+		 * The default is 1 again.  0.3.21 shipped 1, its live arm stood down
+		 * before its row could print, and 0.3.22 answered by disarming the
+		 * store until tools/arena_store_harness carried it on a host context.
+		 * That acceptance now PASSES all four cases on the host it asks for
+		 * (Mesa ES 3.2, EGL surfaceless, GL_EXT_buffer_storage present), and
+		 * the 2026-10-07 PC capture shows the extension gate was never the
+		 * reason the arm stayed dark: "procs=165 core_missing=0
+		 * staged_desktop_traps=0", the extension list carries
+		 * GL_EXT_buffer_storage, and every [BE:send] window still read arena=0
+		 * at two buffer writes a batch (18.8k to 80k batches a second). */
 		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
-		s_mapCvar   = ri.Cvar_Get( "r_tessMap", "0", 0 );
+		s_mapCvar   = ri.Cvar_Get( "r_tessMap", "1", 0 );
 		s_freshCvar = ri.Cvar_Get( "r_tessFresh", "1", 0 );
 	}
 
@@ -1390,35 +1415,51 @@ void RB_VBO_BeginFrame( void ) {
 		int	map    = s_mapCvar ? s_mapCvar->integer : 0;
 		int	mode;
 
-		s_arenaArmed  = ( map && legacy != 1 && legacy != 2 ) ? qtrue : qfalse;
+		/* `r_tessMap' is the switch, so the `r_tessArena' override may NAME an
+		 * arm but not VETO the switch: the old `map && legacy != 1 && legacy
+		 * != 2' let a `r_tessArena 2' left in a config by 0.3.15/0.3.16 keep
+		 * the ring after `r_tessMap 1'.  `r_tessMap 0' is the ring arm. */
+		s_arenaArmed  = map ? qtrue : qfalse;
 		/* A store the driver refused is not the arm any more: the ring is.  It
 		 * still reads as armed in the row's `dead=` field, so the capture says
-		 * "asked for the store, got the ring" instead of silently reporting the
-		 * ring as a choice. */
+		 * "asked for the store, got the ring" instead of reporting the ring as
+		 * a choice. */
 		s_arenaMapped = ( s_arenaArmed && !s_arenaMapDead ) ? qtrue : qfalse;
+
+		if ( !s_armWhyLatched ) {
+			s_armWhyLatched = qtrue;
+			if ( s_arenaMapped ) {
+				s_arenaMapWhy = RB_ARM_ASKED;
+			} else if ( map ) {
+				s_arenaMapWhy = RB_ARM_REFUSED;		/* dead latched by the map */
+			} else if ( legacy == 1 || legacy == 2 ) {
+				s_arenaMapWhy = RB_ARM_VETOED;
+			} else {
+				s_arenaMapWhy = RB_ARM_UNARMED;
+			}
+		}
 
 		mode = s_arenaMapped ? 2 : ( legacy ? legacy : 0 );
 
 		/* Every capture must be able to say which arm ran.  The row names the
 		 * resolution once, then again whenever it changes and again every 600
-		 * frames, so a log that starts mid-session still carries it -- 0.3.19's
-		 * log began at frame 2965 and had none, which is why the arm question
-		 * had to be answered by inference.  `ran=` is RB_VboArenaMode, what the
-		 * previous frame actually used, not the intent: 0.3.20 said "mapped"
-		 * for a whole session while every [BE:send] window read arena=0,
-		 * because the stand-down had printed once, before that capture began,
-		 * and the latch survives a renderer re-init.  `dead=` and `why=` carry
-		 * the stand-down on the same cadence, which is the one row 0.3.21's
-		 * capture needed and did not get. */
+		 * frames, so a log that starts mid-session still carries it.  `ran=` is
+		 * RB_VboArenaMode, what the previous frame actually used, not the
+		 * intent: 0.3.20 said "mapped" for a whole session while every
+		 * [BE:send] window read arena=0, because the stand-down printed once,
+		 * before that capture began, and the latch survives a renderer re-init.
+		 * `dead=` and `why=` carry the stand-down on the same cadence. */
 		if ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) {
 			ri.Printf( PRINT_ALL,
-					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s ran=%d dead=%d why=%d(0x%x) f=%d\n",
+					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s ran=%d dead=%d"
+					   " why=%d %s(0x%x) f=%d\n",
 					   map, legacy, s_freshLatched ? ( s_fresh ? 1 : 0 ) : ( s_freshCvar ? s_freshCvar->integer : 0 ),
 					   s_arenaMapped ? "mapped"
 					   : ( legacy == 1 ) ? "per-frame store"
 					   : ( legacy == 2 ) ? "a/b" : "ring",
 					   RB_VboArenaMode(), s_arenaMapDead ? 1 : 0,
-					   s_arenaMapWhy, (unsigned)s_arenaMapErr, RB_FrameCount() );
+					   s_arenaMapWhy, RB_ArmWhyName( s_arenaMapWhy ),
+					   (unsigned)s_arenaMapErr, RB_FrameCount() );
 			s_armPrinted = qtrue;
 			s_armMode    = mode;
 		}
