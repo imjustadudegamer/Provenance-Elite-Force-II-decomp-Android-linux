@@ -32,6 +32,8 @@ static volatile rbFrame_t *rb_lastExecuted = NULL;
 static int rb_frameCount = 0;
 static int rb_issueRows = 0;
 
+static int vk_frameCmds[3] = { RC_VK_BEGIN, RC_VK_PRESENT, RC_END_OF_LIST };
+
 static cvar_t *r_smp;
 
 int RB_FrameSmpFrame( void )
@@ -76,16 +78,36 @@ void R_SyncRenderThread( void )
 void RB_ExecuteRenderCommands( const void *data )
 {
 	const int *cmds = (const int *)data;
-
-	rb_activeFrame = NULL;
+	int slot = rb_activeFrame ? rb_activeFrame->smpFrame : 0;
 
 	while ( 1 ) {
 		switch ( *cmds ) {
+		case RC_VK_BEGIN:
+			if ( !VK_Frame_Begin( slot ) ) {
+				return;
+			}
+			if ( !VK_Frame_Acquire( slot ) ) {
+				return;
+			}
+			VK_Frame_RecordClear( slot, vk.clearColor );
+			break;
+
+		case RC_VK_PRESENT:
+			if ( !VK_Frame_Submit( slot ) ) {
+				return;
+			}
+			if ( !VK_Frame_Present( slot ) ) {
+				return;
+			}
+			break;
+
 		case RC_END_OF_LIST:
 		default:
 			rb_lastExecuted = rb_activeFrame;
 			return;
 		}
+
+		cmds++;
 	}
 }
 
@@ -105,8 +127,8 @@ void RB_RenderThread( void )
 		rb_lastExecuted = frame;
 
 		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:smp", "side=render slot=%d front=%d arena=%d violations=%d frames=%d",
-						  frame->smpFrame, 0, frame->boneArena,
+			VK_Guard_Row( "VK:smp", "side=render slot=%d arena=%d violations=%d frames=%d",
+						  frame->smpFrame, frame->boneArena,
 						  VKimp_HandshakeViolations(), rb_frameCount );
 		}
 
@@ -121,7 +143,7 @@ void R_IssueRenderCommands( void )
 	rbFrame_t *frame;
 
 	frame = &rb_frames[vk.frameSlot];
-	frame->cmds = NULL;
+	frame->cmds = vk_frameCmds;
 	frame->smpFrame = vk.frameSlot;
 	frame->frameCount = ++rb_frameCount;
 	frame->boneArena = vk.frameSlot;
@@ -133,7 +155,9 @@ void R_IssueRenderCommands( void )
 		return;
 	}
 
+	rb_activeFrame = frame;
 	RB_ExecuteRenderCommands( frame->cmds );
+	rb_activeFrame = NULL;
 
 	if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
 		VK_Guard_Row( "VK:smp", "side=inline slot=%d frames=%d", frame->smpFrame, rb_frameCount );
@@ -146,7 +170,7 @@ void R_IssueRenderCommands( void )
 
 void R_InitCommandBuffers( void )
 {
-	r_smp = ri.Cvar_Get( "r_smp", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	r_smp = ri.Cvar_Get( "r_smp", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	vk.smpActive = r_smp->integer ? qtrue : qfalse;
 	vk.frameSlot = 0;
 

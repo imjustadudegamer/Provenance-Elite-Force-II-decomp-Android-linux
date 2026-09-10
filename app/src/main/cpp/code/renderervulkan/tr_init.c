@@ -88,9 +88,12 @@ void R_Init( void )
 	r_vkTrace = ri.Cvar_Get( VK_TRACE_CVAR, "1", 0 );
 	ri.Cvar_Get( VK_GUARD_TRACE_CVAR, "1", 0 );
 
-	VKimp_AdapterInit();
+	vk.demoDraw = ri.Cvar_Get( "r_vkDemo", "1", CVAR_ARCHIVE )->integer ? qtrue : qfalse;
 
-	VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M0 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+	VKimp_AdapterInit();
+	R_InitCommandBuffers();
+
+	VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M1 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
 }
 
 void RE_Shutdown( qboolean destroyWindow )

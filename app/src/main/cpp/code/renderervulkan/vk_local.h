@@ -25,23 +25,33 @@ root, for more details.
 
 #include <vulkan/vulkan.h>
 
+struct SDL_Window;
+typedef struct SDL_Window SDL_Window;
+extern SDL_Window *SDL_window;
+
 #define VK_TRACE_CVAR "r_vkTrace"
 #define VK_GUARD_TRACE_CVAR "r_vkGuardTrace"
 
 #define VK_FRAMES_IN_FLIGHT 2
 #define SMP_FRAMES 2
 #define RC_END_OF_LIST 0
+#define RC_VK_BEGIN 1
+#define RC_VK_PRESENT 2
 
 typedef struct vkPhysDevice_s {
 	VkPhysicalDevice device;
 	VkPhysicalDeviceProperties props;
 	VkPhysicalDeviceDriverProperties driverProps;
+	VkPhysicalDeviceVulkan12Properties props12;
 	VkPhysicalDeviceDescriptorIndexingFeatures diFeatures;
 	VkPhysicalDeviceVulkan12Features features12;
 	qboolean hasDriverProps;
+	qboolean has12Props;
 	qboolean hasDescriptorIndexing;
 	qboolean hasDescriptorIndexingExt;
 	qboolean hasMultiDrawIndirect;
+	qboolean hasUpdateAfterBind;
+	qboolean hasVariableDescriptorCount;
 	qboolean supportsBindless;
 	uint32_t graphicsFamily;
 	uint32_t presentFamily;
@@ -67,6 +77,8 @@ typedef struct {
 	uint32_t deviceApiVersion;
 	VkPhysicalDevice physicalDevice;
 	VkPhysicalDeviceProperties deviceProps;
+	VkPhysicalDeviceVulkan12Properties props12;
+	qboolean has12Props;
 	VkDevice device;
 	uint32_t graphicsFamily;
 	uint32_t presentFamily;
@@ -86,11 +98,40 @@ typedef struct {
 	size_t pipelineCacheBytes;
 	qboolean descriptorIndexing;
 	qboolean descriptorIndexingExt;
+	uint32_t bindlessTextures;
+	VkDescriptorPool descriptorPool;
+	VkDescriptorSetLayout bindlessLayout;
+	VkDescriptorSetLayout compatLayout;
 	qboolean bindless;
 	qboolean multiDrawIndirect;
+	qboolean updateAfterBind;
+	qboolean variableDescriptorCount;
 	qboolean smpActive;
 	int frameSlot;
 	int frameCount;
+	VkPhysicalDeviceMemoryProperties memProps;
+	VkRenderPass renderPass;
+	VkRenderPass offscreenPass;
+	VkFormat depthFormat;
+	VkImage depthImage;
+	VkDeviceMemory depthMemory;
+	VkImageView depthView;
+	VkFramebuffer *framebuffers;
+	uint32_t framebufferCount;
+	VkBuffer vertexBuffer;
+	VkDeviceMemory vertexMemory;
+	VkCommandBuffer uploadCmd;
+	VkCommandPool commandPool;
+	VkCommandBuffer commandBuffers[VK_FRAMES_IN_FLIGHT];
+	VkFence fences[VK_FRAMES_IN_FLIGHT];
+	VkSemaphore acquireSemaphores[VK_FRAMES_IN_FLIGHT];
+	VkSemaphore renderSemaphores[VK_FRAMES_IN_FLIGHT];
+	uint32_t acquiredImage;
+	qboolean acquired;
+	qboolean demoDraw;
+	qboolean targetReady;
+	qboolean frameReady;
+	float clearColor[4];
 	glconfig_t glConfig;
 } vkContext_t;
 
@@ -98,6 +139,51 @@ extern vkContext_t vk;
 extern refimport_t ri;
 
 qboolean R_GetModeInfo( int *width, int *height, float *windowAspect, int mode );
+
+int VK_Memory_FindType( uint32_t typeBits, VkMemoryPropertyFlags wanted );
+qboolean VK_Memory_AllocFor( VkMemoryRequirements requirements, VkMemoryPropertyFlags wanted,
+							 VkDeviceMemory *memory );
+qboolean VK_Memory_AllocImage( VkImage image, VkMemoryPropertyFlags wanted, VkDeviceMemory *memory );
+qboolean VK_Memory_AllocBuffer( VkBuffer buffer, VkMemoryPropertyFlags wanted, VkDeviceMemory *memory );
+qboolean VK_Memory_CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage,
+								 VkMemoryPropertyFlags wanted, VkBuffer *buffer, VkDeviceMemory *memory );
+
+typedef struct {
+	float position[2];
+	float colour[4];
+} vkDemoVertex_t;
+
+#define VK_VERTEX_DEMO_COUNT 3
+#define VK_VERTEX_DEMO_BYTES ( VK_VERTEX_DEMO_COUNT * sizeof( vkDemoVertex_t ) )
+
+extern const vkDemoVertex_t vk_demoVertices[VK_VERTEX_DEMO_COUNT];
+
+qboolean VK_Descriptor_Init( void );
+void VK_Descriptor_Shutdown( void );
+
+qboolean VK_Pipeline_Init( void );
+void VK_Pipeline_Shutdown( void );
+qboolean VK_Pipeline_DrawDemo( VkCommandBuffer cmd );
+
+qboolean VK_Vertex_Init( void );
+void VK_Vertex_Shutdown( void );
+
+qboolean VK_Target_Init( void );
+void VK_Target_Shutdown( void );
+qboolean VK_Target_Recreate( void );
+VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth );
+
+qboolean VK_Frame_Init( void );
+void VK_Frame_Shutdown( void );
+qboolean VK_Frame_Begin( int slot );
+qboolean VK_Frame_Acquire( int slot );
+void VK_Frame_RecordClear( int slot, const float rgba[4] );
+qboolean VK_Frame_Submit( int slot );
+qboolean VK_Frame_Present( int slot );
+int VK_Frame_Count( void );
+
+qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
+									unsigned char *out, size_t outBytes );
 
 void R_Init( void );
 void RE_Shutdown( qboolean destroyWindow );
@@ -128,9 +214,16 @@ int VKimp_HandshakeViolations( void );
 
 void VKimp_AdapterInit( void );
 void VKimp_Shutdown( void );
+qboolean VKimp_WindowCreate( int width, int height, int fullscreen, qboolean hidden );
+unsigned int VKimp_InstanceExtensions( const char **out, unsigned int max );
+void VKimp_FillConfig( glconfig_t *config, int width, int height, float aspect, qboolean fullscreen );
 
 qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfaceExtensions );
+void VK_Instance_SetLayers( const char *const *layers, int numLayers );
+qboolean VK_Instance_LayerAvailable( const char *name );
 void VK_Instance_Destroy( void );
+void VK_Debug_Init( void );
+void VK_Debug_Shutdown( void );
 
 int VK_Device_Select( void );
 qboolean VK_Device_Create( void );
@@ -139,6 +232,8 @@ void VK_Device_Destroy( void );
 qboolean VK_Surface_Create( void );
 void VK_Surface_Destroy( void );
 
+qboolean VK_Swapchain_CreateViews( void );
+qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_t outBytes );
 qboolean VK_Swapchain_Plan( vkSwapchainPlan_t *plan, int windowWidth, int windowHeight );
 qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan );
 void VK_Swapchain_Destroy( void );

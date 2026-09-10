@@ -34,6 +34,118 @@ static const char *const vk_deviceExtensions[] = {
 	VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
 };
 
+static const char *vk_requestedLayers[8];
+static uint32_t vk_numRequestedLayers;
+static VkDebugUtilsMessengerEXT vk_debugMessenger = VK_NULL_HANDLE;
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL VK_DebugCallback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+	VkDebugUtilsMessageTypeFlagsEXT types,
+	const VkDebugUtilsMessengerCallbackDataEXT *data, void *userData )
+{
+	const char *kind = "other";
+
+	(void)userData;
+
+	if ( types & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT ) {
+		kind = "validation";
+	} else if ( types & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT ) {
+		kind = "performance";
+	}
+
+	VK_Guard_Row( "VK:valid",
+				  "kind=%s severity=%d code=%d \"%s\"",
+				  kind,
+				  (int)severity,
+				  data->messageIdNumber,
+				  data->pMessage ? data->pMessage : "" );
+
+	return VK_FALSE;
+}
+
+void VK_Instance_SetLayers( const char *const *layers, int numLayers )
+{
+	int i;
+
+	vk_numRequestedLayers = 0;
+
+	for ( i = 0; layers && i < numLayers && i < 8; i++ ) {
+		vk_requestedLayers[vk_numRequestedLayers++] = layers[i];
+	}
+}
+
+qboolean VK_Instance_LayerAvailable( const char *name )
+{
+	VkLayerProperties *props;
+	uint32_t count = 0;
+	uint32_t i;
+	qboolean found = qfalse;
+	VkResult result;
+
+	if ( !VK_Procs_Load() ) {
+		return qfalse;
+	}
+
+	if ( !qvk.EnumerateInstanceLayerProperties ) {
+		return qfalse;
+	}
+
+	result = qvk.EnumerateInstanceLayerProperties( &count, NULL );
+	if ( result != VK_SUCCESS || count == 0 ) {
+		return qfalse;
+	}
+
+	props = (VkLayerProperties *)malloc( sizeof( VkLayerProperties ) * count );
+	if ( !props ) {
+		return qfalse;
+	}
+
+	qvk.EnumerateInstanceLayerProperties( &count, props );
+
+	for ( i = 0; i < count; i++ ) {
+		if ( !strcmp( props[i].layerName, name ) ) {
+			found = qtrue;
+			break;
+		}
+	}
+
+	free( props );
+
+	return found;
+}
+
+void VK_Debug_Init( void )
+{
+	VkDebugUtilsMessengerCreateInfoEXT createInfo;
+
+	if ( !vk_numRequestedLayers || !qvk.CreateDebugUtilsMessengerEXT ) {
+		return;
+	}
+
+	memset( &createInfo, 0, sizeof( createInfo ) );
+	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+								 | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+							 | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+							 | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	createInfo.pfnUserCallback = VK_DebugCallback;
+
+	if ( VK_Guard_Result( VK_GSITE_INSTANCE,
+						  qvk.CreateDebugUtilsMessengerEXT( vk.instance, &createInfo, NULL, &vk_debugMessenger ),
+						  "vkCreateDebugUtilsMessengerEXT" ) ) {
+		VK_Guard_Row( "VK:valid", "messenger=armed layers=%u", vk_numRequestedLayers );
+	}
+}
+
+void VK_Debug_Shutdown( void )
+{
+	if ( vk_debugMessenger != VK_NULL_HANDLE && qvk.DestroyDebugUtilsMessengerEXT ) {
+		qvk.DestroyDebugUtilsMessengerEXT( vk.instance, vk_debugMessenger, NULL );
+	}
+	vk_debugMessenger = VK_NULL_HANDLE;
+}
+
 static void VK_ApiName( uint32_t v, char *out, size_t len )
 {
 	snprintf( out, len, "%u.%u.%u",
@@ -88,6 +200,8 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 	createInfo.pApplicationInfo = &app;
 	createInfo.enabledExtensionCount = numExtensions;
 	createInfo.ppEnabledExtensionNames = extensionNames;
+	createInfo.enabledLayerCount = vk_numRequestedLayers;
+	createInfo.ppEnabledLayerNames = vk_requestedLayers;
 
 	for ( versionIndex = 0; versionIndex < sizeof( vk_apiVersions ) / sizeof( vk_apiVersions[0] ); versionIndex++ ) {
 		app.apiVersion = vk_apiVersions[versionIndex];
@@ -108,8 +222,11 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 	{
 		char apiName[32];
 		VK_ApiName( vk.instanceApiVersion, apiName, sizeof( apiName ) );
-		VK_Guard_Row( "VK:instance", "api=%s extensions=%u", apiName, numExtensions );
+		VK_Guard_Row( "VK:instance", "api=%s extensions=%u layers=%u", apiName, numExtensions,
+					  vk_numRequestedLayers );
 	}
+
+	VK_Debug_Init();
 
 	vk.initialized = qtrue;
 	return qtrue;
@@ -117,6 +234,8 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 
 void VK_Instance_Destroy( void )
 {
+	VK_Debug_Shutdown();
+
 	if ( vk.instance && qvk.DestroyInstance ) {
 		qvk.DestroyInstance( vk.instance, NULL );
 	}
@@ -143,6 +262,7 @@ static void VK_QueryDevice( vkPhysDevice_t *out )
 	VkPhysicalDeviceProperties2 props2;
 	VkPhysicalDeviceFeatures2 features2;
 	VkExtensionProperties *extensions;
+	VkPhysicalDeviceVulkan12Properties *p12;
 	uint32_t count = 0;
 	VkResult result;
 	qboolean useCore12;
@@ -170,11 +290,17 @@ static void VK_QueryDevice( vkPhysDevice_t *out )
 		props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
 		memset( &out->driverProps, 0, sizeof( out->driverProps ) );
 		out->driverProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+		memset( &out->props12, 0, sizeof( out->props12 ) );
+		out->props12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+		out->driverProps.pNext = &out->props12;
 		props2.pNext = &out->driverProps;
 		qvk.GetPhysicalDeviceProperties2( out->device, &props2 );
+		p12 = out->driverProps.pNext;
 		if ( props2.properties.apiVersion != 0 ) {
 			out->props = props2.properties;
 			out->hasDriverProps = qtrue;
+			out->has12Props = ( p12 && p12->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES )
+								  ? qtrue : qfalse;
 		} else {
 			memset( &out->driverProps, 0, sizeof( out->driverProps ) );
 		}
@@ -220,6 +346,11 @@ static void VK_QueryDevice( vkPhysDevice_t *out )
 	}
 
 	out->hasMultiDrawIndirect = ( features2.features.multiDrawIndirect != VK_FALSE ) ? qtrue : qfalse;
+	out->hasUpdateAfterBind = ( out->diFeatures.descriptorBindingSampledImageUpdateAfterBind
+								&& out->diFeatures.descriptorBindingVariableDescriptorCount )
+								  ? qtrue : qfalse;
+	out->hasVariableDescriptorCount =
+		out->diFeatures.descriptorBindingVariableDescriptorCount ? qtrue : qfalse;
 
 	out->supportsBindless = qfalse;
 	if ( out->hasDescriptorIndexing ) {
@@ -378,6 +509,10 @@ int VK_Device_Select( void )
 
 	vk.physicalDevice = list[best].device;
 	vk.deviceProps = list[best].props;
+	vk.props12 = list[best].props12;
+	vk.has12Props = list[best].has12Props;
+	memset( &vk.memProps, 0, sizeof( vk.memProps ) );
+	qvk.GetPhysicalDeviceMemoryProperties( vk.physicalDevice, &vk.memProps );
 	vk.deviceApiVersion = list[best].props.apiVersion;
 	vk.graphicsFamily = list[best].graphicsFamily;
 	vk.presentFamily = list[best].presentFamily;
@@ -385,6 +520,8 @@ int VK_Device_Select( void )
 	vk.descriptorIndexingExt = list[best].hasDescriptorIndexingExt;
 	vk.bindless = list[best].supportsBindless;
 	vk.multiDrawIndirect = list[best].hasMultiDrawIndirect;
+	vk.updateAfterBind = list[best].hasUpdateAfterBind;
+	vk.variableDescriptorCount = list[best].hasVariableDescriptorCount;
 
 	VK_LogDevice( &list[best], bestScore, 1 );
 
