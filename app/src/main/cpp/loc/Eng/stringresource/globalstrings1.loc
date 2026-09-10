@@ -1,0 +1,17 @@
+//Port touch-look labels.  globalstrings1.loc loads inside StringResource::loadGlobalStrings'
+//1..9 loop, while _overwrite is still true, so each line here replaces the retail string for
+//its token.  Retail ships only globalstrings.loc, so this name collides with nothing.
+//
+//`sensitivity', `m_filter' and `m_invert_pitch' are not mouse-only on this device: touch look
+//feeds CL_MouseMove the same SE_MOUSE stream (IN_TouchMove -> Com_QueueEvent(SE_MOUSE)), and
+//CL_MouseMove scales that stream by cl_sensitivity and filters it by m_filter.  The retail
+//labels name the wrong device, so they are reworded rather than re-bound.  Tokens stay as
+//retail spelled them; only the display text changes.
+MouseSensitivity										"Look Sensitivity:"
+SetMouseSensitivity										"Adjust look sensitivity"
+InvertMouse												"Invert Look"
+EnableInvertMouse										"Toggles the look direction on the y-axis"
+SmoothMouse												"Look Smoothing"
+EnableSmoothMouse										"Smoothes out look movement"
+MonitorSync												"Vertical Sync"
+EnableMonitorSync										"Enable vertical synchronization"
