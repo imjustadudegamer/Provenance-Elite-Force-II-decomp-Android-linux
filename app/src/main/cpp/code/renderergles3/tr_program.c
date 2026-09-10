@@ -263,8 +263,10 @@ void GLES3_CreateWaveTable( void )
 	}
 	if ( !qglGenTextures )
 	{
-		return;		
+		return;
 	}
+
+	GL_ClaimContextForResource();
 
 	for ( i = 0; i < FUNCTABLE_SIZE; i++ )
 	{
@@ -293,6 +295,7 @@ void GLES3_DestroyWaveTable( void )
 {
 	if ( s_waveTable && qglDeleteTextures )
 	{
+		GL_ClaimContextForResource();
 		qglDeleteTextures( 1, &s_waveTable );
 	}
 	s_waveTable = 0;
@@ -2915,6 +2918,7 @@ static void GLES3_WireEnsure( void )
 	{
 		return;
 	}
+	GL_ClaimContextForResource();
 	qglGenVertexArrays( 1, &s_wireVao );
 	qglGenBuffers( 1, &s_wireVbo );
 	RB_BindVAO( s_wireVao );

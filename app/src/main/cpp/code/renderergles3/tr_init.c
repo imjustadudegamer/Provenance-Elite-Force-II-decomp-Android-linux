@@ -1501,6 +1501,9 @@ void RE_BeginRegistration(glconfig_t* glconfigOut) {
 
 	R_IssuePendingRenderCommands();
 
+	/* Frees the surface pointers the static arena's residency keys on. */
+	RB_VboStaticForget();
+
 	// (@0x00028D50), and the order matters: sprite_t and bmodel_t are hunk allocations
 	R_FreeNonTikiModels();
 

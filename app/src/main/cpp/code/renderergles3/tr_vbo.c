@@ -475,6 +475,8 @@ void RB_VBO_Init( void )
 		return;
 	}
 
+	GL_ClaimContextForResource();
+
 	for ( i = 0; i < RB_TESS_RING; i++ ) {
 		qglGenBuffers( 1, &s_vboTessRing[i] );
 		qglGenBuffers( 1, &s_eboTessRing[i] );
@@ -521,6 +523,8 @@ void RB_VBO_Shutdown( void )
 	if ( !s_vboInitialised ) {
 		return;
 	}
+
+	GL_ClaimContextForResource();
 
 	for ( i = 0; i < RB_TESS_RING; i++ ) {
 		qglDeleteBuffers( 1, &s_vboTessRing[i] );
@@ -693,6 +697,14 @@ void RB_VboStaticReset( void ) {
 	s_staticRecOverflow = qfalse;
 }
 
+void RB_VboStaticForget( void ) {
+	Com_Memset( s_staticHash, 0, sizeof( s_staticHash ) );
+	s_staticVertsUsed = 0;
+	s_staticIdxesUsed = 0;
+	s_staticFull = qfalse;
+	RB_VboStaticReset();
+}
+
 void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx ) {
 	if ( s_staticRecOverflow || numVerts <= 0 || numIdx <= 0 ) {
 		return;
@@ -770,6 +782,8 @@ static void RB_VboStaticInit( void ) {
 	if ( s_staticVbo ) {
 		return;
 	}
+
+	GL_ClaimContextForResource();
 
 	/* The element binding is VAO state and a VAO is live here: allocate with
 	 * none bound, bind at the point of use. */
@@ -1169,6 +1183,7 @@ static void RB_VboStaticArenaVao( int i ) {
 	if ( s_vaoStaticArena[i] ) {
 		return;
 	}
+	GL_ClaimContextForResource();
 	qglGenVertexArrays( 1, &s_vaoStaticArena[i] );
 	RB_BindVAO( s_vaoStaticArena[i] );
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_staticVbo );
@@ -1183,6 +1198,8 @@ static void RB_VboArenaInit( void ) {
 	if ( s_arenaInit ) {
 		return;
 	}
+
+	GL_ClaimContextForResource();
 
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
 		/* No storage here on purpose.  The mapped arm allocates immutably in
