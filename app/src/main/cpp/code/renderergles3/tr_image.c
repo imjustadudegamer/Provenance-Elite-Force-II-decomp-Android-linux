@@ -2546,6 +2546,7 @@ void R_DeleteImageFromHash(image_t* image) {
 
 void R_FreeImage(image_t* image) {
 	if (image->texnum) {
+		GL_ClaimContextForResource();
 		qglDeleteTextures(1, &image->texnum);
 	}
 

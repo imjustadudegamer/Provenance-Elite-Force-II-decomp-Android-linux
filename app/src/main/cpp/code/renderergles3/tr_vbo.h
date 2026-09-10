@@ -52,6 +52,8 @@ void RB_VBO_DrawTess( const shaderCommands_t *input );
 void RB_VboStaticReset( void );
 void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx );
 
+void RB_VboStaticForget( void );
+
 void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
 							  int *normalized, const void **pointer );
 

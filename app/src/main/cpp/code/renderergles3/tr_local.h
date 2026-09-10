@@ -1755,6 +1755,8 @@ void		GLimp_FrontEndSleep( void );
 void		GLimp_WakeRenderer( void *data );
 void		GLimp_ShutdownRenderThread( void );
 qboolean	GLimp_IsRenderThread( void );
+
+void		GL_ClaimContextForResource( void );	/* parks the render thread */
 int			GLimp_HandshakeViolations( void );
 int			GLimp_DeviceCoreCount( void );
 

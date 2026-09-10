@@ -1089,6 +1089,7 @@ static int PROGCACHE_GL_GetError( void ) {
 }
 
 static unsigned PROGCACHE_GL_CreateProgram( void ) {
+	GL_ClaimContextForResource();
 	return (unsigned)qglCreateProgram();
 }
 

@@ -234,6 +234,13 @@ void R_IssuePendingRenderCommands( void ) {
 	R_IssueRenderCommands( qfalse );
 }
 
+void GL_ClaimContextForResource( void ) {
+	if ( GLimp_IsRenderThread() ) {
+		return;
+	}
+	R_IssuePendingRenderCommands();
+}
+
 /* Runs the recorded list on the calling thread with the render thread parked.
  * Only immediate-GL callers that must be ordered after the recorded list use
  * this; a 2D entry point records instead. */
