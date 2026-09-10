@@ -30,8 +30,7 @@ class Menu : public Listener
 {
     qboolean m_fullscreen;
     int      m_vidmode;
-    // Retail Menu::noEscape @0x0006DB00 (52 B) does NOT cache it on the Menu -- it reads
-    // retail would not).  Never per-frame widget work in steady state.
+    // Retail Menu::noEscape @0x0006DB00 (52 B) reads it off the container, uncached; never per-frame work.
 
 public:
     CLASS_PROTOTYPE(Menu);
@@ -126,6 +125,9 @@ public:
 };
 
 extern MenuManager menuManager;
+
+// Handheld adaptation of the shipped settings pages; runs before the menus exist.
+void UI_AdaptSettingsMenus(void);
 
 extern Event EV_PushMenu;
 extern Event EV_LockMenus;

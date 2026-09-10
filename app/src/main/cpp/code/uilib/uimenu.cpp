@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "ui_local.h"
+#include "../qcommon/stringresource.h"
 
 #define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
 #define PROBE_PRINT                       Com_Printf
@@ -1302,4 +1303,259 @@ bool MenuManager::ForceMenu(str name)
     m_menustack.Push(m);
 
     return true;
+}
+
+// The handheld adaptation of the shipped settings pages: a row leaves its page
+// through the same `disable' the shipped data issues itself (menu_controls.urc
+// showcommands), and is named by what its own file already carries.
+
+struct adaptRow_s {
+    const char *menu;    // the shipped `menu' name
+    const char *token;   // the row label's string token
+    const char *cvar;    // the row control's linked cvar
+    const char *name;    // the row's pulldown, where the file names it
+    const char *shader;  // a widget the file leaves unnamed carries
+};
+
+static adaptRow_s s_adaptRows[] = {
+    {"video",         "$$VideoMode$$",              "r_mode",                      "reslist",     NULL              },
+    {"video",         "$$ColorDepth$$",             "r_texturebits",               "colorlist",   NULL              },
+    {"video",         "$$FullScreen$$",             "r_fullscreen",                NULL,          NULL              },
+    {"advancedvideo", "$$FullScreenAntialiasing$$", "r_arb_multisample",           NULL,          NULL              },
+    {"advancedvideo", "$$NvidiaAntiAliasing$$",     "r_ext_nv_multisample_filter", NULL,          NULL              },
+    {"audio",         "$$SoundDriver$$",            "s_milesdriver",               "sounddriver", NULL              },
+    {"GameOptions",   "$$DataRate$$",               "rate",                        NULL,          NULL              },
+    {"GameOptions",   "$$LowBandwidth$$",           "mp_lowBandwidth",             NULL,          NULL              },
+    {"controls",      NULL,                         NULL,                          NULL,          "menu/mp/bar-fix" },
+};
+
+static const char *s_adaptBindWidgets[] = {   // the controls page's keyboard apparatus
+    "WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList",
+    "WeaponBind",     "AttackLookBind",     "MovementBind",     "GameplayBind",
+    "PressKey",
+};
+
+static void AdaptHideRow(UIWidget *container, const adaptRow_s *row)
+{
+    Container<UIWidget *>& children = container->getChildren();
+    str                    title;
+    int                    i;
+
+    if (row->token && isStringResource(row->token)) {
+        title = getStringResource(row->token);
+    }
+
+    for (i = 1; i <= children.NumObjects(); i++) {
+        UIWidget   *wid  = children.ObjectAt(i);
+        const char *cvar = wid->getCvarName();
+        const char *mat  = wid->getMaterialName();
+
+        if ((row->name && !strcmp(wid->getName(), row->name))
+            || (row->cvar && *cvar && !stricmp(cvar, row->cvar))
+            || (row->shader && mat && !stricmp(mat, row->shader))
+            || (title.length() && !strcmp(wid->getTitle(), title.c_str()))) {
+            wid->Disable();   // only enabled widgets are ever re-shown
+        }
+    }
+}
+
+static void AdaptHideNamed(UIWidget *container, const char *const *names, int count)
+{
+    Container<UIWidget *>& children = container->getChildren();
+    int                    i;
+    int                    j;
+
+    for (i = 1; i <= children.NumObjects(); i++) {
+        UIWidget *wid = children.ObjectAt(i);
+
+        for (j = 0; j < count; j++) {
+            if (!strcmp(wid->getName(), names[j])) {
+                wid->Disable();
+                break;
+            }
+        }
+    }
+}
+
+static UIWidget *AdaptWidget(
+    UIWidget *parent, const char *resource, const char *name, float x, float y, float w, float h
+)
+{
+    const char *translated = uii.Client_TranslateWidgetName(resource);
+    str         classname  = "UI";
+    UIWidget   *wid;
+
+    classname += translated ? translated : resource;
+
+    ClassDef *widgetclass = getClass(classname.c_str());
+    if (!widgetclass) {
+        return NULL;
+    }
+
+    wid = (UIWidget *)widgetclass->newInstance();
+    if (!wid) {
+        return NULL;
+    }
+
+    wid->InitFrame(parent, x, y, w, h, -1, "serpentinemedium-10");
+    wid->setName(str(name));
+
+    return wid;
+}
+
+static void AdaptCommand(UIWidget *wid, const char *command, ...)
+{
+    Event      *ev;
+    va_list     args;
+    const char *arg;
+
+    if (!wid || !wid->ValidEvent(command)) {
+        return;
+    }
+
+    ev = new Event(command);
+
+    va_start(args, command);
+    while ((arg = va_arg(args, const char *)) != NULL) {
+        ev->AddToken(arg);
+    }
+    va_end(args);
+
+    wid->ProcessEvent(ev);
+}
+
+static void AdaptTouchTooltip(UIWidget *wid, const char *tooltip)
+{
+    AdaptCommand(wid, "hovercommand", va("globalwidgetcommand tooltip_controls title \"%s\"", tooltip), NULL);
+    AdaptCommand(wid, "hoverexitcommand", "globalwidgetcommand tooltip_controls title \"\"", NULL);
+}
+
+static void AdaptTouchSlider(
+    UIWidget *parent, const char *name, float y, const char *label, const char *cvar,
+    const char *lo, const char *hi, const char *step, const char *tooltip
+)
+{
+    UIWidget *text = AdaptWidget(parent, "Label", va("%sLabel", name), 50, y, 150, 20);
+    UIWidget *bar  = AdaptWidget(parent, "Slider", name, 204, y, 150, 20);
+
+    AdaptCommand(text, "title", label, NULL);
+    AdaptCommand(text, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
+    AdaptCommand(text, "bgcolor", "0.122", "0.157", "0.251", "1.000", NULL);
+    AdaptCommand(text, "borderstyle", "3D_BORDER", NULL);
+    AdaptCommand(text, "horizontaljustify", "right", NULL);
+    AdaptTouchTooltip(text, tooltip);
+
+    AdaptCommand(bar, "fgcolor", "0.953", "0.667", "0.271", "1.000", NULL);
+    AdaptCommand(bar, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
+    AdaptCommand(bar, "borderstyle", "OUTLINE_BORDER", NULL);
+    AdaptCommand(bar, "bordercolor", "0.122", "0.157", "0.251", "1.000", NULL);
+    AdaptCommand(bar, "linkcvar", cvar, NULL);
+    AdaptCommand(bar, "setrange", lo, hi, NULL);
+    AdaptCommand(bar, "stepsize", step, NULL);
+    AdaptCommand(bar, "slidertype", "float", NULL);
+    AdaptTouchTooltip(bar, tooltip);
+    AdaptCommand(bar, "clicksound", "sound/misc/menu/click.wav", NULL);
+}
+
+static void AdaptTouchCheckbox(
+    UIWidget *parent, const char *name, float y, const char *label, const char *cvar, const char *tooltip
+)
+{
+    UIWidget *box = AdaptWidget(parent, "CheckBox", name, 50, y, 250, 20);
+
+    AdaptCommand(box, "title", label, NULL);
+    AdaptCommand(box, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
+    AdaptCommand(box, "bgcolor", "0.50", "0.50", "0.50", "0.00", NULL);
+    AdaptCommand(box, "shadercolor", "0.953", "0.667", "0.271", "1.000", NULL);
+    AdaptCommand(box, "hovershadercolor", "0.953", "0.667", "0.271", "1.000", NULL);
+    AdaptCommand(box, "armedshadercolor", "0.953", "0.667", "0.271", "1.000", NULL);
+    AdaptCommand(box, "selectedshadercolor", "0.953", "0.667", "0.271", "1.000", NULL);
+    AdaptCommand(box, "borderstyle", "NONE", NULL);
+    AdaptCommand(box, "linkcvar", cvar, NULL);
+    AdaptCommand(box, "checked_shader", "textures/menu/checkbox_checked", NULL);
+    AdaptCommand(box, "unchecked_shader", "textures/menu/checkbox_unchecked", NULL);
+    AdaptCommand(box, "hovershader", "menu/generic/button-hover", NULL);
+    AdaptCommand(box, "armedshader", "menu/generic/button-press", NULL);
+    AdaptCommand(box, "horizontaljustify", "left", NULL);
+    AdaptTouchTooltip(box, tooltip);
+    AdaptCommand(box, "clicksound", "sound/misc/menu/click.wav", NULL);
+}
+
+static void AdaptTouchSection(UIWidget *container)
+{
+    UIWidget *header;
+    UIWidget *box;
+
+    if (container->FindWidget("TouchLook")    // built once; a reload re-runs the pass
+        || !UI_FindCvar("cl_touchLook")) {    // the touch layer owns these cvars
+        return;
+    }
+
+    header = AdaptWidget(container, "Label", "TouchSectionTitle", 46, 124, 325, 16);
+    AdaptCommand(header, "title", "Touch Controls", NULL);
+    AdaptCommand(header, "fgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
+    AdaptCommand(header, "bgcolor", "0.278", "0.365", "0.510", "1.000", NULL);
+    AdaptCommand(header, "borderstyle", "3D_BORDER", NULL);
+
+    box = AdaptWidget(container, "Widget", "TouchSectionBox", 46, 140, 325, 104);
+    AdaptCommand(box, "fgcolor", "1", "1", "1", "1", NULL);
+    AdaptCommand(box, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
+    AdaptCommand(box, "borderstyle", "OUTLINE_BORDER", NULL);
+    AdaptCommand(box, "borderwidth", "1", NULL);
+    AdaptCommand(box, "bordercolor", "0.278", "0.365", "0.510", "1.000", NULL);
+
+    AdaptTouchSlider(container, "TouchLook", 148, "Touch Look Sensitivity", "cl_touchLook",
+                     "0.5", "6.0", "0.1", "Look sensitivity on the touch pad");
+    AdaptTouchSlider(container, "TouchScale", 172, "Touch Control Scale", "cl_touchScale",
+                     "0.6", "2.0", "0.05", "Size of the touch controls");
+    AdaptTouchSlider(container, "TouchOpacity", 196, "Touch Overlay Opacity", "cl_touchOpacity",
+                     "0.1", "1.0", "0.05", "Opacity of the touch controls");
+    AdaptTouchCheckbox(container, "TouchCrouchToggle", 220, "Crouch Toggle", "cl_crouchToggle",
+                       "Tap crouch to hold it down");
+}
+
+static void AdaptRepointCommand(UIWidget *container, const char *from, const char *to)
+{
+    Container<UIWidget *>& children = container->getChildren();
+    int                    i;
+
+    for (i = 1; i <= children.NumObjects(); i++) {
+        UIWidget *wid = children.ObjectAt(i);
+        str       cmd = wid->getCommand();
+
+        if (cmd.length() && strstr(cmd.c_str(), from)) {
+            wid->LinkCommand(str(to));   // the press stuffs it with the newline
+        }
+    }
+}
+
+void UI_AdaptSettingsMenus(void)
+{
+    const int rowCount  = (int)(sizeof(s_adaptRows) / sizeof(s_adaptRows[0]));
+    const int bindCount = (int)(sizeof(s_adaptBindWidgets) / sizeof(s_adaptBindWidgets[0]));
+    int       i;
+
+    for (i = 1; i <= uWinMan.GetChildCount(); i++) {
+        UIWidget *container = uWinMan.GetChild(i);
+        int       j;
+
+        if (!container || !container->isSubclassOf(UIWidgetContainer)) {
+            continue;
+        }
+
+        for (j = 0; j < rowCount; j++) {
+            if (!stricmp(container->getName(), s_adaptRows[j].menu)) {
+                AdaptHideRow(container, &s_adaptRows[j]);
+            }
+        }
+
+        if (!stricmp(container->getName(), "video")) {
+            AdaptRepointCommand(container, "promptadvancedvideo", "transitionmenu advancedvideo 0");
+        }
+
+        if (!stricmp(container->getName(), "controls")) {
+            AdaptHideNamed(container, s_adaptBindWidgets, bindCount);
+            AdaptTouchSection(container);
+        }
+    }
 }

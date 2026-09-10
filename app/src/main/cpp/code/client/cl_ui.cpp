@@ -1462,12 +1462,9 @@ void UI_TransitionMenu_f(void)
         return;
     }
 
-    // Retail UI_TransitionMenu_f @0x00194150 drops the current menu through
-    // MenuManager::PopMenu @0x0006D3A0 (show stack first) and records a
-    // transition that MenuManager::UpdateAllMenus @0x0006C870 pushes once menus
-    // unlock.  Same final stacks here: the show arm locks nothing, so pop and
-    // push are immediate, and with no transient shown the push arm would lock, so
-    // the collapse into TransitionMenu is used instead.
+    // Retail UI_TransitionMenu_f @0x00194150 pops through MenuManager::PopMenu
+    // @0x0006D3A0 and records a transition that UpdateAllMenus @0x0006C870 pushes
+    // once menus unlock; the collapse into TransitionMenu lands on the same stacks.
     if (menuManager.HasShownMenu()) {
         menuManager.PopMenu(atoi(Cmd_Argv(2)));
         UI_PushMenu(Cmd_Argv(1));
@@ -1878,6 +1875,7 @@ void UI_LoadMenu(const char *name)
     }
 
     new UILayout(buffer);
+    UI_AdaptSettingsMenus();
     uWinMan.CreateMenus();
     UI_FocusMenuIfExists();
 }
@@ -5868,6 +5866,8 @@ void CL_InitializeUI(void)
 
         FS_FreeFileList(filenames);
     }
+
+    UI_AdaptSettingsMenus();
 
     // retail's widgetContainerCompare @0x000B4450 never answers 0.  R4's replay over the
     static char uivk_creation[24576];
