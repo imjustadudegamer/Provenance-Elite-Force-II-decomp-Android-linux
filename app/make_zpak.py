@@ -51,6 +51,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HEADER = os.path.join(REPO, "app/src/main/cpp/code/qcommon/ef2_android_defaults.h")
 PAK = os.path.join(REPO, "app/src/main/assets/base/zpak-android.pk3")
 ASSET_DIR = os.path.join(REPO, "app/src/main/assets/base")
+# Port-authored `loc/' override files, named explicitly.  cpp/loc/ also holds retail
+# content (Eng/ui/background.inc came in with the port tree) and that must NOT be
+# packed: this pak sorts ahead of every retail pak, so a retail file here would
+# silently override the retail copy instead of only adding port-authored text.
+LOC_DIR = os.path.join(REPO, "app/src/main/cpp/loc")
+LOC_FILES = ("Eng/stringresource/globalstrings1.loc",)
 # Fixed DOS timestamp (2026-01-01 00:00:00) so the archive is reproducible.
 FIXED_DATE = (2026, 1, 1, 0, 0, 0)
 
@@ -78,6 +84,16 @@ def default_commands():
 def collect():
     """Every entry the pak must contain, as (name, bytes)."""
     entries = {}
+    # Port-authored loc data: front-end text the retail tables word for a mouse and
+    # keyboard.  Each file here carries only the tokens it rewords, never a copy of a
+    # retail table, and it wins because globalstrings1.loc loads inside
+    # StringResource::loadGlobalStrings' 1..9 loop while _overwrite is still true --
+    # retail ships only globalstrings.loc, so the name collides with nothing.
+    for rel in LOC_FILES:
+        src = os.path.join(LOC_DIR, rel)
+        if not os.path.isfile(src):
+            raise SystemExit("make_zpak: missing loc override %s" % src)
+        entries["loc/" + rel] = open(src, "rb").read()
     # Only the 32-bit .tga touch art plus our defaults cfg.  The .png siblings that
     # sit in the assets directory are pre-uivk leftovers: retail's image resolver has
     # no .png loader (the note in cl_scrn.cpp's CL_TouchRegisterShaders), so shipping
