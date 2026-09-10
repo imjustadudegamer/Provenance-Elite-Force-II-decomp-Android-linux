@@ -497,7 +497,7 @@ static void GLES3_ProgCacheInitRow( void )
 {
 	progcacheProgCacheStats_t	st;
 	char					body[384];
-	cvar_t					*home;
+	cvar_t					*home, *game, *base;
 
 	if ( !PROGCACHE_ProgCache_On() || !R_ProbeStatsOn()
 		|| s_progcacheRows >= PROGCACHE_PROGCACHE_MAX_ROWS )
@@ -505,17 +505,20 @@ static void GLES3_ProgCacheInitRow( void )
 		return;
 	}
 	home = ri.Cvar_Get( "fs_homedatapath", "", 0 );
+	game = ri.Cvar_Get( "fs_game", "", 0 );
+	base = ri.Cvar_Get( "fs_basepath", "", 0 );
 	PROGCACHE_ProgCache_Stats( &st );
 	PROGCACHE_ProgCache_Format( &st, body, (int)sizeof( body ) );
-	ri.Printf( PRINT_ALL, "[PROGCACHE:pc] init %s file=%s home=%s\n",
+	/* `file=' is FS-resolved against base and home with the game dir appended. */
+	ri.Printf( PRINT_ALL, "[PROGCACHE:pc] init %s file=%s game=%s base=%s home=%s\n",
 			   body, PROGCACHE_PROGCACHE_FILE,
+			   ( game && game->string[0] ) ? game->string : "-",
+			   ( base && base->string[0] ) ? base->string : "(unset)",
 			   ( home && home->string[0] ) ? home->string : "(unset)" );
 	s_progcacheRows++;
 }
 
-/* defines -> the index of the first program carrying it.  The linear walk this
- * replaces returned the first match in creation order, so the table is filled
- * first-wins and never rewritten, which is what keeps the answer identical. */
+/* defines -> the index of the first program carrying it, filled first-wins. */
 #define GLES3_PROG_HASH_BITS	10
 #define GLES3_PROG_HASH_SIZE	( 1u << GLES3_PROG_HASH_BITS )
 
@@ -763,7 +766,8 @@ void GLES3_ProgramsShutdown( void )
 {
 	int i;
 
-	if ( PROGCACHE_ProgCache_On() && gles3ProgramsCreatedAfterReg > 0 )
+	/* GLES3_PrebuildPrograms, the other save site, only runs at a level load. */
+	if ( PROGCACHE_ProgCache_On() )
 	{
 		PROGCACHE_ProgCache_Save();
 		GLES3_ProgCacheRow( "shutdown" );
@@ -940,10 +944,9 @@ unsigned GLES3_StageDefines_Full( const shaderStage_t *pStage, const shader_t *s
 	}
 	/* The whole class, not just the colour arms: four tcGen arms read the
 	   surface normal inside the shader (tr_shader.c:1462-1487 sets retail's
-	   own needsNormal for exactly them), and AGEN_DOT/ONE_MINUS_DOT_VIEW do
-	   too.  Without GLP_NORMAL the shader's `nrm' is the constant vec3(0,0,1)
-	   and every such stage samples one texel of its map for the whole surface
-	   -- the menu hull's env_diffused stage drew a flat colour. */
+	   own needsNormal for exactly them), and so do AGEN_DOT/ONE_MINUS_DOT_VIEW.
+	   Without GLP_NORMAL `nrm' is vec3(0,0,1) and the stage samples one texel
+	   of its map for the whole surface. */
 	if ( tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED || tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED2
 		|| tc0 == (unsigned)TCGEN_ANGLE_BASED_ENVIRONMENT || tc0 == (unsigned)TCGEN_SUN_REFLECTION
 		|| ( bundleCount == 2

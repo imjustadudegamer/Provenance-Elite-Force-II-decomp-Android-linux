@@ -1195,8 +1195,8 @@ e_status CIN_RunCinematic (int handle)
 
 	tfps = (cinTable[currentHandle].currTime * 3) / 100;
 
-	while(  (tfps != cinTable[currentHandle].numQuads)
-		&& (cinTable[currentHandle].status == FMV_PLAY) ) 
+	while(  (tfps > cinTable[currentHandle].numQuads)	/* retail 0x001685E0 */
+		&& (cinTable[currentHandle].status == FMV_PLAY) )
 	{
 		RoQInterrupt();
 

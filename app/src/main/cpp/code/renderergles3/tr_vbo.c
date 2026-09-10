@@ -1268,12 +1268,10 @@ static qboolean RB_VboArenaSlotReady( int slot ) {
 		qglDeleteSync( s_arenaFence[slot] );
 		s_arenaFence[slot] = NULL;
 
-		/* ALREADY_SIGNALED and CONDITION_SATISFIED are both "the GPU is done":
-		 * the second is what a zero timeout returns when the wait itself is what
+		/* ALREADY_SIGNALED and CONDITION_SATISFIED are both "the GPU is done",
+		 * the second being what a zero timeout returns when the wait itself
 		 * finished it.  Taking only the first made every frame that had to wait
-		 * at all pay the ring as well, for a store that was in fact released --
-		 * which is the difference between the fence pricing an overtake and the
-		 * fence pricing the ordinary case. */
+		 * at all pay the ring for a store that was in fact released. */
 		if ( r != GL_ALREADY_SIGNALED && r != GL_CONDITION_SATISFIED
 			 && r != GL_WAIT_FAILED ) {
 			return qfalse;
@@ -1288,9 +1286,8 @@ static void RB_VboArenaMapFrame( void ) {
 	s_arenaMappedSlot = slot;
 	s_arenaMappedOrphan = qfalse;
 
-	/* First use of the store: allocate it immutably and map it for its life.
-	 * A refusal stands the arm down for the session and the ring runs instead --
-	 * the map is a requirement of this arm, not a fallback it can skip. */
+	/* First use: allocate immutably and map for the buffer's life.  A refusal
+	 * stands the arm down for the session; the map is not skippable. */
 	if ( !s_arenaMapV[slot] ) {
 		if ( s_arenaMapDead || !RB_VboArenaMapPair( slot ) ) {
 			if ( !s_arenaMapDead ) {
@@ -1307,10 +1304,9 @@ static void RB_VboArenaMapFrame( void ) {
 		return;
 	}
 
-	/* Immutable storage is not re-specified: a store the GPU is still reading is
-	 * simply not used this frame, and its batches take the ring.  That is the
-	 * fence's whole job -- it prices the rare overtake at the ring's own rate
-	 * instead of at a sync or at a write to memory the GPU is still reading. */
+	/* Immutable storage is not re-specified: a store the GPU is still reading
+	 * is simply not used this frame, and its batches take the ring.  That is
+	 * the fence's whole job -- it prices the overtake at the ring's own rate. */
 	if ( !RB_VboArenaSlotReady( slot ) ) {
 		s_arenaMapOrphans++;
 		s_arenaMappedOrphan = qtrue;
@@ -1338,10 +1334,9 @@ static void RB_VboArenaShutdown( void ) {
 			qglDeleteSync( s_arenaFence[i] );
 			s_arenaFence[i] = NULL;
 		}
-		/* A persistent mapping is dropped explicitly, with its own buffer bound:
-		 * deleting a mapped buffer is legal and implicitly unmaps it, but this
-		 * is the one place the map's lifetime is ended and saying so is cheaper
-		 * than a driver that disagrees. */
+		/* Dropped explicitly, with its own buffer bound: deleting a mapped
+		 * buffer is legal and implicitly unmaps it, but this is the one place
+		 * the map's lifetime is ended. */
 		if ( s_arenaMapV[i] ) {
 			RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
 			qglUnmapBuffer( GL_ARRAY_BUFFER );
@@ -1420,10 +1415,8 @@ void RB_VBO_BeginFrame( void ) {
 		 * != 2' let a `r_tessArena 2' left in a config by 0.3.15/0.3.16 keep
 		 * the ring after `r_tessMap 1'.  `r_tessMap 0' is the ring arm. */
 		s_arenaArmed  = map ? qtrue : qfalse;
-		/* A store the driver refused is not the arm any more: the ring is.  It
-		 * still reads as armed in the row's `dead=` field, so the capture says
-		 * "asked for the store, got the ring" instead of reporting the ring as
-		 * a choice. */
+		/* A store the driver refused is not the arm any more: the ring is,
+		 * and the row's `dead=` says the store was asked for and refused. */
 		s_arenaMapped = ( s_arenaArmed && !s_arenaMapDead ) ? qtrue : qfalse;
 
 		if ( !s_armWhyLatched ) {
@@ -1490,18 +1483,16 @@ void RB_VBO_BeginFrame( void ) {
 	RB_VboArenaInit();
 	RB_VboBaseVertexInit();
 
-	/* One store per frame.  A mid-frame flush re-enters here with the commands
-	 * that are left, and must keep appending into the store the frame opened. */
+	/* One store per frame; a mid-frame flush keeps appending to it. */
 	if ( s_arenaActive && RB_FrameCount() == s_arenaFrame ) {
 		return;
 	}
 	s_arenaFrame = RB_FrameCount();
 
-	/* The frame's own refusals are decided below, in the fence check and in the
-	 * send's room test; the flag is cleared here and nowhere else, because
-	 * clearing it after the fence check erased the very refusal it had just
-	 * made -- a store the GPU was still reading was marked usable and the frame
-	 * wrote it, which is the write the fence exists to prevent. */
+	/* The frame's refusals are decided below, in the fence check and in the
+	 * send's room test.  The flag is cleared here and nowhere else: clearing it
+	 * after the fence check erased the refusal it had just made, and the frame
+	 * wrote a store the GPU was still reading. */
 	s_arenaFull = qfalse;
 
 	s_arenaNext = ( s_arenaNext + 1 ) % RB_TESS_ARENA_COUNT;
@@ -1753,9 +1744,8 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	 * depth buffer holds at this pixel: a clear that never landed, or a surface
 	 * that wrote near zero ahead of this one, rejects every fragment through
 	 * LEQUAL while every queried state reads correct.  `dr` is the range the
-	 * fragments are squeezed into (RB_StageIteratorSky pins it to a single
-	 * value), `clear` is what the last glClearDepth asked for, and `atest` is
-	 * the fragment-stage discard that fires before the depth test at all. */
+	 * fragments are squeezed into, `clear` the last glClearDepth, `atest` the
+	 * fragment-stage discard that fires before the depth test at all. */
 	qglGetFloatv( GL_DEPTH_RANGE, drange );
 	qglGetFloatv( GL_DEPTH_CLEAR_VALUE, &dclear );
 	qglGetIntegerv( GL_DEPTH_BITS, &dbits );
@@ -1781,14 +1771,12 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
 
 	/* The depth plane.  0.3.21 asked for it as GL_FLOAT whatever the attachment
-	 * was, and the device answered GL_INVALID_ENUM (0x500) -- which is exactly
-	 * what the 0.3.21 rows carry in `err=0/1280` -- so `zbuf` kept its memset and
-	 * the row reported `depth=0.0000` as a measurement.  That read convicted the
-	 * depth gate on a zero the read had produced itself, and the section of the
-	 * mega4 report built on it is withdrawn here.  The type now follows the
-	 * attachment's own precision, the read's error is taken before anything can
-	 * clear it, and a read that did not happen prints as -1 rather than as a
-	 * value. */
+	 * was, the device answered GL_INVALID_ENUM (0x500) -- what the 0.3.21 rows
+	 * carry in `err=0/1280` -- and `zbuf` kept its memset, so the row reported
+	 * `depth=0.0000` as a measurement and the depth gate was convicted on a
+	 * zero the read had produced itself.  The type now follows the attachment's
+	 * own precision, the read's error is taken before anything can clear it,
+	 * and a read that did not happen prints as -1 rather than as a value. */
 	depthOk = qfalse;
 	zsum = 0.0f;
 	switch ( dbits ) {
