@@ -481,6 +481,10 @@ public:
     void               setLabelText(str text);
     const char        *getTitle(void);
     const char        *getCvarName(void);
+    const char        *getMaterialName(void) const
+    {
+        return m_material ? m_material->GetName().c_str() : NULL;
+    }
     void               setDirection(direction_t dir);
     direction_t        getDirection(void);
     void               setMotionType(motion_t type);

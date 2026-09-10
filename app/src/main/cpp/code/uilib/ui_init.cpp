@@ -103,9 +103,16 @@ cvar_t *UI_FindCvar(const char *cvar)
 
 void UI_SetCvarInt(const char *cvar, int value)
 {
-    char s[16];
+    char   s[16];
+    cvar_t *var;
 
     Com_sprintf(s, sizeof(s), "%d", value);
+
+    var = uii.Cvar_Find(cvar);   // a disabled checkbox re-writes its cvar from Draw()
+    if (var && !var->latchedString && var->string && !strcmp(var->string, s)) {
+        return;                  // unchanged, and a latched cvar is left to Cvar_Set2
+    }
+
     if (PROBE_On()) {
         PROBE_PRINT("[UI:cvarset] %s='%s'\n", cvar, s);
     }
@@ -114,9 +121,16 @@ void UI_SetCvarInt(const char *cvar, int value)
 
 void UI_SetCvarFloat(const char *cvar, float value)
 {
-    char s[16];
+    char   s[16];
+    cvar_t *var;
 
     Com_sprintf(s, sizeof(s), "%f", value);
+
+    var = uii.Cvar_Find(cvar);
+    if (var && !var->latchedString && var->string && !strcmp(var->string, s)) {
+        return;                  // unchanged, and a latched cvar is left to Cvar_Set2
+    }
+
     if (PROBE_On()) {
         PROBE_PRINT("[UI:cvarset] %s='%s'\n", cvar, s);
     }
