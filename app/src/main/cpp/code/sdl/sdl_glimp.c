@@ -1015,7 +1015,8 @@ void GLimp_Init( qboolean fixedFunction )
 
 	// VERIFY7: the two flags are NOT the same in retail.  GLimp_Init @0x00119700 sets the
 	r_ati_fsaa_samples = ri.Cvar_Get( "r_ati_fsaa_samples", "0", CVAR_ARCHIVE );
-	r_nv_fsaa_samples = ri.Cvar_Get( "r_nv_fsaa_samples", "4", CVAR_ARCHIVE | CVAR_LATCH );
+	/* Default 0 by operator order: heavy, unused in the GLES surface, disarmed. */
+	r_nv_fsaa_samples = ri.Cvar_Get( "r_nv_fsaa_samples", "0", CVAR_ARCHIVE | CVAR_LATCH );
 
 	if( ri.Cvar_VariableIntegerValue( "com_abnormalExit" ) )
 	{

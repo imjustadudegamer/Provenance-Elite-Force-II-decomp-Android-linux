@@ -1124,7 +1124,7 @@ void R_Register( void )
 	r_ext_texture_env_add = ri.Cvar_Get( "r_ext_texture_env_add", "1", CVAR_ARCHIVE | CVAR_LATCH);
 	r_ext_texture_env_combine = ri.Cvar_Get("r_ext_texture_env_combine", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	r_arb_multisample = ri.Cvar_Get( "r_arb_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	r_arb_samples = ri.Cvar_Get( "r_arb_samples", "2", CVAR_ARCHIVE | CVAR_LATCH );
+	r_arb_samples = ri.Cvar_Get( "r_arb_samples", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_nv_multisample_filter = ri.Cvar_Get( "r_ext_nv_multisample_filter", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_nv_support_multisample = ri.Cvar_Get( "r_ext_nv_support_multisample", "0", 0 );
 	r_draw2d = ri.Cvar_Get("r_draw2d", "1", 0);

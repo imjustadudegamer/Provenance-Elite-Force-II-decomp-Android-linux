@@ -1159,7 +1159,7 @@ static unifVerdict_t GLES3_UniformCached( gles3Program_t *p, int location, const
 	return UNIF_ISSUE;
 }
 
-/* Names the site a uniform was refused at; 8 rows then 1 in 256. */
+/* Names the site a uniform was refused at. */
 static void GLES3_UnifUnbound( gles3Program_t *p, gles3Uniform_t u )
 {
 	static int	s_rows;
@@ -2056,10 +2056,8 @@ typedef struct {
 	int			 cpuTexCoords;
 } gles3CensusKey_t;
 
-/* A key owns every string it compares, so a Hunk_Clear cannot reach it and the
-   compare is exact rather than the slot hash.  0.3.9 stored shader_t::name and
-   image_t::imgName raw, and the read after the free was the SEGV_ACCERR; the
-   hash-only compare that dodged it also mis-bucketed colliding keys. */
+/* A key owns every string it compares, so no purge reaches it and the compare
+   is exact; 0.3.9 stored the names raw and the read after the free faulted. */
 static qboolean GLES3_CensusKeyEqual( const gles3CensusKey_t *a, const gles3DrawKey_t *b,
 									  unsigned hash ) {
 	return ( a->hash == hash
