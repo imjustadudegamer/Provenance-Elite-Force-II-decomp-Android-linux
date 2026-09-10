@@ -965,8 +965,7 @@ int PROGCACHE_ProgCache_Save( void ) {
 	s_stats.wroteBytes = (unsigned)total;
 	s_stats.fileBytes = (unsigned)used;
 	s_stats.entries = (unsigned)s_numEntries;
-	s_state = PROGCACHE_PC_LOADED;
-
+	/* `state=' stays the load's verdict, not the save's. */
 	usec = PROGCACHE_Now() - t0;
 	if ( usec < 0 ) {
 		usec = 0;

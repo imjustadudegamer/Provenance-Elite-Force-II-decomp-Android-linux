@@ -107,8 +107,127 @@ void GL_SetFogColor(const vec4_t fColor) {
 	glState.fFogColor[1] = fColor[1];
 	glState.fFogColor[2] = fColor[2];
 	glState.fFogColor[3] = fColor[3];
+}
 
-	// tr.viewParms.farplane_color at 0x1CF7C-0x1CF9C).  It never switches the
+/* ---- [GLES3:texaudit] what the device holds for a bind -------------------
+ * An incomplete texture fetches black ("whole missing textures"), and an
+ * immutable store an upload tried to re-specify keeps the old contents (the
+ * smear).  Read off the bound object, once per image, then every 256th bind. */
+#define TEXAUDIT_HASH	2048
+#define TEXAUDIT_MAX	512
+#define TEXAUDIT_RECHECK	256
+
+typedef struct {
+	unsigned	texnum;
+	int			rows;
+} texaudit_t;
+
+static texaudit_t	*s_texaudit;
+static int			*s_texauditHash;
+static int			 s_texauditCount;
+static qboolean		 s_texauditCapped;
+
+static void GLES3_TexAudit( image_t *image ) {
+	texaudit_t	*e;
+	GLuint		errBefore;
+	GLint		minF = -1, magF = -1, immut = -1;
+	GLint		wrapS = -1, wrapT = -1, mipLevels = -1;
+	int			recheck, verdict = 0;
+	unsigned	hash;
+	int			slot, idx;
+
+	if ( !R_ProbeStatsOn() || !image || !image->texnum ) {
+		return;
+	}
+
+	if ( !s_texaudit ) {
+		s_texaudit     = (texaudit_t *)ri.Malloc( sizeof( texaudit_t ) * TEXAUDIT_MAX );
+		s_texauditHash = (int *)ri.Malloc( sizeof( int ) * TEXAUDIT_HASH );
+		Com_Memset( s_texauditHash, 0, sizeof( int ) * TEXAUDIT_HASH );
+	}
+
+	hash = (unsigned)( image->texnum * 2654435761u );
+	slot = (int)( hash & ( TEXAUDIT_HASH - 1 ) );
+	for ( ;; ) {
+		idx = s_texauditHash[slot];
+		if ( !idx ) {
+			break;
+		}
+		idx--;
+		if ( s_texaudit[idx].texnum == (unsigned)image->texnum ) {
+			e = &s_texaudit[idx];
+			goto found;
+		}
+		slot = ( slot + 1 ) & ( TEXAUDIT_HASH - 1 );
+	}
+
+	if ( s_texauditCount >= TEXAUDIT_MAX ) {
+		if ( !s_texauditCapped ) {
+			s_texauditCapped = qtrue;
+			ri.Printf( PRINT_ALL,
+					   "[GLES3:texaudit] capped at %d images; re-checks continue, new images are not recorded\n",
+					   TEXAUDIT_MAX );
+		}
+		return;
+	}
+	idx = s_texauditCount++;
+	s_texaudit[idx].texnum = image->texnum;
+	s_texaudit[idx].rows   = 0;
+	s_texauditHash[slot]   = idx + 1;
+	e = &s_texaudit[idx];
+
+found:
+	e->rows++;
+	recheck = ( e->rows > 4 ) && ( ( e->rows % TEXAUDIT_RECHECK ) != 0 );
+	if ( recheck ) {
+		return;
+	}
+
+	errBefore = qglGetError();
+	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF );
+	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF );
+	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &wrapS );
+	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, &wrapT );
+	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_FORMAT, &immut );
+	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_LEVELS, &mipLevels );
+	if ( qglGetError() != GL_NO_ERROR || errBefore != GL_NO_ERROR ) {
+		verdict |= 0x40;
+	}
+
+	/* v01 no size; 04 mip filter over one level, incomplete, fetches black;
+	 * 08 the ES default filter never set; 10 recorded wrap against the
+	 * object's; 20 immutable a re-upload would refuse. */
+	if ( image->uploadWidth <= 0 || image->uploadHeight <= 0 ) {
+		verdict |= 0x01;
+	}
+	if ( minF >= 0x2700 && minF <= 0x2703 && image->numMipmaps <= 0 ) {
+		verdict |= 0x04;
+	}
+	if ( minF == 0x2601 ) {
+		verdict |= 0x08;
+	}
+	if ( ( image->wrapClampModeX == GL_REPEAT ) != ( wrapS == GL_REPEAT )
+		 || ( image->wrapClampModeY == GL_REPEAT ) != ( wrapT == GL_REPEAT ) ) {
+		verdict |= 0x10;
+	}
+	if ( immut == 1 && image->dynamicallyUpdated ) {
+		verdict |= 0x20;
+	}
+
+	if ( !verdict && e->rows > 1 ) {
+		return;		/* clean, and already reported */
+	}
+
+	ri.Printf( PRINT_ALL,
+			   "[GLES3:texaudit] %s tex=%u declared=%dx%d"
+			   " mips=%d minF=0x%04x magF=0x%04x wrap=%d,%d immut=%d lvls=%d"
+			   " dyn=%d flags=0x%x v=%02x n=%d f=%d\n",
+			   image->imgName, (unsigned)image->texnum,
+			   image->uploadWidth, image->uploadHeight,
+			   image->numMipmaps, (unsigned)minF, (unsigned)magF,
+			   wrapS, wrapT, immut, mipLevels,
+			   image->dynamicallyUpdated ? 1 : 0, (unsigned)image->flags,
+			   verdict, e->rows, RB_FrameCount() );
 }
 
 void GL_Bind( image_t *image ) {
@@ -122,7 +241,7 @@ void GL_Bind( image_t *image ) {
 		image->UseCount++;
 	}
 
-	if ( r_nobind->integer && tr.dlightImage ) {		
+	if ( r_nobind->integer && tr.dlightImage ) {
 		texnum = tr.dlightImage->texnum;
 	}
 
@@ -131,6 +250,7 @@ void GL_Bind( image_t *image ) {
 			image->frameUsed = RB_FrameCount();
 		}
 		glState.currenttextures[glState.currenttmu] = texnum;
+		GLES3_TexAudit( image );
 		qglBindTexture (GL_TEXTURE_2D, texnum);
 
 #define SMP_BIND_MAX   2048
@@ -2185,9 +2305,118 @@ void BE_Name( int family, const char *name, int usec ) {
 	f->top[slot].usec = usec;
 }
 
+/* ---- [GLES3:glerr] naming the call that left the error flag set ----------
+ * The flag is sticky, so a probe that samples it reports the first call that
+ * looked, not the one that set it -- the 2026-10-07 capture's [GLES3:pixd]
+ * convicted a draw that ran clean.  One glGetError per list while idle; once a
+ * list ends with the flag set, the next few pay one per command. */
+enum {
+	RB_GLES3_ERR_IDLE = 0,
+	RB_GLES3_ERR_SEEN,
+	RB_GLES3_ERR_TRACING
+};
+
+static int		s_glerrArm;
+static int		s_glerrLists;
+static int		s_glerrFound;
+static int		s_glerrRows;
+
+static const char *RB_GlErrName( GLenum e ) {
+	switch ( e ) {
+	case GL_INVALID_ENUM:		return "INVALID_ENUM";
+	case GL_INVALID_VALUE:		return "INVALID_VALUE";
+	case GL_INVALID_OPERATION:	return "INVALID_OPERATION";
+	case GL_OUT_OF_MEMORY:		return "OUT_OF_MEMORY";
+	case GL_INVALID_FRAMEBUFFER_OPERATION: return "INVALID_FRAMEBUFFER_OP";
+	default:					return "unknown";
+	}
+}
+
+static const char *RB_GlErrCmdName( int id ) {
+	switch ( id ) {
+	case RC_SET_COLOR:			return "SET_COLOR";
+	case RC_STRETCH_PIC:		return "STRETCH_PIC";
+	case RC_DRAW_SURFS:			return "DRAW_SURFS";
+	case RC_SPRITE_SURFS:		return "SPRITE_SURFS";
+	case RC_CLEARDEPTH:			return "CLEARDEPTH";
+	case RC_2D_COLOR:			return "2D_COLOR";
+	case RC_2D_STRETCH_PIC:		return "2D_STRETCH_PIC";
+	case RC_2D_STRETCH_PIC2:	return "2D_STRETCH_PIC2";
+	case RC_2D_TILE_PIC:		return "2D_TILE_PIC";
+	case RC_2D_TILE_PIC_OFFSET:	return "2D_TILE_PIC_OFFSET";
+	case RC_2D_TRIANGLE_PIC:	return "2D_TRIANGLE_PIC";
+	case RC_2D_LINE_LOOP:		return "2D_LINE_LOOP";
+	case RC_2D_SET_WINDOW:		return "2D_SET_WINDOW";
+	case RC_2D_SCISSOR:			return "2D_SCISSOR";
+	case RC_2D_FONT_STRING:		return "2D_FONT_STRING";
+	case RC_2D_SHADER_TIME:		return "2D_SHADER_TIME";
+	default:					return "END_OF_LIST";
+	}
+}
+
+static void RB_GlErrSample( const char *where, int cmdId ) {	/* one read */
+
+	GLuint		e;
+
+	if ( !R_ProbeStatsOn() || s_glerrArm == RB_GLES3_ERR_IDLE ) {
+		return;
+	}
+
+	e = qglGetError();
+	if ( e == GL_NO_ERROR ) {
+		return;
+	}
+
+	if ( s_glerrArm == RB_GLES3_ERR_TRACING && !s_glerrFound ) {
+		s_glerrFound = 1;
+		s_glerrRows++;
+		ri.Printf( PRINT_ALL,
+				   "[GLES3:glerr] at=%s cmd=0x%x err=%d(0x%x) %s in2D=%d"
+				   " prog=%u tex0=%u tmu=%d lists=%d f=%d\n",
+				   where, cmdId, (int)e, (unsigned)e, RB_GlErrName( e ),
+				   backEnd.in2D, glState.currentProgram,
+				   (unsigned)glState.currenttextures[0], glState.currenttmu,
+				   s_glerrLists, RB_FrameCount() );
+	}
+}
+
+/* The list-end read arms the per-command trace on a dirty list. */
+#define RB_GLES3_ERR_TRACE_LISTS	4
+
+static void RB_GlErrListEnd( int cmdId, int beCmds ) {
+	GLuint	e;
+
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
+
+	if ( s_glerrArm == RB_GLES3_ERR_TRACING ) {
+		s_glerrLists++;
+		if ( s_glerrLists > RB_GLES3_ERR_TRACE_LISTS ) {
+			s_glerrArm = RB_GLES3_ERR_IDLE;
+		}
+		return;
+	}
+
+	e = qglGetError();
+	if ( e == GL_NO_ERROR ) {
+		return;
+	}
+
+	s_glerrArm    = RB_GLES3_ERR_TRACING;
+	s_glerrLists  = 1;
+	s_glerrFound  = 0;
+	s_glerrRows++;
+	ri.Printf( PRINT_ALL,
+			   "[GLES3:glerr] seen err=%d(0x%x) %s cmds=%d in2D=%d prog=%u"
+			   " tex0=%u tmu=%d f=%d\n",
+			   (int)e, (unsigned)e, RB_GlErrName( e ), beCmds, backEnd.in2D,
+			   glState.currentProgram, (unsigned)glState.currenttextures[0],
+			   glState.currenttmu, RB_FrameCount() );
+}
+
 void RB_ExecuteRenderCommands( const void *data ) {
 	int		t1, t2;
-
 	int		beCmds = 0;
 
 	{
@@ -2209,12 +2438,14 @@ void RB_ExecuteRenderCommands( const void *data ) {
 	RB_VBO_BeginFrame();
 
 	while ( 1 ) {
+		const int	cmdId = *(const int *)data;
+
 		data = PADP(data, sizeof(void *));
 
 		beCmds++;
 		BE_Bump( BE_FAM_BE, BE_BEC_cmds, 1 );
 
-		switch ( *(const int *)data ) {
+		switch ( cmdId ) {
 		case RC_SET_COLOR:
 			BE_ZONE( BE_FAM_BE, BE_BEZ_color, data = RB_SetColor( data ) );
 			break;
@@ -2290,8 +2521,10 @@ void RB_ExecuteRenderCommands( const void *data ) {
 				BE_Bump( BE_FAM_BE, BE_BEC_empty, 1 );
 			}
 			BE_RootEnd( BE_FAM_BE );
+			RB_GlErrListEnd( cmdId, beCmds );
 			return;
 		}
+		RB_GlErrSample( RB_GlErrCmdName( cmdId ), cmdId );
 	}
 
 }
