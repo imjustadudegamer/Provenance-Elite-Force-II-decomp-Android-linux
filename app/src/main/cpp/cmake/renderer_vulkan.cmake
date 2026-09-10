@@ -31,6 +31,13 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/vk_guard.c
     ${SOURCE_DIR}/renderervulkan/vk_instance.c
     ${SOURCE_DIR}/renderervulkan/vk_swapchain.c
+    ${SOURCE_DIR}/renderervulkan/vk_memory.c
+    ${SOURCE_DIR}/renderervulkan/vk_target.c
+    ${SOURCE_DIR}/renderervulkan/vk_frame.c
+    ${SOURCE_DIR}/renderervulkan/vk_offscreen.c
+    ${SOURCE_DIR}/renderervulkan/vk_pipeline.c
+    ${SOURCE_DIR}/renderervulkan/vk_vertex.c
+    ${SOURCE_DIR}/renderervulkan/vk_descriptor.c
     ${SOURCE_DIR}/renderervulkan/vk_pipelinecache.c
     ${SOURCE_DIR}/renderervulkan/vk_firstlight.c
     ${SOURCE_DIR}/renderervulkan/vk_renderthread.c

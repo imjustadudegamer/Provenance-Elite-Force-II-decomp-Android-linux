@@ -122,7 +122,7 @@ void VKimp_AdapterInit( void )
 	VK_Sentinel_SetIO( VK_SentinelExists, VK_SentinelWrite, VK_SentinelRemove );
 }
 
-static void VK_FillConfig( glconfig_t *config, int width, int height, float aspect, qboolean fullscreen )
+void VKimp_FillConfig( glconfig_t *config, int width, int height, float aspect, qboolean fullscreen )
 {
 	memset( config, 0, sizeof( *config ) );
 
@@ -192,14 +192,64 @@ static void VK_Platform_ModeSize( int mode, int *width, int *height, float *aspe
 	}
 }
 
+static cvar_t *r_vkValidate;
+
+static const char *const vk_validationLayer = "VK_LAYER_KHRONOS_validation";
+static const char *const vk_debugExtension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+
+qboolean VKimp_WindowCreate( int width, int height, int fullscreen, qboolean hidden )
+{
+	Uint32 flags = SDL_WINDOW_VULKAN;
+
+	if ( hidden ) {
+		flags |= SDL_WINDOW_HIDDEN;
+	} else {
+		flags |= SDL_WINDOW_SHOWN;
+	}
+
+	if ( fullscreen ) {
+		flags |= SDL_WINDOW_FULLSCREEN;
+	}
+
+	SDL_window = SDL_CreateWindow( CLIENT_WINDOW_TITLE,
+								   SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+								   width, height, flags );
+	if ( !SDL_window ) {
+		VK_Guard_Hit( VK_GSITE_SURFACE, "SDL_CreateWindow(SDL_WINDOW_VULKAN)", VK_ERROR_INITIALIZATION_FAILED );
+		return qfalse;
+	}
+
+	return qtrue;
+}
+
+unsigned int VKimp_InstanceExtensions( const char **out, unsigned int max )
+{
+	unsigned int count = 0;
+
+	if ( !SDL_Vulkan_GetInstanceExtensions( SDL_window, &count, NULL ) || count == 0 ) {
+		return 0;
+	}
+
+	if ( count > max ) {
+		count = max;
+	}
+
+	if ( SDL_Vulkan_GetInstanceExtensions( SDL_window, &count, out ) == SDL_FALSE ) {
+		VK_Guard_Hit( VK_GSITE_SURFACE, "SDL_Vulkan_GetInstanceExtensions", VK_ERROR_INITIALIZATION_FAILED );
+		return 0;
+	}
+
+	return count;
+}
+
 qboolean R_SetMode( int mode, glconfig_t *glConfig )
 {
 	int width = 640, height = 480;
 	float aspect = 4.0f / 3.0f;
 	unsigned int extensionCount = 0;
-	unsigned int got = 0;
 	const char **extensionNames = NULL;
 	int fullscreen;
+	int validate;
 	char modeCvar[16];
 
 	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "1", CVAR_ARCHIVE | CVAR_LATCH );
@@ -212,6 +262,7 @@ qboolean R_SetMode( int mode, glconfig_t *glConfig )
 	r_customheight = ri.Cvar_Get( "r_customheight", "720", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customaspect = ri.Cvar_Get( "r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "1", CVAR_ARCHIVE );
+	r_vkValidate = ri.Cvar_Get( "r_vkValidate", "0", CVAR_ARCHIVE );
 
 	fullscreen = r_fullscreen->integer;
 	VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
@@ -226,22 +277,20 @@ qboolean R_SetMode( int mode, glconfig_t *glConfig )
 		SDL_window = NULL;
 	}
 
-	SDL_window = SDL_CreateWindow( CLIENT_WINDOW_TITLE,
-								   SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-								   width, height,
-								   SDL_WINDOW_SHOWN | SDL_WINDOW_VULKAN
-								   | ( fullscreen ? SDL_WINDOW_FULLSCREEN : 0 ) );
-	if ( !SDL_window ) {
-		VK_Guard_Hit( VK_GSITE_SURFACE, "SDL_CreateWindow(SDL_WINDOW_VULKAN)", VK_ERROR_INITIALIZATION_FAILED );
+	if ( !VKimp_WindowCreate( width, height, fullscreen, qfalse ) ) {
 		return qfalse;
 	}
 
-	SDL_Vulkan_GetInstanceExtensions( SDL_window, &extensionCount, NULL );
-	if ( extensionCount > 0 ) {
-		extensionNames = (const char **)malloc( sizeof( char * ) * extensionCount );
-		if ( extensionNames ) {
-			SDL_Vulkan_GetInstanceExtensions( SDL_window, &got, extensionNames );
-			extensionCount = got;
+	extensionNames = (const char **)malloc( sizeof( char * ) * 16 );
+	if ( extensionNames ) {
+		extensionCount = VKimp_InstanceExtensions( extensionNames, 14 );
+
+		validate = r_vkValidate->integer;
+		if ( validate && VK_Instance_LayerAvailable( vk_validationLayer ) ) {
+			VK_Instance_SetLayers( &vk_validationLayer, 1 );
+			extensionNames[extensionCount++] = vk_debugExtension;
+		} else if ( validate ) {
+			VK_Guard_Row( "VK:guard", "site=instance detail=\"validation requested but VK_LAYER_KHRONOS_validation is absent\" result=success(0) n=1" );
 		}
 	}
 
@@ -254,7 +303,7 @@ qboolean R_SetMode( int mode, glconfig_t *glConfig )
 
 	free( extensionNames );
 
-	VK_FillConfig( glConfig, width, height, aspect, fullscreen ? qtrue : qfalse );
+	VKimp_FillConfig( glConfig, width, height, aspect, fullscreen ? qtrue : qfalse );
 
 	snprintf( modeCvar, sizeof( modeCvar ), "%d", mode );
 	ri.Cvar_Set( "r_mode", modeCvar );
@@ -280,7 +329,7 @@ void R_SetFullscreen( qboolean fullScreen, glconfig_t *glConfig )
 
 	if ( glConfig ) {
 		VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
-		VK_FillConfig( glConfig, width, height, aspect, fullScreen );
+		VKimp_FillConfig( glConfig, width, height, aspect, fullScreen );
 	}
 
 	if ( vk.swapchain != VK_NULL_HANDLE ) {

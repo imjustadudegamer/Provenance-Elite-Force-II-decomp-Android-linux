@@ -33,7 +33,7 @@ CLASSIFICATION
     * body comment    any comment line after the leading comment region.  This
                       is the pool the budget is cut from.
 
-The 2,000-line budget is lifted: the ceiling is now 2,200, and brevity is still
+The ceiling is 3,000 (operator order 2026-10-10, the Vulkan campaign), and brevity is still
 the rule for anything added.  A change that needs more than the headroom reports
 the count it needs rather than deleting a file's header.
 
@@ -69,7 +69,7 @@ TREE = DEFAULT_TREE
 # the single source of truth, read back with --print-budget rather than carried
 # as a copy elsewhere.  It is a chosen headroom, not a measured quantity: it
 # records how much design prose the tree is allowed.
-EDITORIAL_BUDGET = 2600
+EDITORIAL_BUDGET = 3000
 
 
 def comment_indexes(text):

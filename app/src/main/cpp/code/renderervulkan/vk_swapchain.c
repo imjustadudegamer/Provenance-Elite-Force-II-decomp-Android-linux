@@ -124,6 +124,11 @@ qboolean VK_Swapchain_Plan( vkSwapchainPlan_t *plan, int windowWidth, int window
 		}
 	}
 
+	plan->usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	if ( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT ) {
+		plan->usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	}
+
 	if ( caps.currentExtent.width != 0xFFFFFFFFu && caps.currentExtent.height != 0xFFFFFFFFu ) {
 		plan->extent = caps.currentExtent;
 	} else {
@@ -153,7 +158,6 @@ qboolean VK_Swapchain_Plan( vkSwapchainPlan_t *plan, int windowWidth, int window
 
 	plan->preTransform = caps.currentTransform;
 	plan->compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	plan->usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
 	if ( !VK_FormatSupported( vk.physicalDevice, plan->format.format ) ) {
 		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_CREATE, "format lacks color-attachment support",
@@ -167,6 +171,36 @@ qboolean VK_Swapchain_Plan( vkSwapchainPlan_t *plan, int windowWidth, int window
 		qvk.GetPhysicalDeviceFormatProperties( vk.physicalDevice, plan->format.format, &props );
 		if ( props.optimalTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT ) {
 			plan->usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		}
+	}
+
+	return qtrue;
+}
+
+qboolean VK_Swapchain_CreateViews( void )
+{
+	uint32_t i;
+
+	if ( !vk.swapchainImages || !vk.swapchainViews || vk.swapchainImageCount == 0 ) {
+		return qfalse;
+	}
+
+	for ( i = 0; i < vk.swapchainImageCount; i++ ) {
+		VkImageViewCreateInfo viewInfo;
+
+		memset( &viewInfo, 0, sizeof( viewInfo ) );
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = vk.swapchainImages[i];
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = vk.swapchainFormat;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		if ( !VK_Guard_Result( VK_GSITE_SWAPCHAIN_CREATE,
+							   qvk.CreateImageView( vk.device, &viewInfo, NULL, &vk.swapchainViews[i] ),
+							   "vkCreateImageView(swapchain)" ) ) {
+			return qfalse;
 		}
 	}
 
@@ -221,6 +255,10 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 	vk.swapchainColorSpace = plan->format.colorSpace;
 	vk.swapchainExtent = plan->extent;
 
+	if ( !VK_Swapchain_CreateViews() ) {
+		return qfalse;
+	}
+
 	VK_Guard_Row( "VK:swapchain", "created images=%u %ux%u format=%d present=%d",
 				  vk.swapchainImageCount,
 				  plan->extent.width, plan->extent.height,
@@ -231,6 +269,16 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 
 void VK_Swapchain_Destroy( void )
 {
+	uint32_t i;
+
+	if ( vk.swapchainViews && qvk.DestroyImageView ) {
+		for ( i = 0; i < vk.swapchainImageCount; i++ ) {
+			if ( vk.swapchainViews[i] != VK_NULL_HANDLE ) {
+				qvk.DestroyImageView( vk.device, vk.swapchainViews[i], NULL );
+			}
+		}
+	}
+
 	if ( vk.swapchain && qvk.DestroySwapchainKHR ) {
 		qvk.DestroySwapchainKHR( vk.device, vk.swapchain, NULL );
 	}
@@ -245,6 +293,143 @@ void VK_Swapchain_Destroy( void )
 		vk.swapchainViews = NULL;
 	}
 	vk.swapchainImageCount = 0;
+}
+
+qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_t outBytes )
+{
+	VkBufferCreateInfo bufferInfo;
+	VkBufferImageCopy copyRegion;
+	VkCommandBufferAllocateInfo allocInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkSubmitInfo submitInfo;
+	VkFenceCreateInfo fenceInfo;
+	VkImageMemoryBarrier barrier;
+	VkFence fence = VK_NULL_HANDLE;
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	void *mapped = NULL;
+	VkDeviceSize bytes;
+	VkResult result;
+	qboolean ok = qfalse;
+
+	if ( vk.swapchain == VK_NULL_HANDLE || !vk.swapchainImages || imageIndex >= vk.swapchainImageCount ) {
+		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_CREATE, "readback image out of range", VK_ERROR_TOO_MANY_OBJECTS );
+		return qfalse;
+	}
+
+	bytes = (VkDeviceSize)vk.swapchainExtent.width * (VkDeviceSize)vk.swapchainExtent.height * 4;
+
+	if ( outBytes < (size_t)bytes ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "readback buffer too small", VK_ERROR_TOO_MANY_OBJECTS );
+		return qfalse;
+	}
+
+	if ( !VK_Memory_CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+								 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+								 &buffer, &memory ) ) {
+		return qfalse;
+	}
+
+	result = qvk.MapMemory( vk.device, memory, 0, bytes, 0, &mapped );
+	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "readback vkMapMemory" ) ) {
+		goto done;
+	}
+
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = vk.commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+						   "readback vkAllocateCommandBuffers" ) ) {
+		goto done;
+	}
+
+	memset( &beginInfo, 0, sizeof( beginInfo ) );
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
+						   "readback vkBeginCommandBuffer" ) ) {
+		goto done;
+	}
+
+	memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = vk.swapchainImages[imageIndex];
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.srcAccessMask = 0;
+	barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+							0, 0, NULL, 0, NULL, 1, &barrier );
+
+	memset( &copyRegion, 0, sizeof( copyRegion ) );
+	copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copyRegion.imageSubresource.layerCount = 1;
+	copyRegion.imageExtent.width = vk.swapchainExtent.width;
+	copyRegion.imageExtent.height = vk.swapchainExtent.height;
+	copyRegion.imageExtent.depth = 1;
+
+	qvk.CmdCopyImageToBuffer( cmd, vk.swapchainImages[imageIndex],
+							  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &copyRegion );
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "readback vkEndCommandBuffer" ) ) {
+		goto done;
+	}
+
+	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
+						   "readback vkCreateFence" ) ) {
+		goto done;
+	}
+
+	memset( &submitInfo, 0, sizeof( submitInfo ) );
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+						   "readback vkQueueSubmit" ) ) {
+		goto done;
+	}
+
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX ),
+						   "readback vkWaitForFences" ) ) {
+		goto done;
+	}
+
+	memcpy( out, mapped, (size_t)bytes );
+	ok = qtrue;
+
+done:
+	if ( mapped ) {
+		qvk.UnmapMemory( vk.device, memory );
+	}
+	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+		qvk.DestroyFence( vk.device, fence, NULL );
+	}
+	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
+		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+	}
+	if ( buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+		qvk.DestroyBuffer( vk.device, buffer, NULL );
+	}
+	if ( memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, memory, NULL );
+	}
+
+	return ok;
 }
 
 qboolean VK_Swapchain_Recreate( int windowWidth, int windowHeight )

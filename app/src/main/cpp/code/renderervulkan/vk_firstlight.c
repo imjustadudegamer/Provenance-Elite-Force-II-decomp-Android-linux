@@ -107,6 +107,47 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 		return qfalse;
 	}
 
+	if ( vk.surface != VK_NULL_HANDLE ) {
+		if ( !VK_Target_Init() ) {
+			VK_FirstLightRow( "fail", "stage=target" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
+		if ( !VK_Frame_Init() ) {
+			VK_FirstLightRow( "fail", "stage=frame" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
+		if ( !VK_Descriptor_Init() ) {
+			VK_FirstLightRow( "fail", "stage=descriptor" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
+		if ( !VK_Vertex_Init() ) {
+			VK_FirstLightRow( "fail", "stage=vertex" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
+		if ( !VK_Pipeline_Init() ) {
+			VK_FirstLightRow( "fail", "stage=pipeline" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+	}
+
+	if ( vk.surface != VK_NULL_HANDLE ) {
+		VK_PipelineCache_Save();
+	}
+
 	VK_Sentinel_Clear();
 	vk_firstLightState = 6;
 
@@ -117,6 +158,15 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 
 void VK_BringDown( void )
 {
+	if ( vk.device != VK_NULL_HANDLE && qvk.DeviceWaitIdle ) {
+		qvk.DeviceWaitIdle( vk.device );
+	}
+
+	VK_Pipeline_Shutdown();
+	VK_Vertex_Shutdown();
+	VK_Descriptor_Shutdown();
+	VK_Frame_Shutdown();
+	VK_Target_Shutdown();
 	VK_PipelineCache_Close();
 	VK_Swapchain_Destroy();
 	VK_Surface_Destroy();
