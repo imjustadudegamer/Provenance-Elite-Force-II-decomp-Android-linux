@@ -1,0 +1,640 @@
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * vk_texture.c -- the texture upload path.
+ *
+ * The GLES3 twin's tr_hwtex.c hands each mip to glCompressedTexImage2D /
+ * glTexImage2D; this module hands the same bytes to a staging buffer and a
+ * vkCmdCopyBufferToImage into a device-local image, then lays the image out
+ * for sampling.  Everything the boot path can return is guarded, and every
+ * format the loaders report is mapped onto a Vulkan format that the device
+ * has actually confirmed (ANDROID_VULKAN_RENDERER_SDK.md 6/7: the compressed
+ * formats are probed, never assumed).
+ */
+
+#include "tr_local.h"
+
+#include <string.h>
+
+static vkTexture_t	vk_textures[VK_MAX_TEXTURES];
+static int			vk_numTextures;
+static int			vk_textureBytes;
+
+/* the shared samplers: the pair of wrap modes the engine asks for crossed
+   with the filter pairs the image flags produce */
+#define VK_SAMPLER_SLOTS 16
+
+typedef struct {
+	VkSampler	sampler;
+	qboolean	clamp;
+	qboolean	mipmap;
+	qboolean	linear;
+} vkSamplerSlot_t;
+
+static vkSamplerSlot_t	vk_samplers[VK_SAMPLER_SLOTS];
+static int				vk_numSamplers;
+
+static VkFormatFeatureFlags VK_Texture_WantedFeatures( void )
+{
+	return VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT
+		   | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+}
+
+VkFormat VK_Texture_FormatFor( int internalFormat, qboolean *supported )
+{
+	VkFormat format;
+	VkFormatProperties props;
+
+	if ( supported ) {
+		*supported = qfalse;
+	}
+
+	switch ( internalFormat ) {
+	case VK_TF_DXT1:
+		format = VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
+		break;
+	case VK_TF_DXT3:
+		format = VK_FORMAT_BC2_UNORM_BLOCK;
+		break;
+	case VK_TF_DXT5:
+		format = VK_FORMAT_BC3_UNORM_BLOCK;
+		break;
+	case VK_TF_RGBA8:
+	case VK_TF_RGBA:
+	case VK_TF_RGB5_A1:
+	case VK_TF_RGBA4:
+		format = VK_FORMAT_R8G8B8A8_UNORM;
+		break;
+	case VK_TF_RGB8:
+	case VK_TF_RGB:
+	case VK_TF_RGB5:
+	default:
+		format = VK_FORMAT_R8G8B8A8_UNORM;
+		break;
+	}
+
+	memset( &props, 0, sizeof( props ) );
+	qvk.GetPhysicalDeviceFormatProperties( vk.physicalDevice, format, &props );
+
+	if ( ( props.optimalTilingFeatures & VK_Texture_WantedFeatures() ) == VK_Texture_WantedFeatures() ) {
+		if ( supported ) {
+			*supported = qtrue;
+		}
+	} else if ( format != VK_FORMAT_R8G8B8A8_UNORM ) {
+		/* A device without the compressed block formats still has to show the
+		   art: the caller decompresses instead of uploading blocks. */
+		VK_Guard_Row( "VK:texture", "format=%d unsupported optimal=0x%x fallback=rgba8",
+					  internalFormat, (unsigned int)props.optimalTilingFeatures );
+		return VK_FORMAT_R8G8B8A8_UNORM;
+	} else {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "rgba8 unsupported on this device", VK_ERROR_FORMAT_NOT_SUPPORTED );
+	}
+
+	return format;
+}
+
+qboolean VK_Texture_Init( void )
+{
+	memset( vk_textures, 0, sizeof( vk_textures ) );
+	vk_numTextures = 0;
+	vk_textureBytes = 0;
+
+	memset( vk_samplers, 0, sizeof( vk_samplers ) );
+	vk_numSamplers = 0;
+
+	return qtrue;
+}
+
+void VK_Texture_Shutdown( void )
+{
+	int i;
+
+	if ( vk.device == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	if ( vk.commandPool != VK_NULL_HANDLE && qvk.DeviceWaitIdle ) {
+		VK_Guard_Result( VK_GSITE_SYNC, qvk.DeviceWaitIdle( vk.device ), "vkDeviceWaitIdle(textures)" );
+	}
+
+	for ( i = 0; i < VK_MAX_TEXTURES; i++ ) {
+		VK_Texture_Destroy( i );
+	}
+
+	for ( i = 0; i < VK_SAMPLER_SLOTS; i++ ) {
+		if ( vk_samplers[i].sampler != VK_NULL_HANDLE && qvk.DestroySampler ) {
+			qvk.DestroySampler( vk.device, vk_samplers[i].sampler, NULL );
+		}
+		vk_samplers[i].sampler = VK_NULL_HANDLE;
+	}
+	vk_numSamplers = 0;
+
+	vk_numTextures = 0;
+	vk_textureBytes = 0;
+}
+
+static void VK_Texture_BarrierRange( VkCommandBuffer cmd, VkImage image, uint32_t baseLevel,
+									 uint32_t levelCount, VkAccessFlags fromAccess,
+									 VkAccessFlags toAccess )
+{
+	VkImageMemoryBarrier barrier;
+
+	memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = image;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.baseMipLevel = baseLevel;
+	barrier.subresourceRange.levelCount = levelCount;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.srcAccessMask = fromAccess;
+	barrier.dstAccessMask = toAccess;
+
+	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+							0, 0, NULL, 0, NULL, 1, &barrier );
+}
+
+static void VK_Texture_Barrier( VkCommandBuffer cmd, VkImage image, VkImageLayout from,
+								VkImageLayout to, VkAccessFlags fromAccess, VkAccessFlags toAccess,
+								int mipLevels )
+{
+	VkImageMemoryBarrier barrier;
+
+	memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = from;
+	barrier.newLayout = to;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = image;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.levelCount = (uint32_t)mipLevels;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.srcAccessMask = fromAccess;
+	barrier.dstAccessMask = toAccess;
+
+	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+							0, 0, NULL, 0, NULL, 1, &barrier );
+}
+
+static void VK_Texture_BarrierLevel( VkCommandBuffer cmd, VkImage image, uint32_t level,
+									 uint32_t dstLevel, VkAccessFlags fromAccess,
+									 VkAccessFlags toAccess )
+{
+	VkImageMemoryBarrier barrier;
+
+	memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = image;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.baseMipLevel = level;
+	barrier.subresourceRange.levelCount = ( dstLevel > level ) ? ( dstLevel - level + 1 ) : 1;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.srcAccessMask = fromAccess;
+	barrier.dstAccessMask = toAccess;
+
+	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+							0, 0, NULL, 0, NULL, 1, &barrier );
+}
+
+qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat format, int *handleOut )
+{
+	VkImageCreateInfo imageInfo;
+	VkImageViewCreateInfo viewInfo;
+	vkTexture_t *tex;
+	int i;
+
+	if ( !handleOut ) {
+		return qfalse;
+	}
+
+	*handleOut = -1;
+
+	for ( i = 0; i < VK_MAX_TEXTURES; i++ ) {
+		if ( !vk_textures[i].inUse ) {
+			break;
+		}
+	}
+
+	if ( i >= VK_MAX_TEXTURES ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "texture table full", VK_ERROR_OUT_OF_HOST_MEMORY );
+		return qfalse;
+	}
+
+	tex = &vk_textures[i];
+	memset( tex, 0, sizeof( *tex ) );
+	tex->width = width;
+	tex->height = height;
+	tex->mipLevels = mipLevels;
+	tex->format = format;
+
+	memset( &imageInfo, 0, sizeof( imageInfo ) );
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageInfo.format = format;
+	imageInfo.extent.width = (uint32_t)width;
+	imageInfo.extent.height = (uint32_t)height;
+	imageInfo.extent.depth = 1;
+	imageInfo.mipLevels = (uint32_t)mipLevels;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+					  | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	if ( !VK_Guard_Result( VK_GSITE_ALLOC, qvk.CreateImage( vk.device, &imageInfo, NULL, &tex->image ),
+						   "vkCreateImage(texture)" ) ) {
+		return qfalse;
+	}
+
+	if ( !VK_Memory_AllocImage( tex->image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &tex->memory ) ) {
+		qvk.DestroyImage( vk.device, tex->image, NULL );
+		tex->image = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	memset( &viewInfo, 0, sizeof( viewInfo ) );
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = tex->image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = format;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewInfo.subresourceRange.levelCount = (uint32_t)mipLevels;
+	viewInfo.subresourceRange.layerCount = 1;
+
+	if ( !VK_Guard_Result( VK_GSITE_ALLOC, qvk.CreateImageView( vk.device, &viewInfo, NULL, &tex->view ),
+						   "vkCreateImageView(texture)" ) ) {
+		qvk.DestroyImage( vk.device, tex->image, NULL );
+		tex->image = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	tex->inUse = qtrue;
+	vk_numTextures++;
+
+	*handleOut = i;
+
+	return qtrue;
+}
+
+void VK_Texture_Destroy( int handle )
+{
+	vkTexture_t *tex;
+
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		return;
+	}
+
+	tex = &vk_textures[handle];
+
+	if ( tex->view != VK_NULL_HANDLE && qvk.DestroyImageView ) {
+		qvk.DestroyImageView( vk.device, tex->view, NULL );
+	}
+	if ( tex->image != VK_NULL_HANDLE && qvk.DestroyImage ) {
+		qvk.DestroyImage( vk.device, tex->image, NULL );
+	}
+	if ( tex->memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, tex->memory, NULL );
+	}
+
+	if ( tex->inUse ) {
+		vk_numTextures--;
+	}
+
+	memset( tex, 0, sizeof( *tex ) );
+}
+
+qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
+							const void *data, size_t bytes )
+{
+	vkTexture_t *tex;
+	VkBufferCreateInfo stagingInfo;
+	VkBuffer staging = VK_NULL_HANDLE;
+	VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+	void *mapped = NULL;
+	VkCommandBufferAllocateInfo allocInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkBufferImageCopy region;
+	VkFenceCreateInfo fenceInfo;
+	VkFence fence = VK_NULL_HANDLE;
+	VkSubmitInfo submitInfo;
+	size_t rowBytes;
+	VkResult result;
+	qboolean ok = qfalse;
+
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "upload handle out of range", VK_ERROR_TOO_MANY_OBJECTS );
+		return qfalse;
+	}
+
+	tex = &vk_textures[handle];
+	if ( !tex->inUse || !data || bytes == 0 ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "upload of an unusable texture", VK_ERROR_INITIALIZATION_FAILED );
+		return qfalse;
+	}
+
+	/* The engine hands the loader's bytes straight through: no copy, no
+	   reinterpretation, so a BC block stays a BC block. */
+	memset( &stagingInfo, 0, sizeof( stagingInfo ) );
+	stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	stagingInfo.size = (VkDeviceSize)bytes;
+	stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if ( !VK_Memory_CreateBuffer( stagingInfo.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+								  &staging, &stagingMemory ) ) {
+		return qfalse;
+	}
+
+	result = qvk.MapMemory( vk.device, stagingMemory, 0, stagingInfo.size, 0, &mapped );
+	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkMapMemory(staging)" ) ) {
+		goto done;
+	}
+
+	memcpy( mapped, data, bytes );
+	qvk.UnmapMemory( vk.device, stagingMemory );
+	mapped = NULL;
+
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = vk.commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+						   "vkAllocateCommandBuffers(upload)" ) ) {
+		goto done;
+	}
+
+	memset( &beginInfo, 0, sizeof( beginInfo ) );
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
+						   "vkBeginCommandBuffer(upload)" ) ) {
+		goto done;
+	}
+
+	if ( mipLevel == 0 ) {
+		VK_Texture_Barrier( cmd, tex->image, VK_IMAGE_LAYOUT_UNDEFINED,
+							VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
+							VK_ACCESS_TRANSFER_WRITE_BIT, tex->mipLevels );
+	}
+
+	memset( &region, 0, sizeof( region ) );
+	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.imageSubresource.mipLevel = (uint32_t)mipLevel;
+	region.imageSubresource.layerCount = 1;
+	region.imageExtent.width = (uint32_t)width;
+	region.imageExtent.height = (uint32_t)height;
+	region.imageExtent.depth = 1;
+
+	qvk.CmdCopyBufferToImage( cmd, staging, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(upload)" ) ) {
+		goto done;
+	}
+
+	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
+						   "vkCreateFence(upload)" ) ) {
+		goto done;
+	}
+
+	memset( &submitInfo, 0, sizeof( submitInfo ) );
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+						   "vkQueueSubmit(upload)" ) ) {
+		goto done;
+	}
+
+	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(upload)" ) ) {
+		goto done;
+	}
+
+	rowBytes = (size_t)width;
+	vk_textureBytes += (int)( rowBytes * (size_t)height );
+	ok = qtrue;
+
+done:
+	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+		qvk.DestroyFence( vk.device, fence, NULL );
+	}
+	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
+		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+	}
+	if ( staging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+		qvk.DestroyBuffer( vk.device, staging, NULL );
+	}
+	if ( stagingMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, stagingMemory, NULL );
+	}
+
+	return ok;
+}
+
+void VK_Texture_MakeMips( int handle )
+{
+	vkTexture_t *tex;
+	VkCommandBufferAllocateInfo allocInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkImageBlit blit;
+	VkFenceCreateInfo fenceInfo;
+	VkFence fence = VK_NULL_HANDLE;
+	VkSubmitInfo submitInfo;
+	int32_t mipWidth, mipHeight;
+	uint32_t level;
+	VkResult result;
+
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		return;
+	}
+
+	tex = &vk_textures[handle];
+	if ( !tex->inUse || tex->mipLevels <= 1 ) {
+		return;
+	}
+
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = vk.commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+						   "vkAllocateCommandBuffers(mips)" ) ) {
+		return;
+	}
+
+	memset( &beginInfo, 0, sizeof( beginInfo ) );
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
+						   "vkBeginCommandBuffer(mips)" ) ) {
+		return;
+	}
+
+	mipWidth = (int32_t)tex->width;
+	mipHeight = (int32_t)tex->height;
+
+	VK_Texture_Barrier( cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+						VK_ACCESS_TRANSFER_READ_BIT, 1 );
+
+	for ( level = 1; level < (uint32_t)tex->mipLevels; level++ ) {
+		int32_t nextWidth = mipWidth > 1 ? mipWidth / 2 : 1;
+		int32_t nextHeight = mipHeight > 1 ? mipHeight / 2 : 1;
+
+		/* Fill the mip being written from the one above it.  A same-image blit
+		   runs in GENERAL because the source level is being read while the
+		   destination level is written; the level range is one each way. */
+		VK_Texture_BarrierLevel( cmd, tex->image, level - 1, level,
+								 VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+								 VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT );
+
+		memset( &blit, 0, sizeof( blit ) );
+		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.mipLevel = level - 1;
+		blit.srcSubresource.layerCount = 1;
+		blit.srcOffsets[1].x = mipWidth;
+		blit.srcOffsets[1].y = mipHeight;
+		blit.srcOffsets[1].z = 1;
+		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.dstSubresource.mipLevel = level;
+		blit.dstSubresource.layerCount = 1;
+		blit.dstOffsets[1].x = nextWidth;
+		blit.dstOffsets[1].y = nextHeight;
+		blit.dstOffsets[1].z = 1;
+
+		qvk.CmdBlitImage( cmd, tex->image, VK_IMAGE_LAYOUT_GENERAL,
+						  tex->image, VK_IMAGE_LAYOUT_GENERAL, 1, &blit,
+						  VK_FILTER_LINEAR );
+
+		mipWidth = nextWidth;
+		mipHeight = nextHeight;
+	}
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(mips)" ) ) {
+		return;
+	}
+
+	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
+						   "vkCreateFence(mips)" ) ) {
+		return;
+	}
+
+	memset( &submitInfo, 0, sizeof( submitInfo ) );
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+						   "vkQueueSubmit(mips)" ) ) {
+		return;
+	}
+
+	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(mips)" );
+}
+
+VkImageView VK_Texture_View( int handle )
+{
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		return VK_NULL_HANDLE;
+	}
+
+	return vk_textures[handle].view;
+}
+
+qboolean VK_Texture_Sampler( qboolean clamp, qboolean mipmap, qboolean linear, VkSampler *out )
+{
+	VkSamplerCreateInfo info;
+	int i;
+
+	if ( !out ) {
+		return qfalse;
+	}
+
+	*out = VK_NULL_HANDLE;
+
+	for ( i = 0; i < vk_numSamplers; i++ ) {
+		if ( vk_samplers[i].clamp == clamp && vk_samplers[i].mipmap == mipmap
+			 && vk_samplers[i].linear == linear ) {
+			*out = vk_samplers[i].sampler;
+			return qtrue;
+		}
+	}
+
+	if ( vk_numSamplers >= VK_SAMPLER_SLOTS ) {
+		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "sampler slots exhausted", VK_ERROR_TOO_MANY_OBJECTS );
+		return qfalse;
+	}
+
+	memset( &info, 0, sizeof( info ) );
+	info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	info.magFilter = linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+	info.minFilter = linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+	info.mipmapMode = mipmap ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	info.addressModeU = clamp ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	info.addressModeV = clamp ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	info.addressModeW = clamp ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	info.maxLod = mipmap ? VK_LOD_CLAMP_NONE : 0.0f;
+	info.anisotropyEnable = VK_FALSE;
+
+	if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR,
+						   qvk.CreateSampler( vk.device, &info, NULL, &vk_samplers[vk_numSamplers].sampler ),
+						   "vkCreateSampler" ) ) {
+		return qfalse;
+	}
+
+	vk_samplers[vk_numSamplers].clamp = clamp;
+	vk_samplers[vk_numSamplers].mipmap = mipmap;
+	vk_samplers[vk_numSamplers].linear = linear;
+
+	*out = vk_samplers[vk_numSamplers].sampler;
+	vk_numSamplers++;
+
+	return qtrue;
+}
+
+int VK_Texture_BytesUsed( void )
+{
+	return vk_textureBytes;
+}
+
+int VK_Texture_Count( void )
+{
+	return vk_numTextures;
+}

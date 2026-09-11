@@ -107,13 +107,25 @@ typedef struct vkProcs_s {
 	PFN_vkCmdSetScissor				CmdSetScissor;
 	PFN_vkCmdBindPipeline			CmdBindPipeline;
 	PFN_vkCmdBindVertexBuffers		CmdBindVertexBuffers;
+	PFN_vkCmdBindIndexBuffer		CmdBindIndexBuffer;
+	PFN_vkCmdBindDescriptorSets		CmdBindDescriptorSets;
+	PFN_vkCmdPushConstants			CmdPushConstants;
 	PFN_vkCmdDraw					CmdDraw;
+	PFN_vkCmdDrawIndexed			CmdDrawIndexed;
 	PFN_vkCmdPipelineBarrier		CmdPipelineBarrier;
 	PFN_vkCmdCopyBuffer				CmdCopyBuffer;
+	PFN_vkCmdCopyBufferToImage		CmdCopyBufferToImage;
 	PFN_vkCmdCopyImageToBuffer		CmdCopyImageToBuffer;
+	PFN_vkCmdBlitImage				CmdBlitImage;
 	PFN_vkBeginCommandBuffer		BeginCommandBuffer;
 	PFN_vkEndCommandBuffer			EndCommandBuffer;
 	PFN_vkResetCommandBuffer		ResetCommandBuffer;
+	PFN_vkCreateSampler				CreateSampler;
+	PFN_vkDestroySampler			DestroySampler;
+	PFN_vkAllocateDescriptorSets	AllocateDescriptorSets;
+	PFN_vkFreeDescriptorSets		FreeDescriptorSets;
+	PFN_vkUpdateDescriptorSets		UpdateDescriptorSets;
+	PFN_vkCreateBufferView			CreateBufferView;
 } vkProcs_t;
 
 extern vkProcs_t qvk;

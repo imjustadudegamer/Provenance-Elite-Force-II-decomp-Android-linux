@@ -27,6 +27,17 @@ include(renderer_common)
 set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/tr_init.c
     ${SOURCE_DIR}/renderervulkan/tr_cmds.c
+    # the data-model layer, mirrored from renderergles3 file for file
+    ${SOURCE_DIR}/renderervulkan/tr_shader.c
+    ${SOURCE_DIR}/renderervulkan/tr_image.c
+    ${SOURCE_DIR}/renderervulkan/tr_font.cpp
+    ${SOURCE_DIR}/renderervulkan/tr_draw.c
+    ${SOURCE_DIR}/renderervulkan/tr_backend.c
+    ${SOURCE_DIR}/renderervulkan/tr_hwtex.c
+    ${SOURCE_DIR}/renderervulkan/tr_texcache.c
+    ${SOURCE_DIR}/renderervulkan/vk_m3_surface.c
+    ${SOURCE_DIR}/renderervulkan/tr_util.cpp
+    # the Vulkan substrate
     ${SOURCE_DIR}/renderervulkan/vk_procs.c
     ${SOURCE_DIR}/renderervulkan/vk_guard.c
     ${SOURCE_DIR}/renderervulkan/vk_instance.c
@@ -35,6 +46,8 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/vk_target.c
     ${SOURCE_DIR}/renderervulkan/vk_frame.c
     ${SOURCE_DIR}/renderervulkan/vk_offscreen.c
+    ${SOURCE_DIR}/renderervulkan/vk_texture.c
+    ${SOURCE_DIR}/renderervulkan/vk_draw.c
     ${SOURCE_DIR}/renderervulkan/vk_pipeline.c
     ${SOURCE_DIR}/renderervulkan/vk_vertex.c
     ${SOURCE_DIR}/renderervulkan/vk_descriptor.c

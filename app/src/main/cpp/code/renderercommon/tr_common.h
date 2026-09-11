@@ -25,7 +25,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../qcommon/q_shared.h"
 #include "../renderercommon/tr_public.h"
+
+/* The shared decoders (tr_image_jpg/png/bmp/pcx, tr_noise, tr_subs) are
+   compiled into every renderer target.  The Vulkan target carries no GL header
+   and names no gl*() symbol, so its build of this header gets the one typedef
+   the structures below need and nothing else; every other target keeps qgl.h
+   exactly as it was.  Verified by building both renderers from this header. */
+#ifdef EF2_RENDERER_VULKAN
+typedef unsigned int GLuint;
+#else
 #include "qgl.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,7 +65,7 @@ typedef struct image_s {
 	char		imgName[MAX_QPATH];		
 	int			width, height;				
 	int			uploadWidth, uploadHeight;	
-	GLuint		texnum;					
+	unsigned int	texnum;		/* a GL object name, or the Vulkan texture table index */
 
 	int			frameUsed;			
 
