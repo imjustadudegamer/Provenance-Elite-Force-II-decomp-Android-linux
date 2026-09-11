@@ -20,6 +20,10 @@ root, for more details.
 #include "../qcommon/q_shared.h"
 #include "../renderercommon/tr_public.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "vk_procs.h"
 #include "vk_guard.h"
 
@@ -124,12 +128,12 @@ typedef struct {
 	VkSemaphore acquireSemaphores[VK_FRAMES_IN_FLIGHT];
 	VkSemaphore renderSemaphores[VK_FRAMES_IN_FLIGHT];
 	uint32_t acquiredImage;
+	uint32_t lastPresentedImage;
 	qboolean acquired;
 	qboolean demoDraw;
 	qboolean targetReady;
 	qboolean frameReady;
 	float clearColor[4];
-	glconfig_t glConfig;
 } vkContext_t;
 
 extern vkContext_t vk;
@@ -156,6 +160,10 @@ typedef struct {
 extern const vkDemoVertex_t vk_demoVertices[VK_VERTEX_DEMO_COUNT];
 
 qboolean VK_Descriptor_Init( void );
+qboolean VK_Texture_Init( void );
+void VK_Texture_Shutdown( void );
+qboolean VK_Draw_Init( void );
+void VK_Draw_Shutdown( void );
 void VK_Descriptor_Shutdown( void );
 
 qboolean VK_Pipeline_Init( void );
@@ -243,5 +251,9 @@ qboolean VK_PipelineCache_Open( void );
 void VK_PipelineCache_Close( void );
 void VK_PipelineCache_Save( void );
 
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

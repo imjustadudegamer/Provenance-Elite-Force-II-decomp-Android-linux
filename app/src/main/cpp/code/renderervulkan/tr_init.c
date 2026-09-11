@@ -141,6 +141,13 @@ void R_Init( void )
 
 	RB_InitBackend();
 
+	/* The identity light the 2D colour path scales by: no overbright on the
+	   Vulkan leg yet, so the byte scale is the full 255. */
+	tr.identityLight = 1.0f;
+	tr.identityLightByte = 255;
+	tr.overbrightBits = 0;
+	glConfig.textureCompression = TC_S3TC;
+
 	r_vkTrace = ri.Cvar_Get( VK_TRACE_CVAR, "1", 0 );
 	ri.Cvar_Get( VK_GUARD_TRACE_CVAR, "1", 0 );
 
@@ -151,7 +158,7 @@ void R_Init( void )
 	VKimp_AdapterInit();
 	R_InitCommandBuffers();
 
-	VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M1 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+	VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M2 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
 }
 
 void RE_Shutdown( qboolean destroyWindow )
@@ -165,7 +172,41 @@ void RE_Shutdown( qboolean destroyWindow )
 
 static void RE_BeginRegistration( glconfig_t *config )
 {
-	*config = vk.glConfig;
+	cvar_t *generation;
+	char value[16];
+
+	if ( ri.UI_LoadResource ) {
+		ri.UI_LoadResource( "*123" );
+	}
+
+	R_IssuePendingRenderCommands();
+
+	*config = glConfig;
+
+	/* The registration sequence the font's shader cache keys on: it grows by
+	   exactly one per registration, exactly as the GLES3 twin's does. */
+	generation = ri.Cvar_Get( "r_renderergeneration", "0", CVAR_NORESTART );
+
+	r_sequencenumber = generation->integer + 1;
+	if ( r_sequencenumber <= 0 ) {
+		r_sequencenumber = 1;
+	}
+
+	Com_sprintf( value, sizeof( value ), "%d", r_sequencenumber );
+	ri.Cvar_Set( "r_renderergeneration", value );
+
+	tr.registrating = qtrue;
+
+	if ( !tr.registered ) {
+		R_InitImages();
+		R_StartupShaders();
+	}
+
+	tr.registered = qtrue;
+
+	if ( ri.UI_LoadResource ) {
+		ri.UI_LoadResource( "*124" );
+	}
 }
 
 static qhandle_t RE_RegisterModel( const char *name )
@@ -185,12 +226,14 @@ static qhandle_t RE_ForceRegisterModel( const char *name )
 
 static void RE_EndRegistration( void )
 {
-	R_SyncRenderThread();
+	tr.registrating = qfalse;
+	R_IssuePendingRenderCommands();
+	R_FreeUnusedImages();
 }
 
 static int RE_GetRegistrationSequence( void )
 {
-	return 0;
+	return r_sequencenumber;
 }
 
 static qhandle_t RE_ReplaceShader( const char *name, const char *text )
@@ -297,20 +340,46 @@ static void R_DebugLine( const vec3_t start, const vec3_t end, float r, float g,
 
 static void RE_BeginFrame( stereoFrame_t stereoFrame )
 {
+	int *cmd;
+
+	(void)stereoFrame;
+
+	/* The frame's list opens with the pass marker: the walk acquires, opens
+	   the render pass and clears, then performs whatever the frame recorded. */
+	RB_RecordFramePrologue();
+
+	cmd = ( int * )R_GetCommandBuffer( sizeof( *cmd ) );
+	if ( cmd ) {
+		*cmd = RC_VK_BEGIN;
+	}
 }
 
 
 
 static void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 {
+	int *cmd;
+
+	/* The 2D batch the UI left open belongs to this frame; closing it before
+	   the present marker is what keeps the last quad in the right frame. */
+	RB_2D_Flush();
+
+	cmd = ( int * )R_GetCommandBuffer( sizeof( *cmd ) );
+	if ( cmd ) {
+		*cmd = RC_VK_PRESENT;
+	}
+
 	R_IssueRenderCommands();
 
 	if ( frontEndMsec ) {
-		*frontEndMsec = 0;
+		*frontEndMsec = tr.frontEndMsec;
 	}
 	if ( backEndMsec ) {
-		*backEndMsec = 0;
+		*backEndMsec = backEnd.backEndMsec;
 	}
+
+	tr.frontEndMsec = 0;
+	backEnd.backEndMsec = 0;
 }
 
 static int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projection,
@@ -364,6 +433,7 @@ static void RE_SwipeEnd( void )
 
 static void RE_SetRenderTime( int t )
 {
+	backEnd.refdefFloatTime = ( float )t / 1000.0f;
 }
 
 
@@ -534,6 +604,7 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp )
 	re.RegisterShader = RE_RegisterShader;
 	re.RegisterShaderNoMip = RE_RegisterShaderNoMip;
 	re.RefreshShaderNoMip = RE_RefreshShaderNoMip;
+	re.RegisterShaderNoMip = RE_RegisterShaderNoMip;
 
 	re.EndRegistration = RE_EndRegistration;
 

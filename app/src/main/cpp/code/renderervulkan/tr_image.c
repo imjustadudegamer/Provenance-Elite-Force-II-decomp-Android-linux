@@ -122,7 +122,6 @@ void GL_TextureMode( const char *string ) {
 		i = 3;
 	}
 
-
 	if ( i == 6 ) {
 		ri.Printf (PRINT_ALL, "bad filter name\n");
 		return;
@@ -376,7 +375,6 @@ void R_TotalTextureMemInfo_f( void ) {
 	ri.Printf( PRINT_ALL, " %5.2fMB of dynamic lightmap data\n", dynamic / 1048576.0f );
 }
 
-
 typedef struct {
 	const unsigned	*in;
 	unsigned		*out;
@@ -513,7 +511,6 @@ static void R_MipMap (byte *in, int width, int height) {
 	SMP_MipMap( (unsigned char *)in, width, height );
 }
 
-
 typedef struct {
 	byte	*data;
 	int		inverseAlpha;
@@ -563,11 +560,8 @@ byte	mipBlendColors[16][4] = {
 	{0,0,255,128},
 };
 
-
-/* The internal-format choice the GLES3 twin makes, restated onto the module's
- * tokens.  Every unsized and reduced layout collapses to RGBA8: Vulkan samples
- * an R8G8B8A8_UNORM image for all of them, and the shader cannot see the
- * difference the GL layouts would have made at these bit depths. */
+/* Every unsized and reduced layout collapses to RGBA8: Vulkan samples one
+ * R8G8B8A8_UNORM image for all of them. */
 static int R_VKInternalFormat( int fmt ) {
 	switch ( fmt ) {
 	case 1:  return VK_TF_RGBA8;
@@ -579,7 +573,6 @@ static int R_VKInternalFormat( int fmt ) {
 	default:        return VK_TF_RGBA8;
 	}
 }
-
 
 extern qboolean charSet;
 
@@ -1275,7 +1268,7 @@ image_t* R_CreateImageOld(
 		}
 	}
 
-	/* Every GL call below belongs to the texture-upload class of driver-resource
+	/* Every upload is a driver-resource op, so under r_smp this thread must
 	 * ops, so under r_smp this thread must own the context before the first of
 	 * them.  Without the park the context stays with the render thread, gen
 	 * returns 0 and the whole upload silently no-ops -- the image is then bound
@@ -1287,14 +1280,21 @@ image_t* R_CreateImageOld(
 	/* The texture object is created whole here -- every mip the upload below
 	   fills already has storage.  The GLES3 twin created an empty GL name and
 	   let each TexImage2D level size it; Vulkan's image needs its extent and
-	   level count up front, which the same two numbers the upload computes
-	   give it.  The count is the loader's mip chain clamped by the picmip the
-	   upload will apply, so it is the same chain either way. */
+	   level count up front.  The count is the chain the upload will walk: the
+  	   loader's mip count for a compressed payload, the power-of-two chain the
+	   software path generates for an uncompressed one.  Getting this wrong is
+	   caught by validation as a mipLevel-out-of-range, which is how it was
+	   found. */
 	{
 		qboolean	supported = qfalse;
 		VkFormat	format;
-		int			mipLevels = numMipmaps ? iMipmapsAvailable : 1;
+		int			mipLevels = 1;
 
+		if ( glCompressMode ) {
+			mipLevels = iMipmapsAvailable;
+		} else if ( numMipmaps ) {
+			mipLevels = SMP_MipLevelCount( width, height );
+		}
 		if ( mipLevels < 1 ) {
 			mipLevels = 1;
 		}
@@ -1497,6 +1497,11 @@ image_t* R_CreateImageOld(
 		image->wrapSetY = wrapT;
 	}
 
+	/* The chain is up; lay it out for sampling before anything binds it. */
+	if ( s_vkUploadTex >= 0 ) {
+		VK_Texture_Publish( s_vkUploadTex );
+	}
+
 	s_vkUploadTex = -1;
 	s_vkUploadMips = qfalse;
 
@@ -1507,8 +1512,6 @@ image_t* R_CreateImageOld(
 
 	return image;
 }
-
-
 
 typedef unsigned int   ui32_t;
 
@@ -1692,7 +1695,6 @@ typedef enum DXGI_FORMAT {
                          (((ui32_t)((x)[1])) << 8 ) | \
                          (((ui32_t)((x)[2])) << 16) | \
                          (((ui32_t)((x)[3])) << 24) )
-
 
 typedef struct {
     int dxt;
@@ -1896,7 +1898,6 @@ static void LoadDDS(const char* name, byte** pic, int* width, int* height, qbool
 
 	ri.FS_CloseFile(handle);
 }
-
 
 static void LoadTGA ( const char *name, byte **pic, int *width, int *height)
 {
@@ -2129,7 +2130,6 @@ static void LoadTGA ( const char *name, byte **pic, int *width, int *height)
   ri.FS_FreeFile (buffer);
 }
 
-
 static void R_LoadImage(const char* name, byte** pic, int* width, int* height, qboolean* hasAlpha, int* glCompressMode, int* numMipmaps, int* piMipmapsAvailable) {
 	size_t	len;
 	char	tempName[MAX_STRING_TOKENS + 1];
@@ -2170,7 +2170,7 @@ static void R_LoadImage(const char* name, byte** pic, int* width, int* height, q
 		LoadGHOST(name, pic, width, height);
 	}
 
-	if (tr.registered)
+	if (tr.registered && ri.UI_LoadResource)
 	{
 		Com_sprintf(tempName, sizeof(tempName), "n%s", name);
 		ri.UI_LoadResource(tempName);
@@ -2178,7 +2178,6 @@ static void R_LoadImage(const char* name, byte** pic, int* width, int* height, q
 
 	SMP_RLOAD_END( decode );
 }
-
 
 image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPicmip, qboolean force32bit, int textureMode) {
 	image_t	*image;
@@ -2399,7 +2398,6 @@ void R_CreateBuiltinImages(void) {
 		}
 	}
 
-
 	tr.identityLightImage = R_CreateImageOld("*identityLight", (byte *)data, 8, 8, 0, 1, qfalse, qfalse, qfalse, qfalse, 2);
 	tr.identityLightImage->r_sequence = -1;
 
@@ -2409,7 +2407,6 @@ void R_CreateBuiltinImages(void) {
 
 	R_CreateDlightImage();
 }
-
 
 void R_BuildGammaTables( void ) {
 	int	i, inf;
@@ -2654,7 +2651,6 @@ void R_FreeUnusedImages(void) {
     }
 }
 
-
 static char *CommaParse( char **data_p ) {
 	int c = 0, len;
 	char *data;
@@ -2676,7 +2672,6 @@ static char *CommaParse( char **data_p ) {
 			}
 			data++;
 		}
-
 
 		c = *data;
 
@@ -2747,7 +2742,6 @@ static char *CommaParse( char **data_p ) {
 	return com_token;
 }
 
-
 qhandle_t RE_RegisterSkin( const char *name ) {
 	qhandle_t	hSkin;
 	skin_t		*skin;
@@ -2765,7 +2759,6 @@ qhandle_t RE_RegisterSkin( const char *name ) {
 		ri.Printf(PRINT_ALL,  "Skin name exceeds MAX_QPATH\n" );
 		return 0;
 	}
-
 
 	for ( hSkin = 1; hSkin < tr.numSkins ; hSkin++ ) {
 		skin = tr.skins[hSkin];
@@ -2829,7 +2822,6 @@ qhandle_t RE_RegisterSkin( const char *name ) {
 
 	ri.FS_FreeFile( text );
 
-
 	if ( skin->numSurfaces == 0 ) {
 		return 0;		
 	}
@@ -2881,7 +2873,6 @@ qboolean R_LoadRawImage(const char *name, byte **pic, int *width, int *height)
 void R_FreeRawImage(byte *pic) {
     ri.Free(pic);
 }
-
 
 void GetColorBlockColors( byte *data, byte *c0, byte *c1, byte *c2, byte *c3, unsigned short *bits )
 {

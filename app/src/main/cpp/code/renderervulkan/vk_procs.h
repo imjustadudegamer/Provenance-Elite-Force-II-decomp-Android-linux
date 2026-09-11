@@ -19,6 +19,10 @@ root, for more details.
 
 #include <vulkan/vulkan.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "../qcommon/q_shared.h"
 
 typedef struct vkProcs_s {
@@ -136,5 +140,9 @@ void VK_Procs_ResolveGlobal( void );
 void VK_Procs_ResolveInstance( VkInstance instance );
 void VK_Procs_ResolveDevice( VkDevice device );
 const char *VK_Procs_LoaderName( void );
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

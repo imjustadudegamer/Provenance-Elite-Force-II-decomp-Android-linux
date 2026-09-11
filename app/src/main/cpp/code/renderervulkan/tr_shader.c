@@ -2980,7 +2980,6 @@ static shader_t *FinishShader( void ) {
 		Com_Memcpy(globalFogStages, unfoggedStages, sizeof(globalFogStages));
 	}
 
-	//     alphaGen = 18 (a slot retail's ComputeColors never evaluates),
 	if ( stage < MAX_SHADER_STAGES ) {
 		unsigned	prevStateBits = 0;
 		shaderStage_t	*pFogStage;

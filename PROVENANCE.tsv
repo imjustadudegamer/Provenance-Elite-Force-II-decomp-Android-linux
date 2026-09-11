@@ -1212,8 +1212,6 @@ renderervulkan/tr_backend.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	
 renderervulkan/tr_cmds.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_draw.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_font.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderervulkan/tr_ghost.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderervulkan/tr_ghost.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_hwtex.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_hwtex.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_image.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000

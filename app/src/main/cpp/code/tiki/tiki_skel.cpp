@@ -137,6 +137,54 @@ void LoadBoneFromBuffer2(boneFileData_t *fileData, boneData_t *boneData)
     }
 }
 
+/*
+ * TIKI_SurfaceGameBytes -- one surface's block in the game-side cache: the
+ * header, the triangles, the vertices and the collapse table, in the order
+ * the copy pass below lays them out.  Both passes read this one statement, so
+ * the allocation cannot disagree with the walk that fills it.  They used to
+ * state the block twice -- the size pass padded a running total across
+ * surfaces, the copy pass padded each block from its own start -- and the two
+ * compositions differ on real data: the copy pass needed up to 8 bytes more
+ * than the size pass had reserved on 55 of the 259 shipped .skb, so the last
+ * surface's collapse table wrote past the surfaces region into the bone block
+ * (erased again by the memset below, which is why it never showed).  Measured
+ * by personal/scratch/vk_m3_skb_audit.c, pass 4.
+ */
+static size_t TIKI_SurfaceGameBytes(skelSurface_t *pSurf, size_t *nVertBytesOut)
+{
+    skeletorVertex_t *pVert    = (skeletorVertex_t *)((byte *)pSurf + LongNoSwapPtr(&pSurf->ofsVerts));
+    const int         numVerts = LongNoSwapPtr(&pSurf->numVerts);
+    size_t            nVertBytes;
+    size_t            nBytes;
+    int               j;
+
+    nVertBytes = 0;
+    for (j = 0; j < numVerts; j++) {
+        const int numMorphs  = LongNoSwapPtr(&pVert->numMorphs);
+        const int numWeights = LongNoSwapPtr(&pVert->numWeights);
+
+        // (retail TIKI_SwapSkel @0x000F4C90:95-104) never bounds them.  Both loaders
+        const size_t iOffset = sizeof(skeletorMorph_t) * numMorphs + sizeof(skelWeight_t) * numWeights
+                             + sizeof(skeletorVertex_t);
+
+        nVertBytes += iOffset;
+        pVert = (skeletorVertex_t *)((byte *)pVert + iOffset);
+    }
+
+    nBytes  = sizeof(skelSurfaceGame_t);
+    nBytes += LongNoSwapPtr(&pSurf->numTriangles) * sizeof(skelIndex_t) * 3;
+    nBytes  = PAD(nBytes, sizeof(void *));
+    nBytes += nVertBytes;
+    nBytes  = PAD(nBytes, sizeof(void *));
+    nBytes += numVerts * sizeof(int);
+
+    if (nVertBytesOut) {
+        *nVertBytesOut = nVertBytes;
+    }
+
+    return nBytes;
+}
+
 void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
 {
     skelHeaderGame_t  *pSkel;
@@ -156,28 +204,7 @@ void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
     nSurfBytes = 0;
 
     for (i = 0; i < pHeader->numSurfaces; i++) {
-        skeletorVertex_t *pVert    = (skeletorVertex_t *)((byte *)pSurf + LongNoSwapPtr(&pSurf->ofsVerts));
-        const int         numVerts = LongNoSwapPtr(&pSurf->numVerts);
-
-        nVertBytes = 0;
-        for (j = 0; j < numVerts; j++) {
-            const int numMorphs  = LongNoSwapPtr(&pVert->numMorphs);
-            const int numWeights = LongNoSwapPtr(&pVert->numWeights);
-
-            // (retail TIKI_SwapSkel @0x000F4C90:95-104) never bounds them.  Both loaders
-            const size_t iOffset = sizeof(skeletorMorph_t) * numMorphs + sizeof(skelWeight_t) * numWeights
-                                 + sizeof(skeletorVertex_t);
-
-            nVertBytes += iOffset;
-            pVert = (skeletorVertex_t *)((byte *)pVert + iOffset);
-        }
-
-        nSurfBytes += sizeof(skelSurfaceGame_t);
-        nSurfBytes += LongNoSwapPtr(&pSurf->numTriangles) * sizeof(skelIndex_t) * 3;
-        nSurfBytes = PAD(nSurfBytes, sizeof(void *));
-        nSurfBytes += nVertBytes;
-        nSurfBytes = PAD(nSurfBytes, sizeof(void *));
-        nSurfBytes += numVerts * sizeof(int);
+        nSurfBytes += TIKI_SurfaceGameBytes(pSurf, NULL);
 
         pSurf = (skelSurface_t *)((byte *)pSurf + LongNoSwapPtr(&pSurf->ofsEnd));
     }
@@ -272,26 +299,7 @@ void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
         nTriBytes  = numTriangles * sizeof(skelIndex_t) * 3;
         nSurfBytes = numVerts * sizeof(int);
 
-        pVert = (skeletorVertex_t *)((byte *)pSurf + LongNoSwapPtr(&pSurf->ofsVerts));
-
-        nVertBytes = 0;
-        for (j = 0; j < numVerts; j++) {
-            const int numMorphs  = LongNoSwapPtr(&pVert->numMorphs);
-            const int numWeights = LongNoSwapPtr(&pVert->numWeights);
-
-            const size_t iOffset = sizeof(skeletorMorph_t) * numMorphs + sizeof(skelWeight_t) * numWeights
-                                 + sizeof(skeletorVertex_t);
-
-            nVertBytes += iOffset;
-            pVert = (skeletorVertex_t *)((byte *)pVert + iOffset);
-        }
-
-        nBytesUsed = sizeof(skelSurfaceGame_t);
-        nBytesUsed += nTriBytes;
-        nBytesUsed = PAD(nBytesUsed, sizeof(void *));
-        nBytesUsed += nVertBytes;
-        nBytesUsed = PAD(nBytesUsed, sizeof(void *));
-        nBytesUsed += nSurfBytes;
+        nBytesUsed = TIKI_SurfaceGameBytes(pSurf, &nVertBytes);
 
         start_gs_ptr = (byte *)pGameSurf;
         gs_ptr       = start_gs_ptr + sizeof(skelSurfaceGame_t);

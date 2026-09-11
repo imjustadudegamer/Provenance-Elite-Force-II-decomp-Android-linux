@@ -14,7 +14,7 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "vk_local.h"
+#include "tr_local.h"
 #include "vk_firstlight.h"
 
 #ifdef USE_INTERNAL_SDL_HEADERS
@@ -34,12 +34,12 @@ root, for more details.
 
 SDL_Window *SDL_window = NULL;
 
-static cvar_t *r_fullscreen;
-static cvar_t *r_mode;
-static cvar_t *r_customwidth;
-static cvar_t *r_customheight;
-static cvar_t *r_customaspect;
-static cvar_t *r_swapInterval;
+cvar_t *r_fullscreen;
+cvar_t *r_mode;
+cvar_t *r_customwidth;
+cvar_t *r_customheight;
+cvar_t *r_customaspect;
+cvar_t *r_swapInterval;
 
 static const char *VK_HomePath_ri( void )
 {
@@ -145,7 +145,7 @@ void VKimp_FillConfig( glconfig_t *config, int width, int height, float aspect, 
 	config->driverType = GLDRV_ICD;
 	config->hardwareType = GLHW_GENERIC;
 	config->deviceSupportsGamma = qfalse;
-	config->textureCompression = TC_NONE;
+	config->textureCompression = TC_S3TC;	/* the BCn block formats are device-probed, not assumed */
 	config->textureEnvAddAvailable = qtrue;
 	config->textureEnvCombineAvailable = qtrue;
 	config->vidWidth = width;
@@ -242,7 +242,7 @@ unsigned int VKimp_InstanceExtensions( const char **out, unsigned int max )
 	return count;
 }
 
-qboolean R_SetMode( int mode, glconfig_t *glConfig )
+qboolean R_SetMode( int mode, glconfig_t *glConfigOut )
 {
 	int width = 640, height = 480;
 	float aspect = 4.0f / 3.0f;
@@ -266,6 +266,12 @@ qboolean R_SetMode( int mode, glconfig_t *glConfig )
 
 	fullscreen = r_fullscreen->integer;
 	VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
+
+	/* The module owns its glconfig: every size decision the image and 2D
+	   layers make reads this one, and the caller's copy is filled from it at
+	   the end (the GLES3 twin's shape).  A parameter named glConfig would
+	   shadow it, and the data model would run on an all-zero config. */
+	memset( &glConfig, 0, sizeof( glConfig ) );
 
 	if ( SDL_Vulkan_LoadLibrary( NULL ) != 0 ) {
 		VK_Guard_Hit( VK_GSITE_LOADER, "SDL_Vulkan_LoadLibrary", VK_ERROR_INITIALIZATION_FAILED );
@@ -303,33 +309,46 @@ qboolean R_SetMode( int mode, glconfig_t *glConfig )
 
 	free( extensionNames );
 
-	VKimp_FillConfig( glConfig, width, height, aspect, fullscreen ? qtrue : qfalse );
+	VKimp_FillConfig( &glConfig, width, height, aspect, fullscreen ? qtrue : qfalse );
+
+	if ( glConfigOut ) {
+		memcpy( glConfigOut, &glConfig, sizeof( *glConfigOut ) );
+	}
 
 	snprintf( modeCvar, sizeof( modeCvar ), "%d", mode );
-	ri.Cvar_Set( "r_mode", modeCvar );
+	if ( ri.Cvar_Set ) {
+		ri.Cvar_Set( "r_mode", modeCvar );
+	}
 
-	VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d", mode, width, height, fullscreen );
+	VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d maxTextureSize=%d",
+				  mode, width, height, fullscreen, glConfig.maxTextureSize );
 
 	return qtrue;
 }
 
-void R_SetFullscreen( qboolean fullScreen, glconfig_t *glConfig )
+void R_SetFullscreen( qboolean fullScreen, glconfig_t *glConfigOut )
 {
-	int width = glConfig ? glConfig->vidWidth : 0;
-	int height = glConfig ? glConfig->vidHeight : 0;
-	float aspect = glConfig ? glConfig->windowAspect : 1.0f;
+	int width;
+	int height;
+	float aspect;
 
 	if ( !SDL_window ) {
 		return;
 	}
 
+	width = glConfig.vidWidth;
+	height = glConfig.vidHeight;
+	aspect = glConfig.windowAspect;
+
 	if ( SDL_SetWindowFullscreen( SDL_window, fullScreen ? SDL_WINDOW_FULLSCREEN : 0 ) != 0 ) {
 		VK_Guard_Hit( VK_GSITE_SURFACE, "SDL_SetWindowFullscreen", VK_ERROR_INITIALIZATION_FAILED );
 	}
 
-	if ( glConfig ) {
-		VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
-		VKimp_FillConfig( glConfig, width, height, aspect, fullScreen );
+	VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
+	VKimp_FillConfig( &glConfig, width, height, aspect, fullScreen );
+
+	if ( glConfigOut ) {
+		memcpy( glConfigOut, &glConfig, sizeof( *glConfigOut ) );
 	}
 
 	if ( vk.swapchain != VK_NULL_HANDLE ) {

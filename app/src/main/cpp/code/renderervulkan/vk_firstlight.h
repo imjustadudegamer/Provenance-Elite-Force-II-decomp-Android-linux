@@ -19,6 +19,10 @@ root, for more details.
 
 #include <vulkan/vulkan.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "../qcommon/q_shared.h"
 
 typedef const char *( *vkHomePathFn_t )( void );
@@ -31,5 +35,9 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 void VK_BringDown( void );
 
 int VK_FirstLight_Ready( void );
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
