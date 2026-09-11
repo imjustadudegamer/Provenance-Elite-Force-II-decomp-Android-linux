@@ -566,9 +566,7 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 		/* The 8x arm, measured 47,093 vs 381,283 us/window on the identical
 		 * view: glBufferSubData into a buffer the GPU last read an age ago
 		 * stalls the writer for the drain, so the pair is orphaned per send
-		 * instead.  The re-specification happens with the default VAO bound
-		 * and the slot's opens after it -- the order bc60397 gave the store,
-		 * and the one a driver was caught mishandling under the slot's VAO. */
+		 * instead, with the default VAO bound and the slot's opened after. */
 		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 		qglBufferData( GL_ARRAY_BUFFER,
@@ -1196,6 +1194,11 @@ static qboolean RB_VboArenaMapPair( int slot ) {
 		s_arenaMapI[slot] = NULL;
 		return qfalse;
 	}
+
+	/* ANGLE unbinds after every mapBufferRange (BufferGL.cpp): some desktop
+	 * drivers refuse a mapped buffer left bound to the array target. */
+	RB_BindBuffer( GL_ARRAY_BUFFER, 0 );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
 	return qtrue;
 }
 
@@ -1493,6 +1496,7 @@ void RB_VBO_BeginFrame( void ) {
 	 * send's room test.  The flag is cleared here and nowhere else: clearing it
 	 * after the fence check erased the refusal it had just made, and the frame
 	 * wrote a store the GPU was still reading. */
+
 	s_arenaFull = qfalse;
 
 	s_arenaNext = ( s_arenaNext + 1 ) % RB_TESS_ARENA_COUNT;
