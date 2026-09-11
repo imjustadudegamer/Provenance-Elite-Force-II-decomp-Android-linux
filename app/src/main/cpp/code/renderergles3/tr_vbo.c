@@ -1283,6 +1283,9 @@ static qboolean RB_VboArenaSlotReady( int slot ) {
 	return qtrue;
 }
 
+/* Open or refuse this frame's store.  `s_arenaActive' is the frame's own answer to
+ * "may a send write the store"; it starts qfalse, so the success paths MUST set it
+ * -- an arm that only ever cleared it stayed dark while its row said "mapped". */
 static void RB_VboArenaMapFrame( void ) {
 	int		slot = s_arenaNext;
 
@@ -1303,7 +1306,9 @@ static void RB_VboArenaMapFrame( void ) {
 			}
 			s_arenaFull   = qtrue;
 			s_arenaActive = qfalse;
+			return;
 		}
+		s_arenaActive = qtrue;
 		return;
 	}
 
@@ -1314,10 +1319,14 @@ static void RB_VboArenaMapFrame( void ) {
 		s_arenaMapOrphans++;
 		s_arenaMappedOrphan = qtrue;
 		s_arenaFull         = qtrue;
+		s_arenaActive       = qfalse;
 		/* The arm is still the store; this frame's batches are the ring's. */
 		s_arenaMapWhy = RB_ARM_ORPHAN;
-	} else if ( s_arenaMapWhy == RB_ARM_ORPHAN ) {
-		s_arenaMapWhy = RB_ARM_ASKED;
+	} else {
+		s_arenaActive = qtrue;
+		if ( s_arenaMapWhy == RB_ARM_ORPHAN ) {
+			s_arenaMapWhy = RB_ARM_ASKED;
+		}
 	}
 }
 
@@ -1438,24 +1447,22 @@ void RB_VBO_BeginFrame( void ) {
 		mode = s_arenaMapped ? 2 : ( legacy ? legacy : 0 );
 
 		/* Every capture must be able to say which arm ran.  The row names the
-		 * resolution once, then again whenever it changes and again every 600
-		 * frames, so a log that starts mid-session still carries it.  `ran=` is
-		 * RB_VboArenaMode, what the previous frame actually used, not the
-		 * intent: 0.3.20 said "mapped" for a whole session while every
-		 * [BE:send] window read arena=0, because the stand-down printed once,
-		 * before that capture began, and the latch survives a renderer re-init.
-		 * `dead=` and `why=` carry the stand-down on the same cadence. */
+		 * resolution once, on any change and every 600 frames.  `ran=` is what
+		 * the previous frame used, not the intent: 0.3.20 said "mapped" for a
+		 * whole session while every [BE:send] window read arena=0.  `carried=`
+		 * and `orphans=` are the store's own session totals. */
 		if ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) {
 			ri.Printf( PRINT_ALL,
 					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s ran=%d dead=%d"
-					   " why=%d %s(0x%x) f=%d\n",
+					   " why=%d %s(0x%x) carried=%d orphans=%d f=%d\n",
 					   map, legacy, s_freshLatched ? ( s_fresh ? 1 : 0 ) : ( s_freshCvar ? s_freshCvar->integer : 0 ),
 					   s_arenaMapped ? "mapped"
 					   : ( legacy == 1 ) ? "per-frame store"
 					   : ( legacy == 2 ) ? "a/b" : "ring",
 					   RB_VboArenaMode(), s_arenaMapDead ? 1 : 0,
 					   s_arenaMapWhy, RB_ArmWhyName( s_arenaMapWhy ),
-					   (unsigned)s_arenaMapErr, RB_FrameCount() );
+					   (unsigned)s_arenaMapErr, s_arenaMapBatches, s_arenaMapOrphans,
+					   RB_FrameCount() );
 			s_armPrinted = qtrue;
 			s_armMode    = mode;
 		}
