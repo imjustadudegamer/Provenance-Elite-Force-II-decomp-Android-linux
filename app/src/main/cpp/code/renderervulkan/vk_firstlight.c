@@ -129,6 +129,20 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 			return qfalse;
 		}
 
+		if ( !VK_Texture_Init() ) {
+			VK_FirstLightRow( "fail", "stage=texture" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
+		if ( !VK_Draw_Init() ) {
+			VK_FirstLightRow( "fail", "stage=draw" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
 		if ( !VK_Vertex_Init() ) {
 			VK_FirstLightRow( "fail", "stage=vertex" );
 			VK_Sentinel_Clear();
@@ -162,6 +176,8 @@ void VK_BringDown( void )
 		qvk.DeviceWaitIdle( vk.device );
 	}
 
+	VK_Draw_Shutdown();
+	VK_Texture_Shutdown();
 	VK_Pipeline_Shutdown();
 	VK_Vertex_Shutdown();
 	VK_Descriptor_Shutdown();

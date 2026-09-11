@@ -14,7 +14,7 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "vk_local.h"
+#include "tr_local.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +91,7 @@ qboolean VK_Frame_Init( void )
 	vk.frameReady = qtrue;
 	vk.acquired = qfalse;
 	vk.acquiredImage = 0;
+	vk.lastPresentedImage = 0;
 
 	VK_Guard_Row( "VK:frame", "ready slots=%d images=%u", frames, vk.swapchainImageCount );
 
@@ -252,8 +253,10 @@ qboolean VK_Frame_RecordBegin( int slot )
 
 	qvk.CmdBeginRenderPass( vk.commandBuffers[slot], &beginInfo, VK_SUBPASS_CONTENTS_INLINE );
 
-	/* The vertex ring is bound once per pass; every draw offsets into it. */
-	VK_Draw_BindRing( vk.commandBuffers[slot] );
+	/* From here to RecordEnd the back end has a command buffer to record into;
+	   the tess surfaces the walk performs land in it. */
+	vk_back_end_slot = slot;
+	rb_set_slot( slot );
 
 	{
 		VkViewport viewport;
@@ -272,8 +275,13 @@ qboolean VK_Frame_RecordBegin( int slot )
 	}
 
 	if ( vk.demoDraw ) {
+		/* The demo triangle binds its own buffer; it goes before the ring bind
+		   so the pass's binding is the one the surfaces draw through. */
 		VK_Pipeline_DrawDemo( vk.commandBuffers[slot] );
 	}
+
+	/* The vertex ring is bound once per pass; every draw offsets into it. */
+	VK_Draw_BindRing( vk.commandBuffers[slot] );
 
 	s_passInfo = beginInfo;
 	s_clearValues[0] = clearValues[0];
@@ -288,8 +296,11 @@ qboolean VK_Frame_RecordBegin( int slot )
 void VK_Frame_RecordEnd( int slot )
 {
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE ) {
+		RB_2D_Flush();
 		qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
 	}
+
+	vk_back_end_slot = -1;
 }
 
 qboolean VK_Frame_Submit( int slot )
@@ -365,6 +376,9 @@ qboolean VK_Frame_Present( int slot )
 		return qfalse;
 	}
 
+	/* The image the frame went to: the readback proof samples this one, not a
+	   fresh acquire, which has never been rendered to. */
+	vk.lastPresentedImage = vk.acquiredImage;
 	vk.acquired = qfalse;
 
 	return qtrue;

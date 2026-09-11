@@ -132,27 +132,11 @@ static void D2_End( int slot, int t0 ) {
    first, which is exactly what the widget self-times were charging.  Returns 0
    on the recorded path so the caller's D2_End is a no-op there. */
 static int D2_Prepare( void ) {
-	if ( glConfig.smpActive ) {
-		return 0;
-	} else {
-		int	f0 = D2_T0();
-		int	t0;
-
-		/* Draw the batch only when a recorded scene is actually waiting, so a
-		   menu model the UI submits mid-walk still lands *behind* the quads
-		   drawn before it.  With nothing pending there is nothing to order
-		   against, and flushing would break the batch on every call. */
-		if ( R_PendingRenderCommands() ) {
-			RB_2D_Flush();
-		}
-
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
-		D2_End( D2P_flush, f0 );
-
-		t0 = D2_T0();
-		return t0;
-	}
+	/* The GLES3 twin used this prefix to flush the recorded frame so an
+	   immediate 2D body could draw straight into the bound framebuffer.  There
+	   is no bound framebuffer here and no immediate mode: the front end only
+	   records, the walk performs, and the prefix collapses to nothing. */
+	return 0;
 }
 
 static void D2_Roll( void ) {
@@ -204,18 +188,6 @@ static void D2_Roll( void ) {
 	s_d2StallShown = 0;
 }
 
-/* ---- the 2D bodies: run directly when the back end is single-threaded, and
- * replayed on the render thread when the same call was recorded ---- */
-
-/* ---- the 2D batch ---------------------------------------------------------
- * A UI pass issued 400-650 of these calls a frame and every one was a complete
- * surface of its own: program and state setup, a buffer re-specification and a
- * draw.  That per-call price is the menu's whole frame -- 70-115 us typical,
- * single calls spiking into milliseconds -- so quads now append to one open
- * surface and the surface is ended only when the shader, the primitive kind or
- * the view changes.  Draw order survives because every change flushes first;
- * colour never flushes, because it is baked per vertex. */
-
 static shader_t *s_2dBatchShader;
 static qboolean  s_2dBatchOpen;
 static int       s_2dBatchVerts;
@@ -224,8 +196,6 @@ static int       s_2dTriBlend;
 static int       s_2dTriVerts;
 static int       s_2dTriBase;
 
-/* A run is closed well before RB_ImmBegin would flush the stream under us, so
-   the coverage count stays exact. */
 #define RB_2D_TRI_BOX_MAX 256
 
 void RB_2D_Flush( void ) {
@@ -627,8 +597,6 @@ void RB_2D_ShaderTime( float startTime ) {
 	}
 }
 
-/* ---- entry points: record under r_smp, run the body otherwise ---- */
-
 /* A string's renderer cost, in the same roll as the quads.  The load-game menu
  * draws ~29 labels a frame and the UI probe charges the whole of it to
  * UIFakkLabel; without this slot the roll cannot say how much of that is the
@@ -655,29 +623,21 @@ void Draw_SetColor(const vec4_t rgba) {
 	r_color2D[2] = (byte)(rgba[2] * tr.identityLightByte);
 	r_color2D[3] = (byte)(rgba[3] * 255.0);
 
-	if ( glConfig.smpActive ) {
+	/* Colour is per vertex in the ring, so the record only has to reach the
+	   walk; the next quad the walk writes picks the new colour up. */
+	{
 		color2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
 		if ( cmd ) {
 			cmd->commandId = RC_2D_COLOR;
 			Com_Memcpy( cmd->color, r_color2D, sizeof( r_color2D ) );
 		}
-
-		/* The font path and RE_StretchRaw draw immediately on this thread
-		 * after parking the render thread, and they read backEnd.color2D.
-		 * Only while this thread owns the context may the front-end copy
-		 * reach the render-thread state. */
-		if ( VKimp_GLMainOwnsContext() ) {
-			backEnd.color2D[0] = r_color2D[0];
-			backEnd.color2D[1] = r_color2D[1];
-			backEnd.color2D[2] = r_color2D[2];
-			backEnd.color2D[3] = r_color2D[3];
-		}
-		return;
 	}
 
-	/* Colour is per vertex in both stores, so a change splits neither. */
-	RB_2D_SetColor( r_color2D );
+	backEnd.color2D[0] = r_color2D[0];
+	backEnd.color2D[1] = r_color2D[1];
+	backEnd.color2D[2] = r_color2D[2];
+	backEnd.color2D[3] = r_color2D[3];
 
 	D2_End( D2P_setcolor, t0 );
 }
@@ -692,7 +652,7 @@ void R_ChangeTextColor(int index) {
 	color[0] = g_color_table[index][0];
 	color[1] = g_color_table[index][1];
 	color[2] = g_color_table[index][2];
-	color[3] = ( glConfig.smpActive ? r_color2D[3] : backEnd.color2D[3] ) / 255.0;
+	color[3] = backEnd.color2D[3] / 255.0;
 	Draw_SetColor(color);
 }
 
@@ -712,7 +672,7 @@ void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, flo
 		h = shader->unfoggedStages[0]->bundle[0].image[0]->height;
 	}
 
-	if ( glConfig.smpActive ) {
+	{
 		stretchPic2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
 		if ( cmd ) {
@@ -721,10 +681,7 @@ void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, flo
 			cmd->x = x; cmd->y = y; cmd->w = w; cmd->h = h;
 			cmd->s1 = s1; cmd->t1 = t1; cmd->s2 = s2; cmd->t2 = t2;
 		}
-		return;
 	}
-
-	RB_2D_StretchPic( shader, x, y, w, h, s1, t1, s2, t2 );
 
 	D2_End( D2P_stretchpic, t0 );
 }
@@ -745,7 +702,7 @@ void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, fl
 		h = shader->unfoggedStages[0]->bundle[0].image[0]->height;
 	}
 
-	if ( glConfig.smpActive ) {
+	{
 		stretchPic2Command_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
 		if ( cmd ) {
@@ -755,10 +712,7 @@ void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, fl
 			cmd->s1 = s1; cmd->t1 = t1; cmd->s2 = s2; cmd->t2 = t2;
 			cmd->sx = sx; cmd->sy = sy;
 		}
-		return;
 	}
-
-	RB_2D_StretchPic2( shader, x, y, w, h, s1, t1, s2, t2, sx, sy );
 
 	D2_End( D2P_stretchpic2, t0 );
 }
@@ -783,7 +737,7 @@ void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 	picw = shader->unfoggedStages[0]->bundle[0].image[0]->uploadWidth;
 	pich = shader->unfoggedStages[0]->bundle[0].image[0]->uploadHeight;
 
-	if ( glConfig.smpActive ) {
+	{
 		tilePic2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
 		if ( cmd ) {
@@ -793,10 +747,7 @@ void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 			cmd->picw = picw; cmd->pich = pich;
 			cmd->offsetX = 0; cmd->offsetY = 0;
 		}
-		return;
 	}
-
-	RB_2D_TilePic( shader, x, y, w, h, picw, pich );
 
 	D2_End( D2P_tilepic, t0 );
 }
@@ -821,7 +772,7 @@ void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, i
 	picw = shader->unfoggedStages[0]->bundle[0].image[0]->uploadWidth;
 	pich = shader->unfoggedStages[0]->bundle[0].image[0]->uploadHeight;
 
-	if ( glConfig.smpActive ) {
+	{
 		tilePic2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
 		if ( cmd ) {
@@ -831,10 +782,7 @@ void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, i
 			cmd->picw = picw; cmd->pich = pich;
 			cmd->offsetX = offsetX; cmd->offsetY = offsetY;
 		}
-		return;
 	}
-
-	RB_2D_TilePicOffset( shader, x, y, w, h, picw, pich, offsetX, offsetY );
 
 	D2_End( D2P_tilepicoffset, t0 );
 }
@@ -850,7 +798,7 @@ void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhand
 		shader = tr.defaultShader;
 	}
 
-	if ( glConfig.smpActive ) {
+	{
 		trianglePic2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
 		if ( cmd ) {
@@ -859,10 +807,7 @@ void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhand
 			Com_Memcpy( cmd->points, vPoints, sizeof( cmd->points ) );
 			Com_Memcpy( cmd->texCoords, vTexCoords, sizeof( cmd->texCoords ) );
 		}
-		return;
 	}
-
-	RB_2D_TrianglePic( shader, vPoints, vTexCoords );
 
 	D2_End( D2P_trianglepic, t0 );
 }
@@ -1045,12 +990,7 @@ void AddBox(float x, float y, float w, float h) {
 		return;
 	}
 
-	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
-		RB_2D_Box( x, y, w, h, qfalse );
-		D2_End( D2P_box, t0 );
-		return;
-	}
+	t0 = D2_Prepare();
 
 	{
 		box2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
@@ -1070,12 +1010,7 @@ void DrawBox(float x, float y, float w, float h) {
 		return;
 	}
 
-	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
-		RB_2D_Box( x, y, w, h, qtrue );
-		D2_End( D2P_box, t0 );
-		return;
-	}
+	t0 = D2_Prepare();
 
 	{
 		box2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
@@ -1095,12 +1030,7 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
 		return;
 	}
 
-	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
-		RB_2D_LineLoop( points, count, stipple_factor, stipple_mask );
-		D2_End( D2P_lineloop, t0 );
-		return;
-	}
+	t0 = D2_Prepare();
 
 	if ( count <= 0 ) {
 		return;
@@ -1118,17 +1048,14 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
 			Com_Memcpy( (vec2_t *)( cmd + 1 ), points, count * sizeof( vec2_t ) );
 		}
 	}
+
+	D2_End( D2P_lineloop, t0 );
 }
 
 void Set2DWindow(int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f) {
 	int		t0;
 
-	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
-		RB_2D_SetWindow( x, y, w, h, left, right, bottom, top, n, f );
-		D2_End( D2P_setwindow, t0 );
-		return;
-	}
+	t0 = D2_Prepare();
 
 	if ( r_window2DValid && r_scissor2DValid &&
 		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&
@@ -1155,17 +1082,12 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 			r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = w; r_scissor2D[3] = h;
 		}
 	}
+
+	D2_End( D2P_setwindow, t0 );
 }
 
 void RE_Scissor(int x, int y, int width, int height) {
-	int		t0;
-
-	if ( !glConfig.smpActive ) {
-		t0 = D2_T0();
-		RB_2D_Scissor( x, y, width, height );
-		D2_End( D2P_scissor, t0 );
-		return;
-	}
+	int		t0 = D2_T0();
 
 	if ( r_scissor2DValid &&
 		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == width && r_scissor2D[3] == height ) {
@@ -1187,14 +1109,6 @@ void RE_Scissor(int x, int y, int width, int height) {
 
 void Set2DInitialShaderTime(float startTime)
 {
-	if ( !glConfig.smpActive ) {
-		int		t0 = D2_T0();
-
-		RB_2D_ShaderTime( startTime );
-		D2_End( D2P_shadertime, t0 );
-		return;
-	}
-
 	{
 		shaderTime2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 

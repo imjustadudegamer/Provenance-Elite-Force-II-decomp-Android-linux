@@ -15,25 +15,28 @@ layout( binding = 0 ) uniform sampler2D uTexture;
 
 layout( location = 0 ) out vec4 outColor;
 
+/* The same block the vertex stage declares: one push-constant range covers both
+   stages, which is what the pipeline layout declares. */
 layout( push_constant ) uniform Push
 {
-	layout( offset = 0 ) float alphaTest;	/* 0.0 = off, else the compare bound */
-	layout( offset = 4 ) float alphaLess;	/* 1.0 = the test is 'less than' */
-	layout( offset = 8 ) float unused0;
-	layout( offset = 12 ) float unused1;
+	layout( offset = 0 ) mat4 ortho;
+	layout( offset = 64 ) vec4 alphaTest;	/* x = bound (0 = off), y = 1 when the test is 'less than' */
 } pc;
 
 void main()
 {
 	vec4 texel = texture( uTexture, vTexCoord );
+#ifdef EF2_PROBE_NOTEX
+	texel = vec4( 1.0, 1.0, 1.0, 1.0 );
+#endif
 	vec4 colour = texel * vColor;
 
-	if ( pc.alphaTest > 0.0 ) {
-		if ( pc.alphaLess > 0.5 ) {
-			if ( texel.a >= pc.alphaTest ) {
+	if ( pc.alphaTest.x > 0.0 ) {
+		if ( pc.alphaTest.y > 0.5 ) {
+			if ( texel.a >= pc.alphaTest.x ) {
 				discard;
 			}
-		} else if ( texel.a < pc.alphaTest ) {
+		} else if ( texel.a < pc.alphaTest.x ) {
 			discard;
 		}
 	}

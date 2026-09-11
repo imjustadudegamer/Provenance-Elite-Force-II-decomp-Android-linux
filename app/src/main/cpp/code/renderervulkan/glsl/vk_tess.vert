@@ -13,6 +13,7 @@
 layout( push_constant ) uniform Push
 {
 	layout( offset = 0 ) mat4 ortho;
+	layout( offset = 64 ) vec4 alphaTest;	/* the fragment stage reads this one */
 } pc;
 
 layout( location = 0 ) in vec3 aPosition;
@@ -24,7 +25,15 @@ layout( location = 1 ) out vec4 vColor;
 
 void main()
 {
+#ifdef EF2_PROBE_VERTINDEX
+	/* diagnostic: ignore the vertex input entirely; three dots across the frame */
+	gl_Position = vec4( -0.6 + 0.6 * float( gl_VertexIndex ), 0.0, 0.0, 1.0 );
+#elif defined( EF2_PROBE_FIXEDXFORM )
+	/* diagnostic: ignore the pushed matrix entirely */
+	gl_Position = vec4( aPosition.xy / 640.0 - vec2( 0.5 ), 0.0, 1.0 );
+#else
 	gl_Position = pc.ortho * vec4( aPosition, 1.0 );
+#endif
 	vTexCoord   = aTexCoord;
 	vColor      = aColor;
 }

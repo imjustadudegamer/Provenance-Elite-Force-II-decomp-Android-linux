@@ -164,7 +164,7 @@ void RB_ExecuteRenderCommands( const void *data )
 
 		case RC_2D_SET_WINDOW:
 		{
-			setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )( cmds + sizeof( int ) );
+			setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )cmds;
 
 			VK_Draw_Set2D( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->w, cmd->h,
 						   cmd->left, cmd->right, cmd->bottom, cmd->top, cmd->n, cmd->f );
@@ -174,16 +174,102 @@ void RB_ExecuteRenderCommands( const void *data )
 
 		case RC_2D_SCISSOR:
 		{
-			scissor2DCommand_t *cmd = ( scissor2DCommand_t * )( cmds + sizeof( int ) );
+			scissor2DCommand_t *cmd = ( scissor2DCommand_t * )cmds;
 
 			VK_Draw_SetScissor( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->width, cmd->height );
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
 			break;
 		}
 
+		case RC_2D_COLOR:
+		{
+			color2DCommand_t *cmd = ( color2DCommand_t * )cmds;
+
+			RB_2D_SetColor( cmd->color );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_STRETCH_PIC:
+		{
+			stretchPic2DCommand_t *cmd = ( stretchPic2DCommand_t * )cmds;
+
+			RB_2D_StretchPic( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h,
+							  cmd->s1, cmd->t1, cmd->s2, cmd->t2 );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_STRETCH_PIC2:
+		{
+			stretchPic2Command_t *cmd = ( stretchPic2Command_t * )cmds;
+
+			RB_2D_StretchPic2( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h,
+							   cmd->s1, cmd->t1, cmd->s2, cmd->t2, cmd->sx, cmd->sy );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_TILE_PIC:
+		{
+			tilePic2DCommand_t *cmd = ( tilePic2DCommand_t * )cmds;
+
+			RB_2D_TilePic( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h, cmd->picw, cmd->pich );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_TILE_PIC_OFFSET:
+		{
+			tilePic2DCommand_t *cmd = ( tilePic2DCommand_t * )cmds;
+
+			RB_2D_TilePicOffset( cmd->shader, cmd->x, cmd->y, cmd->w, cmd->h,
+								 cmd->picw, cmd->pich, cmd->offsetX, cmd->offsetY );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_TRIANGLE_PIC:
+		{
+			trianglePic2DCommand_t *cmd = ( trianglePic2DCommand_t * )cmds;
+
+			RB_2D_TrianglePic( cmd->shader, ( const vec2_t * )cmd->points,
+							   ( const vec2_t * )cmd->texCoords );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_BOX:
+		{
+			box2DCommand_t *cmd = ( box2DCommand_t * )cmds;
+
+			RB_2D_Box( cmd->x, cmd->y, cmd->w, cmd->h, cmd->blend ? qtrue : qfalse );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_LINE_LOOP:
+		{
+			lineLoop2DCommand_t *cmd = ( lineLoop2DCommand_t * )cmds;
+
+			RB_2D_LineLoop( ( const vec2_t * )( cmd + 1 ), cmd->count,
+							cmd->stipple_factor, cmd->stipple_mask );
+			cmds += PAD( (int)sizeof( *cmd ) + cmd->count * (int)sizeof( vec2_t ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_SHADER_TIME:
+		{
+			shaderTime2DCommand_t *cmd = ( shaderTime2DCommand_t * )cmds;
+
+			RB_2D_ShaderTime( cmd->startTime );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
 		case RC_2D_FONT_STRING:
 		{
-			fontString2DCommand_t *cmd = ( fontString2DCommand_t * )( cmds + sizeof( int ) );
+			fontString2DCommand_t *cmd = ( fontString2DCommand_t * )cmds;
 
 			RB_FontRunDraw( cmd, ( fontGlyph_t * )( cmd + 1 ) );
 			cmds += PAD( sizeof( *cmd ) + cmd->numGlyphs * (int)sizeof( fontGlyph_t ), sizeof( void * ) );

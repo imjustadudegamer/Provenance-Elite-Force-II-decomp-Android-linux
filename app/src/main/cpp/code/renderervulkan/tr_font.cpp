@@ -21,7 +21,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-
 #include "tr_local.h"
 
 #define MAX_LOADED_FONTS 255
@@ -680,6 +679,21 @@ static void R_FontRunWrite( void ) {
 			tess.xyz[tess.numVertexes + 3][1] *= s_fontRunHeightScale;
 		}
 
+		/* The glyph quad carries the 2D colour per vertex, exactly as the
+		   stretch-pic quads do: without it the surface inherits whatever the
+		   previous surface left in the array and the text draws transparent. */
+		{
+			int v;
+
+			for ( v = 0; v < 4; v++ ) {
+				tess.vertexColors[tess.numVertexes + v][0] = backEnd.color2D[0];
+				tess.vertexColors[tess.numVertexes + v][1] = backEnd.color2D[1];
+				tess.vertexColors[tess.numVertexes + v][2] = backEnd.color2D[2];
+				tess.vertexColors[tess.numVertexes + v][3] = backEnd.color2D[3];
+			}
+			tess.vertexColorValid = qtrue;
+		}
+
 		tess.numVertexes += 4;
 		tess.numIndexes += 6;
 	}
@@ -770,6 +784,7 @@ static void R_FontRunFlush( void ) {
 		return;
 	}
 
+;
 	cmd->commandId = RC_2D_FONT_STRING;
 	cmd->shader = s_fontRunShader;
 	cmd->numGlyphs = s_fontRunCount;
@@ -831,15 +846,14 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         return;
     }
 
-    record = glConfig.smpActive ? 1 : 0;
+    /* There is no immediate mode to fall back to: the front end records, the
+       walk performs, so a string is always one recorded run per page-and-colour. */
+    record = 1;
 
-    if (!record) {
-        /* The string opens its own surface below, and RB_BeginSurface resets the
-           tess -- so the 2D batch has to be drawn first or every quad appended
-           since the last flush is dropped on the floor. */
+    {
+        /* The string's run is recorded like every other 2D call; there is no
+           immediate path to prepare for, so this is the timing hook only. */
         D2_StringBegin(&s_fontStringT0);
-        RB_2D_Flush();
-        R_FlushRenderCommands();
     }
 
     if (font->trhandle != r_sequencenumber) {

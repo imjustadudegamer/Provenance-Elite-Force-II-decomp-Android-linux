@@ -15,15 +15,10 @@ root, for more details.
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * vk_texture.c -- the texture upload path.
- *
- * The GLES3 twin's tr_hwtex.c hands each mip to glCompressedTexImage2D /
- * glTexImage2D; this module hands the same bytes to a staging buffer and a
- * vkCmdCopyBufferToImage into a device-local image, then lays the image out
- * for sampling.  Everything the boot path can return is guarded, and every
- * format the loaders report is mapped onto a Vulkan format that the device
- * has actually confirmed (ANDROID_VULKAN_RENDERER_SDK.md 6/7: the compressed
- * formats are probed, never assumed).
+ * vk_texture.c -- the texture upload path: a staging copy per mip, a
+ * vkCmdCopyBufferToImage into a device-local image, then a layout barrier for
+ * sampling.  Every format the loaders report is mapped onto a Vulkan format
+ * the device has confirmed (SDK doc 6/7: probed, never assumed).
  */
 
 #include "tr_local.h"
@@ -95,9 +90,7 @@ VkFormat VK_Texture_FormatFor( int internalFormat, qboolean *supported )
 			*supported = qtrue;
 		}
 	} else if ( format != VK_FORMAT_R8G8B8A8_UNORM ) {
-		/* A device without the compressed block formats still has to show the
-		   art: the caller decompresses instead of uploading blocks. */
-		VK_Guard_Row( "VK:texture", "format=%d unsupported optimal=0x%x fallback=rgba8",
+			VK_Guard_Row( "VK:texture", "format=%d unsupported optimal=0x%x fallback=rgba8",
 					  internalFormat, (unsigned int)props.optimalTilingFeatures );
 		return VK_FORMAT_R8G8B8A8_UNORM;
 	} else {
@@ -353,8 +346,14 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 		return qfalse;
 	}
 
-	/* The engine hands the loader's bytes straight through: no copy, no
-	   reinterpretation, so a BC block stays a BC block. */
+	/* A zero extent cannot be contained in the image (VUID-07970); the caller
+	   that computes one has walked its chain past the last level. */
+	if ( width < 1 || height < 1 || mipLevel < 0 || mipLevel >= tex->mipLevels ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "upload level outside the image",
+					  VK_ERROR_INITIALIZATION_FAILED );
+		return qfalse;
+	}
+
 	memset( &stagingInfo, 0, sizeof( stagingInfo ) );
 	stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	stagingInfo.size = (VkDeviceSize)bytes;
@@ -455,6 +454,222 @@ done:
 	}
 	if ( stagingMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
 		qvk.FreeMemory( vk.device, stagingMemory, NULL );
+	}
+
+	return ok;
+}
+
+/* Lay the image out for sampling.  The upload leaves it in TRANSFER_DST; the
+   pipeline samples it in SHADER_READ_ONLY, and the barrier is what makes the
+   copy visible to the sample (validation names the missing one as an invalid
+   image layout at submit, which is how it was found). */
+qboolean VK_Texture_Publish( int handle )
+{
+	vkTexture_t *tex;
+	VkCommandBufferAllocateInfo allocInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkFenceCreateInfo fenceInfo;
+	VkFence fence = VK_NULL_HANDLE;
+	VkSubmitInfo submitInfo;
+	VkImageMemoryBarrier barrier;
+	VkResult result;
+
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		return qfalse;
+	}
+
+	tex = &vk_textures[handle];
+	if ( !tex->inUse ) {
+		return qfalse;
+	}
+
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = vk.commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+						   "vkAllocateCommandBuffers(publish)" ) ) {
+		return qfalse;
+	}
+
+	memset( &beginInfo, 0, sizeof( beginInfo ) );
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
+						   "vkBeginCommandBuffer(publish)" ) ) {
+		return qfalse;
+	}
+
+	memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = tex->image;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.levelCount = (uint32_t)tex->mipLevels;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+							0, 0, NULL, 0, NULL, 1, &barrier );
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(publish)" ) ) {
+		return qfalse;
+	}
+
+	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
+						   "vkCreateFence(publish)" ) ) {
+		return qfalse;
+	}
+
+	memset( &submitInfo, 0, sizeof( submitInfo ) );
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+						   "vkQueueSubmit(publish)" ) ) {
+		return qfalse;
+	}
+
+	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(publish)" );
+
+	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+		qvk.DestroyFence( vk.device, fence, NULL );
+	}
+	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
+		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+	}
+
+	return qtrue;
+}
+
+/* A readback of texel (0,0): the offline proof that the copy actually landed. */
+qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
+{
+	vkTexture_t *tex;
+	VkCommandBufferAllocateInfo allocInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkBufferImageCopy region;
+	VkFenceCreateInfo fenceInfo;
+	VkFence fence = VK_NULL_HANDLE;
+	VkSubmitInfo submitInfo;
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	void *mapped = NULL;
+	VkResult result;
+	qboolean ok = qfalse;
+
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		return qfalse;
+	}
+
+	tex = &vk_textures[handle];
+	if ( !tex->inUse ) {
+		return qfalse;
+	}
+
+	if ( !VK_Memory_CreateBuffer( 16, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+								  &buffer, &memory ) ) {
+		return qfalse;
+	}
+
+	result = qvk.MapMemory( vk.device, memory, 0, 16, 0, &mapped );
+	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkMapMemory(readtexel)" ) ) {
+		goto done;
+	}
+
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = vk.commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+						   "vkAllocateCommandBuffers(readtexel)" ) ) {
+		goto done;
+	}
+
+	memset( &beginInfo, 0, sizeof( beginInfo ) );
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
+						   "vkBeginCommandBuffer(readtexel)" ) ) {
+		goto done;
+	}
+
+	memset( &region, 0, sizeof( region ) );
+	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.imageSubresource.layerCount = 1;
+	region.imageOffset.x = x;
+	region.imageOffset.y = y;
+	region.imageExtent.width = 1;
+	region.imageExtent.height = 1;
+	region.imageExtent.depth = 1;
+
+	/* the image is in SHADER_READ_ONLY after Publish; a copy source is a read */
+	qvk.CmdCopyImageToBuffer( cmd, tex->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+							  buffer, 1, &region );
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(readtexel)" ) ) {
+		goto done;
+	}
+
+	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
+						   "vkCreateFence(readtexel)" ) ) {
+		goto done;
+	}
+
+	memset( &submitInfo, 0, sizeof( submitInfo ) );
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+						   "vkQueueSubmit(readtexel)" ) ) {
+		goto done;
+	}
+
+	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(readtexel)" );
+
+	if ( mapped ) {
+		memcpy( out, mapped, 4 );
+		ok = qtrue;
+	}
+
+done:
+	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+		qvk.DestroyFence( vk.device, fence, NULL );
+	}
+	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
+		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+	}
+	if ( mapped ) {
+		qvk.UnmapMemory( vk.device, memory );
+	}
+	if ( buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+		qvk.DestroyBuffer( vk.device, buffer, NULL );
+	}
+	if ( memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, memory, NULL );
 	}
 
 	return ok;

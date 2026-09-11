@@ -19,6 +19,10 @@ root, for more details.
 
 #include <vulkan/vulkan.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "../qcommon/q_shared.h"
 
 typedef enum {
@@ -68,5 +72,9 @@ void VK_Sentinel_SetIO(
 qboolean VK_Sentinel_Present( void );
 void VK_Sentinel_Arm( void );
 void VK_Sentinel_Clear( void );
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

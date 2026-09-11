@@ -42,8 +42,11 @@ trGlobals_t			tr;
 int					r_sequencenumber = 1;
 glconfig_t			glConfig;
 
-static qboolean		s_rbFrameRecording;
-static int			s_rbSlot;
+/* The slot the walk is recording into, or -1 when no frame is walking.  The
+   frame layer writes it: it is the one thing that knows when a command buffer
+   is open. */
+int					vk_back_end_slot = -1;
+static int			s_rbSlot = -1;
 
 void RB_InitBackend( void )
 {
@@ -94,15 +97,25 @@ void RB_BeginSurface( shader_t *shader, int fogNum )
 
 	tess.xstages = state->unfoggedStages;
 	tess.numPasses = state->numUnfoggedPasses;
-	tess.currentStageIteratorFunc = state->optimalStageIteratorFunc;
+
+	/* A surface inside the 2D window takes the 2D walk.  The shader compiler
+	   hands a font or HUD shader the vertex-lit fast path (a font shader is
+	   created with LIGHTMAP_NONE and the fast path keys on that), and the
+	   vertex-lit walk is 3D world geometry: its lighting terms are the M3
+	   surface.  In the 2D window the generic walk is the correct one, and it
+	   is the one the texture, glyph and box fixtures are proven with. */
+	if ( backEnd.in2D ) {
+		tess.currentStageIteratorFunc = RB_StageIteratorGeneric;
+	} else {
+		tess.currentStageIteratorFunc = state->optimalStageIteratorFunc;
+	}
 }
 
-/* ---- the stage pass ------------------------------------------------------
- * One stage, one pipeline, one bind, one indexed draw.  The state tuple is
- * the whole of the fixed-function state the stage asked for: blend from the
- * GLS_SRCBLEND/GLS_DSTBLEND fields, depth from GLS_DEPTHMASK_TRUE and
- * GLS_DEPTHTEST_DISABLE, the cull from the shader's own cullType, and the
- * alpha test from GLS_ATEST_*. */
+/* ---- the stage pass: one stage, one pipeline, one bind, one indexed draw.
+ * The state tuple is the whole of the fixed-function state the stage asked
+ * for: blend from the GLS_SRCBLEND/GLS_DSTBLEND fields, depth from
+ * GLS_DEPTHMASK_TRUE and GLS_DEPTHTEST_DISABLE, the cull from the shader's
+ * own cullType, and the alpha test from GLS_ATEST_*. */
 
 static qboolean RB_StagePass( shaderStage_t *stage )
 {
@@ -138,7 +151,9 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 	memset( &key, 0, sizeof( key ) );
 	key.topology = VK_IMM_TRIANGLES;
 	key.stateBits = stage->stateBits;
-	key.cull = tess.shader->cullType;
+	/* The 2D window is two-sided, as the GLES3 twin's RB_2D_SetWindow is. */
+	key.cull = ( backEnd.in2D || tess.shader->lightmapIndex == LIGHTMAP_2D )
+			   ? CT_TWO_SIDED : tess.shader->cullType;
 	key.depthTest = ( stage->stateBits & GLS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
 	key.depthWrite = ( stage->stateBits & GLS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
 
@@ -148,6 +163,7 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 	}
 
 	qvk.CmdBindPipeline( vk.commandBuffers[s_rbSlot], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
+	VK_Draw_SetAlphaTest( vk.commandBuffers[s_rbSlot], stage->stateBits );
 
 	clamp = ( tess.shader->clampTime != 0.0f )
 			|| ( image->flags & IMGFLAG_CLAMPTOEDGE ) ? qtrue : qfalse;
@@ -179,10 +195,10 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 			ringVerts[i].color[2] = tess.vertexColors[i][2];
 			ringVerts[i].color[3] = tess.vertexColors[i][3];
 		} else {
-			ringVerts[i].color[0] = 255;
-			ringVerts[i].color[1] = 255;
-			ringVerts[i].color[2] = 255;
-			ringVerts[i].color[3] = 255;
+			ringVerts[i].color[0] = 254;
+			ringVerts[i].color[1] = 254;
+			ringVerts[i].color[2] = 254;
+			ringVerts[i].color[3] = 254;
 		}
 	}
 
@@ -193,6 +209,12 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 
 	memcpy( ringIndexes, tess.indexes, (size_t)tess.numIndexes * sizeof( glIndex_t ) );
 
+
+
+	/* The ring is bound per surface: the demo triangle binds its own buffer
+	   inside this pass, and a bind is cheaper than reasoning about which one
+	   is current. */
+	VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
 	VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );
 
 	vk_ring_note( vertexBase + tess.numVertexes, indexBase + tess.numIndexes );
@@ -200,12 +222,27 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 	return qtrue;
 }
 
-void RB_StageIteratorGeneric2D( void )
+/* The generic stage iterator: one pass per active stage, which is the whole of
+   the 2D/HUD walk.  A shader that needs a 3D term -- spherical lighting, a fog
+   stage, a vertex deform -- is the 3D surface's work and is named by its guard
+   rather than drawn wrong. */
+void RB_StageIteratorGeneric( void )
 {
 	int stage;
 
+	/* The 3D terms -- spherical lighting, a fog stage, a vertex deform -- are
+	   the 3D surface's work.  In the 2D window they do not apply: a font or
+	   HUD shader carries the 2D generators R_LoadFontShader gave it, its fog
+	   number is zero by construction, and the window's own colour is per
+	   vertex. */
+	if ( !backEnd.in2D
+		 && ( tess.shader->needsLSpherical || tess.fogNum > 0 || tess.shader->numDeforms > 0 ) ) {
+		VK_M3_Touched( "3D stage terms (lighting/fog/deform)" );
+		return;
+	}
+
 	for ( stage = 0; stage < tess.numPasses; stage++ ) {
-		if ( !tess.xstages[stage] ) {
+		if ( !tess.xstages[stage] || !tess.xstages[stage]->active ) {
 			continue;
 		}
 		RB_StagePass( tess.xstages[stage] );
@@ -229,7 +266,9 @@ void RB_EndSurface( void )
 		ri.Error( ERR_DROP, "RB_EndSurface() - SHADER_MAX_VERTEXES hit" );
 	}
 
-	if ( !s_rbFrameRecording ) {
+	s_rbSlot = vk_back_end_slot;
+
+	if ( s_rbSlot < 0 || vk.commandBuffers[s_rbSlot] == VK_NULL_HANDLE ) {
 		/* A surface closed with no frame recording is the front end tidying up
 		   between frames; there is no command buffer to record into. */
 		tess.numIndexes = 0;
@@ -238,7 +277,7 @@ void RB_EndSurface( void )
 	}
 
 	if ( !tess.currentStageIteratorFunc ) {
-		tess.currentStageIteratorFunc = RB_StageIteratorGeneric2D;
+		tess.currentStageIteratorFunc = RB_StageIteratorGeneric;
 	}
 
 	backEnd.pc.c_shaders++;
@@ -251,12 +290,20 @@ void RB_EndSurface( void )
 	tess.numIndexes = 0;
 }
 
-/* ---- the frame walk ------------------------------------------------------ */
+void rb_set_slot( int slot )
+{
+	s_rbSlot = slot;
+}
 
 void RB_RecordFramePrologue( void )
 {
 	VK_VertexRing_ResetFrame();
-	s_rbFrameRecording = qfalse;
+	s_rbSlot = -1;
+
+	/* Every frame is a fresh command buffer: the window and scissor the last
+	   one issued are not in force, so the frame must record them again even
+	   when the values did not change. */
+	R_Invalidate2DWindowCache();
 }
 
 qboolean RB_RecordSurfaces( VkCommandBuffer cmd )
@@ -483,10 +530,6 @@ void RB_ImmTexCoord2f( float s, float t )
 	}
 }
 
-/* ---- the front-end stream helpers the copied front end calls ------------- */
-
-
-
 void RB_StreamBeginDrawSurf( void )
 {
 }
@@ -494,15 +537,6 @@ void RB_StreamBeginDrawSurf( void )
 void RB_StreamEndDrawSurf( void )
 {
 }
-
-
-
-
-
-
-
-
-
 
 void RB_ShowImages( qboolean quiet )
 {

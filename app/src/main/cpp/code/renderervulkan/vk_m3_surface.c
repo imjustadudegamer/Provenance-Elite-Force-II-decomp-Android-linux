@@ -18,18 +18,18 @@ root, for more details.
  * vk_m3_surface.c -- the 3D stage iterators' reserved seats.
  *
  * The shader compiler hands every shader an `optimalStageIteratorFunc`, so the
- * data model has to name the 3D iterators even before they draw anything.  The
- * bodies here are the guard, not a silent stub: any one of them reached while
- * the boot is still on the 2D path prints a [VK:guard] row naming the site,
- * which is exactly the signal that says the 3D surface has been touched
- * early.  Milestone M3 replaces each body with its real walk; nothing in the
- * M2 boot path can reach them, because RE_RenderScene never builds a 3D scene
- * in this milestone and RE_RenderScene logs its own [VK:stub] row when called.
+ * data model names the 3D iterators before they draw anything.  These bodies
+ * are the guard, not a silent stub: reaching one prints a [VK:guard] row that
+ * names the site.  M3 replaces each body with its real walk; nothing in the
+ * M2 boot path reaches them, because RE_RenderScene never builds a 3D scene
+ * in this milestone and logs its own [VK:stub] row when called.
  */
 
 #include "tr_local.h"
 
-static void VK_M3_Touched( const char *what )
+/* Named in the header: the back end reaches it for a shader that carries 3D
+   terms the 2D walk does not evaluate. */
+void VK_M3_Touched( const char *what )
 {
 	static int rows;
 
@@ -37,11 +37,6 @@ static void VK_M3_Touched( const char *what )
 		VK_Guard_Hit( VK_GSITE_QUIRK, what, VK_INCOMPLETE );
 	}
 	rows++;
-}
-
-void RB_StageIteratorGeneric( void )
-{
-	VK_M3_Touched( "RB_StageIteratorGeneric (3D surface, M3)" );
 }
 
 void RB_StageIteratorSky( void )

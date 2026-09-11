@@ -17,20 +17,11 @@ root, for more details.
 /*
  * vk_draw.c -- the pipeline and descriptor substrate the back end draws with.
  *
- * This is the Vulkan half of the GLES3 twin's tr_program.c + GLES3_ApplyStateBits:
- * the state tuple a shader stage carries (the GLS_* bits, the primitive
- * topology, the cull) becomes a VkPipeline here, built against the render pass
- * it binds in and cached on the tuple so a menu's few hundred quads share a
- * handful of pipelines.  Textures bind through the compatibility descriptor
- * path (one combined image sampler per stage draw, the set cached on the
- * view/sampler pair) exactly as ANDROID_VULKAN_RENDERER_SDK.md 7 describes;
- * the bindless path A is sized and selected at bring-up and is taken up by the
- * 3D stage iterators.
- *
- * Every pipeline is created against the pass it binds in (the Adreno banded-2D
- * fix in the plan's 2.2), the vertex ring is bound once per pass, and the 2D
- * ortho projection travels as a push constant so a window change costs nothing
- * but a write.
+ * The Vulkan half of the GLES3 twin's tr_program.c + GLES3_ApplyStateBits: a
+ * shader stage's state tuple (the GLS_* bits, the topology, the cull) becomes
+ * a VkPipeline, built against the pass it binds in and cached on the tuple.
+ * Textures bind through the compatibility descriptor path (SDK doc 7); the
+ * bindless path A is sized and selected at bring-up for the 3D iterators.
  */
 
 #include "tr_local.h"
@@ -48,9 +39,8 @@ typedef struct {
 
 static vkDrawShaders_t	vk_draw;
 
-/* ---- the pipeline cache ---------------------------------------------------
- * A pipeline per state tuple, created on demand and kept for the module's
- * life; the disk cache warms the builds. */
+/* ---- the pipeline cache: a pipeline per state tuple, kept for the
+ * module's life; the disk cache warms the builds. */
 #define VK_PIPELINE_SLOTS 128
 
 typedef struct {
@@ -62,9 +52,8 @@ typedef struct {
 static vkPipelineSlot_t	vk_pipelines[VK_PIPELINE_SLOTS];
 static int				vk_numPipelines;
 
-/* ---- the descriptor sets --------------------------------------------------
- * A set per (view, sampler) pair, cached: the menu rebinds the same art every
- * frame, so the same few sets are reused and never freed mid-frame. */
+/* ---- the descriptor sets: one per (view, sampler) pair, cached, since the
+ * menu rebinds the same art every frame. */
 #define VK_SET_SLOTS 256
 
 typedef struct {
@@ -78,7 +67,8 @@ static vkSetSlot_t	vk_sets[VK_SET_SLOTS];
 static int			vk_numSets;
 
 typedef struct {
-	float	ortho[16];
+	float	ortho[16];		/* offset 0, the vertex stage */
+	float	alphaTest[4];	/* offset 64: x = the bound (0 = off), y = 1 when 'less than' */
 } vkPushConstants_t;
 
 static vkPushConstants_t	vk_current;
@@ -123,7 +113,7 @@ static qboolean VK_Draw_Layout( void )
 	}
 
 	memset( &pushRange, 0, sizeof( pushRange ) );
-	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushRange.offset = 0;
 	pushRange.size = sizeof( vkPushConstants_t );
 
@@ -534,8 +524,22 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	m[14] = 0.5f - ( f + n ) / ( 2.0f * fn );
 	m[15] = 1.0f;
 
-	qvk.CmdPushConstants( cmd, vk_draw.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-						  sizeof( m ), m );
+	{
+		vkPushConstants_t push;
+
+		memset( &push, 0, sizeof( push ) );
+		memcpy( push.ortho, m, sizeof( m ) );
+		push.alphaTest[0] = 0.0f;	/* the alpha test is per stage, set by the back end */
+		push.alphaTest[1] = 0.0f;
+
+		qvk.CmdPushConstants( cmd, vk_draw.layout,
+							  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+							  0, sizeof( push ), &push );
+
+	/* The 2D window is in force from here until the frame ends: the surfaces
+	   the walk performs inside it take the 2D walk. */
+	backEnd.in2D = qtrue;
+	}
 
 	memset( vk_current.ortho, 0, sizeof( vk_current.ortho ) );
 	memcpy( vk_current.ortho, m, sizeof( m ) );
@@ -559,6 +563,26 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	scissor.extent.height = (uint32_t)( h > 0 ? h : 0 );
 
 	qvk.CmdSetScissor( cmd, 0, 1, &scissor );
+}
+
+/* The alpha test is a push constant the back end sets when it binds the stage's
+   pipeline, because Vulkan has no fixed-function alpha test to inherit. */
+void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
+{
+	float values[4];
+
+	memset( values, 0, sizeof( values ) );
+
+	switch ( stateBits & GLS_ATEST_BITS ) {
+	case GLS_ATEST_GT_0:	values[0] = 0.0f;			break;
+	case GLS_ATEST_LT_80:	values[0] = 128.0f / 255.0f; values[1] = 1.0f; break;
+	case GLS_ATEST_GE_80:	values[0] = 127.0f / 255.0f; break;
+	default:				return;		/* no alpha test: leave it off */
+	}
+
+	qvk.CmdPushConstants( cmd, vk_draw.layout,
+						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+						  offsetof( vkPushConstants_t, alphaTest ), sizeof( values ), values );
 }
 
 void VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int height )
@@ -592,15 +616,20 @@ void VK_Draw_BindRing( VkCommandBuffer cmd )
 	VkBuffer buffers[2];
 	VkDeviceSize offsets[2];
 
-	buffers[0] = VK_VertexRing_Buffer();
-	buffers[1] = VK_VertexRing_IndexBuffer();
+	/* Both rings are one allocation each, so every draw offsets from zero; the
+	   offsets are still set explicitly, because an uninitialised offset is a
+	   garbage vertex address and a quad that silently does not rasterise. */
 	offsets[0] = 0;
 	offsets[1] = 0;
 
+	buffers[0] = VK_VertexRing_Buffer();
+	buffers[1] = VK_VertexRing_IndexBuffer();
+
 	qvk.CmdBindVertexBuffers( cmd, 0, 1, &buffers[0], &offsets[0] );
 
+	/* glIndex_t is a 32-bit index; the buffer is filled with those. */
 	if ( buffers[1] != VK_NULL_HANDLE ) {
-		qvk.CmdBindIndexBuffer( cmd, buffers[1], 0, VK_INDEX_TYPE_UINT16 );
+		qvk.CmdBindIndexBuffer( cmd, buffers[1], 0, VK_INDEX_TYPE_UINT32 );
 	}
 }
 

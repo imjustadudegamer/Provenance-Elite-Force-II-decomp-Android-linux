@@ -820,6 +820,7 @@ typedef struct {
 	int			needsLightScale;
 
 	frontEndCounters_t	pc;
+	int					frontEndMsec;
 
 	float		sinTable[FUNCTABLE_SIZE];
 	float		squareTable[FUNCTABLE_SIZE];
@@ -893,6 +894,12 @@ extern cvar_t	*r_mapOverBrightBits;
 extern cvar_t	*r_intensity;
 extern cvar_t	*r_gamma;
 extern cvar_t	*r_detailtextures;
+extern cvar_t	*r_mode;
+extern cvar_t	*r_fullscreen;
+extern cvar_t	*r_customwidth;
+extern cvar_t	*r_customheight;
+extern cvar_t	*r_customaspect;
+extern cvar_t	*r_swapInterval;
 
 void R_RegisterCvars( void );
 
@@ -941,6 +948,7 @@ image_t *R_RefreshImageFileOld( const char *name, qboolean mipmap, qboolean allo
 void	 R_InitSkyTexCoords( float cloudLayerHeight );
 void	 R_BuildCloudData( shaderCommands_t *shader );
 void	 RB_StageIteratorGeneric( void );
+void	 VK_M3_Touched( const char *what );
 void	 RB_StageIteratorSky( void );
 void	 RB_StageIteratorVertexLitTextureUnfogged( void );
 void	 RB_StageIteratorLightmappedMultitextureUnfogged( void );
@@ -993,6 +1001,8 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 void RE_Scissor(int x, int y, int width, int height);
 void Set2DInitialShaderTime(float startTime);
 void RB_2D_Flush( void );
+extern int vk_back_end_slot;
+void rb_set_slot( int slot );
 void R_UploadScratchImage( int cols, int rows, const byte *rgb );
 void RB_Texcoord2f( float s, float t );
 void RB_Vertex2f( vec_t x, vec_t y );
@@ -1066,13 +1076,12 @@ typedef struct {
 	qboolean	textured;			/* samples the stage bundle, or paints flat */
 } vkPipelineKey_t;
 
-qboolean VK_Draw_Init( void );
-void     VK_Draw_Shutdown( void );
 VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key );
 qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler sampler );
 void     VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 						float left, float right, float bottom, float top, float n, float f );
 void     VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int height );
+void     VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits );
 void     VK_Draw_DisableScissor( VkCommandBuffer cmd );
 void     VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase );
 void     VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex );
@@ -1091,12 +1100,12 @@ typedef struct {
 
 #define VK_MAX_TEXTURES MAX_DRAWIMAGES
 
-qboolean VK_Texture_Init( void );
-void     VK_Texture_Shutdown( void );
 VkFormat VK_Texture_FormatFor( int internalFormat, qboolean *supported );
 qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat format, int *handleOut );
 qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes );
+qboolean VK_Texture_Publish( int handle );
+qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] );
 void     VK_Texture_MakeMips( int handle );
 void     VK_Texture_Destroy( int handle );
 VkImageView VK_Texture_View( int handle );
