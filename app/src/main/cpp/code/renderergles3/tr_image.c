@@ -1483,6 +1483,8 @@ image_t* R_CreateImageOld(
 
 		qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS );
 		qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT );
+		image->wrapSetX = (int)wrapS;
+		image->wrapSetY = (int)wrapT;
 	}
 
 	qglBindTexture( GL_TEXTURE_2D, 0 );

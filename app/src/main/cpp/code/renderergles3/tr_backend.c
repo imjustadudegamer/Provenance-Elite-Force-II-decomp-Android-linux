@@ -41,11 +41,9 @@ static float	s_flipMatrix[16] = {
 };
 
 /* ---- [GLES3:pix] what the framebuffer actually holds ----------------------
- * A submitted draw that produces no pixels is invisible from the command list:
- * the menu 3D view submits 13 draws a frame and the operator sees neither the
- * dome nor the ship.  Two readbacks name the screen -- one the moment the 3D
- * view hands back to 2D, one at swap.  Mean RGB tells the panel art from the
- * clear colour from a textured model. */
+ * A submitted draw that produces no pixels is invisible from the command list.
+ * Two readbacks name the screen -- one when the 3D view hands back to 2D, one
+ * at swap; mean RGB tells the panel art from the clear colour. */
 void GLES3_PixelProbe( const char *src, int x, int y, int w, int h ) {
 	static cvar_t		*cvar;
 	static struct {
@@ -110,9 +108,8 @@ void GL_SetFogColor(const vec4_t fColor) {
 }
 
 /* ---- [GLES3:texaudit] what the device holds for a bind -------------------
- * An incomplete texture fetches black ("whole missing textures"), and an
- * immutable store an upload tried to re-specify keeps the old contents (the
- * smear).  Read off the bound object, once per image, then every 256th bind. */
+ * An incomplete texture fetches black; an immutable store an upload tried to
+ * re-specify keeps the old contents.  Once per image, then every 256th bind. */
 #define TEXAUDIT_HASH	2048
 #define TEXAUDIT_MAX	512
 #define TEXAUDIT_RECHECK	256
@@ -195,15 +192,15 @@ found:
 	}
 
 	/* v01 no size; 04 mip filter over one level, incomplete, fetches black;
-	 * 08 the ES default filter never set; 10 recorded wrap against the
-	 * object's; 20 immutable a re-upload would refuse. */
+	 * 08 the ES default filter left standing; 10 recorded wrap against the
+	 * object's; 20 immutable a re-upload would refuse; 40 a read errored. */
 	if ( image->uploadWidth <= 0 || image->uploadHeight <= 0 ) {
 		verdict |= 0x01;
 	}
 	if ( minF >= 0x2700 && minF <= 0x2703 && image->numMipmaps <= 0 ) {
 		verdict |= 0x04;
 	}
-	if ( minF == 0x2601 ) {
+	if ( minF == 0x2702 ) {
 		verdict |= 0x08;
 	}
 	if ( ( image->wrapClampModeX == GL_REPEAT ) != ( wrapS == GL_REPEAT )
@@ -230,6 +227,31 @@ found:
 			   verdict, e->rows, RB_FrameCount() );
 }
 
+/* The wrap is object state and the flip writes it to whatever is bound, so a
+   texture keeps another stage's clamp or repeat; the bind hands its own back. */
+static image_t	*s_wrapImage[2];
+
+static GLenum GLES3_WrapEnum( int mode ) {
+	if ( mode == GL_CLAMP && haveClampToEdge ) {
+		return GL_CLAMP_TO_EDGE;
+	}
+	return (GLenum)mode;
+}
+
+static void GLES3_RestoreWrap( image_t *image ) {
+	if ( !image
+		 || ( image->wrapSetX == image->wrapClampModeX
+			  && image->wrapSetY == image->wrapClampModeY ) ) {
+		return;
+	}
+	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+					  (GLfloat)GLES3_WrapEnum( image->wrapClampModeX ) );
+	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+					  (GLfloat)GLES3_WrapEnum( image->wrapClampModeY ) );
+	image->wrapSetX = image->wrapClampModeX;
+	image->wrapSetY = image->wrapClampModeY;
+}
+
 void GL_Bind( image_t *image ) {
 	int texnum;
 
@@ -250,8 +272,12 @@ void GL_Bind( image_t *image ) {
 			image->frameUsed = RB_FrameCount();
 		}
 		glState.currenttextures[glState.currenttmu] = texnum;
-		GLES3_TexAudit( image );
 		qglBindTexture (GL_TEXTURE_2D, texnum);
+		GLES3_TexAudit( image );
+		if ( glState.currenttmu < 2 ) {
+			s_wrapImage[glState.currenttmu] = image;
+		}
+		GLES3_RestoreWrap( image );
 
 #define SMP_BIND_MAX   2048
 #define SMP_BIND_HASH  8192			
@@ -339,15 +365,19 @@ void GL_BindMultitexture( image_t *image0, GLuint env0, image_t *image1, GLuint 
 
 	if ( glState.currenttextures[1] != texnum1 ) {
 		GL_SelectTexture( 1 );
-		image1->frameUsed = RB_FrameCount();	
+		image1->frameUsed = RB_FrameCount();
 		glState.currenttextures[1] = texnum1;
 		qglBindTexture( GL_TEXTURE_2D, texnum1 );
+		s_wrapImage[1] = image1;
+		GLES3_RestoreWrap( image1 );
 	}
 	if ( glState.currenttextures[0] != texnum0 ) {
 		GL_SelectTexture( 0 );
-		image0->frameUsed = RB_FrameCount();	
+		image0->frameUsed = RB_FrameCount();
 		glState.currenttextures[0] = texnum0;
 		qglBindTexture( GL_TEXTURE_2D, texnum0 );
+		s_wrapImage[0] = image0;
+		GLES3_RestoreWrap( image0 );
 	}
 }
 
@@ -707,17 +737,31 @@ void GL_State( unsigned long stateBits )
 			GL_SelectTexture(0);
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clampValue);
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clampValue);
+			if ( s_wrapImage[0] && s_wrapImage[0]->texnum == (GLuint)glState.currenttextures[0] ) {
+				s_wrapImage[0]->wrapSetX = (int)clampValue;
+				s_wrapImage[0]->wrapSetY = (int)clampValue;
+			}
 
 			GL_SelectTexture(1);
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clampValue);
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clampValue);
+			if ( s_wrapImage[1] && s_wrapImage[1]->texnum == (GLuint)glState.currenttextures[1] ) {
+				s_wrapImage[1]->wrapSetX = (int)clampValue;
+				s_wrapImage[1]->wrapSetY = (int)clampValue;
+			}
 
 			GL_SelectTexture(currenttmu);
 		}
 		else
 		{
+			int		tmu = glState.currenttmu & 1;
+
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clampValue);
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clampValue);
+			if ( s_wrapImage[tmu] && s_wrapImage[tmu]->texnum == (GLuint)glState.currenttextures[tmu] ) {
+				s_wrapImage[tmu]->wrapSetX = (int)clampValue;
+				s_wrapImage[tmu]->wrapSetY = (int)clampValue;
+			}
 		}
 	}
 	
@@ -2306,14 +2350,13 @@ void BE_Name( int family, const char *name, int usec ) {
 }
 
 /* ---- [GLES3:glerr] naming the call that left the error flag set ----------
- * The flag is sticky, so a probe that samples it reports the first call that
- * looked, not the one that set it -- the 2026-10-07 capture's [GLES3:pixd]
- * convicted a draw that ran clean.  One glGetError per list while idle; once a
- * list ends with the flag set, the next few pay one per command. */
+ * The flag is sticky, so a probe names the first call that looked, not the one
+ * that set it. */
 enum {
 	RB_GLES3_ERR_IDLE = 0,
 	RB_GLES3_ERR_SEEN,
-	RB_GLES3_ERR_TRACING
+	RB_GLES3_ERR_TRACING,
+	RB_GLES3_ERR_DONE
 };
 
 static int		s_glerrArm;
@@ -2334,10 +2377,16 @@ static const char *RB_GlErrName( GLenum e ) {
 
 static const char *RB_GlErrCmdName( int id ) {
 	switch ( id ) {
+	case RC_END_OF_LIST:		return "END_OF_LIST";
 	case RC_SET_COLOR:			return "SET_COLOR";
 	case RC_STRETCH_PIC:		return "STRETCH_PIC";
 	case RC_DRAW_SURFS:			return "DRAW_SURFS";
 	case RC_SPRITE_SURFS:		return "SPRITE_SURFS";
+	case RC_DRAW_BUFFER:		return "DRAW_BUFFER";
+	case RC_SWAP_BUFFERS:		return "SWAP_BUFFERS";
+	case RC_SCREENSHOT:			return "SCREENSHOT";
+	case RC_VIDEOFRAME:			return "VIDEOFRAME";
+	case RC_COLORMASK:			return "COLORMASK";
 	case RC_CLEARDEPTH:			return "CLEARDEPTH";
 	case RC_2D_COLOR:			return "2D_COLOR";
 	case RC_2D_STRETCH_PIC:		return "2D_STRETCH_PIC";
@@ -2345,20 +2394,25 @@ static const char *RB_GlErrCmdName( int id ) {
 	case RC_2D_TILE_PIC:		return "2D_TILE_PIC";
 	case RC_2D_TILE_PIC_OFFSET:	return "2D_TILE_PIC_OFFSET";
 	case RC_2D_TRIANGLE_PIC:	return "2D_TRIANGLE_PIC";
+	case RC_2D_BOX:				return "2D_BOX";
 	case RC_2D_LINE_LOOP:		return "2D_LINE_LOOP";
 	case RC_2D_SET_WINDOW:		return "2D_SET_WINDOW";
 	case RC_2D_SCISSOR:			return "2D_SCISSOR";
 	case RC_2D_FONT_STRING:		return "2D_FONT_STRING";
 	case RC_2D_SHADER_TIME:		return "2D_SHADER_TIME";
-	default:					return "END_OF_LIST";
+	default:					return "UNKNOWN_CMD";
 	}
 }
 
-static void RB_GlErrSample( const char *where, int cmdId ) {	/* one read */
+/* The read is a driver round trip; this many rows and the instrument stops. */
+#define RB_GLES3_ERR_ROWS			64
+
+static void RB_GlErrSample( const char *where, int cmdId ) {
 
 	GLuint		e;
 
-	if ( !R_ProbeStatsOn() || s_glerrArm == RB_GLES3_ERR_IDLE ) {
+	if ( !R_ProbeStatsOn() || s_glerrArm != RB_GLES3_ERR_TRACING || s_glerrFound
+		 || s_glerrRows >= RB_GLES3_ERR_ROWS ) {
 		return;
 	}
 
@@ -2367,26 +2421,35 @@ static void RB_GlErrSample( const char *where, int cmdId ) {	/* one read */
 		return;
 	}
 
-	if ( s_glerrArm == RB_GLES3_ERR_TRACING && !s_glerrFound ) {
-		s_glerrFound = 1;
-		s_glerrRows++;
-		ri.Printf( PRINT_ALL,
-				   "[GLES3:glerr] at=%s cmd=0x%x err=%d(0x%x) %s in2D=%d"
-				   " prog=%u tex0=%u tmu=%d lists=%d f=%d\n",
-				   where, cmdId, (int)e, (unsigned)e, RB_GlErrName( e ),
-				   backEnd.in2D, glState.currentProgram,
-				   (unsigned)glState.currenttextures[0], glState.currenttmu,
-				   s_glerrLists, RB_FrameCount() );
-	}
+	s_glerrFound = 1;
+	s_glerrRows++;
+	ri.Printf( PRINT_ALL,
+			   "[GLES3:glerr] at=%s cmd=0x%x err=%d(0x%x) %s in2D=%d"
+			   " prog=%u tex0=%u tmu=%d lists=%d f=%d\n",
+			   where, cmdId, (int)e, (unsigned)e, RB_GlErrName( e ),
+			   backEnd.in2D, glState.currentProgram,
+			   (unsigned)glState.currenttextures[0], glState.currenttmu,
+			   s_glerrLists, RB_FrameCount() );
 }
 
 /* The list-end read arms the per-command trace on a dirty list. */
 #define RB_GLES3_ERR_TRACE_LISTS	4
 
+static void RB_GlErrQuiet( void ) {
+	ri.Printf( PRINT_ALL,
+			   "[GLES3:glerr] quiet after %d rows; the flag is still being set every"
+			   " frame, the read is the cost now\n", s_glerrRows );
+}
+
+/* A call inside a command leaves the flag with no sample after it; the 2D flush names its halves. */
+void GLES3_GlErrAt( const char *what ) {
+	RB_GlErrSample( what, 0 );
+}
+
 static void RB_GlErrListEnd( int cmdId, int beCmds ) {
 	GLuint	e;
 
-	if ( !R_ProbeStatsOn() ) {
+	if ( !R_ProbeStatsOn() || s_glerrArm == RB_GLES3_ERR_DONE ) {
 		return;
 	}
 
@@ -2395,6 +2458,12 @@ static void RB_GlErrListEnd( int cmdId, int beCmds ) {
 		if ( s_glerrLists > RB_GLES3_ERR_TRACE_LISTS ) {
 			s_glerrArm = RB_GLES3_ERR_IDLE;
 		}
+		return;
+	}
+
+	if ( s_glerrRows >= RB_GLES3_ERR_ROWS ) {
+		s_glerrArm = RB_GLES3_ERR_DONE;
+		RB_GlErrQuiet();
 		return;
 	}
 
