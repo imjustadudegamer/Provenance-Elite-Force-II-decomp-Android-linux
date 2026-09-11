@@ -1208,9 +1208,23 @@ renderergles3/tr_vbo.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.0
 renderergles3/tr_vbo_imm.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_world.c	gpl	recovered GPL banner	renderergl1/tr_world.c	0.536	-	0.000
 renderervulkan/gl_vk_platform.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_backend.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_cmds.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_draw.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_font.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_ghost.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_ghost.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_hwtex.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_hwtex.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_image.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_init.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_local.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_shader.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_texcache.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_texcache.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_util.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_descriptor.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_draw.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_firstlight.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_firstlight.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_frame.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
@@ -1218,6 +1232,7 @@ renderervulkan/vk_guard.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	
 renderervulkan/vk_guard.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_instance.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_local.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_m3_surface.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_memory.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_offscreen.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_pipeline.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
@@ -1228,6 +1243,7 @@ renderervulkan/vk_renderthread.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0
 renderervulkan/vk_shaders_embedded.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_swapchain.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_target.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_texture.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_vertex.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 script/scriptexception.cpp	gpl	recovered GPL banner	script/scriptexception.cpp	0.974	-	0.000
 script/scriptexception.h	gpl	recovered GPL banner	script/scriptexception.h	0.906	-	0.000

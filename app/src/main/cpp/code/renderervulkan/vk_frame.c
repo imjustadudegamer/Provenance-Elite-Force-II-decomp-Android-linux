@@ -212,22 +212,28 @@ qboolean VK_Frame_Acquire( int slot )
 	return qtrue;
 }
 
-void VK_Frame_RecordClear( int slot, const float rgba[4] )
+/* The pass opens once per frame, at RC_VK_BEGIN, and closes at RC_VK_PRESENT:
+   the UI records into it across the whole paint, which is what the GLES3 twin
+   gets from a bound framebuffer for free. */
+static VkRenderPassBeginInfo s_passInfo;
+static VkClearValue s_clearValues[2];
+
+qboolean VK_Frame_RecordBegin( int slot )
 {
-	VkRenderPassBeginInfo beginInfo;
 	VkClearValue clearValues[2];
+	VkRenderPassBeginInfo beginInfo;
 	VkRect2D renderArea;
 
 	if ( vk.acquiredImage >= vk.framebufferCount ) {
 		VK_Guard_Hit( VK_GSITE_SYNC, "acquired image out of range", VK_ERROR_TOO_MANY_OBJECTS );
-		return;
+		return qfalse;
 	}
 
 	memset( clearValues, 0, sizeof( clearValues ) );
-	clearValues[0].color.float32[0] = rgba[0];
-	clearValues[0].color.float32[1] = rgba[1];
-	clearValues[0].color.float32[2] = rgba[2];
-	clearValues[0].color.float32[3] = rgba[3];
+	clearValues[0].color.float32[0] = vk.clearColor[0];
+	clearValues[0].color.float32[1] = vk.clearColor[1];
+	clearValues[0].color.float32[2] = vk.clearColor[2];
+	clearValues[0].color.float32[3] = vk.clearColor[3];
 	clearValues[1].depthStencil.depth = 1.0f;
 	clearValues[1].depthStencil.stencil = 0;
 
@@ -246,11 +252,44 @@ void VK_Frame_RecordClear( int slot, const float rgba[4] )
 
 	qvk.CmdBeginRenderPass( vk.commandBuffers[slot], &beginInfo, VK_SUBPASS_CONTENTS_INLINE );
 
+	/* The vertex ring is bound once per pass; every draw offsets into it. */
+	VK_Draw_BindRing( vk.commandBuffers[slot] );
+
+	{
+		VkViewport viewport;
+		VkRect2D scissor;
+
+		memset( &viewport, 0, sizeof( viewport ) );
+		viewport.width = (float)vk.swapchainExtent.width;
+		viewport.height = (float)vk.swapchainExtent.height;
+		viewport.maxDepth = 1.0f;
+
+		memset( &scissor, 0, sizeof( scissor ) );
+		scissor.extent = vk.swapchainExtent;
+
+		qvk.CmdSetViewport( vk.commandBuffers[slot], 0, 1, &viewport );
+		qvk.CmdSetScissor( vk.commandBuffers[slot], 0, 1, &scissor );
+	}
+
 	if ( vk.demoDraw ) {
 		VK_Pipeline_DrawDemo( vk.commandBuffers[slot] );
 	}
 
-	qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
+	s_passInfo = beginInfo;
+	s_clearValues[0] = clearValues[0];
+	s_clearValues[1] = clearValues[1];
+
+	(void)s_passInfo;
+	(void)s_clearValues;
+
+	return qtrue;
+}
+
+void VK_Frame_RecordEnd( int slot )
+{
+	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE ) {
+		qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
+	}
 }
 
 qboolean VK_Frame_Submit( int slot )

@@ -195,13 +195,25 @@ void VK_Procs_ResolveDevice( VkDevice device )
 	VK_DPROC( CmdSetScissor, vkCmdSetScissor );
 	VK_DPROC( CmdBindPipeline, vkCmdBindPipeline );
 	VK_DPROC( CmdBindVertexBuffers, vkCmdBindVertexBuffers );
+	VK_DPROC( CmdBindIndexBuffer, vkCmdBindIndexBuffer );
+	VK_DPROC( CmdBindDescriptorSets, vkCmdBindDescriptorSets );
+	VK_DPROC( CmdPushConstants, vkCmdPushConstants );
 	VK_DPROC( CmdDraw, vkCmdDraw );
+	VK_DPROC( CmdDrawIndexed, vkCmdDrawIndexed );
 	VK_DPROC( CmdBeginRenderPass, vkCmdBeginRenderPass );
 	VK_DPROC( CmdCopyBuffer, vkCmdCopyBuffer );
 	VK_DPROC( CmdEndRenderPass, vkCmdEndRenderPass );
 	VK_DPROC( CmdPipelineBarrier, vkCmdPipelineBarrier );
 	VK_DPROC( CmdCopyImageToBuffer, vkCmdCopyImageToBuffer );
+	VK_DPROC( CmdCopyBufferToImage, vkCmdCopyBufferToImage );
+	VK_DPROC( CmdBlitImage, vkCmdBlitImage );
 	VK_DPROC( BeginCommandBuffer, vkBeginCommandBuffer );
 	VK_DPROC( EndCommandBuffer, vkEndCommandBuffer );
 	VK_DPROC( ResetCommandBuffer, vkResetCommandBuffer );
+	VK_DPROC( CreateSampler, vkCreateSampler );
+	VK_DPROC( DestroySampler, vkDestroySampler );
+	VK_DPROC( AllocateDescriptorSets, vkAllocateDescriptorSets );
+	VK_DPROC( FreeDescriptorSets, vkFreeDescriptorSets );
+	VK_DPROC( UpdateDescriptorSets, vkUpdateDescriptorSets );
+	VK_DPROC( CreateBufferView, vkCreateBufferView );
 }

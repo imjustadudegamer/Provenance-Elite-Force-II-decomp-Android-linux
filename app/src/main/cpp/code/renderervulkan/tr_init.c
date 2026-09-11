@@ -14,7 +14,7 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "vk_local.h"
+#include "tr_local.h"
 #include "vk_firstlight.h"
 
 #include <stdio.h>
@@ -47,6 +47,60 @@ static int s_numVidModes = ( int )( sizeof( r_vidModes ) / sizeof( r_vidModes[0]
 
 static char s_graphicsInfo[2048];
 static cvar_t *r_vkTrace;
+
+/* ---- the cvars the renderer's data-model layer reads ---------------------
+ * The same names and defaults the GLES3 twin registers, so a config written
+ * for one renderer means the same thing to the other.  The 3D-only tail
+ * (lod/flare/sky/lighting) arrives with the 3D stage iterators; these are the
+ * ones the shader, image, font and 2D layers read today. */
+cvar_t *r_picmip;
+cvar_t *r_roundImagesDown;
+cvar_t *r_colorMipLevels;
+cvar_t *r_texturebits;
+cvar_t *r_colorbits;
+cvar_t *r_draw2d;
+cvar_t *r_vertexLight;
+cvar_t *r_ignoreFastPath;
+cvar_t *r_developer;
+cvar_t *r_printShaders;
+cvar_t *r_overBrightBits;
+cvar_t *r_mapOverBrightBits;
+cvar_t *r_intensity;
+cvar_t *r_gamma;
+cvar_t *r_detailtextures;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void R_RegisterCvars( void )
+{
+	r_picmip              = ri.Cvar_Get( "r_picmip", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_roundImagesDown     = ri.Cvar_Get( "r_roundImagesDown", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	r_colorMipLevels      = ri.Cvar_Get( "r_colorMipLevels", "0", CVAR_LATCH );
+	r_texturebits         = ri.Cvar_Get( "r_texturebits", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_colorbits           = ri.Cvar_Get( "r_colorbits", "32", CVAR_ARCHIVE | CVAR_LATCH );
+	r_draw2d              = ri.Cvar_Get( "r_draw2d", "1", 0 );
+	r_vertexLight         = ri.Cvar_Get( "r_vertexLight", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_ignoreFastPath      = ri.Cvar_Get( "r_ignoreFastPath", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_developer           = ri.Cvar_Get( "r_developer", "0", 0 );
+	r_printShaders        = ri.Cvar_Get( "r_printShaders", "0", 0 );
+	r_overBrightBits      = ri.Cvar_Get( "r_overBrightBits", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_mapOverBrightBits   = ri.Cvar_Get( "r_mapOverBrightBits", "0", CVAR_LATCH );
+	r_intensity           = ri.Cvar_Get( "r_intensity", "1", CVAR_LATCH );
+	r_gamma               = ri.Cvar_Get( "r_gamma", "1.2", CVAR_ARCHIVE );
+	r_detailtextures      = ri.Cvar_Get( "r_detailtextures", "1", 33 );
+}
 
 qboolean R_GetModeInfo( int *width, int *height, float *windowAspect, int mode )
 {
@@ -85,8 +139,12 @@ void R_Init( void )
 {
 	memset( &vk, 0, sizeof( vk ) );
 
+	RB_InitBackend();
+
 	r_vkTrace = ri.Cvar_Get( VK_TRACE_CVAR, "1", 0 );
 	ri.Cvar_Get( VK_GUARD_TRACE_CVAR, "1", 0 );
+
+	R_RegisterCvars();
 
 	vk.demoDraw = ri.Cvar_Get( "r_vkDemo", "1", CVAR_ARCHIVE )->integer ? qtrue : qfalse;
 
@@ -121,26 +179,9 @@ static qhandle_t RE_ForceRegisterModel( const char *name )
 	return 0;
 }
 
-static qhandle_t RE_RegisterSkin( const char *name )
-{
-	return 0;
-}
 
-static qhandle_t RE_RegisterShader( const char *name )
-{
-	RE_StubRow( "RegisterShader" );
-	return 0;
-}
 
-qhandle_t RE_RegisterShaderNoMip( const char *name )
-{
-	return 0;
-}
 
-static qhandle_t RE_RefreshShaderNoMip( const char *name )
-{
-	return 0;
-}
 
 static void RE_EndRegistration( void )
 {
@@ -234,28 +275,10 @@ static void R_SavePerformanceCounters( void )
 {
 }
 
-static void Draw_SetColor( const float *rgba )
-{
-}
 
-static void Set2DWindow( int x, int y, int w, int h, float left, float right, float bottom, float top,
-						 float n, float f )
-{
-}
 
-static void Draw_StretchPic( float x, float y, float w, float h, float s1, float t1, float s2, float t2,
-							 qhandle_t hShader )
-{
-	RE_StubRow( "DrawStretchPic" );
-}
 
-static void Draw_TilePic( float x, float y, float w, float h, qhandle_t hShader )
-{
-}
 
-static void Draw_TilePicOffset( float x, float y, float w, float h, qhandle_t hShader, int offsetX, int offsetY )
-{
-}
 
 static void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int components, const byte *data,
 						   qboolean dirty )
@@ -270,25 +293,13 @@ static void R_DebugLine( const vec3_t start, const vec3_t end, float r, float g,
 {
 }
 
-static void DrawBox( float x, float y, float w, float h )
-{
-}
 
-static void AddBox( float x, float y, float w, float h )
-{
-}
 
 static void RE_BeginFrame( stereoFrame_t stereoFrame )
 {
 }
 
-static void RE_Scissor( int x, int y, int width, int height )
-{
-}
 
-static void DrawLineLoop( const vec2_t *points, int count, int stippleFactor, int stippleMask )
-{
-}
 
 static void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 {
@@ -335,25 +346,9 @@ static void TIKI_FlushAll( void )
 {
 }
 
-static void R_DrawString( fontheader_t *font, const char *text, float x, float y, int maxLen,
-						  const float *pvVirtualScreen )
-{
-}
 
-static float R_GetFontHeight( const fontheader_t *font )
-{
-	return 0.0f;
-}
 
-static float R_GetFontStringWidth( const fontheader_t *font, const char *string )
-{
-	return 0.0f;
-}
 
-static fontheader_t *R_LoadFont( const char *name )
-{
-	return NULL;
-}
 
 static void RE_SwipeBegin( float thisTime, float life, qhandle_t hShader )
 {
@@ -371,20 +366,8 @@ static void RE_SetRenderTime( int t )
 {
 }
 
-static float R_NoiseGet4f( float x, float y, float z, double t )
-{
-	return 0.0f;
-}
 
-static int RE_GetShaderWidth( qhandle_t hShader )
-{
-	return 0;
-}
 
-static int RE_GetShaderHeight( qhandle_t hShader )
-{
-	return 0;
-}
 
 static const char *RE_GetGraphicsInfo( void )
 {
@@ -427,14 +410,7 @@ static void RE_AddTerrainMarkToScene( int terrainIndex, qhandle_t hShader, int n
 {
 }
 
-static void Draw_StretchPic2( float x, float y, float w, float h, float s1, float t1, float s2, float t2,
-							  float sx, float sy, qhandle_t hShader )
-{
-}
 
-static void Draw_TrianglePic( const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhandle_t hShader )
-{
-}
 
 static void RE_DrawBackground( int cols, int rows, int bgr, uint8_t *data )
 {
@@ -501,37 +477,11 @@ static void RE_SetFrameNumber( int frameNumber )
 {
 }
 
-qboolean R_ImageExists( const char *name )
-{
-	return qfalse;
-}
 
-static int R_CountTextureMemory( void )
-{
-	return 0;
-}
 
-static qboolean R_LoadRawImage( const char *name, byte **pic, int *width, int *height )
-{
-	*pic = NULL;
-	*width = 0;
-	*height = 0;
 
-	return qfalse;
-}
 
-static void R_FreeRawImage( byte *pic )
-{
-}
 
-static void Set2DInitialShaderTime( float startTime )
-{
-}
-
-static void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font )
-{
-	memset( font, 0, sizeof( *font ) );
-}
 
 static void R_RemapShader( const char *oldShader, const char *newShader )
 {

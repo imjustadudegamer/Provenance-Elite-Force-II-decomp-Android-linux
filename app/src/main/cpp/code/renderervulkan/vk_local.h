@@ -34,9 +34,6 @@ extern SDL_Window *SDL_window;
 
 #define VK_FRAMES_IN_FLIGHT 2
 #define SMP_FRAMES 2
-#define RC_END_OF_LIST 0
-#define RC_VK_BEGIN 1
-#define RC_VK_PRESENT 2
 
 typedef struct vkPhysDevice_s {
 	VkPhysicalDevice device;
@@ -165,6 +162,7 @@ qboolean VK_Pipeline_Init( void );
 void VK_Pipeline_Shutdown( void );
 qboolean VK_Pipeline_DrawDemo( VkCommandBuffer cmd );
 
+void VK_Draw_BindRing( VkCommandBuffer cmd );
 qboolean VK_Vertex_Init( void );
 void VK_Vertex_Shutdown( void );
 
@@ -178,6 +176,8 @@ void VK_Frame_Shutdown( void );
 qboolean VK_Frame_Begin( int slot );
 qboolean VK_Frame_Acquire( int slot );
 void VK_Frame_RecordClear( int slot, const float rgba[4] );
+qboolean VK_Frame_RecordBegin( int slot );
+void VK_Frame_RecordEnd( int slot );
 qboolean VK_Frame_Submit( int slot );
 qboolean VK_Frame_Present( int slot );
 int VK_Frame_Count( void );
