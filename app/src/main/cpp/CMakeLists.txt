@@ -94,6 +94,7 @@ option(BUILD_CLIENT "Build client" ON)
 # driven by EF2_RENDERER (now a one-value switch), so no existing invocation
 # changes.
 option(BUILD_RENDERER_GLES3 "Build GLES 3.0 renderer (gles3-gles3)" ${_EF2_BUILD_GLES3})
+option(BUILD_RENDERER_VULKAN "Build the Vulkan renderer (vulkan-m0)" ON)
 option(BUILD_GAME_LIBRARIES "Build game module libraries" ON)
 option(BUILD_GAME_QVMS "Build game module qvms" ON)
 option(BUILD_STANDALONE "Build binaries for standalone games" OFF)
@@ -155,6 +156,7 @@ include(version)
 
 include(server)
 include(renderer_gles3)
+include(renderer_vulkan)
 include(client)
 include(basegame)
 #include(missionpack)

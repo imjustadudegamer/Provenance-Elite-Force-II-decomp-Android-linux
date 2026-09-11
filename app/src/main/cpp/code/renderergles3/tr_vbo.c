@@ -1549,8 +1549,10 @@ void RB_VBO_BeginFrame( void ) {
 		RB_BindVAO( s_vaoArena[s_arenaNext] );
 	}
 
-	/* Base-vertex arm: the pointers are captured once per store, at offset 0. */
+	/* Base-vertex capture, offset 0: bind the store first -- the pointers
+	 * attach to whatever ARRAY_BUFFER names, and the map's unbind left it 0. */
 	if ( s_baseVertexDraw ) {
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
 		RB_VBO_ConfigureAttribs();
 	}
 

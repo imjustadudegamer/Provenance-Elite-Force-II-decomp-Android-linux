@@ -258,6 +258,7 @@ void RB_2D_Flush( void ) {
 		s_d2Batches++;
 
 		RB_EndSurface();
+		GLES3_GlErrAt( "2d_tess_flush" );
 	}
 	if ( s_2dTriOpen ) {
 		int	got;
@@ -286,6 +287,7 @@ void RB_2D_Flush( void ) {
 		}
 		s_d2VertsDrawn += got;
 		RB_ImmFlush();
+		GLES3_GlErrAt( "2d_box_flush" );
 	}
 }
 

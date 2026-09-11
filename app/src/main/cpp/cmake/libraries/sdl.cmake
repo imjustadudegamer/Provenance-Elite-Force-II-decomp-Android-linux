@@ -40,8 +40,9 @@ set(INTERNAL_SDL_DIR ${SOURCE_DIR}/thirdparty/SDL2-2.32.8)
 # SDL_OPENGL (DESKTOP GL) stays OFF -- Android is ES/EGL only.  The option
 # mapping is SDL's own: SDL_OPENGLES -> SDL_VIDEO_OPENGL_ES2 +
 # SDL_VIDEO_OPENGL_EGL (thirdparty/SDL2-2.30.9/CMakeLists.txt:2000-2002).
-# SDL_VULKAN is OFF: the port ships no Vulkan renderer and nothing in-tree opens
-# an SDL Vulkan surface.
+# SDL_VULKAN is ON: renderer_vulkan (vulkan-m0) opens its window with
+# SDL_WINDOW_VULKAN and its surface with SDL_Vulkan_CreateSurface on Android
+# too, which needs SDL's android/SDL_androidvulkan.c compiled in.
 # ---------------------------------------------------------------------------
 if(ANDROID)
     set(SDL2_ANDROID_DIR ${SOURCE_DIR}/thirdparty/SDL2-2.30.9)
@@ -54,7 +55,7 @@ if(ANDROID)
     set(SDL_RENDER OFF CACHE BOOL "" FORCE)
     set(SDL_OPENGL OFF CACHE BOOL "" FORCE)
     set(SDL_OPENGLES ON CACHE BOOL "" FORCE)
-    set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
+    set(SDL_VULKAN ON CACHE BOOL "" FORCE)
     # bionic has clock_gettime in libc and no librt to link; SDL's Linux probe
     # (check_library_exists(rt ...)) still "finds" one and would add -lrt to
     # every target that links SDL2.  Android's own timer path never consults

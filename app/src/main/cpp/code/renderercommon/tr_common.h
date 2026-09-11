@@ -74,6 +74,7 @@ typedef struct image_s {
 	qboolean	force32bit;
     int			wrapClampModeX;
     int			wrapClampModeY;
+    int			wrapSetX, wrapSetY;	/* what the object holds: the flip writes the bound object */
 	// (`v29[28] = a12' in R_CreateImages @0x00013A00), not the resolved GL enum.  The
 	int			textureMode;
 	int			r_sequence;

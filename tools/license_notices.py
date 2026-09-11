@@ -59,7 +59,7 @@ SDK_SPDX = "// SPDX-License-Identifier: LicenseRef-Ritual-EF2-SDK"
 RECON_SPDX = "// SPDX-License-Identifier: LicenseRef-EF2-Retail-Reconstruction"
 
 RECON_MODULES = {"cgame", "client", "server", "tiki", "skeletor", "uilib", "corepp"}
-ENGINE_MODULES = {"qcommon", "botlib", "renderercommon", "renderergles3", "sdl", "sys",
+ENGINE_MODULES = {"qcommon", "botlib", "renderercommon", "renderergles3", "renderervulkan", "sdl", "sys",
                   "script", "null", "asm", "web", "parser", "q3_ui", "curl"}
 
 STANDARD_GPL = """/*
