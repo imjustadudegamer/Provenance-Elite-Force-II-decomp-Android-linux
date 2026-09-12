@@ -89,6 +89,20 @@ void R_InitNextFrame( void ) {
 }
 
 
+/* A pool that fills names nothing in the reference -- the entity and poly adds
+   both return silently -- so a scene that stops carrying entities reads as a
+   renderer fault.  The row names the pool, its fill and what was turned away. */
+static void R_SceneGate( const char *gate, int cap, int live, int refused )
+{
+	static int rows;
+
+	if ( rows < 8 || ( rows % 600 ) == 0 ) {
+		VK_Guard_Row( "VK:fe", "gate=%s cap=%d live=%d refused=%d f=%d",
+					  gate, cap, live, refused, RB_FrameCount() );
+	}
+	rows++;
+}
+
 void RE_ClearScene( void ) {
 	r_firstSceneDlight = r_numdlights;
 	r_firstSceneLensflare = r_numlensflares;
@@ -137,6 +151,7 @@ qboolean RE_AddPolyToScene(qhandle_t hShader, int numVerts, const polyVert_t* ve
 	}
 
 	if (numVerts + r_numpolyverts > max_polyverts || r_numpolys >= max_polys) {
+		R_SceneGate( "poly", max_polys, r_numpolys, numVerts + r_numpolyverts > max_polyverts ? 1 : 0 );
 		ri.Printf(PRINT_WARNING, "Exceeded MAX POLYS\n");
 		return qfalse;
 	}
@@ -202,6 +217,7 @@ void RE_AddRefEntityToScene( const refEntity_t *ent ) {
 		return;
 	}
 	if ( r_numentities >= 1021 ) {
+		R_SceneGate( "entity", 1021, r_numentities, 1 );
 		return;
 	}
 	if ( (unsigned int)ent->reType >= RT_MAX_REF_ENTITY_TYPE ) {

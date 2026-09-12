@@ -1915,6 +1915,8 @@ static VkBlendFactor VK_Shade_BlendFactor( unsigned nibble, qboolean src )
 	}
 }
 
+void VK_Shade_PermRow( int family, unsigned defines );
+
 static VkPipeline VK_Shade_Pipeline( unsigned stateBits, int family, unsigned defines,
 									 cullType_t cull, qboolean polygonOffset, int topology )
 {
@@ -1939,14 +1941,12 @@ static VkPipeline VK_Shade_Pipeline( unsigned stateBits, int family, unsigned de
 	int i;
 
 	if ( !VK_Program_Modules( family, defines, &vert, &frag ) ) {
-				/* the mask names the permutation the offline build has to add */
-		static char missing[96];
-
-		Com_sprintf( missing, sizeof( missing ),
-					 "no SPIR-V for this permutation family=%d defines=0x%06x", family, defines );
-		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, missing, VK_INCOMPLETE );
+		/* the mask names the permutation the offline build has to add */
+		VK_Shade_NotePerm( 1 );
+		VK_Shade_PermRow( family, defines );
 		return VK_NULL_HANDLE;
 	}
+	VK_Shade_NotePerm( 0 );
 	for ( i = 0; i < vk_numShadePipelines; i++ ) {
 		if ( vk_shadePipelines[i].used && vk_shadePipelines[i].stateBits == stateBits
 			 && vk_shadePipelines[i].family == family && vk_shadePipelines[i].defines == defines
@@ -2216,9 +2216,14 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 /* The frame's draw census.  Retail's trace answers "is the 3D draw list alive"
    with a count per frame, so the boot carries the same number and a leg that
    stops drawing reads as a number going to zero instead of as a silence. */
-static int s_frameShadeDraws;
-static int s_frameShadeDrops;
-static int s_frameImmDraws;
+static int s_frameShadeDraws;   /* surface batches the walk completed */
+static int s_frameShadeDrops;   /* binds VK_Shade_Bind refused */
+static int s_frameImmDraws;     /* 2D batches */
+static int s_frameSurfCmds;     /* RC_DRAW_SURFS commands the walk performed */
+static int s_frameDrawSurfs;    /* draw surfs those commands carried */
+static int s_framePermReq;      /* permutation lookups */
+static int s_framePermMiss;     /* lookups with no SPIR-V for the key */
+static int s_framePermMissRows; /* [VK:perm] rows this frame */
 
 void VK_Shade_NoteDraw( int shade )
 {
@@ -2227,6 +2232,40 @@ void VK_Shade_NoteDraw( int shade )
 	} else {
 		s_frameImmDraws++;
 	}
+}
+
+/* the frame the census is mid-way through: the harness reads it beside the
+   frame's own readback, so the count and the pixels cannot drift apart */
+int VK_Shade_FrameBatches( void )
+{
+	return s_frameShadeDraws;
+}
+
+void VK_Shade_NoteSurfCmds( int surfs )
+{
+	s_frameSurfCmds++;
+	s_frameDrawSurfs += surfs;
+}
+
+void VK_Shade_NotePerm( int miss )
+{
+	s_framePermReq++;
+	if ( miss ) {
+		s_framePermMiss++;
+	}
+}
+
+/* The census the boot has to answer: which permutation keys were requested and
+   whether each one resolved.  A miss is not sampled -- every key this frame
+   asked for is named, because a key the offline build has to add is only
+   visible if a row carries it. */
+void VK_Shade_PermRow( int family, unsigned defines )
+{
+	if ( s_framePermMissRows < 256 || ( s_framePermMissRows % 1000 ) == 0 ) {
+		VK_Guard_Row( "VK:perm", "key family=%d defines=0x%06x status=miss batches=%d",
+					  family, defines, s_frameShadeDraws );
+	}
+	s_framePermMissRows++;
 }
 
 /* The bind that carries a stage's program and textures, and answers whether a
@@ -2637,16 +2676,26 @@ void VK_Shade_NewFrame( void )
 	   retail trace carries, so name it here where nothing can be mid-draw */
 	if ( s_frameShadeDraws || s_frameShadeDrops ) {
 		static int rows;
+		static int lastBatches = -1;
 
-		if ( rows < 8 || ( rows % 600 ) == 0 ) {
-			VK_Guard_Row( "VK:draw3d", "frame shade-draws=%d shade-drops=%d imm-draws=%d",
-						  s_frameShadeDraws, s_frameShadeDrops, s_frameImmDraws );
+		/* a count that moves between frames is the vanish signature, so a
+		   transition is always named and not left to the sampler */
+		if ( rows < 8 || s_frameShadeDraws != lastBatches || ( rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:draw3d", "frame batches=%d refusals=%d imm=%d surf-cmds=%d draw-surfs=%d perm-req=%d perm-miss=%d",
+			  s_frameShadeDraws, s_frameShadeDrops, s_frameImmDraws,
+			  s_frameSurfCmds, s_frameDrawSurfs, s_framePermReq, s_framePermMiss );
 		}
+		lastBatches = s_frameShadeDraws;
 		rows++;
 	}
-	s_frameShadeDraws = 0;
-	s_frameShadeDrops = 0;
-	s_frameImmDraws   = 0;
+	s_frameShadeDraws    = 0;
+	s_frameShadeDrops    = 0;
+	s_frameImmDraws      = 0;
+	s_frameSurfCmds      = 0;
+	s_frameDrawSurfs     = 0;
+	s_framePermReq       = 0;
+	s_framePermMiss      = 0;
+	s_framePermMissRows  = 0;
 
 	/* the front end wrote this frame's uniforms; the first draw uploads them
 	   into a fresh ring */
