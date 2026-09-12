@@ -46,6 +46,7 @@ root, for more details.
 #include <stdlib.h>
 #include <string.h>
 
+#undef CLIENT_WINDOW_TITLE
 #define CLIENT_WINDOW_TITLE "Provenance EF2"
 
 SDL_Window *SDL_window = NULL;
@@ -142,39 +143,39 @@ void VKimp_AdapterInit( void )
 	VK_Sentinel_SetIO( VK_SentinelExists, VK_SentinelWrite, VK_SentinelRemove );
 }
 
-void VKimp_FillConfig( glconfig_t *config, int width, int height, float aspect, qboolean fullscreen )
+void VKimp_FillConfig( glconfig_t *glconfig, int width, int height, float aspect, qboolean fullscreen )
 {
-	memset( config, 0, sizeof( *config ) );
+	memset( glconfig, 0, sizeof( *glconfig ) );
 
-	snprintf( config->renderer_string, sizeof( config->renderer_string ), "%s",
+	snprintf( glconfig->renderer_string, sizeof( glconfig->renderer_string ), "%s",
 			  vk.deviceProps.deviceName );
-	snprintf( config->vendor_string, sizeof( config->vendor_string ), "Vulkan vendor 0x%04x",
+	snprintf( glconfig->vendor_string, sizeof( glconfig->vendor_string ), "Vulkan vendor 0x%04x",
 			  vk.deviceProps.vendorID );
-	snprintf( config->version_string, sizeof( config->version_string ),
+	snprintf( glconfig->version_string, sizeof( glconfig->version_string ),
 			  "Vulkan %u.%u.%u driver 0x%x",
 			  VK_API_VERSION_MAJOR( vk.deviceApiVersion ),
 			  VK_API_VERSION_MINOR( vk.deviceApiVersion ),
 			  VK_API_VERSION_PATCH( vk.deviceApiVersion ),
 			  vk.deviceProps.driverVersion );
 
-	config->maxTextureSize = (int)vk.deviceProps.limits.maxImageDimension2D;
-	config->numTextureUnits = 8;
-	config->colorBits = 32;
-	config->depthBits = 24;
-	config->stencilBits = 8;
-	config->driverType = GLDRV_ICD;
-	config->hardwareType = GLHW_GENERIC;
-	config->deviceSupportsGamma = qfalse;
-	config->textureCompression = TC_S3TC;	/* the BCn block formats are device-probed, not assumed */
-	config->textureEnvAddAvailable = qtrue;
-	config->textureEnvCombineAvailable = qtrue;
-	config->vidWidth = width;
-	config->vidHeight = height;
-	config->windowAspect = aspect;
-	config->displayFrequency = 60;
-	config->isFullscreen = fullscreen;
-	config->stereoEnabled = qfalse;
-	config->smpActive = vk.smpActive;
+	glconfig->maxTextureSize = (int)vk.deviceProps.limits.maxImageDimension2D;
+	glconfig->numTextureUnits = 8;
+	glconfig->colorBits = 32;
+	glconfig->depthBits = 24;
+	glconfig->stencilBits = 8;
+	glconfig->driverType = GLDRV_ICD;
+	glconfig->hardwareType = GLHW_GENERIC;
+	glconfig->deviceSupportsGamma = qfalse;
+	glconfig->textureCompression = TC_S3TC;	/* the BCn block formats are device-probed, not assumed */
+	glconfig->textureEnvAddAvailable = qtrue;
+	glconfig->textureEnvCombineAvailable = qtrue;
+	glconfig->vidWidth = width;
+	glconfig->vidHeight = height;
+	glconfig->windowAspect = aspect;
+	glconfig->displayFrequency = 60;
+	glconfig->isFullscreen = fullscreen;
+	glconfig->stereoEnabled = qfalse;
+	glconfig->smpActive = vk.smpActive;
 }
 
 qboolean VK_Surface_Create( void )

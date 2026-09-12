@@ -564,7 +564,6 @@ qboolean VK_Device_Create( void )
 	float priority = 1.0f;
 	uint32_t numQueues = 0;
 	VkResult result;
-	size_t i;
 
 	if ( vk.physicalDevice == VK_NULL_HANDLE ) {
 		return qfalse;

@@ -74,7 +74,7 @@ qboolean VK_TraceOn( const char *cvarName, int defaultValue );
 
 void VK_Guard_Hit( vkGuardSite_t site, const char *detail, VkResult result );
 qboolean VK_Guard_Result( vkGuardSite_t site, VkResult result, const char *what );
-void VK_Guard_Row( const char *tag, const char *fmt, ... );
+void VK_Guard_Row( const char *tag, const char *fmt, ... ) __attribute__((format(printf, 2, 3)));
 
 const char *VK_Guard_ResultName( VkResult result );
 

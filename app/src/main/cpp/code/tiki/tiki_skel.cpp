@@ -284,7 +284,6 @@ void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
     pGameSurf = pSkel->pSurfaces;
 
     for (i = 0; i < pHeader->numSurfaces; i++) {
-        size_t            nBytesUsed;
         skeletorVertex_t *pVert;
         const int         numTriangles = LongNoSwapPtr(&pSurf->numTriangles);
         const int         numVerts     = LongNoSwapPtr(&pSurf->numVerts);
@@ -292,7 +291,7 @@ void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
         nTriBytes  = numTriangles * sizeof(skelIndex_t) * 3;
         nSurfBytes = numVerts * sizeof(int);
 
-        nBytesUsed = TIKI_SurfaceGameBytes(pSurf, &nVertBytes);
+        TIKI_SurfaceGameBytes(pSurf, &nVertBytes);
 
         start_gs_ptr = (byte *)pGameSurf;
         gs_ptr       = start_gs_ptr + sizeof(skelSurfaceGame_t);

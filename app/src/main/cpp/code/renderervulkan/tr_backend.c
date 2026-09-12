@@ -139,6 +139,18 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 		return qfalse;
 	}
 
+	/* the 2D pack reads nothing from the stage: xyz, st and colour are the
+	   surface's own, so every stage of this surface draws one slice */
+	if ( stage && VK_VertexRing_StreamMatch( tess.numVertexes, tess.numIndexes,
+											 tess.texCoords[0][0], tess.texCoords[0][0], 0,
+											 tess.vertexColors, NULL,
+											 &vertexBase, &indexBase ) ) {
+		VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
+		VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );
+		VK_Shade_NoteDraw( qfalse );
+		return qtrue;
+	}
+
 	ringVerts = VK_VertexRing_Reserve( tess.numVertexes, &vertexBase );
 	if ( !ringVerts ) {
 		return qfalse;
@@ -171,7 +183,11 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 
 	memcpy( ringIndexes, tess.indexes, (size_t)tess.numIndexes * sizeof( vkIndex_t ) );
 
-
+	if ( stage ) {
+		VK_VertexRing_StreamStore( tess.numVertexes, tess.numIndexes,
+								   tess.texCoords[0][0], tess.texCoords[0][0], 0,
+								   tess.vertexColors, NULL, vertexBase, indexBase );
+	}
 
 	/* The ring is bound per surface: a bind is cheaper than tracking which. */
 	VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
@@ -668,11 +684,10 @@ void RB_BeginDrawingView (void) {
 
 	VK_DepthFuncApply( VK_LEQUAL );	/* pinned per view for the A/B cvar */
 
-	/* Retail's traced menu frame clears DEPTH and nothing else: the UI's 2D is
-	   already on the frame and the view builds no volume.  Colour joins only for
-	   a world view, and only for the fastsky/fog cases the reference asks it
-	   for.  Clearing colour for the UI's view erased the 2D painted ahead of it,
-	   and clearing no depth left a later view testing against an earlier one. */
+	/* Retail's traced menu frame clears DEPTH and nothing else: the view builds no
+	   volume, and colour joins only for a world view's fastsky or fog.  Colour on
+	   the UI's view erased the 2D painted ahead of it; no depth left a later view
+	   testing against the first one's depth. */
 	{
 		VkClearAttachment attachments[2];
 		VkClearRect rect;
@@ -800,8 +815,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 	for (i = 0, drawSurf = drawSurfs ; i < numDrawSurfs ; i++, drawSurf++) {
 		/* a null surface pointer is the fault that died at
-		   RB_RenderDrawSurfList+0xb4 (si_addr 0) on the Prologue boot; the
-		   sprite walk already answers it.  Name the slot and the length. */
+		   RB_RenderDrawSurfList+0xb4; the sprite walk already answers it */
 		if ( drawSurf->surface == NULL ) {
 			static int nullRows;
 

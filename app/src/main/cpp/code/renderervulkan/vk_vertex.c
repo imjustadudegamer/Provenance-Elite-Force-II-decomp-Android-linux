@@ -59,6 +59,26 @@ typedef struct {
 	int				flushed;
 } vkRing_t;
 
+/* the one surface slice the current iterator may reuse across its stages */
+typedef struct {
+	qboolean		valid;
+	int				vertexes;
+	int				indexes;
+	const void		*tc0;
+	const void		*tc1;
+	int				tcStride;
+	const void		*colors;
+	const void		*normals;
+	int				base;
+	int				indexBase;
+} vkStreamSlice_t;
+
+static vkStreamSlice_t	vk_streamSlice;
+
+/* the frame's demand, as the guard and the census row name it */
+static int	vk_frameDropCount;
+static int	vk_frameSurfaceCount;
+
 /* One ring per frame slot: a submit does not wait, so slot 1 is filling while
    slot 0 executes, and one ring would rewrite geometry the GPU is fetching. */
 static vkRing_t	vk_ring[VK_FRAMES_IN_FLIGHT];
@@ -318,11 +338,126 @@ void VK_VertexRing_Shutdown( void )
 	vk.vertexMemory = VK_NULL_HANDLE;
 }
 
+/* The frame's demand, named on the boundary that ends it.  Retail's trace answers
+   "what did a legal frame stream" (the menu frame: 3,047 vertexes, 10,056 index
+   entries, five locked surfaces); a refusal reads as drops against capacity. */
+static void VK_VertexRing_FrameRow( void )
+{
+	static int	rows;
+	static int	lastUsed = -1;
+	static int	lastDrops = -1;
+	int used, bytes, indexes, drops, surfaces;
+
+	VK_VertexRing_FrameDemand( &used, &bytes, &indexes, &drops, &surfaces );
+
+	if ( !used && !drops ) {
+		return;
+	}
+
+	rows++;
+	if ( rows <= 8 || used != lastUsed || drops != lastDrops || ( rows % 600 ) == 0 ) {
+		VK_Guard_Row( "VK:ring", "frame slots=%d of %d vertex-bytes=%d indexes=%d surfaces=%d drops=%d",
+					  used, VK_RING_MAX_VERTEXES, bytes, indexes, surfaces, drops );
+	}
+	lastUsed = used;
+	lastDrops = drops;
+}
+
 void VK_VertexRing_ResetFrame( void )
 {
+	VK_VertexRing_FrameRow();
+
 	VK_Ring()->vertexBase = 0;
 	VK_Ring()->indexBase = 0;
 	VK_Ring()->flushed = 0;
+	VK_VertexRing_StreamForget();
+	vk_frameDropCount = 0;
+	vk_frameSurfaceCount = 0;
+}
+
+/* A slice is the surface's own packed geometry, so only the stage that packed it
+   and the exact source tuple it packed from may draw it again. */
+static qboolean VK_StreamSlice_Key( int vertexes, int indexes,
+									const void *tc0, const void *tc1, int tcStride,
+									const void *colors, const void *normals )
+{
+	vkStreamSlice_t *s = &vk_streamSlice;
+
+	if ( !s->valid ) {
+		return qfalse;
+	}
+	if ( s->vertexes != vertexes || s->indexes != indexes ) {
+		return qfalse;
+	}
+	if ( s->tc0 != tc0 || s->tc1 != tc1 || s->tcStride != tcStride ) {
+		return qfalse;
+	}
+	if ( s->colors != colors || s->normals != normals ) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
+qboolean VK_VertexRing_StreamMatch( int vertexes, int indexes,
+									const void *tc0, const void *tc1, int tcStride,
+									const void *colors, const void *normals,
+									int *baseOut, int *indexBaseOut )
+{
+	if ( !VK_StreamSlice_Key( vertexes, indexes, tc0, tc1, tcStride, colors, normals ) ) {
+		return qfalse;
+	}
+
+	if ( baseOut ) {
+		*baseOut = vk_streamSlice.base;
+	}
+	if ( indexBaseOut ) {
+		*indexBaseOut = vk_streamSlice.indexBase;
+	}
+	return qtrue;
+}
+
+void VK_VertexRing_StreamStore( int vertexes, int indexes,
+								const void *tc0, const void *tc1, int tcStride,
+								const void *colors, const void *normals,
+								int base, int indexBase )
+{
+	vk_streamSlice.valid		= qtrue;
+	vk_streamSlice.vertexes		= vertexes;
+	vk_streamSlice.indexes		= indexes;
+	vk_streamSlice.tc0			= tc0;
+	vk_streamSlice.tc1			= tc1;
+	vk_streamSlice.tcStride		= tcStride;
+	vk_streamSlice.colors		= colors;
+	vk_streamSlice.normals		= normals;
+	vk_streamSlice.base			= base;
+	vk_streamSlice.indexBase	= indexBase;
+	vk_frameSurfaceCount++;
+}
+
+void VK_VertexRing_StreamForget( void )
+{
+	memset( &vk_streamSlice, 0, sizeof( vk_streamSlice ) );
+	vk_streamSlice.tcStride = -1;
+}
+
+void VK_VertexRing_FrameDemand( int *usedOut, int *vertexesOut, int *indexesOut,
+								int *dropsOut, int *surfacesOut )
+{
+	if ( usedOut ) {
+		*usedOut = VK_Ring()->vertexBase;
+	}
+	if ( vertexesOut ) {
+		*vertexesOut = VK_Ring()->vertexBase * VK_TESS_VERTEX_BYTES;
+	}
+	if ( indexesOut ) {
+		*indexesOut = VK_Ring()->indexBase;
+	}
+	if ( dropsOut ) {
+		*dropsOut = vk_frameDropCount;
+	}
+	if ( surfacesOut ) {
+		*surfacesOut = vk_frameSurfaceCount;
+	}
 }
 
 /* the 3D shade path packs a wider vertex: it reserves bytes and binds the ring
@@ -338,6 +473,7 @@ int VK_VertexRing_ReserveBytes( int bytes, int *byteBaseOut )
 	tessSlots = ( bytes + VK_TESS_VERTEX_BYTES - 1 ) / VK_TESS_VERTEX_BYTES;
 
 	if ( VK_Ring()->vertexBase + tessSlots > VK_RING_MAX_VERTEXES ) {
+		vk_frameDropCount++;
 		VK_Guard_Hit( VK_GSITE_ALLOC, "vertex ring exhausted", VK_ERROR_OUT_OF_DEVICE_MEMORY );
 		return qfalse;
 	}
@@ -361,6 +497,7 @@ vkTessVertex_t *VK_VertexRing_Reserve( int vertexes, int *baseOut )
 	}
 
 	if ( VK_Ring()->vertexBase + vertexes > VK_RING_MAX_VERTEXES ) {
+		vk_frameDropCount++;
 		VK_Guard_Hit( VK_GSITE_ALLOC, "vertex ring exhausted", VK_ERROR_OUT_OF_DEVICE_MEMORY );
 		if ( baseOut ) {
 			*baseOut = VK_Ring()->vertexBase;
@@ -387,6 +524,7 @@ vkIndex_t *VK_VertexRing_ReserveIndexes( int indexes, int *baseOut )
 	}
 
 	if ( VK_Ring()->indexBase + indexes > VK_RING_MAX_INDEXES ) {
+		vk_frameDropCount++;
 		VK_Guard_Hit( VK_GSITE_ALLOC, "index ring exhausted", VK_ERROR_OUT_OF_DEVICE_MEMORY );
 		if ( baseOut ) {
 			*baseOut = VK_Ring()->indexBase;

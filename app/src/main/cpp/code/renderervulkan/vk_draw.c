@@ -526,12 +526,10 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	degenerate = ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) ? qtrue : qfalse;
 
 	if ( degenerate ) {
-		/* Retail's own UI issues these: menu_controls' bindscroll (scrollbar_width
-		   0 over WeaponBindList's 325x255 client), its two "table fudge" columns
-		   and menu_loadgame's width-0 columns are authored zero-extent.  The dims
-		   travel set2D -> Set2DWindow -> this record verbatim on both legs, the
-		   window is issued anyway and the zero-area scissor rasterises nothing.
-		   A diagnosis row, not a guard: [VK:guard] stays the error stream. */
+		/* Retail's own UI authors zero-extent windows (menu_controls' bindscroll, its
+		   two "table fudge" columns, menu_loadgame's width-0 columns); the dims travel
+		   set2D -> Set2DWindow -> this record verbatim and nothing rasterises.
+		   A diagnosis row: [VK:guard] stays the error stream. */
 		static int s_rows;
 
 		if ( s_rows < 8 || ( s_rows % 500 ) == 0 ) {
@@ -598,9 +596,8 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	qvk.CmdSetScissor( cmd, 0, 1, &scissor );
 }
 
-/* The alpha test is a push constant set when the stage's pipeline binds, as
-   Vulkan has no fixed-function test to inherit.  The value is the reference
-   selector (0 off, 1 GT0, 2 LT80, 4 GE128): a threshold cannot express GT0. */
+/* The alpha test rides the stage's push constants; the value is the reference
+   selector (0 off, 1 GT0, 2 LT80, 4 GE128), which no threshold expresses. */
 void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 {
 	float values[4];

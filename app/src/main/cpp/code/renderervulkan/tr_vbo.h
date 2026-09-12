@@ -61,11 +61,16 @@ void RB_VBO_Shutdown( void );
 void RB_VBO_BeginFrame( void );
 
 void RB_VBO_DrawTessIndexed( const shaderCommands_t *input, const vkIndex_t *indexes, int numIndexes );
+void RB_VBO_DrawTessIndexed_Stage( const shaderCommands_t *input, const vkIndex_t *indexes, int numIndexes,
+								   const void *stage );
+/* stage is the calling stage's identity: the surface's packed ring slice is
+   reused by that surface's remaining stages and by nothing else */
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const vkIndex_t *indexes, int numIndexes,
 							const float *texcoord0, const float *texcoord1, int tcStrideFloats,
 							const unsigned char *colors,
-							const float *normals );
+							const float *normals,
+							const void *stage );
 void RB_VBO_DrawTess( const shaderCommands_t *input );
 
 /* The per-batch surface log; no static arena behind it yet, so a recorded
