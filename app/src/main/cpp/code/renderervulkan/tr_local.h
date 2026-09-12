@@ -14,21 +14,38 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #ifndef VK_TR_LOCAL_H
 #define VK_TR_LOCAL_H
 
 /*
  * The renderer's data model, mirrored from renderergles3/tr_local.h.
  *
- * Everything here is the API-neutral half of the GLES3 renderer's own local
+ * Everything here is the API-neutral half of the reference renderer's own local
  * header: the shader/image/tessellation structures carry the same fields with
  * the same meanings, so the parsers that fill them (tr_shader.c, tr_image.c,
  * tr_font.cpp) are the same code in both modules.  What differs is only the
  * substrate the structures describe: `image_t::texnum` is an index into this
- * module's texture table rather than a GL texture object name, and the
- * back-end state records the frame's Vulkan command buffer instead of a GL
- * context.  No GL header is included and no gl*() symbol is named anywhere in
- * this module (the GLES3 twin's GL typedefs come in through qgl.h, which this
+ * module's texture table rather than a driver texture name, and the
+ * back-end state records the frame's Vulkan command buffer instead of a driver
+ * context.  No legacy raster header is included and no gl*() symbol is named anywhere in
+ * this module (the reference renderer's raster typedefs come in through its own header, which this
  * module does not have).
  */
 
@@ -49,7 +66,7 @@ root, for more details.
 extern "C" {
 #endif
 
-typedef unsigned int glIndex_t;
+typedef unsigned int vkIndex_t;
 
 #define	SMP_FRAMES		2
 
@@ -58,8 +75,17 @@ typedef unsigned int glIndex_t;
 #define MAX_STATE_NAME 32
 
 #define	MAX_MOD_KNOWN	1024
-#define	MAX_DRAWIMAGES			2048
+/* 4096: the retail corpus names about 3,000 distinct textures, and 2048 is
+   both the walk's truncation point for the offline permutation census and a
+   hard ERR_DROP for a session that loads past it.  The table itself is the
+   only cost: 2048 more image_t slots, under a megabyte of static data -- the
+   pixels are allocated per image when one is actually uploaded. */
+#define	MAX_DRAWIMAGES			4096
 #define	MAX_SKINS				1024
+
+/* the tessellation index type, and the reference renderer's float->int truncation */
+#define	VK_INDEX_TYPE		unsigned int
+#define	myftol(x)			((int)(x))
 typedef struct skelSurfaceGame_s skelSurfaceGame_t;
 typedef struct staticSurface_s staticSurface_t;
 
@@ -1128,7 +1154,12 @@ void		R_Modellist_f (void);
 
 extern	refimport_t		ri;
 
-#define	MAX_DRAWIMAGES			2048
+/* 4096: the retail corpus names about 3,000 distinct textures, and 2048 is
+   both the walk's truncation point for the offline permutation census and a
+   hard ERR_DROP for a session that loads past it.  The table itself is the
+   only cost: 2048 more image_t slots, under a megabyte of static data -- the
+   pixels are allocated per image when one is actually uploaded. */
+#define	MAX_DRAWIMAGES			4096
 #define	MAX_LIGHTMAPS			256
 #define	MAX_SKINS				1024
 #define MAX_MAP_SPHERE_LIGHTS_EF2	2532
@@ -1147,7 +1178,7 @@ extern	refimport_t		ri;
 #define	QSORT_FOGNUM_MASK		31
 #define	QSORT_DLIGHTMAP_MASK	3
 
-extern	int			gl_filter_min, gl_filter_max;
+extern	int			vk_filter_min, vk_filter_max;
 
 typedef struct {
 	int		c_sphere_cull_patch_in, c_sphere_cull_patch_clip, c_sphere_cull_patch_out;
@@ -1177,10 +1208,10 @@ typedef struct {
 	int			faceCulling;
 	int			cntTexEnvExt;
 	int			cntnvblendmode;
-	long unsigned int glStateBits;
+	long unsigned int vkStateBits;
 	long unsigned int externalSetState;
 	vec4_t fFogColor;
-} glstate_t;
+} vkstate_t;
 
 
 typedef struct {
@@ -1330,7 +1361,7 @@ typedef struct {
 
 extern backEndState_t	backEnd;
 extern trGlobals_t	tr;
-extern glconfig_t	glConfig;		
+extern glconfig_t	vkConfig;		
 
 extern qboolean  textureFilterAnisotropic;
 extern int       maxAnisotropy;
@@ -1342,7 +1373,7 @@ extern qboolean  smp_hasEtc2Core;
 extern float     displayAspect;
 extern qboolean  haveClampToEdge;
 
-extern glstate_t	glState;		
+extern vkstate_t	vkState;		
 extern int r_sequencenumber;
 
 
@@ -1363,14 +1394,19 @@ extern cvar_t	*r_allowGeometryDeforms;
 extern cvar_t	*r_texturebits;			
 
 extern cvar_t	*r_measureOverdraw;		
-extern cvar_t	*r_depthFuncAlways;		/* diagnostic: the depth comparator is GL_ALWAYS */
-void		GLES3_DepthState( qboolean test, qboolean write );
-void		GLES3_DepthStateReset( void );
-qboolean	GLES3_DepthGate2D( void );
-void		GLES3_DepthGate2DTake( void );
-void		GLES3_StencilState( qboolean test, int func, int ref, unsigned int mask );
-void		GLES3_StencilStateReset( void );
-void		GLES3_DepthFuncApply( int func );
+extern cvar_t	*r_depthFuncAlways;		/* diagnostic: the depth comparator is VK_ALWAYS */
+void		VK_DepthState( qboolean test, qboolean write );
+void		VK_DepthStateReset( void );
+void		VK_DepthFuncApply( int func );
+#define VK_PLATFORM_FALLBACK_MODE 3
+
+void		VK_Shade_Viewport3D( int x, int y, int w, int h );
+void		VK_ProgramsInit( void );
+void		VK_ProgramsShutdown( void );
+void		VK_DepthGate2D( void );
+void		VK_DepthGate2DTake( void );
+void		VK_StencilState( qboolean test, int func, int ref, unsigned int mask );
+void		VK_StencilStateReset( void );
 
 extern cvar_t	*r_lodscale;
 
@@ -1563,57 +1599,58 @@ void R_RotateForStaticModel(cStaticModelUnpacked_t* SM, const viewParms_t* viewP
 void R_RotateForViewer(void);
 void R_SetupFrustum(void);
 
-void	GL_SetFogColor(const vec4_t fColor);
-void	GL_Bind( image_t *image );
-void	GL_BindUnit0( image_t *image );
-void	GL_SetDefaultState (void);
-void	GL_SelectTexture( int unit );
-void	GL_TextureMode( const char *string );
-void	GL_CheckErrors( void );
-void	GL_State( unsigned long stateVector );
-unsigned long RF_ForceAlphaStateBits( unsigned long stateVector );	
-void	GL_TexEnv( int env );
-void	GL_Cull( int cullType );
+void	VK_SetFogColor(const vec4_t fColor);
+void	VK_Bind( image_t *image );
+void	VK_BindUnit0( image_t *image );
+void	VK_SetDefaultState (void);
+void	VK_SelectTexture( int unit );
+void	VK_TextureMode( const char *string );
+void	VK_CheckErrors( void );
+void	VK_State( unsigned long stateVector );
+unsigned long	vk_Shade_StateBits( void );
+unsigned long RF_ForceAlphaStateBits( unsigned long stateVector );
+void	VK_TexEnv( int env );
+void	VK_Cull( int cullType );
 
-#define GLS_SRCBLEND_ZERO						0x00000001
-#define GLS_SRCBLEND_ONE						0x00000002
-#define GLS_SRCBLEND_DST_COLOR					0x00000003
-#define GLS_SRCBLEND_ONE_MINUS_DST_COLOR		0x00000004
-#define GLS_SRCBLEND_SRC_ALPHA					0x00000005
-#define GLS_SRCBLEND_ONE_MINUS_SRC_ALPHA		0x00000006
-#define GLS_SRCBLEND_DST_ALPHA					0x00000007
-#define GLS_SRCBLEND_ONE_MINUS_DST_ALPHA		0x00000008
-#define GLS_SRCBLEND_ALPHA_SATURATE				0x00000009
-#define		GLS_SRCBLEND_BITS					0x0000000f
+#define VKS_SRCBLEND_ZERO						0x00000001
+#define VKS_SRCBLEND_ONE						0x00000002
+#define VKS_SRCBLEND_DST_COLOR					0x00000003
+#define VKS_SRCBLEND_ONE_MINUS_DST_COLOR		0x00000004
+#define VKS_SRCBLEND_SRC_ALPHA					0x00000005
+#define VKS_SRCBLEND_ONE_MINUS_SRC_ALPHA		0x00000006
+#define VKS_SRCBLEND_DST_ALPHA					0x00000007
+#define VKS_SRCBLEND_ONE_MINUS_DST_ALPHA		0x00000008
+#define VKS_SRCBLEND_ALPHA_SATURATE				0x00000009
+#define		VKS_SRCBLEND_BITS					0x0000000f
 
-#define GLS_DSTBLEND_ZERO						0x00000010
-#define GLS_DSTBLEND_ONE						0x00000020
-#define GLS_DSTBLEND_SRC_COLOR					0x00000030
-#define GLS_DSTBLEND_ONE_MINUS_SRC_COLOR		0x00000040
-#define GLS_DSTBLEND_SRC_ALPHA					0x00000050
-#define GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA		0x00000060
-#define GLS_DSTBLEND_DST_ALPHA					0x00000070
-#define GLS_DSTBLEND_ONE_MINUS_DST_ALPHA		0x00000080
-#define		GLS_DSTBLEND_BITS					0x000000f0
+#define VKS_DSTBLEND_ZERO						0x00000010
+#define VKS_DSTBLEND_ONE						0x00000020
+#define VKS_DSTBLEND_SRC_COLOR					0x00000030
+#define VKS_DSTBLEND_ONE_MINUS_SRC_COLOR		0x00000040
+#define VKS_DSTBLEND_SRC_ALPHA					0x00000050
+#define VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA		0x00000060
+#define VKS_DSTBLEND_DST_ALPHA					0x00000070
+#define VKS_DSTBLEND_ONE_MINUS_DST_ALPHA		0x00000080
+#define		VKS_DSTBLEND_BITS					0x000000f0
 
-#define GLS_DEPTHMASK_TRUE						0x00000100
-#define GLS_POLYMODE_LINE						0x00000200
-#define GLS_DEPTHTEST_DISABLE					0x00000400
-#define GLS_DEPTHFUNC_EQUAL						0x00000800
+#define VKS_DEPTHMASK_TRUE						0x00000100
+#define VKS_POLYMODE_LINE						0x00000200
+#define VKS_DEPTHTEST_DISABLE					0x00000400
+#define VKS_DEPTHFUNC_EQUAL						0x00000800
 
-#define GLS_CLAMP_EDGE							0x00001000
-#define GLS_MULTITEXTURE						0x00002000
-#define GLS_MULTITEXTURE_ENV					0x00004000
-#define GLS_FOG									0x00008000
+#define VKS_CLAMP_EDGE							0x00001000
+#define VKS_MULTITEXTURE						0x00002000
+#define VKS_MULTITEXTURE_ENV					0x00004000
+#define VKS_FOG									0x00008000
 
-#define GLS_CUBEMAP								0x00010000
+#define VKS_CUBEMAP								0x00010000
 
-#define GLS_ATEST_GT_0							0x10000000
-#define GLS_ATEST_LT_80							0x20000000
-#define GLS_ATEST_GE_80							0x40000000
-#define GLS_ATEST_BITS							0x70000000
+#define VKS_ATEST_GT_0							0x10000000
+#define VKS_ATEST_LT_80							0x20000000
+#define VKS_ATEST_GE_80							0x40000000
+#define VKS_ATEST_BITS							0x70000000
 
-#define GLS_DEFAULT			GLS_DEPTHMASK_TRUE
+#define VKS_DEFAULT			VKS_DEPTHMASK_TRUE
 
 void Draw_SetColor(const vec4_t rgba);
 void R_ChangeTextColor(int index);
@@ -1691,7 +1728,7 @@ image_t* R_CreateImageOld(
     qboolean allowPicmip,
     qboolean force32bit,
     qboolean hasAlpha,
-    int glCompressMode,
+    int vkCompressMode,
     int textureMode
 );
 
@@ -1750,11 +1787,11 @@ void		GLimp_WakeRenderer( void *data );
 void		GLimp_ShutdownRenderThread( void );
 qboolean	GLimp_IsRenderThread( void );
 
-void		GL_ClaimContextForResource( void );	/* parks the render thread */
+void		VK_ClaimContextForResource( void );	/* parks the render thread */
 int			GLimp_HandshakeViolations( void );
 int			GLimp_DeviceCoreCount( void );
 
-void		GLimp_LogComment( char *comment );
+void		VKimp_LogComment( char *comment );
 
 void		GLimp_SetGamma( unsigned char red[256], 
 						    unsigned char green[256],
@@ -1771,7 +1808,7 @@ typedef struct stageVars
 
 typedef struct shaderCommands_s 
 {
-	glIndex_t	indexes[SHADER_MAX_INDEXES] Q_ALIGN(16);
+	vkIndex_t	indexes[SHADER_MAX_INDEXES] Q_ALIGN(16);
 	vec4_t		xyz[SHADER_MAX_VERTEXES] Q_ALIGN(16);
 	vec4_t		normal[SHADER_MAX_VERTEXES] Q_ALIGN(16);
 	vec2_t		texCoords[SHADER_MAX_VERTEXES][2] Q_ALIGN(16);
@@ -1806,11 +1843,20 @@ extern	shaderCommands_t	tess;
 
 void RB_BeginSurface(shader_t *shader, int fogNum );
 void RB_EndSurface(void);
+extern qboolean vk_frameOpen;
+void RB_BeginDrawingView( void );
+void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
+void RB_RenderSpriteSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
+void RB_SetupFog( void );
+const void *RB_DrawSurfs( const void *data );
+const void *RB_SpriteSurfs( const void *data );
 void RB_GLFogStageIteratorFunc( void );
 void RB_CheckOverflow( int verts, int indexes );
 #define RB_CHECKOVERFLOW(v,i) if (tess.numVertexes + (v) >= SHADER_MAX_VERTEXES || tess.numIndexes + (i) >= SHADER_MAX_INDEXES ) {RB_CheckOverflow(v,i);}
 
 void RB_StageIteratorGeneric( void );
+void RB_StageIterator2D( void );
+void RB_StageIteratorVertexLitTextureUnfogged_2D( void );
 void RB_StageIteratorSky( void );
 void RB_StageIteratorVertexLitTextureUnfogged( void );
 void RB_StageIteratorLightmappedMultitextureUnfogged( void );
@@ -2055,8 +2101,8 @@ int	GetDDSOffset( int level, int levels, int width, int height, int blockBytes )
 void	R_MipMap2( byte *in, int inWidth, int inHeight );						 
 void	verifyProperTextureSize( const char *name, int width, int height );				 
 int	getGLClampType( int wrapAxis, int textureMode );						 
-void	GL_SetTextureAnisotropicFiltering( unsigned int target );						 
-void	GL_SetupAnisotropicFiltering( void );								 
+void	VK_SetTextureAnisotropicFiltering( unsigned int target );						 
+void	VK_SetupAnisotropicFiltering( void );								 
 void	RB_CalcModulateAlphasByFog_Alpha( unsigned char *dstColors );					 
 void	RB_CalcModulateColorsByFog_Alpha( unsigned char *dstColors );					 
 void	RB_CalcModulateRGBAsByFog_Alpha( unsigned char *dstColors );					 
@@ -2439,9 +2485,7 @@ typedef enum {
 	BE_PROG_COUNTERS
 } be_prog_counter_t;
 
-/* The front-end legs of one scene (one R_RenderScene, every view it recurses into).
- * `exec` is the part of the front end that R_IssuePendingRenderCommands runs inline,
- * so it is the back end measured from inside renderFront and overlaps [BE:ds]. */
+/* the reference renderer's tr_local.h carries this note in full */
 typedef enum {
 	BE_FEZ_view = 0, BE_FEZ_world, BE_FEZ_ents, BE_FEZ_poly, BE_FEZ_sprite,
 	BE_FEZ_sort, BE_FEZ_exec, BE_FEZ_other,
@@ -2460,7 +2504,7 @@ typedef struct {
 	int		surfs;
 	/* the batches the store could not hold and the ring drew instead */
 	int		fall;
-	/* writes/local/statics/multi/seq: the GLES3 arena arms, counted once this module grows the same store */
+	/* writes/local/statics/multi/seq: the reference renderer's arena arms, counted once this module grows the same store */
 	int		writes, local, statics, multi, seq;
 	int		locVisits, locVtx, locIdx, locHash, locFirstAt;
 	unsigned locFirst, locWas, locNow;
@@ -2515,7 +2559,7 @@ static inline int BE_On( void ) {
 		} \
 	} while ( 0 )
 
-/* the texture-env combine tokens, GLES3's own ordinals under this module's name */
+/* the texture-env combine tokens, the reference renderer's own ordinals under this module's name */
 #define	VK_TENV_ADD		0x0104
 #define	VK_TENV_MODULATE	0x2100
 #define	VK_TENV_DECAL		0x2101
@@ -2530,7 +2574,7 @@ static inline int BE_On( void ) {
 /* this module's own declarations */
 void RB_BeginSurface(shader_t *shader, int fogNum);
 void RB_ImmBegin( int topology );
-void RB_ImmBeginWithImage( int topology, image_t *image );
+void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits );
 void RB_ImmCommit( void );
 void RB_ImmEnd( void );
 void RB_ImmEndDeferred( void );
@@ -2590,6 +2634,103 @@ void RB_RecordFramePrologue( void );
 qboolean RB_RecordSurfaces( VkCommandBuffer cmd );
 void RB_FramePrologue( void );
 
+/* this module's 3D state machine (the reference renderer keeps these in tr_backend.c
+   and tr_program.c; the bodies live in vk_shade.c) */
+void		VK_SelectTexture( int tmu );
+void		VK_Bind( image_t *image );
+void		VK_BindUnit0( image_t *image );
+void		VK_BindMultitexture( image_t *image, int tmu );
+void		VK_TexEnv( int env );
+void		VK_DepthState( qboolean test, qboolean write );
+void		VK_DepthStateReset( void );
+void		ProjectDlightTexture( void );
+void		RB_StageIteratorSky( void );
+void		RB_StageIteratorVertexLitTextureUnfogged( void );
+void		RB_StageIteratorLightmappedMultitextureUnfogged( void );
+void		RB_GLFogStageIteratorFunc( void );
+void		RB_ShadowTessEnd( void );
+void		RB_ShadowFinish( void );
+void		RB_ProjectionShadowDeform( void );
+void		RB_DeformTessGeometry( void );
+void		R_InitSkyTexCoords( float cloudLayerHeight );
+void		R_BuildCloudData( shaderCommands_t *shader );
+void		LoadGHOST( const char *name, byte **pic, int *width, int *height );
+void		R_SetGhostImage( const char *name, image_t *image );
+void		R_UpdateGhostTextures( void );
+qboolean	VKimp_GLMainOwnsContext( void );
+skelHeaderGame_t *probe_TIKI_GetSkel_decl( void );
+void		VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader );
+VkCommandBuffer VK_Shade_CommandBuffer( void );
+qboolean	VK_Shade_Descriptors_Init( void );
+void		VK_Shade_Descriptors_Shutdown( void );
+qboolean	VK_Shade_Init( void );
+void		VK_Shade_Shutdown( void );
+void		VK_Shade_NewFrame( void );
+
+int		VK_Shade_ModelViewDepth( void );
+int		VK_Shade_ProjectionDepth( void );
+
+/* ---- the legacy spellings the mirrored 3D front end writes: this module
+   resolves them onto its own tokens, and no legacy raster header is involved ---- */
+#undef VK_LINES
+#define VK_LINES				VK_IMM_LINES
+#undef VK_TRIANGLES
+#define VK_TRIANGLES			VK_IMM_TRIANGLES
+#undef VK_TRIANGLE_STRIP
+#define VK_TRIANGLE_STRIP		VK_IMM_TRIANGLE_STRIP
+#undef VK_LINE_LOOP
+#define VK_LINE_LOOP			VK_IMM_LINE_LOOP
+#undef VK_IMM_TRIANGLE_FAN
+#define VK_IMM_TRIANGLE_FAN		4
+#undef VK_TRIANGLE_FAN
+#define VK_TRIANGLE_FAN			VK_IMM_TRIANGLE_FAN
+#undef VK_FALSE
+#define VK_FALSE				0
+#undef VK_TRUE
+#define VK_TRUE					1
+#undef VK_CULL_FACE
+#define VK_CULL_FACE			1
+#undef VK_POLYGON_OFFSET_FILL
+#define VK_POLYGON_OFFSET_FILL	2
+#undef VK_TEXTURE_2D
+#define VK_TEXTURE_2D			3
+#undef VK_RGBA
+#define VK_RGBA					4
+#undef VK_UNSIGNED_BYTE
+#define VK_UNSIGNED_BYTE		5
+#undef VK_FRONT
+#define VK_FRONT				6
+#undef VK_BACK
+#define VK_BACK					7
+#undef VK_KEEP
+#define VK_KEEP					8
+#undef VK_INCR
+#define VK_INCR					9
+#undef VK_DECR
+#define VK_DECR					10
+#undef VK_ALWAYS
+#define VK_ALWAYS				11
+#undef VK_NOTEQUAL
+#define VK_NOTEQUAL				12
+#undef VK_EQUAL
+#define VK_EQUAL				13
+#undef VK_LEQUAL
+#define VK_LEQUAL				14
+
+/* the sub-stream: folded into the pending pipeline key, or dropped where this
+   pass has no counterpart */
+void	vkEnable( int cap );
+void	vkDisable( int cap );
+void	vkCullFace( int mode );
+void	vkStencilOp( int fail, int zfail, int zpass );
+void	vkColorMask( qboolean r, qboolean g, qboolean b, qboolean a );
+void	vkLineWidth( float width );
+void	vkDepthRangef( float n, float f );
+void	vkDepthRange( float n, float f );
+void	vkPolygonOffset( float factor, float units );
+qboolean VK_Shade_PolygonOffset( void );
+void	VK_Shade_SetStencil( qboolean test, int func, int ref, unsigned int mask );
+
 /* ---- the vertex ring ----------------------------------------------------- */
 
 typedef struct {
@@ -2606,7 +2747,7 @@ qboolean VK_VertexRing_Init( void );
 void     VK_VertexRing_Shutdown( void );
 void     VK_VertexRing_ResetFrame( void );
 vkTessVertex_t *VK_VertexRing_Reserve( int vertexes, int *baseOut );
-glIndex_t *VK_VertexRing_ReserveIndexes( int indexes, int *baseOut );
+vkIndex_t *VK_VertexRing_ReserveIndexes( int indexes, int *baseOut );
 void     VK_VertexRing_RollBack( int vertexes, int indexes );
 vkTessVertex_t *VK_VertexRing_Tail( int back );
 void     vk_ring_note( int vertexHigh, int indexHigh );
@@ -2619,7 +2760,7 @@ int       VK_VertexRing_Flushed( void );
 
 typedef struct {
 	int			topology;			/* VK_IMM_* */
-	unsigned	stateBits;			/* the stage's GLS_* tuple */
+	unsigned	stateBits;			/* the stage's state-bit tuple */
 	cullType_t	cull;
 	qboolean	depthTest;
 	qboolean	depthWrite;
@@ -2651,6 +2792,7 @@ typedef struct {
 #define VK_MAX_TEXTURES MAX_DRAWIMAGES
 
 VkFormat VK_Texture_FormatFor( int internalFormat, qboolean *supported );
+qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes );
 qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat format, int *handleOut );
 qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes );
@@ -2664,8 +2806,8 @@ void     VK_Texture_FramePurge( void );
 int      VK_Texture_Count( void );
 int      VK_Texture_BytesUsed( void );
 
-/* the GL internal-format constants the loaders report, restated here so the
-   texture table can map them without naming a GL header */
+/* the legacy internal-format constants the loaders report, restated here so
+   the texture table can map them without naming that header */
 #define VK_TF_RGB				3
 #define VK_TF_RGBA				4
 #define VK_TF_RGBA8				0x8058
@@ -2673,7 +2815,9 @@ int      VK_Texture_BytesUsed( void );
 #define VK_TF_RGB5_A1			0x8057
 #define VK_TF_RGBA4				0x8055
 #define VK_TF_RGB5				0x8050
-#define VK_TF_LUM8				0x8050
+/* LUMINANCE8 (0x8040), not RGB5: they were written with one value, so a
+   luminance request resolved as RGB5. */
+#define VK_TF_LUM8				0x8040
 #define VK_TF_DXT1				0x83F0
 #define VK_TF_DXT3				0x83F2
 #define VK_TF_DXT5				0x83F3

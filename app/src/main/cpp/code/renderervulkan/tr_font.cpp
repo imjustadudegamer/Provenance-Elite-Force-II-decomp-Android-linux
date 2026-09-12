@@ -1,5 +1,22 @@
 /*
 ===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
 Copyright (C) 2024 the OpenMoHAA team
 
 This file is part of OpenMoHAA source code.
@@ -679,9 +696,8 @@ static void R_FontRunWrite( void ) {
 			tess.xyz[tess.numVertexes + 3][1] *= s_fontRunHeightScale;
 		}
 
-		/* The glyph quad carries the 2D colour per vertex, exactly as the
-		   stretch-pic quads do: without it the surface inherits whatever the
-		   previous surface left in the array and the text draws transparent. */
+		/* The glyph quad carries the 2D colour per vertex, as the stretch-pic
+		   quads do, or the text inherits the previous surface's colour. */
 		{
 			int v;
 
@@ -832,13 +848,13 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         if (pvVirtualScreen[0]) {
             fWidthScale = pvVirtualScreen[0];
         } else {
-            fWidthScale = (double)glConfig.vidWidth / 640.0;
+            fWidthScale = (double)vkConfig.vidWidth / 640.0;
         }
 
         if (pvVirtualScreen[1]) {
             fHeightScale = pvVirtualScreen[1];
         } else {
-            fHeightScale = (double)glConfig.vidHeight / 480.0;
+            fHeightScale = (double)vkConfig.vidHeight / 480.0;
         }
     }
 
@@ -1019,9 +1035,7 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
 
             x += s_fontGeneralScale * loc->size[0] * 256.0;
 
-            /* The glyph quad bypasses addTriangle, so without this it draws in
-               whatever colour the previous surface left in the array -- white
-               text on a white button.  Same bytes the 2D quads carry. */
+/* the reference renderer's tr_font.cpp carries this note in full */
             {
                 int v;
 

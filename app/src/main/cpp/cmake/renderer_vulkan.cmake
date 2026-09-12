@@ -35,6 +35,28 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/tr_backend.c
     ${SOURCE_DIR}/renderervulkan/tr_hwtex.c
     ${SOURCE_DIR}/renderervulkan/tr_texcache.c
+    # the 3D front end, mirrored from renderergles3 file for file
+    ${SOURCE_DIR}/renderervulkan/tr_scene.c
+    ${SOURCE_DIR}/renderervulkan/tr_bsp.c
+    ${SOURCE_DIR}/renderervulkan/tr_curve.c
+    ${SOURCE_DIR}/renderervulkan/tr_light.c
+    ${SOURCE_DIR}/renderervulkan/tr_shade_calc.c
+    ${SOURCE_DIR}/renderervulkan/tr_marks.c
+    ${SOURCE_DIR}/renderervulkan/tr_sprite.c
+    ${SOURCE_DIR}/renderervulkan/tr_model.cpp
+    ${SOURCE_DIR}/renderervulkan/tr_staticmodels.cpp
+    ${SOURCE_DIR}/renderervulkan/tr_sky_portal.cpp
+    ${SOURCE_DIR}/renderervulkan/tr_world.c
+    ${SOURCE_DIR}/renderervulkan/tr_surface.c
+    ${SOURCE_DIR}/renderervulkan/tr_main.c
+    ${SOURCE_DIR}/renderervulkan/tr_sky.c
+    ${SOURCE_DIR}/renderervulkan/tr_shade.c
+    ${SOURCE_DIR}/renderervulkan/tr_shadows.c
+    ${SOURCE_DIR}/renderervulkan/tr_sphere_shade.cpp
+    ${SOURCE_DIR}/renderervulkan/tr_sun_flare.cpp
+    ${SOURCE_DIR}/renderervulkan/tr_swipe.cpp
+    ${SOURCE_DIR}/renderervulkan/tr_ghost.cpp
+    ${SOURCE_DIR}/renderervulkan/vk_shade.c
     ${SOURCE_DIR}/renderervulkan/vk_m3_surface.c
     ${SOURCE_DIR}/renderervulkan/tr_util.cpp
     # the Vulkan substrate
@@ -54,11 +76,21 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/vk_pipelinecache.c
     ${SOURCE_DIR}/renderervulkan/vk_firstlight.c
     ${SOURCE_DIR}/renderervulkan/vk_renderthread.c
-    ${SOURCE_DIR}/renderervulkan/gl_vk_platform.c
+    ${SOURCE_DIR}/renderervulkan/vk_platform.c
 )
 
 set(RENDERER_VULKAN_BASENAME renderer_vulkan)
 set(RENDERER_VULKAN_BINARY ${RENDERER_VULKAN_BASENAME})
+
+# The shade layer's SPIR-V is compiled offline and embedded, so the build has
+# to refuse a module whose embedded blobs were compiled from other shader
+# sources: tools/build_vk_spirv.py --check compares the digest the header
+# records against the sources on disk and fails the build on drift.  No
+# compiler is needed to run it, so it gates every build, desktop and Android.
+find_program(PYTHON3_EXECUTABLE NAMES python3)
+# this file sits at <root>/app/src/main/cpp, the tool at <root>/tools
+set(VK_SPIRV_TOOL ${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/build_vk_spirv.py)
+get_filename_component(VK_SPIRV_TOOL "${VK_SPIRV_TOOL}" ABSOLUTE)
 
 list(APPEND RENDERER_VULKAN_BINARY_SOURCES
     ${RENDERER_COMMON_SOURCES}
@@ -82,6 +114,16 @@ if(USE_RENDERER_DLOPEN)
     target_link_options(        ${RENDERER_VULKAN_BINARY} PRIVATE ${RENDERER_LINK_OPTIONS})
 
     set_output_dirs(${RENDERER_VULKAN_BINARY})
+
+    if(PYTHON3_EXECUTABLE)
+        add_custom_target(vk_spirv_check
+            COMMAND ${PYTHON3_EXECUTABLE} ${VK_SPIRV_TOOL} --check
+            COMMENT "vk_spirv: the embedded SPIR-V against the shade sources"
+            VERBATIM)
+        add_dependencies(${RENDERER_VULKAN_BINARY} vk_spirv_check)
+    else()
+        message(STATUS "python3 not found: the embedded SPIR-V drift gate cannot run")
+    endif()
 
     INSTALL(TARGETS ${RENDERER_VULKAN_BINARY} DESTINATION ${INSTALL_LIBDIR_FULL})
 

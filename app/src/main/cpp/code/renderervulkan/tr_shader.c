@@ -1,5 +1,22 @@
 /*
 ===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
 
 This file is part of Quake III Arena source code.
@@ -22,7 +39,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
 
-#define GLES3_HAS_MULTITEXTURE qtrue
+#define VK_HAS_MULTITEXTURE qtrue
 
 
 
@@ -49,7 +66,7 @@ static qboolean shader_force32bit;
 static shadertext_t* currentShader = NULL;
 static shadertext_t* hashTable[FILE_HASH_SIZE];
 
-#define GL_CLAMP_TO_EDGE 0x812F
+#define VK_CLAMP_TO_EDGE 0x812F
 
 static long generateHashValue( const char *fname ) {
 	int		i;
@@ -206,15 +223,15 @@ static unsigned NameToAFunc( const char *funcname )
 {	
 	if ( !Q_stricmp( funcname, "GT0" ) )
 	{
-		return GLS_ATEST_GT_0;
+		return VKS_ATEST_GT_0;
 	}
 	else if ( !Q_stricmp( funcname, "LT128" ) )
 	{
-		return GLS_ATEST_LT_80;
+		return VKS_ATEST_LT_80;
 	}
 	else if ( !Q_stricmp( funcname, "GE128" ) )
 	{
-		return GLS_ATEST_GE_80;
+		return VKS_ATEST_GE_80;
 	}
 
 
@@ -227,82 +244,82 @@ static int NameToSrcBlendMode( const char *name )
 {
 	if ( !Q_stricmp( name, "GL_ONE" ) )
 	{
-		return GLS_SRCBLEND_ONE;
+		return VKS_SRCBLEND_ONE;
 	}
 	else if ( !Q_stricmp( name, "GL_ZERO" ) )
 	{
-		return GLS_SRCBLEND_ZERO;
+		return VKS_SRCBLEND_ZERO;
 	}
 	else if ( !Q_stricmp( name, "GL_DST_COLOR" ) )
 	{
-		return GLS_SRCBLEND_DST_COLOR;
+		return VKS_SRCBLEND_DST_COLOR;
 	}
 	else if ( !Q_stricmp( name, "GL_ONE_MINUS_DST_COLOR" ) )
 	{
-		return GLS_SRCBLEND_ONE_MINUS_DST_COLOR;
+		return VKS_SRCBLEND_ONE_MINUS_DST_COLOR;
 	}
 	else if ( !Q_stricmp( name, "GL_SRC_ALPHA" ) )
 	{
-		return GLS_SRCBLEND_SRC_ALPHA;
+		return VKS_SRCBLEND_SRC_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_ONE_MINUS_SRC_ALPHA" ) )
 	{
-		return GLS_SRCBLEND_ONE_MINUS_SRC_ALPHA;
+		return VKS_SRCBLEND_ONE_MINUS_SRC_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_DST_ALPHA" ) )
 	{
-		return GLS_SRCBLEND_DST_ALPHA;
+		return VKS_SRCBLEND_DST_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_ONE_MINUS_DST_ALPHA" ) )
 	{
-		return GLS_SRCBLEND_ONE_MINUS_DST_ALPHA;
+		return VKS_SRCBLEND_ONE_MINUS_DST_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_SRC_ALPHA_SATURATE" ) )
 	{
-		return GLS_SRCBLEND_ALPHA_SATURATE;
+		return VKS_SRCBLEND_ALPHA_SATURATE;
 	}
 
 	ri.Printf( PRINT_WARNING, "WARNING: unknown blend mode '%s' in shader '%s', substituting GL_ONE\n", name, shader.name );
-	return GLS_SRCBLEND_ONE;
+	return VKS_SRCBLEND_ONE;
 }
 
 static int NameToDstBlendMode( const char *name )
 {
 	if ( !Q_stricmp( name, "GL_ONE" ) )
 	{
-		return GLS_DSTBLEND_ONE;
+		return VKS_DSTBLEND_ONE;
 	}
 	else if ( !Q_stricmp( name, "GL_ZERO" ) )
 	{
-		return GLS_DSTBLEND_ZERO;
+		return VKS_DSTBLEND_ZERO;
 	}
 	else if ( !Q_stricmp( name, "GL_SRC_ALPHA" ) )
 	{
-		return GLS_DSTBLEND_SRC_ALPHA;
+		return VKS_DSTBLEND_SRC_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_ONE_MINUS_SRC_ALPHA" ) )
 	{
-		return GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+		return VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_DST_ALPHA" ) )
 	{
-		return GLS_DSTBLEND_DST_ALPHA;
+		return VKS_DSTBLEND_DST_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_ONE_MINUS_DST_ALPHA" ) )
 	{
-		return GLS_DSTBLEND_ONE_MINUS_DST_ALPHA;
+		return VKS_DSTBLEND_ONE_MINUS_DST_ALPHA;
 	}
 	else if ( !Q_stricmp( name, "GL_SRC_COLOR" ) )
 	{
-		return GLS_DSTBLEND_SRC_COLOR;
+		return VKS_DSTBLEND_SRC_COLOR;
 	}
 	else if ( !Q_stricmp( name, "GL_ONE_MINUS_SRC_COLOR" ) )
 	{
-		return GLS_DSTBLEND_ONE_MINUS_SRC_COLOR;
+		return VKS_DSTBLEND_ONE_MINUS_SRC_COLOR;
 	}
 
 	ri.Printf( PRINT_WARNING, "WARNING: unknown blend mode '%s' in shader '%s', substituting GL_ONE\n", name, shader.name );
-	return GLS_DSTBLEND_ONE;
+	return VKS_DSTBLEND_ONE;
 }
 
 static genFunc_t NameToGenFunc( const char *funcname )
@@ -768,7 +785,7 @@ static void ParseTexMod( char *_text, shaderStage_t *stage, int cntBundle )
 static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 {
 	char* token;
-	int depthMaskBits = GLS_DEPTHMASK_TRUE, blendSrcBits = 0, blendDstBits = 0, atestBits = 0, depthFuncBits = 0;
+	int depthMaskBits = VKS_DEPTHMASK_TRUE, blendSrcBits = 0, blendDstBits = 0, atestBits = 0, depthFuncBits = 0;
 	qboolean depthMaskExplicit = qfalse;
 	int cntBundle = 0;
 	int depthTestBits = 0;
@@ -805,7 +822,7 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 		}
 		else if (!Q_stricmp(token, "nofog"))
 		{
-			fogBits = GLS_FOG;
+			fogBits = VKS_FOG;
 			continue;
 		}
 		else if (!Q_stricmp(token, "map"))
@@ -982,7 +999,7 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 			}
 			else if ( !Q_stricmp( token, "equal" ) )
 			{
-				depthTestBits = GLS_DEPTHFUNC_EQUAL;
+				depthTestBits = VKS_DEPTHFUNC_EQUAL;
 			}
 			else
 			{
@@ -999,14 +1016,14 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 				continue;
 			}
 			if ( !Q_stricmp( token, "add" ) ) {
-				blendSrcBits = GLS_SRCBLEND_ONE;
-				blendDstBits = GLS_DSTBLEND_ONE;
+				blendSrcBits = VKS_SRCBLEND_ONE;
+				blendDstBits = VKS_DSTBLEND_ONE;
 			} else if ( !Q_stricmp( token, "filter" ) ) {
-				blendSrcBits = GLS_SRCBLEND_DST_COLOR;
-				blendDstBits = GLS_DSTBLEND_ZERO;
+				blendSrcBits = VKS_SRCBLEND_DST_COLOR;
+				blendDstBits = VKS_DSTBLEND_ZERO;
 			} else if ( !Q_stricmp( token, "blend" ) ) {
-				blendSrcBits = GLS_SRCBLEND_SRC_ALPHA;
-				blendDstBits = GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+				blendSrcBits = VKS_SRCBLEND_SRC_ALPHA;
+				blendDstBits = VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 			} else {
 				blendSrcBits = NameToSrcBlendMode( token );
 
@@ -1525,19 +1542,19 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 		}
 		else if ( !Q_stricmp( token, "depthwrite" ) || !Q_stricmp(token, "depthmask"))
 		{
-			depthMaskBits = GLS_DEPTHMASK_TRUE;
+			depthMaskBits = VKS_DEPTHMASK_TRUE;
 			depthMaskExplicit = qtrue;
 
 			continue;
         }
 		else if (!Q_stricmp(token, "noDepthTest"))
 		{
-			depthFuncBits = GLS_DEPTHTEST_DISABLE;
+			depthFuncBits = VKS_DEPTHTEST_DISABLE;
 			continue;
         }
         else if (!Q_stricmp(token, "nextBundle"))
         {
-			if (!GLES3_HAS_MULTITEXTURE) {
+			if (!VK_HAS_MULTITEXTURE) {
 				ri.Printf(PRINT_ALL, "WARNING: " PRODUCT_NAME " requires a video card with multitexturing capability\n");
 				return qfalse;
 			}
@@ -1610,8 +1627,8 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 	if ( stage->rgbGen == CGEN_BAD ) {
 		if ( (cntBundle <= 0 && stage->bundle[0].isLightmap)
 			|| (blendSrcBits != 0
-				&& blendSrcBits != GLS_SRCBLEND_ONE
-				&& blendSrcBits != GLS_SRCBLEND_SRC_ALPHA) ) {
+				&& blendSrcBits != VKS_SRCBLEND_ONE
+				&& blendSrcBits != VKS_SRCBLEND_SRC_ALPHA) ) {
 			stage->rgbGen = CGEN_IDENTITY_LIGHTING;
 		} else {
 			stage->rgbGen = CGEN_IDENTITY;
@@ -1629,14 +1646,14 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 		}
 	}
 
-	if ( ( blendSrcBits == GLS_SRCBLEND_ONE ) && 
-		 ( blendDstBits == GLS_DSTBLEND_ZERO ) )
+	if ( ( blendSrcBits == VKS_SRCBLEND_ONE ) && 
+		 ( blendDstBits == VKS_DSTBLEND_ZERO ) )
 	{
 		blendDstBits = blendSrcBits = 0;
-		depthMaskBits = GLS_DEPTHMASK_TRUE;
+		depthMaskBits = VKS_DEPTHMASK_TRUE;
 	}
 
-	if (depthFuncBits == GLS_DEPTHTEST_DISABLE) {
+	if (depthFuncBits == VKS_DEPTHTEST_DISABLE) {
 		depthMaskBits = 0;
 	}
 
@@ -2014,10 +2031,10 @@ static qboolean ParseShader( char **text, qboolean picmip )
 			if (unfoggedStages[s].rgbGen != CGEN_BAD) {
 				unfoggedStages[s].active = qtrue;
 				if (s > 0) {
-					if (!(unfoggedStages[s].stateBits & (GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS))) {
+					if (!(unfoggedStages[s].stateBits & (VKS_SRCBLEND_BITS | VKS_DSTBLEND_BITS))) {
 						ri.Printf(PRINT_WARNING, "WARNING: shader '%s' has opaque maps defined after stage 0!!!\n", shader.name);
 					}
-					if (unfoggedStages[s].stateBits & GLS_DEPTHMASK_TRUE) {
+					if (unfoggedStages[s].stateBits & VKS_DEPTHMASK_TRUE) {
 						ri.Printf(PRINT_WARNING, "WARNING: shader '%s' has depthmask enabled after stage 0!!!\n", shader.name);
 					}
 				}
@@ -2234,9 +2251,9 @@ static qboolean ParseShader( char **text, qboolean picmip )
 				if (!Q_stricmp(token, "separate_env")) {
 					conditionpassed = r_detailtextures->integer != 0;
 				} else if (!Q_stricmp(token, "mtex")) {
-					conditionpassed = GLES3_HAS_MULTITEXTURE;
+					conditionpassed = VK_HAS_MULTITEXTURE;
 				} else if (!Q_stricmp(token, "no_mtex")) {
-					conditionpassed = !GLES3_HAS_MULTITEXTURE;
+					conditionpassed = !VK_HAS_MULTITEXTURE;
 				} else if (!Q_stricmp(token, "detail")) {
 					conditionpassed = r_detailtextures->integer != 0;
 				} else if (!Q_stricmp(token, "noDetail")) {
@@ -2474,9 +2491,9 @@ typedef struct {
 } collapse_t;
 
 static collapse_t	collapse[] = {
-	{ GLS_DSTBLEND_ZERO    | GLS_SRCBLEND_DST_COLOR,	1 },	
-	{ GLS_DSTBLEND_SRC_COLOR | GLS_SRCBLEND_ZERO,		1 },	
-	{ GLS_DSTBLEND_ONE     | GLS_SRCBLEND_ONE,			2 },	
+	{ VKS_DSTBLEND_ZERO    | VKS_SRCBLEND_DST_COLOR,	1 },	
+	{ VKS_DSTBLEND_SRC_COLOR | VKS_SRCBLEND_ZERO,		1 },	
+	{ VKS_DSTBLEND_ONE     | VKS_SRCBLEND_ONE,			2 },	
 	{ 0, 0 }													
 };
 
@@ -2498,7 +2515,7 @@ static void CollapseMultitexture(int *stagecounter) {
 			continue;
 		}
 
-		if (glConfig.driverType == GLDRV_VOODOO) {
+		if (vkConfig.driverType == GLDRV_VOODOO) {
 			if (stage[1].bundle[0].image[0]->TMU ==
 				unfoggedStages[stagenum].bundle[0].image[0]->TMU) {
 				continue;
@@ -2512,7 +2529,7 @@ static void CollapseMultitexture(int *stagecounter) {
 			int		a = abits & 0xFF;
 			int		b = bbits & 0xFF;
 
-			if ( a == ( GLS_DSTBLEND_ZERO | GLS_SRCBLEND_ONE ) ) {	
+			if ( a == ( VKS_DSTBLEND_ZERO | VKS_SRCBLEND_ONE ) ) {	
 				a = 0;
 			}
 			if ( ( abits & ~0x1FF ) != ( bbits & ~0x1FF ) ) {
@@ -2531,7 +2548,7 @@ static void CollapseMultitexture(int *stagecounter) {
 				continue;
 			}
 
-			if ( collapse[iUseCollapse].multitextureEnv == 2 && !glConfig.textureEnvAddAvailable ) {
+			if ( collapse[iUseCollapse].multitextureEnv == 2 && !vkConfig.textureEnvAddAvailable ) {
 				continue;
 			}
 
@@ -2595,11 +2612,8 @@ static void CollapseMultitexture(int *stagecounter) {
 }
 
 static void Q_UNUSED_VAR FixRenderCommandList( int newShader ) {
-	/* The GLES3 twin patches the shader number packed into every recorded
-	   drawSurf sort key here, because its 3D record carries numbers.  This
-	   module's 2D record carries the shader_t pointer itself and resolves it
-	   through remappedShader at draw time, so a remap is visible to a frame
-	   that is already recorded and there is nothing to rewrite. */
+	/* The twin patches the sort key's shader number; this module's record
+	   carries the pointer and resolves the remap at draw time. */
 	( void )newShader;
 }
 
@@ -2720,8 +2734,8 @@ static void VertexLightingCollapse( void ) {
 		}
 
 		unfoggedStages[0].bundle[0] = bestStage->bundle[0];
-		unfoggedStages[0].stateBits &= ~( GLS_DSTBLEND_BITS | GLS_SRCBLEND_BITS );
-		unfoggedStages[0].stateBits |= GLS_DEPTHMASK_TRUE;
+		unfoggedStages[0].stateBits &= ~( VKS_DSTBLEND_BITS | VKS_SRCBLEND_BITS );
+		unfoggedStages[0].stateBits |= VKS_DEPTHMASK_TRUE;
 		if ( shader.lightmapIndex == LIGHTMAP_NONE ) {
 			unfoggedStages[0].rgbGen = CGEN_LIGHTING_SPHERICAL;
 		} else {
@@ -2922,7 +2936,7 @@ static shader_t *FinishShader( void ) {
 			hasLightmapStage = qfalse;
 		}
 
-		if (GLES3_HAS_MULTITEXTURE) {
+		if (VK_HAS_MULTITEXTURE) {
 			CollapseMultitexture(&stage);
 		}
 	}
@@ -2930,28 +2944,28 @@ static shader_t *FinishShader( void ) {
 	for (i = 0; i < stage; i++) {
 		shaderStage_t* pStage = &unfoggedStages[i];
 
-		if ( ( pStage->stateBits & (GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS) ) &&
-			 ( unfoggedStages[0].stateBits & (GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS) ) ) {
-			int blendSrcBits = pStage->stateBits & GLS_SRCBLEND_BITS;
-			int blendDstBits = pStage->stateBits & GLS_DSTBLEND_BITS;
+		if ( ( pStage->stateBits & (VKS_SRCBLEND_BITS | VKS_DSTBLEND_BITS) ) &&
+			 ( unfoggedStages[0].stateBits & (VKS_SRCBLEND_BITS | VKS_DSTBLEND_BITS) ) ) {
+			int blendSrcBits = pStage->stateBits & VKS_SRCBLEND_BITS;
+			int blendDstBits = pStage->stateBits & VKS_DSTBLEND_BITS;
 
 			if ( !shader.fogonly ) {
-				if ( ( blendSrcBits == GLS_SRCBLEND_ONE && blendDstBits == GLS_DSTBLEND_ONE )
-					|| ( blendSrcBits == GLS_SRCBLEND_ZERO && blendDstBits == GLS_DSTBLEND_ONE_MINUS_SRC_COLOR ) ) {
+				if ( ( blendSrcBits == VKS_SRCBLEND_ONE && blendDstBits == VKS_DSTBLEND_ONE )
+					|| ( blendSrcBits == VKS_SRCBLEND_ZERO && blendDstBits == VKS_DSTBLEND_ONE_MINUS_SRC_COLOR ) ) {
 					pStage->acff = ACFF_MODULATE_RGB;
 				}
-				else if ( ( blendSrcBits == GLS_SRCBLEND_SRC_ALPHA && blendDstBits == GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA )
-						|| ( blendSrcBits == GLS_SRCBLEND_SRC_ALPHA && blendDstBits == GLS_DSTBLEND_ONE ) ) {
+				else if ( ( blendSrcBits == VKS_SRCBLEND_SRC_ALPHA && blendDstBits == VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA )
+						|| ( blendSrcBits == VKS_SRCBLEND_SRC_ALPHA && blendDstBits == VKS_DSTBLEND_ONE ) ) {
 					pStage->acff = ACFF_MODULATE_ALPHA;
 				}
-				else if ( blendSrcBits == GLS_SRCBLEND_ONE && blendDstBits == GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA ) {
+				else if ( blendSrcBits == VKS_SRCBLEND_ONE && blendDstBits == VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA ) {
 					pStage->acff = ACFF_MODULATE_RGBA;
 				}
 			}
 
 			if (shader.sort == SS_BAD)
 			{
-				if (pStage->stateBits & GLS_DEPTHMASK_TRUE) {
+				if (pStage->stateBits & VKS_DEPTHMASK_TRUE) {
 					shader.sort = SS_SEE_THROUGH;
 				}
 				else {
@@ -2994,7 +3008,7 @@ static shader_t *FinishShader( void ) {
 		pFogStage->bundle[0].tcGen = TCGEN_FOG;
 		pFogStage->rgbGen = CGEN_FOG;
 		pFogStage->alphaGen = AGEN_IDENTITY;
-		pFogStage->stateBits = prevStateBits | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+		pFogStage->stateBits = prevStateBits | VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 
 		pFogStage = &globalFogStages[stage];
 		pFogStage->active = qtrue;
@@ -3002,7 +3016,7 @@ static shader_t *FinishShader( void ) {
 		pFogStage->bundle[0].tcGen = TCGEN_IDENTITY;
 		pFogStage->rgbGen = CGEN_FOG_BLEND;
 		pFogStage->alphaGen = AGEN_FOG_GLOBAL;
-		pFogStage->stateBits = prevStateBits | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+		pFogStage->stateBits = prevStateBits | VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 	}
 	else {
 		ri.Printf(PRINT_WARNING, "WARNING: overflowed shader stages in shader '%s'\n", shader.name);
@@ -3191,7 +3205,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 
 		if ( variant ) {
 			unfoggedStages[0].alphaGen = AGEN_FORCED_ALPHA;
-			unfoggedStages[0].stateBits = GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+			unfoggedStages[0].stateBits = VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 			shader.noMerge |= 1;
 		}
 
@@ -3228,38 +3242,34 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		unfoggedStages[0].bundle[0].image[0] = image;
 		unfoggedStages[0].active = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_LIGHTING_SPHERICAL;
-		unfoggedStages[0].stateBits = GLS_DEFAULT;
+		unfoggedStages[0].stateBits = VKS_DEFAULT;
 	} else if ( shader.lightmapIndex == LIGHTMAP_BY_VERTEX ) {
 		// SHIPPED CONTENT; do not re-open it without new data.  Retail
 		unfoggedStages[0].bundle[0].image[0] = image;
 		unfoggedStages[0].active = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_EXACT_VERTEX;
 		unfoggedStages[0].alphaGen = AGEN_SKIP;
-		unfoggedStages[0].stateBits = GLS_DEFAULT;
+		unfoggedStages[0].stateBits = VKS_DEFAULT;
 	} else if ( shader.lightmapIndex == LIGHTMAP_2D ) {
 		unfoggedStages[0].bundle[0].image[0] = image;
         unfoggedStages[0].active = qtrue;
         unfoggedStages[0].force32bit = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_GLOBAL_COLOR;
 		unfoggedStages[0].alphaGen = AGEN_GLOBAL_ALPHA;
-		unfoggedStages[0].stateBits = GLS_DEPTHTEST_DISABLE |
-			  GLS_SRCBLEND_SRC_ALPHA |
-			  GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+		unfoggedStages[0].stateBits = VKS_DEPTHTEST_DISABLE |
+			  VKS_SRCBLEND_SRC_ALPHA |
+			  VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 	} else if ( shader.lightmapIndex == LIGHTMAP_WHITEIMAGE ) {
-		// R_RealFindShader @0x0003D430, case -2 (engine_decomp_all/R_RealFindShader.c:283).
-		// Stage 0 is the white image at CGEN_IDENTITY (v8[43] = 2) with a
-		// depth-mask-only state (v8[51] = 256); stage 1 is the image at
-		// CGEN_IDENTITY_LIGHTING (v8[111] = 1) modulated by the texture.  The two
-		// generators were swapped here against retail and then put back.
+/* the reference renderer's tr_shader.c carries this note in full */
 		unfoggedStages[0].bundle[0].image[0] = tr.whiteImage;
 		unfoggedStages[0].active = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_IDENTITY;
-		unfoggedStages[0].stateBits = GLS_DEFAULT;
+		unfoggedStages[0].stateBits = VKS_DEFAULT;
 
 		unfoggedStages[1].bundle[0].image[0] = image;
 		unfoggedStages[1].active = qtrue;
 		unfoggedStages[1].rgbGen = CGEN_IDENTITY_LIGHTING;
-		unfoggedStages[1].stateBits |= GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO;
+		unfoggedStages[1].stateBits |= VKS_SRCBLEND_DST_COLOR | VKS_DSTBLEND_ZERO;
 	} else {
 		if ( shader.lightmapIndex & DYNAMIC_LIGHTMAP_BIT ) {
 			unfoggedStages[0].bundle[0].image[0] =
@@ -3270,17 +3280,17 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		unfoggedStages[0].bundle[0].isLightmap = qtrue;
 		unfoggedStages[0].active = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_IDENTITY;	
-		unfoggedStages[0].stateBits = GLS_DEFAULT;
+		unfoggedStages[0].stateBits = VKS_DEFAULT;
 
 		unfoggedStages[1].bundle[0].image[0] = image;
 		unfoggedStages[1].active = qtrue;
 		unfoggedStages[1].rgbGen = CGEN_IDENTITY;
-		unfoggedStages[1].stateBits |= GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO;
+		unfoggedStages[1].stateBits |= VKS_SRCBLEND_DST_COLOR | VKS_DSTBLEND_ZERO;
 	}
 
 	if ( variant ) {
 		unfoggedStages[0].alphaGen = AGEN_FORCED_ALPHA;
-		unfoggedStages[0].stateBits = GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+		unfoggedStages[0].stateBits = VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 		shader.noMerge |= 1;
 	}
 
@@ -3646,7 +3656,7 @@ static void CreateInternalShaders( void ) {
 	shader.lightmapIndex = LIGHTMAP_NONE;
 	unfoggedStages[0].bundle[0].image[0] = tr.defaultImage;
 	unfoggedStages[0].active = qtrue;
-	unfoggedStages[0].stateBits = GLS_DEFAULT;
+	unfoggedStages[0].stateBits = VKS_DEFAULT;
 	currentShader = FindShaderText(shader.name);
     tr.defaultShader = FinishShader();
 
@@ -3654,7 +3664,7 @@ static void CreateInternalShaders( void ) {
     shader.lightmapIndex = LIGHTMAP_NONE;
     unfoggedStages[0].bundle[0].image[0] = tr.whiteImage;
     unfoggedStages[0].active = qtrue;
-    unfoggedStages[0].stateBits = GLS_DEFAULT;
+    unfoggedStages[0].stateBits = VKS_DEFAULT;
     currentShader = FindShaderText(shader.name);
 	FinishShader();
 

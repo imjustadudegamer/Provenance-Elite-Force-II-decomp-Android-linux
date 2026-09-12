@@ -1207,7 +1207,8 @@ renderergles3/tr_vbo.c	gpl	GLES3 backend renamed from the OpenMoHAA renderer	ren
 renderergles3/tr_vbo.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_vbo_imm.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderergles3/tr_world.c	gpl	recovered GPL banner	renderergl1/tr_world.c	0.536	-	0.000
-renderervulkan/gl_vk_platform.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/shaders/vk_stage_ubo.inc	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_platform.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_backend.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_cmds.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_draw.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
@@ -1559,3 +1560,29 @@ uilib/uiwinman.cpp	gpl	recovered GPL banner	uilib/uiwinman.cpp	0.785	-	0.000
 uilib/uiwinman.h	gpl	recovered GPL banner	uilib/uiwinman.h	0.889	-	0.000
 uilib/ulist.h	gpl	recovered GPL banner	uilib/ulist.h	1.000	-	0.000
 uilib/usignal.h	gpl	recovered GPL banner	uilib/usignal.h	1.000	-	0.000
+renderervulkan/tr_bsp.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_curve.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_ghost.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_ghost.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_light.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_main.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_marks.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_model.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_program.h	vendored	recovered third-party notice	-	0.000	-	0.000
+renderervulkan/tr_scene.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_shade.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_shade_calc.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_shadows.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_sky.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_sky_portal.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_sphere_shade.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_sprite.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_staticmodels.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_sun_flare.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_surface.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_swipe.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_vbo.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_vbo_imm.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/tr_world.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_shade.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_shaders_embedded3d.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000

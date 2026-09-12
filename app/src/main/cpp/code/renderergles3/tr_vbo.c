@@ -35,16 +35,7 @@ typedef struct {
 
 #define RB_VERTEX_STRIDE	((GLsizei)sizeof( rbVertex_t ))
 
-/* The tessellation store is a ring of persistent buffer pairs.  The pair is
- * allocated ONCE at the structural maximum and is never re-specified; a send
- * writes the batch's exact bytes at the pair's base with glBufferSubData.  The
- * allocation is the ring, the upload is the batch, and the two are not the same
- * number.  The slot rotates per batch so a send never writes the storage the
- * preceding draws read; eight slots put eight batches between a write and the
- * next write to the same store.  The device capture shows the cost of the old
- * form is per call, not per byte (`[BE:send] sum=723374us batches=3552
- * first=239us mid=723135us`), so removing the per-send re-specification is the
- * fix and padding the send is not required to reach it. */
+/* the full note is in docs/RENDERER.md, "The tess vertex stores" */
 #define RB_TESS_RING	8
 
 #define RB_TESS_VBO_BYTES	((GLsizeiptr)( (size_t)SHADER_MAX_VERTEXES * RB_VERTEX_STRIDE ))
@@ -57,10 +48,8 @@ int r_spriteListOpen = 0;
 
 GLuint r_vaoBound = 0;
 
-/*
- * A buffer bind is only worth a driver call when it changes the binding.  The element
- * array binding is VAO state, so a VAO switch drops that half of the cache.
- */
+/* A buffer bind is only worth a driver call when it changes the binding; the
+ * element array binding is VAO state, so a VAO switch drops that half. */
 static GLuint	s_arrayBufferBound = (GLuint)~0u;
 static GLuint	s_elementBufferBound = (GLuint)~0u;
 
@@ -90,9 +79,7 @@ void RB_BindVAO( GLuint vao ) {
 	}
 }
 
-/* ---- the optional multi-draw --------------------------------------------
- * GL_EXT_multi_draw_arrays is not core, so it is resolved at run time and a
- * context without it keeps the composed-store path byte for byte. */
+/* ---- the optional multi-draw: resolved at run time, not core ------------ */
 typedef void (*rbMultiDrawElements_t)( GLenum mode, const GLsizei *count, GLenum type,
 									   const void *const *indices, GLsizei primcount );
 static rbMultiDrawElements_t	s_multiDraw;
@@ -123,10 +110,7 @@ static int		s_tessRingNext;
 static GLuint	s_vboStream;
 static GLuint	s_eboStream;
 
-/* ---- the per-frame tessellation stream store -----------------------------
- * One back end frame's stream is appended into a whole store discarded once when
- * the frame opens, three stores rotate, and a frame that overflows falls back to
- * the ring byte for byte. */
+/* ---- the per-frame tessellation stream store: three rotating stores ----- */
 #define RB_TESS_ARENA_COUNT		3
 #define RB_TESS_ARENA_ALIGN		32
 /* PAD is power-of-two only and a whole vertex cannot be one: the store's vertex
@@ -143,14 +127,7 @@ static GLintptr RB_VboAlignUp( GLintptr v, GLintptr align ) {
 
 static GLuint	s_vboArena[RB_TESS_ARENA_COUNT];
 static GLuint	s_eboArena[RB_TESS_ARENA_COUNT];
-/* One VAO a store.  The three stores rotate by frame, and the attribute
- * pointers are VAO state: one VAO shared across the rotation names whichever
- * store it was captured against, so the draw reads a frame's bytes out of that
- * store instead of out of the one the frame had just written -- which is the
- * first two frames of every rotation drawn from a store the previous frames
- * filled, and the reason a mapped store that carries correctly can still render
- * garbage.  tools/arena_store_harness's `mapped` case holds this shape up and
- * fails on it. */
+/* the full note is in docs/RENDERER.md, "The tess vertex stores" */
 static GLuint	s_vaoArena[RB_TESS_ARENA_COUNT];
 static GLuint	s_vaoStaticArena[RB_TESS_ARENA_COUNT];
 static int		s_arenaNext;
@@ -168,9 +145,8 @@ static cvar_t	*s_arenaCvar;
  * could print, so the session logged "mapped" over a ring; until the store
  * carries on a host harness it stays opt-in. */
 static cvar_t	*s_mapCvar;
-/* The arm as the cvars ask for it, before the store's own verdict.  `fall=' is
- * counted against this, not against the verdict: a store that was asked for and
- * refused every batch is the case the counter exists for. */
+/* The arm as the cvars ask for it, before the store's own verdict; `fall='
+ * counts against this, for a store asked for and refused every batch. */
 static qboolean	s_arenaArmed;
 /* The ring's own send shape.  1 is the fresh-orphan `glBufferData' per send and
  * the default: the same-view A/B measured 47,093 us/window against 381,283 for
@@ -180,10 +156,8 @@ static qboolean	s_arenaArmed;
  * the order bc60397 gave the store and the one the 0.3.19 session found the
  * old shape missing.  0 is the sub-data shape, kept for the A/B. */
 static cvar_t	*s_freshCvar;
-/* Latched at the first send.  The two shapes are not mixable within a session:
- * the orphan leaves a slot's storage sized to whatever batch last used it, so a
- * sub-data send that arrives after one would write past it.  Flipping
- * r_tessFresh mid-session therefore does nothing until the next map load. */
+/* Latched at the first send: the two shapes are not mixable within a session,
+ * so flipping r_tessFresh mid-session does nothing until the next map load. */
 static qboolean	s_freshLatched;
 static qboolean	s_fresh;
 /* The A/B arm the frame is on: 1 while the per-frame store is it. */
@@ -195,24 +169,7 @@ static int		s_arenaFall;
 static qboolean	s_armPrinted;
 static int		s_armMode = -1;
 
-/* ---- the mapped store (r_tessArena 4) -------------------------------------
- * The ring's per-send price is the allocation: `glBufferData' with the batch's
- * own size hands the driver a fresh block 220 times a frame, and the stall is
- * size-independent (a 12-vertex send cost 11.8 ms).  This arm allocates each
- * store once through GL_EXT_buffer_storage and maps it persistently, so a batch
- * is a memcpy and the frame issues no driver call for the send at all.
- *
- * Persistent is not a preference here.  An ordinary glMapBufferRange mapping
- * forbids the draw that reads the buffer while it is mapped (ES 3.0 §6.3.1), and
- * the draw is the very next thing this path does, so the only mapping that works
- * is one that stays live -- hence the extension gate: without it the arm stands
- * down and the ring runs.
- *
- * Three stores rotate by frame, which is what keeps the unsynchronised write
- * honest: a store is reused three frames after the GPU last read it.  A fence per
- * store says when that is not true, and the frame takes the orphan-and-remap
- * path -- one frame of the old store's price -- instead of writing memory the GPU
- * is still reading. */
+/* the full note is in docs/RENDERER.md, "The tess vertex stores" */
 #ifndef GL_MAP_PERSISTENT_BIT_EXT
 #define GL_MAP_PERSISTENT_BIT_EXT	0x0040
 #endif
@@ -240,9 +197,8 @@ static vec4_t	s_clipPlane;
 
 static rbVertex_t	s_tessStage[SHADER_MAX_VERTEXES];
 
-/* The [BE:send] accumulators.  RB_VboSendTake() hands them to the back-end
- * window printer, so the row rolls in the same window as [BE:ds] and [BE:be]
- * instead of opening its own. */
+/* The [BE:send] accumulators; RB_VboSendTake() hands them to the window
+ * printer, so the row rolls in the same window as [BE:ds] and [BE:be]. */
 static int	s_sendLast;
 static int	s_sendRuns;
 static int	s_sendBatches;
@@ -346,11 +302,8 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 	return ( out->batches > 0 ) ? qtrue : qfalse;
 }
 
-/* One range of the repack.  Every vertex reads only its own source slots and writes
- * only its own s_tessStage element, so chunks are disjoint and the bytes produced do
- * not depend on the split.  The pool never pays here: the measured split is slower than
- * inline at every size, and at the structural maximum the range is one chunk, so every
- * batch takes the pool's inline branch. */
+/* One range of the repack: chunks are disjoint, so the bytes do not depend on
+ * the split, and the measured split is slower than inline at every size. */
 #define RB_VBO_PACK_CHUNK	SHADER_MAX_VERTEXES
 
 typedef struct {
@@ -563,10 +516,9 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 	}
 
 	if ( s_fresh ) {
-		/* The 8x arm, measured 47,093 vs 381,283 us/window on the identical
-		 * view: glBufferSubData into a buffer the GPU last read an age ago
-		 * stalls the writer for the drain, so the pair is orphaned per send
-		 * instead, with the default VAO bound and the slot's opened after. */
+		/* The 8x arm, measured 47,093 vs 381,283 us/window: glBufferSubData
+		 * into a buffer the GPU last read stalls the writer, so the pair is
+		 * orphaned per send instead. */
 		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 		qglBufferData( GL_ARRAY_BUFFER,
@@ -596,33 +548,7 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 	}
 }
 
-/* ---- static world vertex arena ------------------------------------------
- * A world surface whose batch the lightmapped multitexture fast path draws
- * takes the same vertex bytes on every frame: the positions and texture
- * coordinates come out of the BSP's own arrays, the colour is the constant
- * white array, and the batch carries no dynamic light.  The arena therefore
- * bakes each such surface once, appends the packed bytes to a device buffer
- * that is written once and never re-specified, and later frames draw the
- * surface from its region.  The bake runs the shipping pack body over the same
- * tess range, so the bytes are the bytes the streaming path would have
- * uploaded; the only thing that moves is where the vertex data comes from.
- * Draw order, batch composition, index order, uniforms and state are untouched.
- *
- * What is proven static for this class, and why it is the whole input set:
- *   - the surface is world BSP geometry, never an entity (the record hook tests
- *     `backEnd.currentEntity == &tr.worldEntity`); BSP surfaces do not move;
- *   - the shader takes RB_StageIteratorLightmappedMultitextureUnfogged, so the
- *     batch is one stage with a constant vertex colour and bundle 0/1 texture
- *     coordinates taken straight from `tess.texCoords` (the BSP drawVert st and
- *     lightmap fields), and no svars generator runs;
- *   - the batch has no dynamic light (`tess.dlightBits == 0`), so no dlight
- *     projection consumes the tess arrays, and `GLP_NORMAL` is not set by this
- *     program for a lightmapped shader, so the normal slot is not an input;
- *   - neither `r_showtris` nor `r_shownormals` is on, so no debug pass reads the
- *     batch back out of `tess`.
- * Anything else -- a moving entity, a dlight, a deformed or waveform shader,
- * the shadow pass, the generic or vertex-lit iterator, 2D -- is left on the
- * streaming path byte for byte as it was. */
+/* the full note is in docs/RENDERER.md, "The tess vertex stores" */
 #define RB_STATIC_ARENA_VERTS	( ( 24u * 1024u * 1024u ) / (unsigned)sizeof( rbVertex_t ) )
 #define RB_STATIC_ARENA_IDXES	( RB_STATIC_ARENA_VERTS * 3u )
 #define RB_STATIC_HASH_BITS		14
@@ -741,10 +667,9 @@ static rbStaticRegion_t *RB_StaticFind( const void *surf ) {
 	return NULL;
 }
 
-/* One source index of a recorded surface, rebased onto that surface's region of
- * the vertex arena.  This is the only arithmetic that turns a batch index into a
- * drawn index, and it is the same call in the bake and in the fallback compose,
- * so the two index streams are the same bytes by construction. */
+/* One source index rebased onto its surface's arena region: the only
+ * arithmetic that turns a batch index into a drawn index, shared by the bake
+ * and the fallback compose. */
 static glIndex_t RB_StaticRebase( const rbStaticRec_t *r, const rbStaticRegion_t *e,
 								  glIndex_t local ) {
 	return (glIndex_t)( e->first + ( local - r->vertStart ) );
@@ -805,10 +730,8 @@ static void RB_VboStaticInit( void ) {
 		RB_VBO_ConfigureAttribs();
 	}
 
-	/* The VAOs that draw the static arena out of the frame store's index blocks
-	 * belong to RB_VboArenaInit: they name a store's own element buffer, and a
-	 * store rotates.  If the arena init has not run yet there is nothing to
-	 * make here, and it makes them on its own first pass. */
+	/* These VAOs belong to RB_VboArenaInit; if it has not run there is
+	 * nothing to make here yet. */
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
 		RB_VboStaticArenaVao( i );
 	}
@@ -943,10 +866,9 @@ static void RB_StaticGateAccount( const shaderCommands_t *input, int numIndexes,
 	s_sendGateRecs += s_staticRecCount;
 }
 
-/* Bake every recorded surface that is not in the arena yet.  The bytes come from
- * `s_tessStage`, which the caller packed with the shipping body over the same
- * range, so the arena holds exactly the streaming stream.  A surface that does
- * not fit is left unbaked and the batch falls back for good. */
+/* Bake every recorded surface not in the arena yet: the bytes come from
+ * `s_tessStage`, so the arena holds exactly the streaming stream.  A surface
+ * that does not fit is left unbaked and the batch falls back for good. */
 static qboolean RB_VboStaticBake( const glIndex_t *indexes ) {
 	int		i;
 
@@ -998,10 +920,9 @@ static qboolean RB_VboStaticBake( const glIndex_t *indexes ) {
 	return qtrue;
 }
 
-/* Compose the batch's index list against the arena and send only that.  The
- * indices are the batch's own triangles, rebased onto the region of the surface
- * each came from, so the drawn triangles and their order are unchanged.  It is
- * the fallback for a batch the device-local blocks cannot draw in one call. */
+/* Compose the batch's index list against the arena and send only that: the
+ * triangles and their order are unchanged.  This is the fallback for a batch
+ * the device-local blocks cannot draw in one call. */
 static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
 	int		slot = s_tessRingNext;
 	int		k = 0;
@@ -1026,9 +947,7 @@ static void RB_VboStaticSend( const glIndex_t *indexes, int numIndexes ) {
 #endif
 }
 
-/* ---- the device-local static draw ----------------------------------------
- * One call a record, one multi-draw where the context has the extension, and no
- * store write on either path. */
+/* ---- the device-local static draw: one call a record, no store write ---- */
 static qboolean RB_VboStaticLocalPrepare( const glIndex_t *indexes, int numIndexes ) {
 	static cvar_t	*cvar;
 	int		i, k;
@@ -1130,16 +1049,7 @@ static void RB_VboBaseVertexInit( void ) {
 	s_baseVertexDraw = qtrue;
 }
 
-/* Why the store was refused, for the stand-down row.  0.3.21's session ended on
- * `ran=0 fall=0 arena=0` with no stand-down row anywhere in the capture, because
- * the row printed once at the first frame and the capture began three thousand
- * frames later; the one question the acceptance had -- extension absent, or
- * present and the map refused -- went into the log's missing first line.  The
- * reason is now a field of the state, and the arm row prints it on the same
- * 600-frame cadence the arm itself uses. */
-/* Why the store is not the arm: the number is the state, the name is what the
- * row prints.  0 is what the 2026-10-07 PC capture read 208 times -- the arm
- * was never asked for, `r_tessMap' shipped disarmed, so it is not a refusal. */
+/* the full note is in docs/RENDERER.md, "The tess vertex stores" */
 enum {
 	RB_ARM_ASKED = 0,
 	RB_ARM_UNARMED,		/* r_tessMap 0: the ring is the arm by setting */
@@ -1185,9 +1095,8 @@ static qboolean RB_VboArenaMapPair( int slot ) {
 												   RB_TESS_STORE_FLAGS );
 
 	if ( !s_arenaMapV[slot] || !s_arenaMapI[slot] ) {
-		/* Both stores are left allocated-but-unmapped here; the driver's own
-		 * error is the only thing that says why, so take it before anything
-		 * else can clear it. */
+		/* Both stores are left allocated-but-unmapped; take the driver's own
+		 * error before anything else can clear it. */
 		s_arenaMapWhy	= RB_ARM_REFUSED;
 		s_arenaMapErr	= qglGetError();
 		s_arenaMapV[slot] = NULL;
@@ -1243,9 +1152,8 @@ static void RB_VboArenaInit( void ) {
 		s_arenaMapI[i] = NULL;
 		s_arenaFence[i] = NULL;
 
-		/* The attribute pointers are offsets, but the pointer calls still need a
-		 * buffer bound to the target to attach to -- and each store's pointers
-		 * must name that store, so the capture is per store and not once. */
+		/* The pointers are offsets but still need a buffer bound to attach to,
+		 * so the capture is per store and not once. */
 		qglGenVertexArrays( 1, &s_vaoArena[i] );
 		RB_BindVAO( s_vaoArena[i] );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
@@ -1261,9 +1169,8 @@ static void RB_VboArenaInit( void ) {
 	s_arenaInit = qtrue;
 }
 
-/* A store the fence has not released goes the orphan route: the storage is
- * replaced and a fresh mapping taken, so the frame pays the allocation the map
- * exists to avoid rather than writing memory the GPU is still reading. */
+/* A store the fence has not released goes the orphan route, paying the
+ * allocation rather than writing memory the GPU is still reading. */
 static qboolean RB_VboArenaSlotReady( int slot ) {
 	if ( s_arenaFence[slot] ) {
 		GLenum	r = qglClientWaitSync( s_arenaFence[slot], 0, 0 );
@@ -1271,10 +1178,8 @@ static qboolean RB_VboArenaSlotReady( int slot ) {
 		qglDeleteSync( s_arenaFence[slot] );
 		s_arenaFence[slot] = NULL;
 
-		/* ALREADY_SIGNALED and CONDITION_SATISFIED are both "the GPU is done",
-		 * the second being what a zero timeout returns when the wait itself
-		 * finished it.  Taking only the first made every frame that had to wait
-		 * at all pay the ring for a store that was in fact released. */
+		/* ALREADY_SIGNALED and CONDITION_SATISFIED are both "the GPU is done";
+		 * taking only the first made every waiting frame pay the ring. */
 		if ( r != GL_ALREADY_SIGNALED && r != GL_CONDITION_SATISFIED
 			 && r != GL_WAIT_FAILED ) {
 			return qfalse;
@@ -1346,9 +1251,8 @@ static void RB_VboArenaShutdown( void ) {
 			qglDeleteSync( s_arenaFence[i] );
 			s_arenaFence[i] = NULL;
 		}
-		/* Dropped explicitly, with its own buffer bound: deleting a mapped
-		 * buffer is legal and implicitly unmaps it, but this is the one place
-		 * the map's lifetime is ended. */
+		/* Dropped explicitly, with its own buffer bound: the one place the
+		 * map's lifetime is ended. */
 		if ( s_arenaMapV[i] ) {
 			RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
 			qglUnmapBuffer( GL_ARRAY_BUFFER );
@@ -1392,26 +1296,7 @@ void RB_VBO_BeginFrame( void ) {
 	GLuint	vaoOnEntry;
 
 	if ( !s_arenaCvar ) {
-		/* `r_tessMap' is the arm switch and `r_tessArena' only the legacy
-		 * override, because the device's config.cfg already carries a value for
-		 * the older name: 0.3.15 registered it default 2 and 0.3.16 default 0, so
-		 * a Cvar_Get on it now returns whatever that session left and a new
-		 * default never reaches the code.  0.3.18 tested the override as
-		 * `!legacy', so the 2 the config carried away still suppressed the
-		 * switch and 0.3.19 ran the ring for a whole session again.  Only the
-		 * two arms r_tessMap does not name are forced now: 1 the per-frame
-		 * store, 2 the alternating A/B.
-		 *
-		 * The default is 1 again.  0.3.21 shipped 1, its live arm stood down
-		 * before its row could print, and 0.3.22 answered by disarming the
-		 * store until tools/arena_store_harness carried it on a host context.
-		 * That acceptance now PASSES all four cases on the host it asks for
-		 * (Mesa ES 3.2, EGL surfaceless, GL_EXT_buffer_storage present), and
-		 * the 2026-10-07 PC capture shows the extension gate was never the
-		 * reason the arm stayed dark: "procs=165 core_missing=0
-		 * staged_desktop_traps=0", the extension list carries
-		 * GL_EXT_buffer_storage, and every [BE:send] window still read arena=0
-		 * at two buffer writes a batch (18.8k to 80k batches a second). */
+		/* the full note is in docs/RENDERER.md, "The tess vertex stores" */
 		s_arenaCvar = ri.Cvar_Get( "r_tessArena", "0", 0 );
 		s_mapCvar   = ri.Cvar_Get( "r_tessMap", "1", 0 );
 		s_freshCvar = ri.Cvar_Get( "r_tessFresh", "1", 0 );
@@ -1499,10 +1384,8 @@ void RB_VBO_BeginFrame( void ) {
 	}
 	s_arenaFrame = RB_FrameCount();
 
-	/* The frame's refusals are decided below, in the fence check and in the
-	 * send's room test.  The flag is cleared here and nowhere else: clearing it
-	 * after the fence check erased the refusal it had just made, and the frame
-	 * wrote a store the GPU was still reading. */
+	/* The refusals are decided below; the flag is cleared here and nowhere
+	 * else, or clearing it after the fence check erased the refusal. */
 
 	s_arenaFull = qfalse;
 
@@ -1566,9 +1449,7 @@ void RB_VBO_BeginFrame( void ) {
 	s_arenaActive = qtrue;
 }
 
-/* Which arm the frame ran, and how much of it the store could not take.  Read
- * by the send row so the log is self-describing: without it a capture says what
- * happened but not which of the two was on. */
+/* Which arm the frame ran and how much of it the store could not take. */
 int RB_VboArenaMode( void ) {
 	if ( !s_arenaActive ) {
 		return 0;
@@ -1809,10 +1690,8 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 		qglReadPixels( x, y, w, h, GL_DEPTH_COMPONENT,
 					   ( dbits == 24 ) ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, zraw );
 		if ( qglGetError() == GL_NO_ERROR ) {
-			/* A 24-bit plane handed back as UNSIGNED_INT may come back scaled to
-			 * the 32-bit type rather than to the attachment's own 24; the top
-			 * eight bits say which.  Either way the number is the depth, and the
-			 * row says which convention was used so the value is readable. */
+			/* A 24-bit plane read as UNSIGNED_INT may come back scaled; the top
+			 * eight bits say which, and the row names the convention. */
 			unsigned	wide = 0;
 			double		denom = ( dbits == 24 ) ? 16777215.0 : 65535.0;
 			for ( i = 0; i < n; i++ ) {
@@ -2375,14 +2254,7 @@ void RB_LoadIdentityProjection( void )
 	RB_MatrixIdentity( s_projectionMatrix );
 }
 
-/*
- * The saved-matrix copies are fortify-checked and the bound the compiler derives
- * for the destination is the whole-array remainder, sizeof(stack) - 16*depth,
- * which is zero for every depth outside [0, RB_MATRIX_STACK_DEPTH).  A one-ended
- * test does not bound that copy: a negative depth satisfies a signed upper test,
- * the remainder collapses to zero, and the abort lands in __memcpy_chk.  Each
- * accessor therefore tests the index as unsigned.
- */
+/* the full note is in docs/RENDERER.md, "The tess vertex stores" */
 void RB_PushModelView( void )
 {
 	unsigned int	depth = (unsigned int)s_modelViewDepth;

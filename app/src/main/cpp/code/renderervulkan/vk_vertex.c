@@ -14,10 +14,27 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * vk_vertex.c -- the frame's vertex and index rings.
  *
- * The GLES3 twin streams geometry through an immediate GL store; this module
+ * The reference renderer streams geometry through an immediate-mode store; this module
  * streams it through two persistently mapped host-visible buffers that the
  * render thread's command buffer reads straight out of.  The front end fills
  * them while it builds a frame, the back end binds them once per pass and
@@ -37,7 +54,7 @@ typedef struct {
 
 	VkBuffer		indexBuffer;
 	VkDeviceMemory	indexMemory;
-	glIndex_t		*indexMapped;
+	vkIndex_t		*indexMapped;
 
 	int				vertexBase;
 	int				indexBase;
@@ -55,7 +72,7 @@ const vkDemoVertex_t vk_demoVertices[VK_VERTEX_DEMO_COUNT] = {
 };
 
 #define VK_RING_VERTEX_BYTES ( VK_RING_MAX_VERTEXES * VK_TESS_VERTEX_BYTES )
-#define VK_RING_INDEX_BYTES  ( VK_RING_MAX_INDEXES * (int)sizeof( glIndex_t ) )
+#define VK_RING_INDEX_BYTES  ( VK_RING_MAX_INDEXES * (int)sizeof( vkIndex_t ) )
 
 qboolean VK_Vertex_Init( void )
 {
@@ -321,7 +338,7 @@ vkTessVertex_t *VK_VertexRing_Reserve( int vertexes, int *baseOut )
 	return vk_ring.mapped + ( vk_ring.vertexBase - vertexes );
 }
 
-glIndex_t *VK_VertexRing_ReserveIndexes( int indexes, int *baseOut )
+vkIndex_t *VK_VertexRing_ReserveIndexes( int indexes, int *baseOut )
 {
 	if ( indexes <= 0 ) {
 		if ( baseOut ) {

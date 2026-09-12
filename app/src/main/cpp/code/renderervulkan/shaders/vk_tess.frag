@@ -2,9 +2,9 @@
 
 /*
  * The tessellation stream's fragment shader: the stage bundle modulated by the
- * vertex colour.  This is the same multiply the GLES3 twin's GLP_FAMILY_2D
+ * vertex colour.  This is the same multiply the reference renderer's 2D family
  * program does -- texture * colour -- with the alpha-test the stage's state
- * bits asked for (GLS_ATEST_*), because Vulkan has no fixed-function alpha
+ * bits asked for (the atest bits), because Vulkan has no fixed-function alpha
  * test for the pipeline to inherit.
  */
 

@@ -1,5 +1,22 @@
 /*
 ===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
 
 This file is part of Quake III Arena source code.
@@ -23,11 +40,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_local.h"
 
 /*
- * The GLES3 twin's upload seam, re-pointed at the Vulkan texture table.
+ * The reference renderer's upload seam, re-pointed at the Vulkan texture table.
  * Everything above the seam -- the resample, the picmip, the mip chain, the
  * light scale, the format choice, the DDS/TGA decode and the hash -- is the
  * same code; everything below it is vk_texture.c's staging copy instead of a
- * glTexImage2D.  The filter and wrap decisions the GL twin pushed into the
+ * a texture copy.  The filter and wrap decisions the reference renderer pushed into the
  * texture object are recorded on the image and resolved into a sampler when
  * the back end binds it, because a Vulkan sampler is a separate object.
  */
@@ -37,8 +54,8 @@ static void LoadTGA( const char *name, byte **pic, int *width, int *height );
 static byte			 s_intensitytable[256];
 static unsigned char s_gammatable[256];
 
-/* The GL filter enums restated as the module's own constants: the same values
-   the texture-mode table has always carried, named without a GL header. */
+/* The legacy filter enums restated as the module's own constants: the same
+   values the texture-mode table has always carried, named without that header. */
 #define VK_TFILT_NEAREST				9728
 #define VK_TFILT_LINEAR					9729
 #define VK_TFILT_NEAREST_MIP_NEAREST	9984
@@ -54,8 +71,8 @@ static unsigned char s_gammatable[256];
 #define VK_TWRAP_S	0
 #define VK_TWRAP_T	1
 
-int		gl_filter_min = VK_TFILT_LINEAR_MIP_NEAREST;
-int		gl_filter_max = VK_TFILT_LINEAR;
+int		vk_filter_min = VK_TFILT_LINEAR_MIP_NEAREST;
+int		vk_filter_max = VK_TFILT_LINEAR;
 
 /* the texture the upload seam is filling: created by R_CreateImageOld before
    the upload functions run, released when the image is freed */
@@ -107,9 +124,9 @@ static long generateHashValue( const char *fname ) {
 	return hash;
 }
 
-void GL_TextureMode( const char *string ) {
+void VK_TextureMode( const char *string ) {
 	int		i;
-	image_t	*glt;
+	image_t	*img;
 
 	for ( i=0 ; i< 6 ; i++ ) {
 		if ( !Q_stricmp( modes[i].name, string ) ) {
@@ -117,7 +134,7 @@ void GL_TextureMode( const char *string ) {
 		}
 	}
 
-	if ( i == 5 && glConfig.hardwareType == GLHW_3DFX_2D3D ) {
+	if ( i == 5 && vkConfig.hardwareType == GLHW_3DFX_2D3D ) {
 		ri.Printf( PRINT_ALL, "Refusing to set trilinear on a voodoo.\n" );
 		i = 3;
 	}
@@ -127,13 +144,12 @@ void GL_TextureMode( const char *string ) {
 		return;
 	}
 
-	gl_filter_min = modes[i].minimize;
-	gl_filter_max = modes[i].maximize;
+	vk_filter_min = modes[i].minimize;
+	vk_filter_max = modes[i].maximize;
 
-	/* Nothing to re-issue: the sampler the back end binds is resolved from the
-	   image's own filter fields on every bind, so the next frame picks the new
-	   mode up without touching any object. */
-	( void )glt;
+	/* Nothing to re-issue: the sampler is resolved from the image's filter
+	   fields on every bind. */
+	( void )img;
 }
 
 int R_SumOfUsedImages( void ) {
@@ -495,9 +511,9 @@ void R_LightScaleTexture (unsigned *in, int inwidth, int inheight, qboolean only
 	ctx.count  = inwidth*inheight;
 
 	if ( only_gamma ) {
-		ctx.arm = ( !glConfig.deviceSupportsGamma ) ? 0 : -1;
+		ctx.arm = ( !vkConfig.deviceSupportsGamma ) ? 0 : -1;
 	} else {
-		ctx.arm = ( glConfig.deviceSupportsGamma ) ? 1 : 2;
+		ctx.arm = ( vkConfig.deviceSupportsGamma ) ? 1 : 2;
 	}
 
 	if ( ctx.arm < 0 ) {
@@ -579,15 +595,11 @@ extern qboolean charSet;
 static int	s_gles3UploadSamples = 0;
 static int	s_gles3UploadFormat  = 0;
 
-/* The software path re-specifies every mip level with TexImage2D.  One
- * TexStorage2D for the whole chain plus a TexSubImage2D per level is the same
- * chain built once, but the storage is immutable afterwards -- so the builtin
- * '*' images, which Draw_StretchRaw and RE_UploadCinematic re-specify, stay on
- * TexImage2D. */
+/* the reference renderer's tr_image.c carries this note in full */
 static qboolean	s_gles3UploadStored = qfalse;
 static int		s_gles3UploadLevels = 1;
 
-/* One mip level into the staging copy.  The GLES3 twin re-specifies or fills
+/* One mip level into the staging copy.  The reference renderer re-specifies or fills
    the level; Vulkan's image was created whole, so a level is always a copy. */
 static void R_UploadLevel( int sizedFormat, int level, int w, int h, const void *data ) {
 	size_t bytes;
@@ -688,8 +700,8 @@ static void Upload32(
 		scaled_height = 1;
 	}
 
-	while ( scaled_width > glConfig.maxTextureSize
-		|| scaled_height > glConfig.maxTextureSize ) {
+	while ( scaled_width > vkConfig.maxTextureSize
+		|| scaled_height > vkConfig.maxTextureSize ) {
 		scaled_width >>= 1;
 		scaled_height >>= 1;
 	}
@@ -799,14 +811,13 @@ static void Upload32(
 	s_gles3UploadSamples = samples;
 	s_gles3UploadFormat  = internalFormat;
 
-	/* The chain the mip loop below will build, counted before it mutates
-	 * scaled_width/height. */
+	/* The chain the mip loop below will build, counted before it mutates * scaled_width/height. */
 	levels = SMP_MipLevelCount( scaled_width, scaled_height );
 
 	sizedFormat = R_VKInternalFormat( internalFormat );
 	s_gles3UploadStored = qfalse;
 	s_gles3UploadLevels = numMipmaps ? levels : 1;
-	/* The GLES3 twin could choose immutable storage here; Vulkan's image is
+	/* The reference renderer could choose immutable storage here; Vulkan's image is
 	   created whole by R_CreateImageOld, so there is nothing to re-specify. */
 	(void)allowStorage;
 
@@ -878,18 +889,16 @@ done:
 
 	s_vkUploadMips = numMipmaps ? qtrue : qfalse;
 
-	/* The filter pair the GL twin pushed into the object.  Anisotropy is off
-	   until the sampler layer grows it: the Vulkan sampler it would come from
-	   is created per (wrap, mips, linear) tuple and the engine's default
-	   texture mode is bilinear, which is what every menu surface asks for. */
+	/* The filter pair the twin pushed into the object; anisotropy stays off
+	   until the sampler layer grows it. */
 	if (numMipmaps)
 	{
-		gl_filter_min = gl_filter_min;
+		vk_filter_min = vk_filter_min;
 	}
 	else
 	{
-		gl_filter_min = VK_TFILT_LINEAR;
-		gl_filter_max = VK_TFILT_LINEAR;
+		vk_filter_min = VK_TFILT_LINEAR;
+		vk_filter_max = VK_TFILT_LINEAR;
 	}
 
 	if ( resampledBuffer != 0 )
@@ -903,7 +912,7 @@ static void UploadCompressed(
 	int numMipmaps,
 	int iMipmapsAvailable,
 	qboolean picmip,
-	int glCompressMode,
+	int vkCompressMode,
 	int* format,
 	int* pUploadWidth,
 	int* pUploadHeight,
@@ -933,7 +942,7 @@ static void UploadCompressed(
 		scaled_width = width >> iStartImage;
 		scaled_height = height >> iStartImage;
 	}
-	while (scaled_width > glConfig.maxTextureSize || scaled_height > glConfig.maxTextureSize)
+	while (scaled_width > vkConfig.maxTextureSize || scaled_height > vkConfig.maxTextureSize)
 	{
 		scaled_width >>= 1;
 		scaled_height >>= 1;
@@ -948,10 +957,10 @@ static void UploadCompressed(
 
 	*pUploadWidth = scaled_width;
 	*pUploadHeight = scaled_height;
-	*format = glCompressMode;
+	*format = vkCompressMode;
 	blockSize = 16;
 
-	if (glCompressMode == VK_TF_DXT1 || glCompressMode == VK_TF_DXT1) {
+	if (vkCompressMode == VK_TF_DXT1 || vkCompressMode == VK_TF_DXT1) {
 		blockSize = 8;
 	}
 
@@ -992,11 +1001,8 @@ static void UploadCompressed(
 			*pBytesUsed += size;
 		}
 
-		/* The blocks go through whole: a BC block is the device's native
-		   format, so the copy is the whole of the work the GL twin's
-		   glCompressedTexImage2D did.  A device without the block format
-		   decompressed at load instead of here, so this path only runs when
-		   the device has the format. */
+		/* A BC block is the device's native format, so the copy is the whole
+		   of the twin's upload; without it the device decodes at load. */
 		if ( s_vkUploadTex >= 0 ) {
 			VK_Texture_Upload( s_vkUploadTex, i - iStartImage, scaled_width, scaled_height,
 							   offset, (size_t)size );
@@ -1013,8 +1019,8 @@ static void UploadCompressed(
 
 	s_vkUploadMips = ( numMipmaps > 1 ) ? qtrue : qfalse;
 	if ( numMipmaps <= 1 ) {
-		gl_filter_min = VK_TFILT_LINEAR;
-		gl_filter_max = VK_TFILT_LINEAR;
+		vk_filter_min = VK_TFILT_LINEAR;
+		vk_filter_max = VK_TFILT_LINEAR;
 	}
 }
 
@@ -1121,8 +1127,8 @@ static void UploadTranscoded(
 	if (base < 0) {
 		base = 0;
 	}
-	while (base < 30 && ((width >> base) > glConfig.maxTextureSize ||
-						 (height >> base) > glConfig.maxTextureSize)) {
+	while (base < 30 && ((width >> base) > vkConfig.maxTextureSize ||
+						 (height >> base) > vkConfig.maxTextureSize)) {
 		base++;
 	}
 	if (iMipmapsAvailable > 0 && base >= iMipmapsAvailable) {
@@ -1159,7 +1165,7 @@ static void UploadTranscoded(
 	SMP_TexCache_SourceHash((const unsigned char*)data, width, height, iMipmapsAvailable,
 							 srcDxt, &srcLo, &srcHi, &srcBytes);
 	SMP_TexCache_FillKey(&key, name, width, height, numMipmaps, (int)picmip,
-						  glConfig.maxTextureSize, srcDxt, target,
+						  vkConfig.maxTextureSize, srcDxt, target,
 						  base, upW, upH, levels, srcLo, srcHi, srcBytes);
 
 	if (SMP_TexCache_Enabled()) {
@@ -1215,8 +1221,8 @@ static void UploadTranscoded(
 
 	s_vkUploadMips = ( numMipmaps && levels > 1 ) ? qtrue : qfalse;
 	if ( numMipmaps <= 1 ) {
-		gl_filter_min = VK_TFILT_LINEAR;
-		gl_filter_max = VK_TFILT_LINEAR;
+		vk_filter_min = VK_TFILT_LINEAR;
+		vk_filter_max = VK_TFILT_LINEAR;
 	}
 
 	SMP_RLOAD_END( transcode );
@@ -1232,7 +1238,7 @@ image_t* R_CreateImageOld(
 	qboolean allowPicmip,
 	qboolean force32bit,
 	qboolean hasAlpha,
-	int glCompressMode,
+	int vkCompressMode,
 	int textureMode
 ) {
 	image_t		*image;
@@ -1268,29 +1274,20 @@ image_t* R_CreateImageOld(
 		}
 	}
 
-	/* Every upload is a driver-resource op, so under r_smp this thread must
-	 * ops, so under r_smp this thread must own the context before the first of
-	 * them.  Without the park the context stays with the render thread, gen
-	 * returns 0 and the whole upload silently no-ops -- the image is then bound
-	 * as texture 0 and samples as a flat square. */
+	/* Every upload is a driver-resource op: without the park it no-ops and
+	 * the image samples flat. */
 	R_IssuePendingRenderCommands();
 
 	image = &tr.images[i];
 
-	/* The texture object is created whole here -- every mip the upload below
-	   fills already has storage.  The GLES3 twin created an empty GL name and
-	   let each TexImage2D level size it; Vulkan's image needs its extent and
-	   level count up front.  The count is the chain the upload will walk: the
-  	   loader's mip count for a compressed payload, the power-of-two chain the
-	   software path generates for an uncompressed one.  Getting this wrong is
-	   caught by validation as a mipLevel-out-of-range, which is how it was
-	   found. */
+	/* The texture object is created whole: Vulkan needs the extent and mip
+	   count up front, and validation catches a wrong count. */
 	{
 		qboolean	supported = qfalse;
 		VkFormat	format;
 		int			mipLevels = 1;
 
-		if ( glCompressMode ) {
+		if ( vkCompressMode ) {
 			mipLevels = iMipmapsAvailable;
 		} else if ( numMipmaps ) {
 			mipLevels = SMP_MipLevelCount( width, height );
@@ -1299,7 +1296,7 @@ image_t* R_CreateImageOld(
 			mipLevels = 1;
 		}
 
-		format = VK_Texture_FormatFor( glCompressMode ? glCompressMode : VK_TF_RGBA8, &supported );
+		format = VK_Texture_FormatFor( vkCompressMode ? vkCompressMode : VK_TF_RGBA8, &supported );
 
 		if ( !VK_Texture_Create( width, height, mipLevels, format, &s_vkUploadTex ) ) {
 			s_vkUploadTex = -1;
@@ -1335,12 +1332,12 @@ image_t* R_CreateImageOld(
 
 	int be_imgT0 = BE_On() ? BE_Microseconds() : 0;
 
-	if (glCompressMode) {
-		if (glConfig.textureCompression != TC_NONE) {
+	if (vkCompressMode) {
+		if (vkConfig.textureCompression != TC_NONE) {
 			s_gles3PathKind = 1; 
-			s_gles3PathFmt = glCompressMode;
-			s_gles3PathSrcDxt = (glCompressMode == VK_TF_DXT1) ? SMP_DXT1
-							 : (glCompressMode == VK_TF_DXT5) ? SMP_DXT5
+			s_gles3PathFmt = vkCompressMode;
+			s_gles3PathSrcDxt = (vkCompressMode == VK_TF_DXT1) ? SMP_DXT1
+							 : (vkCompressMode == VK_TF_DXT5) ? SMP_DXT5
 																					 : SMP_DXT3;
 			UploadCompressed(
 				(byte*)pic,
@@ -1349,7 +1346,7 @@ image_t* R_CreateImageOld(
 				image->numMipmaps,
 				iMipmapsAvailable,
 				allowPicmip,
-				glCompressMode,
+				vkCompressMode,
 				&image->internalFormat,
 				&image->uploadWidth,
 				&image->uploadHeight,
@@ -1360,8 +1357,8 @@ image_t* R_CreateImageOld(
 			s_gles3PathFmt = (smp_texTranscode == SMP_TEXC_ASTC_4x4)
 								? VK_TF_RGBA8
 								: VK_TF_RGBA8;
-			s_gles3PathSrcDxt = (glCompressMode == VK_TF_DXT1) ? SMP_DXT1
-							 : (glCompressMode == VK_TF_DXT5) ? SMP_DXT5
+			s_gles3PathSrcDxt = (vkCompressMode == VK_TF_DXT1) ? SMP_DXT1
+							 : (vkCompressMode == VK_TF_DXT5) ? SMP_DXT5
 																					 : SMP_DXT3;
 			UploadTranscoded(
 				name,
@@ -1434,7 +1431,7 @@ image_t* R_CreateImageOld(
 				if ( !s_smpImgupNotice ) {
 					s_smpImgupNotice = qtrue;
 					ri.Printf( PRINT_ALL,
-						"[GLES3:imgup] NAME BUDGET reached (%d distinct images recorded); "
+						"[VK:imgup] NAME BUDGET reached (%d distinct images recorded); "
 						"further uploads are NOT recorded from here on\n", SMP_IMGUP_MAX );
 				}
 			} else {
@@ -1443,7 +1440,7 @@ image_t* R_CreateImageOld(
 				s_smpImgupCount++;
 
 				ri.Printf( PRINT_ALL,
-					"[GLES3:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
+					"[VK:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
 					"mips=%d bytes=%d lightmap=%d dynamic=%d err=0x%04x usec=%d\n",
 					image->imgName, image->uploadWidth, image->uploadHeight,
 					s_gles3PathName[s_gles3PathKind & 3], (unsigned)rowFmt,
@@ -1482,10 +1479,8 @@ image_t* R_CreateImageOld(
 		int wrapS = image->wrapClampModeX;
 		int wrapT = image->wrapClampModeY;
 
-		/* The GLES3 twin folded a driver's missing GL_CLAMP onto the edge
-		   clamp; a Vulkan sampler only has the edge clamp, so the fold is
-		   unconditional and the image records what it will actually sample
-		   with (the round-54 law: the object holds its own resolved wrap). */
+		/* A Vulkan sampler only has the edge clamp, so the twin's fold is
+		   unconditional and the image records its own resolved wrap. */
 		if ( wrapS == VK_TWRAP_CLAMP ) {
 			wrapS = VK_TWRAP_CLAMP_EDGE;
 		}
@@ -1753,7 +1748,7 @@ static void R_DecompressDXT(int dxt, const byte *src, int w, int h, byte *dst)
                            R_DecompressDXTRows, &c );
 }
 
-static void LoadDDS(const char* name, byte** pic, int* width, int* height, qboolean* hasAlpha, int* glCompressMode, int* numMipmaps, int* piMipmapsAvailable) {
+static void LoadDDS(const char* name, byte** pic, int* width, int* height, qboolean* hasAlpha, int* vkCompressMode, int* numMipmaps, int* piMipmapsAvailable) {
 	int len;
 	unsigned int signature;
 	ddsHeader_t ddsHeader;
@@ -1802,15 +1797,15 @@ static void LoadDDS(const char* name, byte** pic, int* width, int* height, qbool
 	ddsHeader.fourCC = LittleLong(ddsHeader.fourCC);
 
 	if (ddsHeader.fourCC == EncodeFourCC("DXT1")) {
-		*glCompressMode = VK_TF_DXT1;
+		*vkCompressMode = VK_TF_DXT1;
 	} else if (ddsHeader.fourCC == EncodeFourCC("DXT2")) {
-		*glCompressMode = VK_TF_DXT3;
+		*vkCompressMode = VK_TF_DXT3;
 	} else if (ddsHeader.fourCC == EncodeFourCC("DXT3")) {
-		*glCompressMode = VK_TF_DXT3;
+		*vkCompressMode = VK_TF_DXT3;
 	} else if (ddsHeader.fourCC == EncodeFourCC("DXT4")) {
-		*glCompressMode = VK_TF_DXT5;
+		*vkCompressMode = VK_TF_DXT5;
 	} else if (ddsHeader.fourCC == EncodeFourCC("DXT5")) {
-		*glCompressMode = VK_TF_DXT5;
+		*vkCompressMode = VK_TF_DXT5;
 	} else {
 		ri.FS_CloseFile(handle);
 		return;
@@ -1858,13 +1853,13 @@ static void LoadDDS(const char* name, byte** pic, int* width, int* height, qbool
 	}
 
 	{
-		int   dxt        = (*glCompressMode == VK_TF_DXT1) ? 1
-		                 : (*glCompressMode == VK_TF_DXT5) ? 5
+		int   dxt        = (*vkCompressMode == VK_TF_DXT1) ? 1
+		                 : (*vkCompressMode == VK_TF_DXT5) ? 5
 		                                                                         : 3;
 		int   blockBytes = (dxt == 1) ? 8 : 16;
 		int   baseSize   = ((minWidth + 3) / 4) * ((minHeight + 3) / 4) * blockBytes;
 
-		if (glConfig.textureCompression != TC_NONE ||
+		if (vkConfig.textureCompression != TC_NONE ||
 			smp_texTranscode != SMP_TEXC_NONE) {
 			{
 				int	lw = minWidth, lh = minHeight, lvl, total = 0;
@@ -1891,7 +1886,7 @@ static void LoadDDS(const char* name, byte** pic, int* width, int* height, qbool
 			ri.Free(compressed);
 
 			*pic                = rgba;
-			*glCompressMode     = 0;
+			*vkCompressMode     = 0;
 			*piMipmapsAvailable = 0;
 		}
 	}
@@ -2130,13 +2125,13 @@ static void LoadTGA ( const char *name, byte **pic, int *width, int *height)
   ri.FS_FreeFile (buffer);
 }
 
-static void R_LoadImage(const char* name, byte** pic, int* width, int* height, qboolean* hasAlpha, int* glCompressMode, int* numMipmaps, int* piMipmapsAvailable) {
+static void R_LoadImage(const char* name, byte** pic, int* width, int* height, qboolean* hasAlpha, int* vkCompressMode, int* numMipmaps, int* piMipmapsAvailable) {
 	size_t	len;
 	char	tempName[MAX_STRING_TOKENS + 1];
 	char altname[MAX_QPATH];
 
 	*hasAlpha = qfalse;
-	*glCompressMode = 0;
+	*vkCompressMode = 0;
 	*pic = NULL;
 	*width = 0;
 	*height = 0;
@@ -2156,8 +2151,8 @@ static void R_LoadImage(const char* name, byte** pic, int* width, int* height, q
 		altname[len - 3] = 'd';
 		altname[len - 2] = 'd';
 		altname[len - 1] = 's';
-		LoadDDS(altname, pic, width, height, hasAlpha, glCompressMode, numMipmaps, piMipmapsAvailable);
-		if (*glCompressMode == 0) {
+		LoadDDS(altname, pic, width, height, hasAlpha, vkCompressMode, numMipmaps, piMipmapsAvailable);
+		if (*vkCompressMode == 0) {
 			*piMipmapsAvailable = 1;
 		}
 
@@ -2185,7 +2180,7 @@ image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPic
 	byte	*pic;
 	int		len;
 	qboolean	hasAlpha;
-	int			glCompressMode;
+	int			vkCompressMode;
 	int			numMipmaps;
 	int			iMipmapsAvailable;
 	long	hash;
@@ -2220,7 +2215,7 @@ image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPic
 
 	numMipmaps = mipmap;
 	iMipmapsAvailable = 0;
-	R_LoadImage(name, &pic, &width, &height, &hasAlpha, &glCompressMode, &numMipmaps, &iMipmapsAvailable);
+	R_LoadImage(name, &pic, &width, &height, &hasAlpha, &vkCompressMode, &numMipmaps, &iMipmapsAvailable);
 	if (pic == NULL) {
 		SMP_RLOAD_END( findimg );
 		return NULL;
@@ -2236,7 +2231,7 @@ image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPic
 		allowPicmip,
 		force32bit,
 		hasAlpha,
-		glCompressMode,
+		vkCompressMode,
 		textureMode);
 
     len = strlen(name);
@@ -2258,11 +2253,7 @@ image_t* R_RefreshImageFileOld(const char* name, qboolean mipmap, qboolean allow
 		return NULL;
 	}
 
-	/* This frees the old image before R_FindImageFileOld creates its
-	 * replacement, and the free is a driver-resource destruction.  The create
-	 * path claims in R_CreateImageOld, which is too late for the deletion, so
-	 * the claim is taken here: under r_smp the render thread is parked for both
-	 * the glDeleteTextures and the upload that follows. */
+/* the reference renderer's tr_image.c carries this note in full */
 	R_IssuePendingRenderCommands();
 
 	strncpy(imagename, name, ARRAY_LEN(imagename));
@@ -2439,16 +2430,16 @@ void R_SetColorMappings( void ) {
 	int		shift;
 
 	tr.overbrightBits = r_overBrightBits->integer;
-	if ( !glConfig.deviceSupportsGamma ) {
+	if ( !vkConfig.deviceSupportsGamma ) {
 		tr.overbrightBits = 0;		
 	}
 
-	if ( !glConfig.isFullscreen ) 
+	if ( !vkConfig.isFullscreen ) 
 	{
 		tr.overbrightBits = 0;
 	}
 
-	if ( glConfig.colorBits > 16 ) {
+	if ( vkConfig.colorBits > 16 ) {
 		if ( tr.overbrightBits > 2 ) {
 			tr.overbrightBits = 2;
 		}
@@ -2477,7 +2468,7 @@ void R_SetColorMappings( void ) {
 	}
 
 	g = r_gamma->value;
-	if (!glConfig.deviceSupportsGamma && g != 1.0) {
+	if (!vkConfig.deviceSupportsGamma && g != 1.0) {
 		tr.needsLightScale = qtrue;
 	}
 	else if (r_intensity->value != 1.0) {
@@ -2857,11 +2848,11 @@ void	R_SkinList_f( void ) {
 qboolean R_LoadRawImage(const char *name, byte **pic, int *width, int *height)
 {
     qboolean hasAlpha;
-    int glCompressMode;
+    int vkCompressMode;
     int numMipmaps = 0;
     int piMipmapsAvailable;
 
-    R_LoadImage(name, pic, width, height, &hasAlpha, &glCompressMode, &numMipmaps, &piMipmapsAvailable);
+    R_LoadImage(name, pic, width, height, &hasAlpha, &vkCompressMode, &numMipmaps, &piMipmapsAvailable);
 
     if (!*pic) {
         return qfalse;
@@ -3101,9 +3092,8 @@ void verifyProperTextureSize( const char *name, int width, int height )
 	}
 }
 
-/* The wrap decision, named in the module's own terms.  The textureMode codes
-   are the same four the callers pass: 0 clamp, 1 edge clamp, 2 repeat, 3/4 one
-   axis clamped. */
+/* The textureMode codes are the four the callers pass: 0 clamp, 1 edge clamp,
+   2 repeat, 3/4 one axis clamped. */
 int getGLClampType( int wrapAxis, int textureMode )
 {
 	(void)wrapAxis;
@@ -3128,14 +3118,13 @@ int getGLClampType( int wrapAxis, int textureMode )
 	return VK_TWRAP_REPEAT;
 }
 
-/* Anisotropy is a sampler field in Vulkan and the sampler layer does not build
-   anisotropic samplers yet; the engine's default texture mode is bilinear, so
-   nothing is lost, and the cvars that would turn it on stay read-only facts. */
-void GL_SetTextureAnisotropicFiltering( unsigned int target )
+/* Anisotropy is a sampler field and the sampler layer does not build
+   anisotropic samplers yet; the default texture mode is bilinear anyway. */
+void VK_SetTextureAnisotropicFiltering( unsigned int target )
 {
 	( void )target;
 }
 
-void GL_SetupAnisotropicFiltering( void )
+void VK_SetupAnisotropicFiltering( void )
 {
 }

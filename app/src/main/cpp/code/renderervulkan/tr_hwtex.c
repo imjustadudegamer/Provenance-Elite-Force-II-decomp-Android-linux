@@ -19,7 +19,7 @@ root, for more details.
 
 #include <string.h>
 
-int SMP_SelectTexTranscode(int glesMajor, int glesMinor,
+int SMP_SelectTexTranscode(int vkCoreMajor, int vkCoreMinor,
 							int hasS3tc, int hasEtc2Ext, int hasArbEs3,
 							int hasAstcLdr, int compressAllowed)
 {
@@ -31,7 +31,7 @@ int SMP_SelectTexTranscode(int glesMajor, int glesMinor,
 		return SMP_TEXC_NONE;
 	}
 
-	coreEtc2 = (glesMajor > 3 || (glesMajor == 3 && glesMinor >= 0)) ? 1 : 0;
+	coreEtc2 = (vkCoreMajor > 3 || (vkCoreMajor == 3 && vkCoreMinor >= 0)) ? 1 : 0;
 
 	if (hasAstcLdr) {
 		return SMP_TEXC_ASTC_4x4;

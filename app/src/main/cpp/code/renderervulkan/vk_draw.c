@@ -14,11 +14,28 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * vk_draw.c -- the pipeline and descriptor substrate the back end draws with.
  *
- * The Vulkan half of the GLES3 twin's tr_program.c + GLES3_ApplyStateBits: a
- * shader stage's state tuple (the GLS_* bits, the topology, the cull) becomes
+ * The Vulkan half of the reference renderer's tr_program.c + VK_ApplyStateBits: a
+ * shader stage's state tuple (the state bits, the topology, the cull) becomes
  * a VkPipeline, built against the pass it binds in and cached on the tuple.
  * Textures bind through the compatibility descriptor path (SDK doc 7); the
  * bindless path A is sized and selected at bring-up for the 3D iterators.
@@ -140,28 +157,28 @@ static void VK_Draw_BlendForState( unsigned stateBits, VkPipelineColorBlendAttac
 
 	memset( blend, 0, sizeof( *blend ) );
 
-	switch ( stateBits & GLS_SRCBLEND_BITS ) {
-	case GLS_SRCBLEND_ZERO:						src = VK_BLEND_FACTOR_ZERO; break;
-	case GLS_SRCBLEND_ONE:						src = VK_BLEND_FACTOR_ONE; break;
-	case GLS_SRCBLEND_DST_COLOR:				src = VK_BLEND_FACTOR_DST_COLOR; break;
-	case GLS_SRCBLEND_ONE_MINUS_DST_COLOR:		src = VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR; break;
-	case GLS_SRCBLEND_SRC_ALPHA:				src = VK_BLEND_FACTOR_SRC_ALPHA; break;
-	case GLS_SRCBLEND_ONE_MINUS_SRC_ALPHA:		src = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; break;
-	case GLS_SRCBLEND_DST_ALPHA:				src = VK_BLEND_FACTOR_DST_ALPHA; break;
-	case GLS_SRCBLEND_ONE_MINUS_DST_ALPHA:		src = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA; break;
-	case GLS_SRCBLEND_ALPHA_SATURATE:			src = VK_BLEND_FACTOR_SRC_ALPHA_SATURATE; break;
+	switch ( stateBits & VKS_SRCBLEND_BITS ) {
+	case VKS_SRCBLEND_ZERO:						src = VK_BLEND_FACTOR_ZERO; break;
+	case VKS_SRCBLEND_ONE:						src = VK_BLEND_FACTOR_ONE; break;
+	case VKS_SRCBLEND_DST_COLOR:				src = VK_BLEND_FACTOR_DST_COLOR; break;
+	case VKS_SRCBLEND_ONE_MINUS_DST_COLOR:		src = VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR; break;
+	case VKS_SRCBLEND_SRC_ALPHA:				src = VK_BLEND_FACTOR_SRC_ALPHA; break;
+	case VKS_SRCBLEND_ONE_MINUS_SRC_ALPHA:		src = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; break;
+	case VKS_SRCBLEND_DST_ALPHA:				src = VK_BLEND_FACTOR_DST_ALPHA; break;
+	case VKS_SRCBLEND_ONE_MINUS_DST_ALPHA:		src = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA; break;
+	case VKS_SRCBLEND_ALPHA_SATURATE:			src = VK_BLEND_FACTOR_SRC_ALPHA_SATURATE; break;
 	default:									src = VK_BLEND_FACTOR_ONE; break;
 	}
 
-	switch ( stateBits & GLS_DSTBLEND_BITS ) {
-	case GLS_DSTBLEND_ZERO:						dst = VK_BLEND_FACTOR_ZERO; break;
-	case GLS_DSTBLEND_ONE:						dst = VK_BLEND_FACTOR_ONE; break;
-	case GLS_DSTBLEND_SRC_COLOR:				dst = VK_BLEND_FACTOR_SRC_COLOR; break;
-	case GLS_DSTBLEND_ONE_MINUS_SRC_COLOR:		dst = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR; break;
-	case GLS_DSTBLEND_SRC_ALPHA:				dst = VK_BLEND_FACTOR_SRC_ALPHA; break;
-	case GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA:		dst = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; break;
-	case GLS_DSTBLEND_DST_ALPHA:				dst = VK_BLEND_FACTOR_DST_ALPHA; break;
-	case GLS_DSTBLEND_ONE_MINUS_DST_ALPHA:		dst = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA; break;
+	switch ( stateBits & VKS_DSTBLEND_BITS ) {
+	case VKS_DSTBLEND_ZERO:						dst = VK_BLEND_FACTOR_ZERO; break;
+	case VKS_DSTBLEND_ONE:						dst = VK_BLEND_FACTOR_ONE; break;
+	case VKS_DSTBLEND_SRC_COLOR:				dst = VK_BLEND_FACTOR_SRC_COLOR; break;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_COLOR:		dst = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR; break;
+	case VKS_DSTBLEND_SRC_ALPHA:				dst = VK_BLEND_FACTOR_SRC_ALPHA; break;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA:		dst = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; break;
+	case VKS_DSTBLEND_DST_ALPHA:				dst = VK_BLEND_FACTOR_DST_ALPHA; break;
+	case VKS_DSTBLEND_ONE_MINUS_DST_ALPHA:		dst = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA; break;
 	default:									dst = VK_BLEND_FACTOR_ZERO; break;
 	}
 
@@ -266,7 +283,7 @@ static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthStencil.depthTestEnable = key->depthTest ? VK_TRUE : VK_FALSE;
 	depthStencil.depthWriteEnable = ( key->depthWrite && key->depthTest ) ? VK_TRUE : VK_FALSE;
-	depthStencil.depthCompareOp = ( key->stateBits & GLS_DEPTHFUNC_EQUAL ) ? VK_COMPARE_OP_EQUAL
+	depthStencil.depthCompareOp = ( key->stateBits & VKS_DEPTHFUNC_EQUAL ) ? VK_COMPARE_OP_EQUAL
 																: VK_COMPARE_OP_LESS_OR_EQUAL;
 
 	VK_Draw_BlendForState( key->stateBits, &blendAttachment );
@@ -319,12 +336,12 @@ qboolean VK_Draw_Init( void )
 	memset( &vk_current, 0, sizeof( vk_current ) );
 	vk_currentValid = qfalse;
 
-	if ( !VK_Draw_Module( vk_vk_tess_vert_spv, VK_VK_TESS_VERT_SPV_WORDS, &vk_draw.vertex,
+	if ( !VK_Draw_Module( vk_tess_vert_spv, VK_TESS_VERT_SPV_WORDS, &vk_draw.vertex,
 						  "vkCreateShaderModule(tess vertex)" ) ) {
 		return qfalse;
 	}
 
-	if ( !VK_Draw_Module( vk_vk_tess_frag_spv, VK_VK_TESS_FRAG_SPV_WORDS, &vk_draw.fragment,
+	if ( !VK_Draw_Module( vk_tess_frag_spv, VK_TESS_FRAG_SPV_WORDS, &vk_draw.fragment,
 						  "vkCreateShaderModule(tess fragment)" ) ) {
 		return qfalse;
 	}
@@ -507,14 +524,19 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	fn = f - n;
 
 	if ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) {
-		VK_Guard_Hit( VK_GSITE_SYNC, "degenerate 2D window", VK_ERROR_INITIALIZATION_FAILED );
+		/* the values are the diagnosis: which caller sends a window with no
+		   extent, and whether it is the same one every frame */
+		static char window[128];
+
+		Com_sprintf( window, sizeof( window ),
+					 "degenerate 2D window x=%d y=%d w=%d h=%d l=%g r=%g b=%g t=%g n=%g f=%g",
+					 x, y, w, h, left, right, bottom, top, n, f );
+		VK_Guard_Hit( VK_GSITE_SYNC, window, VK_ERROR_INITIALIZATION_FAILED );
 		return;
 	}
 
-	/* RB_OrthoProjection's matrix, with the two axes Vulkan's NDC runs the
-	   other way from GL's: y is negated (GL's viewport origin is the bottom
-	   left, Vulkan's the top left) and z is remapped from [-1,1] to [0,1].
-	   Every 2D coordinate the engine hands in keeps its GL meaning. */
+	/* RB_OrthoProjection's matrix with y negated and z remapped to [0,1], the
+	   two axes Vulkan's NDC runs the other way; the window coordinates keep meaning. */
 	memset( m, 0, sizeof( m ) );
 	m[0]  = 2.0f / rl;
 	m[5]  = -2.0f / tb;
@@ -545,11 +567,11 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	memcpy( vk_current.ortho, m, sizeof( m ) );
 	vk_currentValid = qtrue;
 
-	/* The window the client asked for is in GL's bottom-left convention; the
+	/* The window the client asked for is in the legacy bottom-left convention; the
 	   viewport that draws it is in Vulkan's top-left one. */
 	memset( &viewport, 0, sizeof( viewport ) );
 	viewport.x = (float)x;
-	viewport.y = (float)( glConfig.vidHeight - y - h );
+	viewport.y = (float)( vkConfig.vidHeight - y - h );
 	viewport.width = (float)w;
 	viewport.height = (float)h;
 	viewport.maxDepth = 1.0f;
@@ -558,7 +580,7 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 
 	memset( &scissor, 0, sizeof( scissor ) );
 	scissor.offset.x = x;
-	scissor.offset.y = glConfig.vidHeight - y - h;
+	scissor.offset.y = vkConfig.vidHeight - y - h;
 	scissor.extent.width = (uint32_t)( w > 0 ? w : 0 );
 	scissor.extent.height = (uint32_t)( h > 0 ? h : 0 );
 
@@ -573,10 +595,10 @@ void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 
 	memset( values, 0, sizeof( values ) );
 
-	switch ( stateBits & GLS_ATEST_BITS ) {
-	case GLS_ATEST_GT_0:	values[0] = 0.0f;			break;
-	case GLS_ATEST_LT_80:	values[0] = 128.0f / 255.0f; values[1] = 1.0f; break;
-	case GLS_ATEST_GE_80:	values[0] = 127.0f / 255.0f; break;
+	switch ( stateBits & VKS_ATEST_BITS ) {
+	case VKS_ATEST_GT_0:	values[0] = 0.0f;			break;
+	case VKS_ATEST_LT_80:	values[0] = 128.0f / 255.0f; values[1] = 1.0f; break;
+	case VKS_ATEST_GE_80:	values[0] = 127.0f / 255.0f; break;
 	default:				return;		/* no alpha test: leave it off */
 	}
 
@@ -589,10 +611,10 @@ void VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int heigh
 {
 	VkRect2D scissor;
 
-	/* RE_Scissor's box is GL's bottom-left; Vulkan's is the top-left. */
+	/* RE_Scissor's box is bottom-left; Vulkan's is the top-left. */
 	memset( &scissor, 0, sizeof( scissor ) );
 	scissor.offset.x = x;
-	scissor.offset.y = glConfig.vidHeight - y - height;
+	scissor.offset.y = vkConfig.vidHeight - y - height;
 	scissor.extent.width = (uint32_t)( width > 0 ? width : 0 );
 	scissor.extent.height = (uint32_t)( height > 0 ? height : 0 );
 
@@ -616,9 +638,7 @@ void VK_Draw_BindRing( VkCommandBuffer cmd )
 	VkBuffer buffers[2];
 	VkDeviceSize offsets[2];
 
-	/* Both rings are one allocation each, so every draw offsets from zero; the
-	   offsets are still set explicitly, because an uninitialised offset is a
-	   garbage vertex address and a quad that silently does not rasterise. */
+	/* Both rings are one allocation, but the offsets are set explicitly. */
 	offsets[0] = 0;
 	offsets[1] = 0;
 
