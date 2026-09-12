@@ -312,6 +312,8 @@ void		VK_SetUniformMat4( vkProgram_t *p, vkUniform_t u, const float *m );
 void		VK_SetUniform3fv( vkProgram_t *p, vkUniform_t u, const float *v );
 void		VK_SetUniform4fv( vkProgram_t *p, vkUniform_t u, const float *v );
 
+void		VK_Mat4_ClipToWindow( float *m );
+
 void		VK_ApplyStateBits( unsigned long stateBits );
 unsigned	VK_CurrentAlphaTest( void );
 

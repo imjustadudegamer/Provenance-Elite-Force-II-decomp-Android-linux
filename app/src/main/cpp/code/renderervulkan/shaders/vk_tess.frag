@@ -2,10 +2,9 @@
 
 /*
  * The tessellation stream's fragment shader: the stage bundle modulated by the
- * vertex colour.  This is the same multiply the reference renderer's 2D family
- * program does -- texture * colour -- with the alpha-test the stage's state
- * bits asked for (the atest bits), because Vulkan has no fixed-function alpha
- * test for the pipeline to inherit.
+ * vertex colour, with the alpha-test the stage's state bits asked for -- Vulkan
+ * has no fixed-function test to inherit.  The selector is the reference
+ * renderer's own: 0 off, 1 GT0, 2 LT128, 4 GE128.
  */
 
 layout( location = 0 ) in vec2 vTexCoord;
@@ -20,7 +19,7 @@ layout( location = 0 ) out vec4 outColor;
 layout( push_constant ) uniform Push
 {
 	layout( offset = 0 ) mat4 ortho;
-	layout( offset = 64 ) vec4 alphaTest;	/* x = bound (0 = off), y = 1 when the test is 'less than' */
+	layout( offset = 64 ) vec4 alphaTest;	/* x = the selector (0 = off) */
 } pc;
 
 void main()
@@ -31,12 +30,16 @@ void main()
 #endif
 	vec4 colour = texel * vColor;
 
-	if ( pc.alphaTest.x > 0.0 ) {
-		if ( pc.alphaTest.y > 0.5 ) {
-			if ( texel.a >= pc.alphaTest.x ) {
-				discard;
-			}
-		} else if ( texel.a < pc.alphaTest.x ) {
+	if ( pc.alphaTest.x == 1.0 ) {
+		if ( !( colour.a > 0.0 ) ) {
+			discard;
+		}
+	} else if ( pc.alphaTest.x == 2.0 ) {
+		if ( !( colour.a < 0.5 ) ) {
+			discard;
+		}
+	} else if ( pc.alphaTest.x == 4.0 ) {
+		if ( !( colour.a >= 0.5 ) ) {
 			discard;
 		}
 	}

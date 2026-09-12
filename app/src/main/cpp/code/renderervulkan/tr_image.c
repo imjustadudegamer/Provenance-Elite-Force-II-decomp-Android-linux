@@ -42,11 +42,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 /*
  * The reference renderer's upload seam, re-pointed at the Vulkan texture table.
  * Everything above the seam -- the resample, the picmip, the mip chain, the
- * light scale, the format choice, the DDS/TGA decode and the hash -- is the
- * same code; everything below it is vk_texture.c's staging copy instead of a
- * a texture copy.  The filter and wrap decisions the reference renderer pushed into the
- * texture object are recorded on the image and resolved into a sampler when
- * the back end binds it, because a Vulkan sampler is a separate object.
+ * light scale, the format choice, the decode and the hash -- is the same code;
+ * everything below it is vk_texture.c's staging copy.  The filter and wrap
+ * decisions ride on the image and resolve into a sampler when the back end
+ * binds it.
  */
 
 static void LoadTGA( const char *name, byte **pic, int *width, int *height );
@@ -63,11 +62,8 @@ static unsigned char s_gammatable[256];
 #define VK_TFILT_NEAREST_MIP_LINEAR		9986
 #define VK_TFILT_LINEAR_MIP_LINEAR		9987
 
-/* the wrap decisions, named the same way */
-#define VK_TWRAP_REPEAT				10497
-#define VK_TWRAP_CLAMP				10496
-#define VK_TWRAP_CLAMP_EDGE			33071
-
+/* the wrap decisions come from tr_local.h, beside the format constants they
+   sit with */
 #define VK_TWRAP_S	0
 #define VK_TWRAP_T	1
 
@@ -576,8 +572,7 @@ byte	mipBlendColors[16][4] = {
 	{0,0,255,128},
 };
 
-/* Every unsized and reduced layout collapses to RGBA8: Vulkan samples one
- * R8G8B8A8_UNORM image for all of them. */
+/* every unsized layout collapses to RGBA8: Vulkan samples one image */
 static int R_VKInternalFormat( int fmt ) {
 	switch ( fmt ) {
 	case 1:  return VK_TF_RGBA8;
@@ -595,12 +590,11 @@ extern qboolean charSet;
 static int	s_gles3UploadSamples = 0;
 static int	s_gles3UploadFormat  = 0;
 
-/* the reference renderer's tr_image.c carries this note in full */
 static qboolean	s_gles3UploadStored = qfalse;
 static int		s_gles3UploadLevels = 1;
 
-/* One mip level into the staging copy.  The reference renderer re-specifies or fills
-   the level; Vulkan's image was created whole, so a level is always a copy. */
+/* one mip level into the staging copy; the Vulkan image was created whole, so
+   a level is always a copy */
 static void R_UploadLevel( int sizedFormat, int level, int w, int h, const void *data ) {
 	size_t bytes;
 
@@ -712,8 +706,8 @@ static void Upload32(
 	scan = ((byte *)data);
 	samples = 3;
 	if (!bIsLightmap) {
-		/* Only the alpha byte decides the sample count; the per-channel maxima
-		 * that the retail loop accumulated alongside it are never read. */
+		/* only the alpha byte decides the sample count; the per-channel
+		 * maxima the retail loop accumulated are never read */
 		for ( i = 0; i < c; i++ )
 		{
 			if ( scan[i*4 + 3] != 255 ) 
@@ -817,8 +811,8 @@ static void Upload32(
 	sizedFormat = R_VKInternalFormat( internalFormat );
 	s_gles3UploadStored = qfalse;
 	s_gles3UploadLevels = numMipmaps ? levels : 1;
-	/* The reference renderer could choose immutable storage here; Vulkan's image is
-	   created whole by R_CreateImageOld, so there is nothing to re-specify. */
+	/* immutable storage was the reference renderer's option; the Vulkan image
+	   is created whole, so there is nothing to re-specify */
 	(void)allowStorage;
 
 	if ( ( scaled_width == width ) && 
@@ -1274,8 +1268,7 @@ image_t* R_CreateImageOld(
 		}
 	}
 
-	/* Every upload is a driver-resource op: without the park it no-ops and
-	 * the image samples flat. */
+	/* every upload is a driver-resource op: without the park it no-ops */
 	R_IssuePendingRenderCommands();
 
 	image = &tr.images[i];
@@ -1479,8 +1472,8 @@ image_t* R_CreateImageOld(
 		int wrapS = image->wrapClampModeX;
 		int wrapT = image->wrapClampModeY;
 
-		/* A Vulkan sampler only has the edge clamp, so the twin's fold is
-		   unconditional and the image records its own resolved wrap. */
+			/* a Vulkan sampler only has the edge clamp, so the fold is
+		   unconditional and the image records its resolved wrap */
 		if ( wrapS == VK_TWRAP_CLAMP ) {
 			wrapS = VK_TWRAP_CLAMP_EDGE;
 		}

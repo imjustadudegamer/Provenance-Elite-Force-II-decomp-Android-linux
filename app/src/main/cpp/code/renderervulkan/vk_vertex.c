@@ -35,12 +35,10 @@ root, for more details.
  * vk_vertex.c -- the frame's vertex and index rings.
  *
  * The reference renderer streams geometry through an immediate-mode store; this module
- * streams it through two persistently mapped host-visible buffers that the
- * render thread's command buffer reads straight out of.  The front end fills
- * them while it builds a frame, the back end binds them once per pass and
- * issues vkCmdDrawIndexed off the offsets it reserved, and the whole frame's
- * geometry is one allocation -- no per-draw buffer, no orphaning, and no
- * barrier between draws because the CPU writes finish before the submit.
+ * streams it through persistently mapped host-visible buffers that the render
+ * thread's command buffer reads straight out of: the front end fills them while
+ * it builds a frame, the back end binds them once per pass and issues
+ * vkCmdDrawIndexed off the offsets it reserved.
  */
 
 #include "tr_local.h"
@@ -61,10 +59,21 @@ typedef struct {
 	int				flushed;
 } vkRing_t;
 
-static vkRing_t	vk_ring;
+/* One ring per frame slot: a submit does not wait, so slot 1 is filling while
+   slot 0 executes, and one ring would rewrite geometry the GPU is fetching. */
+static vkRing_t	vk_ring[VK_FRAMES_IN_FLIGHT];
+static int		vk_ringSlot = -1;
 
-/* M1's first-light triangle: three vertices, two of them on the NDC diagonal,
-   in the demo vertex layout the demo pipeline was built against. */
+/* the slot the frame being recorded or walked reads and fills */
+#define VK_RING_SLOT() ( ( vk_ringSlot >= 0 && vk_ringSlot < VK_FRAMES_IN_FLIGHT ) ? vk_ringSlot : 0 )
+#define VK_Ring()      ( &vk_ring[ VK_RING_SLOT() ] )
+
+void VK_VertexRing_SetFrame( int slot )
+{
+	vk_ringSlot = slot;
+}
+
+/* M1's first-light triangle, in the demo pipeline's vertex layout */
 const vkDemoVertex_t vk_demoVertices[VK_VERTEX_DEMO_COUNT] = {
 	{ { -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
 	{ {  0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
@@ -206,83 +215,91 @@ static qboolean VK_DemoBuffer_Init( void )
 
 qboolean VK_VertexRing_Init( void )
 {
-	memset( &vk_ring, 0, sizeof( vk_ring ) );
+	int i;
+
+	memset( vk_ring, 0, sizeof( vk_ring ) );
 
 	if ( !VK_DemoBuffer_Init() ) {
 		return qfalse;
 	}
 
-	if ( !VK_Memory_CreateBuffer( VK_RING_VERTEX_BYTES,
-								  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-								  &vk_ring.buffer, &vk_ring.memory ) ) {
-		return qfalse;
+	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		vkRing_t *ring = &vk_ring[i];
+
+		if ( !VK_Memory_CreateBuffer( VK_RING_VERTEX_BYTES,
+									  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+									  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+									  &ring->buffer, &ring->memory ) ) {
+			return qfalse;
+		}
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, qvk.MapMemory( vk.device, ring->memory, 0,
+															  VK_WHOLE_SIZE, 0, (void **)&ring->mapped ),
+							   "vkMapMemory(vertex ring)" ) ) {
+			return qfalse;
+		}
+		if ( !VK_Memory_CreateBuffer( VK_RING_INDEX_BYTES,
+									  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+									  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+									  &ring->indexBuffer, &ring->indexMemory ) ) {
+			return qfalse;
+		}
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, qvk.MapMemory( vk.device, ring->indexMemory, 0,
+															  VK_WHOLE_SIZE, 0, (void **)&ring->indexMapped ),
+							   "vkMapMemory(index ring)" ) ) {
+			return qfalse;
+		}
+		ring->vertexBase = 0;
+		ring->indexBase = 0;
+		ring->flushed = 0;
 	}
+	vk_ringSlot = 0;
 
-	if ( !VK_Guard_Result( VK_GSITE_ALLOC, qvk.MapMemory( vk.device, vk_ring.memory, 0,
-														  VK_WHOLE_SIZE, 0, (void **)&vk_ring.mapped ),
-						   "vkMapMemory(vertex ring)" ) ) {
-		return qfalse;
-	}
-
-	if ( !VK_Memory_CreateBuffer( VK_RING_INDEX_BYTES,
-								  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-								  &vk_ring.indexBuffer, &vk_ring.indexMemory ) ) {
-		return qfalse;
-	}
-
-	if ( !VK_Guard_Result( VK_GSITE_ALLOC, qvk.MapMemory( vk.device, vk_ring.indexMemory, 0,
-														  VK_WHOLE_SIZE, 0, (void **)&vk_ring.indexMapped ),
-						   "vkMapMemory(index ring)" ) ) {
-		return qfalse;
-	}
-
-	vk_ring.vertexBase = 0;
-	vk_ring.indexBase = 0;
-	vk_ring.flushed = 0;
-
-	VK_Guard_Row( "VK:ring", "ready vertexes=%d bytes=%d indexes=%d",
-				  VK_RING_MAX_VERTEXES, VK_RING_VERTEX_BYTES, VK_RING_MAX_INDEXES );
+	VK_Guard_Row( "VK:ring", "ready vertexes=%d bytes=%d indexes=%d slots=%d",
+				  VK_RING_MAX_VERTEXES, VK_RING_VERTEX_BYTES, VK_RING_MAX_INDEXES,
+				  VK_FRAMES_IN_FLIGHT );
 
 	return qtrue;
 }
 
 void VK_VertexRing_Shutdown( void )
 {
+	int i;
+
 	if ( vk.device == VK_NULL_HANDLE ) {
 		return;
 	}
 
-	if ( vk_ring.mapped ) {
-		qvk.UnmapMemory( vk.device, vk_ring.memory );
-		vk_ring.mapped = NULL;
-	}
+	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		vkRing_t *ring = &vk_ring[i];
 
-	if ( vk_ring.indexMapped ) {
-		qvk.UnmapMemory( vk.device, vk_ring.indexMemory );
-		vk_ring.indexMapped = NULL;
+		if ( ring->mapped ) {
+			qvk.UnmapMemory( vk.device, ring->memory );
+			ring->mapped = NULL;
+		}
+		if ( ring->indexMapped ) {
+			qvk.UnmapMemory( vk.device, ring->indexMemory );
+			ring->indexMapped = NULL;
+		}
+		if ( ring->buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+			qvk.DestroyBuffer( vk.device, ring->buffer, NULL );
+		}
+		ring->buffer = VK_NULL_HANDLE;
+		if ( ring->memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+			qvk.FreeMemory( vk.device, ring->memory, NULL );
+		}
+		ring->memory = VK_NULL_HANDLE;
+		if ( ring->indexBuffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+			qvk.DestroyBuffer( vk.device, ring->indexBuffer, NULL );
+		}
+		ring->indexBuffer = VK_NULL_HANDLE;
+		if ( ring->indexMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+			qvk.FreeMemory( vk.device, ring->indexMemory, NULL );
+		}
+		ring->indexMemory = VK_NULL_HANDLE;
+		ring->vertexBase = 0;
+		ring->indexBase = 0;
+		ring->flushed = 0;
 	}
-
-	if ( vk_ring.buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
-		qvk.DestroyBuffer( vk.device, vk_ring.buffer, NULL );
-	}
-	vk_ring.buffer = VK_NULL_HANDLE;
-
-	if ( vk_ring.memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
-		qvk.FreeMemory( vk.device, vk_ring.memory, NULL );
-	}
-	vk_ring.memory = VK_NULL_HANDLE;
-
-	if ( vk_ring.indexBuffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
-		qvk.DestroyBuffer( vk.device, vk_ring.indexBuffer, NULL );
-	}
-	vk_ring.indexBuffer = VK_NULL_HANDLE;
-
-	if ( vk_ring.indexMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
-		qvk.FreeMemory( vk.device, vk_ring.indexMemory, NULL );
-	}
-	vk_ring.indexMemory = VK_NULL_HANDLE;
 
 	/* The demo triangle's buffer: M1's first-light proof, still owned here. */
 	if ( vk.uploadCmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
@@ -299,21 +316,17 @@ void VK_VertexRing_Shutdown( void )
 		qvk.FreeMemory( vk.device, vk.vertexMemory, NULL );
 	}
 	vk.vertexMemory = VK_NULL_HANDLE;
-
-	vk_ring.vertexBase = 0;
-	vk_ring.indexBase = 0;
-	vk_ring.flushed = 0;
 }
 
 void VK_VertexRing_ResetFrame( void )
 {
-	vk_ring.vertexBase = 0;
-	vk_ring.indexBase = 0;
-	vk_ring.flushed = 0;
+	VK_Ring()->vertexBase = 0;
+	VK_Ring()->indexBase = 0;
+	VK_Ring()->flushed = 0;
 }
 
-/* The 3D shade path packs a wider vertex than the 2D tess slot: it reserves by
-   byte and binds the ring at that offset, so neither stride tramples the other. */
+/* the 3D shade path packs a wider vertex: it reserves bytes and binds the ring
+   at that offset */
 int VK_VertexRing_ReserveBytes( int bytes, int *byteBaseOut )
 {
 	int	tessSlots;
@@ -324,16 +337,16 @@ int VK_VertexRing_ReserveBytes( int bytes, int *byteBaseOut )
 
 	tessSlots = ( bytes + VK_TESS_VERTEX_BYTES - 1 ) / VK_TESS_VERTEX_BYTES;
 
-	if ( vk_ring.vertexBase + tessSlots > VK_RING_MAX_VERTEXES ) {
+	if ( VK_Ring()->vertexBase + tessSlots > VK_RING_MAX_VERTEXES ) {
 		VK_Guard_Hit( VK_GSITE_ALLOC, "vertex ring exhausted", VK_ERROR_OUT_OF_DEVICE_MEMORY );
 		return qfalse;
 	}
 
 	if ( byteBaseOut ) {
-		*byteBaseOut = vk_ring.vertexBase * VK_TESS_VERTEX_BYTES;
+		*byteBaseOut = VK_Ring()->vertexBase * VK_TESS_VERTEX_BYTES;
 	}
 
-	vk_ring.vertexBase += tessSlots;
+	VK_Ring()->vertexBase += tessSlots;
 
 	return qtrue;
 }
@@ -342,82 +355,82 @@ vkTessVertex_t *VK_VertexRing_Reserve( int vertexes, int *baseOut )
 {
 	if ( vertexes <= 0 ) {
 		if ( baseOut ) {
-			*baseOut = vk_ring.vertexBase;
+			*baseOut = VK_Ring()->vertexBase;
 		}
 		return NULL;
 	}
 
-	if ( vk_ring.vertexBase + vertexes > VK_RING_MAX_VERTEXES ) {
+	if ( VK_Ring()->vertexBase + vertexes > VK_RING_MAX_VERTEXES ) {
 		VK_Guard_Hit( VK_GSITE_ALLOC, "vertex ring exhausted", VK_ERROR_OUT_OF_DEVICE_MEMORY );
 		if ( baseOut ) {
-			*baseOut = vk_ring.vertexBase;
+			*baseOut = VK_Ring()->vertexBase;
 		}
 		return NULL;
 	}
 
 	if ( baseOut ) {
-		*baseOut = vk_ring.vertexBase;
+		*baseOut = VK_Ring()->vertexBase;
 	}
 
-	vk_ring.vertexBase += vertexes;
+	VK_Ring()->vertexBase += vertexes;
 
-	return vk_ring.mapped + ( vk_ring.vertexBase - vertexes );
+	return VK_Ring()->mapped + ( VK_Ring()->vertexBase - vertexes );
 }
 
 vkIndex_t *VK_VertexRing_ReserveIndexes( int indexes, int *baseOut )
 {
 	if ( indexes <= 0 ) {
 		if ( baseOut ) {
-			*baseOut = vk_ring.indexBase;
+			*baseOut = VK_Ring()->indexBase;
 		}
 		return NULL;
 	}
 
-	if ( vk_ring.indexBase + indexes > VK_RING_MAX_INDEXES ) {
+	if ( VK_Ring()->indexBase + indexes > VK_RING_MAX_INDEXES ) {
 		VK_Guard_Hit( VK_GSITE_ALLOC, "index ring exhausted", VK_ERROR_OUT_OF_DEVICE_MEMORY );
 		if ( baseOut ) {
-			*baseOut = vk_ring.indexBase;
+			*baseOut = VK_Ring()->indexBase;
 		}
 		return NULL;
 	}
 
 	if ( baseOut ) {
-		*baseOut = vk_ring.indexBase;
+		*baseOut = VK_Ring()->indexBase;
 	}
 
-	vk_ring.indexBase += indexes;
+	VK_Ring()->indexBase += indexes;
 
-	return vk_ring.indexMapped + ( vk_ring.indexBase - indexes );
+	return VK_Ring()->indexMapped + ( VK_Ring()->indexBase - indexes );
 }
 
 void VK_VertexRing_RollBack( int vertexes, int indexes )
 {
-	vk_ring.vertexBase -= vertexes;
-	vk_ring.indexBase -= indexes;
+	VK_Ring()->vertexBase -= vertexes;
+	VK_Ring()->indexBase -= indexes;
 
-	if ( vk_ring.vertexBase < 0 ) {
-		vk_ring.vertexBase = 0;
+	if ( VK_Ring()->vertexBase < 0 ) {
+		VK_Ring()->vertexBase = 0;
 	}
-	if ( vk_ring.indexBase < 0 ) {
-		vk_ring.indexBase = 0;
+	if ( VK_Ring()->indexBase < 0 ) {
+		VK_Ring()->indexBase = 0;
 	}
 }
 
 vkTessVertex_t *VK_VertexRing_Tail( int back )
 {
-	int index = vk_ring.vertexBase - back;
+	int index = VK_Ring()->vertexBase - back;
 
 	if ( back <= 0 || index < 0 ) {
 		return NULL;
 	}
 
-	return vk_ring.mapped + index;
+	return VK_Ring()->mapped + index;
 }
 
 void vk_ring_note( int vertexHigh, int indexHigh )
 {
-	if ( vk_ring.flushed < vertexHigh ) {
-		vk_ring.flushed = vertexHigh;
+	if ( VK_Ring()->flushed < vertexHigh ) {
+		VK_Ring()->flushed = vertexHigh;
 	}
 
 	( void )indexHigh;
@@ -425,25 +438,25 @@ void vk_ring_note( int vertexHigh, int indexHigh )
 
 unsigned char *VK_VertexRing_Mapped( void )
 {
-	return ( unsigned char * )vk_ring.mapped;
+	return ( unsigned char * )VK_Ring()->mapped;
 }
 
 VkBuffer VK_VertexRing_Buffer( void )
 {
-	return vk_ring.buffer;
+	return VK_Ring()->buffer;
 }
 
 VkBuffer VK_VertexRing_IndexBuffer( void )
 {
-	return vk_ring.indexBuffer;
+	return VK_Ring()->indexBuffer;
 }
 
 int VK_VertexRing_Used( void )
 {
-	return vk_ring.vertexBase;
+	return VK_Ring()->vertexBase;
 }
 
 int VK_VertexRing_Flushed( void )
 {
-	return vk_ring.flushed;
+	return VK_Ring()->flushed;
 }

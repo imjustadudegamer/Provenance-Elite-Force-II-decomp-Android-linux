@@ -717,8 +717,7 @@ static void R_FontRunWrite( void ) {
 	RB_EndSurface();
 }
 
-/* The recorded run draws through the same tess the immediate body writes, so
-   the pixels a threaded frame produces are the pixels a serial one does. */
+/* The recorded run draws through the same tess the immediate body writes. */
 void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs ) {
 	int i;
 
@@ -772,6 +771,20 @@ void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs ) {
 			tess.xyz[tess.numVertexes + 2][1] *= cmd->heightScale;
 			tess.xyz[tess.numVertexes + 3][0] *= cmd->widthScale;
 			tess.xyz[tess.numVertexes + 3][1] *= cmd->heightScale;
+		}
+
+		/* The font stage's colour is CGEN_GLOBAL_COLOR, which the reference renderer
+		   remaps to the vertex colour in 2D; carry Draw_SetColor as the body does. */
+		{
+			int v;
+
+			for ( v = 0; v < 4; v++ ) {
+				tess.vertexColors[tess.numVertexes + v][0] = backEnd.color2D[0];
+				tess.vertexColors[tess.numVertexes + v][1] = backEnd.color2D[1];
+				tess.vertexColors[tess.numVertexes + v][2] = backEnd.color2D[2];
+				tess.vertexColors[tess.numVertexes + v][3] = backEnd.color2D[3];
+			}
+			tess.vertexColorValid = qtrue;
 		}
 
 		tess.numVertexes += 4;

@@ -78,7 +78,7 @@ static uint32_t VK_Descriptor_BindlessSize( void )
 
 qboolean VK_Descriptor_Init( void )
 {
-	VkDescriptorPoolSize poolSize;
+	VkDescriptorPoolSize poolSizes[3];
 	VkDescriptorPoolCreateInfo poolInfo;
 	VkDescriptorSetLayoutBinding binding;
 	VkDescriptorSetLayoutCreateInfo layoutInfo;
@@ -90,21 +90,27 @@ qboolean VK_Descriptor_Init( void )
 	textures = VK_Descriptor_BindlessSize();
 	vk.bindlessTextures = textures;
 
-	memset( &poolSize, 0, sizeof( poolSize ) );
-	poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	/* a type the pool never declares is a budget of zero: the shade set's
+	   dynamic uniform buffer would fail to allocate on a strict driver */
+	memset( poolSizes, 0, sizeof( poolSizes ) );
+	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 
 	memset( &poolInfo, 0, sizeof( poolInfo ) );
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolInfo.maxSets = 4096;
 
 	if ( textures > 0 ) {
-		poolSize.descriptorCount = textures;
+		poolSizes[0].descriptorCount = textures + 3 * 1024;
+		poolSizes[1].descriptorCount = 1024;
+		poolSizes[2].descriptorCount = 1024;
 		poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 		if ( vk.updateAfterBind ) {
 			poolInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
 		}
-		poolInfo.poolSizeCount = 1;
-		poolInfo.pPoolSizes = &poolSize;
+		poolInfo.poolSizeCount = 3;
+		poolInfo.pPoolSizes = poolSizes;
 
 		result = qvk.CreateDescriptorPool( vk.device, &poolInfo, NULL, &vk.descriptorPool );
 		if ( result != VK_SUCCESS ) {
@@ -113,9 +119,11 @@ qboolean VK_Descriptor_Init( void )
 			memset( &poolInfo, 0, sizeof( poolInfo ) );
 			poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 			poolInfo.maxSets = 4096;
-			poolSize.descriptorCount = 1024;
-			poolInfo.poolSizeCount = 1;
-			poolInfo.pPoolSizes = &poolSize;
+			poolSizes[0].descriptorCount = 1024 + 3 * 1024;
+			poolSizes[1].descriptorCount = 1024;
+			poolSizes[2].descriptorCount = 1024;
+			poolInfo.poolSizeCount = 3;
+			poolInfo.pPoolSizes = poolSizes;
 
 			result = qvk.CreateDescriptorPool( vk.device, &poolInfo, NULL, &vk.descriptorPool );
 			if ( result != VK_SUCCESS ) {
@@ -125,9 +133,11 @@ qboolean VK_Descriptor_Init( void )
 			vk.bindlessTextures = 0;
 		}
 	} else {
-		poolSize.descriptorCount = 1024;
-		poolInfo.poolSizeCount = 1;
-		poolInfo.pPoolSizes = &poolSize;
+		poolSizes[0].descriptorCount = 1024 + 3 * 1024;
+		poolSizes[1].descriptorCount = 1024;
+		poolSizes[2].descriptorCount = 1024;
+		poolInfo.poolSizeCount = 3;
+		poolInfo.pPoolSizes = poolSizes;
 
 		result = qvk.CreateDescriptorPool( vk.device, &poolInfo, NULL, &vk.descriptorPool );
 		if ( result != VK_SUCCESS ) {

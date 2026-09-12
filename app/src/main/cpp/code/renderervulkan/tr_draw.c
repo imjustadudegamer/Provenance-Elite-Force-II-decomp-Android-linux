@@ -317,8 +317,7 @@ void RB_2D_SetColor( const byte *rgba ) {
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 ) {
 	float xy[4][2], st[4][2];
 
-	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
-	   would draw in (byte)(c*255 mod 256). */
+	/* color2D is bytes: RB_Color4f would scale it a second time. */
 	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x;     xy[0][1] = y;     st[0][0] = s1; st[0][1] = t1;
@@ -342,8 +341,7 @@ void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, fl
 	scaledWidth2 = halfWidth * sx;
 	scaledHeight2 = halfHeight * sy;
 
-	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
-	   would draw in (byte)(c*255 mod 256). */
+	/* color2D is bytes: RB_Color4f would scale it a second time. */
 	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x + halfWidth - (scaledWidth2 + -scaledHeight2);
@@ -368,8 +366,7 @@ void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, fl
 void RB_2D_TilePic( shader_t *shader, float x, float y, float w, float h, float picw, float pich ) {
 	float xy[4][2], st[4][2];
 
-	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
-	   would draw in (byte)(c*255 mod 256). */
+	/* color2D is bytes: RB_Color4f would scale it a second time. */
 	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x;     xy[0][1] = y;     st[0][0] = x / picw;         st[0][1] = y / pich;
@@ -383,8 +380,7 @@ void RB_2D_TilePic( shader_t *shader, float x, float y, float w, float h, float 
 void RB_2D_TilePicOffset( shader_t *shader, float x, float y, float w, float h, float picw, float pich, int offsetX, int offsetY ) {
 	float xy[4][2], st[4][2];
 
-	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
-	   would draw in (byte)(c*255 mod 256). */
+	/* color2D is bytes: RB_Color4f would scale it a second time. */
 	RB_Color4bv(backEnd.color2D);
 
 	xy[0][0] = x + offsetX;     xy[0][1] = y + offsetY;     st[0][0] = x / picw;       st[0][1] = y / pich;
@@ -398,8 +394,7 @@ void RB_2D_TilePicOffset( shader_t *shader, float x, float y, float w, float h, 
 void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t vTexCoords[3] ) {
 	int i;
 
-	/* color2D is bytes: RB_Color4f would scale it a second time and the quad
-	   would draw in (byte)(c*255 mod 256). */
+	/* color2D is bytes: RB_Color4f would scale it a second time. */
 	RB_Color4bv(backEnd.color2D);
 
 	RB_2D_Flush();
@@ -524,8 +519,8 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 
 	RB_2D_Flush();
 
-	/* The window is recorded, not issued: the record carries the viewport,
-	   scissor and ortho to the walk's command buffer. */
+	/* The window is recorded, not issued: the record carries the viewport, scissor
+	   and ortho. */
 	{
 		setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -561,8 +556,8 @@ void RB_2D_Scissor( int x, int y, int width, int height ) {
 
 	RB_2D_Flush();
 
-	/* Recorded like the window: the walk turns it into vkCmdSetScissor, with
-	   the box converted from the legacy bottom-left origin to Vulkan's top-left. */
+	/* Recorded like the window: the walk turns it into vkCmdSetScissor, flipped to
+	   Vulkan's top-left origin. */
 	{
 		scissor2DCommand_t *cmd = ( scissor2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -607,8 +602,7 @@ void Draw_SetColor(const vec4_t rgba) {
 	r_color2D[2] = (byte)(rgba[2] * tr.identityLightByte);
 	r_color2D[3] = (byte)(rgba[3] * 255.0);
 
-	/* Colour is per vertex in the ring, so the record only has to reach the
-	   walk; the next quad the walk writes picks the new colour up. */
+	/* Colour is per vertex in the ring: the next quad the walk writes picks it up. */
 	{
 		color2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -966,7 +960,8 @@ static void RB_StretchRaw2D( int x, int y, int w, int h, int cols, int rows )
 		RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.whiteImage,
 							  VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_SRC_ALPHA
 							  | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
-		RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
+		/* The reference renderer multiplies a black u_BaseColor in: the bar is black. */
+		RB_ImmColor4f( 0.0f, 0.0f, 0.0f, 1.0f );
 		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( 0.0f, 0.0f );
 		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( (float)screenW, 0.0f );
 		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( (float)screenW, (float)screenH );
@@ -1015,12 +1010,18 @@ void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int componen
 		ri.Error( ERR_DROP, "Draw_StretchRaw: size not a power of 2: %i by %i", cols, rows );
 	}
 
-	/* The client hands over the decoder's own buffer, so this draws immediately;
-	   the upload is a front-end Vulkan op and the walk is parked for it. */
+	/* The decoder's own buffer: the upload is a front-end op, the walk parked. */
 	R_SyncRenderThread();
 	R_FlushRenderCommands();
 
 	R_UploadScratchRGBA( cols, rows, data );
+
+	/* The reference renderer's RB_SetGL2D sits exactly here: a movie frame runs in
+	   whatever window the last caller left -- for an in-game cinematic the HUD's,
+	   several zero-extent -- and its scissor clips the frame quad. */
+	Set2DWindow( 0, 0, vkConfig.vidWidth, vkConfig.vidHeight,
+				 0.0f, (float)vkConfig.vidWidth, (float)vkConfig.vidHeight, 0.0f,
+				 0.0f, 1.0f );
 
 	cmd = ( stretchRaw2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 	if ( cmd ) {
