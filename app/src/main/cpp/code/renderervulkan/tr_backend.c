@@ -36,27 +36,25 @@ root, for more details.
  *
  * The front end records a frame's surfaces into `tess` exactly as the reference
  * twin's front end does; this module's back end walks them onto the frame's
- * command buffer.  One surface is one stage pass: the stage's state tuple
- * becomes a pipeline (vk_draw.c), the stage's bundle becomes a descriptor
- * bind, the tess arrays become a slice of the frame's vertex ring, and the
- * indexes become an indexed draw.  Nothing here touches a driver object -- the
- * reference renderer's per-state calls all become fields of the
- * pipeline and the descriptor bind that already carry them.
+ * command buffer.  One surface is one stage pass: the state tuple becomes a
+ * pipeline, the bundle a descriptor bind, the tess arrays a slice of the
+ * vertex ring, the indexes an indexed draw.  Nothing here touches a driver
+ * object -- the reference renderer's per-state calls all become fields of the
+ * pipeline and the bind that already carry them.
  *
- * The 3D stage iterators (sky, lightmapped multitexture, vertex-lit, the legacy
- * fog pass) are the next milestone's surface; the 2D/HUD iterator below is
- * the one the menu paints through and it is the same walk the generic
- * iterator performs minus the lighting terms M3's shaders add.
+ * The 3D stage iterators (sky, lightmapped multitexture, vertex-lit, the
+ * legacy fog pass) are the next milestone's surface; the 2D/HUD iterator below
+ * is the walk the menu paints through.
  */
 
 #include "tr_local.h"
+#include "tr_program.h"
 #include "tr_vbo.h"
 
 #include <string.h>
 
 /* defined by the mirrored 3D front end */
 backEndState_t		backEnd;
-/* trGlobals_t tr is defined by the mirrored 3D front end */
 int					r_sequencenumber = 1;
 glconfig_t			vkConfig;
 
@@ -75,7 +73,7 @@ void RB_InitBackend( void )
 	backEnd.color2D[3] = 255;
 }
 
-/* the tessellation store lives in tr_shade.c now, as it does in the reference renderer */
+/* the tessellation store lives in tr_shade.c, as in the reference renderer */
 
 
 /* ---- the stage pass: one stage, one pipeline, one bind, one indexed draw.
@@ -188,8 +186,6 @@ static qboolean RB_StagePass( shaderStage_t *stage )
    term is the 3D surface's work and is named by its guard. */
 
 
-/* RB_EndSurface is tr_shade.c's, as in the reference renderer. */
-
 
 void rb_set_slot( int slot )
 {
@@ -198,11 +194,13 @@ void rb_set_slot( int slot )
 
 void RB_RecordFramePrologue( void )
 {
+	VK_VertexRing_SetFrame( tr.smpFrame );	/* the ring this frame fills */
 	VK_VertexRing_ResetFrame();
+	VK_Shade_NewFrame();
 	s_rbSlot = -1;
 
-	/* Every frame is a fresh command buffer, so the window and scissor must
-	   be recorded again even when unchanged. */
+	/* every frame is a fresh command buffer: the window and scissor are
+	   recorded again even when unchanged */
 	R_Invalidate2DWindowCache();
 }
 
@@ -317,6 +315,9 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 				push.ortho[c * 4 + r] = sum;
 			}
 		}
+			/* the push holds the product transposed, which keeps the flat offsets
+		   of the negated row in place: 1, 5, 9, 13 */
+		VK_Mat4_ClipToWindow( push.ortho );
 		push.alphaTest[0] = 0.0f;
 		push.alphaTest[1] = 0.0f;
 
@@ -331,6 +332,9 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	}
 
 	qvk.CmdBindPipeline( vk.commandBuffers[s_rbSlot], VK_PIPELINE_BIND_POINT_GRAPHICS, run->pipeline );
+	/* the run's own state, as the stage pass does: a leftover push would arm the
+	   previous surface's test on this one */
+	VK_Draw_SetAlphaTest( vk.commandBuffers[s_rbSlot], stateBits );
 
 	if ( !RB_Imm_BindImage( image ) ) {
 		return;
@@ -352,8 +356,8 @@ void RB_ImmEndDeferred( void )
 {
 }
 
-/* A run reaches the ring whole: the colour and texcoord setters rewrite the
-   slice, so committing early would miss vertices already drawn. */
+/* A run reaches the ring whole: the setters rewrite the slice, so an early
+   commit would miss vertices already drawn. */
 void RB_ImmCommit( void )
 {
 	vkImmRun_t *run = &s_imm;
@@ -369,8 +373,7 @@ void RB_ImmCommit( void )
 	}
 
 	if ( run->topology == VK_IMM_LINE_LOOP ) {
-		/* Vulkan has no line-loop topology: close the strip with the first
-		   vertex repeated, which is the same edge set. */
+		/* No line-loop topology in Vulkan: repeat the first vertex to close it. */
 		vkTessVertex_t *first = VK_VertexRing_Tail( run->verts );
 		vkTessVertex_t *copy;
 
@@ -431,8 +434,7 @@ void RB_ImmVertex2f( float x, float y )
 
 void RB_ImmColor4f( float r, float g, float b, float a )
 {
-	/* The stream's current colour: the vertices after it carry it, the ones
-	   before it keep their own. */
+	/* the stream's current colour: the vertices after it carry it */
 	s_immCurColor[0] = (byte)( r * 255.0f + 0.5f );
 	s_immCurColor[1] = (byte)( g * 255.0f + 0.5f );
 	s_immCurColor[2] = (byte)( b * 255.0f + 0.5f );
@@ -487,8 +489,7 @@ void RB_ImmTexCoord2fv( const float *st )
 	s_immCurSt[1] = st[1];
 }
 
-/* ---- the timing instruments: the mirrored front end calls the reference renderer's names, so
-   the seam is here and the rows are what is missing ---- */
+/* ---- the timing instruments: the seam the mirrored front end calls ---- */
 
 static int s_beRootArmed[BE_FAM_COUNT];
 
@@ -618,8 +619,7 @@ static void RB_Hyperspace( void ) {
 
 	c = ( backEnd.refdef.time & 255 ) / 255.0f;
 
-	/* The pass already cleared colour; hyperspace is the grey it clears to, so
-	   the record carries it and the next view's clear paints it. */
+	/* hyperspace is the grey the next view's clear paints */
 	vk.clearColor[0] = c;
 	vk.clearColor[1] = c;
 	vk.clearColor[2] = c;
@@ -630,7 +630,6 @@ static void RB_Hyperspace( void ) {
 
 void RB_BeginDrawingView (void) {
 
-/* the reference renderer's tr_backend.c carries this note in full */
 	RB_2D_Flush();
 
 	backEnd.in2D = qfalse;
@@ -645,8 +644,7 @@ void RB_BeginDrawingView (void) {
 	VK_StencilState( qfalse, VK_ALWAYS, 0, 255 );	/* retail's traced menu issues no stencil call */
 	VK_State( VKS_DEFAULT );
 
-	/* The pass clears colour and depth; the colour is this view's choice and
-	   rides on the pass's clear colour. */
+	/* the colour is this view's choice, and rides on the pass's clear */
 	if ( !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) )
 	{
 		if ( !backEnd.viewParms.farplane_distance || tr.skyRendered || tr.portalRendered )
@@ -670,12 +668,9 @@ void RB_BeginDrawingView (void) {
 
 	VK_DepthFuncApply( VK_LEQUAL );	/* pinned per view for the A/B cvar */
 
-	/* the reference renderer cleared the bits its view asked for, inside the view.  The pass
-	   already opened with LOAD_OP_CLEAR, but that colour is whatever the
-	   previous frame's view chose, so a 2D-only frame would open on a clear it
-	   never asked for.  Clearing here makes this view's choice the one that
-	   lands.  (Old-Adreno wants a draw-based clear below driver 512.762.12;
-	   that is a device-matrix item.) */
+	/* the pass opened with LOAD_OP_CLEAR, whose colour is whatever the
+	   previous frame's view chose; clearing here makes this view's choice the
+	   one that lands.  (Old Adreno wants a draw-based clear: device matrix.) */
 	{
 		VkClearAttachment attachment;
 		VkClearRect rect;
@@ -761,6 +756,18 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	backEnd.currentSphere = &backEnd.sphere;
 
 	for (i = 0, drawSurf = drawSurfs ; i < numDrawSurfs ; i++, drawSurf++) {
+		/* the surface's own first word picks the walker: a key past the table is
+		   a call through garbage, which is a fault that names nothing */
+		if ( *drawSurf->surface < 0 || *drawSurf->surface >= SF_NUM_SURFACE_TYPES ) {
+			static int surfRows;
+
+			if ( surfRows < 8 || ( surfRows % 500 ) == 0 ) {
+				VK_Guard_Hit( VK_GSITE_QUIRK, va( "draw surf names surface type %d",
+												  *drawSurf->surface ), VK_INCOMPLETE );
+			}
+			surfRows++;
+			continue;
+		}
 		if ( drawSurf->sort == (unsigned)oldSort && *drawSurf->surface != SF_SPRITE ) {
 			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
 			continue;
@@ -1030,8 +1037,7 @@ int RB_ProjectionDepth( void )
 	return VK_Shade_ProjectionDepth();
 }
 
-/* R_DrawDebugNumber is the reference renderer's debug overlay; the str class and the wire path
-   it draws through are not part of this milestone.  The row names the site. */
+/* the reference renderer's debug overlay; the row names the site */
 void R_DrawDebugNumber( const vec3_t org, float number, float scale, float r, float g, float b, int precision )
 {
 	(void)org; (void)number; (void)scale; (void)r; (void)g; (void)b; (void)precision;
@@ -1055,8 +1061,7 @@ unsigned long RF_ForceAlphaStateBits( unsigned long stateBits )
 	return stateBits;
 }
 
-/* the debug floating string: the reference renderer drives it through the font's sgl renderer,
-   which this module has not been asked for yet.  The row names the site. */
+/* the reference renderer drives this through the font's renderer; the row names the site */
 void R_DrawFloatingString( fontheader_t *font, const char *text, const vec3_t org,
 						   const vec4_t color, float scale, int maxlen )
 {

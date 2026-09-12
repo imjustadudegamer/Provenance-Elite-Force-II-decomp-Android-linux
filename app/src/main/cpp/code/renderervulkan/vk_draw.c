@@ -577,8 +577,7 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	memcpy( vk_current.ortho, m, sizeof( m ) );
 	vk_currentValid = qtrue;
 
-	/* The window the client asked for is in the legacy bottom-left convention; the
-	   viewport that draws it is in Vulkan's top-left one. */
+	/* The client's window is bottom-left; the viewport is Vulkan's top-left. */
 	memset( &viewport, 0, sizeof( viewport ) );
 	viewport.x = (float)x;
 	viewport.y = (float)( vkConfig.vidHeight - y - h );
@@ -597,8 +596,10 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	qvk.CmdSetScissor( cmd, 0, 1, &scissor );
 }
 
-/* The alpha test is a push constant the back end sets when it binds the stage's
-   pipeline, because Vulkan has no fixed-function alpha test to inherit. */
+/* The alpha test is a push constant set when the stage's pipeline binds, as
+   Vulkan has no fixed-function test to inherit.  The value is the reference
+   renderer's selector (0 off, 1 GT0, 2 LT80, 4 GE128): a threshold cannot
+   express GT0, whose bound is zero, so pushing one silently tested nothing. */
 void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 {
 	float values[4];
@@ -606,9 +607,9 @@ void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 	memset( values, 0, sizeof( values ) );
 
 	switch ( stateBits & VKS_ATEST_BITS ) {
-	case VKS_ATEST_GT_0:	values[0] = 0.0f;			break;
-	case VKS_ATEST_LT_80:	values[0] = 128.0f / 255.0f; values[1] = 1.0f; break;
-	case VKS_ATEST_GE_80:	values[0] = 127.0f / 255.0f; break;
+	case VKS_ATEST_GT_0:	values[0] = 1.0f;			break;
+	case VKS_ATEST_LT_80:	values[0] = 2.0f;			break;
+	case VKS_ATEST_GE_80:	values[0] = 4.0f;			break;
 	default:				return;		/* no alpha test: leave it off */
 	}
 

@@ -75,12 +75,11 @@ typedef unsigned int vkIndex_t;
 #define MAX_STATE_NAME 32
 
 #define	MAX_MOD_KNOWN	1024
-/* 4096: the retail corpus names about 3,000 distinct textures, and 2048 is
-   both the walk's truncation point for the offline permutation census and a
-   hard ERR_DROP for a session that loads past it.  The table itself is the
-   only cost: 2048 more image_t slots, under a megabyte of static data -- the
-   pixels are allocated per image when one is actually uploaded. */
-#define	MAX_DRAWIMAGES			4096
+/* 8192: the retail corpus names more distinct textures than 4096 slots hold,
+   which is both the offline permutation census's truncation point and a hard
+   ERR_DROP for a session that loads past it.  The table is the only cost --
+   the pixels are allocated per image when one is actually uploaded. */
+#define	MAX_DRAWIMAGES			8192
 #define	MAX_SKINS				1024
 
 /* the tessellation index type, and the reference renderer's float->int truncation */
@@ -1154,12 +1153,11 @@ void		R_Modellist_f (void);
 
 extern	refimport_t		ri;
 
-/* 4096: the retail corpus names about 3,000 distinct textures, and 2048 is
-   both the walk's truncation point for the offline permutation census and a
-   hard ERR_DROP for a session that loads past it.  The table itself is the
-   only cost: 2048 more image_t slots, under a megabyte of static data -- the
-   pixels are allocated per image when one is actually uploaded. */
-#define	MAX_DRAWIMAGES			4096
+/* 8192: the retail corpus names more distinct textures than 4096 slots hold,
+   which is both the offline permutation census's truncation point and a hard
+   ERR_DROP for a session that loads past it.  The table is the only cost --
+   the pixels are allocated per image when one is actually uploaded. */
+#define	MAX_DRAWIMAGES			8192
 #define	MAX_LIGHTMAPS			256
 #define	MAX_SKINS				1024
 #define MAX_MAP_SPHERE_LIGHTS_EF2	2532
@@ -1671,8 +1669,8 @@ void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, 
 void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);
 
-/* One body per 2D entry point: immediate when the back end is single-threaded,
- * the same body run by the render thread when it was recorded. */
+/* one body per 2D entry point: immediate single-threaded, the same body run by
+ * the render thread when recorded */
 void RB_2D_SetColor( const byte *rgba );
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 );
 void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy );
@@ -2215,8 +2213,8 @@ typedef struct
 	int commandId;
 } clearDepthCommand_t;
 
-/* The 2D (overlay) commands: appended, not issued, and every field resolved on
- * the recording thread so the handler never reads front-end state. */
+/* the 2D overlay commands: appended, every field resolved on the recording
+ * thread so the handler never reads front-end state */
 typedef struct {
 	int			commandId;
 	byte		color[4];
@@ -2492,7 +2490,7 @@ typedef enum {
 	BE_PROG_COUNTERS
 } be_prog_counter_t;
 
-/* the reference renderer's tr_local.h carries this note in full */
+/* the reference renderer's note, carried in full in its own tree */
 typedef enum {
 	BE_FEZ_view = 0, BE_FEZ_world, BE_FEZ_ents, BE_FEZ_poly, BE_FEZ_sprite,
 	BE_FEZ_sort, BE_FEZ_exec, BE_FEZ_other,
@@ -2511,7 +2509,7 @@ typedef struct {
 	int		surfs;
 	/* the batches the store could not hold and the ring drew instead */
 	int		fall;
-	/* writes/local/statics/multi/seq: the reference renderer's arena arms, counted once this module grows the same store */
+	/* writes/local/statics/multi/seq: the reference renderer's arena arms */
 	int		writes, local, statics, multi, seq;
 	int		locVisits, locVtx, locIdx, locHash, locFirstAt;
 	unsigned locFirst, locWas, locNow;
@@ -2675,7 +2673,7 @@ void		R_SetGhostImage( const char *name, image_t *image );
 void		R_UpdateGhostTextures( void );
 qboolean	VKimp_GLMainOwnsContext( void );
 skelHeaderGame_t *probe_TIKI_GetSkel_decl( void );
-void		VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader );
+qboolean	VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader );
 VkCommandBuffer VK_Shade_CommandBuffer( void );
 qboolean	VK_Shade_Descriptors_Init( void );
 void		VK_Shade_Descriptors_Shutdown( void );
@@ -2762,6 +2760,7 @@ typedef struct {
 qboolean VK_VertexRing_Init( void );
 void     VK_VertexRing_Shutdown( void );
 void     VK_VertexRing_ResetFrame( void );
+void     VK_VertexRing_SetFrame( int slot );
 vkTessVertex_t *VK_VertexRing_Reserve( int vertexes, int *baseOut );
 vkIndex_t *VK_VertexRing_ReserveIndexes( int indexes, int *baseOut );
 void     VK_VertexRing_RollBack( int vertexes, int indexes );
@@ -2823,8 +2822,8 @@ void     VK_Texture_FramePurge( void );
 int      VK_Texture_Count( void );
 int      VK_Texture_BytesUsed( void );
 
-/* the legacy internal-format constants the loaders report, restated here so
-   the texture table can map them without naming that header */
+/* the legacy internal-format constants the loaders report, restated so the
+   texture table can map them without naming that header */
 #define VK_TF_RGB				3
 #define VK_TF_RGBA				4
 #define VK_TF_RGBA8				0x8058
@@ -2838,6 +2837,12 @@ int      VK_Texture_BytesUsed( void );
 #define VK_TF_DXT1				0x83F0
 #define VK_TF_DXT3				0x83F2
 #define VK_TF_DXT5				0x83F3
+
+/* the wrap decisions an image carries in wrapClampModeX/Y: a texture repeats
+   unless the shader asked for a clamp */
+#define VK_TWRAP_REPEAT				10497
+#define VK_TWRAP_CLAMP				10496
+#define VK_TWRAP_CLAMP_EDGE			33071
 
 /* ---- the frame's 2D/3D target state ------------------------------------- */
 
