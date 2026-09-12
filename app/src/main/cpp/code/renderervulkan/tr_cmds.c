@@ -55,7 +55,7 @@ static rbFrame_t		*rb_activeFrame = NULL;
 static int				rb_frameCount = 0;
 static int				rb_issueRows = 0;
 
-static cvar_t *r_smp;
+cvar_t *r_smp;
 
 static vkCommandList_t *RB_CommandList( void )
 {

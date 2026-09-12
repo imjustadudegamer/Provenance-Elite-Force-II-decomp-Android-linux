@@ -137,19 +137,12 @@ void LoadBoneFromBuffer2(boneFileData_t *fileData, boneData_t *boneData)
     }
 }
 
-/*
- * TIKI_SurfaceGameBytes -- one surface's block in the game-side cache: the
- * header, the triangles, the vertices and the collapse table, in the order
- * the copy pass below lays them out.  Both passes read this one statement, so
- * the allocation cannot disagree with the walk that fills it.  They used to
- * state the block twice -- the size pass padded a running total across
- * surfaces, the copy pass padded each block from its own start -- and the two
- * compositions differ on real data: the copy pass needed up to 8 bytes more
- * than the size pass had reserved on 55 of the 259 shipped .skb, so the last
- * surface's collapse table wrote past the surfaces region into the bone block
- * (erased again by the memset below, which is why it never showed).  Measured
- * by personal/scratch/vk_m3_skb_audit.c, pass 4.
- */
+/* TIKI_SurfaceGameBytes -- one surface's block in the game-side cache, stated
+ * once for both passes: the size pass padded a running total while the copy
+ * pass padded each block from its own start, and on 55 of the 259 shipped .skb
+ * the copy pass needed up to 24 bytes more, writing past the surfaces region
+ * into the bone block (the memset below erased it, which is why it never
+ * showed).  Measured by personal/scratch/vk_m3_skb_audit.c pass 4. */
 static size_t TIKI_SurfaceGameBytes(skelSurface_t *pSurf, size_t *nVertBytesOut)
 {
     skeletorVertex_t *pVert    = (skeletorVertex_t *)((byte *)pSurf + LongNoSwapPtr(&pSurf->ofsVerts));

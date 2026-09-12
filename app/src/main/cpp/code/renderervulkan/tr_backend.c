@@ -530,14 +530,6 @@ void RB_ImmTexCoord2f( float s, float t )
 	}
 }
 
-void RB_StreamBeginDrawSurf( void )
-{
-}
-
-void RB_StreamEndDrawSurf( void )
-{
-}
-
 void RB_ShowImages( qboolean quiet )
 {
 	( void )quiet;

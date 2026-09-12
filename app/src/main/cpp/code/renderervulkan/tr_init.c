@@ -170,7 +170,7 @@ void RE_Shutdown( qboolean destroyWindow )
 	VK_Guard_Row( "VK:init", "shutdown destroyWindow=%d", destroyWindow ? 1 : 0 );
 }
 
-static void RE_BeginRegistration( glconfig_t *config )
+void RE_BeginRegistration( glconfig_t *config )
 {
 	cvar_t *generation;
 	char value[16];
@@ -209,13 +209,13 @@ static void RE_BeginRegistration( glconfig_t *config )
 	}
 }
 
-static qhandle_t RE_RegisterModel( const char *name )
+qhandle_t RE_RegisterModel( const char *name )
 {
 	RE_StubRow( "RegisterModel" );
 	return 0;
 }
 
-static qhandle_t RE_ForceRegisterModel( const char *name )
+qhandle_t RE_ForceRegisterModel( const char *name )
 {
 	return 0;
 }
@@ -231,90 +231,85 @@ static void RE_EndRegistration( void )
 	R_FreeUnusedImages();
 }
 
-static int RE_GetRegistrationSequence( void )
+int RE_GetRegistrationSequence( void )
 {
 	return r_sequencenumber;
 }
 
-static qhandle_t RE_ReplaceShader( const char *name, const char *text )
-{
-	return 0;
-}
-
-static void RE_SetWorldVisData( const byte *vis )
+void RE_SetWorldVisData( const byte *vis )
 {
 }
 
-static void RE_LoadWorldMap( const char *name )
+void RE_LoadWorldMap( const char *name )
 {
 	RE_StubRow( "LoadWorld" );
 }
 
-static void RE_ClearScene( void )
+void RE_ClearScene( void )
 {
 }
 
-static void R_ClearLensflareStates( void )
+void R_ClearLensflareStates( void )
 {
 }
 
-static void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities )
+void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities )
 {
 }
 
 static vec3_t s_windDirection;
 
-static void RE_SetWindDirection( vec3_t direction )
+void RE_SetWindDirection( vec3_t direction )
 {
 	VectorCopy( direction, s_windDirection );
 }
 
-static void RE_SetWindIntensity( float intensity )
+void RE_SetWindIntensity( float intensity )
 {
 }
 
-static void RE_SetTimeScale( float timeScale )
+void RE_SetTimeScale( float timeScale )
 {
 }
 
-static void RE_AddRefEntityToScene( const refEntity_t *re )
+void RE_AddRefEntityToScene( const refEntity_t *re )
 {
 }
 
-static void RE_AddRefSpriteToScene( const refEntity_t *ent )
+void RE_AddRefSpriteToScene( const refEntity_t *ent )
 {
 }
 
-static qboolean RE_AddPolyToScene( qhandle_t hShader, int numVerts, const polyVert_t *verts, int num )
+qboolean RE_AddPolyToScene( qhandle_t hShader, int numVerts, const polyVert_t *verts, int num )
 {
 	return qfalse;
 }
 
-static void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, float b, int type )
+void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, float b, int type )
 {
 }
 
-static void RE_AddLensflareToScene( void *key, const vec3_t org, int lensflareNum, float r, float g, float b,
+void RE_AddLensflareToScene( void *key, const vec3_t org, int lensflareNum, float r, float g, float b,
 									float scale, qhandle_t replacementShader )
 {
 }
 
-static int R_LensflareNameToNum( const char *name )
+int R_LensflareNameToNum( const char *name )
 {
 	return -1;
 }
 
-static void RE_RenderScene( const refdef_t *fd )
+void RE_RenderScene( const refdef_t *fd )
 {
 	RE_StubRow( "RenderScene" );
 }
 
-static refEntity_t *RE_GetRenderEntity( int entityNumber )
+refEntity_t *RE_GetRenderEntity( int entityNumber )
 {
 	return NULL;
 }
 
-static void R_SavePerformanceCounters( void )
+void R_SavePerformanceCounters( void )
 {
 }
 
@@ -323,22 +318,22 @@ static void R_SavePerformanceCounters( void )
 
 
 
-static void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int components, const byte *data,
+void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int components, const byte *data,
 						   qboolean dirty )
 {
 }
 
-static void RE_UploadCinematic( int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty )
+void RE_UploadCinematic( int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty )
 {
 }
 
-static void R_DebugLine( const vec3_t start, const vec3_t end, float r, float g, float b, float alpha )
+void R_DebugLine( const vec3_t start, const vec3_t end, float r, float g, float b, float alpha )
 {
 }
 
 
 
-static void RE_BeginFrame( stereoFrame_t stereoFrame )
+void RE_BeginFrame( stereoFrame_t stereoFrame )
 {
 	int *cmd;
 
@@ -356,7 +351,7 @@ static void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 
 
-static void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
+void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 {
 	int *cmd;
 
@@ -382,36 +377,36 @@ static void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	backEnd.backEndMsec = 0;
 }
 
-static int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projection,
+int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projection,
 							int maxPoints, vec3_t pointBuffer, int maxFragments, markFragment_t *fragmentBuffer,
 							float fRadiusSquared )
 {
 	return 0;
 }
 
-static int R_LerpTag( orientation_t *tag, qhandle_t model, int startFrame, int endFrame,
+int R_LerpTag( orientation_t *tag, qhandle_t model, int startFrame, int endFrame,
 					  float frac, const char *tagName )
 {
 	return 0;
 }
 
-static void R_ModelBounds( qhandle_t model, vec3_t mins, vec3_t maxs )
+void R_ModelBounds( qhandle_t model, vec3_t mins, vec3_t maxs )
 {
 	VectorClear( mins );
 	VectorClear( maxs );
 }
 
-static float R_ModelRadius( qhandle_t handle )
+float R_ModelRadius( qhandle_t handle )
 {
 	return 0.0f;
 }
 
-static dtiki_t *R_Model_GetHandle( qhandle_t handle )
+dtiki_t *R_Model_GetHandle( qhandle_t handle )
 {
 	return NULL;
 }
 
-static void TIKI_FlushAll( void )
+void TIKI_FlushAll( void )
 {
 }
 
@@ -419,15 +414,15 @@ static void TIKI_FlushAll( void )
 
 
 
-static void RE_SwipeBegin( float thisTime, float life, qhandle_t hShader )
+void RE_SwipeBegin( float thisTime, float life, qhandle_t hShader )
 {
 }
 
-static void RE_SwipePoint( vec3_t point1, vec3_t point2, float time )
+void RE_SwipePoint( vec3_t point1, vec3_t point2, float time )
 {
 }
 
-static void RE_SwipeEnd( void )
+void RE_SwipeEnd( void )
 {
 }
 
@@ -444,38 +439,39 @@ static const char *RE_GetGraphicsInfo( void )
 	return s_graphicsInfo;
 }
 
-static void R_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir )
-{
-}
-
-static void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b )
-{
-}
-
-static qhandle_t RE_SpawnEffectModel( const char *name, vec3_t pos, vec3_t axis[3] )
+int R_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir )
 {
 	return 0;
 }
 
-static qhandle_t RE_RegisterServerModel( const char *name )
+void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b )
+{
+}
+
+qhandle_t RE_SpawnEffectModel( const char *name, vec3_t pos, vec3_t axis[3] )
 {
 	return 0;
 }
 
-static void RE_UnregisterServerModel( qhandle_t model )
-{
-}
-
-static void RE_PrintBSPFileSizes( void )
-{
-}
-
-static int RE_MapVersion( void )
+qhandle_t RE_RegisterServerModel( const char *name )
 {
 	return 0;
 }
 
-static void RE_AddTerrainMarkToScene( int terrainIndex, qhandle_t hShader, int numVerts,
+void RE_UnregisterServerModel( qhandle_t model )
+{
+}
+
+void RE_PrintBSPFileSizes( void )
+{
+}
+
+int RE_MapVersion( void )
+{
+	return 0;
+}
+
+void RE_AddTerrainMarkToScene( int terrainIndex, qhandle_t hShader, int numVerts,
 									  const polyVert_t *verts, int renderfx )
 {
 }
@@ -486,7 +482,7 @@ static void RE_DrawBackground( int cols, int rows, int bgr, uint8_t *data )
 {
 }
 
-static int R_MarkFragmentsForInlineModel( clipHandle_t bmodel, const vec3_t vAngles, const vec3_t vOrigin,
+int R_MarkFragmentsForInlineModel( clipHandle_t bmodel, const vec3_t vAngles, const vec3_t vOrigin,
 										  int numPoints, const vec3_t *points, const vec3_t projection,
 										  int maxPoints, vec3_t pointBuffer, int maxFragments,
 										  markFragment_t *fragmentBuffer )
@@ -494,42 +490,37 @@ static int R_MarkFragmentsForInlineModel( clipHandle_t bmodel, const vec3_t vAng
 	return 0;
 }
 
-static void R_GetInlineModelBounds( int index, vec3_t mins, vec3_t maxs )
+void R_GetInlineModelBounds( int index, vec3_t mins, vec3_t maxs )
 {
 	VectorClear( mins );
 	VectorClear( maxs );
 }
 
-static void R_GetLightingForDecal( vec3_t light, const vec3_t facing, const vec3_t origin )
+void R_GetLightingForDecal( vec3_t light, const vec3_t facing, const vec3_t origin )
 {
 	VectorClear( light );
 }
 
-static void R_GetLightingForSmoke( vec3_t light, const vec3_t origin )
+void R_GetLightingForSmoke( vec3_t light, const vec3_t origin )
 {
 	VectorClear( light );
 }
 
-static int R_GatherLightSources( const vec3_t pos, vec3_t *lightPos, vec3_t *lightIntensity, int maxLights )
+int R_GatherLightSources( const vec3_t pos, vec3_t *lightPos, vec3_t *lightIntensity, int maxLights )
 {
 	return 0;
 }
 
-static const char *RE_GetShaderName( qhandle_t hShader )
+const char *RE_GetModelName( qhandle_t hModel )
 {
 	return "";
 }
 
-static const char *RE_GetModelName( qhandle_t hModel )
-{
-	return "";
-}
-
-static void RE_ForceUpdatePose( refEntity_t *model )
+void RE_ForceUpdatePose( refEntity_t *model )
 {
 }
 
-static orientation_t RE_TIKI_Orientation( refEntity_t *model, int tagNum )
+orientation_t RE_TIKI_Orientation( refEntity_t *model, int tagNum )
 {
 	orientation_t orient;
 
@@ -538,12 +529,12 @@ static orientation_t RE_TIKI_Orientation( refEntity_t *model, int tagNum )
 	return orient;
 }
 
-static qboolean RE_TIKI_IsOnGround( refEntity_t *model, int tagNum, float threshold )
+qboolean RE_TIKI_IsOnGround( refEntity_t *model, int tagNum, float threshold )
 {
 	return qfalse;
 }
 
-static void RE_SetFrameNumber( int frameNumber )
+void RE_SetFrameNumber( int frameNumber )
 {
 }
 
@@ -553,11 +544,7 @@ static void RE_SetFrameNumber( int frameNumber )
 
 
 
-static void R_RemapShader( const char *oldShader, const char *newShader )
-{
-}
-
-static qboolean R_GetEntityToken( char *buffer, int size )
+qboolean R_GetEntityToken( char *buffer, int size )
 {
 	if ( buffer && size > 0 ) {
 		buffer[0] = '\0';
@@ -566,12 +553,12 @@ static qboolean R_GetEntityToken( char *buffer, int size )
 	return qfalse;
 }
 
-static qboolean R_inPVS( const vec3_t p1, const vec3_t p2 )
+qboolean R_inPVS( const vec3_t p1, const vec3_t p2 )
 {
 	return qtrue;
 }
 
-static void RE_TakeVideoFrame( int h, int w, byte *captureBuffer, byte *encodeBuffer, qboolean motionJpeg )
+void RE_TakeVideoFrame( int h, int w, byte *captureBuffer, byte *encodeBuffer, qboolean motionJpeg )
 {
 }
 
