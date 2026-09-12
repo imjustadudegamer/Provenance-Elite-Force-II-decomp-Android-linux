@@ -2778,6 +2778,26 @@ VkBuffer  VK_VertexRing_IndexBuffer( void );
 int       VK_VertexRing_Used( void );
 int       VK_VertexRing_Flushed( void );
 
+/* One surface's packed slice, reused by the surface's remaining stages.
+   Retail locks a surface's vertex array once and issues every stage's draw
+   against it (the traced menu frame calls glLockArraysEXT five times and draws
+   thirteen times); reserving and repacking per stage multiplied the ring's
+   demand by each shader's stage count.  The key is the whole pack source tuple,
+   so a slice is shared only when every stage packs byte-identical vertices:
+   identical source pointers plus a null colour array, which is the case where
+   nothing the stage recomputes reaches the pack. */
+qboolean  VK_VertexRing_StreamMatch( int vertexes, int indexes,
+                                     const void *tc0, const void *tc1, int tcStride,
+                                     const void *colors, const void *normals,
+                                     int *baseOut, int *indexBaseOut );
+void      VK_VertexRing_StreamStore( int vertexes, int indexes,
+                                     const void *tc0, const void *tc1, int tcStride,
+                                     const void *colors, const void *normals,
+                                     int base, int indexBase );
+void      VK_VertexRing_StreamForget( void );
+void      VK_VertexRing_FrameDemand( int *usedOut, int *vertexesOut, int *indexesOut,
+                                     int *dropsOut, int *surfacesOut );
+
 /* ---- pipelines ----------------------------------------------------------- */
 
 typedef struct {

@@ -57,7 +57,6 @@ qboolean VK_PipelineCache_Open( void )
 	VkPipelineCacheCreateInfo createInfo;
 	vkPcacheHeader_t header;
 	void *blob;
-	size_t blobBytes;
 	FILE *fh;
 	char path[1024];
 	const char *home;

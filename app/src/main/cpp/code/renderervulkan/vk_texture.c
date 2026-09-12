@@ -178,27 +178,6 @@ void VK_Texture_Shutdown( void )
 	vk_textureBytes = 0;
 }
 
-static void VK_Texture_BarrierRange( VkCommandBuffer cmd, VkImage image, uint32_t baseLevel,
-									 uint32_t levelCount, VkAccessFlags fromAccess,
-									 VkAccessFlags toAccess )
-{
-	VkImageMemoryBarrier barrier;
-
-	memset( &barrier, 0, sizeof( barrier ) );
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = image;
-	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	barrier.subresourceRange.baseMipLevel = baseLevel;
-	barrier.subresourceRange.levelCount = levelCount;
-	barrier.subresourceRange.layerCount = 1;
-	barrier.srcAccessMask = fromAccess;
-	barrier.dstAccessMask = toAccess;
-
-	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-							0, 0, NULL, 0, NULL, 1, &barrier );
-}
 
 static void VK_Texture_Barrier( VkCommandBuffer cmd, VkImage image, VkImageLayout from,
 								VkImageLayout to, VkAccessFlags fromAccess, VkAccessFlags toAccess,

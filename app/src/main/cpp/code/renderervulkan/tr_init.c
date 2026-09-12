@@ -273,23 +273,6 @@ qboolean R_GetModeInfo( int *width, int *height, float *windowAspect, int mode )
 	return qtrue;
 }
 
-static void RE_StubRow( const char *what )
-{
-	static int rows = 0;
-
-	if ( !VK_TraceOn( VK_TRACE_CVAR, 1 ) ) {
-		return;
-	}
-
-	if ( rows >= 8 && ( rows % 600 ) != 0 ) {
-		rows++;
-		return;
-	}
-
-	VK_Guard_Row( "VK:stub", "call=%s n=%d", what, rows );
-	rows++;
-}
-
 void R_InitExtensions(void) {
 }
 
@@ -410,7 +393,7 @@ void RE_Shutdown( qboolean destroyWindow )
 	VK_Guard_Row( "VK:init", "shutdown destroyWindow=%d", destroyWindow ? 1 : 0 );
 }
 
-void RE_BeginRegistration( glconfig_t *config )
+void RE_BeginRegistration( glconfig_t *glconfig )
 {
 	cvar_t *generation;
 	char value[16];
@@ -424,7 +407,7 @@ void RE_BeginRegistration( glconfig_t *config )
 
 	R_IssuePendingRenderCommands();
 
-	*config = vkConfig;
+	*glconfig = vkConfig;
 
 	/* The registration sequence the font's shader cache keys on: it grows by
 	   exactly one per registration, as the reference's does. */
@@ -623,27 +606,27 @@ static const char *RE_GetGraphicsInfo( void )
 	return s_graphicsInfo;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-static void RE_DrawBackground( int cols, int rows, int bgr, uint8_t *data )
+/* the export table's slot returns void and R_LightForPoint returns int */
+static void RE_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight,
+							  vec3_t lightDir )
 {
+	(void)R_LightForPoint( point, ambientLight, directedLight, lightDir );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -776,7 +759,7 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp )
 	re.GetShaderHeight = RE_GetShaderHeight;
 	re.GetGraphicsInfo = RE_GetGraphicsInfo;
 
-	re.LightForPoint = R_LightForPoint;
+	re.LightForPoint = RE_LightForPoint;
 	re.AddAdditiveLightToScene = RE_AddAdditiveLightToScene;
 	re.SpawnEffectModel = RE_SpawnEffectModel;
 	re.RegisterServerModel = RE_RegisterServerModel;

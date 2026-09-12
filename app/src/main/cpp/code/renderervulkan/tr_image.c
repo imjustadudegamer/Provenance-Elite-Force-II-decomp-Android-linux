@@ -658,7 +658,6 @@ static void Upload32(
 	int			scaled_width, scaled_height;
 	int			i, c;
 	int			levels;
-	int		sizedFormat;
 	byte		*scan;
 	int		internalFormat = VK_TF_RGB;
 
@@ -805,7 +804,7 @@ static void Upload32(
 	/* The chain the mip loop below will build, counted before it mutates * scaled_width/height. */
 	levels = SMP_MipLevelCount( scaled_width, scaled_height );
 
-	sizedFormat = R_VKInternalFormat( internalFormat );
+	( void )R_VKInternalFormat( internalFormat );
 	s_gles3UploadStored = qfalse;
 	s_gles3UploadLevels = numMipmaps ? levels : 1;
 	/* immutable storage was the reference's option; the image is created whole */

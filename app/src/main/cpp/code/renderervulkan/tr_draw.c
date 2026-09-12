@@ -1038,13 +1038,11 @@ void RE_UploadCinematic( int w, int h, int cols, int rows, const byte *data, int
 }
 
 void AddBox(float x, float y, float w, float h) {
-	int		t0;
-
 	if (!r_draw2d->integer) {
 		return;
 	}
 
-	t0 = D2_Prepare();
+	D2_Prepare();
 
 	{
 		box2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
@@ -1058,13 +1056,11 @@ void AddBox(float x, float y, float w, float h) {
 }
 
 void DrawBox(float x, float y, float w, float h) {
-	int		t0;
-
 	if (!r_draw2d->integer) {
 		return;
 	}
 
-	t0 = D2_Prepare();
+	D2_Prepare();
 
 	{
 		box2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
@@ -1141,7 +1137,7 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 }
 
 void RE_Scissor(int x, int y, int width, int height) {
-	int		t0 = D2_T0();
+	D2_T0();
 
 	if ( r_scissor2DValid &&
 		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == width && r_scissor2D[3] == height ) {

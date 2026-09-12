@@ -51,8 +51,6 @@ root, for more details.
 
 #include <string.h>
 
-#define	MAX_RENDER_COMMANDS	( 0x40000 )
-
 typedef struct {
 	byte	cmds[MAX_RENDER_COMMANDS];
 	int		used;

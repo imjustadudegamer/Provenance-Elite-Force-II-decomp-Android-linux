@@ -314,7 +314,6 @@ void VK_Swapchain_Destroy( void )
 
 qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_t outBytes )
 {
-	VkBufferCreateInfo bufferInfo;
 	VkBufferImageCopy copyRegion;
 	VkCommandBufferAllocateInfo allocInfo;
 	VkCommandBufferBeginInfo beginInfo;

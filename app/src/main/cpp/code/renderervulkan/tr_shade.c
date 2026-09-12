@@ -57,7 +57,13 @@ static void vkWireColor4f( float r, float g, float b, float a ) {
 	s_debugColor[0] = r; s_debugColor[1] = g; s_debugColor[2] = b; s_debugColor[3] = a;
 }
 static void vkWireVertex3fv( const float *v ) {
-	VK_WireVertex( v, s_debugColor );
+	byte	rgba[4];
+	int		c;
+
+	for ( c = 0; c < 4; c++ ) {
+		rgba[c] = ( byte )( s_debugColor[c] * 255.0f );
+	}
+	VK_WireVertex( v, rgba );
 }
 
 static void DrawTris (shaderCommands_t *input, int flags) {
@@ -171,6 +177,10 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	RB_2D_Flush();
 
 	state = shader->remappedShader ? shader->remappedShader : shader;
+
+	/* a new surface is new geometry: the previous surface's packed ring slice
+	   belongs to the surface that packed it */
+	VK_VertexRing_StreamForget();
 
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;
@@ -389,7 +399,7 @@ void ProjectDlightTexture( void ) {
 			}
 			RB_VBO_DrawTessArrays( &tess, hitIndexes, numIndexes,
 								   texCoordsArray[0], NULL, 2,
-								   colorArray[0], NULL );
+								   colorArray[0], NULL, NULL );
 		}
 		backEnd.pc.c_totalIndexes += numIndexes;
 		backEnd.pc.c_dlightIndexes += numIndexes;
@@ -1336,9 +1346,11 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 			VK_StageBindCensus( tess.shader, tess.xstages[0], 0, qfalse, w0, w1, u0, u1 );
 		}
 
+		/* single-stage iterator: there is no later stage to share a slice with */
 		RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
 							   input->texCoords[0][0], input->texCoords[0][0] + 2, 4,
-							   (const unsigned char *)tess.constantColor255, input->normal[0] );
+							   (const unsigned char *)tess.constantColor255, input->normal[0],
+							   NULL );
 	}
 
 	if ( tess.dlightBits && !tess.dlightMap && tess.shader->sort <= SS_OPAQUE ) {
