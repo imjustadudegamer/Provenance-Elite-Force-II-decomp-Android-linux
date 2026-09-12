@@ -974,6 +974,7 @@ void R_AddDrawSurf(surfaceType_t* surface, shader_t* shader, int fogNum, int dli
 		| (dlightMap & QSORT_DLIGHTMAP_MASK);
 	tr.refdef.drawSurfs[index].surface = surface;
 	tr.refdef.numDrawSurfs++;
+	R_FrontEnd_NoteAdd();
 }
 
 void R_AddSpriteSurf(surfaceType_t* surface, shader_t* shader, float zDistance)
@@ -1012,15 +1013,47 @@ void R_DecomposeSort(unsigned int sort, int* entityNum, shader_t** shader, int* 
 	*dlightMap = sort & QSORT_DLIGHTMAP_MASK;
 }
 
+/* The scene's surface path at three points: the adds the front end took, the
+   list the scene recorded, and the count the RC_DRAW_SURFS command carries
+   (the back end's frame row reports that third one as `draw-surfs'). */
+static int	s_feViewAdds;
+static int	s_feViewRows;
+
+void R_FrontEnd_NoteAdd( void )
+{
+	s_feViewAdds++;
+}
+
+const char *R_FrontEnd_ViewRow( int recorded, int entities )
+{
+	static char	row[160];
+
+	Com_sprintf( row, sizeof( row ), "view adds=%d rec=%d ents=%d f=%d",
+				 s_feViewAdds, recorded, entities, RB_FrameCount() );
+
+	/* a transition is named, the steady state is sampled */
+	s_feViewRows++;
+	if ( s_feViewRows <= 8 || ( s_feViewRows % 600 ) == 0 ) {
+		return row;
+	}
+	return NULL;
+}
+
 void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *spriteSurfs, int numSpriteSurfs ) {
 	shader_t		*shader;
 	int				entityNum;
 	int				fogNum;
 	int				dlighted;
 	int				i;
+	const char		*feRow;
 
 	if ( numDrawSurfs < 1 ) {
 		R_AddDrawSurfCmd( drawSurfs, numDrawSurfs );
+		feRow = R_FrontEnd_ViewRow( numDrawSurfs, tr.refdef.num_entities );
+		if ( feRow ) {
+			VK_Guard_Row( "VK:fe", "%s", feRow );
+		}
+		s_feViewAdds = 0;
 		return;
 	}
 
@@ -1064,6 +1097,12 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 
     R_AddDrawSurfCmd(drawSurfs, numDrawSurfs);
     R_AddSpriteSurfCmd(spriteSurfs, numSpriteSurfs);
+
+	feRow = R_FrontEnd_ViewRow( numDrawSurfs, tr.refdef.num_entities );
+	if ( feRow ) {
+		VK_Guard_Row( "VK:fe", "%s", feRow );
+	}
+	s_feViewAdds = 0;
 }
 
 int R_SpriteFogNum(const vec3_t origin, float radius) {

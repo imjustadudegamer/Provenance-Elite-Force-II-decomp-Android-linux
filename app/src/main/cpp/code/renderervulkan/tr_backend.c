@@ -1048,6 +1048,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	backEnd.pc.c_surfaces += 0;
 
+	VK_Shade_NoteSurfCmds( cmd->numDrawSurfs );
 	RB_SetupFog();
 	RB_RenderDrawSurfList( cmd->drawSurfs, cmd->numDrawSurfs );
 

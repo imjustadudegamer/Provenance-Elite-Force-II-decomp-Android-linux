@@ -1575,6 +1575,11 @@ void R_DecomposeSort(unsigned int sort, int* entityNum, shader_t** shader, int* 
 
 void R_AddDrawSurf(surfaceType_t* surface, shader_t* shader, int fogNum, int dlightMap);
 
+/* the scene's surface path, counted for the frame row: the adds, the list the
+   scene recorded, and (the back end's own row) the count the command carried */
+void R_FrontEnd_NoteAdd( void );
+const char *R_FrontEnd_ViewRow( int recorded, int entities );
+
 int R_CalcFogNum(const vec3_t worldOrigin, float radius);
 
 int R_SpriteFogNum(const vec3_t origin, float radius);
@@ -2681,6 +2686,9 @@ qboolean	VK_Shade_Init( void );
 void		VK_Shade_Shutdown( void );
 void		VK_Shade_NewFrame( void );
 void		VK_Shade_NoteDraw( int shade );
+void		VK_Shade_NoteSurfCmds( int surfs );
+int		VK_Shade_FrameBatches( void );
+void		VK_Shade_NotePerm( int miss );
 
 int		VK_Shade_ModelViewDepth( void );
 int		VK_Shade_ProjectionDepth( void );
