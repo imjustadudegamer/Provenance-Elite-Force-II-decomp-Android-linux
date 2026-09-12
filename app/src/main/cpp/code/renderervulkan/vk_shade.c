@@ -1,0 +1,2478 @@
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * vk_shade.c -- the 3D shade layer: the state machine, the uniform block and
+ * the stage draw.
+ *
+ * The reference renderer splits this across tr_backend.c (the state words), tr_vbo.c
+ * (the stream and the matrix stack) and tr_program.c (the programs and their
+ * uniforms).  Here it is one file, because the three meet in one place: every
+ * one of those calls ends as a pipeline key, a uniform block write or a
+ * recorded draw, and the whole of it is the 3D back end's contract with the
+ * front end that mirrors the reference renderer file for file.
+ *
+ *   VK_State / VK_Cull / VK_ApplyStateBits  ->  the pending pipeline key
+ *   VK_SetUniform*                          ->  the std140 block's staging
+ *   VK_Setup{View,Stage,Fog}Uniforms        ->  the same values the reference renderer loads
+ *   VK_DrawStage / RB_VBO_DrawTessArrays    ->  pack, bind, draw
+ *
+ * The uniform block's layout is not hand-written: it is read back out of the
+ * compiled SPIR-V by tools/build_vk_spirv.py and emitted as the VK_UBO_OFF_*
+ * constants this file packs at, so the CPU side and the shader cannot drift.
+ */
+
+#include "tr_local.h"
+#include "tr_program.h"
+#include "tr_vbo.h"
+#include "vk_shaders_embedded3d.h"
+
+#include <string.h>
+#include <math.h>
+
+static const short vk_uboMap[VK_U_COUNT] = {
+	VK_UBO_OFF_U_MVP,    /* u_MVP              */
+	-1,                    /* u_ModelView        */
+	VK_UBO_OFF_U_MODELMATRIX, /* u_ModelMatrix      */
+	VK_UBO_OFF_U_VIEWORIGIN, /* u_ViewOrigin       */
+	VK_UBO_OFF_U_VIEWAXIS0, /* u_ViewAxis0        */
+	VK_UBO_OFF_U_LOCALVIEWORIGIN, /* u_LocalViewOrigin  */
+	VK_UBO_OFF_U_ENTITYORIGIN, /* u_EntityOrigin     */
+	VK_UBO_OFF_U_ENTITYAXIS, /* u_EntityAxis       */
+	VK_UBO_OFF_U_ENTITYCOLOR, /* u_EntityColor      */
+	VK_UBO_OFF_U_BASECOLOR, /* u_BaseColor        */
+	VK_UBO_OFF_U_VERTCOLOR, /* u_VertColor        */
+	VK_UBO_OFF_U_IDENTITYLIGHT, /* u_IdentityLight    */
+	VK_UBO_OFF_U_IDENTITYLIGHTBYTE, /* u_IdentityLightByte */
+	VK_UBO_OFF_U_ENTITYFADE, /* u_EntityFade       */
+	VK_UBO_OFF_U_PORTALRANGE, /* u_PortalRange      */
+	VK_UBO_OFF_U_SPECORIGIN, /* u_SpecOrigin       */
+	VK_UBO_OFF_U_SUNDIRECTION, /* u_SunDirection     */
+	VK_UBO_OFF_U_SKYALPHA, /* u_SkyAlpha         */
+	VK_UBO_OFF_U_SKYSCROLL, /* u_SkyScroll        */
+	VK_UBO_OFF_U_SKYALPHAMODE, /* u_SkyAlphaMode     */
+	VK_UBO_OFF_U_ENTITYTEXCOORD, /* u_EntityTexCoord   */
+	VK_UBO_OFF_U_COLORGEN, /* u_ColorGen         */
+	VK_UBO_OFF_U_ALPHAGEN, /* u_AlphaGen         */
+	VK_UBO_OFF_U_ALPHAMIN, /* u_AlphaMin         */
+	VK_UBO_OFF_U_ALPHAMAX, /* u_AlphaMax         */
+	VK_UBO_OFF_U_ALPHACONST, /* u_AlphaConst       */
+	VK_UBO_OFF_U_ALPHACONSTMIN, /* u_AlphaConstMin    */
+	VK_UBO_OFF_U_WAVERGB, /* u_WaveRGB          */
+	VK_UBO_OFF_U_WAVEALPHA, /* u_WaveAlpha        */
+	VK_UBO_OFF_U_FREQRGB, /* u_FreqRGB          */
+	VK_UBO_OFF_U_FREQALPHA, /* u_FreqAlpha        */
+	VK_UBO_OFF_U_TCGEN0, /* u_TCGen0           */
+	VK_UBO_OFF_U_TCGEN1, /* u_TCGen1           */
+	VK_UBO_OFF_U_TCGEN0VEC0, /* u_TCGen0Vec0       */
+	VK_UBO_OFF_U_TCGEN0VEC1, /* u_TCGen0Vec1       */
+	VK_UBO_OFF_U_TCGEN1VEC0, /* u_TCGen1Vec0       */
+	VK_UBO_OFF_U_TCGEN1VEC1, /* u_TCGen1Vec1       */
+	VK_UBO_OFF_U_NUMTEXMOD0, /* u_NumTexMod0       */
+	VK_UBO_OFF_U_NUMTEXMOD1, /* u_NumTexMod1       */
+	VK_UBO_OFF_U_TEXMOD0, /* u_TexMod0          */
+	VK_UBO_OFF_U_TEXMOD1, /* u_TexMod1          */
+	VK_UBO_OFF_U_ALPHATEST, /* u_AlphaTest        */
+	VK_UBO_OFF_U_FORCEALPHA, /* u_ForceAlpha       */
+	VK_UBO_OFF_U_TEXENV0, /* u_TexEnv0          */
+	VK_UBO_OFF_U_TEXENV1, /* u_TexEnv1          */
+	-1,                    /* u_Tex0             */
+	-1,                    /* u_Tex1             */
+	VK_UBO_OFF_U_TEX1COLOR, /* u_Tex1Color        */
+	-1,                    /* u_WaveTable        */
+	VK_UBO_OFF_U_CLIPPLANE, /* u_ClipPlane        */
+	VK_UBO_OFF_U_CLIPPLANEENABLE, /* u_ClipPlaneEnable  */
+	VK_UBO_OFF_U_SHADERTIME, /* u_ShaderTime       */
+	VK_UBO_OFF_U_ACFF,   /* u_Acff             */
+	VK_UBO_OFF_U_FOGNUM, /* u_FogNum           */
+	VK_UBO_OFF_U_FOGTCSCALE, /* u_FogTcScale       */
+	VK_UBO_OFF_U_FOGSCONSTANT, /* u_FogSConstant     */
+	VK_UBO_OFF_U_FOGSVECTOR, /* u_FogSVector       */
+	VK_UBO_OFF_U_FOGTCONSTANT, /* u_FogTConstant     */
+	VK_UBO_OFF_U_FOGTVECTOR, /* u_FogTVector       */
+	VK_UBO_OFF_U_FOGVIEWOUTSIDE, /* u_FogViewOutside   */
+	VK_UBO_OFF_U_FOGCOLOR, /* u_FogColor         */
+	VK_UBO_OFF_U_FOGDENSITYARM, /* u_FogDensityArm    */
+	VK_UBO_OFF_U_FOGOOLEN, /* u_FogOolen         */
+	VK_UBO_OFF_U_FOGPLANECONST, /* u_FogPlaneConst    */
+	VK_UBO_OFF_U_FOGDVIEW, /* u_FogDView         */
+	VK_UBO_OFF_U_FOGDENSITYTVECTOR, /* u_FogDensityTVector */
+	VK_UBO_OFF_U_FOGMODE, /* u_FogMode          */
+	VK_UBO_OFF_U_FOGSTART, /* u_FogStart         */
+	VK_UBO_OFF_U_FOGEND, /* u_FogEnd           */
+	VK_UBO_OFF_U_FOGFIXCOLOR, /* u_FogFixColor      */
+};
+static const int vk_uboSize[VK_U_COUNT] = {
+	64, 0, 64, 4, 4, 4, 4, 48, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 64, 64, 4, 4, 4, 4, 0, 0, 4, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+};
+
+#define VK_UBO_SIZE_PAD	2048		/* the std140 block, rounded up for the bind range */
+
+#define MAT4_IDENTITY(v) do { \
+	(v)[0] = 1.0f; (v)[1] = 0.0f; (v)[2] = 0.0f; (v)[3] = 0.0f; \
+	(v)[4] = 0.0f; (v)[5] = 1.0f; (v)[6] = 0.0f; (v)[7] = 0.0f; \
+	(v)[8] = 0.0f; (v)[9] = 0.0f; (v)[10] = 1.0f; (v)[11] = 0.0f; \
+	(v)[12] = 0.0f; (v)[13] = 0.0f; (v)[14] = 0.0f; (v)[15] = 1.0f; } while (0)
+
+void VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader );
+VkCommandBuffer VK_Shade_CommandBuffer( void );
+void VK_UploadClipPlane( vkProgram_t *p );
+float EvalWaveForm( const waveForm_t *wf );
+
+/* ---- the matrix stack (the reference renderer keeps it in tr_vbo.c; it is pure CPU) ------- */
+
+#define VK_MATRIX_DEPTH 8
+
+static float	s_modelView[VK_MATRIX_DEPTH][16];
+static float	s_projection[VK_MATRIX_DEPTH][16];
+static int		s_modelViewDepth;
+static int		s_projectionDepth;
+static qboolean s_modelViewDirty;
+static qboolean s_projectionDirty;
+
+static vec4_t	s_clipPlane;
+static qboolean	s_clipPlaneValid;
+
+static void VK_Matrix_Identity( float *m )
+{
+	MAT4_IDENTITY( m );
+}
+
+static void VK_Matrix_Multiply( float *out, const float *a, const float *b )
+{
+	int i, j, k;
+
+	for ( i = 0; i < 4; i++ ) {
+		for ( j = 0; j < 4; j++ ) {
+			float sum = 0.0f;
+			for ( k = 0; k < 4; k++ ) {
+				sum += a[k * 4 + j] * b[i * 4 + k];
+			}
+			out[i * 4 + j] = sum;
+		}
+	}
+}
+
+int VK_Shade_ModelViewDepth( void )
+{
+	return s_modelViewDepth;
+}
+
+int VK_Shade_ProjectionDepth( void )
+{
+	return s_projectionDepth;
+}
+
+const float *RB_GetModelViewMatrix( void )
+{
+	return s_modelView[s_modelViewDepth];
+}
+
+const float *RB_GetProjectionMatrix( void )
+{
+	return s_projection[s_projectionDepth];
+}
+
+void RB_LoadModelViewMatrix( const float *matrix )
+{
+	memcpy( s_modelView[s_modelViewDepth], matrix, 16 * sizeof( float ) );
+	s_modelViewDirty = qtrue;
+}
+
+void RB_LoadProjectionMatrix( const float *matrix )
+{
+	memcpy( s_projection[s_projectionDepth], matrix, 16 * sizeof( float ) );
+	s_projectionDirty = qtrue;
+}
+
+void RB_LoadIdentityModelView( void )
+{
+	VK_Matrix_Identity( s_modelView[s_modelViewDepth] );
+	s_modelViewDirty = qtrue;
+}
+
+void RB_LoadIdentityProjection( void )
+{
+	VK_Matrix_Identity( s_projection[s_projectionDepth] );
+	s_projectionDirty = qtrue;
+}
+
+void RB_PushModelView( void )
+{
+	if ( s_modelViewDepth < VK_MATRIX_DEPTH - 1 ) {
+		memcpy( s_modelView[s_modelViewDepth + 1], s_modelView[s_modelViewDepth], 16 * sizeof( float ) );
+		s_modelViewDepth++;
+	}
+}
+
+void RB_PopModelView( void )
+{
+	if ( s_modelViewDepth > 0 ) {
+		s_modelViewDepth--;
+	}
+	s_modelViewDirty = qtrue;
+}
+
+void RB_PushProjection( void )
+{
+	if ( s_projectionDepth < VK_MATRIX_DEPTH - 1 ) {
+		memcpy( s_projection[s_projectionDepth + 1], s_projection[s_projectionDepth], 16 * sizeof( float ) );
+		s_projectionDepth++;
+	}
+}
+
+void RB_PopProjection( void )
+{
+	if ( s_projectionDepth > 0 ) {
+		s_projectionDepth--;
+	}
+	s_projectionDirty = qtrue;
+}
+
+void RB_PopModelViewTo( int depth )
+{
+	if ( depth < 0 ) {
+		depth = 0;
+	}
+	if ( depth > VK_MATRIX_DEPTH - 1 ) {
+		depth = VK_MATRIX_DEPTH - 1;
+	}
+	s_modelViewDepth = depth;
+	s_modelViewDirty = qtrue;
+}
+
+void RB_PopProjectionTo( int depth )
+{
+	if ( depth < 0 ) {
+		depth = 0;
+	}
+	if ( depth > VK_MATRIX_DEPTH - 1 ) {
+		depth = VK_MATRIX_DEPTH - 1;
+	}
+	s_projectionDepth = depth;
+	s_projectionDirty = qtrue;
+}
+
+void RB_TranslateModelView( float x, float y, float z )
+{
+	float	*t = s_modelView[s_modelViewDepth];
+
+	/* column-major translation: post-multiply */
+	t[12] += t[0] * x + t[4] * y + t[8] * z;
+	t[13] += t[1] * x + t[5] * y + t[9] * z;
+	t[14] += t[2] * x + t[6] * y + t[10] * z;
+	s_modelViewDirty = qtrue;
+}
+
+void RB_OrthoProjection( float left, float right, float bottom, float top, float zNear, float zFar )
+{
+	float	*p = s_projection[s_projectionDepth];
+
+	memset( p, 0, 16 * sizeof( float ) );
+	p[0] = 2.0f / ( right - left );
+	p[5] = 2.0f / ( top - bottom );
+	p[10] = -2.0f / ( zFar - zNear );
+	p[12] = -( right + left ) / ( right - left );
+	p[13] = -( top + bottom ) / ( top - bottom );
+	p[14] = -( zFar + zNear ) / ( zFar - zNear );
+	p[15] = 1.0f;
+	s_projectionDirty = qtrue;
+}
+
+/* the portal clip plane, discarded on in the fragment stage (Vulkan has no
+   user clip plane) */
+void RB_ClipPlane_Set( const vec4_t plane )
+{
+	Vector4Copy( plane, s_clipPlane );
+	s_clipPlaneValid = qtrue;
+}
+
+void RB_ClipPlane_Disable( void )
+{
+	s_clipPlaneValid = qfalse;
+}
+
+qboolean RB_ClipPlane_Get( vec4_t out )
+{
+	if ( !s_clipPlaneValid ) {
+		return qfalse;
+	}
+	Vector4Copy( s_clipPlane, out );
+	return qtrue;
+}
+
+/* ---- the uniform block -------------------------------------------------- */
+
+/* the staging block: written at the offsets the SPIR-V reflected, uploaded
+   whole by the draw. */
+static unsigned char	s_ubo[VK_UBO_SIZE_PAD];
+static qboolean			s_uboDirty;
+
+/* the reference renderer's setters take a program because the legacy API caches per program; here one
+   block serves every program, so the argument is along for the signature. */
+#define VK_UNBO(p) (p)
+
+static int VK_Ubo_Offset( vkUniform_t u )
+{
+	if ( (int)u < 0 || (int)u >= VK_U_COUNT ) {
+		return -1;
+	}
+	return vk_uboMap[u];
+}
+
+static int VK_Ubo_Size( vkUniform_t u )
+{
+	if ( (int)u < 0 || (int)u >= VK_U_COUNT ) {
+		return 0;
+	}
+	return vk_uboSize[u];
+}
+
+static void VK_Ubo_Set( vkUniform_t u, const void *data, int bytes )
+{
+	int off = VK_Ubo_Offset( u );
+
+	if ( off < 0 ) {
+		return;
+	}
+	if ( bytes > VK_Ubo_Size( u ) ) {
+		bytes = VK_Ubo_Size( u );
+	}
+	memcpy( s_ubo + off, data, bytes );
+	s_uboDirty = qtrue;
+}
+
+void VK_SetUniform1i( vkProgram_t *p, vkUniform_t u, int v )
+{
+	VK_UNBO(p);
+	VK_Ubo_Set( u, &v, sizeof( v ) );
+}
+
+void VK_SetUniform1f( vkProgram_t *p, vkUniform_t u, float v )
+{
+	VK_UNBO(p);
+	VK_Ubo_Set( u, &v, sizeof( v ) );
+}
+
+void VK_SetUniform2f( vkProgram_t *p, vkUniform_t u, float x, float y )
+{
+	float v[2];
+
+	VK_UNBO(p);
+	v[0] = x; v[1] = y;
+	VK_Ubo_Set( u, v, sizeof( v ) );
+}
+
+void VK_SetUniform3f( vkProgram_t *p, vkUniform_t u, float x, float y, float z )
+{
+	float v[3];
+
+	VK_UNBO(p);
+	v[0] = x; v[1] = y; v[2] = z;
+	VK_Ubo_Set( u, v, sizeof( v ) );
+}
+
+void VK_SetUniform4f( vkProgram_t *p, vkUniform_t u, float x, float y, float z, float w )
+{
+	float v[4];
+
+	VK_UNBO(p);
+	v[0] = x; v[1] = y; v[2] = z; v[3] = w;
+	VK_Ubo_Set( u, v, sizeof( v ) );
+}
+
+void VK_SetUniformMat4( vkProgram_t *p, vkUniform_t u, const float *m )
+{
+	VK_UNBO(p);
+	VK_Ubo_Set( u, m, 16 * sizeof( float ) );
+}
+
+void VK_SetUniform3fv( vkProgram_t *p, vkUniform_t u, const float *v )
+{
+	VK_UNBO(p);
+	VK_Ubo_Set( u, v, 3 * sizeof( float ) );
+}
+
+void VK_SetUniform4fv( vkProgram_t *p, vkUniform_t u, const float *v )
+{
+	VK_UNBO(p);
+	VK_Ubo_Set( u, v, 4 * sizeof( float ) );
+}
+
+void VK_SetUniformMatrix3fv( vkProgram_t *p, vkUniform_t u, const float *v )
+{
+	/* std140 lays a mat3 out as three columns padded to 16 bytes */
+	float m[12];
+
+	VK_UNBO(p);
+	m[0] = v[0]; m[1] = v[1]; m[2] = v[2]; m[3] = 0.0f;
+	m[4] = v[3]; m[5] = v[4]; m[6] = v[5]; m[7] = 0.0f;
+	m[8] = v[6]; m[9] = v[7]; m[10] = v[8]; m[11] = 0.0f;
+	VK_Ubo_Set( u, m, sizeof( m ) );
+}
+
+/* the reference renderer's Mat4 multiply, used by the view setup */
+void VK_Mat4Mul( float *out, const float *a, const float *b )
+{
+	VK_Matrix_Multiply( out, a, b );
+}
+	/* the uniform's byte offset in the std140 block; -1 the block lacks it */
+
+
+/* ---- the programs -------------------------------------------------------- */
+
+/* A program is one row of the offline-compiled table: its defines bitmask and
+ * its two module handles. */
+#define VK_PROG_MAX 128
+
+typedef struct {
+	vkShaderModuleDef_t	def;
+	VkShaderModule		module;
+} vkProgModule_t;
+
+static vkProgModule_t	vk_progModules[VK_SHADER_MODULE_COUNT];
+static int				vk_numProgModules;
+
+static vkProgram_t	vk_programs[VK_PROG_MAX];
+static int				vk_numPrograms;
+
+static const vkShaderModuleDef_t *VK_Program_Find( int family, unsigned defines, int isFragment )
+{
+	int i;
+
+	for ( i = 0; i < VK_SHADER_MODULE_COUNT; i++ ) {
+		if ( vk_progModules[i].def.family == family
+			 && vk_progModules[i].def.defines == defines
+			 && vk_progModules[i].def.isFragment == isFragment ) {
+			return &vk_progModules[i].def;
+		}
+	}
+	return NULL;
+}
+
+static qboolean VK_Program_Modules( int family, unsigned defines, VkShaderModule *vert, VkShaderModule *frag )
+{
+	const vkShaderModuleDef_t *v = VK_Program_Find( family, defines, 0 );
+	const vkShaderModuleDef_t *f = VK_Program_Find( family, defines, 1 );
+	int i;
+
+	if ( !v || !f ) {
+		return qfalse;
+	}
+	for ( i = 0; i < VK_SHADER_MODULE_COUNT; i++ ) {
+		if ( vk_progModules[i].def.spv == v->spv ) {
+			*vert = vk_progModules[i].module;
+		}
+		if ( vk_progModules[i].def.spv == f->spv ) {
+			*frag = vk_progModules[i].module;
+		}
+	}
+	return qtrue;
+}
+
+qboolean VK_Shade_Init( void )
+{
+	VkShaderModuleCreateInfo info;
+	VkResult result;
+	int i;
+
+	memset( vk_progModules, 0, sizeof( vk_progModules ) );
+	for ( i = 0; i < VK_SHADER_MODULE_COUNT; i++ ) {
+		memset( &info, 0, sizeof( info ) );
+		info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		info.codeSize = vkShaderModules[i].words * sizeof( unsigned int );
+		info.pCode = vkShaderModules[i].spv;
+		result = qvk.CreateShaderModule( vk.device, &info, NULL, &vk_progModules[i].module );
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkCreateShaderModule(stage)" ) ) {
+			return qfalse;
+		}
+		vk_progModules[i].def = vkShaderModules[i];
+	}
+	vk_numProgModules = VK_SHADER_MODULE_COUNT;
+
+	VK_Guard_Row( "VK:shade", "modules=%d permutations=%d", VK_SHADER_MODULE_COUNT, VK_SHADER_MODULE_COUNT / 2 );
+	return qtrue;
+}
+
+void VK_Shade_Shutdown( void )
+{
+	int i;
+
+	for ( i = 0; i < vk_numProgModules; i++ ) {
+		if ( vk_progModules[i].module != VK_NULL_HANDLE ) {
+			qvk.DestroyShaderModule( vk.device, vk_progModules[i].module, NULL );
+			vk_progModules[i].module = VK_NULL_HANDLE;
+		}
+	}
+	vk_numProgModules = 0;
+	vk_numPrograms = 0;
+}
+
+/* the family a defines bitmask carries; the reference renderer keeps it in the high byte */
+static int VK_Family_Of( unsigned defines )
+{
+	switch ( defines & VKP_FAMILY_MASK ) {
+	case VKP_FAMILY_2D:		return VK_SHADER_FAM_2D;
+	case VKP_FAMILY_DLIGHT:	return VK_SHADER_FAM_DLIGHT;
+	case VKP_FAMILY_SKY:	return VK_SHADER_FAM_SKY;
+	case VKP_FAMILY_SPRITE:	return VK_SHADER_FAM_SPRITE;
+	case VKP_FAMILY_SUNFLARE: return VK_SHADER_FAM_SUNFLARE;
+	case VKP_FAMILY_SHADOW:	return VK_SHADER_FAM_SHADOW;
+	case VKP_FAMILY_WIRE:	return VK_SHADER_FAM_WIRE;
+	default:				return VK_SHADER_FAM_STAGE;
+	}
+}
+
+vkProgram_t *VK_GetProgram( unsigned defines )
+{
+	vkProgram_t *p;
+	int i;
+
+	for ( i = 0; i < vk_numPrograms; i++ ) {
+		if ( vk_programs[i].defines == defines && vk_programs[i].linked ) {
+			return &vk_programs[i];
+		}
+	}
+	if ( vk_numPrograms >= VK_PROG_MAX ) {
+		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "VK_GetProgram: program table full", VK_INCOMPLETE );
+		return &vk_programs[0];
+	}
+	p = &vk_programs[vk_numPrograms++];
+	memset( p, 0, sizeof( *p ) );
+	Q_strncpyz( p->name, "vk_program", sizeof( p->name ) );
+	p->defines = defines;
+	p->program = VK_Family_Of( defines );
+	p->linked = qtrue;
+	return p;
+}
+
+void VK_ProgramsInit( void ) { }
+void VK_ProgramsShutdown( void ) { }
+void VK_PrebuildPrograms( void ) { }
+void VK_CloseProgramRegistration( void ) { }
+int VK_ProgramsCreatedAfterRegistration( void ) { return 0; }
+
+unsigned VK_StageDefines_Full( const shaderStage_t *pStage, const shader_t *shader,
+								  unsigned bundleCount, unsigned texEnv, unsigned fogStage,
+								  unsigned extra )
+{
+	unsigned	d = 0;
+	unsigned	rgbGen, alphaGen;
+	unsigned	tc0, tc1;
+	int			b;
+
+	(void)shader;
+	(void)texEnv;
+
+	if ( !pStage )
+	{
+		return 0;
+	}
+
+	rgbGen = (unsigned)pStage->rgbGen;
+	alphaGen = (unsigned)pStage->alphaGen;
+
+	if ( bundleCount == 0 )
+	{
+		bundleCount = ( pStage->bundle[1].image[0] != NULL ) ? 2u : 1u;
+	}
+	if ( fogStage == 0 )
+	{
+		if ( rgbGen == (unsigned)CGEN_FOG )
+		{
+			fogStage = 1;
+		}
+		else if ( rgbGen == (unsigned)CGEN_FOG_BLEND )
+		{
+			fogStage = 2;
+		}
+	}
+	tc0 = (unsigned)pStage->bundle[0].tcGen;
+	tc1 = ( bundleCount == 2 ) ? (unsigned)pStage->bundle[1].tcGen : (unsigned)TCGEN_BAD;
+
+	if ( rgbGen != (unsigned)CGEN_IDENTITY
+		|| ( alphaGen != (unsigned)AGEN_SKIP && alphaGen != (unsigned)AGEN_IDENTITY ) )
+	{
+		d |= VKP_RGBAGEN;
+	}
+	if ( rgbGen == (unsigned)CGEN_DOT || rgbGen == (unsigned)CGEN_ONE_MINUS_DOT
+		|| alphaGen == (unsigned)AGEN_DOT || alphaGen == (unsigned)AGEN_ONE_MINUS_DOT
+		|| alphaGen == (unsigned)AGEN_DOT_VIEW || alphaGen == (unsigned)AGEN_ONE_MINUS_DOT_VIEW
+		|| alphaGen == (unsigned)AGEN_LIGHTING_SPECULAR || alphaGen == (unsigned)AGEN_HEIGHT_FADE )
+	{
+		d |= VKP_NORMAL;
+	}
+	/* the tcGen arms that read the normal need GLP_NORMAL too, or the stage
+	   samples one texel of its map for the whole surface */
+	if ( tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED || tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED2
+		|| tc0 == (unsigned)TCGEN_ANGLE_BASED_ENVIRONMENT || tc0 == (unsigned)TCGEN_SUN_REFLECTION
+		|| ( bundleCount == 2
+			 && ( tc1 == (unsigned)TCGEN_ENVIRONMENT_MAPPED || tc1 == (unsigned)TCGEN_ENVIRONMENT_MAPPED2
+				  || tc1 == (unsigned)TCGEN_ANGLE_BASED_ENVIRONMENT || tc1 == (unsigned)TCGEN_SUN_REFLECTION ) ) )
+	{
+		d |= VKP_NORMAL;
+	}
+	if ( shader && shader->needsNormal )
+	{
+		d |= VKP_NORMAL;
+	}
+	if ( rgbGen == (unsigned)CGEN_WAVEFORM || rgbGen == (unsigned)CGEN_MULTIPLY_BY_WAVEFORM
+		|| alphaGen == (unsigned)AGEN_WAVEFORM )
+	{
+		d |= VKP_WAVE;
+	}
+	if ( alphaGen == (unsigned)AGEN_LIGHTING_SPECULAR )
+	{
+		d |= VKP_SPECULAR;
+	}
+	if ( alphaGen == (unsigned)AGEN_DIST_FADE || alphaGen == (unsigned)AGEN_ONE_MINUS_DIST_FADE
+		|| alphaGen == (unsigned)AGEN_TIKI_DIST_FADE || alphaGen == (unsigned)AGEN_ONE_MINUS_TIKI_DIST_FADE
+		|| alphaGen == (unsigned)AGEN_HEIGHT_FADE )
+	{
+		d |= VKP_HEIGHTFOG;
+	}
+	if ( tc0 != (unsigned)TCGEN_TEXTURE && bundleCount >= 1 )
+	{
+		d |= VKP_TCGEN0;
+	}
+	if ( bundleCount == 2 && tc1 != (unsigned)TCGEN_LIGHTMAP && tc1 != (unsigned)TCGEN_TEXTURE )
+	{
+		d |= VKP_TCGEN1;
+	}
+	if ( bundleCount == 2 )
+	{
+		d |= VKP_LIGHTMAP;
+	}
+	if ( rgbGen == (unsigned)CGEN_ENTITY || rgbGen == (unsigned)CGEN_ONE_MINUS_ENTITY
+		|| rgbGen == (unsigned)CGEN_LIGHTING_SPHERICAL || rgbGen == (unsigned)CGEN_STATIC
+		|| alphaGen == (unsigned)AGEN_ENTITY || alphaGen == (unsigned)AGEN_ONE_MINUS_ENTITY
+		|| alphaGen == (unsigned)AGEN_FORCED_ALPHA )
+	{
+		d |= VKP_ENTITY_SPACE;
+	}
+
+	for ( b = 0; b < (int)bundleCount; b++ )
+	{
+		int tm;
+
+		if ( !pStage->bundle[b].image[0] )
+		{
+			continue;
+		}
+		if ( pStage->bundle[b].numTexMods > 0 )
+		{
+			d |= ( b == 0 ) ? VKP_TCMOD0 : VKP_TCMOD1;
+		}
+		for ( tm = 0; tm < pStage->bundle[b].numTexMods; tm++ )
+		{
+			switch ( pStage->bundle[b].texMods[tm].type )
+			{
+			case TMOD_TURBULENT:
+			case TMOD_STRETCH:
+			case TMOD_WAVETRANS:
+			case TMOD_WAVETRANT:
+			case TMOD_BULGETRANS:
+				d |= VKP_WAVE;
+				break;
+			default:
+				break;
+			}
+		}
+	}
+
+	if ( ( (unsigned)pStage->stateBits & VKS_ATEST_BITS ) != 0 )
+	{
+		d |= VKP_ALPHATEST;
+	}
+	if ( fogStage )
+	{
+		d |= VKP_FOG;
+	}
+
+	return d | extra;
+}
+
+unsigned VK_StageDefines( const shaderStage_t *pStage, const shader_t *shader )
+{
+	return VK_StageDefines_Full( pStage, shader, 0, 0, 0, 0 );
+}
+
+unsigned VK_TexEnvForStage( const shaderStage_t *pStage, const shader_t *shader )
+{
+	unsigned	d = 0;
+
+	(void)shader;
+	if ( !pStage )
+	{
+		return 0;
+	}
+
+	if ( pStage->bundle[1].image[0] )
+	{
+		if ( pStage->multitextureEnv == VK_TENV_ADD )
+		{
+			d |= VKP_TEXENV_ADD;
+		}
+		if ( pStage->stateBits & VKS_MULTITEXTURE_ENV )
+		{
+			d |= VKP_TEXENV_COMBINE4;
+		}
+		else if ( pStage->stateBits & VKS_MULTITEXTURE )
+		{
+			d |= VKP_TEXENV_INTERPOLATE;
+		}
+	}
+	return d;
+}
+
+qboolean VK_StageNeedsCPUColor( const shaderStage_t *pStage )
+{
+	if ( !pStage )
+	{
+		return qfalse;
+	}
+	switch ( pStage->rgbGen )
+	{
+	case CGEN_LIGHTING_SPHERICAL:
+	case CGEN_STATIC:
+		return qtrue;
+	default:
+		break;
+	}
+	switch ( pStage->alphaGen )
+	{
+	case AGEN_NOISE:
+	case AGEN_DIST_FADE:
+	case AGEN_ONE_MINUS_DIST_FADE:
+	case AGEN_TIKI_DIST_FADE:
+	case AGEN_ONE_MINUS_TIKI_DIST_FADE:
+		return qtrue;
+	default:
+		break;
+	}
+	return qfalse;
+}
+
+qboolean VK_StageNeedsCPUTexCoords( const shaderStage_t *pStage )
+{
+	int b, tm;
+
+	if ( !pStage )
+	{
+		return qfalse;
+	}
+	for ( b = 0; b < NUM_TEXTURE_BUNDLES; b++ )
+	{
+		for ( tm = 0; tm < pStage->bundle[b].numTexMods; tm++ )
+		{
+			if ( pStage->bundle[b].texMods[tm].type == TMOD_MACRO )
+			{
+				return qtrue;
+			}
+		}
+	}
+	return qfalse;
+}
+
+
+/* ---- the state machine --------------------------------------------------- */
+
+/* the reference renderer applies its state words to the context; here they fold into the
+   pending pipeline key for the next draw. */
+typedef struct {
+	unsigned		stateBits;
+	cullType_t		cull;
+	qboolean		polygonOffset;
+	int				topology;
+	vkProgram_t	*prog;
+	VkImageView		texView[2];
+	VkSampler		texSampler[2];
+	VkSampler		waveSampler;
+	int				texBound[2];
+	int				currentTmu;
+	qboolean		scissor;
+	VkRect2D		scissorRect;
+	qboolean		depthTest;
+	qboolean		depthWrite;
+	qboolean		colorMask[4];
+	qboolean		mirrored;
+	qboolean		stencil;
+	qboolean		waveBound;
+	VkImageView		waveView;
+	int				alphaTest;
+} vkShadeState_t;
+
+static vkShadeState_t	s_shade;
+int						r_spriteListOpen = 0;
+
+/* the alpha-test latch: the reference renderer latches the state word's atest bits here so the
+   fragment stage can discard on them, and Vulkan has no fixed-function test */
+static int s_alphaTest;
+
+void VK_SetFogColor( const vec4_t fColor )
+{
+	byte rgba[4];
+
+	rgba[0] = (byte)( fColor[0] * 255.0f );
+	rgba[1] = (byte)( fColor[1] * 255.0f );
+	rgba[2] = (byte)( fColor[2] * 255.0f );
+	rgba[3] = 255;
+	backEnd.viewParms.fogColorInt = ( rgba[0] ) | ( rgba[1] << 8 ) | ( rgba[2] << 16 ) | ( 255 << 24 );
+}
+
+void VK_State( unsigned long stateBits )
+{
+	s_shade.stateBits = (unsigned long)stateBits;
+	s_shade.depthTest = ( (unsigned long)stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
+	s_shade.depthWrite = ( (unsigned long)stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+	s_shade.depthTest = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
+	s_shade.depthWrite = ( stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+}
+
+void VK_ApplyStateBits( unsigned long stateBits )
+{
+	VK_State( stateBits );
+	switch ( (unsigned long)stateBits & VKS_ATEST_BITS ) {
+	case VKS_ATEST_GT_0:	s_alphaTest = 1; break;
+	case VKS_ATEST_LT_80:	s_alphaTest = 2; break;
+	case VKS_ATEST_GE_80:	s_alphaTest = 4; break;
+	default:				s_alphaTest = 0; break;
+	}
+	VK_Draw_SetAlphaTest( VK_Shade_CommandBuffer(), (unsigned)s_alphaTest );
+}
+
+/* The state word the caller last applied: the immediate run's pipeline is built
+   from it, which is how the reference renderer's RB_ImmBegin inherits the
+   GLES3_ApplyStateBits its caller just made. */
+unsigned long vk_Shade_StateBits( void )
+{
+	return s_shade.stateBits;
+}
+
+unsigned VK_CurrentAlphaTest( void )
+{
+	return s_alphaTest;
+}
+
+void VK_Cull( int cull )
+{
+	s_shade.cull = cull;
+}
+
+void VK_TexEnv( int env )
+{
+	/* folded into the program permutation; nothing to apply */
+	(void)env;
+}
+
+void VK_DepthFuncApply( int func )
+{
+	/* a pipeline state word here; the key carries the equal-depth arm through
+	   the equal depth function, so the explicit apply has nothing left to do */
+	(void)func;
+}
+
+void VK_DepthState( qboolean test, qboolean write )
+{
+	s_shade.depthTest = test;
+	s_shade.depthWrite = write;
+}
+
+void VK_DepthStateReset( void )
+{
+	VK_DepthState( qtrue, qtrue );
+}
+
+void VK_StencilState( qboolean test, int func, int ref, unsigned mask )
+{
+	/* stencil shadow volumes are a later milestone: no stencil attachment in
+	   the pass yet.  The row names the site if something reaches it. */
+	(void)test; (void)func; (void)ref; (void)mask;
+}
+
+void VK_DepthGate2D( void ) { }
+void VK_DepthGate2DTake( void ) { }
+
+/* ---- textures ------------------------------------------------------------ */
+
+void VK_SelectTexture( int tmu )
+{
+	s_shade.currentTmu = tmu;
+}
+
+static void VK_Shade_BindImage( image_t *image, int tmu )
+{
+	VkImageView view = VK_NULL_HANDLE;
+	VkSampler sampler = VK_NULL_HANDLE;
+
+	if ( !image || image->texnum < 0 ) {
+		s_shade.texView[tmu] = VK_NULL_HANDLE;
+		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
+		s_shade.texBound[tmu] = 0;
+		return;
+	}
+	view = VK_Texture_View( image->texnum );
+	if ( view == VK_NULL_HANDLE ) {
+		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "bind: texture has no view", VK_INCOMPLETE );
+		return;
+	}
+	VK_Texture_Sampler( ( image->wrapClampModeX != 0 || image->wrapClampModeY != 0 ), qfalse, qtrue, &sampler );
+	s_shade.texView[tmu] = view;
+	s_shade.texSampler[tmu] = sampler;
+	s_shade.texBound[tmu] = 1;
+}
+
+void VK_Bind( image_t *image )
+{
+	VK_Shade_BindImage( image, s_shade.currentTmu );
+}
+
+void VK_BindUnit0( image_t *image )
+{
+	s_shade.currentTmu = 0;
+	VK_Shade_BindImage( image, 0 );
+}
+
+void VK_BindMultitexture( image_t *image, int tmu )
+{
+	s_shade.currentTmu = tmu;
+	VK_Shade_BindImage( image, tmu );
+}
+
+void VK_BindAnimatedImage( const textureBundle_t *bundle, int unit )
+{
+	image_t *image;
+	int index;
+
+	if ( bundle->isVideoMap ) {
+		VK_Shade_BindImage( tr.scratchImage, unit );
+		return;
+	}
+	if ( bundle->numImageAnimations <= 1 ) {
+		VK_Shade_BindImage( bundle->image[0], unit );
+		return;
+	}
+	/* the animated bundle: the frame is a function of the shader's own clock */
+	index = ( int )( tess.shaderTime * bundle->imageAnimationSpeed * 60.0f ) % bundle->numImageAnimations;
+	if ( index < 0 ) {
+		index += bundle->numImageAnimations;
+	}
+	image = bundle->image[index];
+	VK_Shade_BindImage( image, unit );
+}
+
+void VK_SetBaseColor4f( vkProgram_t *p, float r, float g, float b, float a )
+{
+	VK_SetUniform4f( p, VK_U_BASECOLOR, r, g, b, a );
+}
+void VK_SetupViewUniforms( vkProgram_t *p )
+{
+	float	mvp[16];
+	vec3_t	entityOrigin;
+	vec3_t	entityAxis[3];
+	float	entityColor[4];
+	const float *mv = RB_GetModelViewMatrix();
+	const float *proj = RB_GetProjectionMatrix();
+
+	VK_Mat4Mul( mvp, proj, mv );
+
+	VK_SetUniformMat4( p, VK_U_MVP, mvp );
+	VK_SetUniformMat4( p, VK_U_MODELMATRIX, mv );
+	VK_SetUniform3fv( p, VK_U_VIEWORIGIN, backEnd.viewParms.ori.origin );
+	VK_SetUniform3fv( p, VK_U_VIEWAXIS0, tr.refdef.viewaxis[0] );
+	VK_SetUniform3f( p, VK_U_LOCALVIEWORIGIN,
+						tr.refdef.vieworg[0], tr.refdef.vieworg[1], tr.refdef.vieworg[2] );
+
+	if ( backEnd.currentEntity )
+	{
+		VectorCopy( backEnd.currentEntity->e.origin, entityOrigin );
+		VectorCopy( backEnd.currentEntity->e.axis[0], entityAxis[0] );
+		VectorCopy( backEnd.currentEntity->e.axis[1], entityAxis[1] );
+		VectorCopy( backEnd.currentEntity->e.axis[2], entityAxis[2] );
+		entityColor[0] = backEnd.currentEntity->e.shaderRGBA[0] / 255.0f;
+		entityColor[1] = backEnd.currentEntity->e.shaderRGBA[1] / 255.0f;
+		entityColor[2] = backEnd.currentEntity->e.shaderRGBA[2] / 255.0f;
+		entityColor[3] = backEnd.currentEntity->e.shaderRGBA[3] / 255.0f;
+		VK_SetUniform4f( p, VK_U_ENTITYTEXCOORD,
+							backEnd.currentEntity->e.shaderTexCoord[0],
+							backEnd.currentEntity->e.shaderTexCoord[1], 0.0f, 0.0f );
+	}
+	else
+	{
+		VectorCopy( backEnd.viewParms.ori.origin, entityOrigin );
+		VectorCopy( backEnd.viewParms.ori.axis[0], entityAxis[0] );
+		VectorCopy( backEnd.viewParms.ori.axis[1], entityAxis[1] );
+		VectorCopy( backEnd.viewParms.ori.axis[2], entityAxis[2] );
+		entityColor[0] = entityColor[1] = entityColor[2] = entityColor[3] = 1.0f;
+		VK_SetUniform4f( p, VK_U_ENTITYTEXCOORD, 0.0f, 0.0f, 0.0f, 0.0f );
+	}
+
+	VK_SetUniform3fv( p, VK_U_ENTITYORIGIN, entityOrigin );
+	VK_SetUniformMatrix3fv( p, VK_U_ENTITYAXIS, entityAxis[0] );
+	VK_SetUniform4fv( p, VK_U_ENTITYCOLOR, entityColor );
+	VK_SetUniform1f( p, VK_U_IDENTITYLIGHT, tr.identityLight );
+	VK_SetUniform1f( p, VK_U_IDENTITYLIGHTBYTE, (float)tr.identityLightByte );
+	VK_SetUniform1f( p, VK_U_ENTITYFADE, tess.entityFade );
+	VK_SetUniform1f( p, VK_U_SHADERTIME, tess.shaderTime );
+	VK_SetUniform3fv( p, VK_U_SUNDIRECTION, tr.sunDirection );
+	VK_SetUniform4f( p, VK_U_VERTCOLOR, 1.0f, 1.0f, 1.0f, 1.0f );
+
+	VK_UploadClipPlane( p );
+}
+
+void VK_SetUniform4fvN( vkProgram_t *p, vkUniform_t u, const float *v, int n )
+{
+	int off = VK_Ubo_Offset( u );
+	int size = VK_Ubo_Size( u );
+	int bytes;
+
+	VK_UNBO(p);
+	if ( off < 0 || n <= 0 ) {
+		return;
+	}
+	bytes = n * 4 * (int)sizeof( float );
+	if ( bytes > size ) {
+		bytes = size;
+	}
+	memcpy( s_ubo + off, v, bytes );
+	s_uboDirty = qtrue;
+}
+
+void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const shader_t *shader )
+{
+	float	baseColor[4];
+	qboolean	cpuColor;
+	qboolean	cpuTexCoords;
+	int		b;
+
+	VK_SetupViewUniforms( p );
+
+	if ( !pStage )
+	{
+		return;
+	}
+
+	cpuColor = VK_StageNeedsCPUColor( pStage );
+	cpuTexCoords = VK_StageNeedsCPUTexCoords( pStage );
+
+	/* 2D carries Draw_SetColor in a_Color, so u_BaseColor stays 1 there; 3D's
+	   constant-colour stages never fill a_Color, so the uniform carries it */
+	if ( backEnd.in2D )
+	{
+		baseColor[0] = baseColor[1] = baseColor[2] = baseColor[3] = 1.0f;
+	}
+	else
+	{
+		if ( pStage->rgbGen == CGEN_GLOBAL_COLOR )
+		{
+			baseColor[0] = backEnd.color2D[0] / 255.0f;
+			baseColor[1] = backEnd.color2D[1] / 255.0f;
+			baseColor[2] = backEnd.color2D[2] / 255.0f;
+		}
+		else
+		{
+			baseColor[0] = pStage->colorConst[0] / 255.0f;
+			baseColor[1] = pStage->colorConst[1] / 255.0f;
+			baseColor[2] = pStage->colorConst[2] / 255.0f;
+		}
+		if ( pStage->alphaGen == AGEN_GLOBAL_ALPHA )
+		{
+			baseColor[3] = backEnd.color2D[3] / 255.0f;
+		}
+		else
+		{
+			baseColor[3] = pStage->colorConst[3] / 255.0f;
+		}
+	}
+	VK_SetUniform4fv( p, VK_U_BASECOLOR, baseColor );
+
+	/* the 2D quad carries Draw_SetColor per vertex, so those two arms read the
+	   vertex; in 3D u_BaseColor carries the global colour */
+	if ( backEnd.in2D && !cpuColor )
+	{
+		VK_SetUniform1i( p, VK_U_COLORGEN,
+							pStage->rgbGen == CGEN_GLOBAL_COLOR ? (int)CGEN_EXACT_VERTEX
+																: (int)pStage->rgbGen );
+		VK_SetUniform1i( p, VK_U_ALPHAGEN,
+							pStage->alphaGen == AGEN_GLOBAL_ALPHA ? (int)AGEN_SKIP
+																  : (int)pStage->alphaGen );
+	}
+	else
+	{
+		VK_SetUniform1i( p, VK_U_COLORGEN, cpuColor ? (int)CGEN_EXACT_VERTEX : (int)pStage->rgbGen );
+		VK_SetUniform1i( p, VK_U_ALPHAGEN, cpuColor ? (int)AGEN_SKIP : (int)pStage->alphaGen );
+	}
+
+	VK_SetUniform1f( p, VK_U_ALPHAMIN, pStage->alphaMin );
+	VK_SetUniform1f( p, VK_U_ALPHAMAX, pStage->alphaMax );
+	VK_SetUniform1f( p, VK_U_ALPHACONST, pStage->alphaConst / 255.0f );
+	VK_SetUniform1f( p, VK_U_ALPHACONSTMIN, pStage->alphaConstMin / 255.0f );
+
+	VK_SetUniform4f( p, VK_U_WAVERGB,
+						(float)pStage->rgbWave.func, pStage->rgbWave.base,
+						pStage->rgbWave.amplitude, pStage->rgbWave.phase );
+	VK_SetUniform1f( p, VK_U_FREQRGB, pStage->rgbWave.frequency );
+	VK_SetUniform4f( p, VK_U_WAVEALPHA,
+						(float)pStage->alphaWave.func, pStage->alphaWave.base,
+						pStage->alphaWave.amplitude, pStage->alphaWave.phase );
+	VK_SetUniform1f( p, VK_U_FREQALPHA, pStage->alphaWave.frequency );
+
+	VK_SetUniform1f( p, VK_U_PORTALRANGE, shader ? shader->portalRange : 0.0f );
+	VK_SetUniform3fv( p, VK_U_SPECORIGIN, pStage->specOrigin );
+
+	for ( b = 0; b < NUM_TEXTURE_BUNDLES; b++ )
+	{
+		const textureBundle_t	*bundle = &pStage->bundle[b];
+		float			packed[TR_MAX_TEXMODS * 4][4];
+		int				tm;
+		int				numMods = 0;
+
+		if ( b == 0 )
+		{
+			VK_SetUniform1i( p, VK_U_TCGEN0,
+								cpuTexCoords ? (int)TCGEN_TEXTURE : (int)bundle->tcGen );
+			VK_SetUniform3fv( p, VK_U_TCGEN0VEC0, bundle->tcGenVectors[0] );
+			VK_SetUniform3fv( p, VK_U_TCGEN0VEC1, bundle->tcGenVectors[1] );
+		}
+		else
+		{
+			VK_SetUniform1i( p, VK_U_TCGEN1,
+								cpuTexCoords ? (int)TCGEN_TEXTURE : (int)bundle->tcGen );
+			VK_SetUniform3fv( p, VK_U_TCGEN1VEC0, bundle->tcGenVectors[0] );
+			VK_SetUniform3fv( p, VK_U_TCGEN1VEC1, bundle->tcGenVectors[1] );
+		}
+
+		Com_Memset( packed, 0, sizeof( packed ) );
+
+		if ( !cpuTexCoords )
+		{
+			for ( tm = 0; tm < bundle->numTexMods && tm < TR_MAX_TEXMODS; tm++ )
+			{
+				texModInfo_t	*tmi = &bundle->texMods[tm];
+				float			*p0 = packed[tm * 4 + 0];
+				float			*p1 = packed[tm * 4 + 1];
+
+				p0[0] = (float)tmi->type;
+				switch ( tmi->type )
+				{
+				case TMOD_TRANSFORM:			 
+					p0[1] = tmi->matrix[0][0];
+					p0[2] = tmi->matrix[1][0];
+					p0[3] = tmi->translate[0];
+					p1[0] = tmi->matrix[0][1];
+					p1[1] = tmi->matrix[1][1];
+					p1[2] = tmi->translate[1];
+					break;
+				case TMOD_TURBULENT:			 
+					p0[3] = tmi->wave.amplitude;
+					p1[0] = tmi->wave.phase;
+					p1[1] = tmi->wave.frequency;
+					break;
+				case TMOD_SCROLL:				 
+					p0[1] = tmi->scroll[0];
+					p0[2] = tmi->scroll[1];
+					break;
+				case TMOD_SCALE:				 
+					p0[1] = tmi->scale[0];
+					p0[2] = tmi->scale[1];
+					break;
+				case TMOD_STRETCH:				 
+					p0[1] = (float)tmi->wave.func;
+					p0[2] = tmi->wave.base;
+					p0[3] = tmi->wave.amplitude;
+					p1[0] = tmi->wave.phase;
+					p1[1] = tmi->wave.frequency;
+					break;
+				case TMOD_ROTATE:				 
+					if ( tmi->rotateSpeed == 1234567.0f )
+					{
+						p0[1] = backEnd.currentEntity
+								? -(float)backEnd.currentEntity->e.tag_num : 0.0f;
+					}
+					else
+					{
+						p0[1] = tmi->rotateSpeed;
+					}
+					p0[2] = tmi->rotateCoef;
+					p0[3] = tmi->rotateStart;
+					break;
+				case TMOD_OFFSET:				 
+					if ( tmi->scroll[0] != 1234567.0f )
+					{
+						p0[1] = tmi->scroll[0];
+						p0[2] = tmi->scroll[1];
+					}
+					else
+					{
+						p0[1] = backEnd.currentEntity ? backEnd.currentEntity->e.tag_num : 0.0f;
+						p0[2] = backEnd.currentEntity ? backEnd.currentEntity->e.skin_num : 0.0f;
+					}
+					break;
+				case TMOD_PARALLAX:				 
+					p0[1] = tmi->rate[0];
+					p0[2] = tmi->rate[1];
+					break;
+				case TMOD_WAVETRANS:			 
+				case TMOD_WAVETRANT:			 
+					p0[1] = (float)tmi->wave.func;
+					p0[2] = tmi->wave.base;
+					p0[3] = tmi->wave.amplitude;
+					p1[0] = tmi->wave.phase;
+					p1[1] = tmi->wave.frequency;
+					break;
+				case TMOD_BULGETRANS:			 
+				case TMOD_MACRO:				
+				case TMOD_NOISE:				
+				case TMOD_NONE:
+				default:
+					break;
+				}
+				numMods = tm + 1;
+			}
+		}
+
+		if ( b == 0 )
+		{
+			VK_SetUniform1i( p, VK_U_NUMTCMOD0, numMods );
+			VK_SetUniform4fvN( p, VK_U_TCMOD0, packed[0], TR_MAX_TEXMODS * 4 );
+		}
+		else
+		{
+			VK_SetUniform1i( p, VK_U_NUMTCMOD1, numMods );
+			VK_SetUniform4fvN( p, VK_U_TCMOD1, packed[0], TR_MAX_TEXMODS * 4 );
+		}
+	}
+
+	VK_SetUniform1i( p, VK_U_TEXENV0, 1 );	
+	VK_SetUniform1i( p, VK_U_TEXENV1, 1 );
+	if ( pStage->bundle[1].image[0] )
+	{
+		unsigned env = VK_TexEnvForStage( pStage, shader );
+
+		if ( env & VKP_TEXENV_ADD )
+		{
+			VK_SetUniform1i( p, VK_U_TEXENV1, 2 );		 
+		}
+		if ( env & VKP_TEXENV_INTERPOLATE )
+		{
+			VK_SetUniform1i( p, VK_U_TEXENV1, 4 );		 
+		}
+		if ( env & VKP_TEXENV_COMBINE4 )
+		{
+			VK_SetUniform1i( p, VK_U_TEXENV1, 5 );		 
+		}
+	}
+	if ( r_lightmap->integer && pStage->bundle[1].isLightmap )
+	{
+		VK_SetUniform1i( p, VK_U_TEXENV1, 3 );
+	}
+
+	VK_SetUniform1i( p, VK_U_ALPHATEST, (int)VK_CurrentAlphaTest() );
+	VK_SetUniform4f( p, VK_U_TEX1COLOR, 1.0f, 1.0f, 1.0f, 1.0f );
+
+	VK_SetUniform1i( p, VK_U_ACFF, cpuColor ? 0 : (int)pStage->acff );
+}
+
+void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
+{
+	float	color[4];
+	float	fixColor[3];
+	int		densityArm = 0;
+
+	VK_SetUniform1i( p, VK_U_FOGNUM, fogNum );
+
+	fixColor[0] = backEnd.viewParms.farplane_color[0] * tr.identityLight;
+	fixColor[1] = backEnd.viewParms.farplane_color[1] * tr.identityLight;
+	fixColor[2] = backEnd.viewParms.farplane_color[2] * tr.identityLight;
+	VK_SetUniform1f( p, VK_U_FOGSTART, backEnd.viewParms.farplane_bias );
+	VK_SetUniform1f( p, VK_U_FOGEND, backEnd.viewParms.farplane_distance );
+	VK_SetUniform4f( p, VK_U_FOGFIXCOLOR, fixColor[0], fixColor[1], fixColor[2], 1.0f );
+	VK_SetUniform1i( p, VK_U_FOGMODE,
+						( vkState.externalSetState & VKS_FOG ) ? 2 : 0 );
+
+	if ( fogNum == 0 || !tr.world )
+	{
+		VK_SetUniform4f( p, VK_U_FOGCOLOR, 0.0f, 0.0f, 0.0f, 1.0f );
+		VK_SetUniform1f( p, VK_U_FOGTCSCALE, 0.0f );
+		VK_SetUniform1f( p, VK_U_FOGSCONSTANT, 0.0f );
+		VK_SetUniform3f( p, VK_U_FOGSVECTOR, 0.0f, 0.0f, 0.0f );
+		VK_SetUniform1f( p, VK_U_FOGTCONSTANT, 1.0f );
+		VK_SetUniform3f( p, VK_U_FOGTVECTOR, 0.0f, 0.0f, 0.0f );
+		VK_SetUniform1i( p, VK_U_FOGVIEWOUTSIDE, 0 );
+		VK_SetUniform1f( p, VK_U_FOGOOLEN, 0.0f );
+		VK_SetUniform1i( p, VK_U_FOGDENSITYARM, 0 );
+		return;
+	}
+
+	if ( fogNum == 9999 )
+	{
+		unsigned colorInt = (unsigned)tr.viewParms.fogColorInt;
+
+		Com_Memcpy( color, &colorInt, sizeof( colorInt ) );
+		VK_SetUniform4fv( p, VK_U_FOGCOLOR, color );
+		VK_SetUniform1f( p, VK_U_FOGOOLEN, tr.viewParms.fog.oolen );
+		VK_SetUniform1i( p, VK_U_FOGDENSITYARM, fogDensityArm ? 1 : 0 );
+		return;
+	}
+
+	{
+		fog_t	*fog = &tr.world->fogs[fogNum];
+		float	tcScale;
+		float	sVector[3], tVector[3];
+		float	sConstant, tConstant, viewOutside;
+		vec3_t	delta;
+		unsigned colorInt = fog->colorInt;
+
+		Com_Memcpy( color, &colorInt, sizeof( colorInt ) );
+		VK_SetUniform4fv( p, VK_U_FOGCOLOR, color );
+
+		if ( fog->parms.wave.func )
+		{
+			float wave = EvalWaveForm( &fog->parms.wave );
+
+			if ( wave < 1.0f )
+			{
+				wave = 1.0f;
+			}
+			fog->tcScale = 8.0f * ( 1.0f / wave );
+		}
+		tcScale = fog->tcScale;
+		VK_SetUniform1f( p, VK_U_FOGTCSCALE, tcScale );
+
+		VectorSubtract( backEnd.ori.origin, backEnd.viewParms.ori.origin, delta );
+		sConstant = DotProduct( delta, backEnd.viewParms.ori.axis[0] ) * tcScale;
+		sVector[0] = -backEnd.ori.modelMatrix[3] * tcScale;
+		sVector[1] = -backEnd.ori.modelMatrix[7] * tcScale;
+		sVector[2] = -backEnd.ori.modelMatrix[11] * tcScale;
+
+		if ( fog->hasSurface )
+		{
+			tVector[0] = DotProduct( fog->surface, backEnd.ori.axis[0] );
+			tVector[1] = DotProduct( fog->surface, backEnd.ori.axis[1] );
+			tVector[2] = DotProduct( fog->surface, backEnd.ori.axis[2] );
+			tConstant = -fog->surface[3]
+				+ DotProduct( fog->surface, backEnd.ori.origin )
+				+ DotProduct( backEnd.ori.viewOrigin, tVector );
+		}
+		else
+		{
+			tConstant = 1.0f;
+			tVector[0] = tVector[1] = tVector[2] = 0.0f;
+		}
+		viewOutside = ( tConstant < 0.0f ) ? 1.0f : 0.0f;
+
+		VK_SetUniform1f( p, VK_U_FOGSCONSTANT, sConstant );
+		VK_SetUniform3fv( p, VK_U_FOGSVECTOR, sVector );
+		VK_SetUniform1f( p, VK_U_FOGTCONSTANT, tConstant );
+		VK_SetUniform3fv( p, VK_U_FOGTVECTOR, tVector );
+		VK_SetUniform1i( p, VK_U_FOGVIEWOUTSIDE, (int)viewOutside );
+
+		{
+			float	tVector2[3], planeConst, dView;
+			float	*viewOrigin = backEnd.ori.viewOrigin;
+
+			tVector2[0] = DotProduct( fog->surface, backEnd.ori.axis[0] ) * tcScale;
+			tVector2[1] = DotProduct( fog->surface, backEnd.ori.axis[1] ) * tcScale;
+			tVector2[2] = DotProduct( fog->surface, backEnd.ori.axis[2] ) * tcScale;
+			planeConst = ( fog->surface[3]
+						   - DotProduct( fog->surface, backEnd.ori.origin ) ) * tcScale;
+			dView = ( ( viewOrigin[0] * tVector2[0] + viewOrigin[1] * tVector2[1] )
+					  + viewOrigin[2] * tVector2[2] ) - planeConst;
+
+			VK_SetUniform3fv( p, VK_U_FOGDENSITYTVECTOR, tVector2 );
+			VK_SetUniform1f( p, VK_U_FOGPLANECONST, planeConst );
+			VK_SetUniform1f( p, VK_U_FOGDVIEW, dView );
+
+			if ( fogDensityArm )
+			{
+				densityArm = ( dView >= 0.0f ) ? 2 : 3;
+			}
+		}
+		VK_SetUniform1f( p, VK_U_FOGOOLEN, tr.viewParms.fog.oolen );
+	}
+
+	VK_SetUniform1i( p, VK_U_FOGDENSITYARM, densityArm );
+}
+
+/* ---- the wire stream ----------------------------------------------------- */
+
+static struct {
+	float	verts[SHADER_MAX_VERTEXES * 2][3];
+	byte	colors[SHADER_MAX_VERTEXES * 2][4];
+	int		count;
+	int		mode;
+} s_wire;
+
+void VK_WireBegin( void )
+{
+	s_wire.count = 0;
+}
+
+void VK_WireVertex( const float *xyz, const byte *rgba )
+{
+	if ( s_wire.count >= SHADER_MAX_VERTEXES * 2 ) {
+		return;
+	}
+	VectorCopy( xyz, s_wire.verts[s_wire.count] );
+	if ( rgba ) {
+		memcpy( s_wire.colors[s_wire.count], rgba, 4 );
+	} else {
+		s_wire.colors[s_wire.count][0] = 255;
+		s_wire.colors[s_wire.count][1] = 255;
+		s_wire.colors[s_wire.count][2] = 255;
+		s_wire.colors[s_wire.count][3] = 255;
+	}
+	s_wire.count++;
+}
+
+void VK_WireEnd( int mode )
+{
+	(void)mode;
+	/* the wire families are the debug overlays: the rows name the site */
+	if ( s_wire.count ) {
+		VK_M3_Touched( "wire overlay draw" );
+	}
+	s_wire.count = 0;
+}
+
+vkProgram_t *VK_BeginFamily( unsigned family, int texEnv )
+{
+	vkProgram_t *prog = VK_GetProgram( family );
+
+	(void)texEnv;
+	VK_BindProgram( prog );
+	VK_SetupViewUniforms( prog );
+	return prog;
+}
+
+void VK_Begin2D( void )
+{
+	VK_BeginFamily( VKP_FAMILY_2D, 1 );
+	VK_SetBaseColor4f( VK_GetProgram( VKP_FAMILY_2D ),
+						  backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,
+						  backEnd.color2D[2] / 255.0f, backEnd.color2D[3] / 255.0f );
+}
+
+void VK_BeginWire( void )
+{
+	VK_BeginFamily( VKP_FAMILY_WIRE, 1 );
+	VK_WireBegin();
+}
+
+void VK_BeginSprite( void )
+{
+	VK_BeginFamily( VKP_FAMILY_SPRITE, 1 );
+}
+
+void VK_BeginSunflare( void )
+{
+	VK_BeginFamily( VKP_FAMILY_SUNFLARE, 1 );
+}
+
+void VK_BeginShadow( void )
+{
+	VK_BeginFamily( VKP_FAMILY_SHADOW, 1 );
+}
+
+/* ---- the tessellation stream --------------------------------------------- */
+
+/* The 48-byte vertex the SPIR-V reads: position, normal, colour and two
+   texture coordinate pairs, at the locations tr_vbo.h numbers. */
+typedef struct {
+	float	xyz[4];
+	float	normal[4];
+	byte	color[4];
+	float	st[2][2];
+} vkStreamVertex_t;
+
+#define VK_STREAM_STRIDE ( (int)sizeof( vkStreamVertex_t ) )
+
+static void VK_Stream_Pack( vkStreamVertex_t *out, const shaderCommands_t *input, int v,
+							const float *tc0, const float *tc1, int tcStrideFloats,
+							const unsigned char *colors, const float *normals )
+{
+	const float *xyz = input->xyz[v];
+
+	out->xyz[0] = xyz[0];
+	out->xyz[1] = xyz[1];
+	out->xyz[2] = xyz[2];
+	out->xyz[3] = 1.0f;
+	if ( normals ) {
+		out->normal[0] = normals[v * 4 + 0];
+		out->normal[1] = normals[v * 4 + 1];
+		out->normal[2] = normals[v * 4 + 2];
+	} else {
+		out->normal[0] = 0.0f;
+		out->normal[1] = 0.0f;
+		out->normal[2] = 1.0f;
+	}
+	out->normal[3] = 0.0f;
+	if ( colors ) {
+		memcpy( out->color, colors + v * 4, 4 );
+	} else {
+		out->color[0] = 255; out->color[1] = 255; out->color[2] = 255; out->color[3] = 255;
+	}
+	if ( tc0 ) {
+		out->st[0][0] = tc0[v * tcStrideFloats + 0];
+		out->st[0][1] = tc0[v * tcStrideFloats + 1];
+	} else {
+		out->st[0][0] = 0.0f; out->st[0][1] = 0.0f;
+	}
+	if ( tc1 ) {
+		out->st[1][0] = tc1[v * tcStrideFloats + 0];
+		out->st[1][1] = tc1[v * tcStrideFloats + 1];
+	} else {
+		out->st[1][0] = 0.0f; out->st[1][1] = 0.0f;
+	}
+}
+
+void RB_VboStaticReset( void ) { }
+void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx )
+{
+	(void)surf; (void)vertStart; (void)numVerts; (void)idxStart; (void)numIdx;
+}
+void RB_VboStaticForget( void ) { }
+void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
+							  int *normalized, const void **pointer )
+{
+	if ( enabled ) { *enabled = 0; }
+	if ( size ) { *size = 0; }
+	if ( stride ) { *stride = 0; }
+	if ( type ) { *type = 0; }
+	if ( normalized ) { *normalized = 0; }
+	if ( pointer ) { *pointer = NULL; }
+}
+
+void RB_VBO_Init( void ) { }
+void RB_VBO_Shutdown( void ) { }
+void RB_VBO_BeginFrame( void ) { }
+
+/* the draw: a batch packs into the slot the ring reserves and records one
+   indexed draw at that slot's offsets. */
+void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
+							const vkIndex_t *indexes, int numIndexes,
+							const float *texcoord0, const float *texcoord1, int tcStrideFloats,
+							const unsigned char *colors,
+							const float *normals )
+{
+	vkStreamVertex_t	*verts;
+	vkIndex_t			*idx;
+	int					base = 0, indexBase = 0;
+	int					i;
+	VkCommandBuffer		cmd;
+
+	if ( !input || input->numVertexes <= 0 || numIndexes <= 0 ) {
+		return;
+	}
+	verts = VK_VertexRing_Reserve( input->numVertexes, &base );
+	if ( !verts ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "tess ring exhausted", VK_INCOMPLETE );
+		return;
+	}
+	for ( i = 0; i < input->numVertexes; i++ ) {
+		VK_Stream_Pack( &verts[i], input, i, texcoord0, texcoord1, tcStrideFloats, colors, normals );
+	}
+	if ( indexes ) {
+		idx = VK_VertexRing_ReserveIndexes( numIndexes, &indexBase );
+		if ( !idx ) {
+			VK_VertexRing_RollBack( input->numVertexes, 0 );
+			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
+			return;
+		}
+		memcpy( idx, indexes, numIndexes * sizeof( vkIndex_t ) );
+	}
+
+	cmd = VK_Shade_CommandBuffer();
+	VK_Shade_Bind( cmd, input->shader );
+	VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, base );
+	VK_VertexRing_Flushed();
+}
+
+void RB_VBO_DrawTessIndexed( const shaderCommands_t *input, const vkIndex_t *indexes, int numIndexes )
+{
+	RB_VBO_DrawTessArrays( input, indexes, numIndexes,
+						   input->texCoords[0][0], input->texCoords[0][0] + 2, 4,
+						   (const unsigned char *)input->vertexColors, input->normal[0] );
+}
+
+void RB_VBO_DrawTess( const shaderCommands_t *input )
+{
+	RB_VBO_DrawTessIndexed( input, input->indexes, input->numIndexes );
+}
+
+/* ---- the immediate stream: tr_backend.c's, which the 2D fixtures prove ---- */
+/* ---- the pipeline and the descriptor set --------------------------------- */
+
+/* One layout serves every program: the uniform block at 0, the two bundles
+   and the wave table at 1..3 -- the SDK doc's compatibility path. */
+#define VK_SHADE_SETS 256
+
+typedef struct {
+	unsigned	stateBits;
+	int			family;
+	unsigned	defines;
+	cullType_t	cull;
+	qboolean	polygonOffset;
+	int			topology;
+	VkPipeline	pipeline;
+	qboolean	used;
+} vkShadePipeline_t;
+
+static vkShadePipeline_t	vk_shadePipelines[256];
+static int					vk_numShadePipelines;
+
+static VkDescriptorSetLayout	vk_shadeSetLayout;
+static VkPipelineLayout			vk_shadeLayout;
+static VkBuffer					vk_shadeUbo[VK_FRAMES_IN_FLIGHT];
+static VkDeviceMemory			vk_shadeUboMemory[VK_FRAMES_IN_FLIGHT];
+static unsigned char			*vk_shadeUboMapped[VK_FRAMES_IN_FLIGHT];
+static VkDescriptorSet			vk_shadeSets[VK_SHADE_SETS];
+static int						vk_numShadeSets;
+
+static VkImageView				vk_shadeSetView[VK_SHADE_SETS][3];
+static int						VK_Shade_CommandBufferSlot( void );
+
+qboolean VK_Shade_Descriptors_Init( void )
+{
+	VkDescriptorSetLayoutBinding bindings[4];
+	VkDescriptorSetLayoutCreateInfo layoutInfo;
+	VkPipelineLayoutCreateInfo pipeInfo;
+	VkDescriptorSetLayout		setLayouts[1];
+	VkPushConstantRange push;
+	VkBufferCreateInfo bufferInfo;
+	VkMemoryRequirements reqs;
+	VkMemoryAllocateInfo allocInfo;
+	VkResult result;
+	int i;
+
+	memset( bindings, 0, sizeof( bindings ) );
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	for ( i = 1; i < 4; i++ ) {
+		bindings[i].binding = i;
+		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		bindings[i].descriptorCount = 1;
+		/* The vertex stage samples too, so the bundle bindings are visible to
+		   both stages or validation rejects the pipeline. */
+		bindings[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+
+	memset( &layoutInfo, 0, sizeof( layoutInfo ) );
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 4;
+	layoutInfo.pBindings = bindings;
+	result = qvk.CreateDescriptorSetLayout( vk.device, &layoutInfo, NULL, &vk_shadeSetLayout );
+	if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkCreateDescriptorSetLayout(stage)" ) ) {
+		return qfalse;
+	}
+
+	memset( &push, 0, sizeof( push ) );
+	push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	push.offset = 0;
+	push.size = 16 * sizeof( float );
+
+	memset( &pipeInfo, 0, sizeof( pipeInfo ) );
+	pipeInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipeInfo.setLayoutCount = 1;
+	pipeInfo.pSetLayouts = setLayouts;
+	setLayouts[0] = vk_shadeSetLayout;
+	pipeInfo.pushConstantRangeCount = 1;
+	pipeInfo.pPushConstantRanges = &push;
+	result = qvk.CreatePipelineLayout( vk.device, &pipeInfo, NULL, &vk_shadeLayout );
+	if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkCreatePipelineLayout(stage)" ) ) {
+		return qfalse;
+	}
+
+	/* one uniform block per frame in flight, host visible and persistently
+	   mapped: the front end writes it, the submit reads it */
+	memset( &bufferInfo, 0, sizeof( bufferInfo ) );
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = VK_UBO_SIZE_PAD;
+	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		result = qvk.CreateBuffer( vk.device, &bufferInfo, NULL, &vk_shadeUbo[i] );
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkCreateBuffer(ubo)" ) ) {
+			return qfalse;
+		}
+		qvk.GetBufferMemoryRequirements( vk.device, vk_shadeUbo[i], &reqs );
+		memset( &allocInfo, 0, sizeof( allocInfo ) );
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = reqs.size;
+		allocInfo.memoryTypeIndex = VK_Memory_FindType( reqs.memoryTypeBits,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+		result = qvk.AllocateMemory( vk.device, &allocInfo, NULL, &vk_shadeUboMemory[i] );
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkAllocateMemory(ubo)" ) ) {
+			return qfalse;
+		}
+		result = qvk.BindBufferMemory( vk.device, vk_shadeUbo[i], vk_shadeUboMemory[i], 0 );
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkBindBufferMemory(ubo)" ) ) {
+			return qfalse;
+		}
+		result = qvk.MapMemory( vk.device, vk_shadeUboMemory[i], 0, VK_UBO_SIZE_PAD, 0, (void **)&vk_shadeUboMapped[i] );
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkMapMemory(ubo)" ) ) {
+			return qfalse;
+		}
+	}
+
+	VK_Guard_Row( "VK:shade", "descriptors ready sets=%d ubo=%d", VK_SHADE_SETS, VK_UBO_SIZE_PAD );
+	return qtrue;
+}
+
+void VK_Shade_Descriptors_Shutdown( void )
+{
+	int i;
+
+	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		if ( vk_shadeUboMapped[i] ) {
+			qvk.UnmapMemory( vk.device, vk_shadeUboMemory[i] );
+			vk_shadeUboMapped[i] = NULL;
+		}
+		if ( vk_shadeUboMemory[i] != VK_NULL_HANDLE ) {
+			qvk.FreeMemory( vk.device, vk_shadeUboMemory[i], NULL );
+			vk_shadeUboMemory[i] = VK_NULL_HANDLE;
+		}
+		if ( vk_shadeUbo[i] != VK_NULL_HANDLE ) {
+			qvk.DestroyBuffer( vk.device, vk_shadeUbo[i], NULL );
+			vk_shadeUbo[i] = VK_NULL_HANDLE;
+		}
+	}
+	if ( vk_shadeLayout != VK_NULL_HANDLE ) {
+		qvk.DestroyPipelineLayout( vk.device, vk_shadeLayout, NULL );
+		vk_shadeLayout = VK_NULL_HANDLE;
+	}
+	if ( vk_shadeSetLayout != VK_NULL_HANDLE ) {
+		qvk.DestroyDescriptorSetLayout( vk.device, vk_shadeSetLayout, NULL );
+		vk_shadeSetLayout = VK_NULL_HANDLE;
+	}
+	/* The pipelines bind this layout, so they go before it does: leaving them
+	   live into vkDestroyDevice is the leak validation names. */
+	for ( i = 0; i < vk_numShadePipelines; i++ ) {
+		if ( vk_shadePipelines[i].used && vk_shadePipelines[i].pipeline != VK_NULL_HANDLE ) {
+			qvk.DestroyPipeline( vk.device, vk_shadePipelines[i].pipeline, NULL );
+			vk_shadePipelines[i].pipeline = VK_NULL_HANDLE;
+			vk_shadePipelines[i].used = qfalse;
+		}
+	}
+	vk_numShadePipelines = 0;
+	vk_numShadeSets = 0;
+}
+
+int VK_Shade_CommandBufferSlot( void )
+{
+	/* The slot the walk opened the pass on: tr.smpFrame, like every other
+	   per-frame resource. */
+	return tr.smpFrame;
+}
+
+VkCommandBuffer VK_Shade_CommandBuffer( void )
+{
+	int slot = VK_Shade_CommandBufferSlot();
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		slot = 0;
+	}
+	return vk.commandBuffers[slot];
+}
+
+static void VK_Shade_WriteUBO( void )
+{
+	int slot = VK_Shade_CommandBufferSlot();
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT || !vk_shadeUboMapped[slot] ) {
+		return;
+	}
+	if ( !s_uboDirty ) {
+		return;
+	}
+	memcpy( vk_shadeUboMapped[slot], s_ubo, VK_UBO_SIZE_PAD );
+	s_uboDirty = qfalse;
+}
+
+/* the cull mode the shader's cullType and the mirror flag ask for */
+static VkCullModeFlagBits VK_Shade_CullMode( cullType_t cull, qboolean mirrored )
+{
+	switch ( cull ) {
+	case CT_TWO_SIDED:
+		return VK_CULL_MODE_NONE;
+	case CT_BACK_SIDED:
+		return mirrored ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_BACK_BIT;
+	case CT_FRONT_SIDED:
+	default:
+		return mirrored ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_FRONT_BIT;
+	}
+}
+
+static VkBlendFactor VK_Shade_BlendFactor( unsigned nibble, qboolean src )
+{
+	switch ( nibble ) {
+	case VKS_SRCBLEND_ZERO:					return VK_BLEND_FACTOR_ZERO;
+	case VKS_SRCBLEND_ONE:					return VK_BLEND_FACTOR_ONE;
+	case VKS_SRCBLEND_DST_COLOR:			return VK_BLEND_FACTOR_DST_COLOR;
+	case VKS_SRCBLEND_ONE_MINUS_DST_COLOR:	return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+	case VKS_SRCBLEND_SRC_ALPHA:			return VK_BLEND_FACTOR_SRC_ALPHA;
+	case VKS_SRCBLEND_ONE_MINUS_SRC_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	case VKS_SRCBLEND_DST_ALPHA:			return VK_BLEND_FACTOR_DST_ALPHA;
+	case VKS_SRCBLEND_ONE_MINUS_DST_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+	case VKS_SRCBLEND_ALPHA_SATURATE:		return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
+	default:
+		return src ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ZERO;
+	}
+}
+
+static VkPipeline VK_Shade_Pipeline( unsigned stateBits, int family, unsigned defines,
+									 cullType_t cull, qboolean polygonOffset, int topology )
+{
+	VkGraphicsPipelineCreateInfo info;
+	VkPipelineShaderStageCreateInfo stages[2];
+	VkVertexInputBindingDescription binding;
+	VkVertexInputAttributeDescription attribs[5];
+	VkPipelineVertexInputStateCreateInfo vertexInput;
+	VkPipelineInputAssemblyStateCreateInfo assembly;
+	VkPipelineViewportStateCreateInfo viewport;
+	VkPipelineRasterizationStateCreateInfo raster;
+	VkPipelineMultisampleStateCreateInfo multisample;
+	VkPipelineDepthStencilStateCreateInfo depth;
+	VkPipelineColorBlendStateCreateInfo blend;
+	VkPipelineColorBlendAttachmentState attachment;
+	VkDynamicState dynamicStates[2];
+	VkPipelineDynamicStateCreateInfo dynamic;
+	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE;
+	vkShadePipeline_t	*slot = NULL;
+	VkResult result;
+	unsigned srcNibble, dstNibble;
+	int i;
+
+	if ( !VK_Program_Modules( family, defines, &vert, &frag ) ) {
+		/* the mask is the whole of the diagnosis: it names the permutation the
+		   offline build has to add, and the family names the program it belongs
+		   to.  Without it a boot's worth of misses is one opaque row. */
+		static char missing[96];
+
+		Com_sprintf( missing, sizeof( missing ),
+					 "no SPIR-V for this permutation family=%d defines=0x%06x", family, defines );
+		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, missing, VK_INCOMPLETE );
+		return VK_NULL_HANDLE;
+	}
+	for ( i = 0; i < vk_numShadePipelines; i++ ) {
+		if ( vk_shadePipelines[i].used && vk_shadePipelines[i].stateBits == stateBits
+			 && vk_shadePipelines[i].family == family && vk_shadePipelines[i].defines == defines
+			 && vk_shadePipelines[i].cull == cull
+			 && vk_shadePipelines[i].polygonOffset == polygonOffset
+			 && vk_shadePipelines[i].topology == topology ) {
+			return vk_shadePipelines[i].pipeline;
+		}
+	}
+	if ( vk_numShadePipelines >= 256 ) {
+		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade pipeline table full", VK_INCOMPLETE );
+		return VK_NULL_HANDLE;
+	}
+	slot = &vk_shadePipelines[vk_numShadePipelines];
+
+	memset( &binding, 0, sizeof( binding ) );
+	binding.binding = 0;
+	binding.stride = VK_STREAM_STRIDE;
+	binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+	memset( attribs, 0, sizeof( attribs ) );
+	attribs[0].location = ATTR_POSITION; attribs[0].binding = 0;
+	attribs[0].format = VK_FORMAT_R32G32B32A32_SFLOAT; attribs[0].offset = 0;
+	attribs[1].location = ATTR_NORMAL; attribs[1].binding = 0;
+	attribs[1].format = VK_FORMAT_R32G32B32A32_SFLOAT; attribs[1].offset = 16;
+	attribs[2].location = ATTR_COLOR; attribs[2].binding = 0;
+	attribs[2].format = VK_FORMAT_R8G8B8A8_UNORM; attribs[2].offset = 32;
+	attribs[3].location = ATTR_TEXCOORD0; attribs[3].binding = 0;
+	attribs[3].format = VK_FORMAT_R32G32_SFLOAT; attribs[3].offset = 36;
+	attribs[4].location = ATTR_TEXCOORD1; attribs[4].binding = 0;
+	attribs[4].format = VK_FORMAT_R32G32_SFLOAT; attribs[4].offset = 44;
+
+	memset( &vertexInput, 0, sizeof( vertexInput ) );
+	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInput.vertexBindingDescriptionCount = 1;
+	vertexInput.pVertexBindingDescriptions = &binding;
+	vertexInput.vertexAttributeDescriptionCount = 5;
+	vertexInput.pVertexAttributeDescriptions = attribs;
+
+	memset( &assembly, 0, sizeof( assembly ) );
+	assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assembly.topology = ( topology == VK_IMM_TRIANGLE_STRIP ) ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP
+						: ( topology == VK_IMM_LINE_LOOP || topology == VK_IMM_LINES )
+						? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	memset( &viewport, 0, sizeof( viewport ) );
+	viewport.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewport.viewportCount = 1;
+	viewport.scissorCount = 1;
+
+	memset( &raster, 0, sizeof( raster ) );
+	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.cullMode = VK_Shade_CullMode( cull, qfalse );
+	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	raster.lineWidth = 1.0f;
+	raster.depthClampEnable = VK_FALSE;
+	raster.depthBiasEnable = polygonOffset ? VK_TRUE : VK_FALSE;
+	raster.depthBiasConstantFactor = r_offsetFactor ? r_offsetFactor->value : -1.0f;
+	raster.depthBiasSlopeFactor = r_offsetUnits ? r_offsetUnits->value : -2.0f;
+
+	memset( &multisample, 0, sizeof( multisample ) );
+	multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	memset( &depth, 0, sizeof( depth ) );
+	depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depth.depthTestEnable = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? VK_FALSE : VK_TRUE;
+	depth.depthWriteEnable = ( stateBits & VKS_DEPTHMASK_TRUE ) ? VK_TRUE : VK_FALSE;
+	depth.depthCompareOp = ( stateBits & VKS_DEPTHFUNC_EQUAL ) ? VK_COMPARE_OP_EQUAL : VK_COMPARE_OP_LESS_OR_EQUAL;
+	depth.minDepthBounds = 0.0f;
+	depth.maxDepthBounds = 1.0f;
+
+	srcNibble = ( stateBits & VKS_SRCBLEND_BITS ) >> 0;
+	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
+	memset( &attachment, 0, sizeof( attachment ) );
+	attachment.blendEnable = ( srcNibble != VKS_SRCBLEND_ONE || dstNibble != VKS_DSTBLEND_ZERO ) ? VK_TRUE : VK_FALSE;
+	attachment.srcColorBlendFactor = VK_Shade_BlendFactor( srcNibble, qtrue );
+	attachment.dstColorBlendFactor = VK_Shade_BlendFactor( dstNibble, qfalse );
+	attachment.colorBlendOp = VK_BLEND_OP_ADD;
+	attachment.srcAlphaBlendFactor = VK_Shade_BlendFactor( srcNibble, qtrue );
+	attachment.dstAlphaBlendFactor = VK_Shade_BlendFactor( dstNibble, qfalse );
+	attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+								| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	memset( &blend, 0, sizeof( blend ) );
+	blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blend.attachmentCount = 1;
+	blend.pAttachments = &attachment;
+
+	memset( &dynamic, 0, sizeof( dynamic ) );
+	dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
+	dynamicStates[1] = VK_DYNAMIC_STATE_SCISSOR;
+	dynamic.dynamicStateCount = 2;
+	dynamic.pDynamicStates = dynamicStates;
+
+	memset( stages, 0, sizeof( stages ) );
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].module = vert;
+	stages[0].pName = "main";
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].module = frag;
+	stages[1].pName = "main";
+
+	memset( &info, 0, sizeof( info ) );
+	info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	info.stageCount = 2;
+	info.pStages = stages;
+	info.pVertexInputState = &vertexInput;
+	info.pInputAssemblyState = &assembly;
+	info.pViewportState = &viewport;
+	info.pRasterizationState = &raster;
+	info.pMultisampleState = &multisample;
+	info.pDepthStencilState = &depth;
+	info.pColorBlendState = &blend;
+	info.pDynamicState = &dynamic;
+	info.layout = vk_shadeLayout;
+	info.renderPass = vk.renderPass;
+	info.subpass = 0;
+
+	result = qvk.CreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &info, NULL, &slot->pipeline );
+	if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkCreateGraphicsPipelines(shade)" ) ) {
+		return VK_NULL_HANDLE;
+	}
+	slot->stateBits = stateBits;
+	slot->family = family;
+	slot->defines = defines;
+	slot->cull = cull;
+	slot->polygonOffset = polygonOffset;
+	slot->topology = topology;
+	slot->used = qtrue;
+	vk_numShadePipelines++;
+	if ( ( vk_numShadePipelines & 15 ) == 1 ) {
+		VK_Guard_Row( "VK:shade", "pipelines=%d", vk_numShadePipelines );
+	}
+	return slot->pipeline;
+}
+
+/* The descriptor set for the (bundle0, bundle1, wave) triple, cached on those
+   three view pointers.  The white image and a sampler resolve on first use. */
+static qboolean VK_Shade_DefaultImage( VkImageView *view, VkSampler *sampler )
+{
+	static VkImageView s_view;
+	static VkSampler s_sampler;
+
+	if ( s_view != VK_NULL_HANDLE && s_sampler != VK_NULL_HANDLE ) {
+		*view = s_view;
+		*sampler = s_sampler;
+		return qtrue;
+	}
+
+	if ( !tr.whiteImage ) {
+		return qfalse;
+	}
+
+	s_view = VK_Texture_View( (int)tr.whiteImage->texnum );
+	if ( s_view == VK_NULL_HANDLE ) {
+		return qfalse;
+	}
+	if ( !VK_Texture_Sampler( qtrue, qfalse, qtrue, &s_sampler ) ) {
+		return qfalse;
+	}
+
+	*view = s_view;
+	*sampler = s_sampler;
+	return qtrue;
+}
+
+static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView wave )
+{
+	VkDescriptorImageInfo images[3];
+	VkDescriptorBufferInfo buffer;
+	VkWriteDescriptorSet writes[4];
+	VkDescriptorSetAllocateInfo allocInfo;
+	VkDescriptorSet set;
+	VkImageView defView;
+	VkSampler defSampler;
+	VkResult result;
+	int i, found = -1;
+
+	for ( i = 0; i < vk_numShadeSets; i++ ) {
+		if ( vk_shadeSetView[i][0] == v0 && vk_shadeSetView[i][1] == v1 && vk_shadeSetView[i][2] == wave ) {
+			return vk_shadeSets[i];
+		}
+	}
+	if ( vk_numShadeSets >= VK_SHADE_SETS ) {
+		/* the cache is full: reuse slot 0 rather than fail the frame */
+		found = 0;
+	} else {
+		found = vk_numShadeSets++;
+	}
+	set = vk_shadeSets[found];
+	if ( set == VK_NULL_HANDLE ) {
+		memset( &allocInfo, 0, sizeof( allocInfo ) );
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = vk.descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &vk_shadeSetLayout;
+		result = qvk.AllocateDescriptorSets( vk.device, &allocInfo, &set );
+		if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkAllocateDescriptorSets(shade)" ) ) {
+			return VK_NULL_HANDLE;
+		}
+		vk_shadeSets[found] = set;
+	}
+
+	memset( &buffer, 0, sizeof( buffer ) );
+	buffer.buffer = vk_shadeUbo[VK_Shade_CommandBufferSlot()];
+	buffer.offset = 0;
+	buffer.range = VK_UBO_SIZE_PAD;
+
+	memset( &images, 0, sizeof( images ) );
+		/* An unbound slot still has to be a legal binding, so it takes the
+		   white image, as the twin's unbound texture samples. */
+	if ( !VK_Shade_DefaultImage( &defView, &defSampler ) ) {
+		return VK_NULL_HANDLE;
+	}
+
+	images[0].imageView = v0 ? v0 : defView;
+	images[0].sampler = v0 ? s_shade.texSampler[0] : defSampler;
+	images[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	images[1].imageView = v1 ? v1 : defView;
+	images[1].sampler = v1 ? s_shade.texSampler[1] : defSampler;
+	images[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	images[2].imageView = wave ? wave : defView;
+	images[2].sampler = wave ? s_shade.texSampler[0] : defSampler;
+	images[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	memset( writes, 0, sizeof( writes ) );
+	for ( i = 0; i < 3; i++ ) {
+		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[i].dstSet = set;
+		writes[i].dstBinding = i + 1;
+		writes[i].descriptorCount = 1;
+		writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[i].pImageInfo = &images[i];
+	}
+	writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[3].dstSet = set;
+	writes[3].dstBinding = 0;
+	writes[3].descriptorCount = 1;
+	writes[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[3].pBufferInfo = &buffer;
+	qvk.UpdateDescriptorSets( vk.device, 4, writes, 0, NULL );
+
+	vk_shadeSetView[found][0] = v0;
+	vk_shadeSetView[found][1] = v1;
+	vk_shadeSetView[found][2] = wave;
+	return set;
+}
+
+/* the bind that carries a stage's program and textures into the pass */
+void VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
+{
+	VkImageView v0 = VK_NULL_HANDLE, v1 = VK_NULL_HANDLE, wave = VK_NULL_HANDLE;
+	VkPipeline pipeline;
+	VkDescriptorSet set;
+	int family;
+
+	(void)shader;
+	if ( !s_shade.prog ) {
+		return;
+	}
+	family = VK_Family_Of( s_shade.prog->defines );
+	pipeline = VK_Shade_Pipeline( s_shade.stateBits, family, s_shade.prog->defines,
+								  s_shade.cull, s_shade.polygonOffset, s_shade.topology );
+	if ( pipeline == VK_NULL_HANDLE ) {
+		return;
+	}
+	if ( s_shade.texBound[0] ) {
+		v0 = s_shade.texView[0];
+	}
+	if ( s_shade.texBound[1] ) {
+		v1 = s_shade.texView[1];
+	}
+	wave = s_shade.waveView;
+	set = VK_Shade_Set( v0, v1, wave );
+	if ( set == VK_NULL_HANDLE ) {
+		return;
+	}
+	VK_Shade_WriteUBO();
+	qvk.CmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
+	qvk.CmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_shadeLayout, 0, 1, &set, 0, NULL );
+}
+
+
+/* ---- the sub-stream shims the mirrored front end calls ------------------- */
+
+static qboolean s_polygonOffset;
+static qboolean s_stencilTest;
+
+qboolean VK_Shade_PolygonOffset( void )
+{
+	return s_polygonOffset;
+}
+
+void VK_Shade_SetStencil( qboolean test, int func, int ref, unsigned int mask )
+{
+	s_stencilTest = test;
+	VK_StencilState( test, func, ref, mask );
+}
+
+void vkEnable( int cap )
+{
+	if ( cap == VK_POLYGON_OFFSET_FILL ) {
+		s_polygonOffset = qtrue;
+		s_shade.polygonOffset = qtrue;
+	} else if ( cap == VK_CULL_FACE ) {
+		/* cull is a pipeline state word; VK_Cull carries it */
+	}
+}
+
+void vkDisable( int cap )
+{
+	if ( cap == VK_POLYGON_OFFSET_FILL ) {
+		s_polygonOffset = qfalse;
+		s_shade.polygonOffset = qfalse;
+	}
+}
+
+void vkCullFace( int mode )
+{
+	/* the shadow passes flip the cull between their two volumes */
+	(void)mode;
+}
+
+void vkStencilOp( int fail, int zfail, int zpass )
+{
+	(void)fail; (void)zfail; (void)zpass;
+}
+
+void vkColorMask( qboolean r, qboolean g, qboolean b, qboolean a )
+{
+	s_shade.colorMask[0] = r;
+	s_shade.colorMask[1] = g;
+	s_shade.colorMask[2] = b;
+	s_shade.colorMask[3] = a;
+}
+
+void vkLineWidth( float width )
+{
+	VkCommandBuffer cmd = VK_Shade_CommandBuffer();
+
+	/* 1.0 is the only width a pipeline without the wideLines feature
+	   accepts, and the feature is not armed; the 3D path draws no lines yet. */
+	if ( cmd != VK_NULL_HANDLE && width > 1.0f ) {
+		static int s_wideRows;
+		if ( s_wideRows < 4 ) {
+			VK_Guard_Hit( VK_GSITE_QUIRK, "line width needs the wideLines feature", VK_INCOMPLETE );
+			s_wideRows++;
+		}
+	}
+}
+
+/* ---- the legacy depth-range seam --------------------------------------------- */
+
+/* The rect the 3D view set, so vkDepthRange can re-issue it. */
+static int s_view3D[4];
+static qboolean s_view3DValid;
+
+void VK_Shade_Viewport3D( int x, int y, int w, int h )
+{
+	s_view3D[0] = x;
+	s_view3D[1] = y;
+	s_view3D[2] = w;
+	s_view3D[3] = h;
+	s_view3DValid = ( w > 0 && h > 0 ) ? qtrue : qfalse;
+}
+
+/* glDepthRange maps to VkViewport::minDepth/maxDepth: the same remap, and the
+ * only form that reproduces the sky's (0,0) pin. */
+static void VK_Shade_DepthRange( float n, float f )
+{
+	VkViewport viewport;
+	VkCommandBuffer cmd = VK_Shade_CommandBuffer();
+
+	if ( cmd == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	memset( &viewport, 0, sizeof( viewport ) );
+	if ( s_view3DValid ) {
+		viewport.x = (float)s_view3D[0];
+		viewport.y = (float)( vkConfig.vidHeight - s_view3D[1] - s_view3D[3] );
+		viewport.width = (float)s_view3D[2];
+		viewport.height = (float)s_view3D[3];
+	} else {
+		viewport.width = (float)vkConfig.vidWidth;
+		viewport.height = (float)vkConfig.vidHeight;
+	}
+	viewport.minDepth = n;
+	viewport.maxDepth = f;
+
+	qvk.CmdSetViewport( cmd, 0, 1, &viewport );
+}
+
+void vkDepthRange( float n, float f )
+{
+	VK_Shade_DepthRange( n, f );
+}
+
+void vkDepthRangef( float n, float f )
+{
+	VK_Shade_DepthRange( n, f );
+}
+
+void vkPolygonOffset( float factor, float units )
+{
+	VkCommandBuffer cmd = VK_Shade_CommandBuffer();
+
+	if ( cmd != VK_NULL_HANDLE ) {
+		qvk.CmdSetDepthBias( cmd, units, 0.0f, factor );
+	}
+}
+
+
+
+void VK_BindProgram( vkProgram_t *p )
+{
+	s_shade.prog = p;
+}
+
+/* the portal clip plane, uploaded with the view uniforms */
+void VK_UploadClipPlane( vkProgram_t *p )
+{
+	vec4_t plane;
+
+	if ( RB_ClipPlane_Get( plane ) ) {
+		VK_SetUniform4fv( p, VK_U_CLIPPLANE, plane );
+		VK_SetUniform1i( p, VK_U_CLIPPLANEENABLE, 1 );
+	} else {
+		VK_SetUniform1i( p, VK_U_CLIPPLANEENABLE, 0 );
+	}
+}
+
+void VK_RefreshClipPlane( void )
+{
+	VK_UploadClipPlane( s_shade.prog );
+}
+
+void VK_PixelProbe( const char *src, int x, int y, int w, int h )
+{
+	(void)src; (void)x; (void)y; (void)w; (void)h;
+}
+
+void VK_GlErrAt( const char *what )
+{
+	(void)what;
+}
+
+void VK_CensusShutdownAll( void ) { }
+void VK_CreateWaveTable( void ) { }
+void VK_DestroyWaveTable( void ) { }
+
+
+/* the family a draw asks for by name, as the reference renderer's table does */
+vkProgram_t *VK_FamilyProgram( unsigned family )
+{
+	return VK_GetProgram( family );
+}
+
+/* the program a stage needs: the shade tree's own defines bitmask plus whatever
+   the caller adds (the world's lightmap arm) */
+vkProgram_t *VK_StageProgram( const shaderStage_t *pStage, const shader_t *shader, unsigned extraDefines )
+{
+	unsigned d = VK_StageDefines( pStage, shader );
+
+	(void)pStage; (void)shader;
+	return VK_GetProgram( d | extraDefines );
+}
+
+void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
+					  const shader_t *shader, unsigned stateBits, float forceAlpha,
+					  qboolean hudColorClobber )
+{
+	vkProgram_t	*prog;
+	const float		*tc0, *tc1;
+	const unsigned char *colors;
+	int				tcStride;
+	qboolean		cpuColor = VK_StageNeedsCPUColor( pStage );
+	qboolean		cpuTexCoords = VK_StageNeedsCPUTexCoords( pStage );
+
+	prog = VK_StageProgram( pStage, shader, 0 );
+	VK_BindProgram( prog );
+
+	VK_SetupStageUniforms( prog, pStage, shader );
+	VK_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
+	VK_SetUniform1f( prog, VK_U_FORCEALPHA, forceAlpha );
+
+	if ( hudColorClobber && ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
+		 && pStage->rgbGen != CGEN_LIGHTING_SPHERICAL
+		 && pStage->rgbGen != CGEN_NOISE
+		 && pStage->rgbGen != CGEN_SCOORD
+		 && pStage->rgbGen != CGEN_TCOORD )
+	{
+		VK_SetUniform1i( prog, VK_U_COLORGEN, (int)CGEN_CONSTANT );
+		VK_SetUniform1i( prog, VK_U_ALPHAGEN, (int)AGEN_IDENTITY );
+		VK_SetBaseColor4f( prog, 1.0f, 1.0f, 1.0f, 1.0f );
+	}
+
+	if ( pStage->bundle[0].vertexLightmap && r_vertexLight->integer && r_lightmap->integer )
+	{
+		VK_SelectTexture( 0 );
+		VK_Bind( tr.whiteImage );
+	}
+	else if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[0].isLightmap )
+	{
+		VK_SelectTexture( 0 );
+		VK_Bind( tr.whiteImage );
+	}
+	else
+	{
+		VK_BindAnimatedImage( &pStage->bundle[0], 0 );
+	}
+
+	if ( pStage->bundle[1].image[0] )
+	{
+		if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[1].isLightmap )
+		{
+			VK_SelectTexture( 1 );
+			VK_Bind( tr.whiteImage );
+		}
+		else
+		{
+			VK_BindAnimatedImage( &pStage->bundle[1], 1 );
+		}
+	}
+
+	if ( cpuTexCoords )
+	{
+		tc0 = input->svars.texcoords[0][0];
+		tc1 = input->svars.texcoords[1][0];
+		tcStride = 2;
+	}
+	else
+	{
+		tc0 = input->texCoords[0][0];
+		tc1 = input->texCoords[0][0] + 2;
+		tcStride = 4;
+	}
+	/* A stage that computes its colour on the CPU takes the svars array;
+	   otherwise none, and the vertex packs white. */
+	colors = cpuColor ? (const unsigned char *)input->svars.colors : NULL;
+
+	(void)stateBits;
+	VK_StageBindCensus( shader, pStage, -1, backEnd.in2D ? qtrue : qfalse, 0, 0, 0, 0 );
+
+	RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
+						   tc0, tc1, tcStride, colors, input->normal[0] );
+}
+
+/* ---- the census and probe surface the reference renderer carries and this module does not -- */
+
+/* The twin prints its census rows from the legacy state machine; there is none
+   here, so these calls are the seam and nothing else. */
+void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, int stageIndex,
+							qboolean in2D, unsigned tex0, unsigned tex1,
+							unsigned cur0, unsigned cur1 )
+{
+	(void)shader; (void)pStage; (void)stageIndex; (void)in2D;
+	(void)tex0; (void)tex1; (void)cur0; (void)cur1;
+}
+
+void VK_DrawCensusKey( const void *key, qboolean in2D )
+{
+	(void)key; (void)in2D;
+}
+
+qboolean VK_ModelPixelAtSwap( int x, int y, byte out[4] )
+{
+	(void)x; (void)y; (void)out;
+	return qfalse;
+}
+
+void VK_SetGhostImage( const char *name, image_t *image )
+{
+	(void)name; (void)image;
+}
+
+/* defined by the mirrored 3D front end */
+
+void VK_Shade_NewFrame( void )
+{
+	/* the front end has written this frame's uniforms into the staging block;
+	   the block is re-uploaded on the first draw that follows */
+	s_uboDirty = qtrue;
+}

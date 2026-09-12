@@ -62,6 +62,17 @@ SCOPE = (
 # out-of-scope tool trees, and generated output that is not tracked.
 SKIP_COMPONENTS = ("thirdparty", "ommap", "lcc", ".build", "__pycache__", ".git")
 
+# Generated sources are not editorial: the shader sources under
+# renderervulkan/shaders/ are written by tools/vk_shaders_from_gles3.py, and the
+# only comment lines they carry are the licence notice (exempt by definition)
+# and the splicing directives their build reads.  Counting them would measure
+# the generator, not the prose the ceiling is about.
+GENERATED = (
+    "app/src/main/cpp/code/renderervulkan/shaders",
+    "app/src/main/cpp/code/renderervulkan/vk_shaders_embedded.h",
+    "app/src/main/cpp/code/renderervulkan/vk_shaders_embedded3d.h",
+)
+
 TREE = DEFAULT_TREE
 
 # The editorial ceiling: body comments plus design headers, licence notices
@@ -160,7 +171,11 @@ def walk(rel):
         if any(p in SKIP_COMPONENTS for p in parts):
             continue
         for fn in sorted(filenames):
-            yield os.path.join(dirpath, fn)
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, TREE).replace(os.sep, "/")
+            if rel in GENERATED or any(rel.startswith(g + "/") for g in GENERATED):
+                continue
+            yield full
 
 
 def measure():

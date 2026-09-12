@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * vk_m3_surface.c -- the 3D stage iterators' reserved seats.
  *
@@ -39,62 +56,27 @@ void VK_M3_Touched( const char *what )
 	rows++;
 }
 
-void RB_StageIteratorSky( void )
-{
-	VK_M3_Touched( "RB_StageIteratorSky (3D surface, M3)" );
-}
 
-void RB_StageIteratorVertexLitTextureUnfogged( void )
-{
-	VK_M3_Touched( "RB_StageIteratorVertexLitTextureUnfogged (3D surface, M3)" );
-}
 
-void RB_StageIteratorLightmappedMultitextureUnfogged( void )
-{
-	VK_M3_Touched( "RB_StageIteratorLightmappedMultitextureUnfogged (3D surface, M3)" );
-}
 
-void RB_GLFogStageIteratorFunc( void )
-{
-	VK_M3_Touched( "RB_GLFogStageIteratorFunc (3D fog pass, M3)" );
-}
 
-void RB_ShadowTessEnd( void )
-{
-	VK_M3_Touched( "RB_ShadowTessEnd (stencil shadows, M3)" );
-}
 
-void RB_ShadowFinish( void )
-{
-	VK_M3_Touched( "RB_ShadowFinish (stencil shadows, M3)" );
-}
 
-void RB_ProjectionShadowDeform( void )
-{
-	VK_M3_Touched( "RB_ProjectionShadowDeform (projection shadow, M3)" );
-}
 
-void RB_DeformTessGeometry( void )
-{
-	VK_M3_Touched( "RB_DeformTessGeometry (shader deforms, M3)" );
-}
 
-void ProjectDlightTexture( void )
-{
-	VK_M3_Touched( "ProjectDlightTexture (dynamic lights, M3)" );
-}
 
-void R_InitSkyTexCoords( float cloudLayerHeight )
-{
-	(void)cloudLayerHeight;
-	VK_M3_Touched( "R_InitSkyTexCoords (sky, M3)" );
-}
 
-void R_BuildCloudData( shaderCommands_t *shader )
-{
-	(void)shader;
-	VK_M3_Touched( "R_BuildCloudData (sky, M3)" );
-}
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---- the module globals the data model names ----------------------------- */
 
@@ -128,25 +110,11 @@ int BE_Armed( void )
 
 
 /* the ghost overlay surface: the image layer names it, M3 draws it */
-void LoadGHOST( const char *name, byte **pic, int *width, int *height )
-{
-	VK_M3_Touched( "LoadGHOST (ghost overlay, M3)" );
-	*pic = NULL;
-	*width = 0;
-	*height = 0;
-}
 
-void R_SetGhostImage( const char *name, image_t *image )
-{
-	VK_M3_Touched( "R_SetGhostImage (ghost overlay, M3)" );
-	( void )name;
-	( void )image;
-}
 
-void R_UpdateGhostTextures( void )
-{
-	VK_M3_Touched( "R_UpdateGhostTextures (ghost overlay, M3)" );
-}
+
+
+
 
 qboolean VKimp_GLMainOwnsContext( void )
 {

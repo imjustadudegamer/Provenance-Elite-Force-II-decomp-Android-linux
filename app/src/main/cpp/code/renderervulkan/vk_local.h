@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #ifndef VK_VK_LOCAL_H
 #define VK_VK_LOCAL_H
 
@@ -80,6 +97,7 @@ typedef struct {
 	VkPhysicalDeviceProperties deviceProps;
 	VkPhysicalDeviceVulkan12Properties props12;
 	qboolean has12Props;
+	qboolean headless;
 	VkDevice device;
 	uint32_t graphicsFamily;
 	uint32_t presentFamily;
@@ -164,6 +182,10 @@ qboolean VK_Texture_Init( void );
 void VK_Texture_Shutdown( void );
 qboolean VK_Draw_Init( void );
 void VK_Draw_Shutdown( void );
+qboolean VK_Shade_Init( void );
+void VK_Shade_Shutdown( void );
+qboolean VK_Shade_Descriptors_Init( void );
+void VK_Shade_Descriptors_Shutdown( void );
 void VK_Descriptor_Shutdown( void );
 
 qboolean VK_Pipeline_Init( void );
@@ -195,8 +217,9 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 
 void R_Init( void );
 void RE_Shutdown( qboolean destroyWindow );
-qboolean R_SetMode( int mode, glconfig_t *glConfig );
-void R_SetFullscreen( qboolean fullScreen, glconfig_t *glConfig );
+qboolean R_SetMode( int mode, glconfig_t *vkConfig );
+qboolean VK_EnsureBroughtUp( const char *where );
+void R_SetFullscreen( qboolean fullScreen, glconfig_t *vkConfig );
 
 void R_IssueRenderCommands( void );
 void RB_ExecuteRenderCommands( const void *data );

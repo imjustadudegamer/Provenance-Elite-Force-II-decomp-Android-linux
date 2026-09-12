@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "vk_procs.h"
 #include "vk_guard.h"
 
@@ -103,6 +120,7 @@ void VK_Procs_ResolveInstance( VkInstance instance )
 	qvk.field = (PFN_##name)qvk.GetInstanceProcAddr( instance, #name );
 
 	VK_PROC( CreateInstance, vkCreateInstance );
+	VK_PROC( CreateHeadlessSurfaceEXT, vkCreateHeadlessSurfaceEXT );
 	VK_PROC( EnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties );
 	VK_PROC( EnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties );
 	VK_PROC( EnumerateInstanceVersion, vkEnumerateInstanceVersion );
@@ -123,6 +141,7 @@ void VK_Procs_ResolveInstance( VkInstance instance )
 	VK_PROC( DestroyDebugUtilsMessengerEXT, vkDestroyDebugUtilsMessengerEXT );
 	VK_PROC( CreateDevice, vkCreateDevice );
 	VK_PROC( DestroyDevice, vkDestroyDevice );
+	VK_PROC( DestroyInstance, vkDestroyInstance );
 	VK_PROC( DestroySurfaceKHR, vkDestroySurfaceKHR );
 
 	qvk.GetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)qvk.GetInstanceProcAddr( instance, "vkGetDeviceProcAddr" );
@@ -191,8 +210,12 @@ void VK_Procs_ResolveDevice( VkDevice device )
 	VK_DPROC( DestroyBuffer, vkDestroyBuffer );
 	VK_DPROC( CreatePipelineLayout, vkCreatePipelineLayout );
 	VK_DPROC( DestroyPipelineLayout, vkDestroyPipelineLayout );
+	VK_DPROC( CmdClearAttachments, vkCmdClearAttachments );
 	VK_DPROC( CmdSetViewport, vkCmdSetViewport );
 	VK_DPROC( CmdSetScissor, vkCmdSetScissor );
+	VK_DPROC( CmdSetLineWidth, vkCmdSetLineWidth );
+	VK_DPROC( CmdSetDepthBounds, vkCmdSetDepthBounds );
+	VK_DPROC( CmdSetDepthBias, vkCmdSetDepthBias );
 	VK_DPROC( CmdBindPipeline, vkCmdBindPipeline );
 	VK_DPROC( CmdBindVertexBuffers, vkCmdBindVertexBuffers );
 	VK_DPROC( CmdBindIndexBuffer, vkCmdBindIndexBuffer );

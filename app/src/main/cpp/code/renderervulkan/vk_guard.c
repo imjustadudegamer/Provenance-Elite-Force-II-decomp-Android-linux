@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "vk_guard.h"
 
 #include <stdarg.h>
@@ -138,10 +155,12 @@ void VK_Guard_Hit( vkGuardSite_t site, const char *detail, VkResult result )
 
 	n = ++vk_guardSiteHits[site];
 
+	/* A row with nothing after detail= is a row that cannot be triaged, so an
+	   unnamed one says so instead of printing an empty field. */
 	VK_Guard_Row( "VK:guard",
 				 "site=%s detail=\"%s\" result=%s(%d) n=%u",
 				 vk_guardSiteNames[site],
-				 detail ? detail : "",
+				 ( detail && detail[0] ) ? detail : "(no detail given)",
 				 VK_Guard_ResultName( result ),
 				 (int)result,
 				 n );

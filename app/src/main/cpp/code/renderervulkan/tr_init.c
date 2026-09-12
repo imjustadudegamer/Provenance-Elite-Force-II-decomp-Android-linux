@@ -14,13 +14,100 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
+
+cvar_t* r_ignore;
+cvar_t* r_jobs;
+cvar_t* r_debuglines_depthmask;
+cvar_t* r_farplane;
+cvar_t* r_farplane_color;
+cvar_t* r_farplane_nocull;
+cvar_t* r_farplane_nofog;
+cvar_t* r_light_ambientEmphasize;
+cvar_t* r_light_ambientFudge;
+cvar_t* r_lightcoronasize;
+cvar_t* r_light_emphasize;
+cvar_t* r_light_emphasizePercent;
+cvar_t* r_light_lines;
+cvar_t* r_light_nolight;
+cvar_t* r_light_simple;
+cvar_t* r_light_simple_dist;
+cvar_t* r_light_sun_line;
+cvar_t* r_numdebuglines;
+cvar_t* r_skyportal;
+cvar_t* r_skyportal_origin;
+cvar_t* r_stipplelines;
+cvar_t* r_useglfog;
+
+/* the 3D cvars the mirrored front end reads; the reference renderer defines them in its own
+   tr_init.c and this module carries the same list */
+cvar_t	*r_allowGeometryDeforms;
+cvar_t	*r_debugSort;
+cvar_t	*r_debugSurface;
+cvar_t	*r_detailSurfaces;
+cvar_t	*r_drawcurves;
+cvar_t	*r_drawentities;
+cvar_t	*r_drawsky;
+cvar_t	*r_drawsprites;
+cvar_t	*r_drawterrain;
+cvar_t	*r_drawviewmodel;
+cvar_t	*r_drawworld;
+cvar_t	*r_dynamiclight;
+cvar_t	*r_facePlaneCull;
+cvar_t	*r_fadeDistMod;
+cvar_t	*r_fastsky;
+cvar_t	*r_flares;
+cvar_t	*r_flaresMaxDist;
+cvar_t	*r_fullbright;
+cvar_t	*r_lerpmodels;
+cvar_t	*r_lightmap;
+cvar_t	*r_lockpvs;
+cvar_t	*r_lodbias;
+cvar_t	*r_lodCurveError;
+cvar_t	*r_lodscale;
+cvar_t	*r_lodScaleDistance;
+cvar_t	*r_logFile;
+cvar_t	*r_nocull;
+cvar_t	*r_nocurves;
+cvar_t	*r_noportals;
+cvar_t	*r_norefresh;
+cvar_t	*r_novis;
+cvar_t	*r_offsetFactor;
+cvar_t	*r_offsetUnits;
+cvar_t	*r_portalOnly;
+cvar_t	*r_shadows;
+cvar_t	*r_showcluster;
+cvar_t	*r_showlod;
+cvar_t	*r_shownormals;
+cvar_t	*r_showsky;
+cvar_t	*r_showtris;
+cvar_t	*r_singleShader;
+cvar_t	*r_subdivisions;
+cvar_t	*r_terrain_global;
+cvar_t	*r_terrain_global_min;
+cvar_t	*r_znear;
+
 #include "vk_firstlight.h"
 
 #include <stdio.h>
 #include <string.h>
-
-refimport_t ri;
 
 typedef struct {
 	char description[64];
@@ -48,11 +135,6 @@ static int s_numVidModes = ( int )( sizeof( r_vidModes ) / sizeof( r_vidModes[0]
 static char s_graphicsInfo[2048];
 static cvar_t *r_vkTrace;
 
-/* ---- the cvars the renderer's data-model layer reads ---------------------
- * The same names and defaults the GLES3 twin registers, so a config written
- * for one renderer means the same thing to the other.  The 3D-only tail
- * (lod/flare/sky/lighting) arrives with the 3D stage iterators; these are the
- * ones the shader, image, font and 2D layers read today. */
 cvar_t *r_picmip;
 cvar_t *r_roundImagesDown;
 cvar_t *r_colorMipLevels;
@@ -100,6 +182,79 @@ void R_RegisterCvars( void )
 	r_intensity           = ri.Cvar_Get( "r_intensity", "1", CVAR_LATCH );
 	r_gamma               = ri.Cvar_Get( "r_gamma", "1.2", CVAR_ARCHIVE );
 	r_detailtextures      = ri.Cvar_Get( "r_detailtextures", "1", 33 );
+
+	/* A cvar the module reads but never registers is a null read on its first
+	   use, so the 3D front end's set is registered here like the twin's. */
+	r_detailSurfaces = ri.Cvar_Get( "r_detailSurfaces", "1", CVAR_ARCHIVE  );
+	r_allowGeometryDeforms = ri.Cvar_Get( "r_allowGeometryDeforms", "1", CVAR_ARCHIVE  );
+	r_subdivisions = ri.Cvar_Get( "r_subdivisions", "3", CVAR_ARCHIVE | CVAR_LATCH );
+	r_fullbright = ri.Cvar_Get( "r_fullbright", "0", CVAR_LATCH|CVAR_CHEAT  );
+	r_singleShader = ri.Cvar_Get( "r_singleShader", "0", CVAR_CHEAT | CVAR_LATCH  );
+	r_lerpmodels = ri.Cvar_Get( "r_lerpmodels", "1", 0 );
+	r_lodCurveError = ri.Cvar_Get( "r_lodCurveError", "250", CVAR_ARCHIVE|CVAR_CHEAT  );
+	r_lodbias = ri.Cvar_Get( "r_lodbias", "1", CVAR_ARCHIVE );
+	r_flares = ri.Cvar_Get( "r_flares", "1", CVAR_ARCHIVE  );
+	r_flaresMaxDist = ri.Cvar_Get( "r_flaresMaxDist", "768", CVAR_ARCHIVE  );
+	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT  );
+	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", 0  );
+	r_dynamiclight = ri.Cvar_Get( "r_dynamiclight", "1", CVAR_ARCHIVE  );
+	r_facePlaneCull = ri.Cvar_Get( "r_facePlaneCull", "1", CVAR_ARCHIVE  );
+	r_showlod = ri.Cvar_Get( "r_showlod", "0", CVAR_TEMP | CVAR_CHEAT );
+	r_debugSort = ri.Cvar_Get( "r_debugSort", "0", CVAR_CHEAT  );
+	r_nocurves = ri.Cvar_Get( "r_nocurves", "0", CVAR_CHEAT  );
+	r_drawworld = ri.Cvar_Get( "r_drawworld", "1", CVAR_CHEAT  );
+	r_lightmap = ri.Cvar_Get( "r_lightmap", "0", 0  );
+	r_portalOnly = ri.Cvar_Get( "r_portalOnly", "0", CVAR_CHEAT  );
+	r_norefresh = ri.Cvar_Get( "r_norefresh", "0", CVAR_CHEAT );
+	r_drawentities = ri.Cvar_Get( "r_drawentities", "1", CVAR_CHEAT );
+	r_drawcurves = ri.Cvar_Get( "r_drawcurves", "1", CVAR_CHEAT );
+	r_drawviewmodel = ri.Cvar_Get( "r_drawviewmodel", "1", CVAR_CHEAT );
+	r_drawterrain = ri.Cvar_Get( "r_drawterrain", "1", CVAR_CHEAT );
+	r_drawsprites = ri.Cvar_Get( "r_drawsprites", "1", CVAR_CHEAT );
+	r_fadeDistMod = ri.Cvar_Get( "r_fadeDistMod", "1", CVAR_ARCHIVE );
+	r_lodscale = ri.Cvar_Get( "r_lodscale", "1", 0 );
+	r_lodScaleDistance = ri.Cvar_Get( "r_lodScaleDistance", "1", CVAR_ARCHIVE );
+	r_nocull = ri.Cvar_Get( "r_nocull", "0", CVAR_CHEAT );
+	r_novis = ri.Cvar_Get( "r_novis", "0", CVAR_CHEAT );
+	r_showcluster = ri.Cvar_Get( "r_showcluster", "0", CVAR_CHEAT );
+	r_logFile = ri.Cvar_Get( "r_logFile", "0", CVAR_CHEAT  );
+	r_debugSurface = ri.Cvar_Get( "r_debugSurface", "0", CVAR_CHEAT );
+	r_showtris = ri.Cvar_Get( "r_showtris", "0", CVAR_CHEAT );
+	r_showsky = ri.Cvar_Get( "r_showsky", "0", CVAR_CHEAT );
+	r_drawsky = ri.Cvar_Get( "r_drawsky", "1", 0 );
+	r_shownormals = ri.Cvar_Get( "r_shownormals", "0", CVAR_CHEAT );
+	r_offsetFactor = ri.Cvar_Get( "r_offsetfactor", "-1", CVAR_CHEAT  );
+	r_offsetUnits = ri.Cvar_Get( "r_offsetunits", "-2", CVAR_CHEAT  );
+	r_lockpvs = ri.Cvar_Get( "r_lockpvs", "0", CVAR_CHEAT );
+	r_noportals = ri.Cvar_Get( "r_noportals", "0", CVAR_CHEAT );
+	r_shadows = ri.Cvar_Get( "cg_shadows", "1", 0  );
+	r_terrain_global = ri.Cvar_Get( "r_terrain_global", "0", CVAR_CHEAT );
+	r_terrain_global_min = ri.Cvar_Get( "r_terrain_global_min", va("%f", -65536.0f), CVAR_CHEAT );
+
+	/* The rest of the 3D front end's cvars, with the twin's names, defaults
+	   and flags; unregistered, any of them is a null read. */
+	r_debuglines_depthmask = ri.Cvar_Get("r_debuglines_depthmask", "0", CVAR_ARCHIVE);
+	r_farplane = ri.Cvar_Get("r_farplane", "0", CVAR_CHEAT);
+	r_farplane_color = ri.Cvar_Get("r_farplane_color", ".5 .5 .5", CVAR_CHEAT);
+	r_farplane_nocull = ri.Cvar_Get("r_farplane_nocull", "0", CVAR_CHEAT);
+	r_farplane_nofog = ri.Cvar_Get("r_farplane_nofog", "0", CVAR_CHEAT);
+	r_ignore = ri.Cvar_Get( "r_ignore", "1", CVAR_CHEAT );
+	r_jobs = ri.Cvar_Get("r_jobs", "-1", CVAR_ARCHIVE | CVAR_LATCH);
+	r_light_ambientEmphasize = ri.Cvar_Get("r_light_ambientEmphasize", "1.6", 0);
+	r_light_ambientFudge = ri.Cvar_Get("r_light_ambientFudge", "0.7", 0);
+	r_light_emphasize = ri.Cvar_Get("r_light_emphasize", "0", 0);
+	r_light_emphasizePercent = ri.Cvar_Get("r_light_emphasizePercent", "0", 0);
+	r_light_lines = ri.Cvar_Get("r_light_lines", "0", CVAR_CHEAT);
+	r_light_nolight = ri.Cvar_Get("r_light_nolight", "0", CVAR_CHEAT | CVAR_ARCHIVE);
+	r_light_simple = ri.Cvar_Get("r_light_simple", "0", 0);
+	r_light_simple_dist = ri.Cvar_Get("r_light_simple_dist", "1000", 0);
+	r_light_sun_line = ri.Cvar_Get("r_light_sun_line", "0", CVAR_CHEAT);
+	r_lightcoronasize = ri.Cvar_Get("r_lightcoronasize", ".1", CVAR_ARCHIVE);
+	r_numdebuglines = ri.Cvar_Get("g_numdebuglines", "4096", CVAR_LATCH);
+	r_skyportal = ri.Cvar_Get("r_skyportal", "0", 0);
+	r_skyportal_origin = ri.Cvar_Get("r_skyportal_origin", "0 0 0", 0);
+	r_stipplelines = ri.Cvar_Get("r_stipplelines", "1", CVAR_ARCHIVE);
+	r_useglfog = ri.Cvar_Get("r_useglfog", "1", CVAR_ARCHIVE);
 }
 
 qboolean R_GetModeInfo( int *width, int *height, float *windowAspect, int mode )
@@ -135,30 +290,116 @@ static void RE_StubRow( const char *what )
 	rows++;
 }
 
+void R_InitExtensions(void) {
+}
+
 void R_Init( void )
 {
+	int err;
+	int i;
+	byte *ptr;
+
 	memset( &vk, 0, sizeof( vk ) );
 
 	RB_InitBackend();
 
-	/* The identity light the 2D colour path scales by: no overbright on the
-	   Vulkan leg yet, so the byte scale is the full 255. */
+	/* the twin's front-end initialisation; left out, these were zero tables */
 	tr.identityLight = 1.0f;
 	tr.identityLightByte = 255;
 	tr.overbrightBits = 0;
-	glConfig.textureCompression = TC_S3TC;
+	vkConfig.textureCompression = TC_S3TC;
+
+	/* The .so is never unloaded, so one registration covers the process. */
+	if ( ri.Hunk_ClearNotify ) {
+		ri.Hunk_ClearNotify( RB_2D_OwnersPurged );
+	}
+
+	memset( tess.constantColor255, 255, sizeof( tess.constantColor255 ) );
+
+	tr.worldEntity.e.shaderRGBA[0] = -1;
+	tr.worldEntity.e.shaderRGBA[1] = 0;
+	tr.worldEntity.e.shaderRGBA[2] = -1;
+	tr.worldEntity.e.shaderRGBA[3] = -1;
+
+	for ( i = 0; i < FUNCTABLE_SIZE; i++ )
+	{
+		tr.sinTable[i]		= sin( DEG2RAD( i * 360.0f / ( ( float ) ( FUNCTABLE_SIZE - 1 ) ) ) );
+		tr.squareTable[i]	= ( i < FUNCTABLE_SIZE/2 ) ? 1.0f : -1.0f;
+		tr.sawToothTable[i] = (float)i / FUNCTABLE_SIZE;
+		tr.inverseSawToothTable[i] = 1.0f - tr.sawToothTable[i];
+
+		if ( i < FUNCTABLE_SIZE / 2 )
+		{
+			if ( i < FUNCTABLE_SIZE / 4 )
+			{
+				tr.triangleTable[i] = ( float ) i / ( FUNCTABLE_SIZE / 4 );
+			}
+			else
+			{
+				tr.triangleTable[i] = 1.0f - tr.triangleTable[i-FUNCTABLE_SIZE / 4];
+			}
+		}
+		else
+		{
+			tr.triangleTable[i] = -tr.triangleTable[i-FUNCTABLE_SIZE/2];
+		}
+	}
+
+	tr.rendererhandle = ri.Milliseconds();
+
+	if (!tr.rendererhandle) {
+		tr.rendererhandle = -1;
+	}
+
+	R_NoiseInit();
+
+	R_Sky_Init();
+
+	R_RegisterCvars();
+
+	/* The demo triangle was first-light's scaffolding: it is how the pass was
+	   proven before anything drew real content, and it belongs behind its own
+	   cvar, off by default -- a menu boot has no business drawing it. */
+	vk.demoDraw = ri.Cvar_Get( "r_vkDemo", "0", CVAR_ARCHIVE )->integer ? qtrue : qfalse;
 
 	r_vkTrace = ri.Cvar_Get( VK_TRACE_CVAR, "1", 0 );
 	ri.Cvar_Get( VK_GUARD_TRACE_CVAR, "1", 0 );
 
-	R_RegisterCvars();
+	max_polys = MAX_POLYS;
+	max_polyverts = MAX_POLYVERTS;
 
-	vk.demoDraw = ri.Cvar_Get( "r_vkDemo", "1", CVAR_ARCHIVE )->integer ? qtrue : qfalse;
+	for ( i = 0; i < SMP_FRAMES; i++ ) {
+		ptr = ri.Malloc(sizeof(backEndData_t) + sizeof(srfPoly_t) * max_polys + sizeof(polyVert_t) * max_polyverts);
+		backEndDataBuf[i] = (backEndData_t*)ptr;
+		backEndDataBuf[i]->polys = (srfPoly_t*)((char*)ptr + sizeof(backEndData_t));
+		backEndDataBuf[i]->polyVerts = (polyVert_t*)((char*)ptr + sizeof(backEndData_t) + sizeof(srfPoly_t) * max_polys);
+		backEndDataBuf[i]->staticModels = NULL;
+		backEndDataBuf[i]->staticModelData = NULL;
+		backEndDataBuf[i]->commands.used = 0;
+	}
+	backEndData = backEndDataBuf[0];
+	R_InitNextFrame();
+
+	/* the twin's context init runs here, so the device exists by registration */
+	VK_EnsureBroughtUp( "R_Init" );
+
+	VK_ProgramsInit();
+
+	R_InitExtensions();
+
+	R_ModelInit();
+
+	tr.pFontDebugStrings = NULL;
+	g_bInfoworldtris = qfalse;
+
+	JobPool_InitCritical( "vkjob", r_jobs->integer );
 
 	VKimp_AdapterInit();
 	R_InitCommandBuffers();
 
-	VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M2 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+	VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M3 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+
+	(void)err;
 }
 
 void RE_Shutdown( qboolean destroyWindow )
@@ -175,16 +416,19 @@ void RE_BeginRegistration( glconfig_t *config )
 	cvar_t *generation;
 	char value[16];
 
+	/* the boot reaches here without ever calling re.SetMode */
+	VK_EnsureBroughtUp( "BeginRegistration" );
+
 	if ( ri.UI_LoadResource ) {
 		ri.UI_LoadResource( "*123" );
 	}
 
 	R_IssuePendingRenderCommands();
 
-	*config = glConfig;
+	*config = vkConfig;
 
 	/* The registration sequence the font's shader cache keys on: it grows by
-	   exactly one per registration, exactly as the GLES3 twin's does. */
+	   exactly one per registration, exactly as the reference renderer's does. */
 	generation = ri.Cvar_Get( "r_renderergeneration", "0", CVAR_NORESTART );
 
 	r_sequencenumber = generation->integer + 1;
@@ -198,6 +442,12 @@ void RE_BeginRegistration( glconfig_t *config )
 	tr.registrating = qtrue;
 
 	if ( !tr.registered ) {
+		/* the image layer below reads the device the bring-up fills */
+		if ( vk.device == VK_NULL_HANDLE ) {
+			ri.Error( ERR_FATAL, "RE_BeginRegistration: no Vulkan device; images cannot be created" );
+			return;
+		}
+
 		R_InitImages();
 		R_StartupShaders();
 	}
@@ -209,16 +459,9 @@ void RE_BeginRegistration( glconfig_t *config )
 	}
 }
 
-qhandle_t RE_RegisterModel( const char *name )
-{
-	RE_StubRow( "RegisterModel" );
-	return 0;
-}
 
-qhandle_t RE_ForceRegisterModel( const char *name )
-{
-	return 0;
-}
+
+
 
 
 
@@ -236,22 +479,13 @@ int RE_GetRegistrationSequence( void )
 	return r_sequencenumber;
 }
 
-void RE_SetWorldVisData( const byte *vis )
-{
-}
 
-void RE_LoadWorldMap( const char *name )
-{
-	RE_StubRow( "LoadWorld" );
-}
 
-void RE_ClearScene( void )
-{
-}
 
-void R_ClearLensflareStates( void )
-{
-}
+
+
+
+
 
 void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities )
 {
@@ -272,42 +506,21 @@ void RE_SetTimeScale( float timeScale )
 {
 }
 
-void RE_AddRefEntityToScene( const refEntity_t *re )
-{
-}
 
-void RE_AddRefSpriteToScene( const refEntity_t *ent )
-{
-}
 
-qboolean RE_AddPolyToScene( qhandle_t hShader, int numVerts, const polyVert_t *verts, int num )
-{
-	return qfalse;
-}
 
-void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, float b, int type )
-{
-}
 
-void RE_AddLensflareToScene( void *key, const vec3_t org, int lensflareNum, float r, float g, float b,
-									float scale, qhandle_t replacementShader )
-{
-}
 
-int R_LensflareNameToNum( const char *name )
-{
-	return -1;
-}
 
-void RE_RenderScene( const refdef_t *fd )
-{
-	RE_StubRow( "RenderScene" );
-}
 
-refEntity_t *RE_GetRenderEntity( int entityNumber )
-{
-	return NULL;
-}
+
+
+
+
+
+
+
+
 
 void R_SavePerformanceCounters( void )
 {
@@ -327,9 +540,7 @@ void RE_UploadCinematic( int w, int h, int cols, int rows, const byte *data, int
 {
 }
 
-void R_DebugLine( const vec3_t start, const vec3_t end, float r, float g, float b, float alpha )
-{
-}
+
 
 
 
@@ -338,6 +549,8 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 	int *cmd;
 
 	(void)stereoFrame;
+
+	vk_frameOpen = qtrue;
 
 	/* The frame's list opens with the pass marker: the walk acquires, opens
 	   the render pass and clears, then performs whatever the frame recorded. */
@@ -365,6 +578,7 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	}
 
 	R_IssueRenderCommands();
+	vk_frameOpen = qfalse;
 
 	if ( frontEndMsec ) {
 		*frontEndMsec = tr.frontEndMsec;
@@ -377,54 +591,27 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	backEnd.backEndMsec = 0;
 }
 
-int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projection,
-							int maxPoints, vec3_t pointBuffer, int maxFragments, markFragment_t *fragmentBuffer,
-							float fRadiusSquared )
-{
-	return 0;
-}
-
-int R_LerpTag( orientation_t *tag, qhandle_t model, int startFrame, int endFrame,
-					  float frac, const char *tagName )
-{
-	return 0;
-}
-
-void R_ModelBounds( qhandle_t model, vec3_t mins, vec3_t maxs )
-{
-	VectorClear( mins );
-	VectorClear( maxs );
-}
-
-float R_ModelRadius( qhandle_t handle )
-{
-	return 0.0f;
-}
-
-dtiki_t *R_Model_GetHandle( qhandle_t handle )
-{
-	return NULL;
-}
-
-void TIKI_FlushAll( void )
-{
-}
 
 
 
 
 
-void RE_SwipeBegin( float thisTime, float life, qhandle_t hShader )
-{
-}
 
-void RE_SwipePoint( vec3_t point1, vec3_t point2, float time )
-{
-}
 
-void RE_SwipeEnd( void )
-{
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static void RE_SetRenderTime( int t )
 {
@@ -439,42 +626,21 @@ static const char *RE_GetGraphicsInfo( void )
 	return s_graphicsInfo;
 }
 
-int R_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir )
-{
-	return 0;
-}
 
-void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b )
-{
-}
 
-qhandle_t RE_SpawnEffectModel( const char *name, vec3_t pos, vec3_t axis[3] )
-{
-	return 0;
-}
 
-qhandle_t RE_RegisterServerModel( const char *name )
-{
-	return 0;
-}
 
-void RE_UnregisterServerModel( qhandle_t model )
-{
-}
 
-void RE_PrintBSPFileSizes( void )
-{
-}
 
-int RE_MapVersion( void )
-{
-	return 0;
-}
 
-void RE_AddTerrainMarkToScene( int terrainIndex, qhandle_t hShader, int numVerts,
-									  const polyVert_t *verts, int renderfx )
-{
-}
+
+
+
+
+
+
+
+
 
 
 
@@ -482,61 +648,21 @@ static void RE_DrawBackground( int cols, int rows, int bgr, uint8_t *data )
 {
 }
 
-int R_MarkFragmentsForInlineModel( clipHandle_t bmodel, const vec3_t vAngles, const vec3_t vOrigin,
-										  int numPoints, const vec3_t *points, const vec3_t projection,
-										  int maxPoints, vec3_t pointBuffer, int maxFragments,
-										  markFragment_t *fragmentBuffer )
-{
-	return 0;
-}
 
-void R_GetInlineModelBounds( int index, vec3_t mins, vec3_t maxs )
-{
-	VectorClear( mins );
-	VectorClear( maxs );
-}
 
-void R_GetLightingForDecal( vec3_t light, const vec3_t facing, const vec3_t origin )
-{
-	VectorClear( light );
-}
 
-void R_GetLightingForSmoke( vec3_t light, const vec3_t origin )
-{
-	VectorClear( light );
-}
 
-int R_GatherLightSources( const vec3_t pos, vec3_t *lightPos, vec3_t *lightIntensity, int maxLights )
-{
-	return 0;
-}
+
+
+
+
+
 
 const char *RE_GetModelName( qhandle_t hModel )
 {
 	return "";
 }
 
-void RE_ForceUpdatePose( refEntity_t *model )
-{
-}
-
-orientation_t RE_TIKI_Orientation( refEntity_t *model, int tagNum )
-{
-	orientation_t orient;
-
-	memset( &orient, 0, sizeof( orient ) );
-
-	return orient;
-}
-
-qboolean RE_TIKI_IsOnGround( refEntity_t *model, int tagNum, float threshold )
-{
-	return qfalse;
-}
-
-void RE_SetFrameNumber( int frameNumber )
-{
-}
 
 
 
@@ -544,19 +670,16 @@ void RE_SetFrameNumber( int frameNumber )
 
 
 
-qboolean R_GetEntityToken( char *buffer, int size )
-{
-	if ( buffer && size > 0 ) {
-		buffer[0] = '\0';
-	}
 
-	return qfalse;
-}
 
-qboolean R_inPVS( const vec3_t p1, const vec3_t p2 )
-{
-	return qtrue;
-}
+
+
+
+
+
+
+
+
 
 void RE_TakeVideoFrame( int h, int w, byte *captureBuffer, byte *encodeBuffer, qboolean motionJpeg )
 {

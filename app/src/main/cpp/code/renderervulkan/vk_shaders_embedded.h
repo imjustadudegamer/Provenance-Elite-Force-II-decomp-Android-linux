@@ -1,5 +1,5 @@
-/*
-===========================================================================
+//vk-spirv-fingerprint 1bc858e77c607d8e729d2c6104d78c24e1de0db4ce13d3c103ea7a32901c5142
+/*===========================================================================
 This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
 engine descends from id Tech 3 through OpenMoHAA.
 
@@ -14,13 +14,13 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
-#define VK_SHADERS_EMBEDDED_GENERATED "rebuild with glsl/build_glsl.py; glsl/ is the source of truth"
+#define VK_SHADERS_EMBEDDED_GENERATED "rebuild with tools/build_vk_spirv.py; renderervulkan/shaders/ is the source of truth"
 
-#ifndef VK_SHADER_VK_POS_VERT_H
-#define VK_SHADER_VK_POS_VERT_H
+#ifndef VK_SHADER_POS_VERT_H
+#define VK_SHADER_POS_VERT_H
 
-#define VK_VK_POS_VERT_SOURCE "glsl/vk_pos.vert compiled by glsl/build_glsl.py -- do not edit"
-static const unsigned int vk_vk_pos_vert_spv[] = {
+#define VK_POS_VERT_SOURCE "renderervulkan/shaders/vk_pos.vert compiled by tools/build_vk_spirv.py -- do not edit"
+static const unsigned int vk_pos_vert_spv[] = {
 	0x07230203u, 0x00010000u, 0x0008000bu, 0x0000001fu,
 	0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
 	0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu,
@@ -83,16 +83,16 @@ static const unsigned int vk_vk_pos_vert_spv[] = {
 	0x0000001eu, 0x0000001du, 0x0003003eu, 0x0000001bu,
 	0x0000001eu, 0x000100fdu, 0x00010038u
 };
-#define VK_VK_POS_VERT_SPV_WORDS 243u
+#define VK_POS_VERT_SPV_WORDS 243u
 
 #endif
 
 
-#ifndef VK_SHADER_VK_FLAT_FRAG_H
-#define VK_SHADER_VK_FLAT_FRAG_H
+#ifndef VK_SHADER_FLAT_FRAG_H
+#define VK_SHADER_FLAT_FRAG_H
 
-#define VK_VK_FLAT_FRAG_SOURCE "glsl/vk_flat.frag compiled by glsl/build_glsl.py -- do not edit"
-static const unsigned int vk_vk_flat_frag_spv[] = {
+#define VK_FLAT_FRAG_SOURCE "renderervulkan/shaders/vk_flat.frag compiled by tools/build_vk_spirv.py -- do not edit"
+static const unsigned int vk_flat_frag_spv[] = {
 	0x07230203u, 0x00010000u, 0x0008000bu, 0x0000000du,
 	0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
 	0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu,
@@ -118,16 +118,16 @@ static const unsigned int vk_vk_flat_frag_spv[] = {
 	0x0000000bu, 0x0003003eu, 0x00000009u, 0x0000000cu,
 	0x000100fdu, 0x00010038u
 };
-#define VK_VK_FLAT_FRAG_SPV_WORDS 94u
+#define VK_FLAT_FRAG_SPV_WORDS 94u
 
 #endif
 
 
-#ifndef VK_SHADER_VK_TESS_VERT_H
-#define VK_SHADER_VK_TESS_VERT_H
+#ifndef VK_SHADER_TESS_VERT_H
+#define VK_SHADER_TESS_VERT_H
 
-#define VK_VK_TESS_VERT_SOURCE "glsl/vk_tess.vert compiled by glsl/build_glsl.py -- do not edit"
-static const unsigned int vk_vk_tess_vert_spv[] = {
+#define VK_TESS_VERT_SOURCE "renderervulkan/shaders/vk_tess.vert compiled by tools/build_vk_spirv.py -- do not edit"
+static const unsigned int vk_tess_vert_spv[] = {
 	0x07230203u, 0x00010000u, 0x0008000bu, 0x0000002du,
 	0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
 	0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu,
@@ -221,16 +221,16 @@ static const unsigned int vk_vk_tess_vert_spv[] = {
 	0x0003003eu, 0x00000029u, 0x0000002cu, 0x000100fdu,
 	0x00010038u
 };
-#define VK_VK_TESS_VERT_SPV_WORDS 365u
+#define VK_TESS_VERT_SPV_WORDS 365u
 
 #endif
 
 
-#ifndef VK_SHADER_VK_TESS_FRAG_H
-#define VK_SHADER_VK_TESS_FRAG_H
+#ifndef VK_SHADER_TESS_FRAG_H
+#define VK_SHADER_TESS_FRAG_H
 
-#define VK_VK_TESS_FRAG_SOURCE "glsl/vk_tess.frag compiled by glsl/build_glsl.py -- do not edit"
-static const unsigned int vk_vk_tess_frag_spv[] = {
+#define VK_TESS_FRAG_SOURCE "renderervulkan/shaders/vk_tess.frag compiled by tools/build_vk_spirv.py -- do not edit"
+static const unsigned int vk_tess_frag_spv[] = {
 	0x07230203u, 0x00010000u, 0x0008000bu, 0x00000047u,
 	0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
 	0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu,
@@ -340,7 +340,7 @@ static const unsigned int vk_vk_tess_frag_spv[] = {
 	0x00000046u, 0x00000014u, 0x0003003eu, 0x00000045u,
 	0x00000046u, 0x000100fdu, 0x00010038u
 };
-#define VK_VK_TESS_FRAG_SPV_WORDS 431u
+#define VK_TESS_FRAG_SPV_WORDS 431u
 
 #endif
 

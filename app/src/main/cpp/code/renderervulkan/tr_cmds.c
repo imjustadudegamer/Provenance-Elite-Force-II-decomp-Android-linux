@@ -14,10 +14,27 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * tr_cmds.c -- the front end's recorded-command buffer.
  *
- * The GLES3 twin records every frame into a byte list the render thread walks;
+ * The reference renderer records every frame into a byte list the render thread walks;
  * this module records into the same shape and walks it into the frame's Vulkan
  * command buffer.  A frame's list is RC_VK_BEGIN (open the pass and clear),
  * the 2D commands the UI recorded while the render thread was parked,
@@ -27,7 +44,7 @@ root, for more details.
  *
  * One list per frame slot: with two frames in flight the front end fills slot
  * N while the render thread is still walking slot N-1, which is the same
- * reason the GLES3 twin keeps backEndData[SMP_FRAMES].
+ * reason the reference renderer keeps backEndData[SMP_FRAMES].
  */
 
 #include "tr_local.h"
@@ -59,12 +76,12 @@ cvar_t *r_smp;
 
 static vkCommandList_t *RB_CommandList( void )
 {
-	return rb_commandLists[vk.frameSlot];
+	return rb_commandLists[tr.smpFrame];
 }
 
 int RB_FrameSmpFrame( void )
 {
-	return rb_activeFrame ? rb_activeFrame->smpFrame : 0;
+	return rb_activeFrame ? rb_activeFrame->smpFrame : tr.smpFrame;
 }
 
 int RB_FrameCount( void )
@@ -74,7 +91,7 @@ int RB_FrameCount( void )
 
 int RB_FrameBoneArena( void )
 {
-	return rb_activeFrame ? rb_activeFrame->boneArena : 0;
+	return rb_activeFrame ? rb_activeFrame->boneArena : tr.smpFrame;
 }
 
 qboolean R_SmpActive( void )
@@ -89,9 +106,14 @@ qboolean R_PendingRenderCommands( void )
 	return ( list && list->used > 0 ) ? qtrue : qfalse;
 }
 
+qboolean vk_frameOpen = qfalse;
+
+/* The list goes to the walk whole, from RE_EndFrame: a frame is one pass from
+   RC_VK_BEGIN to RC_VK_PRESENT, so walking half leaves the pass open.  A
+   mid-frame flush is held until the frame ends. */
 void R_FlushRenderCommands( void )
 {
-	if ( !R_PendingRenderCommands() ) {
+	if ( !tr.registered || vk_frameOpen || !R_PendingRenderCommands() ) {
 		return;
 	}
 
@@ -288,6 +310,14 @@ void RB_ExecuteRenderCommands( const void *data )
 			}
 			break;
 
+		case RC_DRAW_SURFS:
+			cmds = RB_DrawSurfs( cmds );
+			break;
+
+		case RC_SPRITE_SURFS:
+			cmds = RB_SpriteSurfs( cmds );
+			break;
+
 		case RC_END_OF_LIST:
 		default:
 			return;
@@ -334,11 +364,15 @@ void R_IssueRenderCommands( void )
 		}
 	}
 
-	frame = &rb_frames[vk.frameSlot];
+	/* Every slot on the frame record is tr.smpFrame, as the twin's is.  The
+	   bone arena especially: the front end writes the palette into
+	   TIKI_Skel_Bones_Arena[tr.smpFrame], so a walk keyed off another counter
+	   read a palette nobody wrote. */
+	frame = &rb_frames[tr.smpFrame];
 	frame->list = list;
-	frame->smpFrame = vk.frameSlot;
+	frame->smpFrame = tr.smpFrame;
 	frame->frameCount = ++rb_frameCount;
-	frame->boneArena = vk.frameSlot;
+	frame->boneArena = tr.smpFrame;
 	frame->backEndMsec = 0;
 
 	if ( vk.smpActive && !VKimp_IsRenderThread() ) {

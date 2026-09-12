@@ -1,5 +1,22 @@
 /*
 ===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
 
 This file is part of Quake III Arena source code.
@@ -33,9 +50,7 @@ vec4_t r_colorWhite = { 1.0, 1.0, 1.0, 1.0 };
  * recorded without touching render-thread state. */
 static byte r_color2D[4];
 
-/* Recorded window/scissor coalescing.  A duplicate is skipped only while both
- * caches are valid; R_Invalidate2DWindowCache() drops them from every recorded
- * command that can change the viewport or the scissor box. */
+/* the reference renderer's tr_draw.c carries this note in full */
 static qboolean r_window2DValid;
 static int      r_window2D[4];
 static float    r_window2DOrtho[6];
@@ -47,13 +62,7 @@ void R_Invalidate2DWindowCache( void ) {
 	r_scissor2DValid = qfalse;
 }
 
-/* ---- [2D:stall] per-call accounting of the 2D entry points ----------------
- * A menu frame's cost is charged to whichever widget calls in here, and the
- * widget probe only sees the widget's total.  This splits that total per entry
- * point and separates the flush prefix -- which, with a single-threaded back
- * end, executes the recorded frame inline -- from the immediate body, so one
- * device run names the blocking call instead of inferring it from widget
- * self-times.  Every read is behind the master probe gate. */
+/* the reference renderer's tr_draw.c carries this note in full */
 typedef enum {
 	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
 	D2P_tilepicoffset, D2P_trianglepic, D2P_bgsub, D2P_bgpixels, D2P_box,
@@ -79,10 +88,7 @@ static int		s_d2StallShown;
    what the UI asked for, draws is what reached the driver. */
 static int		s_d2Batches;
 
-/* Batch coverage.  Every vertex the 2D path is asked for is counted here and
-   counted again where it is actually handed to the driver; the two must agree
-   or something dropped a quad at a batch boundary, which is exactly the bug
-   class that cost the menu its backgrounds. */
+/* the reference renderer's tr_draw.c carries this note in full */
 static int		s_d2VertsAsked;
 static int		s_d2VertsDrawn;
 static int		s_d2Drops;
@@ -127,15 +133,10 @@ static void D2_End( int slot, int t0 ) {
 	}
 }
 
-/* The prefix every immediate 2D call shares.  Under a single-threaded back end
-   this runs the recorded frame, so its cost belongs to whichever widget called
-   first, which is exactly what the widget self-times were charging.  Returns 0
-   on the recorded path so the caller's D2_End is a no-op there. */
+/* the reference renderer's tr_draw.c carries this note in full */
 static int D2_Prepare( void ) {
-	/* The GLES3 twin used this prefix to flush the recorded frame so an
-	   immediate 2D body could draw straight into the bound framebuffer.  There
-	   is no bound framebuffer here and no immediate mode: the front end only
-	   records, the walk performs, and the prefix collapses to nothing. */
+	/* The twin's prefix flushed the recorded frame; there is no immediate
+	   mode here, so it collapses to nothing. */
 	return 0;
 }
 
@@ -202,9 +203,7 @@ void RB_2D_Flush( void ) {
 	if ( s_2dBatchOpen ) {
 		int	verts;
 
-		/* tess.numVertexes is what is actually about to be handed over; the
-		   counter is what the UI asked for.  A gap means something reset the
-		   tess under the open batch and those quads are gone. */
+/* the reference renderer's tr_draw.c carries this note in full */
 		verts = tess.numVertexes;
 		if ( verts != s_2dBatchVerts ) {
 			int			lost = s_2dBatchVerts - verts;
@@ -233,12 +232,7 @@ void RB_2D_Flush( void ) {
 	if ( s_2dTriOpen ) {
 		int	got;
 
-		/* EndDeferred only closes the record; RB_ImmFlush is what draws it.
-		   Deferring left the boxes pending over a frame boundary, and let any
-		   tess draw interleave a different program between the boxes' setup and
-		   their draw -- both of which are the missing-draw class.  Tidy first,
-		   flush second: the run was opened after the last tess flush, so the
-		   order is the order the calls arrived in. */
+/* the reference renderer's tr_draw.c carries this note in full */
 		RB_ImmEndDeferred();
 		s_2dTriOpen  = qfalse;
 		s_2dTriBlend = -1;
@@ -261,9 +255,7 @@ void RB_2D_Flush( void ) {
 	}
 }
 
-/* The open batch holds a shader_t * that a purge frees; draw it first.  The
-   draw census stays: its keys own their strings, so no purge reaches them and
-   dropping it here cost the menu-model draws their state matching. */
+/* the reference renderer's tr_draw.c carries this note in full */
 void RB_2D_OwnersPurged( void ) {
 	RB_2D_Flush();
 }
@@ -280,9 +272,7 @@ static void RB_2D_Batch( shader_t *shader ) {
 	s_2dBatchVerts  = 0;
 }
 
-/* Four vertices, six indexes: the same two triangles the strip form built,
-   minus the per-quad surface.  The vertices go through RB_Vertex2f so the
-   current colour and texcoord reach the store exactly as they did. */
+/* the reference renderer's tr_draw.c carries this note in full */
 static void RB_2D_BatchQuad( shader_t *shader, const float (*xy)[2], const float (*st)[2] ) {
 	int b, i;
 
@@ -321,7 +311,7 @@ void RB_2D_SetColor( const byte *rgba ) {
 	backEnd.color2D[3] = rgba[3];
 
 	/* Colour is per vertex in the ring; the next quad the batch writes picks
-	   it up, so there is no GL colour state to push here. */
+	   it up, so there is no colour state to push here. */
 }
 
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 ) {
@@ -521,8 +511,7 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
 }
 
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {
-	/* The same tuple the batch was opened under is already in force: keep the
-	   batch open and issue nothing.  Pushing the window again would split the
+	/* The tuple is already in force: pushing the window again would split the
 	   batch for no visual difference. */
 	if ( r_window2DValid && r_scissor2DValid &&
 		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&
@@ -534,11 +523,8 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 
 	RB_2D_Flush();
 
-	/* The window is recorded, not issued: the front end runs on the render
-	   thread's behalf here, and the record carries the viewport, the scissor
-	   and the ortho to the command buffer the walk opens.  The 2D state -- no
-	   depth test, source-alpha blending, two-sided -- is what every pipeline
-	   this path binds is built with. */
+	/* The window is recorded, not issued: the record carries the viewport,
+	   scissor and ortho to the walk's command buffer. */
 	{
 		setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -575,7 +561,7 @@ void RB_2D_Scissor( int x, int y, int width, int height ) {
 	RB_2D_Flush();
 
 	/* Recorded like the window: the walk turns it into vkCmdSetScissor, with
-	   the box converted from GL's bottom-left origin to Vulkan's top-left. */
+	   the box converted from the legacy bottom-left origin to Vulkan's top-left. */
 	{
 		scissor2DCommand_t *cmd = ( scissor2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -597,10 +583,7 @@ void RB_2D_ShaderTime( float startTime ) {
 	}
 }
 
-/* A string's renderer cost, in the same roll as the quads.  The load-game menu
- * draws ~29 labels a frame and the UI probe charges the whole of it to
- * UIFakkLabel; without this slot the roll cannot say how much of that is the
- * renderer and how much is the widget's own measure-and-wrap work. */
+/* the reference renderer's tr_draw.c carries this note in full */
 void D2_StringBegin( int *t0 ) {
 	*t0 = D2_T0();
 }
@@ -816,8 +799,8 @@ void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
 	byte	*upload = data;
 	int		w, h;
 
-	w = glConfig.vidWidth;
-	h = glConfig.vidHeight;
+	w = vkConfig.vidWidth;
+	h = vkConfig.vidHeight;
 
 	R_SyncRenderThread();
 	R_FlushRenderCommands();
@@ -913,8 +896,8 @@ void RE_DrawBackground_DrawPixels(int cols, int rows, int bgr, byte* data) {
 		ri.Free( upload );
 	}
 
-	zoomX = (float)glConfig.vidWidth / (float)rows;
-	zoomY = (float)glConfig.vidHeight / (float)cols;
+	zoomX = (float)vkConfig.vidWidth / (float)rows;
+	zoomY = (float)vkConfig.vidHeight / (float)cols;
 	qw = (float)cols * zoomX;
 	qh = (float)rows * zoomY;
 
@@ -930,9 +913,8 @@ void RE_DrawBackground_DrawPixels(int cols, int rows, int bgr, byte* data) {
 	RB_ImmEnd();
 }
 
-/* The scratch image the cinematic/background paths draw through.  A Vulkan
-   image cannot be re-specified in place, so a new size is a new texture object
-   and the image_t just moves to the new handle. */
+/* A Vulkan image cannot be re-specified in place, so a new size is a new
+   texture object and the image_t moves to the new handle. */
 void R_UploadScratchImage( int cols, int rows, const byte *rgb )
 {
 	image_t	*image = tr.scratchImage;

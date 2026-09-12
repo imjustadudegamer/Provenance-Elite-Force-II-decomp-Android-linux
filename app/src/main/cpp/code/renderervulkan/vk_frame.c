@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
 
 #include <stdlib.h>
@@ -213,9 +230,8 @@ qboolean VK_Frame_Acquire( int slot )
 	return qtrue;
 }
 
-/* The pass opens once per frame, at RC_VK_BEGIN, and closes at RC_VK_PRESENT:
-   the UI records into it across the whole paint, which is what the GLES3 twin
-   gets from a bound framebuffer for free. */
+/* The pass opens at RC_VK_BEGIN and closes at RC_VK_PRESENT, so the UI
+   records into it across the whole paint. */
 static VkRenderPassBeginInfo s_passInfo;
 static VkClearValue s_clearValues[2];
 

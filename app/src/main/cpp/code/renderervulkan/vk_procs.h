@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #ifndef VK_VK_PROCS_H
 #define VK_VK_PROCS_H
 
@@ -30,6 +47,7 @@ typedef struct vkProcs_s {
 	PFN_vkGetDeviceProcAddr		GetDeviceProcAddr;
 
 	PFN_vkCreateInstance		CreateInstance;
+	PFN_vkCreateHeadlessSurfaceEXT	CreateHeadlessSurfaceEXT;
 	PFN_vkEnumerateInstanceVersion			EnumerateInstanceVersion;
 	PFN_vkEnumerateInstanceExtensionProperties	EnumerateInstanceExtensionProperties;
 	PFN_vkEnumerateInstanceLayerProperties		EnumerateInstanceLayerProperties;
@@ -107,8 +125,12 @@ typedef struct vkProcs_s {
 	PFN_vkDestroyPipelineLayout		DestroyPipelineLayout;
 	PFN_vkCmdBeginRenderPass		CmdBeginRenderPass;
 	PFN_vkCmdEndRenderPass			CmdEndRenderPass;
+	PFN_vkCmdClearAttachments		CmdClearAttachments;
 	PFN_vkCmdSetViewport			CmdSetViewport;
 	PFN_vkCmdSetScissor				CmdSetScissor;
+	PFN_vkCmdSetLineWidth			CmdSetLineWidth;
+	PFN_vkCmdSetDepthBounds			CmdSetDepthBounds;
+	PFN_vkCmdSetDepthBias			CmdSetDepthBias;
 	PFN_vkCmdBindPipeline			CmdBindPipeline;
 	PFN_vkCmdBindVertexBuffers		CmdBindVertexBuffers;
 	PFN_vkCmdBindIndexBuffer		CmdBindIndexBuffer;

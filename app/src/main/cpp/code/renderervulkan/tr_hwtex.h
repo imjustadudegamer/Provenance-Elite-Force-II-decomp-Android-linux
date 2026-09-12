@@ -30,7 +30,7 @@ typedef enum {
 
 #define SMP_TEXC_BLOCK_BYTES 16
 
-int SMP_SelectTexTranscode(int glesMajor, int glesMinor,
+int SMP_SelectTexTranscode(int vkCoreMajor, int vkCoreMinor,
 							int hasS3tc, int hasEtc2Ext, int hasArbEs3,
 							int hasAstcLdr, int compressAllowed);
 

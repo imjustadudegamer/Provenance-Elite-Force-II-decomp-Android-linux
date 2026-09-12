@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
 #include "vk_firstlight.h"
 
@@ -30,9 +47,12 @@ root, for more details.
 #include <string.h>
 
 #define CLIENT_WINDOW_TITLE "Provenance EF2"
-#define VK_PLATFORM_FALLBACK_MODE 3
 
 SDL_Window *SDL_window = NULL;
+
+/* the headless surface's planned extent; the swapchain does not exist yet */
+static int vk_headlessWidth;
+static int vk_headlessHeight;
 
 cvar_t *r_fullscreen;
 cvar_t *r_mode;
@@ -162,6 +182,28 @@ qboolean VK_Surface_Create( void )
 	int surfaceWidth = 0;
 	int surfaceHeight = 0;
 
+	if ( vk.headless ) {
+		VkHeadlessSurfaceCreateInfoEXT info;
+
+		if ( !qvk.CreateHeadlessSurfaceEXT ) {
+			VK_Guard_Hit( VK_GSITE_SURFACE, "VK_EXT_headless_surface absent", VK_ERROR_EXTENSION_NOT_PRESENT );
+			return qfalse;
+		}
+
+		memset( &info, 0, sizeof( info ) );
+		info.sType = VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT;
+		info.flags = 0;
+
+		if ( qvk.CreateHeadlessSurfaceEXT( vk.instance, &info, NULL, &vk.surface ) != VK_SUCCESS ) {
+			VK_Guard_Hit( VK_GSITE_SURFACE, "vkCreateHeadlessSurfaceEXT", VK_ERROR_INITIALIZATION_FAILED );
+			return qfalse;
+		}
+
+		VK_Guard_Row( "VK:surface", "created headless=%dx%d", vk_headlessWidth, vk_headlessHeight );
+
+		return qtrue;
+	}
+
 	if ( !SDL_window ) {
 		return qtrue;
 	}
@@ -193,6 +235,7 @@ static void VK_Platform_ModeSize( int mode, int *width, int *height, float *aspe
 }
 
 static cvar_t *r_vkValidate;
+static cvar_t *r_vkHeadless;
 
 static const char *const vk_validationLayer = "VK_LAYER_KHRONOS_validation";
 static const char *const vk_debugExtension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -242,7 +285,32 @@ unsigned int VKimp_InstanceExtensions( const char **out, unsigned int max )
 	return count;
 }
 
-qboolean R_SetMode( int mode, glconfig_t *glConfigOut )
+/* SDL's Vulkan loader entry point needs the video subsystem open: with it
+   unopened, SDL_Vulkan_LoadLibrary returns -1 having only set "Video subsystem
+   has not been initialized".  The twin and the EF1 port open it here. */
+static qboolean VKimp_VideoInit( void )
+{
+	if ( SDL_WasInit( SDL_INIT_VIDEO ) ) {
+		return qtrue;
+	}
+
+	SDL_SetHint( SDL_HINT_APP_NAME, PRODUCT_NAME );
+
+	if ( SDL_Init( SDL_INIT_VIDEO ) != 0 ) {
+		ri.Printf( PRINT_ALL, "SDL_Init( SDL_INIT_VIDEO ) FAILED (%s)\n", SDL_GetError() );
+		return qfalse;
+	}
+
+	ri.Printf( PRINT_ALL, "SDL using driver \"%s\"\n", SDL_GetCurrentVideoDriver() );
+
+	if ( ri.Cvar_Set ) {
+		ri.Cvar_Set( "r_sdlDriver", SDL_GetCurrentVideoDriver() );
+	}
+
+	return qtrue;
+}
+
+qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 {
 	int width = 640, height = 480;
 	float aspect = 4.0f / 3.0f;
@@ -250,6 +318,7 @@ qboolean R_SetMode( int mode, glconfig_t *glConfigOut )
 	const char **extensionNames = NULL;
 	int fullscreen;
 	int validate;
+	int headless;
 	char modeCvar[16];
 
 	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "1", CVAR_ARCHIVE | CVAR_LATCH );
@@ -263,33 +332,54 @@ qboolean R_SetMode( int mode, glconfig_t *glConfigOut )
 	r_customaspect = ri.Cvar_Get( "r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "1", CVAR_ARCHIVE );
 	r_vkValidate = ri.Cvar_Get( "r_vkValidate", "0", CVAR_ARCHIVE );
+	r_vkHeadless = ri.Cvar_Get( "r_vkHeadless", "0", CVAR_ARCHIVE | CVAR_LATCH );
 
 	fullscreen = r_fullscreen->integer;
+	headless = r_vkHeadless->integer ? qtrue : qfalse;
+	vk.headless = headless;
 	VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
+	vk_headlessWidth = width;
+	vk_headlessHeight = height;
 
-	/* The module owns its glconfig: every size decision the image and 2D
-	   layers make reads this one, and the caller's copy is filled from it at
-	   the end (the GLES3 twin's shape).  A parameter named glConfig would
-	   shadow it, and the data model would run on an all-zero config. */
-	memset( &glConfig, 0, sizeof( glConfig ) );
+	/* the module owns its config; a parameter of that name would shadow it */
+	memset( &vkConfig, 0, sizeof( vkConfig ) );
 
-	if ( SDL_Vulkan_LoadLibrary( NULL ) != 0 ) {
-		VK_Guard_Hit( VK_GSITE_LOADER, "SDL_Vulkan_LoadLibrary", VK_ERROR_INITIALIZATION_FAILED );
-		return qfalse;
-	}
+	if ( !headless ) {
+		if ( !VKimp_VideoInit() ) {
+			VK_Guard_Hit( VK_GSITE_LOADER, "SDL_Init(SDL_INIT_VIDEO)", VK_ERROR_INITIALIZATION_FAILED );
+			return qfalse;
+		}
 
-	if ( SDL_window ) {
-		SDL_DestroyWindow( SDL_window );
-		SDL_window = NULL;
-	}
+		if ( SDL_Vulkan_LoadLibrary( NULL ) != 0 ) {
+			static char loaderDetail[128];
 
-	if ( !VKimp_WindowCreate( width, height, fullscreen, qfalse ) ) {
-		return qfalse;
+			/* SDL's own error names the cause; carry it in the row */
+			Com_sprintf( loaderDetail, sizeof( loaderDetail ),
+						 "SDL_Vulkan_LoadLibrary: %s", SDL_GetError() );
+			VK_Guard_Hit( VK_GSITE_LOADER, loaderDetail, VK_ERROR_INITIALIZATION_FAILED );
+			return qfalse;
+		}
+
+		if ( SDL_window ) {
+			SDL_DestroyWindow( SDL_window );
+			SDL_window = NULL;
+		}
+
+		if ( !VKimp_WindowCreate( width, height, fullscreen, qfalse ) ) {
+			return qfalse;
+		}
 	}
 
 	extensionNames = (const char **)malloc( sizeof( char * ) * 16 );
 	if ( extensionNames ) {
-		extensionCount = VKimp_InstanceExtensions( extensionNames, 14 );
+		if ( headless ) {
+			/* No window and no display server: the surface is
+			   VK_EXT_headless_surface, so the probes render offscreen. */
+			extensionNames[extensionCount++] = VK_KHR_SURFACE_EXTENSION_NAME;
+			extensionNames[extensionCount++] = VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME;
+		} else {
+			extensionCount = VKimp_InstanceExtensions( extensionNames, 14 );
+		}
 
 		validate = r_vkValidate->integer;
 		if ( validate && VK_Instance_LayerAvailable( vk_validationLayer ) ) {
@@ -302,17 +392,24 @@ qboolean R_SetMode( int mode, glconfig_t *glConfigOut )
 
 	if ( !VK_BringUp( width, height, extensionNames, (int)extensionCount ) ) {
 		free( extensionNames );
-		SDL_DestroyWindow( SDL_window );
-		SDL_window = NULL;
+		if ( !headless && SDL_window ) {
+			SDL_DestroyWindow( SDL_window );
+			SDL_window = NULL;
+		}
 		return qfalse;
 	}
 
 	free( extensionNames );
 
-	VKimp_FillConfig( &glConfig, width, height, aspect, fullscreen ? qtrue : qfalse );
+	VKimp_FillConfig( &vkConfig, width, height, aspect, fullscreen ? qtrue : qfalse );
 
-	if ( glConfigOut ) {
-		memcpy( glConfigOut, &glConfig, sizeof( *glConfigOut ) );
+	/* the twin hands the window to the input layer here; it has no other caller */
+	if ( !headless && ri.IN_Init ) {
+		ri.IN_Init( SDL_window );
+	}
+
+	if ( vkConfigOut ) {
+		memcpy( vkConfigOut, &vkConfig, sizeof( *vkConfigOut ) );
 	}
 
 	snprintf( modeCvar, sizeof( modeCvar ), "%d", mode );
@@ -321,12 +418,12 @@ qboolean R_SetMode( int mode, glconfig_t *glConfigOut )
 	}
 
 	VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d maxTextureSize=%d",
-				  mode, width, height, fullscreen, glConfig.maxTextureSize );
+				  mode, width, height, fullscreen, vkConfig.maxTextureSize );
 
 	return qtrue;
 }
 
-void R_SetFullscreen( qboolean fullScreen, glconfig_t *glConfigOut )
+void R_SetFullscreen( qboolean fullScreen, glconfig_t *vkConfigOut )
 {
 	int width;
 	int height;
@@ -336,19 +433,19 @@ void R_SetFullscreen( qboolean fullScreen, glconfig_t *glConfigOut )
 		return;
 	}
 
-	width = glConfig.vidWidth;
-	height = glConfig.vidHeight;
-	aspect = glConfig.windowAspect;
+	width = vkConfig.vidWidth;
+	height = vkConfig.vidHeight;
+	aspect = vkConfig.windowAspect;
 
 	if ( SDL_SetWindowFullscreen( SDL_window, fullScreen ? SDL_WINDOW_FULLSCREEN : 0 ) != 0 ) {
 		VK_Guard_Hit( VK_GSITE_SURFACE, "SDL_SetWindowFullscreen", VK_ERROR_INITIALIZATION_FAILED );
 	}
 
 	VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
-	VKimp_FillConfig( &glConfig, width, height, aspect, fullScreen );
+	VKimp_FillConfig( &vkConfig, width, height, aspect, fullScreen );
 
-	if ( glConfigOut ) {
-		memcpy( glConfigOut, &glConfig, sizeof( *glConfigOut ) );
+	if ( vkConfigOut ) {
+		memcpy( vkConfigOut, &vkConfig, sizeof( *vkConfigOut ) );
 	}
 
 	if ( vk.swapchain != VK_NULL_HANDLE ) {
@@ -362,7 +459,10 @@ void VKimp_Shutdown( void )
 		SDL_DestroyWindow( SDL_window );
 		SDL_window = NULL;
 	}
-	SDL_Vulkan_UnloadLibrary();
+
+	if ( !vk.headless ) {
+		SDL_Vulkan_UnloadLibrary();
+	}
 }
 
 #define SMP_RLOAD_WINDOW_MS	1000
@@ -472,4 +572,44 @@ void SMP_RLoadAdd( int zone, int msec, int depth ) {
 	if ( msec >= SMP_RLOAD_MIN_MS || ( now - smp_rloadWindowStart ) >= SMP_RLOAD_WINDOW_MS ) {
 		SMP_RLoadFlush( now - smp_rloadWindowStart );
 	}
+}
+
+/* one bring-up, two call sites; the guard is the device handle, not a flag */
+qboolean VK_EnsureBroughtUp( const char *where )
+{
+	int mode;
+	cvar_t *rmode;
+
+	/* an "already asked" flag would leave the second site blind after the
+	   first was held down */
+	if ( vk.device != VK_NULL_HANDLE ) {
+		return qfalse;
+	}
+
+	/* harness hook: holds the R_Init site down so BeginRegistration has to
+	   bring the device up alone */
+	{
+		cvar_t *noInitUp = ri.Cvar_Get( "r_vkNoInitUp", "0", CVAR_CHEAT );
+
+		if ( noInitUp && noInitUp->integer && !strcmp( where, "R_Init" ) ) {
+			VK_Guard_Hit( VK_GSITE_QUIRK, "r_vkNoInitUp: R_Init site held down", VK_INCOMPLETE );
+			return qfalse;
+		}
+	}
+
+	rmode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
+	mode = rmode ? rmode->integer : VK_PLATFORM_FALLBACK_MODE;
+
+	VK_Guard_Hit( VK_GSITE_DEVICE, where, VK_INCOMPLETE );
+
+	if ( !R_SetMode( mode, &vkConfig ) ) {
+		VK_Guard_Hit( VK_GSITE_DEVICE, "bring-up failed", VK_ERROR_INITIALIZATION_FAILED );
+
+		/* a named failure, not a silent one: a return hands the caller a null
+		   device, which is the ip=0x0 the boot's first image faulted on */
+		ri.Error( ERR_FATAL, "VK_EnsureBroughtUp(%s): Vulkan bring-up failed; see the [VK:guard] rows", where );
+		return qtrue;
+	}
+
+	return qtrue;
 }

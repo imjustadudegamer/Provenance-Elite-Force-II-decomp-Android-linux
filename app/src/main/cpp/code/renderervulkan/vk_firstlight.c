@@ -14,6 +14,23 @@ root, for more details.
 ===========================================================================
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
+// Modified 2026-10-04 for this port; the changes are listed in PROVENANCE.tsv.
+/*
+===========================================================================
+This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
+engine descends from id Tech 3 through OpenMoHAA.
+
+It is free software; you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License, COPYING.txt at the repository
+root, for more details.
+===========================================================================
+*/
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "vk_firstlight.h"
 #include "vk_local.h"
 
@@ -156,6 +173,22 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 			VK_BringDown();
 			return qfalse;
 		}
+
+		/* The shade layer's SPIR-V modules, pipeline cache and descriptor
+		   layout: the twin's run in R_Init, these need the device. */
+		if ( !VK_Shade_Descriptors_Init() ) {
+			VK_FirstLightRow( "fail", "stage=shade-descriptors" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
+		if ( !VK_Shade_Init() ) {
+			VK_FirstLightRow( "fail", "stage=shade" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
 	}
 
 	if ( vk.surface != VK_NULL_HANDLE ) {
@@ -177,6 +210,8 @@ void VK_BringDown( void )
 	}
 
 	VK_Draw_Shutdown();
+	VK_Shade_Shutdown();
+	VK_Shade_Descriptors_Shutdown();
 	VK_Texture_Shutdown();
 	VK_Pipeline_Shutdown();
 	VK_Vertex_Shutdown();
