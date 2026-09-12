@@ -1391,15 +1391,23 @@ image_t* R_CreateImageOld(
 	SMP_RLOAD_END( upload );
 
 #define SMP_IMGUP_MAX 512
+/* Overflow rows: the first few by name, then one every SMP_IMGUP_OVERFLOW_STRIDE
+   uploads, so the tail stays readable without flooding the log. */
+#define SMP_IMGUP_OVERFLOW_FIRST 8
+#define SMP_IMGUP_OVERFLOW_STRIDE 257
 	if ( R_ProbeStatsOn() )
 	{
 		static char		*s_smpImgupSeen[SMP_IMGUP_MAX];
 		static int		 s_smpImgupCount;
 		static qboolean	 s_smpImgupNotice;
+		static int		 s_smpImgupOverflow;
+		static int		 s_smpImgupOverflowRows;
 		static const char *s_gles3PathName[4] = { "software", "s3tc", "etc2", "astc" };
 		int				 err = VK_RESULT_MAX_ENUM;
 		int				 iSeen;
 		qboolean		 seen = qfalse;
+		qboolean		 emitRow = qfalse;
+		int				 overflow = 0;
 		int				 rowFmt;
 
 		rowFmt = ( s_gles3PathKind == 0 ) ? (int)R_VKInternalFormat( s_gles3UploadFormat )
@@ -1413,27 +1421,44 @@ image_t* R_CreateImageOld(
 		}
 		if ( !seen ) {
 			if ( s_smpImgupCount >= SMP_IMGUP_MAX ) {
+				/* The NAME table is full, not the census.  It stays the dedup
+				   set, so memory is bounded, and uploads naming an image outside
+				   it keep counting and keep rowing -- sampled -- so the lightmap
+				   and world uploads past the menu's first 512 names stay
+				   readable off the boot instead of vanishing behind a one-line
+				   notice. */
+				s_smpImgupOverflow++;
 				if ( !s_smpImgupNotice ) {
 					s_smpImgupNotice = qtrue;
 					ri.Printf( PRINT_ALL,
-						"[VK:imgup] NAME BUDGET reached (%d distinct images recorded); "
-						"further uploads are NOT recorded from here on\n", SMP_IMGUP_MAX );
+						"[VK:imgup] names=%d+ overflow=1; uploads past the name table are "
+						"still counted and rowed, sampled every %d\n",
+						SMP_IMGUP_MAX, SMP_IMGUP_OVERFLOW_STRIDE );
+				}
+				if ( s_smpImgupOverflowRows < SMP_IMGUP_OVERFLOW_FIRST
+					 || ( s_smpImgupOverflow % SMP_IMGUP_OVERFLOW_STRIDE ) == 0 ) {
+					s_smpImgupOverflowRows++;
+					overflow = s_smpImgupOverflow;
+					emitRow = qtrue;
 				}
 			} else {
 				s_smpImgupSeen[s_smpImgupCount] = ri.Malloc( (int)strlen( image->imgName ) + 1 );
 				strcpy( s_smpImgupSeen[s_smpImgupCount], image->imgName );
 				s_smpImgupCount++;
+				emitRow = qtrue;
+			}
 
+			if ( emitRow ) {
 				ri.Printf( PRINT_ALL,
 					"[VK:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
-					"mips=%d bytes=%d lightmap=%d dynamic=%d err=0x%04x usec=%d\n",
+					"mips=%d bytes=%d lightmap=%d dynamic=%d err=0x%04x usec=%d overflow=%d\n",
 					image->imgName, image->uploadWidth, image->uploadHeight,
 					s_gles3PathName[s_gles3PathKind & 3], (unsigned)rowFmt,
 					( s_gles3PathKind == 0 ) ? s_gles3UploadSamples : 0,
 					( s_gles3PathKind == 0 ) ? (unsigned)s_gles3UploadFormat : 0u,
 					image->numMipmaps, image->bytesUsed, isLightmap ? 1 : 0,
 					image->dynamicallyUpdated ? 1 : 0, (unsigned)err,
-					be_imgT0 ? ( BE_Microseconds() - be_imgT0 ) : 0 );
+					be_imgT0 ? ( BE_Microseconds() - be_imgT0 ) : 0, overflow );
 
 				if ( s_gles3PathKind == 0 && strstr( image->imgName, "common/shadow" ) != NULL ) {
 					ri.Printf( PRINT_ALL,

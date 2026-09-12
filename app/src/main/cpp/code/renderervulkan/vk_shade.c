@@ -2332,7 +2332,9 @@ void VK_Shade_NoteSurfCmds( int surfs )
 /* The frame's stage census, per shader: retail's traced menu frame draws the
    dome as five surfaces of 3, 3, 3, 2 and 2 stages, thirteen draws */
 #define VK_STAGE_CENSUS_MAX	64
-#define VK_STAGE_ROW_NAMES	24
+/* wide enough for every name the census can hold; VK_Shade_StageRows stops
+   explicitly and says "+N more" rather than filling silently */
+#define VK_STAGE_ROW_BYTES 4096
 
 typedef struct {
 	const char *name;
@@ -2341,6 +2343,7 @@ typedef struct {
 
 static vkStageCensus_t s_frameStages[VK_STAGE_CENSUS_MAX];
 static int             s_frameStageCount;
+static int             s_frameStageDropped;
 
 void VK_Shade_NoteStage( const shader_t *shader )
 {
@@ -2356,6 +2359,10 @@ void VK_Shade_NoteStage( const shader_t *shader )
 		s_frameStages[s_frameStageCount].name   = shader->name;
 		s_frameStages[s_frameStageCount].stages = 1;
 		s_frameStageCount++;
+	} else {
+		/* a census that silently stops taking names reads as a complete census:
+		   the frame that drew 64 distinct shaders rowed 22 and said nothing */
+		s_frameStageDropped++;
 	}
 }
 
@@ -2365,23 +2372,40 @@ void VK_Shade_NoteStage( const shader_t *shader )
    the 2D draws a binding question is about.  The tail is counted, not printed. */
 static void VK_Shade_StageRows( void )
 {
-	static char last[24 * 24];
-	char        now[24 * 24];
-	int         i;
+	static char last[VK_STAGE_ROW_BYTES];
+	char        now[VK_STAGE_ROW_BYTES];
+	int         i, written, omitted = 0;
 
 	if ( !s_frameStageCount ) {
 		return;
 	}
 
-	now[0] = '\0';
-	for ( i = 0; i < s_frameStageCount && i < VK_STAGE_ROW_NAMES; i++ ) {
-		Q_strcat( now, sizeof( now ), va( "%s%s=%d", i ? " " : "",
-				  s_frameStages[i].name ? s_frameStages[i].name : "?",
-				  s_frameStages[i].stages ) );
+	/* the counts lead, so a row that has to stop short still names what it
+	   omitted; the buffer used to fill under Q_strcat and stop mid-entry with no
+	   marker at all */
+	Q_strncpyz( now, va( "frame shaders=%d dropped=%d names=",
+						 s_frameStageCount, s_frameStageDropped ),
+				sizeof( now ) );
+	written = (int)strlen( now );
+
+	for ( i = 0; i < s_frameStageCount; i++ ) {
+		char entry[VK_STAGE_ROW_BYTES / 4];
+		int  len;
+
+		Com_sprintf( entry, sizeof( entry ), "%s%s=%d", i ? " " : "",
+					 s_frameStages[i].name ? s_frameStages[i].name : "?",
+					 s_frameStages[i].stages );
+		len = (int)strlen( entry );
+		if ( written + len + 1 > (int)sizeof( now ) ) {
+			omitted = s_frameStageCount - i;
+			break;
+		}
+		memcpy( now + written, entry, (size_t)len + 1 );
+		written += len;
 	}
 
-	if ( s_frameStageCount > VK_STAGE_ROW_NAMES ) {
-		Q_strcat( now, sizeof( now ), va( " +%d", s_frameStageCount - VK_STAGE_ROW_NAMES ) );
+	if ( omitted ) {
+		Q_strcat( now, sizeof( now ), va( " +%d more", omitted ) );
 	}
 
 	{
@@ -2389,7 +2413,7 @@ static void VK_Shade_StageRows( void )
 
 		rows++;
 		if ( rows <= 3 || Q_stricmp( now, last ) ) {
-			VK_Guard_Row( "VK:stages", "frame shaders=%d %s", s_frameStageCount, now );
+			VK_Guard_Row( "VK:stages", "%s", now );
 			Q_strncpyz( last, now, sizeof( last ) );
 		}
 	}
@@ -2969,6 +2993,7 @@ void VK_Shade_NewFrame( void )
 	s_framePermMiss      = 0;
 	s_framePermMissRows  = 0;
 	s_frameStageCount    = 0;
+	s_frameStageDropped  = 0;
 
 	/* the front end wrote this frame's uniforms; the first draw uploads them into a fresh ring */
 	s_uboDirty = qtrue;
