@@ -3131,7 +3131,7 @@ int getGLClampType( int wrapAxis, int textureMode )
 /* Anisotropy is a sampler field in Vulkan and the sampler layer does not build
    anisotropic samplers yet; the engine's default texture mode is bilinear, so
    nothing is lost, and the cvars that would turn it on stay read-only facts. */
-void GL_SetTextureAnisotropicFiltering( int target )
+void GL_SetTextureAnisotropicFiltering( unsigned int target )
 {
 	( void )target;
 }

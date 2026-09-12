@@ -121,9 +121,9 @@ int BE_Microseconds( void )
 	return ri.Milliseconds() * 1000;
 }
 
-qboolean BE_On( void )
+int BE_Armed( void )
 {
-	return R_ProbeStatsOn();
+	return R_ProbeStatsOn() ? 1 : 0;
 }
 
 

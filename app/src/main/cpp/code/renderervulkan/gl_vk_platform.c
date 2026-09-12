@@ -364,3 +364,112 @@ void VKimp_Shutdown( void )
 	}
 	SDL_Vulkan_UnloadLibrary();
 }
+
+#define SMP_RLOAD_WINDOW_MS	1000
+#define SMP_RLOAD_MIN_MS		30	
+#define SMP_RLOAD_MAX_ROWS		720
+
+cvar_t	*smp_rloadStats = NULL;
+int		smp_rloadDepth = 0;
+
+static int	smp_rloadRows;
+static int	smp_rloadStopped;
+static int	smp_rloadWindowStart;
+static unsigned int	smp_rloadWindowFrames;
+static int	smp_rloadSums[SMP_RLZ_COUNT], smp_rloadMaxs[SMP_RLZ_COUNT];
+static int	smp_rloadWorldBrackets;	
+static int	smp_rloadRegBrackets;
+
+int SMP_RLoadNow( void ) {
+	if ( !smp_rloadStats ) {
+		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "1", 0 );
+	}
+	return (int)SDL_GetTicks();
+}
+
+static void SMP_RLoadFlush( int window ) {
+	static const char *zoneName[SMP_RLZ_COUNT] = {
+		"world", "bspread", "shaders", "lightmap", "lods",
+		"reginit", "imginit", "setup", "findimg", "decode",
+		"transcode", "upload", "modelreg"
+	};
+	char	line[1024], part[64];
+	int		i, mean10, frames, unacctW;
+
+	if ( smp_rloadStopped || !SMP_RLoadArmed() ) {
+		return;
+	}
+
+	unacctW = smp_rloadSums[SMP_RLZ_world]
+			- smp_rloadSums[SMP_RLZ_bspread]
+			- smp_rloadSums[SMP_RLZ_shaders]
+			- smp_rloadSums[SMP_RLZ_lightmap]
+			- smp_rloadSums[SMP_RLZ_lods];
+	if ( unacctW < 0 ) unacctW = 0;
+
+	frames = (int)smp_rloadWindowFrames;
+	if ( frames < 1 ) frames = 1;
+
+	line[0] = '\0';
+	for ( i = 0; i < SMP_RLZ_COUNT; i++ ) {
+		mean10 = (int)( ( (long long)smp_rloadSums[i] * 10 + frames / 2 ) / frames );
+		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
+					 zoneName[i], mean10 / 10, mean10 % 10, smp_rloadMaxs[i] );
+		Q_strcat( line, sizeof( line ), part );
+	}
+	Com_sprintf( part, sizeof( part ), " unacctWsum=%d", unacctW );
+	Q_strcat( line, sizeof( line ), part );
+
+	ri.Printf( PRINT_ALL, "[SMP:rload] window=%dms worldN=%d regN=%d%s\n",
+			   window, smp_rloadWorldBrackets, smp_rloadRegBrackets, line );
+
+	smp_rloadRows++;
+	if ( smp_rloadRows >= SMP_RLOAD_MAX_ROWS ) {
+		smp_rloadStopped = 1;
+		ri.Printf( PRINT_ALL, "[SMP:rload] capped at %d rows; no further [SMP:rload] lines\n",
+				   SMP_RLOAD_MAX_ROWS );
+	}
+
+	for ( i = 0; i < SMP_RLZ_COUNT; i++ ) {
+		smp_rloadSums[i] = smp_rloadMaxs[i] = 0;
+	}
+	smp_rloadWindowFrames = 0;
+	smp_rloadWorldBrackets = 0;
+	smp_rloadRegBrackets = 0;
+	smp_rloadWindowStart = SMP_RLoadNow();
+}
+
+void SMP_RLoadAdd( int zone, int msec, int depth ) {
+	int	now;
+
+	if ( zone < 0 || zone >= SMP_RLZ_COUNT ) {
+		return;
+	}
+	if ( msec < 0 ) {
+		msec = 0;
+	}
+
+	if ( !smp_rloadWindowStart ) {
+		smp_rloadWindowStart = SMP_RLoadNow();
+	}
+	smp_rloadSums[zone] += msec;
+	if ( msec > smp_rloadMaxs[zone] ) {
+		smp_rloadMaxs[zone] = msec;
+	}
+
+	if ( depth != 0 ) {
+		return;
+	}
+
+	smp_rloadWindowFrames++;
+	if ( zone == SMP_RLZ_world ) {
+		smp_rloadWorldBrackets++;
+	} else if ( zone == SMP_RLZ_reginit ) {
+		smp_rloadRegBrackets++;
+	}
+
+	now = SMP_RLoadNow();
+	if ( msec >= SMP_RLOAD_MIN_MS || ( now - smp_rloadWindowStart ) >= SMP_RLOAD_WINDOW_MS ) {
+		SMP_RLoadFlush( now - smp_rloadWindowStart );
+	}
+}
