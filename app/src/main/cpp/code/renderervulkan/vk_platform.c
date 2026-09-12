@@ -331,8 +331,10 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 	r_customheight = ri.Cvar_Get( "r_customheight", "720", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customaspect = ri.Cvar_Get( "r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "1", CVAR_ARCHIVE );
-	r_vkValidate = ri.Cvar_Get( "r_vkValidate", "0", CVAR_ARCHIVE );
-	r_vkHeadless = ri.Cvar_Get( "r_vkHeadless", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	/* A diagnostic is not a setting: an archived one leaks into config.cfg. */
+
+	r_vkValidate = ri.Cvar_Get( "r_vkValidate", "0", 0 );
+	r_vkHeadless = ri.Cvar_Get( "r_vkHeadless", "0", CVAR_LATCH );
 
 	fullscreen = r_fullscreen->integer;
 	headless = r_vkHeadless->integer ? qtrue : qfalse;

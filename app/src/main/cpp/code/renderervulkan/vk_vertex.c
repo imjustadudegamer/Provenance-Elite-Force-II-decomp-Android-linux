@@ -312,6 +312,32 @@ void VK_VertexRing_ResetFrame( void )
 	vk_ring.flushed = 0;
 }
 
+/* The 3D shade path packs a wider vertex than the 2D tess slot: it reserves by
+   byte and binds the ring at that offset, so neither stride tramples the other. */
+int VK_VertexRing_ReserveBytes( int bytes, int *byteBaseOut )
+{
+	int	tessSlots;
+
+	if ( bytes <= 0 ) {
+		return qfalse;
+	}
+
+	tessSlots = ( bytes + VK_TESS_VERTEX_BYTES - 1 ) / VK_TESS_VERTEX_BYTES;
+
+	if ( vk_ring.vertexBase + tessSlots > VK_RING_MAX_VERTEXES ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "vertex ring exhausted", VK_ERROR_OUT_OF_DEVICE_MEMORY );
+		return qfalse;
+	}
+
+	if ( byteBaseOut ) {
+		*byteBaseOut = vk_ring.vertexBase * VK_TESS_VERTEX_BYTES;
+	}
+
+	vk_ring.vertexBase += tessSlots;
+
+	return qtrue;
+}
+
 vkTessVertex_t *VK_VertexRing_Reserve( int vertexes, int *baseOut )
 {
 	if ( vertexes <= 0 ) {
@@ -395,6 +421,11 @@ void vk_ring_note( int vertexHigh, int indexHigh )
 	}
 
 	( void )indexHigh;
+}
+
+unsigned char *VK_VertexRing_Mapped( void )
+{
+	return ( unsigned char * )vk_ring.mapped;
 }
 
 VkBuffer VK_VertexRing_Buffer( void )

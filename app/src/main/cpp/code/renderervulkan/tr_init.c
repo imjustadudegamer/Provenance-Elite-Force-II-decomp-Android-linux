@@ -357,10 +357,9 @@ void R_Init( void )
 
 	R_RegisterCvars();
 
-	/* The demo triangle was first-light's scaffolding: it is how the pass was
-	   proven before anything drew real content, and it belongs behind its own
-	   cvar, off by default -- a menu boot has no business drawing it. */
-	vk.demoDraw = ri.Cvar_Get( "r_vkDemo", "0", CVAR_ARCHIVE )->integer ? qtrue : qfalse;
+	/* The demo triangle is scaffolding, off by default and not persisted: an
+	   archived "1" from a test boot drew it over a later session's frames. */
+	vk.demoDraw = ri.Cvar_Get( "r_vkDemo", "0", 0 )->integer ? qtrue : qfalse;
 
 	r_vkTrace = ri.Cvar_Get( VK_TRACE_CVAR, "1", 0 );
 	ri.Cvar_Get( VK_GUARD_TRACE_CVAR, "1", 0 );
@@ -531,14 +530,6 @@ void R_SavePerformanceCounters( void )
 
 
 
-void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int components, const byte *data,
-						   qboolean dirty )
-{
-}
-
-void RE_UploadCinematic( int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty )
-{
-}
 
 
 

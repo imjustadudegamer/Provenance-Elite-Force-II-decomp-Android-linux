@@ -433,6 +433,30 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 		goto done;
 	}
 
+	/* A refill hits an image already in SHADER_READ_ONLY; the copy wants
+	   TRANSFER_DST, so transition back first. */
+	if ( tex->published ) {
+		VkImageMemoryBarrier back;
+
+		memset( &back, 0, sizeof( back ) );
+		back.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		back.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		back.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		back.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		back.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		back.image = tex->image;
+		back.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		back.subresourceRange.levelCount = (uint32_t)tex->mipLevels;
+		back.subresourceRange.layerCount = 1;
+		back.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		back.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+		qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+								VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+								0, NULL, 0, NULL, 1, &back );
+		tex->published = qfalse;
+	}
+
 	if ( mipLevel == 0 ) {
 		VK_Texture_Barrier( cmd, tex->image, VK_IMAGE_LAYOUT_UNDEFINED,
 							VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
@@ -580,6 +604,7 @@ qboolean VK_Texture_Publish( int handle )
 
 	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
 	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(publish)" );
+	tex->published = qtrue;
 
 	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
 		qvk.DestroyFence( vk.device, fence, NULL );
