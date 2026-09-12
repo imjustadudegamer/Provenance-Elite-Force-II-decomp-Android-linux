@@ -188,6 +188,10 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )cmds;
 
+			/* Pending 2D runs close before the new window, or their quads draw
+			   under the next window's viewport and ortho. */
+			RB_2D_Flush();
+
 			VK_Draw_Set2D( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->w, cmd->h,
 						   cmd->left, cmd->right, cmd->bottom, cmd->top, cmd->n, cmd->f );
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
@@ -197,6 +201,8 @@ void RB_ExecuteRenderCommands( const void *data )
 		case RC_2D_SCISSOR:
 		{
 			scissor2DCommand_t *cmd = ( scissor2DCommand_t * )cmds;
+
+			RB_2D_Flush();
 
 			VK_Draw_SetScissor( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->width, cmd->height );
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
@@ -285,6 +291,15 @@ void RB_ExecuteRenderCommands( const void *data )
 			shaderTime2DCommand_t *cmd = ( shaderTime2DCommand_t * )cmds;
 
 			RB_2D_ShaderTime( cmd->startTime );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
+		case RC_2D_STRETCH_RAW:
+		{
+			stretchRaw2DCommand_t *cmd = ( stretchRaw2DCommand_t * )cmds;
+
+			RB_StretchRawDraw( cmd );
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
 			break;
 		}

@@ -416,12 +416,13 @@ void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t 
 void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	int wantBlend = blend ? 1 : 0;
 
-	/* Consecutive boxes share one run and its pipeline; blend splits it.
-	   Colour is per vertex, so a colour change never splits the run. */
-	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) {
+	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) { /* state is the call's */
 		RB_2D_Flush();
 
-		RB_ImmBegin( VK_IMM_TRIANGLES );
+		RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.whiteImage,
+			wantBlend ? ( VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_SRC_ALPHA
+						  | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA )
+					  : ( VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_ONE | VKS_DSTBLEND_ONE ) );
 		s_2dTriOpen  = qtrue;
 		s_2dTriBlend = wantBlend;
 		s_2dTriVerts = 0;
@@ -825,30 +826,11 @@ void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
 		ri.Free( upload );
 	}
 
-	RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.scratchImage );
+	RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.scratchImage, VKS_DEPTHTEST_DISABLE );
 
 	/* State the multiplier rather than inherit whatever ran last. */
 	RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 	{
-		RB_ImmTexCoord2f(0.5 / (float)cols, ((float)rows - 0.5) / rows);
-		RB_ImmVertex2f(0, 0);
-
-		RB_ImmTexCoord2f(((float)cols - 0.5) / cols, ((float)rows - 0.5) / rows);
-		RB_ImmVertex2f(w, 0);
-
-		RB_ImmTexCoord2f(((float)cols - 0.5) / cols, 0.5 / (float)rows);
-		RB_ImmVertex2f(w, h);
-
-		RB_ImmTexCoord2f(0.5 / (float)cols, ((float)rows - 0.5) / rows);
-		RB_ImmVertex2f(0, 0);
-
-		RB_ImmTexCoord2f(((float)cols - 0.5) / cols, 0.5 / (float)rows);
-		RB_ImmVertex2f(w, h);
-
-		RB_ImmTexCoord2f(0.5 / (float)rows, 0.5 / (float)rows);
-		RB_ImmVertex2f(0, h);
-		RB_ImmCommit();
-
 		RB_ImmTexCoord2f(0.5 / (float)cols, ((float)rows - 0.5) / rows);
 		RB_ImmVertex2f(0, 0);
 
@@ -901,7 +883,7 @@ void RE_DrawBackground_DrawPixels(int cols, int rows, int bgr, byte* data) {
 	qw = (float)cols * zoomX;
 	qh = (float)rows * zoomY;
 
-	RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.scratchImage );
+	RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.scratchImage, 0 );	/* no state applied */
 	RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 	RB_ImmTexCoord2f( 0, 0 ); RB_ImmVertex2f( 0, 0 );
 	RB_ImmTexCoord2f( 1, 0 ); RB_ImmVertex2f( qw, 0 );
@@ -913,13 +895,9 @@ void RE_DrawBackground_DrawPixels(int cols, int rows, int bgr, byte* data) {
 	RB_ImmEnd();
 }
 
-/* A Vulkan image cannot be re-specified in place, so a new size is a new
-   texture object and the image_t moves to the new handle. */
-void R_UploadScratchImage( int cols, int rows, const byte *rgb )
+void R_UploadScratchRGBA( int cols, int rows, const byte *rgba )
 {
 	image_t	*image = tr.scratchImage;
-	byte	*rgba;
-	int		i;
 	int		n = cols * rows;
 	int		handle = -1;
 
@@ -928,17 +906,9 @@ void R_UploadScratchImage( int cols, int rows, const byte *rgb )
 		return;
 	}
 
-	rgba = ( byte * )ri.Malloc( n * 4 );
-	for ( i = 0; i < n; i++ ) {
-		rgba[i * 4 + 0] = rgb[i * 3 + 0];
-		rgba[i * 4 + 1] = rgb[i * 3 + 1];
-		rgba[i * 4 + 2] = rgb[i * 3 + 2];
-		rgba[i * 4 + 3] = 255;
-	}
-
 	if ( image->texnum && image->uploadWidth == cols && image->uploadHeight == rows ) {
 		VK_Texture_Upload( (int)image->texnum, 0, cols, rows, rgba, (size_t)n * 4u );
-		ri.Free( rgba );
+		VK_Texture_Publish( (int)image->texnum );
 		return;
 	}
 
@@ -948,7 +918,6 @@ void R_UploadScratchImage( int cols, int rows, const byte *rgb )
 	}
 
 	if ( !VK_Texture_Create( cols, rows, 1, VK_FORMAT_R8G8B8A8_UNORM, &handle ) ) {
-		ri.Free( rgba );
 		return;
 	}
 
@@ -961,8 +930,120 @@ void R_UploadScratchImage( int cols, int rows, const byte *rgb )
 	image->numMipmaps = 0;
 
 	VK_Texture_Upload( handle, 0, cols, rows, rgba, (size_t)n * 4u );
+	VK_Texture_Publish( handle );
+}
+
+void R_UploadScratchImage( int cols, int rows, const byte *rgb )
+{
+	byte	*rgba;
+	int		i;
+	int		n = cols * rows;
+
+	if ( !tr.scratchImage ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "scratch image missing", VK_ERROR_INITIALIZATION_FAILED );
+		return;
+	}
+
+	rgba = ( byte * )ri.Malloc( n * 4 );
+	for ( i = 0; i < n; i++ ) {
+		rgba[i * 4 + 0] = rgb[i * 3 + 0];
+		rgba[i * 4 + 1] = rgb[i * 3 + 1];
+		rgba[i * 4 + 2] = rgb[i * 3 + 2];
+		rgba[i * 4 + 3] = 255;
+	}
+
+	R_UploadScratchRGBA( cols, rows, rgba );
 
 	ri.Free( rgba );
+}
+
+static void RB_StretchRaw2D( int x, int y, int w, int h, int cols, int rows )
+{
+	int	screenW = vkConfig.vidWidth;
+	int	screenH = vkConfig.vidHeight;
+
+	if ( x > 0 || y > 0 || x + w < screenW || y + h < screenH ) {
+		RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.whiteImage,
+							  VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_SRC_ALPHA
+							  | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
+		RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
+		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( 0.0f, 0.0f );
+		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( (float)screenW, 0.0f );
+		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( (float)screenW, (float)screenH );
+		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( 0.0f, 0.0f );
+		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( (float)screenW, (float)screenH );
+		RB_ImmTexCoord2f( 0.0f, 0.0f );	RB_ImmVertex2f( 0.0f, (float)screenH );
+		RB_ImmEnd();
+	}
+
+	RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.scratchImage,
+						  VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_SRC_ALPHA
+						  | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
+	RB_ImmColor4f( tr.identityLight, tr.identityLight, tr.identityLight, 1.0f );
+
+	RB_ImmTexCoord2f( 0.5f / cols,               0.5f / rows );	RB_ImmVertex2f( (float)x,     (float)y );
+	RB_ImmTexCoord2f( ( cols - 0.5f ) / cols,    0.5f / rows );	RB_ImmVertex2f( (float)x + w, (float)y );
+	RB_ImmTexCoord2f( ( cols - 0.5f ) / cols, ( rows - 0.5f ) / rows );	RB_ImmVertex2f( (float)x + w, (float)y + h );
+	RB_ImmTexCoord2f( 0.5f / cols,               0.5f / rows );	RB_ImmVertex2f( (float)x,     (float)y );
+	RB_ImmTexCoord2f( ( cols - 0.5f ) / cols, ( rows - 0.5f ) / rows );	RB_ImmVertex2f( (float)x + w, (float)y + h );
+	RB_ImmTexCoord2f( 0.5f / cols,            ( rows - 0.5f ) / rows );	RB_ImmVertex2f( (float)x,     (float)y + h );
+
+	RB_ImmEnd();
+}
+
+void RB_StretchRawDraw( const stretchRaw2DCommand_t *cmd )
+{
+	RB_2D_Flush();
+	RB_StretchRaw2D( cmd->x, cmd->y, cmd->w, cmd->h, cmd->cols, cmd->rows );
+}
+
+void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int components, const byte *data,
+					qboolean dirty )
+{
+	stretchRaw2DCommand_t *cmd;
+	int i, j;
+
+	if ( !tr.registered ) {
+		return;
+	}
+
+	for ( i = 0; ( 1 << i ) < cols; i++ ) {
+	}
+	for ( j = 0; ( 1 << j ) < rows; j++ ) {
+	}
+	if ( ( 1 << i ) != cols || ( 1 << j ) != rows ) {
+		ri.Error( ERR_DROP, "Draw_StretchRaw: size not a power of 2: %i by %i", cols, rows );
+	}
+
+	/* The client hands over the decoder's own buffer, so this draws immediately;
+	   the upload is a front-end Vulkan op and the walk is parked for it. */
+	R_SyncRenderThread();
+	R_FlushRenderCommands();
+
+	R_UploadScratchRGBA( cols, rows, data );
+
+	cmd = ( stretchRaw2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
+	if ( cmd ) {
+		cmd->commandId = RC_2D_STRETCH_RAW;
+		cmd->x = x; cmd->y = y; cmd->w = w; cmd->h = h;
+		cmd->cols = cols; cmd->rows = rows;
+	}
+}
+
+void RE_UploadCinematic( int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty )
+{
+	(void)w;
+	(void)h;
+	(void)client;
+
+	if ( !tr.registered ) {
+		return;
+	}
+
+	R_SyncRenderThread();
+	R_FlushRenderCommands();
+
+	R_UploadScratchRGBA( cols, rows, data );
 }
 
 void AddBox(float x, float y, float w, float h) {

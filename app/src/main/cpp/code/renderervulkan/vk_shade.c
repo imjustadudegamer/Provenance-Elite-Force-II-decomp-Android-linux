@@ -871,9 +871,6 @@ void VK_ApplyStateBits( unsigned long stateBits )
 	VK_Draw_SetAlphaTest( VK_Shade_CommandBuffer(), (unsigned)s_alphaTest );
 }
 
-/* The state word the caller last applied: the immediate run's pipeline is built
-   from it, which is how the reference renderer's RB_ImmBegin inherits the
-   GLES3_ApplyStateBits its caller just made. */
 unsigned long vk_Shade_StateBits( void )
 {
 	return s_shade.stateBits;
@@ -1594,18 +1591,19 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	if ( !input || input->numVertexes <= 0 || numIndexes <= 0 ) {
 		return;
 	}
-	verts = VK_VertexRing_Reserve( input->numVertexes, &base );
-	if ( !verts ) {
+	/* The shade vertex is wider than the 2D tess slot the ring hands out, so the
+	   space is reserved in bytes and the buffer is bound at that offset. */
+	if ( !VK_VertexRing_ReserveBytes( input->numVertexes * VK_STREAM_STRIDE, &base ) ) {
 		VK_Guard_Hit( VK_GSITE_ALLOC, "tess ring exhausted", VK_INCOMPLETE );
 		return;
 	}
+	verts = ( vkStreamVertex_t * )( ( byte * )VK_VertexRing_Mapped() + base );
 	for ( i = 0; i < input->numVertexes; i++ ) {
 		VK_Stream_Pack( &verts[i], input, i, texcoord0, texcoord1, tcStrideFloats, colors, normals );
 	}
 	if ( indexes ) {
 		idx = VK_VertexRing_ReserveIndexes( numIndexes, &indexBase );
 		if ( !idx ) {
-			VK_VertexRing_RollBack( input->numVertexes, 0 );
 			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
 			return;
 		}
@@ -1614,7 +1612,8 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 
 	cmd = VK_Shade_CommandBuffer();
 	VK_Shade_Bind( cmd, input->shader );
-	VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, base );
+	VK_Draw_BindRingOffset( cmd, base );
+	VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, 0 );
 	VK_VertexRing_Flushed();
 }
 
@@ -1659,7 +1658,14 @@ static unsigned char			*vk_shadeUboMapped[VK_FRAMES_IN_FLIGHT];
 static VkDescriptorSet			vk_shadeSets[VK_SHADE_SETS];
 static int						vk_numShadeSets;
 
-static VkImageView				vk_shadeSetView[VK_SHADE_SETS][3];
+/* What a cached set was written for: it carries the frame slot's UBO too. */
+typedef struct {
+	int						slot;
+	VkImageView				view[3];
+	VkSampler				sampler[3];
+} vkShadeSetKey_t;
+
+static vkShadeSetKey_t			vk_shadeSetKeys[VK_SHADE_SETS];
 static int						VK_Shade_CommandBufferSlot( void );
 
 qboolean VK_Shade_Descriptors_Init( void )
@@ -2068,10 +2074,23 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	VkImageView defView;
 	VkSampler defSampler;
 	VkResult result;
+	vkShadeSetKey_t key;
 	int i, found = -1;
 
+	memset( &key, 0, sizeof( key ) );
+	key.slot = VK_Shade_CommandBufferSlot();
+	key.view[0] = v0;      key.view[1] = v1;      key.view[2] = wave;
+	key.sampler[0] = v0 ? s_shade.texSampler[0] : VK_NULL_HANDLE;
+	key.sampler[1] = v1 ? s_shade.texSampler[1] : VK_NULL_HANDLE;
+	key.sampler[2] = wave ? s_shade.texSampler[0] : VK_NULL_HANDLE;
+
 	for ( i = 0; i < vk_numShadeSets; i++ ) {
-		if ( vk_shadeSetView[i][0] == v0 && vk_shadeSetView[i][1] == v1 && vk_shadeSetView[i][2] == wave ) {
+		if ( vk_shadeSetKeys[i].slot == key.slot
+			 && vk_shadeSetKeys[i].view[0] == key.view[0] && vk_shadeSetKeys[i].view[1] == key.view[1]
+			 && vk_shadeSetKeys[i].view[2] == key.view[2]
+			 && vk_shadeSetKeys[i].sampler[0] == key.sampler[0]
+			 && vk_shadeSetKeys[i].sampler[1] == key.sampler[1]
+			 && vk_shadeSetKeys[i].sampler[2] == key.sampler[2] ) {
 			return vk_shadeSets[i];
 		}
 	}
@@ -2134,9 +2153,7 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	writes[3].pBufferInfo = &buffer;
 	qvk.UpdateDescriptorSets( vk.device, 4, writes, 0, NULL );
 
-	vk_shadeSetView[found][0] = v0;
-	vk_shadeSetView[found][1] = v1;
-	vk_shadeSetView[found][2] = wave;
+	vk_shadeSetKeys[found] = key;
 	return set;
 }
 

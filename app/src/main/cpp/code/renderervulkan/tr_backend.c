@@ -229,18 +229,9 @@ typedef struct {
 
 static vkImmRun_t	s_imm;
 
-/* The stream's current colour and texcoord.  The reference renderer keeps one
-   pair for the whole immediate store and stamps every vertex with it at the
-   moment that vertex is given, so a colour or a texcoord named before a run is
-   the one the run draws with.  Rewriting the vertices already emitted is a
-   different semantic: it leaves every vertex carrying the previous call's
-   texcoord and the last one the zero, which is the menu background drawn with
-   its texel rows shifted by one vertex. */
-static float		s_immCurSt[2];
+static float		s_immCurSt[2];	/* the stream's current st, stamped per vertex */
 static byte			s_immCurColor[4] = { 255, 255, 255, 255 };
 
-/* A vertex is stamped once, where it is given: both the 2D and the 3D callers
-   go through this, so one stream cannot disagree with the other. */
 static vkTessVertex_t *RB_Imm_NewVertex( void )
 {
 	vkTessVertex_t	*v;
@@ -291,11 +282,7 @@ static qboolean RB_Imm_BindImage( image_t *image )
 	return VK_Draw_BindTexture( vk.commandBuffers[s_rbSlot], view, sampler );
 }
 
-/* The run's pipeline state is the caller's: every caller states its bits with
-   VK_State / VK_ApplyStateBits immediately before it opens a run, exactly as the
-   reference renderer's GLES3_ApplyStateBits precedes its RB_ImmBegin.  Reading a
-   field of the run instead drew every immediate surface through one fixed blend
-   nobody had ever written -- the menu background added to what was under it. */
+/* The run's pipeline state is the caller's, not a field of the run. */
 void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits )
 {
 	vkPipelineKey_t key;
@@ -311,6 +298,32 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	key.cull = CT_TWO_SIDED;
 	key.depthTest = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
 	key.depthWrite = ( stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+
+	/* Outside 2D the push would be undefined: push projection times model view. */
+	if ( !backEnd.in2D ) {
+		const float *proj = RB_GetProjectionMatrix();
+		const float *view = RB_GetModelViewMatrix();
+		struct { float ortho[16]; float alphaTest[4]; } push;	/* vk_draw.c's layout */
+		int r, c, k;
+
+		memset( &push, 0, sizeof( push ) );
+		for ( r = 0; r < 4; r++ ) {
+			for ( c = 0; c < 4; c++ ) {
+				float sum = 0.0f;
+
+				for ( k = 0; k < 4; k++ ) {
+					sum += proj[r * 4 + k] * view[k * 4 + c];
+				}
+				push.ortho[c * 4 + r] = sum;
+			}
+		}
+		push.alphaTest[0] = 0.0f;
+		push.alphaTest[1] = 0.0f;
+
+		qvk.CmdPushConstants( vk.commandBuffers[s_rbSlot], VK_Draw_Layout(),
+							  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+							  0, sizeof( push ), &push );
+	}
 
 	run->pipeline = VK_Draw_Pipeline( &key );
 	if ( run->pipeline == VK_NULL_HANDLE ) {
@@ -332,8 +345,6 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 
 void RB_ImmBegin( int topology )
 {
-	/* tr.whiteImage is what the legacy back end would have had bound for the
-	   boxes: painted, not textured.  The state is the caller's, as above. */
 	RB_ImmBeginWithImage( topology, tr.whiteImage, vk_Shade_StateBits() );
 }
 
@@ -374,11 +385,15 @@ void RB_ImmCommit( void )
 
 	VK_Draw_BindRing( cmd );
 
-	if ( run->topology == VK_IMM_TRIANGLES ) {
-		VK_Draw_Draw( cmd, run->verts, run->base );
-	} else {
-		VK_Draw_Draw( cmd, run->verts, run->base );
+	{
+		static int s_dbg;
+		if ( s_dbg < 40 ) {
+			VK_Guard_Row( "VK:dbg", "imm-commit topo=%d verts=%d base=%d in2d=%d",
+						  run->topology, run->verts, run->base, backEnd.in2D );
+			s_dbg++;
+		}
 	}
+	VK_Draw_Draw( cmd, run->verts, run->base );
 
 	backEnd.pc.c_vertexes += run->verts;
 	backEnd.pc.c_surfaces++;
@@ -762,6 +777,10 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			bStaticModel = qfalse;
 		}
 
+		if ( shader == NULL ) {
+			continue;	/* the guard named the key */
+		}
+
 		if (shader != oldShader || fogNum != oldFogNum || dlightMap != oldDlightMap
 			|| (shader->noMerge & 1)
 			|| ( entityNum != oldEntityNum && !shader->entityMergable )
@@ -896,6 +915,9 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
 			if (spr->shaderNum < 0 || spr->shaderNum >= tr.numShaders) continue;
 			shader = tr.sortedShaders[spr->shaderNum];
+			if ( shader == NULL ) {
+				continue;	/* the guard named the key */
+			}
 			depthRange = (spr->renderfx & RF_DEPTHHACK) != 0;
 
 			if ((shader != oldShader || (shader->noMerge & 1)) && !shader->entityMergable)

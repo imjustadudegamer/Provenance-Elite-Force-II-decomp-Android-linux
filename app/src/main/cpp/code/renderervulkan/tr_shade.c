@@ -202,14 +202,14 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 		tess.currentStageIteratorFunc = RB_GLFogStageIteratorFunc;		 
 		return;
 	}
-	if ( fogNum == 0 ) {					 
-		tess.xstages = state->unfoggedStages;							 
-		tess.numPasses = state->numUnfoggedPasses;						 
-		/* A surface inside the 2D window takes the generic walk, which is the
-		   one the 2D fixtures are proven with. */
-		tess.currentStageIteratorFunc = ( backEnd.in2D || !state->optimalStageIteratorFunc )
-										? RB_StageIterator2D
-										: state->optimalStageIteratorFunc;
+	if ( fogNum == 0 ) {
+		tess.xstages = state->unfoggedStages;
+		tess.numPasses = state->numUnfoggedPasses;
+		/* A 3D surface with no iterator was reaching the 2D walk and vanishing. */
+		tess.currentStageIteratorFunc = backEnd.in2D ? RB_StageIterator2D
+									 : ( state->optimalStageIteratorFunc
+										 ? state->optimalStageIteratorFunc
+										 : RB_StageIteratorGeneric );
 		return;
 	}
 	if ( fogNum == 9999 ) {					 

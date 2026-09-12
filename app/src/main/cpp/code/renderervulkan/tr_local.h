@@ -2239,6 +2239,12 @@ typedef struct {
 
 typedef struct {
 	int			commandId;
+	int			x, y, w, h;
+	int			cols, rows;
+} stretchRaw2DCommand_t;
+
+typedef struct {
+	int			commandId;
 	shader_t	*shader;
 	float		x, y, w, h;
 	float		picw, pich;
@@ -2323,6 +2329,7 @@ typedef enum {
 	RC_2D_SCISSOR,
 	RC_2D_FONT_STRING,
 	RC_2D_SHADER_TIME,
+	RC_2D_STRETCH_RAW,
 
 	/* this module's own records: the frame prologue and the present */
 	RC_VK_BEGIN,
@@ -2574,6 +2581,7 @@ static inline int BE_On( void ) {
 /* this module's own declarations */
 void RB_BeginSurface(shader_t *shader, int fogNum);
 void RB_ImmBegin( int topology );
+VkPipelineLayout VK_Draw_Layout( void );
 void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits );
 void RB_ImmCommit( void );
 void RB_ImmEnd( void );
@@ -2620,6 +2628,14 @@ void     RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font 
 extern int vk_back_end_slot;
 void rb_set_slot( int slot );
 void R_UploadScratchImage( int cols, int rows, const byte *rgb );
+void R_UploadScratchRGBA( int cols, int rows, const byte *rgba );
+void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int components, const byte *data,
+					qboolean dirty );
+void RE_UploadCinematic( int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty );
+void RB_StretchRawDraw( const stretchRaw2DCommand_t *cmd );
+unsigned char *VK_VertexRing_Mapped( void );
+int		VK_VertexRing_ReserveBytes( int bytes, int *byteBaseOut );
+void	VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset );
 void RB_Texcoord2f( float s, float t );
 void RB_Vertex2f( vec_t x, vec_t y );
 void RB_Color4bv( unsigned char *colors );
@@ -2787,6 +2803,7 @@ typedef struct {
 	int			mipLevels;
 	VkFormat	format;
 	qboolean	inUse;
+	qboolean	published;	/* already moved to SHADER_READ_ONLY_OPTIMAL */
 } vkTexture_t;
 
 #define VK_MAX_TEXTURES MAX_DRAWIMAGES

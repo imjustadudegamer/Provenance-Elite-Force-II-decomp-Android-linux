@@ -105,7 +105,7 @@ static qboolean VK_Draw_Module( const unsigned int *code, unsigned int words,
 							what );
 }
 
-static qboolean VK_Draw_Layout( void )
+static qboolean VK_Draw_CreateLayout( void )
 {
 	VkDescriptorSetLayoutBinding binding;
 	VkDescriptorSetLayoutCreateInfo setInfo;
@@ -346,7 +346,7 @@ qboolean VK_Draw_Init( void )
 		return qfalse;
 	}
 
-	if ( !VK_Draw_Layout() ) {
+	if ( !VK_Draw_CreateLayout() ) {
 		return qfalse;
 	}
 
@@ -518,33 +518,43 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	VkRect2D scissor;
 	float m[16];
 	float rl, tb, fn;
+	qboolean degenerate;
 
 	rl = right - left;
 	tb = top - bottom;
 	fn = f - n;
+	degenerate = ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) ? qtrue : qfalse;
 
-	if ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) {
-		/* the values are the diagnosis: which caller sends a window with no
-		   extent, and whether it is the same one every frame */
+	if ( degenerate ) {
+		/* The values are the diagnosis: which caller sends a window with no
+		   extent, and whether it is the same one every frame. */
 		static char window[128];
+		static int  s_rows;
 
-		Com_sprintf( window, sizeof( window ),
-					 "degenerate 2D window x=%d y=%d w=%d h=%d l=%g r=%g b=%g t=%g n=%g f=%g",
-					 x, y, w, h, left, right, bottom, top, n, f );
-		VK_Guard_Hit( VK_GSITE_SYNC, window, VK_ERROR_INITIALIZATION_FAILED );
-		return;
+		if ( s_rows < 8 || ( s_rows % 500 ) == 0 ) {
+			Com_sprintf( window, sizeof( window ),
+						 "degenerate 2D window x=%d y=%d w=%d h=%d l=%g r=%g b=%g t=%g n=%g f=%g",
+						 x, y, w, h, left, right, bottom, top, n, f );
+			VK_Guard_Hit( VK_GSITE_SYNC, window, VK_ERROR_INITIALIZATION_FAILED );
+		}
+		s_rows++;
 	}
 
-	/* RB_OrthoProjection's matrix with y negated and z remapped to [0,1], the
-	   two axes Vulkan's NDC runs the other way; the window coordinates keep meaning. */
+	/* The window is issued either way, as the reference renderer does: the
+	   zero-extent scissor then rasterises nothing, retail's result.  Returning
+	   left the last window in force.  A zero viewport width is illegal. */
 	memset( m, 0, sizeof( m ) );
-	m[0]  = 2.0f / rl;
-	m[5]  = -2.0f / tb;
-	m[10] = -1.0f / fn;
-	m[12] = -( right + left ) / rl;
-	m[13] = ( top + bottom ) / tb;
-	m[14] = 0.5f - ( f + n ) / ( 2.0f * fn );
-	m[15] = 1.0f;
+	if ( !degenerate ) {
+		m[0]  = 2.0f / rl;
+		m[5]  = -2.0f / tb;
+		m[10] = -1.0f / fn;
+		m[12] = -( right + left ) / rl;
+		m[13] = ( top + bottom ) / tb;
+		m[14] = 0.5f - ( f + n ) / ( 2.0f * fn );
+		m[15] = 1.0f;
+	} else {
+		m[0] = m[5] = m[10] = m[15] = 1.0f;
+	}
 
 	{
 		vkPushConstants_t push;
@@ -572,8 +582,8 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	memset( &viewport, 0, sizeof( viewport ) );
 	viewport.x = (float)x;
 	viewport.y = (float)( vkConfig.vidHeight - y - h );
-	viewport.width = (float)w;
-	viewport.height = (float)h;
+	viewport.width = (float)( w > 0 ? w : 1 );
+	viewport.height = (float)( h > 0 ? h : 1 );
 	viewport.maxDepth = 1.0f;
 
 	qvk.CmdSetViewport( cmd, 0, 1, &viewport );
@@ -635,11 +645,16 @@ void VK_Draw_DisableScissor( VkCommandBuffer cmd )
 
 void VK_Draw_BindRing( VkCommandBuffer cmd )
 {
+	VK_Draw_BindRingOffset( cmd, 0 );
+}
+
+/* Bind the ring at a byte offset (the 3D path's wider vertex). */
+void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
+{
 	VkBuffer buffers[2];
 	VkDeviceSize offsets[2];
 
-	/* Both rings are one allocation, but the offsets are set explicitly. */
-	offsets[0] = 0;
+	offsets[0] = vertexOffset;
 	offsets[1] = 0;
 
 	buffers[0] = VK_VertexRing_Buffer();
@@ -666,4 +681,9 @@ void VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex )
 qboolean VK_Draw_CurrentValid( void )
 {
 	return vk_currentValid;
+}
+
+VkPipelineLayout VK_Draw_Layout( void )
+{
+	return vk_draw.layout;
 }
