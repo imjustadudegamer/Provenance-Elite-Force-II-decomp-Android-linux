@@ -175,7 +175,7 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 		}
 
 		/* The shade layer's SPIR-V modules, pipeline cache and descriptor
-		   layout: the twin's run in R_Init, these need the device. */
+		   layout need the device; the twin's run in R_Init. */
 		if ( !VK_Shade_Descriptors_Init() ) {
 			VK_FirstLightRow( "fail", "stage=shade-descriptors" );
 			VK_Sentinel_Clear();

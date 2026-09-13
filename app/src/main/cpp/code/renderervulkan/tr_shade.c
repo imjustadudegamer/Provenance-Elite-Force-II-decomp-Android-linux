@@ -1163,7 +1163,8 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 			VK_ApplyStateBits(stateBits);
 		}
 
-		VK_DrawStage( input, pStage, tess.shader, stateBits, forceAlpha, qtrue );   
+		VK_Shade_NoteStage( tess.shader );
+		VK_DrawStage( input, pStage, tess.shader, stateBits, forceAlpha, qtrue );
 		if (r_lightmap->integer && (pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap || pStage->bundle[0].vertexLightmap))
 		{
 			break;
@@ -1385,8 +1386,8 @@ void RB_EndSurface( void ) {
 	BE_Bump( BE_FAM_DS, BE_DSC_stages, 1 );
 	VK_Shade_NoteDraw( qtrue );
 	if ( !tess.currentStageIteratorFunc ) {
-		/* A shader without an iterator takes the generic walk, as the reference renderer's
-		   default does; a silent NULL here is the boot-blocking death. */
+		/* A shader without an iterator takes the generic walk, as the reference
+		   does; a silent NULL here is the boot-blocking death. */
 		static int nulliter_rows;
 		if ( nulliter_rows < 8 || ( nulliter_rows % 600 ) == 0 ) {
 			VK_Guard_Hit( VK_GSITE_QUIRK, "shader without a stage iterator", VK_INCOMPLETE );

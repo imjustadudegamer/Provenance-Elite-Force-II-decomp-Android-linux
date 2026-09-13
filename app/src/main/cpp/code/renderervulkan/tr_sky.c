@@ -355,8 +355,8 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 		VK_SetUniform1i( pSky, VK_U_SKYALPHAMODE, 0 );
 		VK_SetUniform2f( pSky, VK_U_SKYSCROLL, 0.0f, 0.0f );
 	}
-	/* The stream colour outlives the run that set it; a sky side that inherits
-	   whatever box or line ran last tints the whole dome. */
+	/* The stream colour outlives the run that set it; a side that inherits the
+	   last box or line tints the whole dome. */
 	RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
 
 	for ( t = mins[1]+HALF_SKY_SUBDIVISIONS; t < maxs[1]+HALF_SKY_SUBDIVISIONS; t++ )
@@ -461,7 +461,7 @@ static void FillCloudySkySide( const int mins[2], const int maxs[2], qboolean ad
 			tess.texCoords[tess.numVertexes][0][1] = s_skyTexCoords[t][s][1];
 
 			/* Same class as the font glyph quad: these vertices bypass
-			   addTriangle, so the dome drew in the last colour in the array. */
+			   addTriangle, so the dome drew in the last colour. */
 			tess.vertexColors[tess.numVertexes][0] = 255;
 			tess.vertexColors[tess.numVertexes][1] = 255;
 			tess.vertexColors[tess.numVertexes][2] = 255;

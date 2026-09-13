@@ -96,3 +96,24 @@ configure_file("cmake/q_version.generated.h.in" "${CMAKE_CURRENT_BINARY_DIR}/gen
 list(APPEND CLIENT_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/generated")
 list(APPEND SERVER_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/generated")
 list(APPEND RENDERER_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+# The stamp is a property of the tree at build time, not of the day cmake ran:
+# a commit made after the configure step must not ship under the previous
+# commit's name.  version_refresh re-reads git when ninja runs and rewrites the
+# header only when the label would change, so an unchanged tree costs nothing
+# and a moved HEAD recompiles exactly the objects that include it.
+set(VERSION_REFRESH_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version_refresh.cmake")
+add_custom_target(version_refresh ALL
+	COMMAND ${CMAKE_COMMAND}
+		-DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+		-DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+		-DSTAGE=${PRODUCT_VERSION_STAGE}
+		-DBUILD_NUMBER=${GIT_REVISION_BUILD_NUMBER}
+		-DVERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+		-DVERSION_MINOR=${PROJECT_VERSION_MINOR}
+		-DVERSION_PATCH=${PROJECT_VERSION_PATCH}
+		-P ${VERSION_REFRESH_SCRIPT}
+	BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/q_version.generated.h"
+	COMMENT "version_refresh: the stamp is read from git at build time"
+	VERBATIM
+)

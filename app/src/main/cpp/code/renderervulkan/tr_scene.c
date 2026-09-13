@@ -89,9 +89,7 @@ void R_InitNextFrame( void ) {
 }
 
 
-/* A pool that fills names nothing in the reference -- the entity and poly adds
-   both return silently -- so a scene that stops carrying entities reads as a
-   renderer fault.  The row names the pool, its fill and what was turned away. */
+/* A pool that fills names nothing in the reference: the row names pool and fill */
 static void R_SceneGate( const char *gate, int cap, int live, int refused )
 {
 	static int rows;

@@ -285,9 +285,8 @@ unsigned int VKimp_InstanceExtensions( const char **out, unsigned int max )
 	return count;
 }
 
-/* SDL's Vulkan loader entry point needs the video subsystem open: with it
-   unopened, SDL_Vulkan_LoadLibrary returns -1 having only set "Video subsystem
-   has not been initialized".  The twin and the EF1 port open it here. */
+/* SDL's Vulkan loader needs the video subsystem open: without it,
+   SDL_Vulkan_LoadLibrary only sets "Video subsystem has not been initialized". */
 static qboolean VKimp_VideoInit( void )
 {
 	if ( SDL_WasInit( SDL_INIT_VIDEO ) ) {
@@ -582,14 +581,13 @@ qboolean VK_EnsureBroughtUp( const char *where )
 	int mode;
 	cvar_t *rmode;
 
-	/* an "already asked" flag would leave the second site blind after the
-	   first was held down */
+	/* an "already asked" flag would leave the second site blind after the first */
 	if ( vk.device != VK_NULL_HANDLE ) {
 		return qfalse;
 	}
 
-	/* harness hook: holds the R_Init site down so BeginRegistration has to
-	   bring the device up alone */
+	/* harness hook: holds the R_Init site down so BeginRegistration brings the
+	   device up alone */
 	{
 		cvar_t *noInitUp = ri.Cvar_Get( "r_vkNoInitUp", "0", CVAR_CHEAT );
 
@@ -607,8 +605,8 @@ qboolean VK_EnsureBroughtUp( const char *where )
 	if ( !R_SetMode( mode, &vkConfig ) ) {
 		VK_Guard_Hit( VK_GSITE_DEVICE, "bring-up failed", VK_ERROR_INITIALIZATION_FAILED );
 
-		/* a named failure, not a silent one: a return hands the caller a null
-		   device, which is the ip=0x0 the boot's first image faulted on */
+		/* a named failure, not a silent one: a null device is the ip=0x0 the
+		   boot's first image faulted on */
 		ri.Error( ERR_FATAL, "VK_EnsureBroughtUp(%s): Vulkan bring-up failed; see the [VK:guard] rows", where );
 		return qtrue;
 	}

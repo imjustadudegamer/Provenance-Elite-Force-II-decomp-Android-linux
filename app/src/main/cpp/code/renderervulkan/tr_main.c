@@ -994,10 +994,9 @@ void R_AddSpriteSurf(surfaceType_t* surface, shader_t* shader, float zDistance)
 void R_DecomposeSort(unsigned int sort, int* entityNum, shader_t** shader, int* fogNum, int* dlightMap) {
 	int index = ( sort >> QSORT_SHADERNUM_SHIFT ) & (MAX_SHADERS-1);
 
-	/* The array is only filled to tr.numShaders, so a key carrying a shader
-	   number past it dereferences null two lines later at shader->sort -- the
-	   in-map fault at R_SortDrawSurfs+0x188, address 0x10c.  Naming the key and
-	   the filled count turns that into a diagnosis instead of a crash. */
+	/* The array is only filled to tr.numShaders, so a key past it dereferences
+	   null at shader->sort -- the in-map fault at R_SortDrawSurfs+0x188.  Naming
+	   the key and the filled count makes it a diagnosis, not a crash. */
 	*shader = tr.sortedShaders[ index ];
 	if ( *shader == NULL ) {
 		static int nullShaderRows;
@@ -1013,9 +1012,7 @@ void R_DecomposeSort(unsigned int sort, int* entityNum, shader_t** shader, int* 
 	*dlightMap = sort & QSORT_DLIGHTMAP_MASK;
 }
 
-/* The scene's surface path at three points: the adds the front end took, the
-   list the scene recorded, and the count the RC_DRAW_SURFS command carries
-   (the back end's frame row reports that third one as `draw-surfs'). */
+/* The scene's surface path at three points: adds, recorded list, command count */
 static int	s_feViewAdds;
 static int	s_feViewRows;
 
@@ -1031,7 +1028,7 @@ const char *R_FrontEnd_ViewRow( int recorded, int entities )
 	Com_sprintf( row, sizeof( row ), "view adds=%d rec=%d ents=%d f=%d",
 				 s_feViewAdds, recorded, entities, RB_FrameCount() );
 
-	/* a transition is named, the steady state is sampled */
+	/* a transition is named, the steady state sampled */
 	s_feViewRows++;
 	if ( s_feViewRows <= 8 || ( s_feViewRows % 600 ) == 0 ) {
 		return row;

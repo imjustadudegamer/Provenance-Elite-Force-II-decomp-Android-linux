@@ -155,8 +155,8 @@ void VK_Guard_Hit( vkGuardSite_t site, const char *detail, VkResult result )
 
 	n = ++vk_guardSiteHits[site];
 
-	/* A row with nothing after detail= is a row that cannot be triaged, so an
-	   unnamed one says so instead of printing an empty field. */
+	/* A row with nothing after detail= cannot be triaged, so an unnamed one
+	   says so instead of printing an empty field. */
 	VK_Guard_Row( "VK:guard",
 				 "site=%s detail=\"%s\" result=%s(%d) n=%u",
 				 vk_guardSiteNames[site],

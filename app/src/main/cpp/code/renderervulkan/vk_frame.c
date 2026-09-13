@@ -231,7 +231,7 @@ qboolean VK_Frame_Acquire( int slot )
 }
 
 /* The pass opens at RC_VK_BEGIN and closes at RC_VK_PRESENT, so the UI
-   records into it across the whole paint. */
+   records into it across the paint. */
 static VkRenderPassBeginInfo s_passInfo;
 static VkClearValue s_clearValues[2];
 
@@ -269,8 +269,8 @@ qboolean VK_Frame_RecordBegin( int slot )
 
 	qvk.CmdBeginRenderPass( vk.commandBuffers[slot], &beginInfo, VK_SUBPASS_CONTENTS_INLINE );
 
-	/* From here to RecordEnd the back end has a command buffer to record into;
-	   the tess surfaces the walk performs land in it. */
+	/* From here to RecordEnd the back end has a command buffer; the tess
+	   surfaces the walk performs land in it. */
 	vk_back_end_slot = slot;
 	rb_set_slot( slot );
 
@@ -291,8 +291,8 @@ qboolean VK_Frame_RecordBegin( int slot )
 	}
 
 	if ( vk.demoDraw ) {
-		/* The demo triangle binds its own buffer; it goes before the ring bind
-		   so the pass's binding is the one the surfaces draw through. */
+		/* The demo triangle binds its own buffer, before the ring bind, so the
+		   pass's binding is the one the surfaces draw through. */
 		VK_Pipeline_DrawDemo( vk.commandBuffers[slot] );
 	}
 
@@ -392,8 +392,8 @@ qboolean VK_Frame_Present( int slot )
 		return qfalse;
 	}
 
-	/* The image the frame went to: the readback proof samples this one, not a
-	   fresh acquire, which has never been rendered to. */
+	/* The image the frame went to: the readback samples this one, not a fresh
+	   acquire, which has never been rendered to. */
 	vk.lastPresentedImage = vk.acquiredImage;
 	vk.acquired = qfalse;
 

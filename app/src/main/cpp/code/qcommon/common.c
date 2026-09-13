@@ -1860,6 +1860,8 @@ int		smp_loadInClient = 0;
 
 static int	smp_loadFrames;
 static int	smp_loadSums[SMP_LZ_COUNT], smp_loadMaxs[SMP_LZ_COUNT];
+/* samples per zone: never fired is not the same fact as fired and cost nothing */
+static int	smp_loadSamples[SMP_LZ_COUNT];
 static int	smp_loadOther,   smp_loadOtherMax;
 static int	smp_loadClient,  smp_loadClientMax;
 static int	smp_loadUnacctO, smp_loadUnacctOMax;
@@ -1877,6 +1879,7 @@ void SMP_LoadAdd( int zone, int msec, int depth ) {
 	}
 
 	smp_loadSums[zone] += msec;
+	smp_loadSamples[zone]++;
 	if ( msec > smp_loadMaxs[zone] ) {
 		smp_loadMaxs[zone] = msec;
 	}
@@ -1917,6 +1920,7 @@ static void SMP_LoadReset( void ) {
 
 	for ( i = 0; i < SMP_LZ_COUNT; i++ ) {
 		smp_loadSums[i] = smp_loadMaxs[i] = 0;
+		smp_loadSamples[i] = 0;
 	}
 	smp_loadFrames  = 0;
 	smp_loadOther   = smp_loadOtherMax   = 0;
@@ -1955,6 +1959,12 @@ static void SMP_LoadPrint( int frames, int window ) {
 
 	line[0] = '\0';
 	for ( i = 0; i < SMP_LZ_COUNT + 4; i++ ) {
+		if ( i < SMP_LZ_COUNT && !smp_loadSamples[i] ) {
+			/* not exercised in this window: a dash, not a reading */
+			Com_sprintf( part, sizeof( part ), " %s=-", zone[i].name );
+			Q_strcat( line, sizeof( line ), part );
+			continue;
+		}
 		mean10 = (int)( ( (long long)zone[i].sum * 10 + frames / 2 ) / frames );
 		Com_sprintf( part, sizeof( part ), " %s=%d.%d/%d",
 					 zone[i].name, mean10 / 10, mean10 % 10, zone[i].max );
@@ -2107,12 +2117,21 @@ static void SMP_ThermalProbe( int window ) {
 	Com_Printf( "[THERM:cpu] row=%d window=%dms elapsed=%dms cores=%d%s\n",
 				rows, window, Sys_Milliseconds() - first, cores, line );
 
-	/* The row names the source that answered, so a capture knows the units. */
+	/* The row names the source that answered; a box with none says so once */
 	{
 		int		gpuKhz = -1;
 		int		src = -1;
+		static qboolean reported;
 
 		gpuKhz = SMP_GpuClockKhz( s_gpuClkSource, SMP_GPUCLK_SOURCES, &src );
+		if ( gpuKhz < 0 ) {
+			if ( !reported ) {
+				Com_Printf( "[THERM:gpu] row=%d window=%dms src=unavailable"
+							" (no gpu clock node on this machine)\n", rows, window );
+				reported = qtrue;
+			}
+			return;
+		}
 		Com_Printf( "[THERM:gpu] row=%d window=%dms gpuclk_khz=%d src=%s\n", rows, window,
 					gpuKhz, ( src >= 0 && src < SMP_GPUCLK_SOURCES ) ? s_gpuClkSource[src].name
 																	 : "none" );

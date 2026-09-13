@@ -44,9 +44,8 @@ typedef struct {
 #define VK_SHADER_FAM_SHADOW     6
 #define VK_SHADER_FAM_WIRE       7
 
-/* the std140 block's member offsets, read back out of the compiled SPIR-V,
- * in the order the block declares them.  The CPU side packs the block at
- * these. */
+/* the std140 block's member offsets, read back out of the compiled SPIR-V in
+ * the order the block declares them; the CPU side packs the block at these. */
 enum {
 	VK_UBO_OFF_U_SHADERTIME = 0,
 	VK_UBO_OFF_U_MVP = 16,

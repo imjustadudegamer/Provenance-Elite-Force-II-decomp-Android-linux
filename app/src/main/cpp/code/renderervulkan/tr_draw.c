@@ -84,8 +84,7 @@ static cvar_t  *s_d2Cvar;
 static int		s_d2Stall;
 static int		s_d2StallShown;
 
-/* Surfaces the batch actually issued, so the row shows the collapse: calls is
-   what the UI asked for, draws is what reached the driver. */
+/* Surfaces the batch issued: calls is what the UI asked, draws what reached the driver. */
 static int		s_d2Batches;
 
 /* the reference renderer's tr_draw.c carries this note in full */
@@ -120,8 +119,7 @@ static void D2_End( int slot, int t0 ) {
 		r->max = usec;
 	}
 
-	/* A single call that outcosts a whole frame is the disease; name it before
-	   the roll drowns it in means.  First 8, then one in 64. */
+	/* A single call that outcosts a frame is the disease: first 8, then 1 in 64. */
 	if ( usec >= 2000 ) {
 		s_d2Stall++;
 		if ( s_d2StallShown < 8 || ( s_d2Stall % 64 ) == 0 ) {
@@ -135,8 +133,8 @@ static void D2_End( int slot, int t0 ) {
 
 /* the reference renderer's tr_draw.c carries this note in full */
 static int D2_Prepare( void ) {
-	/* The twin's prefix flushed the recorded frame; there is no immediate
-	   mode here, so it collapses to nothing. */
+	/* The twin's prefix flushed the recorded frame; there is no immediate mode
+	   here, so it collapses to nothing. */
 	return 0;
 }
 
@@ -217,8 +215,7 @@ void RB_2D_Flush( void ) {
 			}
 		}
 
-		/* Cleared before the draw: RB_EndSurface can reach RB_BeginSurface, and
-		   that now flushes too, so an still-open flag here would recurse. */
+		/* Cleared before the draw: RB_EndSurface can reach RB_BeginSurface, which flushes too. */
 		s_2dBatchOpen   = qfalse;
 		s_2dBatchShader = NULL;
 		s_2dBatchVerts  = 0;
@@ -226,8 +223,7 @@ void RB_2D_Flush( void ) {
 		s_d2Batches++;
 
 		RB_EndSurface();
-		/* The tess path reports its own VkResult at the call site; there is no
-		   polled error queue to drain here. */
+		/* The tess path reports its own VkResult at the call site; nothing polls here. */
 	}
 	if ( s_2dTriOpen ) {
 		int	got;
@@ -310,8 +306,7 @@ void RB_2D_SetColor( const byte *rgba ) {
 	backEnd.color2D[2] = rgba[2];
 	backEnd.color2D[3] = rgba[3];
 
-	/* Colour is per vertex in the ring; the next quad the batch writes picks
-	   it up, so there is no colour state to push here. */
+	/* Colour is per vertex in the ring; the next quad picks it up, nothing to push. */
 }
 
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 ) {
@@ -507,8 +502,7 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
 }
 
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {
-	/* The tuple is already in force: pushing the window again would split the
-	   batch for no visual difference. */
+	/* The tuple is in force: pushing the window again would split the batch. */
 	if ( r_window2DValid && r_scissor2DValid &&
 		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&
 		 r_window2DOrtho[0] == left && r_window2DOrtho[1] == right && r_window2DOrtho[2] == bottom &&
@@ -519,8 +513,7 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 
 	RB_2D_Flush();
 
-	/* The window is recorded, not issued: the record carries the viewport, scissor
-	   and ortho. */
+	/* The window is recorded, not issued: the record carries viewport, scissor, ortho. */
 	{
 		setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -556,8 +549,7 @@ void RB_2D_Scissor( int x, int y, int width, int height ) {
 
 	RB_2D_Flush();
 
-	/* Recorded like the window: the walk turns it into vkCmdSetScissor, flipped to
-	   Vulkan's top-left origin. */
+	/* Recorded like the window: the walk makes it vkCmdSetScissor, top-left origin. */
 	{
 		scissor2DCommand_t *cmd = ( scissor2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -812,8 +804,7 @@ void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
 		}
 	}
 
-	/* A Vulkan image cannot be re-specified in place, so a new size is a new
-	   texture object; the same extent just refills level 0. */
+	/* A Vulkan image cannot be re-specified in place: a new size is a new texture object. */
 	R_UploadScratchImage( cols, rows, upload );
 
 	if (bgr) {
@@ -1016,9 +1007,8 @@ void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, int componen
 
 	R_UploadScratchRGBA( cols, rows, data );
 
-	/* The reference renderer's RB_SetGL2D sits exactly here: a movie frame runs in
-	   whatever window the last caller left -- for an in-game cinematic the HUD's,
-	   several zero-extent -- and its scissor clips the frame quad. */
+	/* The reference renderer's RB_SetGL2D sits exactly here: a movie frame runs
+	   in whatever window the last caller left, and its scissor clips the quad. */
 	Set2DWindow( 0, 0, vkConfig.vidWidth, vkConfig.vidHeight,
 				 0.0f, (float)vkConfig.vidWidth, (float)vkConfig.vidHeight, 0.0f,
 				 0.0f, 1.0f );

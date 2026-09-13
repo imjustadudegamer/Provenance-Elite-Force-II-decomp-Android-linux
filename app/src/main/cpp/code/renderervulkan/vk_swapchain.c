@@ -399,9 +399,8 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 	qvk.CmdCopyImageToBuffer( cmd, vk.swapchainImages[imageIndex],
 							  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &copyRegion );
 
-	/* The presented image has to come back in the layout the next acquire
-	   expects.  Leaving it in TRANSFER_SRC made the following submit a layout
-	   violation on every frame the probe read back. */
+	/* The presented image must come back in the layout the next acquire
+	   expects; TRANSFER_SRC made every readback submit a layout violation. */
 	memset( &barrier, 0, sizeof( barrier ) );
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;

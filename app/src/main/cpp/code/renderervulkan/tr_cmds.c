@@ -109,8 +109,7 @@ qboolean R_PendingRenderCommands( void )
 qboolean vk_frameOpen = qfalse;
 
 /* The list goes to the walk whole, from RE_EndFrame: a frame is one pass from
-   RC_VK_BEGIN to RC_VK_PRESENT, so walking half leaves the pass open.  A
-   mid-frame flush is held until the frame ends. */
+   RC_VK_BEGIN to RC_VK_PRESENT, so a mid-frame flush is held until it ends. */
 void R_FlushRenderCommands( void )
 {
 	if ( !tr.registered || vk_frameOpen || !R_PendingRenderCommands() ) {
@@ -188,8 +187,8 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )cmds;
 
-			/* Pending 2D runs close before the new window, or their quads draw
-			   under the next window's viewport and ortho. */
+			/* Pending 2D runs close first, or their quads draw under the next
+			   window's viewport and ortho. */
 			RB_2D_Flush();
 
 			VK_Draw_Set2D( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->w, cmd->h,
@@ -379,10 +378,9 @@ void R_IssueRenderCommands( void )
 		}
 	}
 
-	/* Every slot on the frame record is tr.smpFrame, as the twin's is.  The
-	   bone arena especially: the front end writes the palette into
-	   TIKI_Skel_Bones_Arena[tr.smpFrame], so a walk keyed off another counter
-	   read a palette nobody wrote. */
+	/* Every slot on the frame record is tr.smpFrame, as the twin's is: the
+	   front end writes the palette into TIKI_Skel_Bones_Arena[tr.smpFrame], so
+	   a walk keyed off another counter read a palette nobody wrote. */
 	frame = &rb_frames[tr.smpFrame];
 	frame->list = list;
 	frame->smpFrame = tr.smpFrame;

@@ -131,7 +131,7 @@ void R_CacheModel(model_t *mod)
 void R_FreeModel(model_t *mod)
 {
     // retail: model_t teardown never calls back into cgame.  CG_ProcessInitCommands
-    // @0x031F2C/@0x032098 and CG_PlaceCloudFX @0x03A96C -- never from the renderer,
+    // @0x031F2C/@0x032098 and CG_PlaceCloudFX @0x03A96C, never from the renderer
     memset(mod, 0, sizeof(model_t));
 }
 
@@ -949,10 +949,8 @@ static void R_ShowTikiLodDebugNumbers(trRefEntity_t *ent, dtiki_t *tiki)
     R_DrawDebugNumber(org, number, scale, 1.0f, 1.0f, 0.0f, precision);
 }
 
-/* The drop sites in this function are silent in the reference: PRINT_DEVELOPER
-   never reaches a device log, so a model that stops drawing names nothing and
-   the boot reads as a renderer fault.  Every gate here answers through one of
-   these two rows instead, throttled, with the anim state the gate rejected. */
+/* The drop sites here are silent in the reference: PRINT_DEVELOPER never reaches
+   a device log, so every gate answers through one of these two rows instead. */
 static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
 {
     static int rows;

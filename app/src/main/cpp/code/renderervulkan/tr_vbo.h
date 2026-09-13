@@ -57,8 +57,7 @@ extern "C" {
 void RB_VBO_Init( void );
 void RB_VBO_Shutdown( void );
 
-/* Opens the frame's tessellation stream store.  Called once per back end
- * frame, before any draw. */
+/* Opens the frame's tessellation stream store, once per back end frame. */
 void RB_VBO_BeginFrame( void );
 
 void RB_VBO_DrawTessIndexed( const shaderCommands_t *input, const vkIndex_t *indexes, int numIndexes );
@@ -69,8 +68,8 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const float *normals );
 void RB_VBO_DrawTess( const shaderCommands_t *input );
 
-/* The per-batch surface log; there is no static arena behind it yet, so a
- * recorded batch is the record that a batch was seen. */
+/* The per-batch surface log; no static arena behind it yet, so a recorded
+ * batch is the record that a batch was seen. */
 void RB_VboStaticReset( void );
 void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx );
 void RB_VboStaticForget( void );

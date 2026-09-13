@@ -76,8 +76,8 @@ void RB_InitBackend( void )
 /* the tessellation store lives in tr_shade.c, as in the reference renderer */
 
 
-/* ---- the stage pass: one stage, one pipeline, one bind, one indexed draw.
- * The state tuple carries all of it: blend, depth, cull, alpha test. */
+/* ---- the stage pass: one stage, one pipeline, one bind, one indexed draw;
+ * the state tuple carries blend, depth, cull and alpha test. */
 
 static qboolean RB_StagePass( shaderStage_t *stage )
 {
@@ -183,8 +183,8 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 	return qtrue;
 }
 
-/* The generic iterator: one pass per active stage.  A shader needing a 3D
-   term is the 3D surface's work and is named by its guard. */
+/* The generic iterator: one pass per active stage.  A 3D term is the 3D
+   surface's work and is named by its guard. */
 
 
 
@@ -200,8 +200,7 @@ void RB_RecordFramePrologue( void )
 	VK_Shade_NewFrame();
 	s_rbSlot = -1;
 
-	/* every frame is a fresh command buffer: the window and scissor are
-	   recorded again even when unchanged */
+	/* every frame is a fresh command buffer: window and scissor are re-recorded */
 	R_Invalidate2DWindowCache();
 }
 
@@ -316,8 +315,8 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 				push.ortho[c * 4 + r] = sum;
 			}
 		}
-			/* the push holds the product transposed, which keeps the flat offsets
-		   of the negated row in place: 1, 5, 9, 13 */
+			/* the push holds the product transposed, keeping the flat offsets of
+		   the negated row: 1, 5, 9, 13 */
 		VK_Mat4_ClipToWindow( push.ortho );
 		push.alphaTest[0] = 0.0f;
 		push.alphaTest[1] = 0.0f;
@@ -358,7 +357,7 @@ void RB_ImmEndDeferred( void )
 }
 
 /* A run reaches the ring whole: the setters rewrite the slice, so an early
-   commit would miss vertices already drawn. */
+   commit would miss vertices. */
 void RB_ImmCommit( void )
 {
 	vkImmRun_t *run = &s_imm;
@@ -459,7 +458,7 @@ qboolean RB_SmpActive( void )
 }
 
 /* ---- the immediate stream's remaining surface: the mirrored 3D front end
-   calls the whole reference set, so the 2D stream carries the rest -------------- */
+   calls the whole reference set, so the 2D stream carries the rest ---------- */
 
 void RB_ImmVertex3f( float x, float y, float z )
 {
@@ -635,8 +634,8 @@ void RB_BeginDrawingView (void) {
 
 	backEnd.in2D = qfalse;
 
-	/* A 2D rect cached here survives the 3D pass, and the next 2D call would
-	   then skip re-issuing a scissor that pass overwrote: drop the pair. */
+	/* A rect cached here would survive the 3D pass and skip re-issuing a
+	   scissor that pass overwrote: drop the pair. */
 	R_Invalidate2DWindowCache();
 
 	SetViewportAndScissor();
@@ -669,14 +668,11 @@ void RB_BeginDrawingView (void) {
 
 	VK_DepthFuncApply( VK_LEQUAL );	/* pinned per view for the A/B cvar */
 
-	/* Retail's traced menu frame clears DEPTH and nothing else: one depth clear
-	   before the model view, and no colour clear anywhere in it -- the UI's 2D
-	   is already on the frame and the view builds no volume.  Colour joins the
-	   clear only for a world view, and only for the fastsky/fog cases the
-	   reference asks it for.  Clearing colour for the UI's view is what erased
-	   the 2D painted ahead of it (the starfield behind the menu), and clearing
-	   no depth is what left a later view of the same frame to test against the
-	   depth the earlier ones wrote. */
+	/* Retail's traced menu frame clears DEPTH and nothing else: the UI's 2D is
+	   already on the frame and the view builds no volume.  Colour joins only for
+	   a world view, and only for the fastsky/fog cases the reference asks it
+	   for.  Clearing colour for the UI's view erased the 2D painted ahead of it,
+	   and clearing no depth left a later view testing against an earlier one. */
 	{
 		VkClearAttachment attachments[2];
 		VkClearRect rect;
@@ -714,18 +710,33 @@ void RB_BeginDrawingView (void) {
 			}
 		}
 
-		memset( &rect, 0, sizeof( rect ) );
-		rect.rect.offset.x = backEnd.viewParms.viewportX;
-		rect.rect.offset.y = vkConfig.vidHeight - backEnd.viewParms.viewportY
-							 - backEnd.viewParms.viewportHeight;
-		rect.rect.extent.width = (uint32_t)( backEnd.viewParms.viewportWidth > 0
-											  ? backEnd.viewParms.viewportWidth : 0 );
-		rect.rect.extent.height = (uint32_t)( backEnd.viewParms.viewportHeight > 0
-											   ? backEnd.viewParms.viewportHeight : 0 );
-		rect.baseArrayLayer = 0;
-		rect.layerCount = 1;
+		/* The clear rect is the view's own, flipped to the framebuffer's origin
+		   and clipped to the render area: a rect past the pass is a violation. */
+		{
+			int rx = backEnd.viewParms.viewportX;
+			int ry = vkConfig.vidHeight - backEnd.viewParms.viewportY
+					 - backEnd.viewParms.viewportHeight;
+			int rw = backEnd.viewParms.viewportWidth;
+			int rh = backEnd.viewParms.viewportHeight;
+			int ex = (int)vk.swapchainExtent.width;
+			int ey = (int)vk.swapchainExtent.height;
 
-		qvk.CmdClearAttachments( VK_Shade_CommandBuffer(), count, attachments, 1, &rect );
+			if ( rx < 0 ) { rw += rx; rx = 0; }
+			if ( ry < 0 ) { rh += ry; ry = 0; }
+			if ( rx + rw > ex ) { rw = ex - rx; }
+			if ( ry + rh > ey ) { rh = ey - ry; }
+
+			rect.rect.offset.x = rx;
+			rect.rect.offset.y = ry;
+			rect.rect.extent.width  = (uint32_t)( rw > 0 ? rw : 0 );
+			rect.rect.extent.height = (uint32_t)( rh > 0 ? rh : 0 );
+			rect.baseArrayLayer = 0;
+			rect.layerCount = 1;
+		}
+
+		if ( rect.rect.extent.width && rect.rect.extent.height ) {
+			qvk.CmdClearAttachments( VK_Shade_CommandBuffer(), count, attachments, 1, &rect );
+		}
 	}
 
 	vkState.faceCulling = -1;
@@ -788,11 +799,9 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	backEnd.currentSphere = &backEnd.sphere;
 
 	for (i = 0, drawSurf = drawSurfs ; i < numDrawSurfs ; i++, drawSurf++) {
-		/* a null surface pointer is the same fault class as a key past the
-		   table: the sprite walk below already answers it, and this walk read
-		   the surface's first word through the null and died at
-		   RB_RenderDrawSurfList+0xb4 (si_addr 0) on the Prologue boot.  Name
-		   the slot and the list length instead. */
+		/* a null surface pointer is the fault that died at
+		   RB_RenderDrawSurfList+0xb4 (si_addr 0) on the Prologue boot; the
+		   sprite walk already answers it.  Name the slot and the length. */
 		if ( drawSurf->surface == NULL ) {
 			static int nullRows;
 
@@ -803,8 +812,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			nullRows++;
 			continue;
 		}
-		/* the surface's own first word picks the walker: a key past the table is
-		   a call through garbage, which is a fault that names nothing */
+		/* the surface's first word picks the walker: a key past the table is a
+		   call through garbage, a fault that names nothing */
 		if ( *drawSurf->surface < 0 || *drawSurf->surface >= SF_NUM_SURFACE_TYPES ) {
 			static int surfRows;
 
@@ -1041,8 +1050,8 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	cmd = (const drawSurfsCommand_t *)data;
 
-	/* The frame-carry law: the walk reads the record's copy of the frame, never
-	   the live tr.* the front end may already be refilling. */
+	/* The frame-carry law: the walk reads the record's copy of the frame, not
+	   the live tr.* the front end may be refilling. */
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 

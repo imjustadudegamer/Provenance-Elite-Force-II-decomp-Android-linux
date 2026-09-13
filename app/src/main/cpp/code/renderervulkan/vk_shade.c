@@ -182,9 +182,8 @@ static void VK_Matrix_Multiply( float *out, const float *a, const float *b )
 }
 
 /* The window-convention seam: the engine's matrices leave +y up in clip space,
-   a Vulkan framebuffer has y down, so clip y is negated here.  The positive
-   window map then restores the reference winding -- front faces stay front.
-   Row 1 is elements 1, 5, 9, 13. */
+   a Vulkan framebuffer has y down, so clip y is negated here and the positive
+   window map restores the reference winding.  Row 1 is elements 1, 5, 9, 13. */
 void VK_Mat4_ClipToWindow( float *m )
 {
 	m[1] = -m[1];
@@ -319,8 +318,7 @@ void RB_OrthoProjection( float left, float right, float bottom, float top, float
 	s_projectionDirty = qtrue;
 }
 
-/* the portal clip plane, discarded on in the fragment stage (Vulkan has no
-   user clip plane) */
+/* the portal clip plane, discarded on in the fragment stage (no user planes) */
 void RB_ClipPlane_Set( const vec4_t plane )
 {
 	Vector4Copy( plane, s_clipPlane );
@@ -344,8 +342,7 @@ qboolean RB_ClipPlane_Get( vec4_t out )
 /* ---- the uniform block -------------------------------------------------- */
 
 /* the staging block, at the offsets the SPIR-V reflected; uploaded per draw.
-   The reference renderer's setters take a program; one block serves every
-   program here, so the argument is along for the signature. */
+   One block serves every program, so the argument is along for the signature. */
 static unsigned char	s_ubo[VK_UBO_SIZE_PAD];
 static qboolean			s_uboDirty;
 static int				s_uboHighWater = VK_UBO_SIZE_PAD;
@@ -643,8 +640,7 @@ unsigned VK_StageDefines_Full( const shaderStage_t *pStage, const shader_t *shad
 	{
 		d |= VKP_NORMAL;
 	}
-	/* the tcGen arms that read the normal need GLP_NORMAL too, or the stage
-	   samples one texel of its map for the whole surface */
+	/* the tcGen arms reading the normal need GLP_NORMAL too, or one texel is sampled */
 	if ( tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED || tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED2
 		|| tc0 == (unsigned)TCGEN_ANGLE_BASED_ENVIRONMENT || tc0 == (unsigned)TCGEN_SUN_REFLECTION
 		|| ( bundleCount == 2
@@ -816,14 +812,14 @@ qboolean VK_StageNeedsCPUTexCoords( const shaderStage_t *pStage )
 }
 
 
-/* The function table the wave texmods read: 2048 x 5 R32F, texel-fetched, set
-   0 binding 3.  Without it a tcMod rotate reads sin = cos = 1 and freezes. */
+/* The wave texmods' function table: 2048 x 5 R32F, texel-fetched, set 0 binding 3;
+   without it a tcMod rotate reads sin = cos = 1 and freezes */
 static int	s_waveTableHandle = -1;
 
 /* ---- the state machine --------------------------------------------------- */
 
-/* the reference renderer applies its state words to the context; here they
-   fold into the pending pipeline key for the next draw */
+/* the reference applies its state words to the context; here they fold into the
+   pending pipeline key */
 typedef struct {
 	unsigned		stateBits;
 	cullType_t		cull;
@@ -876,8 +872,7 @@ void VK_State( unsigned long stateBits )
 void VK_ApplyStateBits( unsigned long stateBits )
 {
 		/* the alpha test reaches the fragment stage through the stage uniform
-	   block; the push-constant route belongs to the 2D walk's layout, and a
-	   push on the wrong layout is invalid usage, not a value */
+	   block; a push on the 2D walk's layout would be invalid usage */
 	VK_State( stateBits );
 	switch ( (unsigned long)stateBits & VKS_ATEST_BITS ) {
 	case VKS_ATEST_GT_0:	s_alphaTest = 1; break;
@@ -1130,7 +1125,7 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 	}
 	VK_SetUniform4fv( p, VK_U_BASECOLOR, baseColor );
 
-	/* the 2D quad carries Draw_SetColor per vertex, so those two arms read the
+	/* the 2D quad carries Draw_SetColor per vertex, so those arms read the
 	   vertex; in 3D u_BaseColor carries the global colour */
 	if ( backEnd.in2D && !cpuColor )
 	{
@@ -1626,7 +1621,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	cmd = VK_Shade_CommandBuffer();
 	if ( !VK_Shade_Bind( cmd, input->shader ) ) {
 			/* nothing is bound: recording the draw anyway faults the driver, and
-		   the reason is already on the rows VK_Shade_Bind emitted */
+		   VK_Shade_Bind's rows already name the reason */
 		VK_VertexRing_Flushed();
 		return;
 	}
@@ -1647,9 +1642,8 @@ void RB_VBO_DrawTess( const shaderCommands_t *input )
 	RB_VBO_DrawTessIndexed( input, input->indexes, input->numIndexes );
 }
 
-/* ---- the immediate stream, the pipeline and the descriptor set -----------
-   One layout serves every program: the uniform block at 0, the bundles and the
-   wave table at 1..3 */
+/* ---- the immediate stream, pipeline and descriptor set -------------------
+   One layout: the uniform block at 0, the bundles and wave table at 1..3 */
 #define VK_SHADE_SETS 1024
 
 typedef struct {
@@ -1674,14 +1668,12 @@ static unsigned char			*vk_shadeUboMapped[VK_FRAMES_IN_FLIGHT];
 static VkDescriptorSet			vk_shadeSets[VK_SHADE_SETS];
 static int						vk_numShadeSets;
 
-/* The uniform ring: a Vulkan uniform buffer is read at submit time, so one
-   block per frame hands every draw the last draw's state.  Each draw takes the
-   next slice and binds it by dynamic offset. */
+/* The uniform ring: a Vulkan uniform buffer is read at submit time, so each
+   draw takes the next slice and binds it by dynamic offset. */
 #define VK_SHADE_UBO_SLICES			4096
 #define VK_SHADE_UBO_ALIGN_MAX		256
-/* every draw writes the uniforms its own permutation reads, so the ring copy
-   only moves what the last write touched; the floor keeps a draw that writes
-   little still carrying the block's head */
+/* every draw writes the uniforms its own permutation reads, so the copy moves
+   only what the last write touched; the floor keeps the block's head alive */
 #define VK_UBO_HIGHWATER_FLOOR		256
 static int						vk_shadeUboSliceBytes = VK_UBO_SIZE_PAD;
 static int						vk_shadeUboNext[VK_FRAMES_IN_FLIGHT];
@@ -1749,7 +1741,7 @@ qboolean VK_Shade_Descriptors_Init( void )
 	}
 
 		/* one uniform ring per frame in flight; the slice stride is the block
-	   rounded to the device's dynamic-offset alignment */
+	   rounded to the dynamic-offset alignment */
 	vk_shadeUboSliceBytes = ( VK_UBO_SIZE_PAD + VK_SHADE_UBO_ALIGN_MAX - 1 ) & ~( VK_SHADE_UBO_ALIGN_MAX - 1 );
 	if ( qvk.GetPhysicalDeviceProperties && vk.physicalDevice ) {
 		int align;
@@ -1838,8 +1830,8 @@ void VK_Shade_Descriptors_Shutdown( void )
 
 int VK_Shade_CommandBufferSlot( void )
 {
-	/* The slot the walk opened the pass on: tr.smpFrame, like every other
-	   per-frame resource. */
+	/* The slot the walk opened the pass on: tr.smpFrame, like every per-frame
+	   resource. */
 	return tr.smpFrame;
 }
 
@@ -2090,7 +2082,7 @@ static VkPipeline VK_Shade_Pipeline( unsigned stateBits, int family, unsigned de
 }
 
 /* the descriptor set for the (bundle0, bundle1, wave) triple, cached on those
-   views; the white image and a sampler resolve on first use */
+   views; the white image and sampler resolve on first use */
 static qboolean VK_Shade_DefaultImage( VkImageView *view, VkSampler *sampler )
 {
 	static VkImageView s_view;
@@ -2213,9 +2205,8 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	return set;
 }
 
-/* The frame's draw census.  Retail's trace answers "is the 3D draw list alive"
-   with a count per frame, so the boot carries the same number and a leg that
-   stops drawing reads as a number going to zero instead of as a silence. */
+/* The frame's draw census: retail's trace answers "is the 3D draw list alive"
+   with a count per frame, so a leg that stops drawing reads as a zero. */
 static int s_frameShadeDraws;   /* surface batches the walk completed */
 static int s_frameShadeDrops;   /* binds VK_Shade_Bind refused */
 static int s_frameImmDraws;     /* 2D batches */
@@ -2234,8 +2225,7 @@ void VK_Shade_NoteDraw( int shade )
 	}
 }
 
-/* the frame the census is mid-way through: the harness reads it beside the
-   frame's own readback, so the count and the pixels cannot drift apart */
+/* the frame the census is mid-way through: the harness reads it beside the readback */
 int VK_Shade_FrameBatches( void )
 {
 	return s_frameShadeDraws;
@@ -2247,6 +2237,64 @@ void VK_Shade_NoteSurfCmds( int surfs )
 	s_frameDrawSurfs += surfs;
 }
 
+/* The frame's stage census, per shader: retail's traced menu frame draws the
+   dome as five surfaces of 3, 3, 3, 2 and 2 stages, thirteen draws */
+typedef struct {
+	const char *name;
+	int         stages;
+} vkStageCensus_t;
+
+static vkStageCensus_t s_frameStages[8];
+static int             s_frameStageCount;
+
+void VK_Shade_NoteStage( const shader_t *shader )
+{
+	int i;
+
+	for ( i = 0; i < s_frameStageCount; i++ ) {
+		if ( s_frameStages[i].name == shader->name ) {
+			s_frameStages[i].stages++;
+			return;
+		}
+	}
+	if ( s_frameStageCount < ( int )( sizeof( s_frameStages ) / sizeof( s_frameStages[0] ) ) ) {
+		s_frameStages[s_frameStageCount].name   = shader->name;
+		s_frameStages[s_frameStageCount].stages = 1;
+		s_frameStageCount++;
+	}
+}
+
+/* One row per shader the frame drew stages for, only while the set holds still */
+static void VK_Shade_StageRows( void )
+{
+	static char last[16 * 40];
+	char        now[16 * 40];
+	int         i;
+	int         wrote = 0;
+
+	if ( !s_frameStageCount ) {
+		return;
+	}
+
+	now[0] = '\0';
+	for ( i = 0; i < s_frameStageCount && wrote < 15; i++ ) {
+		Q_strcat( now, sizeof( now ), va( "%s%s=%d", i ? " " : "",
+				  s_frameStages[i].name ? s_frameStages[i].name : "?",
+				  s_frameStages[i].stages ) );
+		wrote++;
+	}
+
+	{
+		static int rows;
+
+		rows++;
+		if ( rows <= 3 || Q_stricmp( now, last ) ) {
+			VK_Guard_Row( "VK:stages", "frame shaders=%d %s", s_frameStageCount, now );
+			Q_strncpyz( last, now, sizeof( last ) );
+		}
+	}
+}
+
 void VK_Shade_NotePerm( int miss )
 {
 	s_framePermReq++;
@@ -2255,10 +2303,9 @@ void VK_Shade_NotePerm( int miss )
 	}
 }
 
-/* The census the boot has to answer: which permutation keys were requested and
-   whether each one resolved.  A miss is not sampled -- every key this frame
-   asked for is named, because a key the offline build has to add is only
-   visible if a row carries it. */
+/* The census the boot answers: which permutation keys were requested and
+   whether each resolved.  A miss is never sampled -- a key the offline build
+   has to add is only visible if a row carries it. */
 void VK_Shade_PermRow( int family, unsigned defines )
 {
 	if ( s_framePermMissRows < 256 || ( s_framePermMissRows % 1000 ) == 0 ) {
@@ -2268,8 +2315,8 @@ void VK_Shade_PermRow( int family, unsigned defines )
 	s_framePermMissRows++;
 }
 
-/* The bind that carries a stage's program and textures, and answers whether a
-   pipeline is bound: recording the draw anyway is the driver-fault class. */
+/* The bind carries a stage's program and textures and answers whether a
+   pipeline is bound: recording the draw anyway faults the driver. */
 qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 {
 	VkImageView v0 = VK_NULL_HANDLE, v1 = VK_NULL_HANDLE, wave = VK_NULL_HANDLE;
@@ -2678,6 +2725,8 @@ void VK_Shade_NewFrame( void )
 		static int rows;
 		static int lastBatches = -1;
 
+		VK_Shade_StageRows();
+
 		/* a count that moves between frames is the vanish signature, so a
 		   transition is always named and not left to the sampler */
 		if ( rows < 8 || s_frameShadeDraws != lastBatches || ( rows % 600 ) == 0 ) {
@@ -2696,6 +2745,7 @@ void VK_Shade_NewFrame( void )
 	s_framePermReq       = 0;
 	s_framePermMiss      = 0;
 	s_framePermMissRows  = 0;
+	s_frameStageCount    = 0;
 
 	/* the front end wrote this frame's uniforms; the first draw uploads them
 	   into a fresh ring */

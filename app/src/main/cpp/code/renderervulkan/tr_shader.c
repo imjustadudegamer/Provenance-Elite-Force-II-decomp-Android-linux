@@ -2612,8 +2612,8 @@ static void CollapseMultitexture(int *stagecounter) {
 }
 
 static void Q_UNUSED_VAR FixRenderCommandList( int newShader ) {
-	/* The twin patches the sort key's shader number; this module's record
-	   carries the pointer and resolves the remap at draw time. */
+	/* The twin patches the sort key's shader number; this record carries the
+	   pointer and resolves the remap at draw time. */
 	( void )newShader;
 }
 
