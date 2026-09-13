@@ -949,6 +949,48 @@ static void R_ShowTikiLodDebugNumbers(trRefEntity_t *ent, dtiki_t *tiki)
     R_DrawDebugNumber(org, number, scale, 1.0f, 1.0f, 0.0f, precision);
 }
 
+/* The drop sites in this function are silent in the reference: PRINT_DEVELOPER
+   never reaches a device log, so a model that stops drawing names nothing and
+   the boot reads as a renderer fault.  Every gate here answers through one of
+   these two rows instead, throttled, with the anim state the gate rejected. */
+static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
+{
+    static int rows;
+
+    if (rows < 8 || (rows % 600) == 0) {
+        ri.Printf(PRINT_ALL, "[VK:skeldrop] why=%s model='%s' anim=%d frame=%d oldanim=%d oldframe=%d f=%d\n",
+                  why, tiki->a->name ? tiki->a->name : "?",
+                  ent->e.anim, (int)ent->e.frame,
+                  ent->e.oldanim, (int)ent->e.oldframe, RB_FrameCount());
+    }
+    rows++;
+}
+
+static void R_SkelDropFrame(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
+{
+    int numFrames   = ri.TIKI_Anim_NumFrames(tiki, ent->e.anim);
+    int numTan      = 0;
+    int numSkan     = 0;
+    skelAnimHeaderRec_t *hdr = ri.TIKI_Skan_FindByAnim(tiki, ent->e.anim);
+
+    if (hdr) {
+        numSkan = hdr->numFrames;
+    }
+    ri.TIKI_Anim_TanFrames(tiki, ent->e.anim, &numTan);
+
+    {
+        static int rows;
+
+        if (rows < 8 || (rows % 600) == 0) {
+            ri.Printf(PRINT_ALL,
+                      "[VK:skeldrop] why=%s model='%s' anim=%d frame=%d skanframes=%d tanframes=%d animframes=%d f=%d\n",
+                      why, tiki->a->name ? tiki->a->name : "?",
+                      ent->e.anim, (int)ent->e.frame, numSkan, numTan, numFrames, RB_FrameCount());
+        }
+        rows++;
+    }
+}
+
 void R_AddSkelSurfaces(trRefEntity_t *ent)
 {
     dtiki_t         *tiki;
@@ -981,6 +1023,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
     if (!ent->e.legsLive && !ent->e.torsoLive) {
         ri.Printf(PRINT_DEVELOPER, "R_AddSkelSurfaces: model '%s' with no torso or leg anim set\n", tiki->a->name);
+        R_SkelDrop("nolive", tiki, ent);
         return;
     }
 
@@ -1027,10 +1070,12 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
     // wrote; 1.0 means "not faded" and 0.0 means fully faded out, so retail stops dead for a
     if (ent->e.fade == 0.0f) {
+        R_SkelDrop("fade0", tiki, ent);
         return;
     }
 
     if (poseCount == 0) {
+        R_SkelDrop("nopose", tiki, ent);
         return;
     }
 
@@ -1045,12 +1090,14 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
         skelFrame_t      *of;
 
         if (!R_ValidateSkelAnimAndFrame(tiki, &ent->e.anim, &ent->e.frame, &nfHdr, &nf)) {
+            R_SkelDropFrame("legs-frame", tiki, ent);
             return;
         }
 
         R_ValidateSkelAnimAndFrame(tiki, &ent->e.oldanim, &ent->e.oldframe, &ofHdr, &of);
 
         if (R_CullSkelModel(tiki, &ent->e, nf, of, tiki_scale, tiki_localorigin) == CULL_OUT) {
+            R_SkelDrop("cull", tiki, ent);
             return;
         }
 
@@ -1133,6 +1180,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
     // no second solver -- when a live channel's record does not resolve, retail
     if (boneCount <= 0) {
+        R_SkelDrop("bones", tiki, ent);
         return;
     }
 

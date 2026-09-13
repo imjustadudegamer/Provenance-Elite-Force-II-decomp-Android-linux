@@ -2680,6 +2680,7 @@ void		VK_Shade_Descriptors_Shutdown( void );
 qboolean	VK_Shade_Init( void );
 void		VK_Shade_Shutdown( void );
 void		VK_Shade_NewFrame( void );
+void		VK_Shade_NoteDraw( int shade );
 
 int		VK_Shade_ModelViewDepth( void );
 int		VK_Shade_ProjectionDepth( void );

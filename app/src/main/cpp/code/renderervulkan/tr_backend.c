@@ -176,6 +176,7 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 	/* The ring is bound per surface: a bind is cheaper than tracking which. */
 	VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
 	VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );
+	VK_Shade_NoteDraw( qfalse );
 
 	vk_ring_note( vertexBase + tess.numVertexes, indexBase + tess.numIndexes );
 
@@ -668,19 +669,50 @@ void RB_BeginDrawingView (void) {
 
 	VK_DepthFuncApply( VK_LEQUAL );	/* pinned per view for the A/B cvar */
 
-	/* the pass opened with LOAD_OP_CLEAR, whose colour is whatever the
-	   previous frame's view chose; clearing here makes this view's choice the
-	   one that lands.  (Old Adreno wants a draw-based clear: device matrix.) */
+	/* Retail's traced menu frame clears DEPTH and nothing else: one depth clear
+	   before the model view, and no colour clear anywhere in it -- the UI's 2D
+	   is already on the frame and the view builds no volume.  Colour joins the
+	   clear only for a world view, and only for the fastsky/fog cases the
+	   reference asks it for.  Clearing colour for the UI's view is what erased
+	   the 2D painted ahead of it (the starfield behind the menu), and clearing
+	   no depth is what left a later view of the same frame to test against the
+	   depth the earlier ones wrote. */
 	{
-		VkClearAttachment attachment;
+		VkClearAttachment attachments[2];
 		VkClearRect rect;
+		int count = 0;
 
-		memset( &attachment, 0, sizeof( attachment ) );
-		attachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		attachment.clearValue.color.float32[0] = vk.clearColor[0];
-		attachment.clearValue.color.float32[1] = vk.clearColor[1];
-		attachment.clearValue.color.float32[2] = vk.clearColor[2];
-		attachment.clearValue.color.float32[3] = vk.clearColor[3];
+		memset( attachments, 0, sizeof( attachments ) );
+		attachments[count].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		attachments[count].clearValue.depthStencil.depth = 1.0f;
+		attachments[count].clearValue.depthStencil.stencil = 0;
+		count++;
+
+		if ( ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) == 0 )
+		{
+			qboolean colour = qfalse;
+
+			if ( !backEnd.viewParms.farplane_distance || tr.skyRendered || tr.portalRendered )
+			{
+				if ( r_fastsky->integer )
+				{
+					colour = qtrue;
+				}
+			}
+			else
+			{
+				colour = qtrue;
+			}
+
+			if ( colour ) {
+				attachments[count].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				attachments[count].clearValue.color.float32[0] = vk.clearColor[0];
+				attachments[count].clearValue.color.float32[1] = vk.clearColor[1];
+				attachments[count].clearValue.color.float32[2] = vk.clearColor[2];
+				attachments[count].clearValue.color.float32[3] = vk.clearColor[3];
+				count++;
+			}
+		}
 
 		memset( &rect, 0, sizeof( rect ) );
 		rect.rect.offset.x = backEnd.viewParms.viewportX;
@@ -693,7 +725,7 @@ void RB_BeginDrawingView (void) {
 		rect.baseArrayLayer = 0;
 		rect.layerCount = 1;
 
-		qvk.CmdClearAttachments( VK_Shade_CommandBuffer(), 1, &attachment, 1, &rect );
+		qvk.CmdClearAttachments( VK_Shade_CommandBuffer(), count, attachments, 1, &rect );
 	}
 
 	vkState.faceCulling = -1;
@@ -756,6 +788,21 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	backEnd.currentSphere = &backEnd.sphere;
 
 	for (i = 0, drawSurf = drawSurfs ; i < numDrawSurfs ; i++, drawSurf++) {
+		/* a null surface pointer is the same fault class as a key past the
+		   table: the sprite walk below already answers it, and this walk read
+		   the surface's first word through the null and died at
+		   RB_RenderDrawSurfList+0xb4 (si_addr 0) on the Prologue boot.  Name
+		   the slot and the list length instead. */
+		if ( drawSurf->surface == NULL ) {
+			static int nullRows;
+
+			if ( nullRows < 8 || ( nullRows % 500 ) == 0 ) {
+				VK_Guard_Hit( VK_GSITE_QUIRK, va( "draw surf %d of %d carries no surface",
+												  i, numDrawSurfs ), VK_INCOMPLETE );
+			}
+			nullRows++;
+			continue;
+		}
 		/* the surface's own first word picks the walker: a key past the table is
 		   a call through garbage, which is a fault that names nothing */
 		if ( *drawSurf->surface < 0 || *drawSurf->surface >= SF_NUM_SURFACE_TYPES ) {

@@ -2213,6 +2213,22 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	return set;
 }
 
+/* The frame's draw census.  Retail's trace answers "is the 3D draw list alive"
+   with a count per frame, so the boot carries the same number and a leg that
+   stops drawing reads as a number going to zero instead of as a silence. */
+static int s_frameShadeDraws;
+static int s_frameShadeDrops;
+static int s_frameImmDraws;
+
+void VK_Shade_NoteDraw( int shade )
+{
+	if ( shade ) {
+		s_frameShadeDraws++;
+	} else {
+		s_frameImmDraws++;
+	}
+}
+
 /* The bind that carries a stage's program and textures, and answers whether a
    pipeline is bound: recording the draw anyway is the driver-fault class. */
 qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
@@ -2226,12 +2242,14 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 
 	(void)shader;
 	if ( !s_shade.prog ) {
+		s_frameShadeDrops++;
 		return qfalse;
 	}
 	family = VK_Family_Of( s_shade.prog->defines );
 	pipeline = VK_Shade_Pipeline( s_shade.stateBits, family, s_shade.prog->defines,
 								  s_shade.cull, s_shade.polygonOffset, s_shade.topology );
 	if ( pipeline == VK_NULL_HANDLE ) {
+		s_frameShadeDrops++;
 		return qfalse;
 	}
 	if ( s_shade.texBound[0] ) {
@@ -2252,12 +2270,14 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	}
 	set = VK_Shade_Set( v0, v1, wave, waveSampler );
 	if ( set == VK_NULL_HANDLE ) {
+		s_frameShadeDrops++;
 		return qfalse;
 	}
 	{
 		VkDeviceSize slice = VK_Shade_WriteUBO();
 
 		if ( slice == ( VkDeviceSize )-1 ) {
+			s_frameShadeDrops++;
 			return qfalse;
 		}
 		uboOffset = ( uint32_t )slice;
@@ -2612,6 +2632,21 @@ void VK_SetGhostImage( const char *name, image_t *image )
 void VK_Shade_NewFrame( void )
 {
 	int slot;
+
+	/* the frame before this one is complete: its census is the number the
+	   retail trace carries, so name it here where nothing can be mid-draw */
+	if ( s_frameShadeDraws || s_frameShadeDrops ) {
+		static int rows;
+
+		if ( rows < 8 || ( rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:draw3d", "frame shade-draws=%d shade-drops=%d imm-draws=%d",
+						  s_frameShadeDraws, s_frameShadeDrops, s_frameImmDraws );
+		}
+		rows++;
+	}
+	s_frameShadeDraws = 0;
+	s_frameShadeDrops = 0;
+	s_frameImmDraws   = 0;
 
 	/* the front end wrote this frame's uniforms; the first draw uploads them
 	   into a fresh ring */

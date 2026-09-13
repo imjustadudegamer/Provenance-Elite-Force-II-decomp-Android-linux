@@ -1383,6 +1383,7 @@ void RB_EndSurface( void ) {
 	BE_Bump( BE_FAM_DS, BE_DSC_verts, tess.numVertexes );
 
 	BE_Bump( BE_FAM_DS, BE_DSC_stages, 1 );
+	VK_Shade_NoteDraw( qtrue );
 	if ( !tess.currentStageIteratorFunc ) {
 		/* A shader without an iterator takes the generic walk, as the reference renderer's
 		   default does; a silent NULL here is the boot-blocking death. */
