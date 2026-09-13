@@ -524,8 +524,8 @@ void R_UploadDynamicLightmaps( void ) {
 		if ( !tr.world->baseLightmapFrame[i] ) {
 			continue;
 		}
-		/* The Vulkan texture path uploads the whole lightmap rather than the
-		   dirty rows, so the frame flag selects the same set of maps. */
+		/* The texture path uploads the whole lightmap, not the dirty rows, so
+		   the frame flag selects the same set of maps. */
 		VK_Texture_Upload( tr.baseLightmaps[i]->texnum, 0, LIGHTMAP_WIDTH, LIGHTMAP_HEIGHT,
 			tr.world->baseLightmapImage + i * LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT * 4,
 			( size_t )LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT * 4 );

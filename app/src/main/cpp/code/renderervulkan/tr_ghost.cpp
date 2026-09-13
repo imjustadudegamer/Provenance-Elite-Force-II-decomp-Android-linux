@@ -1051,8 +1051,8 @@ void R_UpdateGhostTextures()
         gt->Burn();
 
         VK_Bind(gt->m_image);
-        /* the reference renderer re-uploaded the burned ghost with a texture copy; this module
-           texture path takes the whole level through the staging copy. */
+        /* the reference re-uploaded the burned ghost with a texture copy; this
+           module's texture path takes the whole level through staging. */
         VK_Texture_Upload(gt->m_image->texnum, 0, gt->m_width, gt->m_height,
                           gt->m_texture, (size_t)gt->m_width * gt->m_height * 4);
         VK_Texture_Publish(gt->m_image->texnum);

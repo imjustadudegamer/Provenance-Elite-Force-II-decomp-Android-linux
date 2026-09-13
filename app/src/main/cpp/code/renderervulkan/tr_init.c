@@ -56,8 +56,8 @@ cvar_t* r_skyportal_origin;
 cvar_t* r_stipplelines;
 cvar_t* r_useglfog;
 
-/* the 3D cvars the mirrored front end reads; the reference renderer defines them in its own
-   tr_init.c and this module carries the same list */
+/* the 3D cvars the mirrored front end reads; the reference defines them in its
+   own tr_init.c and this module carries the same list */
 cvar_t	*r_allowGeometryDeforms;
 cvar_t	*r_debugSort;
 cvar_t	*r_debugSurface;
@@ -183,8 +183,8 @@ void R_RegisterCvars( void )
 	r_gamma               = ri.Cvar_Get( "r_gamma", "1.2", CVAR_ARCHIVE );
 	r_detailtextures      = ri.Cvar_Get( "r_detailtextures", "1", 33 );
 
-	/* A cvar the module reads but never registers is a null read on its first
-	   use, so the 3D front end's set is registered here like the twin's. */
+	/* A cvar the module reads but never registers is a null read, so the 3D
+	   front end's set is registered here like the twin's. */
 	r_detailSurfaces = ri.Cvar_Get( "r_detailSurfaces", "1", CVAR_ARCHIVE  );
 	r_allowGeometryDeforms = ri.Cvar_Get( "r_allowGeometryDeforms", "1", CVAR_ARCHIVE  );
 	r_subdivisions = ri.Cvar_Get( "r_subdivisions", "3", CVAR_ARCHIVE | CVAR_LATCH );
@@ -358,7 +358,7 @@ void R_Init( void )
 	R_RegisterCvars();
 
 	/* The demo triangle is scaffolding, off by default and not persisted: an
-	   archived "1" from a test boot drew it over a later session's frames. */
+	   archived "1" drew it over a later session's frames. */
 	vk.demoDraw = ri.Cvar_Get( "r_vkDemo", "0", 0 )->integer ? qtrue : qfalse;
 
 	r_vkTrace = ri.Cvar_Get( VK_TRACE_CVAR, "1", 0 );
@@ -427,7 +427,7 @@ void RE_BeginRegistration( glconfig_t *config )
 	*config = vkConfig;
 
 	/* The registration sequence the font's shader cache keys on: it grows by
-	   exactly one per registration, exactly as the reference renderer's does. */
+	   exactly one per registration, as the reference's does. */
 	generation = ri.Cvar_Get( "r_renderergeneration", "0", CVAR_NORESTART );
 
 	r_sequencenumber = generation->integer + 1;
@@ -544,7 +544,7 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 	vk_frameOpen = qtrue;
 
 	/* The frame's list opens with the pass marker: the walk acquires, opens
-	   the render pass and clears, then performs whatever the frame recorded. */
+	   the pass and clears, then performs what the frame recorded. */
 	RB_RecordFramePrologue();
 
 	cmd = ( int * )R_GetCommandBuffer( sizeof( *cmd ) );
@@ -560,7 +560,7 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	int *cmd;
 
 	/* The 2D batch the UI left open belongs to this frame; closing it before
-	   the present marker is what keeps the last quad in the right frame. */
+	   the present marker keeps the last quad in the right frame. */
 	RB_2D_Flush();
 
 	cmd = ( int * )R_GetCommandBuffer( sizeof( *cmd ) );
@@ -571,12 +571,10 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	R_IssueRenderCommands();
 	vk_frameOpen = qfalse;
 
-	/* The frame boundary: the scene pools (entities, polys, lights, the draw
-	   surf list), the back-end slot and tr.smpFrame are per-frame budgets the
-	   frame's walk has now consumed.  The reference renderer runs it here; this
-	   module ran it only from R_Init, so the pools drained once and stayed
-	   drained -- the entity pool hit its cap ~1.3s into the menu and every
-	   later scene answered num_entities == 0. */
+	/* The frame boundary: the scene pools, the back-end slot and tr.smpFrame
+	   are budgets the frame's walk has consumed.  The reference renderer runs
+	   it here; this module ran it only from R_Init, so the pools drained once
+	   and stayed drained -- the entity pool hit its cap ~1.3s into the menu. */
 	R_InitNextFrame();
 
 	if ( frontEndMsec ) {

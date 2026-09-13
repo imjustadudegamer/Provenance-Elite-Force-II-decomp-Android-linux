@@ -630,8 +630,8 @@ void R_LoadFontShader(fontheader_sgl_t* font)
     font->trhandle = r_sequencenumber;
 }
 
-/* A string drawn under r_smp is one recorded command per page-and-colour run; the
- * render thread writes the same vertices the single-threaded body writes. */
+/* A string drawn under r_smp is one recorded command per page-and-colour run;
+ * the render thread writes the same vertices the single-threaded body does. */
 #define FONT_RUN_MAX 96
 
 static fontGlyph_t	s_fontRun[FONT_RUN_MAX];
@@ -773,8 +773,8 @@ void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs ) {
 			tess.xyz[tess.numVertexes + 3][1] *= cmd->heightScale;
 		}
 
-		/* The font stage's colour is CGEN_GLOBAL_COLOR, which the reference renderer
-		   remaps to the vertex colour in 2D; carry Draw_SetColor as the body does. */
+		/* The font stage's colour is CGEN_GLOBAL_COLOR, which the reference
+		   remaps to the vertex colour in 2D; carry Draw_SetColor as the body. */
 		{
 			int v;
 
@@ -875,13 +875,13 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         return;
     }
 
-    /* There is no immediate mode to fall back to: the front end records, the
-       walk performs, so a string is always one recorded run per page-and-colour. */
+    /* No immediate mode to fall back to: the front end records, the walk
+       performs, so a string is one recorded run per page-and-colour. */
     record = 1;
 
     {
-        /* The string's run is recorded like every other 2D call; there is no
-           immediate path to prepare for, so this is the timing hook only. */
+        /* The string's run is recorded like every other 2D call, so this is
+           the timing hook only. */
         D2_StringBegin(&s_fontStringT0);
     }
 

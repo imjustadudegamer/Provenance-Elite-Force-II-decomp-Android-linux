@@ -77,8 +77,8 @@ typedef unsigned int vkIndex_t;
 #define	MAX_MOD_KNOWN	1024
 /* 8192: the retail corpus names more distinct textures than 4096 slots hold,
    which is both the offline permutation census's truncation point and a hard
-   ERR_DROP for a session that loads past it.  The table is the only cost --
-   the pixels are allocated per image when one is actually uploaded. */
+   ERR_DROP for a session that loads past it.  The table is the only cost; the
+   pixels are allocated when an image is actually uploaded. */
 #define	MAX_DRAWIMAGES			8192
 #define	MAX_SKINS				1024
 
@@ -177,8 +177,7 @@ typedef struct dlight_s {
 } dlight_t;
 
 
-// `key` is only ever compared, never dereferenced: it is what retail's flare pool
-// frames.  Layout here is deliberately identical to retail's 40 bytes.
+// `key` is only ever compared, never dereferenced; layout is retail's 40 bytes.
 typedef struct lensflare_s {
 	void			*key;
 	vec3_t			origin;
@@ -1155,8 +1154,8 @@ extern	refimport_t		ri;
 
 /* 8192: the retail corpus names more distinct textures than 4096 slots hold,
    which is both the offline permutation census's truncation point and a hard
-   ERR_DROP for a session that loads past it.  The table is the only cost --
-   the pixels are allocated per image when one is actually uploaded. */
+   ERR_DROP for a session that loads past it.  The table is the only cost; the
+   pixels are allocated when an image is actually uploaded. */
 #define	MAX_DRAWIMAGES			8192
 #define	MAX_LIGHTMAPS			256
 #define	MAX_SKINS				1024
@@ -1575,8 +1574,7 @@ void R_DecomposeSort(unsigned int sort, int* entityNum, shader_t** shader, int* 
 
 void R_AddDrawSurf(surfaceType_t* surface, shader_t* shader, int fogNum, int dlightMap);
 
-/* the scene's surface path, counted for the frame row: the adds, the list the
-   scene recorded, and (the back end's own row) the count the command carried */
+/* the scene's surface path, counted for the frame row */
 void R_FrontEnd_NoteAdd( void );
 const char *R_FrontEnd_ViewRow( int recorded, int entities );
 
@@ -1674,8 +1672,8 @@ void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, 
 void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);
 
-/* one body per 2D entry point: immediate single-threaded, the same body run by
- * the render thread when recorded */
+/* one body per 2D entry point: immediate, or the same body under the render
+ * thread */
 void RB_2D_SetColor( const byte *rgba );
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 );
 void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy );
@@ -2218,8 +2216,7 @@ typedef struct
 	int commandId;
 } clearDepthCommand_t;
 
-/* the 2D overlay commands: appended, every field resolved on the recording
- * thread so the handler never reads front-end state */
+/* the 2D overlay commands: appended, every field resolved on the record thread */
 typedef struct {
 	int			commandId;
 	byte		color[4];
@@ -2653,7 +2650,7 @@ void RB_RecordFramePrologue( void );
 qboolean RB_RecordSurfaces( VkCommandBuffer cmd );
 void RB_FramePrologue( void );
 
-/* this module's 3D state machine (the reference renderer keeps these in tr_backend.c
+/* this module's 3D state machine (the reference keeps these in tr_backend.c
    and tr_program.c; the bodies live in vk_shade.c) */
 void		VK_SelectTexture( int tmu );
 void		VK_Bind( image_t *image );
@@ -2687,14 +2684,15 @@ void		VK_Shade_Shutdown( void );
 void		VK_Shade_NewFrame( void );
 void		VK_Shade_NoteDraw( int shade );
 void		VK_Shade_NoteSurfCmds( int surfs );
+void		VK_Shade_NoteStage( const struct shader_s *shader );
 int		VK_Shade_FrameBatches( void );
 void		VK_Shade_NotePerm( int miss );
 
 int		VK_Shade_ModelViewDepth( void );
 int		VK_Shade_ProjectionDepth( void );
 
-/* ---- the legacy spellings the mirrored 3D front end writes: this module
-   resolves them onto its own tokens, and no legacy raster header is involved ---- */
+/* ---- the legacy spellings the mirrored 3D front end writes, resolved onto
+   this module's own tokens; no legacy raster header is involved ---- */
 #undef VK_LINES
 #define VK_LINES				VK_IMM_LINES
 #undef VK_TRIANGLES
@@ -2741,7 +2739,7 @@ int		VK_Shade_ProjectionDepth( void );
 #define VK_LEQUAL				14
 
 /* the sub-stream: folded into the pending pipeline key, or dropped where this
-   pass has no counterpart */
+   pass has none */
 void	vkEnable( int cap );
 void	vkDisable( int cap );
 void	vkCullFace( int mode );
@@ -2832,7 +2830,7 @@ int      VK_Texture_Count( void );
 int      VK_Texture_BytesUsed( void );
 
 /* the legacy internal-format constants the loaders report, restated so the
-   texture table can map them without naming that header */
+   texture table maps them without that header */
 #define VK_TF_RGB				3
 #define VK_TF_RGBA				4
 #define VK_TF_RGBA8				0x8058
@@ -2841,14 +2839,14 @@ int      VK_Texture_BytesUsed( void );
 #define VK_TF_RGBA4				0x8055
 #define VK_TF_RGB5				0x8050
 /* LUMINANCE8 (0x8040), not RGB5: they were written with one value, so a
-   luminance request resolved as RGB5. */
+   luminance request resolved as RGB5 */
 #define VK_TF_LUM8				0x8040
 #define VK_TF_DXT1				0x83F0
 #define VK_TF_DXT3				0x83F2
 #define VK_TF_DXT5				0x83F3
 
-/* the wrap decisions an image carries in wrapClampModeX/Y: a texture repeats
-   unless the shader asked for a clamp */
+/* the wrap decisions an image carries in wrapClampModeX/Y: repeat unless the
+   shader asked for a clamp */
 #define VK_TWRAP_REPEAT				10497
 #define VK_TWRAP_CLAMP				10496
 #define VK_TWRAP_CLAMP_EDGE			33071

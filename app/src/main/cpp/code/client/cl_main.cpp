@@ -2396,7 +2396,7 @@ void CL_Init( void ) {
 
 	end = Sys_Milliseconds();
 
-	Com_Printf( "----- Client Initialization Complete ----- %i ms\n", start - end );
+	Com_Printf( "----- Client Initialization Complete ----- %i ms\n", end - start );
 }
 
 

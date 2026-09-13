@@ -1230,8 +1230,8 @@ void RB_CalcSunReflectionTexCoords(float* st) {
 	c.numVertexes = tess.numVertexes;
 	VectorCopy( backEnd.ori.viewOrigin, c.viewOrigin );
 
-	/* the sun basis is built once, before the vertex loop, exactly as retail
-	   does -- it is loop-invariant and copied in so the worker reads no global. */
+	/* the sun basis is built once, before the vertex loop, as retail does: it is
+	   loop-invariant and copied in so the worker reads no global */
 	c.sunAxis[0][0] = tr.sunDirection[0];
 	c.sunAxis[0][1] = tr.sunDirection[1];
 	c.sunAxis[0][2] = tr.sunDirection[2];

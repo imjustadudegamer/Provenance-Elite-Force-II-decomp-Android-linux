@@ -56,8 +56,8 @@ typedef struct {
 
 static vkDrawShaders_t	vk_draw;
 
-/* ---- the pipeline cache: a pipeline per state tuple, kept for the
- * module's life; the disk cache warms the builds. */
+/* ---- the pipeline cache: a pipeline per state tuple, kept for the module's
+ * life; the disk cache warms the builds */
 #define VK_PIPELINE_SLOTS 128
 
 typedef struct {
@@ -69,8 +69,8 @@ typedef struct {
 static vkPipelineSlot_t	vk_pipelines[VK_PIPELINE_SLOTS];
 static int				vk_numPipelines;
 
-/* ---- the descriptor sets: one per (view, sampler) pair, cached, since the
- * menu rebinds the same art every frame. */
+/* ---- the descriptor sets: one per (view, sampler) pair, cached; the menu
+ * rebinds the same art every frame */
 #define VK_SET_SLOTS 256
 
 typedef struct {
@@ -526,14 +526,11 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	degenerate = ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) ? qtrue : qfalse;
 
 	if ( degenerate ) {
-		/* Retail's own UI issues these: the tuple names the widget, and all
-		   three families the boots have shown are authored zero-extent in
-		   retail's data -- menu_controls' bindscroll (scrollbar_width 0 over
-		   WeaponBindList's 325x255 client), its two "table fudge" columns, and
-		   menu_loadgame's width-0 FileName/Timestamp columns.  The dims travel
-		   the UI's set2D -> Set2DWindow -> this record verbatim on both legs,
-		   so there is nothing to source here; the window is issued anyway and
-		   the zero-area scissor rasterises nothing, which is retail's result.
+		/* Retail's own UI issues these: menu_controls' bindscroll (scrollbar_width
+		   0 over WeaponBindList's 325x255 client), its two "table fudge" columns
+		   and menu_loadgame's width-0 columns are authored zero-extent.  The dims
+		   travel set2D -> Set2DWindow -> this record verbatim on both legs, the
+		   window is issued anyway and the zero-area scissor rasterises nothing.
 		   A diagnosis row, not a guard: [VK:guard] stays the error stream. */
 		static int s_rows;
 
@@ -546,9 +543,8 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 		s_rows++;
 	}
 
-	/* The window is issued either way, as the reference renderer does: the
-	   zero-extent scissor then rasterises nothing, retail's result.  Returning
-	   left the last window in force.  A zero viewport width is illegal. */
+	/* The window is issued either way, as the reference does: the zero-extent
+	   scissor rasterises nothing.  Returning left the last window in force. */
 	memset( m, 0, sizeof( m ) );
 	if ( !degenerate ) {
 		m[0]  = 2.0f / rl;
@@ -574,8 +570,8 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 							  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 							  0, sizeof( push ), &push );
 
-	/* The 2D window is in force from here until the frame ends: the surfaces
-	   the walk performs inside it take the 2D walk. */
+	/* The 2D window is in force until the frame ends: the surfaces the walk
+	   performs inside it take the 2D walk. */
 	backEnd.in2D = qtrue;
 	}
 
@@ -604,8 +600,7 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 
 /* The alpha test is a push constant set when the stage's pipeline binds, as
    Vulkan has no fixed-function test to inherit.  The value is the reference
-   renderer's selector (0 off, 1 GT0, 2 LT80, 4 GE128): a threshold cannot
-   express GT0, whose bound is zero, so pushing one silently tested nothing. */
+   selector (0 off, 1 GT0, 2 LT80, 4 GE128): a threshold cannot express GT0. */
 void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 {
 	float values[4];

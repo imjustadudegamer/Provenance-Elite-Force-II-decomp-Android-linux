@@ -91,7 +91,7 @@ qboolean VK_Descriptor_Init( void )
 	vk.bindlessTextures = textures;
 
 	/* a type the pool never declares is a budget of zero: the shade set's
-	   dynamic uniform buffer would fail to allocate on a strict driver */
+	   dynamic uniform buffer would fail on a strict driver */
 	memset( poolSizes, 0, sizeof( poolSizes ) );
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;

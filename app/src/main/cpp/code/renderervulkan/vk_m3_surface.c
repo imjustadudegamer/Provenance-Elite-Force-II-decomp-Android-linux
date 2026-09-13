@@ -118,7 +118,7 @@ int BE_Armed( void )
 
 qboolean VKimp_GLMainOwnsContext( void )
 {
-	/* There is no context to own: only the render thread records, and the
-	   front end reaches Vulkan only through R_SyncRenderThread, which parks it. */
+	/* No context to own: only the render thread records, and the front end
+	   reaches Vulkan only through R_SyncRenderThread, which parks it. */
 	return qfalse;
 }

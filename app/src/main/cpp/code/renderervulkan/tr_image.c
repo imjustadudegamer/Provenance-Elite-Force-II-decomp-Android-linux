@@ -53,8 +53,8 @@ static void LoadTGA( const char *name, byte **pic, int *width, int *height );
 static byte			 s_intensitytable[256];
 static unsigned char s_gammatable[256];
 
-/* The legacy filter enums restated as the module's own constants: the same
-   values the texture-mode table has always carried, named without that header. */
+/* The legacy filter enums restated as the module's own constants: the values the
+   texture-mode table has always carried. */
 #define VK_TFILT_NEAREST				9728
 #define VK_TFILT_LINEAR					9729
 #define VK_TFILT_NEAREST_MIP_NEAREST	9984
@@ -62,16 +62,14 @@ static unsigned char s_gammatable[256];
 #define VK_TFILT_NEAREST_MIP_LINEAR		9986
 #define VK_TFILT_LINEAR_MIP_LINEAR		9987
 
-/* the wrap decisions come from tr_local.h, beside the format constants they
-   sit with */
+/* the wrap decisions come from tr_local.h, beside the format constants */
 #define VK_TWRAP_S	0
 #define VK_TWRAP_T	1
 
 int		vk_filter_min = VK_TFILT_LINEAR_MIP_NEAREST;
 int		vk_filter_max = VK_TFILT_LINEAR;
 
-/* the texture the upload seam is filling: created by R_CreateImageOld before
-   the upload functions run, released when the image is freed */
+/* the texture the upload seam is filling: created before the uploads run */
 static int		s_vkUploadTex = -1;
 static qboolean	s_vkUploadMips = qfalse;
 
@@ -143,8 +141,7 @@ void VK_TextureMode( const char *string ) {
 	vk_filter_min = modes[i].minimize;
 	vk_filter_max = modes[i].maximize;
 
-	/* Nothing to re-issue: the sampler is resolved from the image's filter
-	   fields on every bind. */
+	/* Nothing to re-issue: the sampler resolves from the image on every bind. */
 	( void )img;
 }
 
@@ -593,8 +590,8 @@ static int	s_gles3UploadFormat  = 0;
 static qboolean	s_gles3UploadStored = qfalse;
 static int		s_gles3UploadLevels = 1;
 
-/* one mip level into the staging copy; the Vulkan image was created whole, so
-   a level is always a copy */
+/* one mip level into the staging copy; the image was created whole, so a
+   level is always a copy */
 static void R_UploadLevel( int sizedFormat, int level, int w, int h, const void *data ) {
 	size_t bytes;
 
@@ -706,8 +703,8 @@ static void Upload32(
 	scan = ((byte *)data);
 	samples = 3;
 	if (!bIsLightmap) {
-		/* only the alpha byte decides the sample count; the per-channel
-		 * maxima the retail loop accumulated are never read */
+		/* only the alpha byte decides the sample count; the per-channel maxima
+		 * the retail loop accumulated are never read */
 		for ( i = 0; i < c; i++ )
 		{
 			if ( scan[i*4 + 3] != 255 ) 
@@ -811,8 +808,7 @@ static void Upload32(
 	sizedFormat = R_VKInternalFormat( internalFormat );
 	s_gles3UploadStored = qfalse;
 	s_gles3UploadLevels = numMipmaps ? levels : 1;
-	/* immutable storage was the reference renderer's option; the Vulkan image
-	   is created whole, so there is nothing to re-specify */
+	/* immutable storage was the reference's option; the image is created whole */
 	(void)allowStorage;
 
 	if ( ( scaled_width == width ) && 
@@ -883,8 +879,7 @@ done:
 
 	s_vkUploadMips = numMipmaps ? qtrue : qfalse;
 
-	/* The filter pair the twin pushed into the object; anisotropy stays off
-	   until the sampler layer grows it. */
+	/* The filter pair the twin pushed into the object; anisotropy stays off. */
 	if (numMipmaps)
 	{
 		vk_filter_min = vk_filter_min;
@@ -996,7 +991,7 @@ static void UploadCompressed(
 		}
 
 		/* A BC block is the device's native format, so the copy is the whole
-		   of the twin's upload; without it the device decodes at load. */
+		   upload; without it the device decodes at load. */
 		if ( s_vkUploadTex >= 0 ) {
 			VK_Texture_Upload( s_vkUploadTex, i - iStartImage, scaled_width, scaled_height,
 							   offset, (size_t)size );
@@ -1194,8 +1189,8 @@ static void UploadTranscoded(
 		int bh = (h + 3) / 4;
 		int size = bw * bh * SMP_TEXC_BLOCK_BYTES;
 
-		/* The transcode wrote device-ready blocks; the copy is the whole of
-		   the upload, exactly what the S3TC path above does. */
+		/* The transcode wrote device-ready blocks; the copy is the whole
+		   upload, as the S3TC path above does. */
 		if ( s_vkUploadTex >= 0 ) {
 			VK_Texture_Upload( s_vkUploadTex, lvl, w, h, blocksBuf + off, (size_t)size );
 		}
@@ -1273,8 +1268,8 @@ image_t* R_CreateImageOld(
 
 	image = &tr.images[i];
 
-	/* The texture object is created whole: Vulkan needs the extent and mip
-	   count up front, and validation catches a wrong count. */
+	/* The texture object is created whole: Vulkan needs extent and mip count
+	   up front, and validation catches a wrong count. */
 	{
 		qboolean	supported = qfalse;
 		VkFormat	format;
@@ -1312,8 +1307,7 @@ image_t* R_CreateImageOld(
 	image->wrapClampModeX = getGLClampType( VK_TWRAP_S, textureMode );
 	image->wrapClampModeY = getGLClampType( VK_TWRAP_T, textureMode );
 
-	/* A Vulkan draw names its own descriptor, so there is no texture unit to
-	   select and nothing to bind at creation time. */
+	/* A Vulkan draw names its own descriptor: no texture unit to select. */
 	image->TMU = 0;
 	(void)isLightmap;
 
@@ -1473,7 +1467,7 @@ image_t* R_CreateImageOld(
 		int wrapT = image->wrapClampModeY;
 
 			/* a Vulkan sampler only has the edge clamp, so the fold is
-		   unconditional and the image records its resolved wrap */
+		   unconditional; the image records its resolved wrap */
 		if ( wrapS == VK_TWRAP_CLAMP ) {
 			wrapS = VK_TWRAP_CLAMP_EDGE;
 		}
@@ -2497,8 +2491,8 @@ void R_SetColorMappings( void ) {
 		s_intensitytable[i] = j;
 	}
 
-	/* glConfig.deviceSupportsGamma is qfalse by construction here: the present
-	   pass owns the ramp, so there is no hardware table to push. */
+	/* glConfig.deviceSupportsGamma is qfalse here: the present pass owns the
+	   ramp, so there is no hardware table to push. */
 }
 
 void	R_InitImages( void ) {
@@ -3085,8 +3079,8 @@ void verifyProperTextureSize( const char *name, int width, int height )
 	}
 }
 
-/* The textureMode codes are the four the callers pass: 0 clamp, 1 edge clamp,
-   2 repeat, 3/4 one axis clamped. */
+/* The textureMode codes the callers pass: 0 clamp, 1 edge clamp, 2 repeat,
+   3/4 one axis clamped. */
 int getGLClampType( int wrapAxis, int textureMode )
 {
 	(void)wrapAxis;
@@ -3111,8 +3105,8 @@ int getGLClampType( int wrapAxis, int textureMode )
 	return VK_TWRAP_REPEAT;
 }
 
-/* Anisotropy is a sampler field and the sampler layer does not build
-   anisotropic samplers yet; the default texture mode is bilinear anyway. */
+/* Anisotropy is a sampler field and the sampler layer builds none yet; the
+   default texture mode is bilinear anyway. */
 void VK_SetTextureAnisotropicFiltering( unsigned int target )
 {
 	( void )target;

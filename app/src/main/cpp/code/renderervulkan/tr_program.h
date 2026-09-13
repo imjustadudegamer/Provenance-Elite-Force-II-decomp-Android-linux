@@ -85,8 +85,8 @@ extern "C" {
 #define VKP_LIGHTMAP    0x00000040u  
 #define VKP_VERTEXLIT   0x00000080u  
 #define VKP_LIGHTMAP_MT 0x00000100u  
-/* 0x00000200 .. 0x00100000 are the per-arm selectors the programs read; they are
- * derived, not free: VK_StageDefines() is the single writer. */
+/* 0x00000200 .. 0x00100000 are the per-arm selectors the programs read; they
+ * are derived, not free: VK_StageDefines() is the single writer. */
 #define VKP_DLIGHT      0x00000200u  
 #define VKP_2D          0x00000400u  
 #define VKP_SKY         0x00000800u  
@@ -331,7 +331,7 @@ void		VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 							  qboolean hudColorClobber );
 
 /* Shared by every stage path that binds a bundle, so the lightmapped
-   multitexture fast path reports with the rest. */
+   multitexture fast path reports with the rest */
 void		VK_FullbrightNote( void );
 void		VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 								   int stageIndex, qboolean in2D,
