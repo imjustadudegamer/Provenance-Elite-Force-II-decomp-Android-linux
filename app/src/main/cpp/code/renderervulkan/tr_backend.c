@@ -1181,6 +1181,9 @@ void RB_StageIterator2D( void )
 		if ( !tess.xstages[stage] || !tess.xstages[stage]->active ) {
 			continue;
 		}
+		/* the 2D walk was the one iterator that never reported into the frame's
+		   stage census, so a menu-heavy frame under-counted its own stages */
+		VK_Shade_NoteStage( tess.shader );
 		RB_StagePass( tess.xstages[stage] );
 	}
 }

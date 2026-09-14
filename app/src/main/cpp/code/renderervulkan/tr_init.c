@@ -432,6 +432,17 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 		R_InitImages();
 		R_StartupShaders();
+	} else {
+		/* Retail re-runs the shader setup on every registration, not only the
+		   first.  R_SetupShaders clears shadertext_t::shader over the whole
+		   table and resets tr.numShaders, so every shader re-parses in the same
+		   order, takes the same index, and re-resolves its stage images with
+		   the new r_sequencenumber.  Without it a shader parsed before the load
+		   keeps image_t pointers into tr.images[] slots that R_FreeUnusedImages
+		   is about to free, and the next R_CreateImage hands that slot to some
+		   later texture: the shader then draws the wrong art and the row reads
+		   img='' while the slot is still empty. */
+		R_SetupShaders();
 	}
 
 	tr.registered = qtrue;
