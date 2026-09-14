@@ -2265,12 +2265,15 @@ void VK_Shade_NoteSurfCmds( int surfs )
 
 /* The frame's stage census, per shader: retail's traced menu frame draws the
    dome as five surfaces of 3, 3, 3, 2 and 2 stages, thirteen draws */
+#define VK_STAGE_CENSUS_MAX	64
+#define VK_STAGE_ROW_NAMES	24
+
 typedef struct {
 	const char *name;
 	int         stages;
 } vkStageCensus_t;
 
-static vkStageCensus_t s_frameStages[8];
+static vkStageCensus_t s_frameStages[VK_STAGE_CENSUS_MAX];
 static int             s_frameStageCount;
 
 void VK_Shade_NoteStage( const shader_t *shader )
@@ -2290,24 +2293,29 @@ void VK_Shade_NoteStage( const shader_t *shader )
 	}
 }
 
-/* One row per shader the frame drew stages for, only while the set holds still */
+/* One row per shader the frame drew stages for, only while the set holds still.
+   An in-game frame draws far more than eight distinct shaders once the HUD and a
+   menu join the world, and a census that holds eight names the world and drops
+   the 2D draws a binding question is about.  The tail is counted, not printed. */
 static void VK_Shade_StageRows( void )
 {
-	static char last[16 * 40];
-	char        now[16 * 40];
+	static char last[24 * 24];
+	char        now[24 * 24];
 	int         i;
-	int         wrote = 0;
 
 	if ( !s_frameStageCount ) {
 		return;
 	}
 
 	now[0] = '\0';
-	for ( i = 0; i < s_frameStageCount && wrote < 15; i++ ) {
+	for ( i = 0; i < s_frameStageCount && i < VK_STAGE_ROW_NAMES; i++ ) {
 		Q_strcat( now, sizeof( now ), va( "%s%s=%d", i ? " " : "",
 				  s_frameStages[i].name ? s_frameStages[i].name : "?",
 				  s_frameStages[i].stages ) );
-		wrote++;
+	}
+
+	if ( s_frameStageCount > VK_STAGE_ROW_NAMES ) {
+		Q_strcat( now, sizeof( now ), va( " +%d", s_frameStageCount - VK_STAGE_ROW_NAMES ) );
 	}
 
 	{
