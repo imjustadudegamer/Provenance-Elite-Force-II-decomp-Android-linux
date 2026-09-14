@@ -110,6 +110,40 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 		return qfalse;
 	}
 
+	/* The 2D binding row: the quad's shader, the view the slot resolves to, and
+	   the rect the geometry carries.  A tile sampling the wrong art names itself
+	   here as shader X with image Y. */
+	if ( backEnd.in2D ) {
+		static int s_rows;
+
+		float x0 = tess.xyz[0][0], y0 = tess.xyz[0][1];
+		float x1 = x0, y1 = y0;
+		int   v;
+
+		for ( v = 1; v < tess.numVertexes; v++ ) {
+			if ( tess.xyz[v][0] < x0 ) x0 = tess.xyz[v][0];
+			if ( tess.xyz[v][0] > x1 ) x1 = tess.xyz[v][0];
+			if ( tess.xyz[v][1] < y0 ) y0 = tess.xyz[v][1];
+			if ( tess.xyz[v][1] > y1 ) y1 = tess.xyz[v][1];
+		}
+
+		s_rows++;
+		if ( s_rows <= 40 || ( s_rows % 64 ) == 0 ) {
+			VK_Guard_Row( "VK:2ddraw",
+						  "n=%d shader='%s' img='%s' tex=%d verts=%d idx=%d "
+						  "rect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f)",
+						  s_rows,
+						  tess.shader ? tess.shader->name : "?",
+						  image->imgName,
+						  (int)image->texnum,
+						  tess.numVertexes, tess.numIndexes,
+						  x0, y0, x1, y1,
+						  tess.texCoords[0][0][0], tess.texCoords[0][0][1],
+						  tess.texCoords[tess.numVertexes - 1][0][0],
+						  tess.texCoords[tess.numVertexes - 1][0][1] );
+		}
+	}
+
 	memset( &key, 0, sizeof( key ) );
 	key.topology = VK_IMM_TRIANGLES;
 	key.stateBits = stage->stateBits;

@@ -2602,6 +2602,29 @@ static void CollapseMultitexture(int *stagecounter) {
 
 		stage->multitextureEnv = ( collapse[iUseCollapse].multitextureEnv == 2 ) ? VK_TENV_ADD : VK_TENV_MODULATE;
 
+		/* The merge row: a shader retail draws as two passes and this port as one
+		   collapsed here.  It names the bits the guard compared, so the guard is
+		   readable off the boot instead of inferred. */
+		{
+			static int s_merges;
+
+			s_merges++;
+			if ( s_merges <= 32 ) {
+				ri.Printf( PRINT_ALL,
+						   "[VK:merge] n=%d shader='%s' a=0x%x b=0x%x hi=0x%x env=%d "
+						   "t0='%s' t1='%s' passes=%d->%d\n",
+						   s_merges,
+						   shader.name,
+						   abits, bbits, (unsigned)( abits & ~0x1FF ),
+						   collapse[iUseCollapse].multitextureEnv,
+						   ( stage->bundle[0].image[0] && stage->bundle[0].image[0]->imgName[0] )
+							   ? stage->bundle[0].image[0]->imgName : "?",
+						   ( stage->bundle[1].image[0] && stage->bundle[1].image[0]->imgName[0] )
+							   ? stage->bundle[1].image[0]->imgName : "?",
+						   *stagecounter + 1, *stagecounter );
+			}
+		}
+
 		if (stagenum + 2 < MAX_SHADER_STAGES) {
 			memmove(&unfoggedStages[stagenum + 1], &unfoggedStages[stagenum + 2], sizeof(unfoggedStages[0]) * (MAX_SHADER_STAGES - 2 - stagenum));
 		}
