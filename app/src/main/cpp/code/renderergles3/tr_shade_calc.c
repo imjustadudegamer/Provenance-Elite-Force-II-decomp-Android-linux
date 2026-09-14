@@ -1035,9 +1035,8 @@ static void RB_CalcEnvironmentTexCoordsRange( void *vctx, int begin, int end ) {
 		reflected[1] = normal[1]*2*d - viewer[1];
 		reflected[2] = normal[2]*2*d - viewer[2];
 
-		/* RB_CalcEnvironmentTexCoords @0x00030C30's sibling: the same
-		 * K*(H*n.d - v) + K shape with K = 1, i.e. reflected + 1, a [0,2]
-		 * wrap.  0.5 + r*0.5 caps it at [0,1]. */
+		/* RB_CalcEnvironmentTexCoords @0x00030C30's sibling: the same K*(H*n.d - v) + K shape with K =
+		   1, i.e. reflected + 1, a [0,2] wrap. 0.5 + r*0.5 caps it at [0,1]. */
 		st[0] = 1.0 + reflected[1];
 		st[1] = 1.0 - reflected[2];
 	}
@@ -1079,11 +1078,10 @@ static void RB_CalcAngleBasedEnvironmentTexCoordsRange( void *vctx, int begin, i
 		reflected[1] = normal[1]*2*d - c->viewer[1];
 		reflected[2] = normal[2]*2*d - c->viewer[2];
 
-		/* RB_CalcAngleBasedEnvironmentTexCoords @0x00030C30: `K*(H*n.d - v) + K'
-		 * with K = 1, so reflected + 1 -- a [0,2] wrap.  Retail's own menu
-		 * capture pins it: the Intrepid-0x base stage's st array spans
-		 * s 0.0029..1.9837 / t 0.0092..1.9919 over 1034 vertices, which a
-		 * K of 0.5 (range [0,1]) cannot produce. */
+		/* RB_CalcAngleBasedEnvironmentTexCoords @0x00030C30: `K*(H*n.d - v) + K' with K = 1, so
+		   reflected + 1 -- a [0,2] wrap. Retail's own menu capture pins it: the Intrepid-0x base stage's
+		   st array spans s 0.0029..1.9837 / t 0.0092..1.9919 over 1034 vertices, which a K of 0.5 (range
+		   [0,1]) cannot produce. */
 		st[0] = 1.0 + reflected[1];
 		st[1] = 1.0 - reflected[2];
 	}

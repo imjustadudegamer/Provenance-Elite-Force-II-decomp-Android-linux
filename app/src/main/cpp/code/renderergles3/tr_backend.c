@@ -2349,9 +2349,8 @@ void BE_Name( int family, const char *name, int usec ) {
 	f->top[slot].usec = usec;
 }
 
-/* ---- [GLES3:glerr] naming the call that left the error flag set ----------
- * The flag is sticky, so a probe names the first call that looked, not the one
- * that set it. */
+/* ---- [GLES3:glerr] naming the call that left the error flag set ---------- The flag is sticky,
+   so a probe names the first call that looked, not the one that set it. */
 enum {
 	RB_GLES3_ERR_IDLE = 0,
 	RB_GLES3_ERR_SEEN,

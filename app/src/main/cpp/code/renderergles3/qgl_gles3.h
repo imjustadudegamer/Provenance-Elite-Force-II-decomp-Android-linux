@@ -54,10 +54,9 @@ QGL_GLES3_32_PROCS;
 #else
 #define GLE(ret, name, ...) extern name##proc *qgl##name;
 #endif
-/* GL_EXT_buffer_storage.  Not core in ES 3.0/3.2, and the one optional entry
- * point the send path gates on: a persistently mapped store is the only way to
- * write a batch as a memcpy and still draw from the same buffer, because a
- * non-persistent map forbids the draw that reads it. */
+/* GL_EXT_buffer_storage. Not core in ES 3.0/3.2, and the one optional entry point the send path
+   gates on: a persistently mapped store is the only way to write a batch as a memcpy and still
+   draw from the same buffer, because a non-persistent map forbids the draw that reads it. */
 QGL_EXT_buffer_storage_PROCS;
 #undef GLE
 

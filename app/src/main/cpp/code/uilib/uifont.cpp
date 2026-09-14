@@ -123,11 +123,10 @@ void UIFont::Print(float x, float y, const char *text, int maxlen, UColor shadow
     float        vy    = y;
     float        textScaleBuf[2];
 
-    /* The factor reaches `Rend_DrawString' as the virtual screen's division
-       does: it scales the glyphs and the origin is divided by it, because the
-       renderer multiplies the quad's coordinates by the same pair.  Retail's
-       flag does the same -- R_DrawString @0x0000D250 scales the glyphs and
-       UIFont::Print @0x0005FB70 passes x and y through.  Without the division a
+    /* The factor reaches `Rend_DrawString' as the virtual screen's division does: it scales the
+       glyphs and the origin is divided by it, because the renderer multiplies the quad's
+       coordinates by the same pair. Retail's flag does the same -- R_DrawString @0x0000D250 scales
+       the glyphs and UIFont::Print @0x0005FB70 passes x and y through. Without the division a
        scaled widget's text lands at twice its own line and leaves the box. */
     if (virtualScreen) {
         scale = uid.scaleRes;

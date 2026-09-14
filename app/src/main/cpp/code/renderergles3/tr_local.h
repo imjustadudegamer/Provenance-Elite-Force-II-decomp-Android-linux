@@ -2468,21 +2468,19 @@ typedef struct {
 	 * belongs in the row because the store's effect cannot be read without it:
 	 * the comparison is the store's only where this is zero. */
 	int		fall;
-	/* `writes` is every store write the send made, `local` the batches that made
-	 * none because their index blocks were already device-local, `statics` the
-	 * batches the static path accepted, `multi` those drawn by one multi-draw and
- * `seq` those drawn one call a record because the context has no multi-draw.
-	 * A frame whose `local` is zero is a frame the device-local arena did not
-	 * reach, which is the only reading that separates the two arms. */
+	/* `writes` is every store write the send made, `local` the batches that made none because their
+	   index blocks were already device-local, `statics` the batches the static path accepted, `multi`
+	   those drawn by one multi-draw and `seq` those drawn one call a record because the context has
+	   no multi-draw. A frame whose `local` is zero is a frame the device-local arena did not reach,
+	   which is the only reading that separates the two arms. */
 	int		writes, local, statics, multi, seq;
 	int		locVisits, locVtx, locIdx, locHash, locFirstAt;
 	unsigned locFirst, locWas, locNow;
 	/* Gate rejections, one reason a batch (world, dlight, iterator, signature,
 	 * records); with `statics' they cover every batch.  `recs' is records seen. */
 	int		gateWorld, gateDlight, gateIter, gateSig, gateRec, recs;
-	/* The 2D share of `batches'/`sum'.  The menu's sends are 2D and the load
-	 * menu's frame is their cost, so the one-write-per-pass acceptance is this
-	 * pair and not the whole row. */
+	/* The 2D share of `batches'/`sum'. The menu's sends are 2D and the load menu's frame is their
+	   cost, so the one-write-per-pass acceptance is this pair and not the whole row. */
 	int		d2Batches, d2Sum;
 } beSendRow_t;
 

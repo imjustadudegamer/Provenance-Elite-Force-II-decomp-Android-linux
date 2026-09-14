@@ -369,14 +369,11 @@ void QDECL Com_DebugPrintf( const char *fmt, ...) {
 
 #endif
 
-/*
- * Retail Com_Error @0x000C8460 has no empty-message case: it formats what it was
- * handed, so its ERR_DISCONNECT arm's `strlen( com_errorMessage )' test then
- * picks `CL_Disconnect( 1 )' -- the silent disconnect -- and writing anything
- * into the buffer here would pick `CL_AbnormalDisconnect' instead.  Report the
- * code, the last command tokenised and the frames, capped, through the console,
- * which the fault sink's captured stderr stream does not reach.
- */
+/* Retail Com_Error @0x000C8460 has no empty-message case: it formats what it was handed, so its
+   ERR_DISCONNECT arm's `strlen( com_errorMessage )' test then picks `CL_Disconnect( 1 )' -- the
+   silent disconnect -- and writing anything into the buffer here would pick
+   `CL_AbnormalDisconnect' instead. Report the code, the last command tokenised and the frames,
+   capped, through the console, which the fault sink's captured stderr stream does not reach. */
 static void Com_ErrorFrames( const char *text ) {
 	Com_Printf( "%s", text );
 }
@@ -1981,13 +1978,11 @@ static void SMP_LoadPrint( int frames, int window ) {
 	}
 }
 
-/*
- * The frame cost on a phone can drift with SoC frequency and heat rather than with
- * anything the engine did.  Nothing else in the tree reads either, so a capture
- * cannot tell a code regression from a throttled part without this row.  Sampling
- * is one window roll (a few sysfs reads per second) and only under the probe gate.
- */
-/* GPU clock sources, in the order tried; `hz' marks a node reporting Hz. */
+/* The frame cost on a phone can drift with SoC frequency and heat rather than with anything the
+   engine did. Nothing else in the tree reads either, so a capture cannot tell a code regression
+   from a throttled part without this row. Sampling is one window roll (a few sysfs reads per
+   second) and only under the probe gate. / /* GPU clock sources, in the order tried; `hz' marks a
+   node reporting Hz. */
 typedef struct {
 	const char	*path;
 	const char	*name;

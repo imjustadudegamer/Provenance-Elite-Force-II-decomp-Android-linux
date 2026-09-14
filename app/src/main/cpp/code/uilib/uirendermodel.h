@@ -18,9 +18,8 @@ protected:
     str m_modelName;
     str m_animName;
 
-    /* The registration memo.  Resolving the name is a table walk plus the tiki
-       registration path, so it runs when the name changes or the handle stops
-       resolving, not every draw. */
+    /* The registration memo. Resolving the name is a table walk plus the tiki registration path,
+       so it runs when the name changes or the handle stops resolving, not every draw. */
     str        m_resolvedModel;
     qhandle_t  m_modelHandle;
 

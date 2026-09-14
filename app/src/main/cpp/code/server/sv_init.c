@@ -328,11 +328,10 @@ static Q_UNUSED_VAR void SV_TouchFile( const char *filename ) {
 
 static int sv_stickyChecksumFeed = 0;
 
-/* Every call in SV_SpawnServer that can take milliseconds is bracketed, so a
- * missing bracket shows as residual rather than as a silent zero.  Legs: 0
- * CL_MapLoading, 1 ge->Cleanup, 2 FS_Restart, 3 warm RunFrames, 4
- * SV_CreateBaseline, 5 CM_LoadMap, 6 pure pak checksums, 7 configstrings, 8
- * client walk, 9 heartbeat and Hunk mark, 10 SV_InitGameProgs, 11 SpawnEntities. */
+/* Every call in SV_SpawnServer that can take milliseconds is bracketed, so a missing bracket shows
+   as residual rather than as a silent zero. Legs: 0 CL_MapLoading, 1 ge->Cleanup, 2 FS_Restart, 3
+   warm RunFrames, 4 SV_CreateBaseline, 5 CM_LoadMap, 6 pure pak checksums, 7 configstrings, 8
+   client walk, 9 heartbeat and Hunk mark, 10 SV_InitGameProgs, 11 SpawnEntities. */
 #define SPAWN_LEG_COUNT 12
 #define SPAWN_LEG_CMAP		5
 #define SPAWN_LEG_PURE		6
@@ -351,15 +350,13 @@ static int	s_spawnTotalT0;
 #define SPAWN_LEG_END( leg ) \
 	do { if ( PROBE_On() ) { s_spawnLegs[ leg ] += Sys_Milliseconds() - s_spawnLegT0[ leg ]; } } while ( 0 )
 
-/* The twelve legs bracket the fresh-map path.  A solo savegame load runs the
- * other arm of the `if ( loadgame )` fork and skips both `if ( !ge )` and
- * `if ( !loadgame )`, so the work it does needs windows of its own; they are a
- * separate table so the twelve legs keep their meaning.  A window never
- * contains a leg and a leg never contains a window, so the sum of the two
- * tables is the measured time and the residual is what neither covers.
- * Windows: 0 the name parse and first-initialisation block, 1 the hunk clear,
- * map load name, checksum feed, portals and world clear, 2 the loadgame level
- * restore, 3 the post-spawn gaps and the tail. */
+/* The twelve legs bracket the fresh-map path. A solo savegame load runs the other arm of the `if (
+   loadgame )` fork and skips both `if ( !ge )` and `if ( !loadgame )`, so the work it does needs
+   windows of its own; they are a separate table so the twelve legs keep their meaning. A window
+   never contains a leg and a leg never contains a window, so the sum of the two tables is the
+   measured time and the residual is what neither covers. Windows: 0 the name parse and
+   first-initialisation block, 1 the hunk clear, map load name, checksum feed, portals and world
+   clear, 2 the loadgame level restore, 3 the post-spawn gaps and the tail. */
 #define SPAWN_WIN_COUNT 4
 #define SPAWN_WIN_NAME		0
 #define SPAWN_WIN_SETUP		1

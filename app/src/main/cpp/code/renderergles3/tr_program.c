@@ -232,12 +232,10 @@ static int		s_progCreateProbeRows;
 static GLuint	s_waveTable;
 static qboolean	s_waveTableReady;
 
-/*
- * Uniform values live in the program object, so re-issuing the value a (program, location)
- * already carries costs a driver call and changes nothing.  A direct-mapped slot always
- * holds the last value written for its key, so a hit is exact and a collision only costs
- * the call it was going to make anyway.
- */
+/* Uniform values live in the program object, so re-issuing the value a (program, location) already
+   carries costs a driver call and changes nothing. A direct-mapped slot always holds the last
+   value written for its key, so a hit is exact and a collision only costs the call it was going to
+   make anyway. */
 #define GLES3_UNIF_CACHE_BITS	11
 #define GLES3_UNIF_CACHE_SIZE	( 1 << GLES3_UNIF_CACHE_BITS )
 #define GLES3_UNIF_CACHE_VALS	16
@@ -942,11 +940,10 @@ unsigned GLES3_StageDefines_Full( const shaderStage_t *pStage, const shader_t *s
 	{
 		d |= GLP_NORMAL;
 	}
-	/* The whole class, not just the colour arms: four tcGen arms read the
-	   surface normal inside the shader (tr_shader.c:1462-1487 sets retail's
-	   own needsNormal for exactly them), and so do AGEN_DOT/ONE_MINUS_DOT_VIEW.
-	   Without GLP_NORMAL `nrm' is vec3(0,0,1) and the stage samples one texel
-	   of its map for the whole surface. */
+	/* The whole class, not just the colour arms: four tcGen arms read the surface normal inside the
+	   shader (tr_shader.c:1462-1487 sets retail's own needsNormal for exactly them), and so do
+	   AGEN_DOT/ONE_MINUS_DOT_VIEW. Without GLP_NORMAL `nrm' is vec3(0,0,1) and the stage samples one
+	   texel of its map for the whole surface. */
 	if ( tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED || tc0 == (unsigned)TCGEN_ENVIRONMENT_MAPPED2
 		|| tc0 == (unsigned)TCGEN_ANGLE_BASED_ENVIRONMENT || tc0 == (unsigned)TCGEN_SUN_REFLECTION
 		|| ( bundleCount == 2
@@ -1611,11 +1608,10 @@ void GLES3_SetupStageUniforms( gles3Program_t *p, const shaderStage_t *pStage, c
 	cpuColor = GLES3_StageNeedsCPUColor( pStage );
 	cpuTexCoords = GLES3_StageNeedsCPUTexCoords( pStage );
 
-	/* In 2D the quad already carries Draw_SetColor in a_Color (tr_draw.c writes
-	   it per vertex), so u_BaseColor stays 1: multiplying it in again squares
-	   the colour and the alpha, which is the black-button / half-alpha class.
-	   In 3D a_Color is the tess colour array, which a constant-colour stage
-	   never fills, so the uniform still has to carry it. */
+	/* In 2D the quad already carries Draw_SetColor in a_Color (tr_draw.c writes it per vertex), so
+	   u_BaseColor stays 1: multiplying it in again squares the colour and the alpha, which is the
+	   black-button / half-alpha class. In 3D a_Color is the tess colour array, which a
+	   constant-colour stage never fills, so the uniform still has to carry it. */
 	if ( backEnd.in2D )
 	{
 		baseColor[0] = baseColor[1] = baseColor[2] = baseColor[3] = 1.0f;
@@ -1645,11 +1641,10 @@ void GLES3_SetupStageUniforms( gles3Program_t *p, const shaderStage_t *pStage, c
 	}
 	GLES3_SetUniform4fv( p, GLES3_U_BASECOLOR, baseColor );
 
-	/* In 2D every quad already carries Draw_SetColor per vertex, and u_BaseColor
-	   is pinned to 1 above -- so the two arms that read that uniform read 1 and
-	   the quad draws in the atlas's own colour, which for a font page is white.
-	   Those two arms read the vertex instead, exactly as the CPU-colour arm does;
-	   every other gen keeps its own meaning.  In 3D u_BaseColor carries the
+	/* In 2D every quad already carries Draw_SetColor per vertex, and u_BaseColor is pinned to 1 above
+	   -- so the two arms that read that uniform read 1 and the quad draws in the atlas's own colour,
+	   which for a font page is white. Those two arms read the vertex instead, exactly as the
+	   CPU-colour arm does; every other gen keeps its own meaning. In 3D u_BaseColor carries the
 	   global colour, exactly as before. */
 	if ( backEnd.in2D && !cpuColor )
 	{
@@ -2297,11 +2292,9 @@ summary:
 }
 
 
-/*
- * One [NIGHTVISION:nv] row per 60 frames: `fullbright' is the `& 2' predicate
- * retail's stage iterators test, `nightvision' the shipped view mode that sets
- * it.  They are separate because the bridge question is about the second.
- */
+/* One [NIGHTVISION:nv] row per 60 frames: `fullbright' is the `& 2' predicate retail's stage
+   iterators test, `nightvision' the shipped view mode that sets it. They are separate because the
+   bridge question is about the second. */
 void GLES3_FullbrightNote( void )
 {
 	static int s_nvSubs;
@@ -2344,10 +2337,9 @@ void GLES3_FullbrightNote( void )
 	}
 }
 
-/* Three budgets: ordinary rows, rows where the fullbright arm substituted a
- * bind, and rows where a bind did not follow the stage's own image.  The arm and
- * the mismatch are different questions, so the loading screen's animated dots
- * must not spend the arm's budget before the bridge is drawn. */
+/* Three budgets: ordinary rows, rows where the fullbright arm substituted a bind, and rows where a
+   bind did not follow the stage's own image. The arm and the mismatch are different questions, so
+   the loading screen's animated dots must not spend the arm's budget before the bridge is drawn. */
 #define SURFSTATS_ROWS			4096
 #define SURFSTATS_ARM_ROWS		64
 #define SURFSTATS_MISS_ROWS		64
@@ -2392,16 +2384,12 @@ static int R_SurfStatClaim( surfStatRow_t *rows, int *used, int cap,
 	return SURFSTAT_NEW;
 }
 
-/*
- * One row per distinct stage bind, reported by every stage path that binds a
- * bundle -- the generic iterator through `GLES3_DrawStage' and the lightmapped
- * multitexture iterator, which is the fast path most world geometry takes and
- * which bound its bundles directly, so the census never saw the level.  The row
- * carries the raw flags word and both bits apart, and it is claimed against one
- * of three budgets: the arm actually firing, a bind that did not follow the
- * stage's own image, or neither.  `want' is the stage's own image for the unit,
- * `u' is what is bound there now.
- */
+/* One row per distinct stage bind, reported by every stage path that binds a bundle -- the generic
+   iterator through `GLES3_DrawStage' and the lightmapped multitexture iterator, which is the fast
+   path most world geometry takes and which bound its bundles directly, so the census never saw the
+   level. The row carries the raw flags word and both bits apart, and it is claimed against one of
+   three budgets: the arm actually firing, a bind that did not follow the stage's own image, or
+   neither. `want' is the stage's own image for the unit, `u' is what is bound there now. */
 void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 							int stageIndex, qboolean in2D,
 							unsigned w0, unsigned w1, unsigned u0, unsigned u1 )
@@ -2452,10 +2440,9 @@ void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 				   fbarm ? SURFSTATS_ARM_ROWS : ( bindmiss ? SURFSTATS_MISS_ROWS : SURFSTATS_ROWS ),
 				   fbarm ? "fullbright-arm" : ( bindmiss ? "bind-mismatch" : "distinct" ) );
 	} else if ( claim == SURFSTAT_NEW ) {
-		/* A row this frame that no frame before it printed was not recorded, so
-		   the count of NEW rows can never be read as the count of draws.  The
-		   dropped count is printed with the row so a thin census says which of
-		   the two budgets it hit. */
+		/* A row this frame that no frame before it printed was not recorded, so the count of NEW rows
+		   can never be read as the count of draws. The dropped count is printed with the row so a thin
+		   census says which of the two budgets it hit. */
 		s_surfRows++;
 
 		ri.Printf( PRINT_ALL,

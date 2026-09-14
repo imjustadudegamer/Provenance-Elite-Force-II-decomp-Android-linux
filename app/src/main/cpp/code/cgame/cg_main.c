@@ -569,11 +569,9 @@ void CG_ServerRestarted(void)
     CG_InitializeWeather();
 }
 
-/*
- * cginit is one SMP_LOAD zone worth ~3.3 s on the device and CG_Init's own body is
- * a few registrations, so the time is inside one of them.  These legs say which.
- * cgi.Milliseconds is the module's own clock, available before anything is set up.
- */
+/* cginit is one SMP_LOAD zone worth ~3.3 s on the device and CG_Init's own body is a few
+   registrations, so the time is inside one of them. These legs say which. cgi.Milliseconds is the
+   module's own clock, available before anything is set up. */
 #define CGINIT_LEG_COUNT 6
 
 static int  s_cginitLegs[CGINIT_LEG_COUNT];

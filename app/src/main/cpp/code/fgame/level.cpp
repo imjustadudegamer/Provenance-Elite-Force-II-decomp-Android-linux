@@ -120,12 +120,11 @@ void Level::Init(void)
     startTime                = 0;     
     _showIntermission        = true; 
 
-    /* `intermission_advancetime' is deliberately not cleared here.  Retail's
-       Level::Init @0x00238950 writes intermissiontime (+0xc4) and
-       exitintermission (+0xc8) only; the advance time is written once per map
-       by G_InitGame @0x001D20F0 (0x001D21AC) from `g_intermissiontime'.  Init
-       runs from SpawnEntities, which the engine calls after InitGame, so
-       clearing it here disarms the ten seconds ClientThink waits on. */
+    /* `intermission_advancetime' is deliberately not cleared here. Retail's Level::Init
+       @0x00238950 writes intermissiontime (+0xc4) and exitintermission (+0xc8) only; the advance
+       time is written once per map by G_InitGame @0x001D20F0 (0x001D21AC) from
+       `g_intermissiontime'. Init runs from SpawnEntities, which the engine calls after InitGame,
+       so clearing it here disarms the ten seconds ClientThink waits on. */
 
     cinematic = false;
     ai_on     = true;
@@ -946,10 +945,9 @@ void Level::Archive(Archiver& arc)
     arc.ArchiveInteger(&exitintermission);
     arc.ArchiveFloat(&intermission_advancetime);
     if (arc.Loading()) {
-        /* The cvar owns this value (G_InitGame, SDK g_main.cpp:196).  A savegame
-           a build with the zeroing Init wrote carries a zero, and the restore
-           runs after G_InitGame, so restoring it would disarm ClientThink's
-           ten-second gate for the whole loaded session. */
+        /* The cvar owns this value (G_InitGame, SDK g_main.cpp:196). A savegame a build with the
+           zeroing Init wrote carries a zero, and the restore runs after G_InitGame, so restoring
+           it would disarm ClientThink's ten-second gate for the whole loaded session. */
         WIDGET_PROBE("missionend", "archive load advance=%.3f cvar=%d\n",
                      intermission_advancetime, g_intermissiontime->integer);
         intermission_advancetime = (float)g_intermissiontime->integer;

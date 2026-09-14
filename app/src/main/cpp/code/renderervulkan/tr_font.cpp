@@ -880,8 +880,7 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
     record = 1;
 
     {
-        /* The string's run is recorded like every other 2D call, so this is
-           the timing hook only. */
+        /* The string's run is recorded like every other 2D call, so this is the timing hook only. */
         D2_StringBegin(&s_fontStringT0);
     }
 

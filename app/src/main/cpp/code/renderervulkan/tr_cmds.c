@@ -185,8 +185,7 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )cmds;
 
-			/* Pending 2D runs close first, or their quads draw under the next
-			   window's viewport and ortho. */
+			/* Pending 2D runs close first, or their quads draw under the next window's viewport and ortho. */
 			RB_2D_Flush();
 
 			VK_Draw_Set2D( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->w, cmd->h,

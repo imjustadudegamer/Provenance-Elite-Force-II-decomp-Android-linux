@@ -939,10 +939,9 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 
             cg.refdef.rdflags |= RDF_FULLBRIGHT;
 
-            /* The shipped `global/viewmodes.txt' gives exactly one mode
-               `useFullBright 1' -- `nightvision' -- and that mode's own hud is
-               `nightvisionhud', so the mode is named by the hud the table gives
-               it rather than by the generic fullbright predicate. */
+            /* The shipped `global/viewmodes.txt' gives exactly one mode `useFullBright 1' --
+               `nightvision' -- and that mode's own hud is `nightvisionhud', so the mode is named
+               by the hud the table gives it rather than by the generic fullbright predicate. */
             if (cgi.GetViewModeHud(viewMode, &hudName) && hudName
                 && !Q_stricmp(hudName, "nightvisionhud")) {
                 cg.refdef.rdflags |= RDF_NIGHTVISION;

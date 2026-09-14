@@ -58,17 +58,15 @@ typedef struct {
 static tikidef_t s_tikis[TIKI_MAX_DEFS];
 static int       s_numTiKis;
 
-/* ---- the parse/build result outlives the level ---------------------------
- * CL_ShutdownAll runs on every map load and save restore and it called
- * TIKI_FreeAll, which threw away every dtikianim_t and dtiki_t.  The next
- * level then re-parsed and re-built the same models from nothing, and the
- * measured split put build -- TIKI_LoadTikiModel -- at about 70% of that leg
- * and parse at 25%.  The retained set is bounded by the game's own model list,
- * so keeping the two caches costs a fixed few MB and turns a warm registration
- * into a name lookup.  What is still dropped is everything per-level:
- * tiki->skeletor (recreated on demand by TIKI_GetSkeletor) and the whole
- * skelcache, which is the 55 MB animation set.  tiki_keepLoaded 0 restores
- * retail's teardown. */
+/* ---- the parse/build result outlives the level --------------------------- CL_ShutdownAll runs
+   on every map load and save restore and it called TIKI_FreeAll, which threw away every
+   dtikianim_t and dtiki_t. The next level then re-parsed and re-built the same models from
+   nothing, and the measured split put build -- TIKI_LoadTikiModel -- at about 70% of that leg and
+   parse at 25%. The retained set is bounded by the game's own model list, so keeping the two
+   caches costs a fixed few MB and turns a warm registration into a name lookup. What is still
+   dropped is everything per-level: tiki->skeletor (recreated on demand by TIKI_GetSkeletor) and
+   the whole skelcache, which is the 55 MB animation set. tiki_keepLoaded 0 restores retail's
+   teardown. */
 static cvar_t *s_tikiKeepLoaded;
 
 static qboolean TIKI_KeepLoaded(void)

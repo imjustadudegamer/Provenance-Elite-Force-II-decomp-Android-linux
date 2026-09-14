@@ -48,13 +48,12 @@ void R_Invalidate2DWindowCache( void ) {
 	r_scissor2DValid = qfalse;
 }
 
-/* ---- [2D:stall] per-call accounting of the 2D entry points ----------------
- * A menu frame's cost is charged to whichever widget calls in here, and the
- * widget probe only sees the widget's total.  This splits that total per entry
- * point and separates the flush prefix -- which, with a single-threaded back
- * end, executes the recorded frame inline -- from the immediate body, so one
- * device run names the blocking call instead of inferring it from widget
- * self-times.  Every read is behind the master probe gate. */
+/* ---- [2D:stall] per-call accounting of the 2D entry points ---------------- A menu frame's cost
+   is charged to whichever widget calls in here, and the widget probe only sees the widget's total.
+   This splits that total per entry point and separates the flush prefix -- which, with a
+   single-threaded back end, executes the recorded frame inline -- from the immediate body, so one
+   device run names the blocking call instead of inferring it from widget self-times. Every read is
+   behind the master probe gate. */
 typedef enum {
 	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
 	D2P_tilepicoffset, D2P_trianglepic, D2P_bgsub, D2P_bgpixels, D2P_box,
@@ -80,10 +79,9 @@ static int		s_d2StallShown;
    what the UI asked for, draws is what reached the driver. */
 static int		s_d2Batches;
 
-/* Batch coverage.  Every vertex the 2D path is asked for is counted here and
-   counted again where it is actually handed to the driver; the two must agree
-   or something dropped a quad at a batch boundary, which is exactly the bug
-   class that cost the menu its backgrounds. */
+/* Batch coverage. Every vertex the 2D path is asked for is counted here and counted again where it
+   is actually handed to the driver; the two must agree or something dropped a quad at a batch
+   boundary, which is exactly the bug class that cost the menu its backgrounds. */
 static int		s_d2VertsAsked;
 static int		s_d2VertsDrawn;
 static int		s_d2Drops;
@@ -139,10 +137,9 @@ static int D2_Prepare( void ) {
 		int	f0 = D2_T0();
 		int	t0;
 
-		/* Draw the batch only when a recorded scene is actually waiting, so a
-		   menu model the UI submits mid-walk still lands *behind* the quads
-		   drawn before it.  With nothing pending there is nothing to order
-		   against, and flushing would break the batch on every call. */
+		/* Draw the batch only when a recorded scene is actually waiting, so a menu model the UI submits
+		   mid-walk still lands *behind* the quads drawn before it. With nothing pending there is nothing
+		   to order against, and flushing would break the batch on every call. */
 		if ( R_PendingRenderCommands() ) {
 			RB_2D_Flush();
 		}
@@ -208,14 +205,13 @@ static void D2_Roll( void ) {
 /* ---- the 2D bodies: run directly when the back end is single-threaded, and
  * replayed on the render thread when the same call was recorded ---- */
 
-/* ---- the 2D batch ---------------------------------------------------------
- * A UI pass issued 400-650 of these calls a frame and every one was a complete
- * surface of its own: program and state setup, a buffer re-specification and a
- * draw.  That per-call price is the menu's whole frame -- 70-115 us typical,
- * single calls spiking into milliseconds -- so quads now append to one open
- * surface and the surface is ended only when the shader, the primitive kind or
- * the view changes.  Draw order survives because every change flushes first;
- * colour never flushes, because it is baked per vertex. */
+/* ---- the 2D batch --------------------------------------------------------- A UI pass issued
+   400-650 of these calls a frame and every one was a complete surface of its own: program and
+   state setup, a buffer re-specification and a draw. That per-call price is the menu's whole frame
+   -- 70-115 us typical, single calls spiking into milliseconds -- so quads now append to one open
+   surface and the surface is ended only when the shader, the primitive kind or the view changes.
+   Draw order survives because every change flushes first; colour never flushes, because it is
+   baked per vertex. */
 
 static shader_t *s_2dBatchShader;
 static qboolean  s_2dBatchOpen;
@@ -233,9 +229,8 @@ void RB_2D_Flush( void ) {
 	if ( s_2dBatchOpen ) {
 		int	verts;
 
-		/* tess.numVertexes is what is actually about to be handed over; the
-		   counter is what the UI asked for.  A gap means something reset the
-		   tess under the open batch and those quads are gone. */
+		/* tess.numVertexes is what is actually about to be handed over; the counter is what the UI asked
+		   for. A gap means something reset the tess under the open batch and those quads are gone. */
 		verts = tess.numVertexes;
 		if ( verts != s_2dBatchVerts ) {
 			int			lost = s_2dBatchVerts - verts;
@@ -263,12 +258,11 @@ void RB_2D_Flush( void ) {
 	if ( s_2dTriOpen ) {
 		int	got;
 
-		/* EndDeferred only closes the record; RB_ImmFlush is what draws it.
-		   Deferring left the boxes pending over a frame boundary, and let any
-		   tess draw interleave a different program between the boxes' setup and
-		   their draw -- both of which are the missing-draw class.  Tidy first,
-		   flush second: the run was opened after the last tess flush, so the
-		   order is the order the calls arrived in. */
+		/* EndDeferred only closes the record; RB_ImmFlush is what draws it. Deferring left the boxes
+		   pending over a frame boundary, and let any tess draw interleave a different program between
+		   the boxes' setup and their draw -- both of which are the missing-draw class. Tidy first, flush
+		   second: the run was opened after the last tess flush, so the order is the order the calls
+		   arrived in. */
 		RB_ImmEndDeferred();
 		s_2dTriOpen  = qfalse;
 		s_2dTriBlend = -1;
@@ -455,9 +449,8 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	gles3Program_t	*p2d;
 	int				 wantBlend = blend ? 1 : 0;
 
-	/* Consecutive boxes share one run and its program setup; blend splits it.
-	   Colour is per vertex: u_BaseColor is a uniform on the one 2D family
-	   program, shared with RE_DrawBackground_*. */
+	/* Consecutive boxes share one run and its program setup; blend splits it. Colour is per vertex:
+	   u_BaseColor is a uniform on the one 2D family program, shared with RE_DrawBackground_*. */
 	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) {
 		RB_2D_Flush();
 
@@ -633,10 +626,9 @@ void RB_2D_ShaderTime( float startTime ) {
 
 /* ---- entry points: record under r_smp, run the body otherwise ---- */
 
-/* A string's renderer cost, in the same roll as the quads.  The load-game menu
- * draws ~29 labels a frame and the UI probe charges the whole of it to
- * UIFakkLabel; without this slot the roll cannot say how much of that is the
- * renderer and how much is the widget's own measure-and-wrap work. */
+/* A string's renderer cost, in the same roll as the quads. The load-game menu draws ~29 labels a
+   frame and the UI probe charges the whole of it to UIFakkLabel; without this slot the roll cannot
+   say how much of that is the renderer and how much is the widget's own measure-and-wrap work. */
 void D2_StringBegin( int *t0 ) {
 	*t0 = D2_T0();
 }
@@ -667,10 +659,9 @@ void Draw_SetColor(const vec4_t rgba) {
 			Com_Memcpy( cmd->color, r_color2D, sizeof( r_color2D ) );
 		}
 
-		/* The font path and RE_StretchRaw draw immediately on this thread
-		 * after parking the render thread, and they read backEnd.color2D.
-		 * Only while this thread owns the context may the front-end copy
-		 * reach the render-thread state. */
+		/* The font path and RE_StretchRaw draw immediately on this thread after parking the render
+		   thread, and they read backEnd.color2D. Only while this thread owns the context may the
+		   front-end copy reach the render-thread state. */
 		if ( GLimp_GLMainOwnsContext() ) {
 			backEnd.color2D[0] = r_color2D[0];
 			backEnd.color2D[1] = r_color2D[1];

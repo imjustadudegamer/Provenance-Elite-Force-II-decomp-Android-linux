@@ -61,10 +61,9 @@ typedef enum {
 
 static void *GLES3_ResolveProc(const char *name);
 
-/* A refused 3.2 request has to name what the device offered.  This opens one
- * throwaway context with no version attribute (the driver then picks its
- * highest) only to read the version and renderer strings, and destroys it; the
- * renderer never runs on it. */
+/* A refused 3.2 request has to name what the device offered. This opens one throwaway context with
+   no version attribute (the driver then picks its highest) only to read the version and renderer
+   strings, and destroys it; the renderer never runs on it. */
 static void GLES3_LogOfferedVersion(void)
 {
 	typedef const unsigned char *(*gles3GetString_t)(unsigned int);
@@ -523,9 +522,8 @@ void GLimp_Init(qboolean fixedFunction)
 		ri.Cvar_Get("gles3_gles3_allow_missing_core", "0", CVAR_TEMP);
 
 #ifdef __ANDROID__
-	/* Android: the full-screen-antialiasing cvars are forced off.  The GLES
-	 * surface never carries multisample attributes, so they were inert anyway;
-	 * pinning them keeps the video menu honest. */
+	/* Android: the full-screen-antialiasing cvars are forced off. The GLES surface never carries
+	   multisample attributes, so they were inert anyway; pinning them keeps the video menu honest. */
 	r_ati_fsaa_samples = ri.Cvar_Get("r_ati_fsaa_samples", "0", CVAR_ARCHIVE);
 	r_nv_fsaa_samples = ri.Cvar_Get("r_nv_fsaa_samples", "0", CVAR_ARCHIVE | CVAR_LATCH);
 #else

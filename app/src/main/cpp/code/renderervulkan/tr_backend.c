@@ -684,10 +684,9 @@ void RB_BeginDrawingView (void) {
 
 	VK_DepthFuncApply( VK_LEQUAL );	/* pinned per view for the A/B cvar */
 
-	/* Retail's traced menu frame clears DEPTH and nothing else: the view builds no
-	   volume, and colour joins only for a world view's fastsky or fog.  Colour on
-	   the UI's view erased the 2D painted ahead of it; no depth left a later view
-	   testing against the first one's depth. */
+	/* Retail's traced menu frame clears DEPTH and nothing else: the view builds no volume, and colour
+	   joins only for a world view's fastsky or fog. Colour on the UI's view erased the 2D painted
+	   ahead of it; no depth left a later view testing against the first one's depth. */
 	{
 		VkClearAttachment attachments[2];
 		VkClearRect rect;

@@ -151,8 +151,7 @@ QGL_EXT_direct_state_access_PROCS;
 QGL_GLES3_CORE_PROCS;
 #undef GLE
 
-/* Core in a LATER ES than the 3.0 set: trapped as staged, so a 3.0 context still
- * comes up. */
+/* Core in a LATER ES than the 3.0 set: trapped as staged, so a 3.0 context still comes up. */
 #define GLE(ret, name, ...) \
 	static ret APIENTRY GLES3_trap_##name(__VA_ARGS__) \
 	{ \

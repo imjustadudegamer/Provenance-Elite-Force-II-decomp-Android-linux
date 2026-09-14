@@ -69,14 +69,13 @@ void TIKI_UpdateScreen(void)
 #endif
 }
 
-/* ---- [TIKI:skel] the cold-animation split ---------------------------------
- * A cold character tiki costs 0.3-1.3 s of a restore and the only thing the
- * model-leg row can say today is the total.  Every animation the skeletor cache
- * loads comes through here, so the read (bytes, through the compressed paks and
- * the OBB's FUSE mount) and the convert (the channel/frame work) are charged
- * apart, and the roll prints once a second while a load is running.  Which of
- * the two owns the second decides the optimisation: a read leg wants fewer or
- * larger reads, a convert leg wants parallelism or a cached conversion. */
+/* ---- [TIKI:skel] the cold-animation split --------------------------------- A cold character
+   tiki costs 0.3-1.3 s of a restore and the only thing the model-leg row can say today is the
+   total. Every animation the skeletor cache loads comes through here, so the read (bytes, through
+   the compressed paks and the OBB's FUSE mount) and the convert (the channel/frame work) are
+   charged apart, and the roll prints once a second while a load is running. Which of the two owns
+   the second decides the optimisation: a read leg wants fewer or larger reads, a convert leg wants
+   parallelism or a cached conversion. */
 typedef struct {
     int      loads;
     int      bytes;
@@ -121,11 +120,10 @@ void TIKI_SkelRollEnd( int t0 )
     memset( &s_tikiSkel, 0, sizeof( s_tikiSkel ) );
 }
 
-/* ---- [TIKI:tiki] the registration half of a cold setmodel -----------------
- * The restore's model legs are 5.6 s and the engine call that owns them is
- * gi.SetModel.  This splits the two jobs inside it -- the .tik parse/register
- * and the model build -- so the skel roll above (the animation paging) and this
- * row together account for the whole leg. */
+/* ---- [TIKI:tiki] the registration half of a cold setmodel ----------------- The restore's model
+   legs are 5.6 s and the engine call that owns them is gi.SetModel. This splits the two jobs
+   inside it -- the .tik parse/register and the model build -- so the skel roll above (the
+   animation paging) and this row together account for the whole leg. */
 typedef struct {
     int regs;
     int parseMs;
@@ -179,13 +177,12 @@ void TIKI_TikiRoll( void )
     memset( &s_tikiTiki, 0, sizeof( s_tikiTiki ) );
 }
 
-/* Names the set the keep-loaded arm retained at an unload, so a warm restore
- * reads `kept=N` and a `[TIKI:tiki]` window with `warm=` after it instead of
- * the cold parse/build figures.  The warm counter on the roll row is the
- * always-on half: 0.3.19's keep branch never reached its own row (the unload
- * did not go through TIKI_FreeAll) while the cache was demonstrably working --
- * build=65ms and 37ms for 28 and 33 registrations against 0.3.18's 2255ms for
- * 7 -- so the effect now reports from the hit path, which always runs. */
+/* Names the set the keep-loaded arm retained at an unload, so a warm restore reads `kept=N` and a
+   `[TIKI:tiki]` window with `warm=` after it instead of the cold parse/build figures. The warm
+   counter on the roll row is the always-on half: 0.3.19's keep branch never reached its own row
+   (the unload did not go through TIKI_FreeAll) while the cache was demonstrably working --
+   build=65ms and 37ms for 28 and 33 registrations against 0.3.18's 2255ms for 7 -- so the effect
+   now reports from the hit path, which always runs. */
 void TIKI_TikiRollKeep( int kept )
 {
     Com_Printf( "[TIKI:keep] kept=%d\n", kept );

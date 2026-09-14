@@ -150,11 +150,10 @@ static void DrawNormals (shaderCommands_t *input, int pass) {
 void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	shader_t	*state;
 
-	/* Opening a surface resets the tess, which would silently discard anything
-	   the 2D batch still holds.  Drawing it first is the one rule that covers
-	   every caller of this function, including the ones that are not the 2D
-	   path: a batch is only ever open on the thread that opened it, so this is
-	   a no-op for the 3D pass. */
+	/* Opening a surface resets the tess, which would silently discard anything the 2D batch still
+	   holds. Drawing it first is the one rule that covers every caller of this function, including
+	   the ones that are not the 2D path: a batch is only ever open on the thread that opened it, so
+	   this is a no-op for the 3D pass. */
 	RB_2D_Flush();
 
 	state = shader->remappedShader ? shader->remappedShader : shader;
@@ -1284,15 +1283,12 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 		}
 		GLES3_SetUniform1f( lmprog, GLES3_U_FORCEALPHA, -1.0f );
 
-		/*
-		 * Retail RB_StageIteratorLightmappedMultitextureUnfogged @0x000368D0
-		 * substitutes the white image for each bundle whose `isLightmap' bit is
-		 * set while the fullbright bit is up -- bundle[0] at *(bundle+60), the
-		 * `& 2' test at 0x369AC/0x369D0, bundle[1] at *(bundle+128), the second
-		 * test at 0x36A10/0x36A38.  Without these arms every lightmapped world
-		 * surface kept its own dark lightmap on the fast path while the generic
-		 * path brightened.  `!backEnd.in2D' is false here: this is the world path.
-		 */
+		/* Retail RB_StageIteratorLightmappedMultitextureUnfogged @0x000368D0 substitutes the white image
+		   for each bundle whose `isLightmap' bit is set while the fullbright bit is up -- bundle[0] at
+		   *(bundle+60), the `& 2' test at 0x369AC/0x369D0, bundle[1] at *(bundle+128), the second test
+		   at 0x36A10/0x36A38. Without these arms every lightmapped world surface kept its own dark
+		   lightmap on the fast path while the generic path brightened. `!backEnd.in2D' is false here:
+		   this is the world path. */
 		if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
 			 && tess.xstages[0]->bundle[0].isLightmap )
 		{

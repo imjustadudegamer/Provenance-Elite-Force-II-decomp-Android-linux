@@ -27,3 +27,5 @@ __pycache__/
 .DS_Store
 personal/
 /docs/wt/
+/docs/scripts/
+/docs/tools/

@@ -590,8 +590,7 @@ static int	s_gles3UploadFormat  = 0;
 static qboolean	s_gles3UploadStored = qfalse;
 static int		s_gles3UploadLevels = 1;
 
-/* one mip level into the staging copy; the image was created whole, so a
-   level is always a copy */
+/* one mip level into the staging copy; the image was created whole, so a level is always a copy */
 static void R_UploadLevel( int sizedFormat, int level, int w, int h, const void *data ) {
 	size_t bytes;
 
@@ -3078,8 +3077,7 @@ void verifyProperTextureSize( const char *name, int width, int height )
 	}
 }
 
-/* The textureMode codes the callers pass: 0 clamp, 1 edge clamp, 2 repeat,
-   3/4 one axis clamped. */
+/* The textureMode codes the callers pass: 0 clamp, 1 edge clamp, 2 repeat, 3/4 one axis clamped. */
 int getGLClampType( int wrapAxis, int textureMode )
 {
 	(void)wrapAxis;

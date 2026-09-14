@@ -140,21 +140,19 @@ static qboolean	s_arenaActive;
 static qboolean	s_arenaFull;
 static int		s_arenaFrame = -1;
 static cvar_t	*s_arenaCvar;
-/* The arm switch: 0 ring, 1 mapped store.  `r_tessArena' is the legacy override.
- * 0.3.20/0.3.21 shipped 1 and the first live arm stood down before its own row
- * could print, so the session logged "mapped" over a ring; until the store
- * carries on a host harness it stays opt-in. */
+/* The arm switch: 0 ring, 1 mapped store. `r_tessArena' is the legacy override. 0.3.20/0.3.21
+   shipped 1 and the first live arm stood down before its own row could print, so the session
+   logged "mapped" over a ring; until the store carries on a host harness it stays opt-in. */
 static cvar_t	*s_mapCvar;
 /* The arm as the cvars ask for it, before the store's own verdict; `fall='
  * counts against this, for a store asked for and refused every batch. */
 static qboolean	s_arenaArmed;
-/* The ring's own send shape.  1 is the fresh-orphan `glBufferData' per send and
- * the default: the same-view A/B measured 47,093 us/window against 381,283 for
- * the sub-data shape, because Mali prices a write into a buffer the GPU last
- * read eight batches ago as a drain.  The storage re-specification now happens
- * with the default VAO bound and the slot's own VAO opens after it, which is
- * the order bc60397 gave the store and the one the 0.3.19 session found the
- * old shape missing.  0 is the sub-data shape, kept for the A/B. */
+/* The ring's own send shape. 1 is the fresh-orphan `glBufferData' per send and the default: the
+   same-view A/B measured 47,093 us/window against 381,283 for the sub-data shape, because Mali
+   prices a write into a buffer the GPU last read eight batches ago as a drain. The storage
+   re-specification now happens with the default VAO bound and the slot's own VAO opens after it,
+   which is the order bc60397 gave the store and the one the 0.3.19 session found the old shape
+   missing. 0 is the sub-data shape, kept for the A/B. */
 static cvar_t	*s_freshCvar;
 /* Latched at the first send: the two shapes are not mixable within a session,
  * so flipping r_tessFresh mid-session does nothing until the next map load. */
@@ -164,8 +162,7 @@ static qboolean	s_fresh;
 static int		 s_arenaAlternate = -1;
 /* Batches the store could not hold, which the ring drew instead. */
 static int		s_arenaFall;
-/* The arm row's own state, so a capture that starts mid-session still sees
- * which arm ran. */
+/* The arm row's own state, so a capture that starts mid-session still sees which arm ran. */
 static qboolean	s_armPrinted;
 static int		s_armMode = -1;
 
@@ -494,13 +491,12 @@ void RB_VBO_Shutdown( void )
 	s_vboInitialised = qfalse;
 }
 
-/* One batch's two sends.  `slot` rotates per batch, and the vertex and index
- * sends of a batch share their slot, so the pair a draw reads is the pair just
- * written and the pair the next send writes is eight batches old.  Both sizes and
- * both payloads are the batch's exact values, no padding: the allocation is the
- * structural maximum and the upload is the batch.  The fresh arm's call set is
- * two glBufferData plus the same bind calls; the subdata arm's is two
- * glBufferSubData.  Neither maps and neither fences. */
+/* One batch's two sends. `slot` rotates per batch, and the vertex and index sends of a batch share
+   their slot, so the pair a draw reads is the pair just written and the pair the next send writes
+   is eight batches old. Both sizes and both payloads are the batch's exact values, no padding: the
+   allocation is the structural maximum and the upload is the batch. The fresh arm's call set is
+   two glBufferData plus the same bind calls; the subdata arm's is two glBufferSubData. Neither
+   maps and neither fences. */
 static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIndexes )
 {
 	int		slot = s_tessRingNext;
@@ -516,9 +512,8 @@ static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIn
 	}
 
 	if ( s_fresh ) {
-		/* The 8x arm, measured 47,093 vs 381,283 us/window: glBufferSubData
-		 * into a buffer the GPU last read stalls the writer, so the pair is
-		 * orphaned per send instead. */
+		/* The 8x arm, measured 47,093 vs 381,283 us/window: glBufferSubData into a buffer the GPU last
+		   read stalls the writer, so the pair is orphaned per send instead. */
 		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboTessRing[slot] );
 		qglBufferData( GL_ARRAY_BUFFER,
@@ -667,9 +662,8 @@ static rbStaticRegion_t *RB_StaticFind( const void *surf ) {
 	return NULL;
 }
 
-/* One source index rebased onto its surface's arena region: the only
- * arithmetic that turns a batch index into a drawn index, shared by the bake
- * and the fallback compose. */
+/* One source index rebased onto its surface's arena region: the only arithmetic that turns a batch
+   index into a drawn index, shared by the bake and the fallback compose. */
 static glIndex_t RB_StaticRebase( const rbStaticRec_t *r, const rbStaticRegion_t *e,
 								  glIndex_t local ) {
 	return (glIndex_t)( e->first + ( local - r->vertStart ) );
@@ -730,8 +724,7 @@ static void RB_VboStaticInit( void ) {
 		RB_VBO_ConfigureAttribs();
 	}
 
-	/* These VAOs belong to RB_VboArenaInit; if it has not run there is
-	 * nothing to make here yet. */
+	/* These VAOs belong to RB_VboArenaInit; if it has not run there is nothing to make here yet. */
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
 		RB_VboStaticArenaVao( i );
 	}
@@ -1111,10 +1104,9 @@ static qboolean RB_VboArenaMapPair( int slot ) {
 	return qtrue;
 }
 
-/* The VAO that draws the static world's vertices out of store `i's index blocks.
- * It is made here and again from RB_VboStaticInit, whichever runs second: it
- * needs both the static vertex arena and the store, and neither is ordered
- * against the other. */
+/* The VAO that draws the static world's vertices out of store `i's index blocks. It is made here
+   and again from RB_VboStaticInit, whichever runs second: it needs both the static vertex arena
+   and the store, and neither is ordered against the other. */
 static void RB_VboStaticArenaVao( int i ) {
 	if ( s_vaoStaticArena[i] ) {
 		return;
@@ -1138,10 +1130,9 @@ static void RB_VboArenaInit( void ) {
 	GL_ClaimContextForResource();
 
 	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
-		/* No storage here on purpose.  The mapped arm allocates immutably in
-		 * RB_VboArenaMapPair and a store already allocated immutably cannot be
-		 * re-specified; the other two arms take their storage from the per-frame
-		 * orphan in RB_VBO_BeginFrame, which is the only write they make. */
+		/* No storage here on purpose. The mapped arm allocates immutably in RB_VboArenaMapPair and a
+		   store already allocated immutably cannot be re-specified; the other two arms take their
+		   storage from the per-frame orphan in RB_VBO_BeginFrame, which is the only write they make. */
 		qglGenBuffers( 1, &s_vboArena[i] );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
 
@@ -1251,8 +1242,7 @@ static void RB_VboArenaShutdown( void ) {
 			qglDeleteSync( s_arenaFence[i] );
 			s_arenaFence[i] = NULL;
 		}
-		/* Dropped explicitly, with its own buffer bound: the one place the
-		 * map's lifetime is ended. */
+		/* Dropped explicitly, with its own buffer bound: the one place the map's lifetime is ended. */
 		if ( s_arenaMapV[i] ) {
 			RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[i] );
 			qglUnmapBuffer( GL_ARRAY_BUFFER );
@@ -1307,10 +1297,9 @@ void RB_VBO_BeginFrame( void ) {
 		int	map    = s_mapCvar ? s_mapCvar->integer : 0;
 		int	mode;
 
-		/* `r_tessMap' is the switch, so the `r_tessArena' override may NAME an
-		 * arm but not VETO the switch: the old `map && legacy != 1 && legacy
-		 * != 2' let a `r_tessArena 2' left in a config by 0.3.15/0.3.16 keep
-		 * the ring after `r_tessMap 1'.  `r_tessMap 0' is the ring arm. */
+		/* `r_tessMap' is the switch, so the `r_tessArena' override may NAME an arm but not VETO the
+		   switch: the old `map && legacy != 1 && legacy != 2' let a `r_tessArena 2' left in a config by
+		   0.3.15/0.3.16 keep the ring after `r_tessMap 1'. `r_tessMap 0' is the ring arm. */
 		s_arenaArmed  = map ? qtrue : qfalse;
 		/* A store the driver refused is not the arm any more: the ring is,
 		 * and the row's `dead=` says the store was asked for and refused. */
@@ -1331,11 +1320,10 @@ void RB_VBO_BeginFrame( void ) {
 
 		mode = s_arenaMapped ? 2 : ( legacy ? legacy : 0 );
 
-		/* Every capture must be able to say which arm ran.  The row names the
-		 * resolution once, on any change and every 600 frames.  `ran=` is what
-		 * the previous frame used, not the intent: 0.3.20 said "mapped" for a
-		 * whole session while every [BE:send] window read arena=0.  `carried=`
-		 * and `orphans=` are the store's own session totals. */
+		/* Every capture must be able to say which arm ran. The row names the resolution once, on any
+		   change and every 600 frames. `ran=` is what the previous frame used, not the intent: 0.3.20
+		   said "mapped" for a whole session while every [BE:send] window read arena=0. `carried=` and
+		   `orphans=` are the store's own session totals. */
 		if ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) {
 			ri.Printf( PRINT_ALL,
 					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s ran=%d dead=%d"
@@ -1393,13 +1381,12 @@ void RB_VBO_BeginFrame( void ) {
 	s_arenaVbo = s_vboArena[s_arenaNext];
 	s_arenaEbo = s_eboArena[s_arenaNext];
 
-	/* The store's VAO is opened for a frame that uses it, and after its storage
-	 * is decided: the orphan arm below re-specifies that storage, and the 0.3.19
-	 * session caught a driver leaving a VAO's pointers behind a storage that was
-	 * replaced under it.  When the store is refused the frame must not be left
-	 * standing on it either: `s_vboArena[0]' has no storage on the mapped arm
-	 * until the map succeeds, so the pointers `RB_VboArenaInit' captured name
-	 * nothing.  The state on entry is put back instead. */
+	/* The store's VAO is opened for a frame that uses it, and after its storage is decided: the
+	   orphan arm below re-specifies that storage, and the 0.3.19 session caught a driver leaving a
+	   VAO's pointers behind a storage that was replaced under it. When the store is refused the frame
+	   must not be left standing on it either: `s_vboArena[0]' has no storage on the mapped arm until
+	   the map succeeds, so the pointers `RB_VboArenaInit' captured name nothing. The state on entry
+	   is put back instead. */
 	vaoOnEntry = r_vaoBound;
 
 	/* The previous mapped store is closed out and its fence planted before this
@@ -1419,11 +1406,10 @@ void RB_VBO_BeginFrame( void ) {
 			return;
 		}
 	} else {
-		/* Discard the store this frame is about to fill: the driver may then hand
-		 * back storage no in-flight command reads instead of waiting for one.
-		 * The element binding is VAO state, so the re-specification happens with
-		 * the default VAO bound -- the store's own EBO is bound at the point of
-		 * use, and no other VAO is left naming it. */
+		/* Discard the store this frame is about to fill: the driver may then hand back storage no
+		   in-flight command reads instead of waiting for one. The element binding is VAO state, so the
+		   re-specification happens with the default VAO bound -- the store's own EBO is bound at the
+		   point of use, and no other VAO is left naming it. */
 		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
 		qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
@@ -1458,12 +1444,11 @@ int RB_VboArenaMode( void ) {
 	return s_arenaMapped ? 2 : 1;
 }
 
-/* Append one batch to the frame store.  `staticVerts` says the vertex bytes are
- * already resident in the static world buffer and only the composed index list is
- * new.  Returns qfalse when the store has no room, which sends the batch to the
- * ring unchanged.  On success `*baseVertex` is the vertex the batch's index list
- * is relative to: zero where the vertices were already absolute (the static
- * arena), the store offset in vertices where they were just uploaded. */
+/* Append one batch to the frame store. `staticVerts` says the vertex bytes are already resident in
+   the static world buffer and only the composed index list is new. Returns qfalse when the store
+   has no room, which sends the batch to the ring unchanged. On success `*baseVertex` is the vertex
+   the batch's index list is relative to: zero where the vertices were already absolute (the static
+   arena), the store offset in vertices where they were just uploaded. */
 static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int numIndexes,
 								 qboolean staticVerts, GLintptr *indexOffset, int *baseVertex ) {
 	GLintptr	vOff = 0;
@@ -1475,12 +1460,11 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 	int			i;
 
 	if ( !s_arenaActive ) {
-		/* An armed store that is not there counts as a refusal, not as silence:
-		 * 0.3.21's session read `fall=0` beside `ran=0` and so read as "the store
-		 * carried the frame and nothing fell back", when in fact every batch in
-		 * the game went to the ring because the store had stood down before the
-		 * capture began.  A store that was never asked for (r_tessMap 0) is not
-		 * a refusal and counts nothing. */
+		/* An armed store that is not there counts as a refusal, not as silence: 0.3.21's session read
+		   `fall=0` beside `ran=0` and so read as "the store carried the frame and nothing fell back",
+		   when in fact every batch in the game went to the ring because the store had stood down before
+		   the capture began. A store that was never asked for (r_tessMap 0) is not a refusal and counts
+		   nothing. */
 		if ( s_arenaArmed ) {
 			s_arenaFall++;
 		}
@@ -1520,10 +1504,9 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 	}
 
 	{
-		/* The store this frame opened.  `s_arenaMappedSlot' is the mapped arm's
-		 * own record of it and is only written on that arm, so the per-frame and
-		 * A/B arms -- which open a store and never map one -- would read a -1
-		 * out of it; the rotation is the store either way. */
+		/* The store this frame opened. `s_arenaMappedSlot' is the mapped arm's own record of it and is
+		   only written on that arm, so the per-frame and A/B arms -- which open a store and never map
+		   one -- would read a -1 out of it; the rotation is the store either way. */
 		int		slot = s_arenaInit ? s_arenaNext : 0;
 
 		RB_BindVAO( staticVerts ? s_vaoStaticArena[slot] : s_vaoArena[slot] );
@@ -1564,12 +1547,11 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 }
 
 
-/* ---- [GLES3:pixd] what one 3D draw adds to the framebuffer ---------------
- * The menu's 3D view submits 13 draws a frame whose counts, order, blend and
- * clear all match retail's own captured frame, and the screen keeps the 2D
- * background.  A submit that reaches no pixel is invisible from the command
- * list, so the first "menu/" draw of a frame is followed by one small readback
- * plus the live GL state it ran under; GLES3_ModelPixelAtSwap re-reads it. */
+/* ---- [GLES3:pixd] what one 3D draw adds to the framebuffer --------------- The menu's 3D view
+   submits 13 draws a frame whose counts, order, blend and clear all match retail's own captured
+   frame, and the screen keeps the 2D background. A submit that reaches no pixel is invisible from
+   the command list, so the first "menu/" draw of a frame is followed by one small readback plus
+   the live GL state it ran under; GLES3_ModelPixelAtSwap re-reads it. */
 static int	s_menuProbeX, s_menuProbeY, s_menuProbeR, s_menuProbeG, s_menuProbeB;
 static qboolean s_menuProbeRect;
 
@@ -1633,13 +1615,12 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	for ( i = 0; i < 5; i++ ) {
 		qglGetVertexAttribiv( ATTR_POSITION + i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &attr[i] );
 	}
-	/* The gates a colour readback cannot see, and what is left now that state,
-	 * bytes, winding and attributes all came back clean.  `depth` is what the
-	 * depth buffer holds at this pixel: a clear that never landed, or a surface
-	 * that wrote near zero ahead of this one, rejects every fragment through
-	 * LEQUAL while every queried state reads correct.  `dr` is the range the
-	 * fragments are squeezed into, `clear` the last glClearDepth, `atest` the
-	 * fragment-stage discard that fires before the depth test at all. */
+	/* The gates a colour readback cannot see, and what is left now that state, bytes, winding and
+	   attributes all came back clean. `depth` is what the depth buffer holds at this pixel: a clear
+	   that never landed, or a surface that wrote near zero ahead of this one, rejects every fragment
+	   through LEQUAL while every queried state reads correct. `dr` is the range the fragments are
+	   squeezed into, `clear` the last glClearDepth, `atest` the fragment-stage discard that fires
+	   before the depth test at all. */
 	qglGetFloatv( GL_DEPTH_RANGE, drange );
 	qglGetFloatv( GL_DEPTH_CLEAR_VALUE, &dclear );
 	qglGetIntegerv( GL_DEPTH_BITS, &dbits );
@@ -1664,13 +1645,12 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	Com_Memset( buf, 0, sizeof( buf ) );
 	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
 
-	/* The depth plane.  0.3.21 asked for it as GL_FLOAT whatever the attachment
-	 * was, the device answered GL_INVALID_ENUM (0x500) -- what the 0.3.21 rows
-	 * carry in `err=0/1280` -- and `zbuf` kept its memset, so the row reported
-	 * `depth=0.0000` as a measurement and the depth gate was convicted on a
-	 * zero the read had produced itself.  The type now follows the attachment's
-	 * own precision, the read's error is taken before anything can clear it,
-	 * and a read that did not happen prints as -1 rather than as a value. */
+	/* The depth plane. 0.3.21 asked for it as GL_FLOAT whatever the attachment was, the device
+	   answered GL_INVALID_ENUM (0x500) -- what the 0.3.21 rows carry in `err=0/1280` -- and `zbuf`
+	   kept its memset, so the row reported `depth=0.0000` as a measurement and the depth gate was
+	   convicted on a zero the read had produced itself. The type now follows the attachment's own
+	   precision, the read's error is taken before anything can clear it, and a read that did not
+	   happen prints as -1 rather than as a value. */
 	depthOk = qfalse;
 	zsum = 0.0f;
 	switch ( dbits ) {
@@ -1821,10 +1801,9 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		JobPool_ParallelRange( input->numVertexes, RB_VBO_PACK_CHUNK, RB_VboPackRange, &pack );
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_pack, BE_Microseconds() - subT0 );
 
-		/* A static world batch is baked from that pack.  Where the bake left every
-		 * record in the device-local arenas the batch is drawn straight out of
-		 * them and the frame makes no store write at all; otherwise it takes the
-		 * composed send, which is the same index bytes. */
+		/* A static world batch is baked from that pack. Where the bake left every record in the
+		   device-local arenas the batch is drawn straight out of them and the frame makes no store write
+		   at all; otherwise it takes the composed send, which is the same index bytes. */
 		staticDraw = RB_StaticBatch( input, numIndexes, texcoord0, texcoord1,
 									 tcStrideFloats, colors, normals )
 					 && RB_VboStaticBake( indexes );
@@ -1858,13 +1837,12 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		subT1 = BE_On() ? BE_Microseconds() : 0;
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, subT1 - subT0 );
 
-		/* [BE:send] probe: the upload phase is the one place inside the walk where the
-		 * CPU can block on the driver.  A phase that is long only when it follows a long
-		 * gap is a drain of the previous frame; a phase that is long inside a run, where
-		 * the gap is short, is the send itself blocking.  `big` counts the phases whose
-		 * batch exceeded the old 512-vertex chunk.  Every read is behind BE_On(), so a
-		 * release run reads no clock.  Values are microseconds.  The row is printed by
-		 * BE_MaybeRoll() so it shares the [BE:ds]/[BE:be] window. */
+		/* [BE:send] probe: the upload phase is the one place inside the walk where the CPU can block on
+		   the driver. A phase that is long only when it follows a long gap is a drain of the previous
+		   frame; a phase that is long inside a run, where the gap is short, is the send itself blocking.
+		   `big` counts the phases whose batch exceeded the old 512-vertex chunk. Every read is behind
+		   BE_On(), so a release run reads no clock. Values are microseconds. The row is printed by
+		   BE_MaybeRoll() so it shares the [BE:ds]/[BE:be] window. */
 		if ( BE_On() ) {
 			int			phase;
 			int			gap;
@@ -2301,11 +2279,9 @@ void RB_PopProjection( void )
 	Com_Memcpy( s_projectionMatrix, s_projectionStack[depth], sizeof( s_projectionMatrix ) );
 }
 
-/*
- * A caller that saves both matrices restores to the depth it measured before
- * saving, so a push that was refused inside the scope cannot be matched by a
- * pop, and the depth and the saved stack cannot drift apart.
- */
+/* A caller that saves both matrices restores to the depth it measured before saving, so a push
+   that was refused inside the scope cannot be matched by a pop, and the depth and the saved stack
+   cannot drift apart. */
 int RB_ModelViewDepth( void )
 {
 	return s_modelViewDepth;

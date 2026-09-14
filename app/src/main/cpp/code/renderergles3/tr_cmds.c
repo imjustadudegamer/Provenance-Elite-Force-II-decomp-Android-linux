@@ -220,10 +220,9 @@ void R_IssuePendingRenderCommands( void ) {
 	if ( !tr.registered ) {
 		return;
 	}
-	/* Under r_smp this parks the render thread so a following
-	 * driver-resource op (texture upload, shader link) owns the GL context.
-	 * It never runs a partial frame here: the frame is handed off whole from
-	 * RE_EndFrame, which is what the render thread overlaps with. */
+	/* Under r_smp this parks the render thread so a following driver-resource op (texture upload,
+	   shader link) owns the GL context. It never runs a partial frame here: the frame is handed off
+	   whole from RE_EndFrame, which is what the render thread overlaps with. */
 	if ( glConfig.smpActive && !GLimp_IsRenderThread() ) {
 		R_SyncRenderThread();
 		return;
@@ -241,9 +240,8 @@ void GL_ClaimContextForResource( void ) {
 	R_IssuePendingRenderCommands();
 }
 
-/* Runs the recorded list on the calling thread with the render thread parked.
- * Only immediate-GL callers that must be ordered after the recorded list use
- * this; a 2D entry point records instead. */
+/* Runs the recorded list on the calling thread with the render thread parked. Only immediate-GL
+   callers that must be ordered after the recorded list use this; a 2D entry point records instead. */
 void R_FlushRenderCommands( void ) {
 	if ( !tr.registered ) {
 		return;
