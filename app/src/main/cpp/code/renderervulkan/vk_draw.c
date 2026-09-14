@@ -526,10 +526,9 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	degenerate = ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) ? qtrue : qfalse;
 
 	if ( degenerate ) {
-		/* Retail's own UI authors zero-extent windows (menu_controls' bindscroll, its
-		   two "table fudge" columns, menu_loadgame's width-0 columns); the dims travel
-		   set2D -> Set2DWindow -> this record verbatim and nothing rasterises.
-		   A diagnosis row: [VK:guard] stays the error stream. */
+		/* Retail's own UI authors zero-extent windows (menu_controls' bindscroll, its two "table fudge"
+		   columns, menu_loadgame's width-0 columns); the dims travel set2D -> Set2DWindow -> this record
+		   verbatim and nothing rasterises. A diagnosis row: [VK:guard] stays the error stream. */
 		static int s_rows;
 
 		if ( s_rows < 8 || ( s_rows % 500 ) == 0 ) {

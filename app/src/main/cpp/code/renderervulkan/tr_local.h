@@ -75,10 +75,9 @@ typedef unsigned int vkIndex_t;
 #define MAX_STATE_NAME 32
 
 #define	MAX_MOD_KNOWN	1024
-/* 8192: the retail corpus names more distinct textures than 4096 slots hold,
-   which is both the offline permutation census's truncation point and a hard
-   ERR_DROP for a session that loads past it.  The table is the only cost; the
-   pixels are allocated when an image is actually uploaded. */
+/* 8192: the retail corpus names more distinct textures than 4096 slots hold, which is both the off
+   line permutation census's truncation point and a hard ERR_DROP for a session that loads past it.
+   The table is the only cost; the pixels are allocated when an image is actually uploaded. */
 #define	MAX_DRAWIMAGES			8192
 #define	MAX_SKINS				1024
 
@@ -1152,10 +1151,9 @@ void		R_Modellist_f (void);
 
 extern	refimport_t		ri;
 
-/* 8192: the retail corpus names more distinct textures than 4096 slots hold,
-   which is both the offline permutation census's truncation point and a hard
-   ERR_DROP for a session that loads past it.  The table is the only cost; the
-   pixels are allocated when an image is actually uploaded. */
+/* 8192: the retail corpus names more distinct textures than 4096 slots hold, which is both the off
+   line permutation census's truncation point and a hard ERR_DROP for a session that loads past it.
+   The table is the only cost; the pixels are allocated when an image is actually uploaded. */
 #define	MAX_DRAWIMAGES			8192
 #define	MAX_LIGHTMAPS			256
 #define	MAX_SKINS				1024
@@ -1672,8 +1670,7 @@ void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, 
 void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);
 
-/* one body per 2D entry point: immediate, or the same body under the render
- * thread */
+/* one body per 2D entry point: immediate, or the same body under the render thread */
 void RB_2D_SetColor( const byte *rgba );
 void RB_2D_StretchPic( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2 );
 void RB_2D_StretchPic2( shader_t *shader, float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy );
@@ -2738,8 +2735,7 @@ int		VK_Shade_ProjectionDepth( void );
 #undef VK_LEQUAL
 #define VK_LEQUAL				14
 
-/* the sub-stream: folded into the pending pipeline key, or dropped where this
-   pass has none */
+/* the sub-stream: folded into the pending pipeline key, or dropped where this pass has none */
 void	vkEnable( int cap );
 void	vkDisable( int cap );
 void	vkCullFace( int mode );
@@ -2761,8 +2757,12 @@ typedef struct {
 } vkTessVertex_t;
 
 #define VK_TESS_VERTEX_BYTES ( (int)sizeof( vkTessVertex_t ) )
-#define VK_RING_MAX_VERTEXES ( SHADER_MAX_VERTEXES * 8 )
-#define VK_RING_MAX_INDEXES  ( SHADER_MAX_INDEXES * 8 )
+/* A level frame, not a menu frame, is the demand the ring has to hold: the boot that found this me
+   asured 1,481 draw surfs and 155 reserves refused at the old 24,000-slot ceiling. 24 tess batches
+   per surface slot is the multiple that covers it with headroom; the [VK:ring] frame row names wh
+   at a legal frame actually used and refused, so the multiple is checked, not assumed. */
+#define VK_RING_MAX_VERTEXES ( SHADER_MAX_VERTEXES * 24 )
+#define VK_RING_MAX_INDEXES  ( SHADER_MAX_INDEXES * 24 )
 
 qboolean VK_VertexRing_Init( void );
 void     VK_VertexRing_Shutdown( void );
@@ -2778,14 +2778,12 @@ VkBuffer  VK_VertexRing_IndexBuffer( void );
 int       VK_VertexRing_Used( void );
 int       VK_VertexRing_Flushed( void );
 
-/* One surface's packed slice, reused by the surface's remaining stages.
-   Retail locks a surface's vertex array once and issues every stage's draw
-   against it (the traced menu frame calls glLockArraysEXT five times and draws
-   thirteen times); reserving and repacking per stage multiplied the ring's
-   demand by each shader's stage count.  The key is the whole pack source tuple,
-   so a slice is shared only when every stage packs byte-identical vertices:
-   identical source pointers plus a null colour array, which is the case where
-   nothing the stage recomputes reaches the pack. */
+/* One surface's packed slice, reused by the surface's remaining stages. Retail locks a surface's v
+   ertex array once and issues every stage's draw against it (the traced menu frame calls glLockArr
+   aysEXT five times and draws thirteen times); reserving and repacking per stage multiplied the ri
+   ng's demand by each shader's stage count. The key is the whole pack source tuple, so a slice is
+   shared only when every stage packs byte-identical vertices: identical source pointers plus a nul
+   l colour array, which is the case where nothing the stage recomputes reaches the pack. */
 qboolean  VK_VertexRing_StreamMatch( int vertexes, int indexes,
                                      const void *tc0, const void *tc1, int tcStride,
                                      const void *colors, const void *normals,
@@ -2795,6 +2793,7 @@ void      VK_VertexRing_StreamStore( int vertexes, int indexes,
                                      const void *colors, const void *normals,
                                      int base, int indexBase );
 void      VK_VertexRing_StreamForget( void );
+void      VK_VertexRing_SurfaceBegin( void );
 void      VK_VertexRing_FrameDemand( int *usedOut, int *vertexesOut, int *indexesOut,
                                      int *dropsOut, int *surfacesOut );
 

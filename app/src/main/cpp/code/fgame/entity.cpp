@@ -2344,9 +2344,8 @@ void Entity::setModel(const char *mdl)
 
     model = temp;
 
-    /* The model leg is the restore's whole cost and this is the engine call
-       inside it, so it carries its own split rather than letting the leg report
-       one number for four different jobs. */
+    /* The model leg is the restore's whole cost and this is the engine call inside it, so it
+       carries its own split rather than letting the leg report one number for four different jobs. */
     long long leg0 = GRS_NOW();
     {
         long long st0 = GRS_NOW();

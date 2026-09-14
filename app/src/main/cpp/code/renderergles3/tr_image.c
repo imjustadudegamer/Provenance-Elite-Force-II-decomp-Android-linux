@@ -583,11 +583,10 @@ extern qboolean charSet;
 static int	s_gles3UploadSamples = 0;
 static int	s_gles3UploadFormat  = 0;
 
-/* The software path re-specifies every mip level with TexImage2D.  One
- * TexStorage2D for the whole chain plus a TexSubImage2D per level is the same
- * chain built once, but the storage is immutable afterwards -- so the builtin
- * '*' images, which Draw_StretchRaw and RE_UploadCinematic re-specify, stay on
- * TexImage2D. */
+/* The software path re-specifies every mip level with TexImage2D. One TexStorage2D for the whole
+   chain plus a TexSubImage2D per level is the same chain built once, but the storage is immutable
+   afterwards -- so the builtin '*' images, which Draw_StretchRaw and RE_UploadCinematic
+   re-specify, stay on TexImage2D. */
 static qboolean	s_gles3UploadStored = qfalse;
 static int		s_gles3UploadLevels = 1;
 
@@ -792,8 +791,7 @@ static void Upload32(
 	s_gles3UploadSamples = samples;
 	s_gles3UploadFormat  = internalFormat;
 
-	/* The chain the mip loop below will build, counted before it mutates
-	 * scaled_width/height. */
+	/* The chain the mip loop below will build, counted before it mutates scaled_width/height. */
 	levels = SMP_MipLevelCount( scaled_width, scaled_height );
 
 	sizedFormat = R_ES3StorageFormat( R_ES3InternalFormat( internalFormat ) );
@@ -1282,11 +1280,10 @@ image_t* R_CreateImageOld(
 		}
 	}
 
-	/* Every GL call below belongs to the texture-upload class of driver-resource
-	 * ops, so under r_smp this thread must own the context before the first of
-	 * them.  Without the park the context stays with the render thread, gen
-	 * returns 0 and the whole upload silently no-ops -- the image is then bound
-	 * as texture 0 and samples as a flat square. */
+	/* Every GL call below belongs to the texture-upload class of driver-resource ops, so under r_smp
+	   this thread must own the context before the first of them. Without the park the context stays
+	   with the render thread, gen returns 0 and the whole upload silently no-ops -- the image is then
+	   bound as texture 0 and samples as a flat square. */
 	R_IssuePendingRenderCommands();
 
 	image = &tr.images[i];
@@ -2253,11 +2250,10 @@ image_t* R_RefreshImageFileOld(const char* name, qboolean mipmap, qboolean allow
 		return NULL;
 	}
 
-	/* This frees the old image before R_FindImageFileOld creates its
-	 * replacement, and the free is a driver-resource destruction.  The create
-	 * path claims in R_CreateImageOld, which is too late for the deletion, so
-	 * the claim is taken here: under r_smp the render thread is parked for both
-	 * the glDeleteTextures and the upload that follows. */
+	/* This frees the old image before R_FindImageFileOld creates its replacement, and the free is a
+	   driver-resource destruction. The create path claims in R_CreateImageOld, which is too late for
+	   the deletion, so the claim is taken here: under r_smp the render thread is parked for both the
+	   glDeleteTextures and the upload that follows. */
 	R_IssuePendingRenderCommands();
 
 	strncpy(imagename, name, ARRAY_LEN(imagename));

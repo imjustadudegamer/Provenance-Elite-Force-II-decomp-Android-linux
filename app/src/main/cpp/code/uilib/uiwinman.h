@@ -47,11 +47,10 @@ class UIWindowManager : public UIWidget
     bool                          m_amidead;
     class UIWidget               *m_bindactive;
     Container<Binding *>          bindings;
-    /* Pad menu navigation.  Nothing is highlighted and nothing is consumed
-       until a navigation key arrives, so a mouse or a touch behaves exactly as
-       it did; the mouse takes the highlight back the moment it is used.  The
-       held key repeats on its own, because the pad sends one press per tap and
-       the UI never sees an operating-system repeat. */
+    /* Pad menu navigation. Nothing is highlighted and nothing is consumed until a navigation key
+       arrives, so a mouse or a touch behaves exactly as it did; the mouse takes the highlight back
+       the moment it is used. The held key repeats on its own, because the pad sends one press per
+       tap and the UI never sees an operating-system repeat. */
     bool                          m_padNavActive;
     int                           m_padRepeatKey;
     unsigned int                  m_padNextRepeat;

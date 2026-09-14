@@ -240,10 +240,9 @@ char *Sys_DefaultHomeConfigPath(void) { return Sys_HomeConfigPath(); }
 char *Sys_DefaultHomeDataPath(void)   { return Sys_HomeDataPath(); }
 char *Sys_DefaultHomeStatePath(void)  { return Sys_HomeStatePath(); }
 
-/* The display density in dpi, read from the Android Resources rather than from
-   SDL's own DPI query: the JNI path behind SDL_GetDisplayDPI can fail on a
-   device and leave a caller with nothing to size against.  Returns 0 when the
-   query is unavailable. */
+/* The display density in dpi, read from the Android Resources rather than from SDL's own DPI
+   query: the JNI path behind SDL_GetDisplayDPI can fail on a device and leave a caller with
+   nothing to size against. Returns 0 when the query is unavailable. */
 int Sys_AndroidDensityDpi( void )
 {
 	JNIEnv *env;

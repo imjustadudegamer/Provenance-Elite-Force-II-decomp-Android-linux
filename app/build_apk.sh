@@ -18,7 +18,7 @@ ROOT="$(cd "$PROJ/.." && pwd)"
 # Tree isolation: never let a build absorb an untracked or modified file the engine's
 # CMake globs would compile straight into the APK.  The guard fails here instead.
 # Deliberate override: EF2_TREE_DIRTY_OK=1
-"$ROOT/docs/scripts/check_tree_isolation.sh" --build || exit $?
+"$ROOT/personal/scripts/check_tree_isolation.sh" --build || exit $?
 
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Android/sdk}"
 export ANDROID_HOME="$ANDROID_SDK_ROOT"

@@ -1084,11 +1084,10 @@ UIReggedMaterial::UIReggedMaterial()
 
 uihandle_t UIReggedMaterial::GetMaterial()
 {
-    /* `RegisterShaderNoMip' answers 0 when a shader resolved to the renderer's
-       defaultShader, and a 0 latched here is permanent: the material is asked
-       for every frame and would keep drawing the default.  The cursor arrow is
-       the one material with no other route to the screen, so a failed resolve
-       is retried instead of being remembered. */
+    /* `RegisterShaderNoMip' answers 0 when a shader resolved to the renderer's defaultShader, and
+       a 0 latched here is permanent: the material is asked for every frame and would keep drawing
+       the default. The cursor arrow is the one material with no other route to the screen, so a
+       failed resolve is retried instead of being remembered. */
     if (!isGot || hMat == 0) {
         isGot      = true;
         this->hMat = uii.Rend_RegisterMaterial(name.c_str());
@@ -2927,12 +2926,11 @@ void UIWidget::ChangeResolution(void)
             m_font->setTextScale(1.0f);
         }
     } else if (s_hudScaleDepth > 0) {
-        /* A noresize widget is authored in screen pixels and retail never
-           rescales it, so the factor applies to the authored frame alone.  The
-           font is told the same factor here, where the frame is chosen, not at
-           draw time: the dialogue console wraps its text from a print event, and
-           a metric that changed unit between that event and the draw is what
-           left a line unwrapped and a line advance doubled. */
+        /* A noresize widget is authored in screen pixels and retail never rescales it, so the
+           factor applies to the authored frame alone. The font is told the same factor here, where
+           the frame is chosen, not at draw time: the dialogue console wraps its text from a print
+           event, and a metric that changed unit between that event and the draw is what left a
+           line unwrapped and a line advance doubled. */
         scalex = s_hudScaleValue;
         scaley = s_hudScaleValue;
 
@@ -3841,27 +3839,22 @@ bool UIWidget::isHudScaleSet(void) const
     return m_hudScaleSet;
 }
 
-/* A HUD menu authored across the whole 640x480 virtual screen is an overlay:
-   its edges and its widget geometry stay where retail puts them so nothing is
-   pushed past the screen, and the factor reaches its text through the draw
-   scope.  A smaller HUD panel has room to grow, so its geometry scales too and
-   keeps the corner its `align' declares. */
+/* A HUD menu authored across the whole 640x480 virtual screen is an overlay: its edges and its
+   widget geometry stay where retail puts them so nothing is pushed past the screen, and the factor
+   reaches its text through the draw scope. A smaller HUD panel has room to grow, so its geometry
+   scales too and keeps the corner its `align' declares. */
 bool UIWidget::isHudFullScreen(void) const
 {
     return m_authoredFrame.size.width >= 640.0f && m_authoredFrame.size.height >= 480.0f;
 }
 
-/*
- * The HUD scope carries the factor and deliberately does NOT multiply
- * `uid.scaleRes'.  A HUD element is authored `noresize', so `uid.scaleRes' is
- * exactly the division noresize exists to ignore: its authored frame is already
- * in screen pixels.  Multiplying the shared virtual space instead left the
- * geometry alone -- `ChangeResolution' returns early for a noresize widget --
- * while `uid.scaleRes' still reached the resolution-scaled widgets that read it,
- * which rescaled the inventory bar a second time and pushed it off the screen.
- * The factor is therefore applied once, to the authored frame of a noresize
- * widget, and to the text drawn inside the scope.
- */
+/* The HUD scope carries the factor and deliberately does NOT multiply `uid.scaleRes'. A HUD
+   element is authored `noresize', so `uid.scaleRes' is exactly the division noresize exists to
+   ignore: its authored frame is already in screen pixels. Multiplying the shared virtual space
+   instead left the geometry alone -- `ChangeResolution' returns early for a noresize widget --
+   while `uid.scaleRes' still reached the resolution-scaled widgets that read it, which rescaled
+   the inventory bar a second time and pushed it off the screen. The factor is therefore applied
+   once, to the authored frame of a noresize widget, and to the text drawn inside the scope. */
 void UIWidget::HudScalePush(float scale)
 {
     if (s_hudScaleDepth == 0) {
@@ -4817,14 +4810,11 @@ void UIWidgetContainer::SetLastActiveWidgetOrderNum(void)
     SetActiveWidgetOrderNum(m_currentwidnum);
 }
 
-/*
- * The pad focus model.  The highlight is the widget's own mouse-over state, so
- * the focused child is drawn by the same material, colour, hover command and
- * hover sound a mouse-over uses -- there is no second highlight to keep in
- * step.  Movement walks the container's visible, enabled children in child
- * order and clamps at both ends, which is what keeps a held D-pad or stick from
- * running past the last entry of a list.
- */
+/* The pad focus model. The highlight is the widget's own mouse-over state, so the focused child is
+   drawn by the same material, colour, hover command and hover sound a mouse-over uses -- there is
+   no second highlight to keep in step. Movement walks the container's visible, enabled children in
+   child order and clamps at both ends, which is what keeps a held D-pad or stick from running past
+   the last entry of a list. */
 UIWidget *UIWidgetContainer::getFocusWidget(void) const
 {
     return m_focusWidget;

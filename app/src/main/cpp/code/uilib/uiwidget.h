@@ -266,21 +266,19 @@ protected:
     Container<WidgetCvarPair *> m_cvarVisibilityData;
     UIRect2D m_authoredFrame;
     bool     m_bFrameLatched = false;
-    /* In-game HUD menus carry the effective HUD scale here; 1.0 means retail.
-       `m_hudScaleSet' is what puts the menu in the HUD scope at all, so a menu
-       whose factor is 1.0 -- the multiplayer scoreboard, or a HUD set after the
-       cvar returns to 1.0 -- is still laid out by the scope and therefore
-       restored to its authored geometry instead of keeping an old factor. */
+    /* In-game HUD menus carry the effective HUD scale here; 1.0 means retail. `m_hudScaleSet' is
+       what puts the menu in the HUD scope at all, so a menu whose factor is 1.0 -- the multiplayer
+       scoreboard, or a HUD set after the cvar returns to 1.0 -- is still laid out by the scope and
+       therefore restored to its authored geometry instead of keeping an old factor. */
     float    m_hudScale = 1.0f;
     bool     m_hudScaleSet = false;
-    /* One descent per UI update.  `MenuManager::UpdateAllMenus' walks every
-       registered menu container and `UIWindowManager::UpdateViews' then walks the
-       window manager, whose children are those same containers, so the same
-       visible subtrees were descended twice.  The window manager also owns
-       children that are not menu containers (View3D, the miniconsole), so its walk
-       must stay; the stamp makes the second descent over a subtree already walked
-       this update a no-op instead.  A node reached twice in one update is the same
-       node with the same visibility, so repeating it changes nothing. */
+    /* One descent per UI update. `MenuManager::UpdateAllMenus' walks every registered menu
+       container and `UIWindowManager::UpdateViews' then walks the window manager, whose children
+       are those same containers, so the same visible subtrees were descended twice. The window
+       manager also owns children that are not menu containers (View3D, the miniconsole), so its
+       walk must stay; the stamp makes the second descent over a subtree already walked this update
+       a no-op instead. A node reached twice in one update is the same node with the same
+       visibility, so repeating it changes nothing. */
     int m_updateStamp = -1;
 
 public:
@@ -649,11 +647,10 @@ class UIWidgetContainer : public UIWidget
     qboolean m_bNoEscape = qfalse;
     bool     m_nomouse        = false;
     bool     m_allowGameFocus = false;
-    /* The child the pad's focus highlight is on.  EF2's uilib has no keyboard
-       focus of its own -- retail's UIWindowManager::KeyEvent @0x000B2C50 only
-       forwards to the bind target and the mouse-activated control -- so the
-       pad model lives here, in the container, and is armed only by a navigation
-       key.  A SafePtr, because a menu transition deletes its widgets. */
+    /* The child the pad's focus highlight is on. EF2's uilib has no keyboard focus of its own --
+       retail's UIWindowManager::KeyEvent @0x000B2C50 only forwards to the bind target and the
+       mouse-activated control -- so the pad model lives here, in the container, and is armed only
+       by a navigation key. A SafePtr, because a menu transition deletes its widgets. */
     SafePtr<UIWidget> m_focusWidget;
 
 

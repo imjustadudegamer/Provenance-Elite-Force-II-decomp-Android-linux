@@ -2455,8 +2455,7 @@ void vkLineWidth( float width )
 {
 	VkCommandBuffer cmd = VK_Shade_CommandBuffer();
 
-	/* 1.0 is all a pipeline without the wideLines feature accepts; the 3D path
-	   draws no lines yet */
+	/* 1.0 is all a pipeline without the wideLines feature accepts; the 3D path draws no lines yet */
 	if ( cmd != VK_NULL_HANDLE && width > 1.0f ) {
 		static int s_wideRows;
 		if ( s_wideRows < 4 ) {
@@ -2708,8 +2707,7 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 
 /* ---- the census seam the reference renderer carries ---------------------- */
 
-/* the twin prints its census rows from the legacy state machine; this is the
-   seam */
+/* the twin prints its census rows from the legacy state machine; this is the seam */
 void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, int stageIndex,
 							qboolean in2D, unsigned tex0, unsigned tex1,
 							unsigned cur0, unsigned cur1 )

@@ -1952,16 +1952,13 @@ void UI_Cvar_Set(const char *var_name, const char *value)
     Cvar_Set2(var_name, value, qfalse);
 }
 
-/*
- * One HUD scale factor for the in-game HUD only.  The 640x480 virtual space that
- * `uid.scaleRes' resolves stays retail, so every 2D menu, dialog, loading screen
- * and scoreboard is pixel-identical; a HUD element's subtree is the only place
- * `uid.scaleRes' is multiplied, and each HUD menu keeps the edge its `align'
- * declares.  `ui_hudScale' 0 means auto: 1.0 on a desktop, and on Android the
- * display density over 160 clamped to [1,2] -- a 6.4" 720p panel (density 320)
- * and a 6.4" 1440p panel (density 560) both land on the cap and read the same
- * size.  The clamp is the same on both ends.
- */
+/* One HUD scale factor for the in-game HUD only. The 640x480 virtual space that `uid.scaleRes'
+   resolves stays retail, so every 2D menu, dialog, loading screen and scoreboard is
+   pixel-identical; a HUD element's subtree is the only place `uid.scaleRes' is multiplied, and
+   each HUD menu keeps the edge its `align' declares. `ui_hudScale' 0 means auto: 1.0 on a desktop,
+   and on Android the display density over 160 clamped to [1,2] -- a 6.4" 720p panel (density 320)
+   and a 6.4" 1440p panel (density 560) both land on the cap and read the same size. The clamp is
+   the same on both ends. */
 #define HUD_SCALE_MIN	1.0f
 #define HUD_SCALE_MAX	2.0f
 /* A phone panel is at least an xhdpi one, so when neither density query answers
@@ -2027,10 +2024,9 @@ static float UI_EffectiveHudScale( void )
     return s_uiHudScaleAuto;
 }
 
-/* One startup line, always, with the inputs that produced the scale: the
-   resolved factor, the path it came from, the raw density and the pre-clamp
-   ratio.  Without it a device round cannot tell a working scale from a silent
-   1.0. */
+/* One startup line, always, with the inputs that produced the scale: the resolved factor, the path
+   it came from, the raw density and the pre-clamp ratio. Without it a device round cannot tell a
+   working scale from a silent 1.0. */
 static void UI_LogHudScale( void )
 {
     if ( ui_hudScale && ui_hudScale->value > 0.0f ) {
@@ -2049,18 +2045,14 @@ static void UI_LogHudScale( void )
     }
 }
 
-/*
- * The in-game HUD is two sets that reach the screen by different routes, and
- * both are scaled.  The first is `hudList': everything `ui_addhud' pushes there
- * -- health, radar, inventory, item text, mission objectives, the pause icon,
- * the objective notices, the arena and match-mode status boards, and the menus
- * the game adds through `Player::addHud'.  `dm_scoreboard' is the exception:
- * the multiplayer scoreboard is interface, not HUD, and stays retail-sized.
- * The second is the fixed set the client finds by name -- the weapon-ammo
- * readouts (`weaphud*'), the dialogue/comm box (`headhud', `headtexthud',
- * `texthud') and the small HUD panels.  Menus, dialogs, loading screens, the
- * mission-result screens and the scoreboard are in neither set.
- */
+/* The in-game HUD is two sets that reach the screen by different routes, and both are scaled. The
+   first is `hudList': everything `ui_addhud' pushes there -- health, radar, inventory, item text,
+   mission objectives, the pause icon, the objective notices, the arena and match-mode status
+   boards, and the menus the game adds through `Player::addHud'. `dm_scoreboard' is the exception:
+   the multiplayer scoreboard is interface, not HUD, and stays retail-sized. The second is the
+   fixed set the client finds by name -- the weapon-ammo readouts (`weaphud*'), the dialogue/comm
+   box (`headhud', `headtexthud', `texthud') and the small HUD panels. Menus, dialogs, loading
+   screens, the mission-result screens and the scoreboard are in neither set. */
 static qboolean UI_HudMenuScaled( const Menu *hud )
 {
     return hud && strcmp( hud->m_name.c_str(), "dm_scoreboard" ) != 0;
@@ -2111,10 +2103,9 @@ static Menu **UI_StaticHudMenus( int *count )
     return list;
 }
 
-/* A HUD menu added or first found after the last resolution change was laid out
-   at retail scale, so it is laid out here in its own scope and re-aligned
-   afterwards.  A full-screen overlay keeps retail geometry and takes the factor
-   at draw time only. */
+/* A HUD menu added or first found after the last resolution change was laid out at retail scale,
+   so it is laid out here in its own scope and re-aligned afterwards. A full-screen overlay keeps
+   retail geometry and takes the factor at draw time only. */
 static void UI_RelayoutHudMenu( Menu *hud )
 {
     UIWidget *cont;
@@ -2163,9 +2154,8 @@ static void UI_ApplyStaticHudScale( void )
     }
 }
 
-/* Set the factor on every client-managed HUD menu and lay it out.  Used once
-   the client has found its HUD menus; a cvar change re-lays them out through
-   `UI_ResolutionChange' instead. */
+/* Set the factor on every client-managed HUD menu and lay it out. Used once the client has found
+   its HUD menus; a cvar change re-lays them out through `UI_ResolutionChange' instead. */
 static void UI_ScaleStaticHudMenus( void )
 {
     int   n, i;

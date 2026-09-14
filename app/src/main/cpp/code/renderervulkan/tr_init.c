@@ -554,10 +554,9 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	R_IssueRenderCommands();
 	vk_frameOpen = qfalse;
 
-	/* The frame boundary: the scene pools, the back-end slot and tr.smpFrame
-	   are budgets the frame's walk has consumed.  The reference renderer runs
-	   it here; this module ran it only from R_Init, so the pools drained once
-	   and stayed drained -- the entity pool hit its cap ~1.3s into the menu. */
+	/* The frame boundary: the scene pools, the back-end slot and tr.smpFrame are budgets the frame's
+	   walk has consumed. The reference renderer runs it here; this module ran it only from R_Init, so
+	   the pools drained once and stayed drained -- the entity pool hit its cap ~1.3s into the menu. */
 	R_InitNextFrame();
 
 	if ( frontEndMsec ) {

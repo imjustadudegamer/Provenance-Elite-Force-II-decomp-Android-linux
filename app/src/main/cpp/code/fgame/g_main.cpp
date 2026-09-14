@@ -1603,11 +1603,9 @@ void G_BeginIntermission(const char *map_name)
         }
     }
 
-    /*
-     * The flag is what tells the client the level ended; without it the fade
-     * runs and the screen stays black.  Retail @0x001D50A0 writes the same two
-     * words per client that G_MoveClientToIntermission writes.
-     */
+    /* The flag is what tells the client the level ended; without it the fade runs and the screen
+       stays black. Retail @0x001D50A0 writes the same two words per client that
+       G_MoveClientToIntermission writes. */
     for (i = 0, client = g_entities; i < game.maxclients; client++, i++) {
         if (!client->inuse || !client->entity) {
             continue;

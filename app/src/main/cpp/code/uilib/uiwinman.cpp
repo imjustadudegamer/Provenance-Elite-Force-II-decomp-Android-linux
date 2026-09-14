@@ -440,9 +440,8 @@ void UIWindowManager::ServiceEvents(void)
 
     SafePtr<UIWidget> b = m_oldview;
 
-    /* The mouse takes the highlight back the moment it moves or a button is
-       pressed: the pad never blocks it, and with no pad in use the state here
-       is never entered. */
+    /* The mouse takes the highlight back the moment it moves or a button is pressed: the pad never
+       blocks it, and with no pad in use the state here is never entered. */
     if (m_padNavActive && (m_oldpos != pos || buttons != m_lastbuttons)) {
         ClearPadFocus();
     }
@@ -741,12 +740,9 @@ void UIWindowManager::CharEvent(int ch)
     }
 }
 
-/*
- * `dir` is the child-order step for a navigation key: up/left walk back, down/
- * right walk on.  The left stick produces its own key codes, not arrows, so it
- * is a direction here too -- its deadzone is the SDL layer's joy threshold and
- * is already applied before the key is emitted.
- */
+/* `dir` is the child-order step for a navigation key: up/left walk back, down/ right walk on. The
+   left stick produces its own key codes, not arrows, so it is a direction here too -- its deadzone
+   is the SDL layer's joy threshold and is already applied before the key is emitted. */
 int UIWindowManager::PadNavDirection(int key)
 {
     switch (key) {
@@ -806,13 +802,10 @@ void UIWindowManager::ClearPadFocus(void)
     }
 }
 
-/*
- * The pad's activation key runs the mouse's own click path at the widget's
- * centre: the container focus has already put it in the mouse-over state, so a
- * synthesized press and release reaches exactly the code a click reaches --
- * UIButtonBase::Released -> Action(), a checkbox's toggle, and so on.  Nothing
- * new is added to the widget layer for activation.
- */
+/* The pad's activation key runs the mouse's own click path at the widget's centre: the container
+   focus has already put it in the mouse-over state, so a synthesized press and release reaches
+   exactly the code a click reaches -- UIButtonBase::Released -> Action(), a checkbox's toggle, and
+   so on. Nothing new is added to the widget layer for activation. */
 bool UIWindowManager::ActivateFocusedWidget(void)
 {
     Menu              *menu = menuManager.CurrentMenu();
@@ -860,10 +853,9 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 
     dir = PadNavDirection(key);
 
-    /* Navigation is only ever taken from a 2D menu.  A D-pad or stick press in
-       the world is still the world's, and the first navigation key here is what
-       arms the highlight -- until it arrives nothing on screen differs from
-       before. */
+    /* Navigation is only ever taken from a 2D menu. A D-pad or stick press in the world is still
+       the world's, and the first navigation key here is what arms the highlight -- until it
+       arrives nothing on screen differs from before. */
     if (dir != 0 && menuManager.CurrentMenu()) {
         m_padNavActive = true;
 

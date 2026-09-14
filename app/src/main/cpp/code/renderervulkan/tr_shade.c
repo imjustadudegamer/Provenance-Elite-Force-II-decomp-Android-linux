@@ -178,9 +178,9 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 
 	state = shader->remappedShader ? shader->remappedShader : shader;
 
-	/* a new surface is new geometry: the previous surface's packed ring slice
-	   belongs to the surface that packed it */
-	VK_VertexRing_StreamForget();
+	/* a new surface is new geometry: a fresh token means no later batch, however
+	   exactly it matches this one's counts and source pointers, draws it */
+	VK_VertexRing_SurfaceBegin();
 
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;

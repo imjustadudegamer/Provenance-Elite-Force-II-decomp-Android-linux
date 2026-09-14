@@ -587,8 +587,7 @@ qboolean VK_EnsureBroughtUp( const char *where )
 		return qfalse;
 	}
 
-	/* harness hook: holds the R_Init site down so BeginRegistration brings the
-	   device up alone */
+	/* harness hook: holds the R_Init site down so BeginRegistration brings the device up alone */
 	{
 		cvar_t *noInitUp = ri.Cvar_Get( "r_vkNoInitUp", "0", CVAR_CHEAT );
 
