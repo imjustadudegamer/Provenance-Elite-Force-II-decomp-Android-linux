@@ -2715,13 +2715,39 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 
 /* ---- the census seam the reference renderer carries ---------------------- */
 
-/* the twin prints its census rows from the legacy state machine; this is the seam */
+/* The world path's answer to VK:2ddraw: one row per stage pass that names the
+   shader, the stage, and the image each bundle resolves to.  A world surface
+   sampling a slot another texture has taken names itself here exactly the way a
+   menu tile does, which is the row that closes the patchy-world question. */
 void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, int stageIndex,
 							qboolean in2D, unsigned tex0, unsigned tex1,
 							unsigned cur0, unsigned cur1 )
 {
-	(void)shader; (void)pStage; (void)stageIndex; (void)in2D;
+	static int s_rows;
+	const char *n0, *n1;
+	unsigned    t0, t1;
+
 	(void)tex0; (void)tex1; (void)cur0; (void)cur1;
+
+	if ( !shader || !pStage ) {
+		return;
+	}
+
+	n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
+		 ? pStage->bundle[0].image[0]->imgName : "";
+	t0 = pStage->bundle[0].image[0] ? (unsigned)pStage->bundle[0].image[0]->texnum : 0u;
+	n1 = ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
+		 ? pStage->bundle[1].image[0]->imgName : "";
+	t1 = pStage->bundle[1].image[0] ? (unsigned)pStage->bundle[1].image[0]->texnum : 0u;
+
+	s_rows++;
+	if ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) {
+		VK_Guard_Row( "VK:stagebind",
+					  "n=%d d=%d shader='%s' stage=%d b0='%s' tex0=%u b1='%s' tex1=%u",
+					  s_rows, in2D ? 1 : 0,
+					  shader->name,
+					  stageIndex, n0, t0, n1, t1 );
+	}
 }
 
 void VK_DrawCensusKey( const void *key, qboolean in2D )
