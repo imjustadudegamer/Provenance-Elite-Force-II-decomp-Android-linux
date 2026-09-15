@@ -309,10 +309,15 @@ void RB_OrthoProjection( float left, float right, float bottom, float top, float
 	memset( p, 0, 16 * sizeof( float ) );
 	p[0] = 2.0f / ( right - left );
 	p[5] = 2.0f / ( top - bottom );
-	p[10] = -2.0f / ( zFar - zNear );
+	/* the same zero-to-one z rows Set2DWindow's ortho already carries
+	   (vk_draw.c: -1/fn and 0.5 - (f+n)/2fn, which is -n/fn): the OpenGL ortho
+	   rows put the near plane on -1, outside Vulkan's clip volume.  This is the
+	   ortho the sun flare's (-99999, 99999) window builds, and its own quad sat
+	   on the volume's boundary face under the old rows. */
+	p[10] = -1.0f / ( zFar - zNear );
 	p[12] = -( right + left ) / ( right - left );
 	p[13] = -( top + bottom ) / ( top - bottom );
-	p[14] = -( zFar + zNear ) / ( zFar - zNear );
+	p[14] = 0.5f - ( zFar + zNear ) / ( 2.0f * ( zFar - zNear ) );
 	p[15] = 1.0f;
 	s_projectionDirty = qtrue;
 }
@@ -486,11 +491,21 @@ static const vkShaderModuleDef_t *VK_Program_Find( int family, unsigned defines,
 	return NULL;
 }
 
+/* The lookup key is (family, permutation bits).  A program's defines bitmask
+   carries its family in the high byte, so the caller's key still holds those
+   bits; the offline table stores the family in its own field and keeps only the
+   permutation bits in defines.  Strip the family byte here, or every non-STAGE
+   family asks for a permutation the table never names -- STAGE hides the bug
+   because VKP_FAMILY_STAGE is zero. */
 static qboolean VK_Program_Modules( int family, unsigned defines, VkShaderModule *vert, VkShaderModule *frag )
 {
-	const vkShaderModuleDef_t *v = VK_Program_Find( family, defines, 0 );
-	const vkShaderModuleDef_t *f = VK_Program_Find( family, defines, 1 );
+	const vkShaderModuleDef_t *v;
+	const vkShaderModuleDef_t *f;
 	int i;
+
+	defines &= ~VKP_FAMILY_MASK;
+	v = VK_Program_Find( family, defines, 0 );
+	f = VK_Program_Find( family, defines, 1 );
 
 	if ( !v || !f ) {
 		return qfalse;
@@ -526,7 +541,35 @@ qboolean VK_Shade_Init( void )
 	}
 	vk_numProgModules = VK_SHADER_MODULE_COUNT;
 
-	VK_Guard_Row( "VK:shade", "modules=%d permutations=%d", VK_SHADER_MODULE_COUNT, VK_SHADER_MODULE_COUNT / 2 );
+	/* the miss census: every family the draw side can name must resolve through
+	   the same key VK_Shade_Pipeline uses, so a gap here is the whole class */
+	{
+		static const struct {
+			unsigned	bit;
+			int			family;
+		} familyKeys[] = {
+			{ VKP_FAMILY_STAGE,	VK_SHADER_FAM_STAGE },
+			{ VKP_FAMILY_2D,	VK_SHADER_FAM_2D },
+			{ VKP_FAMILY_DLIGHT,	VK_SHADER_FAM_DLIGHT },
+			{ VKP_FAMILY_SKY,	VK_SHADER_FAM_SKY },
+			{ VKP_FAMILY_SPRITE,	VK_SHADER_FAM_SPRITE },
+			{ VKP_FAMILY_SUNFLARE,	VK_SHADER_FAM_SUNFLARE },
+			{ VKP_FAMILY_SHADOW,	VK_SHADER_FAM_SHADOW },
+			{ VKP_FAMILY_WIRE,	VK_SHADER_FAM_WIRE },
+		};
+		int resolved = 0;
+		int total = ( int )( sizeof( familyKeys ) / sizeof( familyKeys[0] ) );
+
+		for ( i = 0; i < total; i++ ) {
+			VkShaderModule v, f;
+
+			if ( VK_Program_Modules( familyKeys[i].family, familyKeys[i].bit, &v, &f ) ) {
+				resolved++;
+			}
+		}
+		VK_Guard_Row( "VK:shade", "modules=%d permutations=%d families=%d resolved=%d",
+					  VK_SHADER_MODULE_COUNT, VK_SHADER_MODULE_COUNT / 2, total, resolved );
+	}
 	return qtrue;
 }
 
@@ -570,8 +613,20 @@ vkProgram_t *VK_GetProgram( unsigned defines )
 		}
 	}
 	if ( vk_numPrograms >= VK_PROG_MAX ) {
+		/* Every fixed-size table here answers exhaustion the same way: name it
+		   through the guard and hand back a failure the draw path already
+		   refuses -- VK_Shade_Pipeline returns VK_NULL_HANDLE, VK_Shade_Set
+		   returns VK_NULL_HANDLE, the UBO ring and the vertex ring return their
+		   own failure.  This table used to hand back vk_programs[0] instead,
+		   which is a live program for a DIFFERENT defines mask: the caller then
+		   packs the requested stage's uniforms into it and binds it, and the
+		   surface renders with the wrong permutation and no row names why.
+		   NULL is safe end to end -- the uniform setters only fill the s_ubo
+		   staging block, and VK_Shade_Bind refuses on a NULL prog before it
+		   takes a UBO slice -- so the surface is dropped and refusals counts
+		   it, exactly like a pipeline miss. */
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "VK_GetProgram: program table full", VK_INCOMPLETE );
-		return &vk_programs[0];
+		return NULL;
 	}
 	p = &vk_programs[vk_numPrograms++];
 	memset( p, 0, sizeof( *p ) );
@@ -1960,6 +2015,9 @@ static VkPipeline VK_Shade_Pipeline( unsigned stateBits, int family, unsigned de
 	unsigned srcNibble, dstNibble;
 	int i;
 
+	/* the cache key names the modules, so it keys on the permutation bits alone */
+	defines &= ~VKP_FAMILY_MASK;
+
 	if ( !VK_Program_Modules( family, defines, &vert, &frag ) ) {
 		/* the mask names the permutation the offline build has to add */
 		VK_Shade_NotePerm( 1 );
@@ -2170,11 +2228,19 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 		}
 	}
 	if ( vk_numShadeSets >= VK_SHADE_SETS ) {
-			/* the cache is full: reuse slot 0 rather than fail the frame */
-		found = 0;
-	} else {
-		found = vk_numShadeSets++;
+		/* Exhaustion refuses the draw rather than aliasing a live set.  Slot 0
+		   is already bound inside the command buffer being recorded: rewriting
+		   it here retargets every earlier draw that bound it, and storing the
+		   new key over vk_shadeSetKeys[0] makes the original key miss forever,
+		   so slot 0 then thrashes for the rest of the boot.  VK_NULL_HANDLE is
+		   what VK_Shade_Pipeline, the UBO ring and the vertex ring all return
+		   when a table runs out, and VK_Shade_Bind turns it into the same
+		   s_frameShadeDrops++ refusal -- the surface drops, the frame stays
+		   correct, and the guard row names the reason. */
+		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade descriptor set table exhausted", VK_INCOMPLETE );
+		return VK_NULL_HANDLE;
 	}
+	found = vk_numShadeSets++;
 	set = vk_shadeSets[found];
 	if ( set == VK_NULL_HANDLE ) {
 		memset( &allocInfo, 0, sizeof( allocInfo ) );
@@ -2625,13 +2691,17 @@ vkProgram_t *VK_FamilyProgram( unsigned family )  /* the draw's family, by name 
 	return VK_GetProgram( family );
 }
 
-/* the program a stage needs: the shade tree's defines plus the caller's */
+/* the program a stage needs: the shade tree's defines, the stage's own texture
+   environment, and the caller's.  The texenv flags select vk_stage.frag's
+   second-bundle arm; leaving them out here compiled every two-bundle pass into
+   the MODULATE branch, so a merged ADD pass -- the star dome's, and every
+   world fx merge -- multiplied instead of adding.  GLES3_StageProgram ORs its
+   GLES3_TexEnvForStage in the same way. */
 vkProgram_t *VK_StageProgram( const shaderStage_t *pStage, const shader_t *shader, unsigned extraDefines )
 {
 	unsigned d = VK_StageDefines( pStage, shader );
 
-	(void)pStage; (void)shader;
-	return VK_GetProgram( d | extraDefines );
+	return VK_GetProgram( d | VK_TexEnvForStage( pStage, shader ) | extraDefines );
 }
 
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
@@ -2703,8 +2773,15 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 		tc1 = input->texCoords[0][0] + 2;
 		tcStride = 4;
 	}
-	/* a CPU-colour stage takes the svars array; otherwise the vertex packs white */
-	colors = cpuColor ? (const unsigned char *)input->svars.colors : NULL;
+	/* A CPU-colour stage takes the svars array.  In 2D every tess quad carries
+	   Draw_SetColor in vertexColors -- the font run writes it explicitly and the
+	   recorded 2D prims write it per vertex -- and VK_SetupStageUniforms pins
+	   u_BaseColor to 1 there expecting exactly that, so the array has to reach
+	   the pack: white here erased the pause menu's title and button labels while
+	   the same subtree's textured art stayed right.  In 3D a constant-colour
+	   stage never fills vertexColors, so the white pack is the one that is right. */
+	colors = cpuColor ? (const unsigned char *)input->svars.colors
+					  : ( backEnd.in2D ? (const unsigned char *)input->vertexColors : NULL );
 
 	(void)stateBits;
 	VK_StageBindCensus( shader, pStage, -1, backEnd.in2D ? qtrue : qfalse, 0, 0, 0, 0 );
@@ -2743,10 +2820,15 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 	s_rows++;
 	if ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) {
 		VK_Guard_Row( "VK:stagebind",
-					  "n=%d d=%d shader='%s' stage=%d b0='%s' tex0=%u b1='%s' tex1=%u",
+					  "n=%d d=%d shader='%s' stage=%d prog=0x%06x sb=0x%x mt=%d "
+					  "b0='%s' tex0=%u b1='%s' tex1=%u",
 					  s_rows, in2D ? 1 : 0,
 					  shader->name,
-					  stageIndex, n0, t0, n1, t1 );
+					  stageIndex,
+					  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
+					  (unsigned)pStage->stateBits,
+					  (unsigned)pStage->multitextureEnv,
+					  n0, t0, n1, t1 );
 	}
 }
 
@@ -2755,10 +2837,100 @@ void VK_DrawCensusKey( const void *key, qboolean in2D )
 	(void)key; (void)in2D;
 }
 
+/* ---- the presented-frame readback ---------------------------------------- */
+
+/* One host copy of the swapchain, shared by every sampler in the frame: the
+   dome question is "do its draws reach the framebuffer", and answering it needs
+   the composited result, not a stage's own target. */
+static unsigned char	*s_swapPixels;
+static int				 s_swapW, s_swapH, s_swapValid;
+
 qboolean VK_ModelPixelAtSwap( int x, int y, byte out[4] )
 {
-	(void)x; (void)y; (void)out;
-	return qfalse;
+	int ox, oy;
+
+	if ( !out || !s_swapValid || x < 0 || y < 0 ) {
+		return qfalse;
+	}
+	if ( x >= s_swapW || y >= s_swapH ) {
+		return qfalse;
+	}
+
+	/* the swapchain rows run bottom-up, the client's run top-down */
+	ox = x;
+	oy = s_swapH - 1 - y;
+
+	out[0] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 0];
+	out[1] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 1];
+	out[2] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 2];
+	out[3] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 3];
+	return qtrue;
+}
+
+static void VK_Shade_FreeSwapPixels( void )
+{
+	if ( s_swapPixels ) {
+		ri.Free( s_swapPixels );
+		s_swapPixels = NULL;
+	}
+	s_swapW = s_swapH = s_swapValid = 0;
+}
+
+/* Called from the present seam.  Reads the presented image back once and
+   samples a fixed grid, so one boot says whether the dome's stage draws are in
+   the composited frame or only ever in a target the 2D pass then covers. */
+void VK_Shade_ReadbackFrame( uint32_t imageIndex )
+{
+	static int	s_frames;
+	byte		px[4];
+	int			i;
+	int			x, y;
+	/* A three-by-three grid: five points named the ship and the corners and
+	   nothing between them, and the dome's own colour lives between them. */
+	struct { float fx, fy; const char *tag; } spot[9] = {
+		{ 0.5f,  0.5f,  "centre" },
+		{ 0.25f, 0.25f, "q1" },
+		{ 0.75f, 0.25f, "q2" },
+		{ 0.25f, 0.75f, "q3" },
+		{ 0.75f, 0.75f, "q4" },
+		{ 0.5f,  0.25f, "n" },
+		{ 0.5f,  0.75f, "s" },
+		{ 0.25f, 0.5f,  "w" },
+		{ 0.75f, 0.5f,  "e" },
+	};
+
+	s_frames++;
+	if ( !R_ProbeStatsOn() || ( s_frames % 60 ) != 0 ) {
+		return;
+	}
+	if ( vk.swapchain == VK_NULL_HANDLE || !vk.swapchainExtent.width || !vk.swapchainExtent.height ) {
+		return;
+	}
+
+	if ( (int)vk.swapchainExtent.width != s_swapW || (int)vk.swapchainExtent.height != s_swapH ) {
+		VK_Shade_FreeSwapPixels();
+		s_swapW = (int)vk.swapchainExtent.width;
+		s_swapH = (int)vk.swapchainExtent.height;
+		s_swapPixels = ri.Malloc( (size_t)s_swapW * (size_t)s_swapH * 4 );
+	}
+
+	if ( !VK_Swapchain_ReadPixels( imageIndex, s_swapPixels, (size_t)s_swapW * (size_t)s_swapH * 4 ) ) {
+		s_swapValid = 0;
+		VK_Guard_Row( "VK:readback", "frame=%d w=%d h=%d status=failed", s_frames, s_swapW, s_swapH );
+		return;
+	}
+	s_swapValid = 1;
+
+	for ( i = 0; i < 9; i++ ) {
+		x = (int)( spot[i].fx * ( s_swapW - 1 ) );
+		y = (int)( spot[i].fy * ( s_swapH - 1 ) );
+		if ( VK_ModelPixelAtSwap( x, y, px ) ) {
+			VK_Guard_Row( "VK:readback", "frame=%d w=%d h=%d at=%s x=%d y=%d rgba=%d,%d,%d,%d clear=%.3f,%.3f,%.3f",
+						  s_frames, s_swapW, s_swapH, spot[i].tag, x, y,
+						  px[0], px[1], px[2], px[3],
+						  vk.clearColor[0], vk.clearColor[1], vk.clearColor[2] );
+		}
+	}
 }
 
 void VK_SetGhostImage( const char *name, image_t *image )

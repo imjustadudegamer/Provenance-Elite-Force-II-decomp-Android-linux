@@ -511,6 +511,12 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 	return qtrue;
 }
 
+/* The 2D window in force, for the draw row.  A quad's rect is local to the
+   window the UI sets around it, so the rect alone reads as a pile of quads all
+   at the origin; the window is what puts the tile on its own screen rect. */
+int	vk_2dWindow[4]   = { 0, 0, 0, 0 };
+int	vk_2dScissor[4]  = { 0, 0, 0, 0 };
+
 void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 					float left, float right, float bottom, float top, float n, float f )
 {
@@ -519,6 +525,9 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	float m[16];
 	float rl, tb, fn;
 	qboolean degenerate;
+
+	vk_2dWindow[0] = x; vk_2dWindow[1] = y; vk_2dWindow[2] = w; vk_2dWindow[3] = h;
+	vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = w; vk_2dScissor[3] = h;
 
 	rl = right - left;
 	tb = top - bottom;
@@ -618,6 +627,8 @@ void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 void VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int height )
 {
 	VkRect2D scissor;
+
+	vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = width; vk_2dScissor[3] = height;
 
 	/* RE_Scissor's box is bottom-left; Vulkan's is the top-left. */
 	memset( &scissor, 0, sizeof( scissor ) );

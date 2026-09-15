@@ -1,4 +1,4 @@
-//vk-spirv-fingerprint 569a28ec1d6cbf1cf167cedf4f11e0abd49e0f64e4d55100b61dbf4c69d5447f
+//vk-spirv-fingerprint 3ca8348d816cc77e65eb8e93b7de0389b651f78406a2fad6be3518ca6c97195e
 /*===========================================================================
 This file is part of the port of Star Trek: Voyager -- Elite Force II, whose
 engine descends from id Tech 3 through OpenMoHAA.

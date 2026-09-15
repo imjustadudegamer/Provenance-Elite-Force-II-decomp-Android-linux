@@ -229,7 +229,9 @@ void R_TransformModelToClip( const vec3_t src, const float *modelMatrix, const f
 void R_TransformClipToWindow( const vec4_t clip, const viewParms_t *view, vec4_t normalized, vec4_t window ) {
 	normalized[0] = clip[0] / clip[3];
 	normalized[1] = clip[1] / clip[3];
-	normalized[2] = ( clip[2] + clip[3] ) / ( 2 * clip[3] );
+	/* Vulkan's NDC z is already 0..1, so the OpenGL [-1,1] -> [0,1] fold does not
+	   apply; the raw divide is the depth. */
+	normalized[2] = VK_ClipZToDepth( clip[2], clip[3] );
 
 	window[0] = 0.5f * ( 1.0f + normalized[0] ) * view->viewportWidth;
 	window[1] = 0.5f * ( 1.0f + normalized[1] ) * view->viewportHeight;
@@ -484,13 +486,44 @@ void R_SetupProjection( void ) {
 
 	tr.viewParms.projectionMatrix[2] = 0;
 	tr.viewParms.projectionMatrix[6] = 0;
-	tr.viewParms.projectionMatrix[10] = -( zFar + zNear ) / depth;
-	tr.viewParms.projectionMatrix[14] = -2 * zFar * zNear / depth;
+	/* Vulkan clips against 0 <= z <= w, so the z rows put the near plane on 0 and
+	   the far plane on 1.  The OpenGL rows -- -(zFar+zNear)/depth and
+	   -2*zFar*zNear/depth -- put the near plane on -1, which is the volume's
+	   outside face, and every vertex nearer than the frustum midpoint is
+	   rasteriser-clipped away.  The answer-key Vulkan renderer's
+	   R_SetupProjectionZ carries exactly these two rows under USE_VULKAN. */
+	tr.viewParms.projectionMatrix[10] = -zFar / depth;
+	tr.viewParms.projectionMatrix[14] = -zFar * zNear / depth;
 
 	tr.viewParms.projectionMatrix[3] = 0;
 	tr.viewParms.projectionMatrix[7] = 0;
 	tr.viewParms.projectionMatrix[11] = -1;
 	tr.viewParms.projectionMatrix[15] = 0;
+
+	/* the row that settles the clip-volume question off the boot: the depth the
+	   matrix hands the rasteriser at the near and far plane, and the radius the
+	   old OpenGL rows would have clipped.  depth = NDC z, because Vulkan maps
+	   [0,1] straight onto [0,1]; near must read 0 and far must read 1. */
+	{
+		static int s_projRows;
+
+		if ( s_projRows < 4 || ( s_projRows % 2000 ) == 0 )
+		{
+			float nzc = tr.viewParms.projectionMatrix[10] * ( -zNear ) + tr.viewParms.projectionMatrix[14];
+			float fzc = tr.viewParms.projectionMatrix[10] * ( -zFar ) + tr.viewParms.projectionMatrix[14];
+			float nzcOld = ( -( zFar + zNear ) / depth ) * ( -zNear )
+						   + ( -2 * zFar * zNear / depth );
+			float bubble;
+
+			bubble = 2.0f * zFar * zNear / ( zFar + zNear );
+			VK_Guard_Row( "VK:proj",
+						  "zNear=%.3f zFar=%.1f depth_near=%.6f depth_far=%.6f "
+						  "gl_rows_depth_near=%.3f clipped_bubble=%.2f",
+						  zNear, zFar, nzc / ( zNear ), fzc / ( zFar ),
+						  nzcOld / ( zNear ), bubble );
+			s_projRows++;
+		}
+	}
 }
 
 void R_SetupFrustum (void) {
@@ -807,6 +840,17 @@ qboolean SurfIsOffscreen(const srfSurfaceFace_t* surface, shader_t* shader, int 
 			if ( clip[j] >= clip[3] )
 			{
 				pointFlags |= (1 << (j*2));
+			}
+			else if ( j == 2 )
+			{
+				/* Vulkan clips z against 0, not -w: the OpenGL arm above would
+				   read the near half of the volume as entirely off-screen and
+				   drop the face at add time, which is the same bubble the
+				   projection rows were letting through. */
+				if ( !VK_ClipZInside( clip[2], clip[3] ) )
+				{
+					pointFlags |= ( 1 << (j*2+1));
+				}
 			}
 			else if ( clip[j] <= -clip[3] )
 			{

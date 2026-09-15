@@ -119,6 +119,19 @@ def census_defines():
         parts = [p.strip() for p in m.group(1).split(",")]
         if len(parts) >= 9:
             masks.add(int(parts[8], 0))
+    # The texenv bits ride VK_StageProgram (OR'd in by VK_TexEnvForStage), so a
+    # two-bundle pass asks for <its own mask> | <one texenv bit>.  Without the
+    # cross here those variants are never compiled: every merged pass falls to
+    # vk_stage.frag's MODULATE arm, the star dome draws stars-large times nebula
+    # -- black -- and every world fx merge multiplies instead of adding.
+    # GLES3_StageProgram does the same OR and its build seeds the masks
+    # (glsl/build_glsl.py); here the module has to exist up front, so the seed
+    # is the full cross over the census, not five hand-picked rows.
+    TEXENV = (0x00200000, 0x00400000, 0x00800000)
+    base = sorted(masks)
+    for m in base:
+        for t in TEXENV:
+            masks.add(m | t)
     return sorted(masks)
 
 
