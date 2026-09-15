@@ -692,6 +692,13 @@ qboolean VK_Draw_CurrentValid( void )
 	return vk_currentValid;
 }
 
+/* The 2D window's ortho, for the census that has to run the same transform the
+   draw's push constants carry.  NULL while no window is in force. */
+const float *VK_Draw_CurrentOrtho( void )
+{
+	return vk_currentValid ? vk_current.ortho : NULL;
+}
+
 VkPipelineLayout VK_Draw_Layout( void )
 {
 	return vk_draw.layout;

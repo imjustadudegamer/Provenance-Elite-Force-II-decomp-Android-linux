@@ -2702,6 +2702,7 @@ void		VK_Shade_Descriptors_Shutdown( void );
 qboolean	VK_Shade_Init( void );
 void		VK_Shade_Shutdown( void );
 void		VK_Shade_NewFrame( void );
+void		VK_2DOrder_Note( const char *shader );
 void		VK_Shade_NoteDraw( int shade );
 void		VK_Shade_NoteSurfCmds( int surfs );
 void		VK_Shade_NoteStage( const struct shader_s *shader );
@@ -2843,6 +2844,7 @@ void     VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits );
 void     VK_Draw_DisableScissor( VkCommandBuffer cmd );
 void     VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase );
 void     VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex );
+const float *VK_Draw_CurrentOrtho( void );
 
 /* ---- textures ------------------------------------------------------------ */
 

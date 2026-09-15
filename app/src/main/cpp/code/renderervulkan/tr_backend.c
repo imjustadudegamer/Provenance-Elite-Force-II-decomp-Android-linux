@@ -127,6 +127,13 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 			if ( tess.xyz[v][1] > y1 ) y1 = tess.xyz[v][1];
 		}
 
+		/* the order transcript: the rate-limited row above cannot answer a
+		   z-order question, because after the fortieth draw the sampling
+		   throws the sequence away.  A widget's depth is the position it draws
+		   at, so the ordered names are the answer; this collects them and
+		   VK_Shade_NewFrame emits the frame's list. */
+		VK_2DOrder_Note( tess.shader ? tess.shader->name : "?" );
+
 		s_rows++;
 		if ( s_rows <= 40 || ( s_rows % 64 ) == 0 ) {
 			VK_Guard_Row( "VK:2ddraw",
