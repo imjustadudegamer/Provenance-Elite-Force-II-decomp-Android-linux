@@ -1651,6 +1651,29 @@ void	VK_Cull( int cullType );
 
 #define VKS_DEFAULT			VKS_DEPTHMASK_TRUE
 
+/* The engine's clip-space arithmetic was written for the OpenGL clip volume,
+   -w <= z <= w.  Vulkan clips against 0 <= z <= w (Vulkan spec, "Primitive
+   Clipping"), so a vertex the OpenGL matrix puts at the near plane sits on the
+   volume's outside face and everything nearer than the frustum midpoint is
+   discarded by the rasteriser.  With r_znear 4 and a several-thousand-unit far
+   plane that bubble is about 2*zNear wide, which is the width of a corridor in
+   the shipped Borg maps: the near walls, floor and ceiling vanish and a blended
+   surface spanning the corridor keeps only its far half.  The answer-key Vulkan
+   renderer carries the same split -- renderervk/tr_main.c R_SetupProjectionZ
+   builds -zFar/depth and -zFar*zNear/depth under USE_VULKAN where the OpenGL
+   arm builds -(zFar+zNear)/depth and -2*zFar*zNear/depth -- so the projection
+   rows, the ortho rows, the CPU clip-volume tests and the clip->window depth
+   all go through these two helpers rather than restating the convention. */
+static inline float VK_ClipZToDepth( float clipZ, float clipW )
+{
+	return clipZ / clipW;
+}
+
+static inline qboolean VK_ClipZInside( float clipZ, float clipW )
+{
+	return ( clipZ >= 0.0f && clipZ <= clipW ) ? qtrue : qfalse;
+}
+
 void Draw_SetColor(const vec4_t rgba);
 void R_ChangeTextColor(int index);
 void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, float s2, float t2, qhandle_t hShader);
@@ -2682,6 +2705,7 @@ void		VK_Shade_NewFrame( void );
 void		VK_Shade_NoteDraw( int shade );
 void		VK_Shade_NoteSurfCmds( int surfs );
 void		VK_Shade_NoteStage( const struct shader_s *shader );
+	void		VK_Shade_ReadbackFrame( unsigned imageIndex );
 int		VK_Shade_FrameBatches( void );
 void		VK_Shade_NotePerm( int miss );
 
@@ -2810,6 +2834,8 @@ typedef struct {
 
 VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key );
 qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler sampler );
+extern	 int	vk_2dWindow[4];		/* x y w h of the 2D window in force */
+extern	 int	vk_2dScissor[4];	/* x y w h of the 2D scissor in force */
 void     VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 						float left, float right, float bottom, float top, float n, float f );
 void     VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int height );

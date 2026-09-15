@@ -131,7 +131,8 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 		if ( s_rows <= 40 || ( s_rows % 64 ) == 0 ) {
 			VK_Guard_Row( "VK:2ddraw",
 						  "n=%d shader='%s' img='%s' tex=%d verts=%d idx=%d "
-						  "rect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f)",
+						  "rect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f) "
+						  "sb=0x%x col=%d,%d,%d,%d win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d)",
 						  s_rows,
 						  tess.shader ? tess.shader->name : "?",
 						  image->imgName,
@@ -140,7 +141,12 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 						  x0, y0, x1, y1,
 						  tess.texCoords[0][0][0], tess.texCoords[0][0][1],
 						  tess.texCoords[tess.numVertexes - 1][0][0],
-						  tess.texCoords[tess.numVertexes - 1][0][1] );
+						  tess.texCoords[tess.numVertexes - 1][0][1],
+						  stage->stateBits,
+						  backEnd.color2D[0], backEnd.color2D[1],
+						  backEnd.color2D[2], backEnd.color2D[3],
+						  vk_2dWindow[0], vk_2dWindow[1], vk_2dWindow[2], vk_2dWindow[3],
+						  vk_2dScissor[0], vk_2dScissor[1], vk_2dScissor[2], vk_2dScissor[3] );
 		}
 	}
 

@@ -319,6 +319,9 @@ void RB_ExecuteRenderCommands( const void *data )
 			if ( !VK_Frame_Present( slot ) ) {
 				return;
 			}
+			/* the presented image is the composited result: sampling it here is
+			   what separates "the dome drew" from "the dome is on screen" */
+			VK_Shade_ReadbackFrame( vk.acquiredImage );
 			break;
 
 		case RC_DRAW_SURFS:

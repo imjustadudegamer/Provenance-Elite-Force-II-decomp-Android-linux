@@ -220,7 +220,12 @@ bool lens_flare::ScreenCalc()
     }
 
     for (i = 0; i < 3; i++) {
-        if (clip[i] >= clip[3] || clip[i] <= -clip[3]) {
+        /* z clips against 0 in Vulkan, not -w (see VK_ClipZInside in tr_local.h) */
+        if (i == 2) {
+            if (!VK_ClipZInside(clip[2], clip[3])) {
+                retval = false;
+            }
+        } else if (clip[i] >= clip[3] || clip[i] <= -clip[3]) {
             retval = false;
         }
     }
@@ -1200,7 +1205,12 @@ static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen)
     }
 
     for (i = 0; i < 3; i++) {
-        if (clip[i] >= clip[3] || clip[i] <= -clip[3]) {
+        /* z clips against 0 in Vulkan, not -w (see VK_ClipZInside in tr_local.h) */
+        if (i == 2) {
+            if (!VK_ClipZInside(clip[2], clip[3])) {
+                inside = qfalse;
+            }
+        } else if (clip[i] >= clip[3] || clip[i] <= -clip[3]) {
             inside = qfalse;
         }
     }
