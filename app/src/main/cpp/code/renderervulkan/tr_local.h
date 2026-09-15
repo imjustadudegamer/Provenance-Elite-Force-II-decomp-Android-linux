@@ -2845,6 +2845,8 @@ void     VK_Draw_DisableScissor( VkCommandBuffer cmd );
 void     VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase );
 void     VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex );
 const float *VK_Draw_CurrentOrtho( void );
+void     VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h );
+void     VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h );
 
 /* ---- textures ------------------------------------------------------------ */
 

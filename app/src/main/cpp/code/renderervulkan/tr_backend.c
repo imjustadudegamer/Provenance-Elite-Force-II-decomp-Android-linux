@@ -649,31 +649,16 @@ void	R_AddSpriteSurfCmd(drawSurf_t* drawSurfs, int numDrawSurfs) {
 static void SetViewportAndScissor( void ) {
 	RB_LoadProjectionMatrix( backEnd.viewParms.projectionMatrix );
 
+	/* The view's own rect, through the same clamp the 2D window takes: a view
+	   whose rect lands off the framebuffer is undefined rasterization in
+	   Vulkan, where GL cut it for free. */
 	{
-		VkViewport viewport;
-		VkRect2D scissor;
-
-		memset( &viewport, 0, sizeof( viewport ) );
-		viewport.x = (float)backEnd.viewParms.viewportX;
-		viewport.y = (float)( vkConfig.vidHeight - backEnd.viewParms.viewportY
-							  - backEnd.viewParms.viewportHeight );
-		viewport.width = (float)backEnd.viewParms.viewportWidth;
-		viewport.height = (float)backEnd.viewParms.viewportHeight;
-		viewport.maxDepth = 1.0f;
-
-		memset( &scissor, 0, sizeof( scissor ) );
-		scissor.offset.x = backEnd.viewParms.viewportX;
-		scissor.offset.y = vkConfig.vidHeight - backEnd.viewParms.viewportY
-						   - backEnd.viewParms.viewportHeight;
-		scissor.extent.width = (uint32_t)( backEnd.viewParms.viewportWidth > 0
-											? backEnd.viewParms.viewportWidth : 0 );
-		scissor.extent.height = (uint32_t)( backEnd.viewParms.viewportHeight > 0
-											 ? backEnd.viewParms.viewportHeight : 0 );
+		VkCommandBuffer drawCmd = VK_Shade_CommandBuffer();
 
 		VK_Shade_Viewport3D( backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
 							 backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight );
-		qvk.CmdSetViewport( VK_Shade_CommandBuffer(), 0, 1, &viewport );
-		qvk.CmdSetScissor( VK_Shade_CommandBuffer(), 0, 1, &scissor );
+		VK_Draw_View3D( drawCmd, backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
+						backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight );
 	}
 }
 
