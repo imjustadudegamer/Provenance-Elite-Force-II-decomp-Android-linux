@@ -692,6 +692,13 @@ static void UploadCompressedDims( int width, int height, int iMipmapsAvailable,
 	if ( picmip > 0 ) {
 		iStartImage = picmip;
 	}
+	/* A placeholder with no mip chain at all (iMipmapsAvailable == 0) cannot be
+	   reduced: the clamp below would hand back iStartImage -1 and the shift
+	   would read as >> 31, so every dimension collapses to 0 and the create
+	   writes through a null allocation.  No chain, no reduction. */
+	if ( iMipmapsAvailable <= 0 ) {
+		iStartImage = 0;
+	}
 	if ( iStartImage > 0 && iStartImage >= iMipmapsAvailable ) {
 		iStartImage = iMipmapsAvailable - 1;
 	}
@@ -708,6 +715,12 @@ static void UploadCompressedDims( int width, int height, int iMipmapsAvailable,
 		iStartImage = iMipmapsAvailable - 1;
 		sw = width >> ( iMipmapsAvailable - 1 );
 		sh = height >> ( iMipmapsAvailable - 1 );
+	}
+	if ( sw < 1 ) {
+		sw = 1;
+	}
+	if ( sh < 1 ) {
+		sh = 1;
 	}
 	*startLevelOut = iStartImage;
 	*outW = sw;
@@ -1481,12 +1494,15 @@ image_t* R_CreateImageOld(
 		qboolean		 emitRow = qfalse;
 		int				 overflow = 0;
 		int				 rowFmt;
+		/* placeholder images created while parsing shaders carry no name; the
+		   census must not strcmp or printf a null one */
+		const char		*imgName = image->imgName ? image->imgName : "(unnamed)";
 
 		rowFmt = ( s_gles3PathKind == 0 ) ? (int)R_VKInternalFormat( s_gles3UploadFormat )
 										 : s_gles3PathFmt;
 
 		for ( iSeen = 0; iSeen < s_smpImgupCount; iSeen++ ) {
-			if ( !strcmp( s_smpImgupSeen[iSeen], image->imgName ) ) {
+			if ( !strcmp( s_smpImgupSeen[iSeen], imgName ) ) {
 				seen = qtrue;
 				break;
 			}
@@ -1514,8 +1530,8 @@ image_t* R_CreateImageOld(
 					emitRow = qtrue;
 				}
 			} else {
-				s_smpImgupSeen[s_smpImgupCount] = ri.Malloc( (int)strlen( image->imgName ) + 1 );
-				strcpy( s_smpImgupSeen[s_smpImgupCount], image->imgName );
+				s_smpImgupSeen[s_smpImgupCount] = ri.Malloc( (int)strlen( imgName ) + 1 );
+				strcpy( s_smpImgupSeen[s_smpImgupCount], imgName );
 				s_smpImgupCount++;
 				emitRow = qtrue;
 			}
@@ -1524,7 +1540,7 @@ image_t* R_CreateImageOld(
 				ri.Printf( PRINT_ALL,
 					"[VK:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
 					"mips=%d bytes=%d lightmap=%d dynamic=%d err=0x%04x usec=%d overflow=%d\n",
-					image->imgName, image->uploadWidth, image->uploadHeight,
+					imgName, image->uploadWidth, image->uploadHeight,
 					s_gles3PathName[s_gles3PathKind & 3], (unsigned)rowFmt,
 					( s_gles3PathKind == 0 ) ? s_gles3UploadSamples : 0,
 					( s_gles3PathKind == 0 ) ? (unsigned)s_gles3UploadFormat : 0u,
@@ -1532,12 +1548,12 @@ image_t* R_CreateImageOld(
 					image->dynamicallyUpdated ? 1 : 0, (unsigned)err,
 					be_imgT0 ? ( BE_Microseconds() - be_imgT0 ) : 0, overflow );
 
-				if ( s_gles3PathKind == 0 && strstr( image->imgName, "common/shadow" ) != NULL ) {
+				if ( s_gles3PathKind == 0 && strstr( imgName, "common/shadow" ) != NULL ) {
 					ri.Printf( PRINT_ALL,
 						"[SMP:decalsrc] name=%s px=%d rgb=%lu,%lu,%lu mean=%.1f,%.1f,%.1f"
 						" nearwhite=%d (of %d; r,g,b all >= 200)"
 						" issuedLevels=%d lvl0..7=%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d\n",
-						image->imgName, s_smpUploadPixels,
+						imgName, s_smpUploadPixels,
 						s_smpUploadSum[0], s_smpUploadSum[1], s_smpUploadSum[2],
 						s_smpUploadPixels ? (double)s_smpUploadSum[0] / s_smpUploadPixels : 0.0,
 						s_smpUploadPixels ? (double)s_smpUploadSum[1] / s_smpUploadPixels : 0.0,
