@@ -1570,6 +1570,11 @@ typedef struct {
 	float	st[2][2];
 } vkStreamVertex_t;
 
+/* the census that names a draw whose own vertices cover half the frame; it is
+   defined below the shade state it reports and called from both tess arms */
+static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
+								   const vkIndex_t *indexes, int numIndexes );
+
 #define VK_STREAM_STRIDE ( (int)sizeof( vkStreamVertex_t ) )
 
 static void VK_Stream_Pack( vkStreamVertex_t *out, const shaderCommands_t *input, int v,
@@ -1667,6 +1672,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 			VK_VertexRing_Flushed();
 			return;
 		}
+		VK_Shade_FootprintRow( input, stage, indexes, numIndexes );
 		VK_Draw_BindRingOffset( cmd, base );
 		VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, 0 );
 		VK_VertexRing_Flushed();
@@ -1707,6 +1713,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		return;
 	}
 
+	VK_Shade_FootprintRow( input, stage, indexes, numIndexes );
 	VK_Draw_BindRingOffset( cmd, base );
 	VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, 0 );
 	VK_VertexRing_Flushed();
@@ -2673,6 +2680,127 @@ void VK_BindProgram( vkProgram_t *p )
 	s_shade.prog = p;
 }
 
+/* ---- the footprint census ------------------------------------------------ */
+
+/* A half-viewport triangle is one draw, and the frame map says where it is;
+   this names which draw it was.  Every tess draw passes here with its own
+   vertices, so the vertices go through the same model-view and projection the
+   GPU is about to use and the screen box comes back out.  A real surface's box
+   is whatever it is; a surface whose three or four corners cover more than half
+   the frame in both axes is one primitive, and that is the row that ends the
+   search.  Rows carry the state bits and the permutation next to the shader, so
+   the blend answer the translucent observation asks for is on the same line. */
+static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
+								   const vkIndex_t *indexes, int numIndexes )
+{
+	const float	*mv, *pj;
+	float		m[16];
+	float		minx, miny, maxx, maxy;
+	int			i, tris, big, oob, oobMax;
+	static int	s_rows;
+
+	if ( !R_ProbeStatsOn() || !input || !indexes || numIndexes < 3 || !input->numVertexes ) {
+		return;
+	}
+
+	if ( backEnd.in2D && VK_Draw_CurrentOrtho() ) {
+		/* the 2D window's own ortho is the push constant the draw carries */
+		mv = NULL;
+		pj = VK_Draw_CurrentOrtho();
+	} else {
+		mv = RB_GetModelViewMatrix();
+		pj = RB_GetProjectionMatrix();
+	}
+	if ( !pj ) {
+		return;
+	}
+	if ( mv ) {
+		VK_Matrix_Multiply( m, pj, mv );
+		pj = m;
+	}
+
+	minx = miny = 2.0f;
+	maxx = maxy = -2.0f;
+	big = 0;
+	oob = 0;
+	oobMax = -1;
+	tris = numIndexes / 3;
+
+	for ( i = 0; i + 2 < numIndexes; i += 3 ) {
+		float bx0 = 2.0f, by0 = 2.0f, bx1 = -2.0f, by1 = -2.0f;
+		int   v, inside = 0;
+
+		for ( v = 0; v < 3; v++ ) {
+			const float *xyz;
+			float		 cx, cy, cw, nx, ny;
+			int		 vi = indexes[i + v];
+
+			if ( vi < 0 || vi >= input->numVertexes ) {
+				/* an index past the vertices this surface wrote is the
+				   uninitialised-region class on its own: the rasteriser reads
+				   whatever the ring slice held before it, and that is one
+				   primitive with arbitrary corners.  Name it whatever the box
+				   looks like. */
+				oob++;
+				if ( vi > oobMax ) {
+					oobMax = vi;
+				}
+				inside = -1;
+				continue;
+			}
+			xyz = input->xyz[vi];
+			cx = pj[0] * xyz[0] + pj[4] * xyz[1] + pj[8] * xyz[2] + pj[12];
+			cy = pj[1] * xyz[0] + pj[5] * xyz[1] + pj[9] * xyz[2] + pj[13];
+			cw = pj[3] * xyz[0] + pj[7] * xyz[1] + pj[11] * xyz[2] + pj[15];
+			if ( cw < 1e-6f && cw > -1e-6f ) {
+				inside = -1;
+				continue;
+			}
+			nx = cx / cw;
+			ny = cy / cw;
+			if ( nx >= -1.0f && nx <= 1.0f && ny >= -1.0f && ny <= 1.0f ) {
+				inside++;
+			}
+			if ( nx < bx0 ) bx0 = nx;
+			if ( ny < by0 ) by0 = ny;
+			if ( nx > bx1 ) bx1 = nx;
+			if ( ny > by1 ) by1 = ny;
+		}
+
+		if ( inside == 3 && ( bx1 - bx0 ) >= 1.0f && ( by1 - by0 ) >= 1.0f ) {
+			big++;
+		}
+		if ( bx0 < minx ) minx = bx0;
+		if ( by0 < miny ) miny = by0;
+		if ( bx1 > maxx ) maxx = bx1;
+		if ( by1 > maxy ) maxy = by1;
+	}
+
+	/* one triangle covering at least half the frame in both axes, a draw whose
+	   whole box does with four triangles or fewer, or an index past the
+	   vertices the surface wrote: all three are a primitive no real surface
+	   makes, and the third is the uninitialised-region class named directly */
+	if ( !oob && !big
+		 && !( ( maxx - minx ) >= 1.0f && ( maxy - miny ) >= 1.0f && tris <= 4 ) ) {
+		return;
+	}
+
+	s_rows++;
+	if ( s_rows > 64 && ( s_rows % 600 ) != 0 ) {
+		return;
+	}
+
+	VK_Guard_Row( "VK:bigdraw",
+				  "n=%d shader='%s' in2d=%d tris=%d verts=%d idx=%d box=(%.3f,%.3f)-(%.3f,%.3f) "
+				  "bigtris=%d oobidx=%d oobmax=%d sb=0x%x prog=0x%06x stage=%d",
+				  s_rows, input->shader ? input->shader->name : "(null)",
+				  backEnd.in2D ? 1 : 0, tris, input->numVertexes, numIndexes,
+				  minx, miny, maxx, maxy, big, oob, oobMax,
+				  (unsigned)s_shade.stateBits,
+				  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
+				  stage ? 1 : 0 );
+}
+
 /* the portal clip plane, uploaded with the view uniforms */
 void VK_UploadClipPlane( vkProgram_t *p )
 {
@@ -3218,9 +3346,86 @@ void VK_SetGhostImage( const char *name, image_t *image )
 
 /* defined by the mirrored 3D front end */
 
+/* ---- the 2D order transcript -------------------------------------------- */
+
+/* A widget's depth is the position it draws at, so the ordered shader names are
+   the z-order answer.  The rate-limited VK:2ddraw row cannot carry it: past the
+   fortieth draw the sampling throws the sequence away, and a frame's menu is
+   hundreds of draws.  This keeps the frame's names in order and NewFrame emits
+   them, deduped down the run so a widget that paints once reads as one entry.
+   Emitted when the sequence changes, so a still menu costs one row. */
+#define VK_2DORDER_MAX	64
+static char		s_2dOrder[VK_2DORDER_MAX][64];
+static int		s_2dOrderCount;
+static unsigned	s_2dOrderHash;
+static qboolean	s_2dOrderHave;
+
+void VK_2DOrder_Note( const char *shader )
+{
+	unsigned h;
+	int		 i;
+
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
+	if ( !shader || !shader[0] ) {
+		return;
+	}
+	i = s_2dOrderCount - 1;
+	if ( i >= 0 && !strcmp( s_2dOrder[i], shader ) ) {
+		return;
+	}
+
+	h = s_2dOrderHash;
+	for ( i = 0; shader[i]; i++ ) {
+		h = ( h ^ (unsigned char)shader[i] ) * 16777619u;
+	}
+	s_2dOrderHash = h;
+
+	if ( s_2dOrderCount < VK_2DORDER_MAX ) {
+		Q_strncpyz( s_2dOrder[s_2dOrderCount], shader, sizeof( s_2dOrder[0] ) );
+		s_2dOrderCount++;
+	}
+}
+
+static void VK_2DOrder_FrameRow( void )
+{
+	static unsigned	s_lastHash;
+	static int		s_frames;
+	char			line[VK_2DORDER_MAX * 32];
+	int				i, written;
+
+	s_frames++;
+	if ( !R_ProbeStatsOn() || !s_2dOrderCount ) {
+		s_2dOrderCount = 0;
+		s_2dOrderHash = 0;
+		return;
+	}
+	if ( !s_2dOrderHave || s_2dOrderHash != s_lastHash || ( s_frames % 900 ) == 0 ) {
+		line[0] = 0;
+		written = 0;
+		for ( i = 0; i < s_2dOrderCount; i++ ) {
+			int len = Com_sprintf( line + written, sizeof( line ) - written, "%s%s",
+								   i ? "|" : "", s_2dOrder[i] );
+
+			if ( len < 0 || (size_t)len >= sizeof( line ) - written ) {
+				break;
+			}
+			written += len;
+		}
+		VK_Guard_Row( "VK:2dorder", "frame=%d draws=%d %s", s_frames, s_2dOrderCount, line );
+		s_lastHash = s_2dOrderHash;
+		s_2dOrderHave = qtrue;
+	}
+	s_2dOrderCount = 0;
+	s_2dOrderHash = 0;
+}
+
 void VK_Shade_NewFrame( void )
 {
 	int slot;
+
+	VK_2DOrder_FrameRow();
 
 	/* the frame before this one is complete: its census is the number the retail trace carries */
 	if ( s_frameShadeDraws || s_frameShadeDrops ) {

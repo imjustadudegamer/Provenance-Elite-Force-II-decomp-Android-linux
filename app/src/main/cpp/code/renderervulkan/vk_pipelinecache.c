@@ -62,6 +62,7 @@ qboolean VK_PipelineCache_Open( void )
 	const char *home;
 	VkResult result;
 	cvar_t *homeCvar;
+	cvar_t *loadCvar;
 
 	vk.pipelineCache = VK_NULL_HANDLE;
 	vk.pipelineCacheLoaded = qfalse;
@@ -73,7 +74,19 @@ qboolean VK_PipelineCache_Open( void )
 
 	homeCvar = ri.Cvar_Get( "fs_homepath", "", 0 );
 	home = homeCvar ? homeCvar->string : NULL;
-	if ( home && home[0] ) {
+
+	/* Feed saved data back only behind the explicit opt-in.  Mesa's ANV
+	   25.2.8 segfaults inside vkCreatePipelineCache parsing a blob the same
+	   driver produced and saved (gdb: memcpy from libvulkan_intel under
+	   VK_PipelineCache_Open, fault at blob+0x51010 on every reopen -- the
+	   configure tab's vid restart hit it too), while a blob written by an
+	   older build opened fine, so the parse is not trustworthy even for
+	   self-produced data.  Cold start costs pipeline compiles once per
+	   boot; the save path below keeps collecting data for a driver that
+	   can parse its own output. */
+	loadCvar = ri.Cvar_Get( "r_vkPipelineCacheLoad", "0", 0 );
+
+	if ( home && home[0] && loadCvar->integer ) {
 		snprintf( path, sizeof( path ), "%s/%s", home, VK_PCACHE_FILE );
 		fh = fopen( path, "rb" );
 	} else {
