@@ -526,16 +526,22 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	degenerate = ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) ? qtrue : qfalse;
 
 	if ( degenerate ) {
-		/* The values are the diagnosis: which caller sends a window with no
-		   extent, and whether it is the same one every frame. */
-		static char window[128];
-		static int  s_rows;
+		/* Retail's own UI issues these: the tuple names the widget, and all
+		   three families the boots have shown are authored zero-extent in
+		   retail's data -- menu_controls' bindscroll (scrollbar_width 0 over
+		   WeaponBindList's 325x255 client), its two "table fudge" columns, and
+		   menu_loadgame's width-0 FileName/Timestamp columns.  The dims travel
+		   the UI's set2D -> Set2DWindow -> this record verbatim on both legs,
+		   so there is nothing to source here; the window is issued anyway and
+		   the zero-area scissor rasterises nothing, which is retail's result.
+		   A diagnosis row, not a guard: [VK:guard] stays the error stream. */
+		static int s_rows;
 
 		if ( s_rows < 8 || ( s_rows % 500 ) == 0 ) {
-			Com_sprintf( window, sizeof( window ),
-						 "degenerate 2D window x=%d y=%d w=%d h=%d l=%g r=%g b=%g t=%g n=%g f=%g",
-						 x, y, w, h, left, right, bottom, top, n, f );
-			VK_Guard_Hit( VK_GSITE_SYNC, window, VK_ERROR_INITIALIZATION_FAILED );
+			VK_Guard_Row( "VK:2dwin",
+						  "site=sync detail=\"degenerate 2D window x=%d y=%d w=%d h=%d "
+						  "l=%g r=%g b=%g t=%g n=%g f=%g\" n=%u",
+						  x, y, w, h, left, right, bottom, top, n, f, s_rows + 1 );
 		}
 		s_rows++;
 	}
