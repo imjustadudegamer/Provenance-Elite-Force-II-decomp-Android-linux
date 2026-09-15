@@ -127,12 +127,30 @@ def census_defines():
     # GLES3_StageProgram does the same OR and its build seeds the masks
     # (glsl/build_glsl.py); here the module has to exist up front, so the seed
     # is the full cross over the census, not five hand-picked rows.
-    TEXENV = (0x00200000, 0x00400000, 0x00800000)
-    base = sorted(masks)
-    for m in base:
-        for t in TEXENV:
-            masks.add(m | t)
-    return sorted(masks)
+    return sorted(texenv_closure(masks))
+
+
+def texenv_closure(masks):
+    """the masks the draw path can reach, given the masks it starts from.
+
+    The draw path asks for VK_StageDefines(...) | VK_TexEnvForStage(...), and
+    TexEnvForStage is the only place a texenv bit is ever OR'd in, so the
+    reachable set is exactly <the base masks> | <the base masks> | <one
+    TexEnvForStage result>.  Of the three bits TexEnvForStage can name, only
+    VKP_TEXENV_ADD is live: INTERPOLATE and COMBINE4 both come off
+    pStage->stateBits & VKS_MULTITEXTURE / VKS_MULTITEXTURE_ENV, and no writer
+    in this lane assigns either bit (tr_local.h declares them, tr_shader.c's
+    collapse table folds a stage without setting them, nothing else names
+    them) -- so both arms read zero every draw.  Compiling for them costs a
+    quarter of the embedded SPIR-V for a permutation no draw can name; the
+    [VK:perm] miss row is the net if that ever changes.
+    """
+    live = (0x00200000,)          # VKP_TEXENV_ADD, the only reachable arm
+    out = set(masks)
+    for m in masks:
+        for t in live:
+            out.add(m | t)
+    return out
 
 
 TWIN_GLSL = os.path.join(ROOT, "app/src/main/cpp/code/renderergles3", "glsl")
@@ -387,7 +405,15 @@ def main():
                      "vk_sunflare": 0x10000000, "vk_shadow": 0x20000000,
                      "vk_wire": 0x40000000}.get(family, 0)
         pair_masks = [d & ~0xff000000 for (f, d) in measured if (f & 0xff000000) == fam_value]
-        all_masks = sorted(set((masks if permuted else [0]) + pair_masks))
+        if permuted:
+            # the measured masks join the table's before the texenv closure runs
+            # over the union.  Crossing only the table's rows left every
+            # content-census mask that a merged pass asks for without its ADD
+            # variant: m1l1a's met_trim3/met_light8b/met_gal2 merges name
+            # 0x204050 and the boot dropped the surface -- 411 miss rows.
+            all_masks = sorted(texenv_closure(set(masks) | set(pair_masks)))
+        else:
+            all_masks = sorted(set([0]) | set(pair_masks))
         for kind in ("vert", "frag"):
             src = os.path.join(workdir, "%s.%s" % (family, kind))
             open(src, "w").write(splice(os.path.join(GLSL, "%s.%s" % (family, kind))))

@@ -1990,10 +1990,11 @@ static VkBlendFactor VK_Shade_BlendFactor( unsigned nibble, qboolean src )
 	}
 }
 
-void VK_Shade_PermRow( int family, unsigned defines );
+void VK_Shade_PermRow( const char *shader, int family, unsigned defines );
 
-static VkPipeline VK_Shade_Pipeline( unsigned stateBits, int family, unsigned defines,
-									 cullType_t cull, qboolean polygonOffset, int topology )
+static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family,
+									 unsigned defines, cullType_t cull,
+									 qboolean polygonOffset, int topology )
 {
 	VkGraphicsPipelineCreateInfo info;
 	VkPipelineShaderStageCreateInfo stages[2];
@@ -2019,9 +2020,11 @@ static VkPipeline VK_Shade_Pipeline( unsigned stateBits, int family, unsigned de
 	defines &= ~VKP_FAMILY_MASK;
 
 	if ( !VK_Program_Modules( family, defines, &vert, &frag ) ) {
-		/* the mask names the permutation the offline build has to add */
+		/* the mask names the permutation the offline build has to add, and the
+		   shader names where the content asked for it: a next gap is one boot
+		   from diagnosed instead of one census from inferred */
 		VK_Shade_NotePerm( 1 );
-		VK_Shade_PermRow( family, defines );
+		VK_Shade_PermRow( shader, family, defines );
 		return VK_NULL_HANDLE;
 	}
 	VK_Shade_NotePerm( 0 );
@@ -2428,12 +2431,14 @@ void VK_Shade_NotePerm( int miss )
 }
 
 /* The census the boot answers: which permutation keys were requested and
-   whether each resolved -- a miss is visible only if a row carries it. */
-void VK_Shade_PermRow( int family, unsigned defines )
+   whether each resolved -- a miss is visible only if a row carries it, and the
+   row names the surface that asked, so the offline census that has to gain the
+   mask is read off the boot rather than inferred from the family byte. */
+void VK_Shade_PermRow( const char *shader, int family, unsigned defines )
 {
 	if ( s_framePermMissRows < 256 || ( s_framePermMissRows % 1000 ) == 0 ) {
-		VK_Guard_Row( "VK:perm", "key family=%d defines=0x%06x status=miss batches=%d",
-					  family, defines, s_frameShadeDraws );
+		VK_Guard_Row( "VK:perm", "shader='%s' key family=%d defines=0x%06x status=miss batches=%d",
+					  shader ? shader : "(null)", family, defines, s_frameShadeDraws );
 	}
 	s_framePermMissRows++;
 }
@@ -2454,7 +2459,8 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 		return qfalse;
 	}
 	family = VK_Family_Of( s_shade.prog->defines );
-	pipeline = VK_Shade_Pipeline( s_shade.stateBits, family, s_shade.prog->defines,
+	pipeline = VK_Shade_Pipeline( shader ? shader->name : "(null)", s_shade.stateBits, family,
+								  s_shade.prog->defines,
 								  s_shade.cull, s_shade.polygonOffset, s_shade.topology );
 	if ( pipeline == VK_NULL_HANDLE ) {
 		s_frameShadeDrops++;
