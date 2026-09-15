@@ -99,11 +99,12 @@ qboolean VK_Descriptor_Init( void )
 
 	memset( &poolInfo, 0, sizeof( poolInfo ) );
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.maxSets = 4096;
+	poolInfo.maxSets = VK_SET_SLOTS_TOTAL;
 
 	if ( textures > 0 ) {
-		poolSizes[0].descriptorCount = textures + 3 * 1024;
-		poolSizes[1].descriptorCount = 1024;
+		poolSizes[0].descriptorCount = textures + VK_SET_SLOTS_TOTAL
+									   + VK_SHADE_SETS * VK_SHADE_SET_SAMPLERS_PER_SET;
+		poolSizes[1].descriptorCount = VK_SHADE_SETS * VK_SHADE_SET_DYNAMIC_UBOS_PER_SET;
 		poolSizes[2].descriptorCount = 1024;
 		poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 		if ( vk.updateAfterBind ) {
@@ -118,9 +119,10 @@ qboolean VK_Descriptor_Init( void )
 
 			memset( &poolInfo, 0, sizeof( poolInfo ) );
 			poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-			poolInfo.maxSets = 4096;
-			poolSizes[0].descriptorCount = 1024 + 3 * 1024;
-			poolSizes[1].descriptorCount = 1024;
+			poolInfo.maxSets = VK_SET_SLOTS_TOTAL;
+			poolSizes[0].descriptorCount = 1024 + VK_SET_SLOTS_TOTAL
+										   + VK_SHADE_SETS * VK_SHADE_SET_SAMPLERS_PER_SET;
+			poolSizes[1].descriptorCount = VK_SHADE_SETS * VK_SHADE_SET_DYNAMIC_UBOS_PER_SET;
 			poolSizes[2].descriptorCount = 1024;
 			poolInfo.poolSizeCount = 3;
 			poolInfo.pPoolSizes = poolSizes;
@@ -133,8 +135,9 @@ qboolean VK_Descriptor_Init( void )
 			vk.bindlessTextures = 0;
 		}
 	} else {
-		poolSizes[0].descriptorCount = 1024 + 3 * 1024;
-		poolSizes[1].descriptorCount = 1024;
+		poolSizes[0].descriptorCount = 1024 + VK_SET_SLOTS_TOTAL
+									   + VK_SHADE_SETS * VK_SHADE_SET_SAMPLERS_PER_SET;
+		poolSizes[1].descriptorCount = VK_SHADE_SETS * VK_SHADE_SET_DYNAMIC_UBOS_PER_SET;
 		poolSizes[2].descriptorCount = 1024;
 		poolInfo.poolSizeCount = 3;
 		poolInfo.pPoolSizes = poolSizes;

@@ -1731,8 +1731,21 @@ void RB_VBO_DrawTess( const shaderCommands_t *input )
 }
 
 /* ---- the immediate stream, pipeline and descriptor set -------------------
-   One layout: the uniform block at 0, the bundles and wave table at 1..3 */
-#define VK_SHADE_SETS 1024
+   One layout: the uniform block at 0, the bundles and wave table at 1..3.
+
+   VK_SHADE_SETS lives in vk_local.h next to the pool budget that carries it.
+   The 1024 it replaced was a guess, and the first un-clipped world blew it:
+   143,383 "shade descriptor set table exhausted" refusals in one boot.  The
+   measurement that sizes it: a set is keyed on the frame slot and the three
+   image/sampler pairs a stage binds, the table is boot-persistent because
+   those keys are frame- and world-invariant while the views live, and a frame
+   can add at most one new key per draw -- so the working set is bounded by
+   2 * (draw-surfs in the busiest frame).  The same boot measured 1,887
+   draw-surfs in its busiest frame, 244 distinct textures and 284 distinct
+   (tex0,tex1) pairs in the sampled stage rows, and it exhausted 1024 -- so
+   4096 is four times the failure and twice the measured per-frame ceiling,
+   with [VK:shade] and the fill row below still naming the truth if a bigger
+   world ever asks for more. */
 
 typedef struct {
 	unsigned	stateBits;
@@ -1745,7 +1758,18 @@ typedef struct {
 	qboolean	used;
 } vkShadePipeline_t;
 
-static vkShadePipeline_t	vk_shadePipelines[1024];
+/* The pipeline table is the same shape as the set table: keyed on what a draw
+   asks for, filled once per distinct answer, boot-persistent, and refusing the
+   draw on exhaustion.  Its key is wider -- state bits, family, defines, cull,
+   polygon offset, topology -- so its space is the product, not a single
+   census: the live boot measured 14 distinct state-bit values and a peak of
+   252 shade draws in one frame, and never reached this number, so 4096 is
+   headroom over the measured frame working set rather than a proven need.
+   VK_Shade_Descriptors_Init's row below names the fill, so a bigger world
+   asks for the number it needs instead of a guard row asking for a guess. */
+#define VK_SHADE_PIPELINES 4096
+
+static vkShadePipeline_t	vk_shadePipelines[VK_SHADE_PIPELINES];
 static int					vk_numShadePipelines;
 
 static VkDescriptorSetLayout	vk_shadeSetLayout;
@@ -2037,7 +2061,7 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 			return vk_shadePipelines[i].pipeline;
 		}
 	}
-	if ( vk_numShadePipelines >= 1024 ) {
+	if ( vk_numShadePipelines >= VK_SHADE_PIPELINES ) {
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade pipeline table full", VK_INCOMPLETE );
 		return VK_NULL_HANDLE;
 	}
@@ -2165,7 +2189,8 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	slot->used = qtrue;
 	vk_numShadePipelines++;
 	if ( ( vk_numShadePipelines & 15 ) == 1 ) {
-		VK_Guard_Row( "VK:shade", "pipelines=%d", vk_numShadePipelines );
+		VK_Guard_Row( "VK:shade", "pipelines=%d of %d sets=%d of %d",
+					  vk_numShadePipelines, VK_SHADE_PIPELINES, vk_numShadeSets, VK_SHADE_SETS );
 	}
 	return slot->pipeline;
 }
@@ -2298,6 +2323,18 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	qvk.UpdateDescriptorSets( vk.device, 4, writes, 0, NULL );
 
 	vk_shadeSetKeys[found] = key;
+	{
+		/* The working set, measured rather than guessed: a set is created once
+		   per distinct (frame slot, three views, three samplers) key and lives
+		   for the boot, so this count is the number the table has to hold.  It
+		   is what sized VK_SHADE_SETS and it is what a bigger world answers. */
+		static int s_rows;
+
+		s_rows++;
+		if ( s_rows < 4 || ( vk_numShadeSets & 255 ) == 0 || vk_numShadeSets == VK_SHADE_SETS ) {
+			VK_Guard_Row( "VK:shade", "sets=%d of %d", vk_numShadeSets, VK_SHADE_SETS );
+		}
+	}
 	return set;
 }
 
@@ -2906,6 +2943,202 @@ static void VK_Shade_FreeSwapPixels( void )
 	s_swapW = s_swapH = s_swapValid = 0;
 }
 
+/* ---- the presented frame's own map --------------------------------------- */
+
+/* Nine fixed samples cannot describe a shape: they name nine pixels and the
+   wedge between them is inferred, which is how a defect survives two rounds.
+   This reads the same host copy the sampler reads and answers the two
+   questions a shape asks -- what does the screen's coarse grid look like, and
+   which single colour covers the biggest box.  A flat translucent triangle
+   over half the viewport names itself in the second row: one colour, one
+   bounding box, and an extent a real scene never produces. */
+
+#define VK_GRID_COLS	32
+#define VK_GRID_ROWS	24
+
+typedef struct {
+	unsigned	rgba;
+	int			count;
+	int			minx, miny, maxx, maxy;
+} vkFlatRun_t;
+
+/* 640x480 downsampled by four is 160x120 -- 19200 samples, so a flat half
+   screen is ~9600 hits and the histogram holds it with room for a real scene's
+   noise.  Linear probe, no allocation, rebuilt every sampled frame. */
+#define VK_FLAT_BUCKETS	4096
+static vkFlatRun_t	s_flat[VK_FLAT_BUCKETS];
+
+static void VK_Shade_FlatReset( void )
+{
+	memset( s_flat, 0, sizeof( s_flat ) );
+}
+
+static void VK_Shade_FlatAdd( const unsigned char *p, int x, int y )
+{
+	/* the swapchain is BGRA in memory; the row names r,g,b,a, so the key packs
+	   the four bytes the same way the row prints them */
+	unsigned	key = ( (unsigned)p[2] << 24 ) | ( (unsigned)p[1] << 16 )
+					  | ( (unsigned)p[0] << 8 ) | (unsigned)p[3];
+	unsigned	h = ( key * 2654435761u ) & ( VK_FLAT_BUCKETS - 1 );
+	int			i;
+
+	for ( i = 0; i < VK_FLAT_BUCKETS; i++ ) {
+		vkFlatRun_t *r = &s_flat[( h + i ) & ( VK_FLAT_BUCKETS - 1 )];
+
+		if ( r->count == 0 ) {
+			r->rgba = key;
+			r->count = 1;
+			r->minx = r->maxx = x;
+			r->miny = r->maxy = y;
+			return;
+		}
+		if ( r->rgba == key ) {
+			r->count++;
+			if ( x < r->minx ) r->minx = x;
+			if ( y < r->miny ) r->miny = y;
+			if ( x > r->maxx ) r->maxx = x;
+			if ( y > r->maxy ) r->maxy = y;
+			return;
+		}
+	}
+}
+
+static void VK_Shade_FlatRows( int frame )
+{
+	vkFlatRun_t	*top[4] = { NULL, NULL, NULL, NULL };
+	int			n = 0;
+	int			i, k;
+
+	for ( i = 0; i < VK_FLAT_BUCKETS; i++ ) {
+		int at = -1;
+
+		if ( s_flat[i].count < 64 ) {
+			continue;
+		}
+		/* the slot this count belongs in, in a list kept descending by count */
+		for ( k = 0; k < n; k++ ) {
+			if ( s_flat[i].count > top[k]->count ) {
+				at = k;
+				break;
+			}
+		}
+		if ( at < 0 ) {
+			if ( n >= 4 ) {
+				continue;
+			}
+			at = n;
+		}
+		if ( n < 4 ) {
+			for ( k = n; k > at; k-- ) {
+				top[k] = top[k - 1];
+			}
+			n++;
+		} else {
+			for ( k = 3; k > at; k-- ) {
+				top[k] = top[k - 1];
+			}
+		}
+		top[at] = &s_flat[i];
+	}
+
+	for ( i = 0; i < 4 && top[i]; i++ ) {
+		vkFlatRun_t *r = top[i];
+
+		VK_Guard_Row( "VK:frameflat",
+					  "frame=%d rank=%d rgba=%u,%u,%u,%u count=%d box=(%d,%d)-(%d,%d) of %dx%d",
+					  frame, i + 1,
+					  ( r->rgba >> 24 ) & 0xff, ( r->rgba >> 16 ) & 0xff,
+					  ( r->rgba >> 8 ) & 0xff, ( r->rgba >> 0 ) & 0xff,
+					  r->count, r->minx, r->miny, r->maxx, r->maxy, s_swapW, s_swapH );
+	}
+}
+
+/* One row per grid line: alpha in the high nibble of each cell and luminance in
+   the low, so a translucent overlay and the scene behind it read off the same
+   line.  Emitted only when the grid changes and only every few sampled frames,
+   so a moving camera costs five lines a second and a still screen costs one. */
+static void VK_Shade_GridRows( int frame )
+{
+	static unsigned	s_lastHash;
+	static qboolean	s_haveHash;
+	static int		s_ticks;
+	int				cx, cy, gx, gy;
+	unsigned		hash;
+	char			line[VK_GRID_COLS * 2 + 1];
+
+	cx = s_swapW / VK_GRID_COLS;
+	cy = s_swapH / VK_GRID_ROWS;
+	if ( cx < 1 || cy < 1 ) {
+		return;
+	}
+
+	s_ticks++;
+	if ( s_haveHash && ( s_ticks % 5 ) != 0 ) {
+		return;
+	}
+
+	hash = 2166136261u;
+	for ( gy = 0; gy < VK_GRID_ROWS; gy++ ) {
+		for ( gx = 0; gx < VK_GRID_COLS; gx++ ) {
+			unsigned	a = 0, l = 0;
+			int			sx, sy, n = 0;
+			int			x0 = gx * cx, y0 = gy * cy;
+			int			x1 = x0 + cx, y1 = y0 + cy;
+
+			for ( sy = y0; sy < y1 && sy < s_swapH; sy += 2 ) {
+				for ( sx = x0; sx < x1 && sx < s_swapW; sx += 2 ) {
+					const unsigned char *p = s_swapPixels
+						+ ( (size_t)sy * s_swapW + sx ) * 4;
+
+					a += p[3];
+					l += ( p[0] + p[1] + p[2] ) / 3;
+					n++;
+				}
+			}
+			if ( !n ) {
+				n = 1;
+			}
+			a = ( a / n ) >> 4;
+			l = ( l / n ) >> 4;
+			hash = ( hash ^ ( ( a << 4 ) | l ) ) * 16777619u;
+		}
+	}
+
+	if ( s_haveHash && hash == s_lastHash ) {
+		return;
+	}
+	s_lastHash = hash;
+	s_haveHash = qtrue;
+
+	VK_Guard_Row( "VK:framegrid", "frame=%d grid=%dx%d hash=0x%08x",
+				  frame, VK_GRID_COLS, VK_GRID_ROWS, hash );
+	for ( gy = 0; gy < VK_GRID_ROWS; gy++ ) {
+		for ( gx = 0; gx < VK_GRID_COLS; gx++ ) {
+			unsigned	a = 0, l = 0;
+			int			sx, sy, n = 0;
+			int			x0 = gx * cx, y0 = gy * cy;
+			int			x1 = x0 + cx, y1 = y0 + cy;
+
+			for ( sy = y0; sy < y1 && sy < s_swapH; sy += 2 ) {
+				for ( sx = x0; sx < x1 && sx < s_swapW; sx += 2 ) {
+					const unsigned char *p = s_swapPixels
+						+ ( (size_t)sy * s_swapW + sx ) * 4;
+
+					a += p[3];
+					l += ( p[0] + p[1] + p[2] ) / 3;
+					n++;
+				}
+			}
+			if ( !n ) {
+				n = 1;
+			}
+			snprintf( &line[gx * 2], 3, "%x%x", (int)( ( a / n ) >> 4 ), (int)( ( l / n ) >> 4 ) );
+		}
+		line[VK_GRID_COLS * 2] = 0;
+		VK_Guard_Row( "VK:framegrid", "frame=%d row=%02d %s", frame, gy, line );
+	}
+}
+
 /* Called from the present seam.  Reads the presented image back once and
    samples a fixed grid, so one boot says whether the dome's stage draws are in
    the composited frame or only ever in a target the 2D pass then covers. */
@@ -2950,6 +3183,21 @@ void VK_Shade_ReadbackFrame( uint32_t imageIndex )
 		return;
 	}
 	s_swapValid = 1;
+
+	{
+		/* the presented frame's own map: the coarse grid and the flat boxes */
+		int step = 4;
+		int fx, fy;
+
+		VK_Shade_FlatReset();
+		for ( fy = 0; fy < s_swapH; fy += step ) {
+			for ( fx = 0; fx < s_swapW; fx += step ) {
+				VK_Shade_FlatAdd( s_swapPixels + ( (size_t)fy * s_swapW + fx ) * 4, fx, fy );
+			}
+		}
+		VK_Shade_FlatRows( s_frames );
+		VK_Shade_GridRows( s_frames );
+	}
 
 	for ( i = 0; i < 9; i++ ) {
 		x = (int)( spot[i].fx * ( s_swapW - 1 ) );

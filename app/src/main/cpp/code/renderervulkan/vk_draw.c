@@ -71,7 +71,7 @@ static int				vk_numPipelines;
 
 /* ---- the descriptor sets: one per (view, sampler) pair, cached; the menu
  * rebinds the same art every frame */
-#define VK_SET_SLOTS 256
+#define VK_SET_SLOTS VK_DRAW_SET_SLOTS
 
 typedef struct {
 	VkImageView		view;

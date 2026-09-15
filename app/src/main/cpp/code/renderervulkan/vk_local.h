@@ -56,6 +56,22 @@ extern SDL_Window *SDL_window;
 #define VK_FRAMES_IN_FLIGHT 2
 #define SMP_FRAMES 2
 
+/* The shade descriptor set table, and the pool budget that has to carry it.
+   One set is three combined image samplers plus one dynamic uniform buffer, so
+   the pool the table allocates from has to declare 3 * VK_SHADE_SETS of the
+   first and VK_SHADE_SETS of the second -- vk_descriptor.c reads both here, so
+   the two numbers cannot drift apart again.  Sized from the live boot below. */
+#define VK_SHADE_SETS 4096
+#define VK_SHADE_SET_SAMPLERS_PER_SET 3
+#define VK_SHADE_SET_DYNAMIC_UBOS_PER_SET 1
+
+/* The 2D/first-light path's own descriptor set table, and the set total the
+   shared pool has to promise.  Two tables allocate from one pool -- vk_draw.c
+   one combined image sampler a set, vk_shade.c three plus a dynamic uniform
+   buffer -- so the pool's maxSets is their sum, read from here. */
+#define VK_DRAW_SET_SLOTS 256
+#define VK_SET_SLOTS_TOTAL ( VK_DRAW_SET_SLOTS + VK_SHADE_SETS )
+
 typedef struct vkPhysDevice_s {
 	VkPhysicalDevice device;
 	VkPhysicalDeviceProperties props;
