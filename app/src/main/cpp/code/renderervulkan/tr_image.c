@@ -1499,9 +1499,9 @@ image_t* R_CreateImageOld(
 		qboolean		 emitRow = qfalse;
 		int				 overflow = 0;
 		int				 rowFmt;
-		/* placeholder images created while parsing shaders carry no name; the
-		   census must not strcmp or printf a null one */
-		const char		*imgName = image->imgName ? image->imgName : "(unnamed)";
+		/* placeholder images created while parsing shaders carry an empty
+		   name; the census must not strcmp or printf a bare one */
+		const char		*imgName = image->imgName[0] ? image->imgName : "(unnamed)";
 
 		rowFmt = ( s_gles3PathKind == 0 ) ? (int)R_VKInternalFormat( s_gles3UploadFormat )
 										 : s_gles3PathFmt;
