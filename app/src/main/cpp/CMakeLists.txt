@@ -100,10 +100,11 @@ option(BUILD_GAME_QVMS "Build game module qvms" ON)
 option(BUILD_STANDALONE "Build binaries for standalone games" OFF)
 
 # The renderer the client asks for first (cl_renderer's compiled default,
-# code/client/cl_main.cpp).  The GLES3 module's library is renderer_gles3.so
-# and cl_renderer selects it by the literal "gles3" (cl_main.cpp:2882 builds
+# code/client/cl_main.cpp).  Vulkan is the shipping renderer (operator order
+# 2026-10-10); the GLES3 module stays built beside it as the reference twin
+# and is still selectable by the literal "gles3" (cl_main.cpp:2882 builds
 # "renderer_%s" from cl_renderer).
-set(EF2_DEFAULT_RENDERER "gles3" CACHE STRING
+set(EF2_DEFAULT_RENDERER "vulkan" CACHE STRING
     "cl_renderer's compiled default")
 
 option(USE_RENDERER_DLOPEN "Dynamically load the renderer(s)" ON)
