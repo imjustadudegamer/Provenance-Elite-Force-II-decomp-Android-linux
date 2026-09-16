@@ -914,10 +914,13 @@ void VK_SetFogColor( const vec4_t fColor )
 void VK_State( unsigned long stateBits )
 {
 	s_shade.stateBits = (unsigned long)stateBits;
-	s_shade.depthTest = ( (unsigned long)stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
-	s_shade.depthWrite = ( (unsigned long)stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
-	s_shade.depthTest = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
 	s_shade.depthWrite = ( stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+	s_shade.depthTest = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
+	/* the reference's GLES3_DepthState: the 2D gate is open again the moment a
+	   3D state block turns depth back on, so the next window has to shut it */
+	if ( s_shade.depthTest ) {
+		VK_DepthGate3DOpen();
+	}
 }
 
 void VK_ApplyStateBits( unsigned long stateBits )
@@ -976,8 +979,28 @@ void VK_StencilState( qboolean test, int func, int ref, unsigned mask )
 	(void)test; (void)func; (void)ref; (void)mask;
 }
 
-void VK_DepthGate2D( void ) { }
-void VK_DepthGate2DTake( void ) { }
+/* The 2D window's state block ran last.  The reference holds this gate shut so
+   the UI draws with depth test off regardless of what a UI shader's own state
+   bits say, and opens it the moment a 3D draw turns depth back on -- the UI
+   was being depth-tested against the world, and the nearest geometry (the
+   viewmodel) drew straight over the health bar while the pause menu lost
+   surfaces to whatever the world had left behind. */
+static qboolean	s_depthGate2D = qfalse;
+
+qboolean VK_DepthGate2D( void )
+{
+	return s_depthGate2D;
+}
+
+void VK_DepthGate2DTake( void )
+{
+	s_depthGate2D = qtrue;
+}
+
+void VK_DepthGate3DOpen( void )
+{
+	s_depthGate2D = qfalse;
+}
 
 /* ---- textures ------------------------------------------------------------ */
 
@@ -1800,6 +1823,12 @@ typedef struct {
 	int						slot;
 	VkImageView				view[3];
 	VkSampler				sampler[3];
+	/* A set is only a cache hit once every binding its layout declares has been
+	   written.  Without this flag a key of all zeros -- frame slot 0 and no
+	   texture bound, which a stage with an empty bundle produces -- matches the
+	   zeroed slot a failed allocation left behind, and the boot binds a set that
+	   was never written: undefined sampler, undefined uniform block. */
+	qboolean				written;
 } vkShadeSetKey_t;
 
 static vkShadeSetKey_t			vk_shadeSetKeys[VK_SHADE_SETS];
@@ -1941,6 +1970,11 @@ void VK_Shade_Descriptors_Shutdown( void )
 	}
 	vk_numShadePipelines = 0;
 	vk_numShadeSets = 0;
+	/* The sets died with the pool above them.  Leaving the handles behind let a
+	   re-init skip the allocate on a stale handle and bind a set from a pool
+	   that no longer exists. */
+	memset( vk_shadeSets, 0, sizeof( vk_shadeSets ) );
+	memset( vk_shadeSetKeys, 0, sizeof( vk_shadeSetKeys ) );
 }
 
 int VK_Shade_CommandBufferSlot( void )
@@ -2253,6 +2287,9 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	key.sampler[2] = wave ? waveSampler : VK_NULL_HANDLE;
 
 	for ( i = 0; i < vk_numShadeSets; i++ ) {
+		if ( !vk_shadeSetKeys[i].written ) {
+			continue;
+		}
 		if ( vk_shadeSetKeys[i].slot == key.slot
 			 && vk_shadeSetKeys[i].view[0] == key.view[0] && vk_shadeSetKeys[i].view[1] == key.view[1]
 			 && vk_shadeSetKeys[i].view[2] == key.view[2]
@@ -2275,9 +2312,14 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade descriptor set table exhausted", VK_INCOMPLETE );
 		return VK_NULL_HANDLE;
 	}
-	found = vk_numShadeSets++;
-	set = vk_shadeSets[found];
-	if ( set == VK_NULL_HANDLE ) {
+	/* The table slot is only taken once the set is complete.  Publishing the
+	   handle before the writes left a slot a later all-zero key could hit, and
+	   binding a set with an unwritten descriptor is undefined sampling and an
+	   undefined uniform block -- the RenderDoc capture put four of those on
+	   single draws. */
+	if ( vk_shadeSets[vk_numShadeSets] != VK_NULL_HANDLE ) {
+		set = vk_shadeSets[vk_numShadeSets];
+	} else {
 		memset( &allocInfo, 0, sizeof( allocInfo ) );
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		allocInfo.descriptorPool = vk.descriptorPool;
@@ -2287,8 +2329,8 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 		if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkAllocateDescriptorSets(shade)" ) ) {
 			return VK_NULL_HANDLE;
 		}
-		vk_shadeSets[found] = set;
 	}
+	found = vk_numShadeSets;
 
 	memset( &buffer, 0, sizeof( buffer ) );
 	buffer.buffer = vk_shadeUbo[VK_Shade_CommandBufferSlot()];
@@ -2299,6 +2341,8 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	memset( &images, 0, sizeof( images ) );
 			/* an unbound slot still has to be a legal binding: the white image */
 	if ( !VK_Shade_DefaultImage( &defView, &defSampler ) ) {
+		/* nothing was written and no slot was taken: the caller refuses the
+		   draw and the next call starts clean */
 		return VK_NULL_HANDLE;
 	}
 
@@ -2329,7 +2373,10 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	writes[3].pBufferInfo = &buffer;
 	qvk.UpdateDescriptorSets( vk.device, 4, writes, 0, NULL );
 
+	vk_shadeSets[found] = set;
+	vk_numShadeSets = found + 1;
 	vk_shadeSetKeys[found] = key;
+	vk_shadeSetKeys[found].written = qtrue;
 	{
 		/* The working set, measured rather than guessed: a set is created once
 		   per distinct (frame slot, three views, three samplers) key and lives
