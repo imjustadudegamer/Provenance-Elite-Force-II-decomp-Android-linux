@@ -634,6 +634,120 @@ static void SMP_RecordUploadLevel( int level, int w, int h )
 	}
 }
 
+/* ---- the level-zero dimensions each upload path produces ----------------- */
+
+/* A Vulkan image has one extent and one mip count fixed at creation, where the
+   reference's glTexImage2D sized every level on its own.  R_CreateImageOld used
+   to create at the source extent and then upload the reduced chain, so
+   everything past the reduced level 0 was never written: undefined content in
+   the top-left corner of every picmipped and clamped texture, and 1,738
+   validation errors, because the copy's extent was not the level's extent.
+   These three are the level-zero arithmetic of the three upload paths, and the
+   paths themselves call them, so the image the create makes is the image the
+   upload fills by construction. */
+
+static void Upload32Dims( int width, int height, qboolean picmip,
+						  int *outW, int *outH )
+{
+	int sw, sh;
+
+	for ( sw = 1; sw < width; sw <<= 1 ) {
+		;
+	}
+	for ( sh = 1; sh < height; sh <<= 1 ) {
+		;
+	}
+	if ( r_roundImagesDown->integer && sw > width ) {
+		sw >>= 1;
+	}
+	if ( r_roundImagesDown->integer && sh > height ) {
+		sh >>= 1;
+	}
+	if ( picmip ) {
+		sw >>= picmip;
+		sh >>= picmip;
+	}
+	if ( sw < 1 ) {
+		sw = 1;
+	}
+	if ( sh < 1 ) {
+		sh = 1;
+	}
+	while ( sw > vkConfig.maxTextureSize || sh > vkConfig.maxTextureSize ) {
+		sw >>= 1;
+		sh >>= 1;
+	}
+	*outW = sw;
+	*outH = sh;
+}
+
+static void UploadCompressedDims( int width, int height, int iMipmapsAvailable,
+								  qboolean picmip, int *startLevelOut,
+								  int *outW, int *outH )
+{
+	int iStartImage = 0;
+	int sw = width;
+	int sh = height;
+
+	if ( picmip > 0 ) {
+		iStartImage = picmip;
+	}
+	if ( iStartImage > 0 && iStartImage >= iMipmapsAvailable ) {
+		iStartImage = iMipmapsAvailable - 1;
+	}
+	if ( iStartImage ) {
+		sw = width >> iStartImage;
+		sh = height >> iStartImage;
+	}
+	while ( sw > vkConfig.maxTextureSize || sh > vkConfig.maxTextureSize ) {
+		sw >>= 1;
+		sh >>= 1;
+		++iStartImage;
+	}
+	if ( iStartImage > 0 && iStartImage >= iMipmapsAvailable ) {
+		iStartImage = iMipmapsAvailable - 1;
+		sw = width >> ( iMipmapsAvailable - 1 );
+		sh = height >> ( iMipmapsAvailable - 1 );
+	}
+	*startLevelOut = iStartImage;
+	*outW = sw;
+	*outH = sh;
+}
+
+static void UploadTranscodedDims( int width, int height, int iMipmapsAvailable,
+								  qboolean picmip, int *baseOut, int *outW, int *outH )
+{
+	int base = ( picmip > 0 ) ? (int)picmip : 0;
+	int upW, upH;
+
+	if ( iMipmapsAvailable > 0 && base >= iMipmapsAvailable ) {
+		base = iMipmapsAvailable - 1;
+	}
+	if ( base < 0 ) {
+		base = 0;
+	}
+	while ( base < 30 && ( ( width >> base ) > vkConfig.maxTextureSize
+						   || ( height >> base ) > vkConfig.maxTextureSize ) ) {
+		base++;
+	}
+	if ( iMipmapsAvailable > 0 && base >= iMipmapsAvailable ) {
+		base = iMipmapsAvailable - 1;
+	}
+	if ( base < 0 ) {
+		base = 0;
+	}
+
+	upW = width >> base;
+	upH = height >> base;
+	if ( upW < 1 ) upW = 1;
+	if ( upH < 1 ) upH = 1;
+	if ( baseOut ) {
+		*baseOut = base;
+	}
+	*outW = upW;
+	*outH = upH;
+}
+
 static void Upload32(
 	unsigned int* data,
 	int width,
@@ -677,23 +791,9 @@ static void Upload32(
 		height = scaled_height;
 	}
 
-	if ( picmip ) {
-		scaled_width >>= picmip;
-		scaled_height >>= picmip;
-	}
-
-	if (scaled_width < 1) {
-		scaled_width = 1;
-	}
-	if (scaled_height < 1) {
-		scaled_height = 1;
-	}
-
-	while ( scaled_width > vkConfig.maxTextureSize
-		|| scaled_height > vkConfig.maxTextureSize ) {
-		scaled_width >>= 1;
-		scaled_height >>= 1;
-	}
+	/* the level-zero dims are the shared helper's from here: the create ran the
+	   same arithmetic, so the extent it made is the extent this fills */
+	Upload32Dims( width, height, picmip, &scaled_width, &scaled_height );
 
 	scaledBuffer = data;
 
@@ -914,33 +1014,11 @@ static void UploadCompressed(
 
 	offset = data;
 	iStartImage = 0;
-	if (picmip > 0) {
-		iStartImage = picmip;
-	}
 
-	if (iStartImage > 0 && iStartImage >= iMipmapsAvailable) {
-		iStartImage = iMipmapsAvailable - 1;
-	}
-
-	scaled_width = width;
-	scaled_height = height;
-	if (iStartImage)
-	{
-		scaled_width = width >> iStartImage;
-		scaled_height = height >> iStartImage;
-	}
-	while (scaled_width > vkConfig.maxTextureSize || scaled_height > vkConfig.maxTextureSize)
-	{
-		scaled_width >>= 1;
-		scaled_height >>= 1;
-		++iStartImage;
-	}
-	if (iStartImage > 0 && iStartImage >= iMipmapsAvailable)
-	{
-		iStartImage = iMipmapsAvailable - 1;
-		scaled_width = width >> (iMipmapsAvailable - 1);
-		scaled_height = height >> (iMipmapsAvailable - 1);
-	}
+	/* the level-zero dims and the level the chain starts at come from the
+	   helper the create used, so the extent it made is the extent this fills */
+	UploadCompressedDims( width, height, iMipmapsAvailable, picmip,
+						  &iStartImage, &scaled_width, &scaled_height );
 
 	*pUploadWidth = scaled_width;
 	*pUploadHeight = scaled_height;
@@ -1107,28 +1185,9 @@ static void UploadTranscoded(
 	memset(&loadRes, 0, sizeof(loadRes));
 	memset(&storeRes, 0, sizeof(storeRes));
 
-	base = (picmip > 0) ? (int)picmip : 0;
-	if (iMipmapsAvailable > 0 && base >= iMipmapsAvailable) {
-		base = iMipmapsAvailable - 1;
-	}
-	if (base < 0) {
-		base = 0;
-	}
-	while (base < 30 && ((width >> base) > vkConfig.maxTextureSize ||
-						 (height >> base) > vkConfig.maxTextureSize)) {
-		base++;
-	}
-	if (iMipmapsAvailable > 0 && base >= iMipmapsAvailable) {
-		base = iMipmapsAvailable - 1;
-	}
-	if (base < 0) {
-		base = 0;
-	}
-
-	upW = width >> base;
-	upH = height >> base;
-	if (upW < 1) upW = 1;
-	if (upH < 1) upH = 1;
+	/* the level-zero dims come from the helper the create used, so the extent
+	   it made is the extent this fills */
+	UploadTranscodedDims( width, height, iMipmapsAvailable, picmip, &base, &upW, &upH );
 
 	*pUploadWidth = upW;
 	*pUploadHeight = upH;
@@ -1266,17 +1325,30 @@ image_t* R_CreateImageOld(
 
 	image = &tr.images[i];
 
-	/* The texture object is created whole: Vulkan needs extent and mip count
-	   up front, and validation catches a wrong count. */
+	/* The texture object is created whole: Vulkan needs extent and mip count up
+	   front, and validation catches a wrong count.  Both come from the upload
+	   path's own level-zero arithmetic, not from the source extent -- the
+	   reference sized every glTexImage2D level on its own, so a create at the
+	   source extent left everything past the reduced level 0 never written, and
+	   every copy's extent was short of the level's extent. */
 	{
 		qboolean	supported = qfalse;
 		VkFormat	format;
 		int			mipLevels = 1;
+		int			upW = width, upH = height;
 
 		if ( vkCompressMode ) {
-			mipLevels = iMipmapsAvailable;
-		} else if ( numMipmaps ) {
-			mipLevels = SMP_MipLevelCount( width, height );
+			if ( vkConfig.textureCompression != TC_NONE ) {
+				UploadCompressedDims( width, height, iMipmapsAvailable,
+									  allowPicmip, NULL, &upW, &upH );
+			} else if ( smp_texTranscode != SMP_TEXC_NONE ) {
+				UploadTranscodedDims( width, height, iMipmapsAvailable,
+									  allowPicmip, NULL, &upW, &upH );
+			}
+			mipLevels = SMP_MipLevelCount( upW, upH );
+		} else {
+			Upload32Dims( width, height, allowPicmip, &upW, &upH );
+			mipLevels = numMipmaps ? SMP_MipLevelCount( upW, upH ) : 1;
 		}
 		if ( mipLevels < 1 ) {
 			mipLevels = 1;
@@ -1284,7 +1356,7 @@ image_t* R_CreateImageOld(
 
 		format = VK_Texture_FormatFor( vkCompressMode ? vkCompressMode : VK_TF_RGBA8, &supported );
 
-		if ( !VK_Texture_Create( width, height, mipLevels, format, &s_vkUploadTex ) ) {
+		if ( !VK_Texture_Create( upW, upH, mipLevels, format, &s_vkUploadTex ) ) {
 			s_vkUploadTex = -1;
 			image->texnum = 0;
 		} else {
