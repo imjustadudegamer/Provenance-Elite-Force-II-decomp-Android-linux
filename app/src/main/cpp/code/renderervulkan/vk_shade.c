@@ -2687,7 +2687,7 @@ static void VK_Shade_DepthRange( float n, float f )
 
 	if ( s_view3DValid ) {
 		x = s_view3D[0];
-		y = vkConfig.vidHeight - s_view3D[1] - s_view3D[3];
+		y = VK_Draw_TopY( s_view3D[1], s_view3D[3] );
 		w = s_view3D[2];
 		h = s_view3D[3];
 	} else {
@@ -2732,21 +2732,90 @@ void VK_BindProgram( vkProgram_t *p )
 
 /* ---- the footprint census ------------------------------------------------ */
 
-/* A half-viewport triangle is one draw, and the frame map says where it is;
-   this names which draw it was.  Every tess draw passes here with its own
-   vertices, so the vertices go through the same model-view and projection the
-   GPU is about to use and the screen box comes back out.  A real surface's box
-   is whatever it is; a surface whose three or four corners cover more than half
-   the frame in both axes is one primitive, and that is the row that ends the
-   search.  Rows carry the state bits and the permutation next to the shader, so
-   the blend answer the translucent observation asks for is on the same line. */
+/* Clip one triangle to the volume the rasteriser actually clips against and
+   return the survivors as NDC pairs.  Vulkan's z runs 0..w, not -w..w, and the
+   w>=eps plane keeps the divide finite.  Returns the survivor count. */
+static int VK_Shade_ClipTri( const float pj[16], const float *const v[3], float ndc[16][2] )
+{
+	/* a,b,c,d with inside = a*x+b*y+c*z+d*w - bias >= 0 */
+	static const float planes[7][4] = {
+		{ -1, 0, 0, 1 }, { 1, 0, 0, 1 },
+		{ 0, -1, 0, 1 }, { 0, 1, 0, 1 },
+		{ 0, 0, -1, 1 }, { 0, 0, 1, 0 },
+		{ 0, 0, 0, 1 }
+	};
+	static const float bias[7] = { 0, 0, 0, 0, 0, 0, 1e-4f };
+	float poly[16][4];
+	float out[16][4];
+	int   n = 3, p, i, j;
+
+	for ( i = 0; i < 3; i++ ) {
+		const float *xyz = v[i];
+
+		poly[i][0] = pj[0] * xyz[0] + pj[4] * xyz[1] + pj[8]  * xyz[2] + pj[12];
+		poly[i][1] = pj[1] * xyz[0] + pj[5] * xyz[1] + pj[9]  * xyz[2] + pj[13];
+		poly[i][2] = pj[2] * xyz[0] + pj[6] * xyz[1] + pj[10] * xyz[2] + pj[14];
+		poly[i][3] = pj[3] * xyz[0] + pj[7] * xyz[1] + pj[11] * xyz[2] + pj[15];
+	}
+
+	for ( p = 0; p < 7 && n; p++ ) {
+		int m = 0;
+
+		for ( i = 0; i < n; i++ ) {
+			const float *a = poly[i];
+			const float *b = poly[( i + 1 ) % n];
+			float		 da = 0.0f, db = 0.0f, t;
+
+			for ( j = 0; j < 4; j++ ) {
+				da += planes[p][j] * a[j];
+				db += planes[p][j] * b[j];
+			}
+			da -= bias[p];
+			db -= bias[p];
+
+			if ( da >= 0.0f ) {
+				out[m][0] = a[0]; out[m][1] = a[1];
+				out[m][2] = a[2]; out[m][3] = a[3];
+				m++;
+			}
+			if ( ( da >= 0.0f ) != ( db >= 0.0f ) ) {
+				t = da / ( da - db );
+				for ( j = 0; j < 4; j++ ) {
+					out[m][j] = a[j] + t * ( b[j] - a[j] );
+				}
+				m++;
+			}
+		}
+
+		n = m;
+		if ( n > 14 ) {
+			n = 14;
+		}
+		memcpy( poly, out, (size_t)n * sizeof( poly[0] ) );
+	}
+
+	for ( i = 0; i < n; i++ ) {
+		ndc[i][0] = poly[i][0] / poly[i][3];
+		ndc[i][1] = poly[i][1] / poly[i][3];
+	}
+
+	return n;
+}
+
+/* A draw whose clipped footprint covers a frame is the shape a wedge makes, and
+   the raw vertex box never saw it: a primitive whose corners all sit outside the
+   volume still crosses the frame, and that is exactly the class the whole-vertex
+   test missed.  So the triangles are clipped first and the survivor's screen
+   area is what gets measured.  Rows carry the state bits and the permutation
+   next to the shader, so the blend answer is on the same line. */
 static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
 								   const vkIndex_t *indexes, int numIndexes )
 {
 	const float	*mv, *pj;
 	float		m[16];
 	float		minx, miny, maxx, maxy;
-	int			i, tris, big, oob, oobMax;
+	float		cminx, cminy, cmaxx, cmaxy, clipArea;
+	int			i, v, tris, big, oob, oobMax, maxTri;
 	static int	s_rows;
 
 	if ( !R_ProbeStatsOn() || !input || !indexes || numIndexes < 3 || !input->numVertexes ) {
@@ -2771,19 +2840,23 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 
 	minx = miny = 2.0f;
 	maxx = maxy = -2.0f;
+	cminx = cminy = 2.0f;
+	cmaxx = cmaxy = -2.0f;
 	big = 0;
 	oob = 0;
 	oobMax = -1;
+	maxTri = -1;
+	clipArea = 0.0f;
 	tris = numIndexes / 3;
 
 	for ( i = 0; i + 2 < numIndexes; i += 3 ) {
-		float bx0 = 2.0f, by0 = 2.0f, bx1 = -2.0f, by1 = -2.0f;
-		int   v, inside = 0;
+		const float	*vert[3];
+		float		 ndc[16][2];
+		float		 bx0 = 2.0f, by0 = 2.0f, bx1 = -2.0f, by1 = -2.0f;
+		int			 n, k, inside = 0;
 
 		for ( v = 0; v < 3; v++ ) {
-			const float *xyz;
-			float		 cx, cy, cw, nx, ny;
-			int		 vi = indexes[i + v];
+			int vi = indexes[i + v];
 
 			if ( vi < 0 || vi >= input->numVertexes ) {
 				/* an index past the vertices this surface wrote is the
@@ -2798,40 +2871,53 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 				inside = -1;
 				continue;
 			}
-			xyz = input->xyz[vi];
-			cx = pj[0] * xyz[0] + pj[4] * xyz[1] + pj[8] * xyz[2] + pj[12];
-			cy = pj[1] * xyz[0] + pj[5] * xyz[1] + pj[9] * xyz[2] + pj[13];
-			cw = pj[3] * xyz[0] + pj[7] * xyz[1] + pj[11] * xyz[2] + pj[15];
-			if ( cw < 1e-6f && cw > -1e-6f ) {
-				inside = -1;
-				continue;
-			}
-			nx = cx / cw;
-			ny = cy / cw;
-			if ( nx >= -1.0f && nx <= 1.0f && ny >= -1.0f && ny <= 1.0f ) {
-				inside++;
-			}
+			vert[v] = input->xyz[vi];
+		}
+		if ( inside == -1 ) {
+			continue;
+		}
+
+		n = VK_Shade_ClipTri( pj, vert, ndc );
+		for ( k = 0; k < n; k++ ) {
+			float nx = ndc[k][0], ny = ndc[k][1];
+
 			if ( nx < bx0 ) bx0 = nx;
 			if ( ny < by0 ) by0 = ny;
 			if ( nx > bx1 ) bx1 = nx;
 			if ( ny > by1 ) by1 = ny;
 		}
 
-		if ( inside == 3 && ( bx1 - bx0 ) >= 1.0f && ( by1 - by0 ) >= 1.0f ) {
-			big++;
+		if ( n >= 3 ) {
+			/* NDC spans 2x2, so the frame is 4 units of area */
+			float area = ( bx1 - bx0 ) * ( by1 - by0 );
+
+			if ( area > clipArea ) {
+				clipArea = area;
+				maxTri = i / 3;
+			}
+			if ( bx0 < cminx ) cminx = bx0;
+			if ( by0 < cminy ) cminy = by0;
+			if ( bx1 > cmaxx ) cmaxx = bx1;
+			if ( by1 > cmaxy ) cmaxy = by1;
+			/* one primitive covering an eighth of the frame is no wall slice */
+			if ( area >= 0.5f ) {
+				big++;
+			}
 		}
-		if ( bx0 < minx ) minx = bx0;
-		if ( by0 < miny ) miny = by0;
-		if ( bx1 > maxx ) maxx = bx1;
-		if ( by1 > maxy ) maxy = by1;
+
+		for ( k = 0; k < n; k++ ) {
+			if ( ndc[k][0] < minx ) minx = ndc[k][0];
+			if ( ndc[k][1] < miny ) miny = ndc[k][1];
+			if ( ndc[k][0] > maxx ) maxx = ndc[k][0];
+			if ( ndc[k][1] > maxy ) maxy = ndc[k][1];
+		}
 	}
 
-	/* one triangle covering at least half the frame in both axes, a draw whose
-	   whole box does with four triangles or fewer, or an index past the
-	   vertices the surface wrote: all three are a primitive no real surface
-	   makes, and the third is the uninitialised-region class named directly */
+	/* an index past the vertices, one primitive whose clipped box covers an
+	   eighth of the frame, or a draw whose whole clipped box does with four
+	   triangles or fewer */
 	if ( !oob && !big
-		 && !( ( maxx - minx ) >= 1.0f && ( maxy - miny ) >= 1.0f && tris <= 4 ) ) {
+		 && !( ( cmaxx - cminx ) >= 1.0f && ( cmaxy - cminy ) >= 1.0f && tris <= 4 ) ) {
 		return;
 	}
 
@@ -2841,11 +2927,13 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	}
 
 	VK_Guard_Row( "VK:bigdraw",
-				  "n=%d shader='%s' in2d=%d tris=%d verts=%d idx=%d box=(%.3f,%.3f)-(%.3f,%.3f) "
-				  "bigtris=%d oobidx=%d oobmax=%d sb=0x%x prog=0x%06x stage=%d",
+				  "n=%d shader='%s' in2d=%d tris=%d verts=%d idx=%d clip=(%.3f,%.3f)-(%.3f,%.3f) "
+				  "raw=(%.3f,%.3f)-(%.3f,%.3f) area=%.3f tri=%d bigtris=%d oobidx=%d oobmax=%d "
+				  "sb=0x%x prog=0x%06x stage=%d",
 				  s_rows, input->shader ? input->shader->name : "(null)",
 				  backEnd.in2D ? 1 : 0, tris, input->numVertexes, numIndexes,
-				  minx, miny, maxx, maxy, big, oob, oobMax,
+				  cminx, cminy, cmaxx, cmaxy, minx, miny, maxx, maxy,
+				  clipArea, maxTri, big, oob, oobMax,
 				  (unsigned)s_shade.stateBits,
 				  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
 				  stage ? 1 : 0 );

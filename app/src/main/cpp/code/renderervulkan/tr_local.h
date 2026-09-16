@@ -2850,6 +2850,7 @@ void     VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h );
 void     VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h );
 void     VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
 							   float minDepth, float maxDepth );
+int      VK_Draw_TopY( int y, int h );
 
 /* ---- textures ------------------------------------------------------------ */
 

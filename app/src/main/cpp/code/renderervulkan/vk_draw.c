@@ -627,7 +627,7 @@ void VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int heigh
 
 	/* RE_Scissor's box is bottom-left; Vulkan's is the top-left, and the box is
 	   cut to the render area the way GL cut it for free. */
-	VK_Draw_ScissorRect( cmd, x, vkConfig.vidHeight - y - height, width, height );
+	VK_Draw_ScissorRect( cmd, x, VK_Draw_TopY( y, height ), width, height );
 }
 
 void VK_Draw_DisableScissor( VkCommandBuffer cmd )
@@ -644,6 +644,22 @@ void VK_Draw_DisableScissor( VkCommandBuffer cmd )
 
 /* ---- the rectangle the reference clamps and this lane has to ------------- */
 
+/* The client's box is bottom-left and Vulkan's is top-left, and the client's
+   origin hangs off the screen by more than an int names (the radar's box
+   arrives at INT32_MIN), so the translation runs wide. */
+int VK_Draw_TopY( int y, int h )
+{
+	long long top = (long long)vkConfig.vidHeight - (long long)y - (long long)h;
+
+	if ( top > 2147483647LL ) {
+		return 2147483647;
+	}
+	if ( top < -2147483648LL ) {
+		return -2147483648;
+	}
+	return (int)top;
+}
+
 /* The reference hands the client's window straight to glScissor, and GL clamps
    the box to the framebuffer for free: a tile that hangs off the bottom of the
    screen rasterises the part that lands.  Vulkan does not clamp, and a
@@ -651,25 +667,27 @@ void VK_Draw_DisableScissor( VkCommandBuffer cmd )
    boot, every one a 2D window taller than the screen it sits on.  This is the
    reference's clamp, written out: the box is cut to the render area, and a box
    that lands entirely outside becomes the empty extent, which rasterises
-   nothing exactly as GL's zero-area box does. */
+   nothing exactly as GL's zero-area box does.  The corners are held wide
+   because the box's own origin overflows an int. */
 static void VK_Draw_ScissorRect( VkCommandBuffer cmd, int x, int y, int w, int h )
 {
 	VkRect2D	 scissor;
-	int			fbw, fbh;
-	int			ax0, ay0, ax1, ay1;
+	long long	fbw, fbh, bx, by, bw, bh;
+	long long	ax0, ay0, ax1, ay1;
 
-	fbw = vk.swapchainExtent.width ? (int)vk.swapchainExtent.width : vkConfig.vidWidth;
-	fbh = vk.swapchainExtent.height ? (int)vk.swapchainExtent.height : vkConfig.vidHeight;
+	fbw = vk.swapchainExtent.width ? (long long)vk.swapchainExtent.width : vkConfig.vidWidth;
+	fbh = vk.swapchainExtent.height ? (long long)vk.swapchainExtent.height : vkConfig.vidHeight;
+	bx = x; by = y; bw = w; bh = h;
 
-	ax0 = x > 0 ? x : 0;
-	ay0 = y > 0 ? y : 0;
-	ax1 = x + w < fbw ? x + w : fbw;
-	ay1 = y + h < fbh ? y + h : fbh;
+	ax0 = bx > 0 ? bx : 0;
+	ay0 = by > 0 ? by : 0;
+	ax1 = bx + bw < fbw ? bx + bw : fbw;
+	ay1 = by + bh < fbh ? by + bh : fbh;
 
 	memset( &scissor, 0, sizeof( scissor ) );
 	if ( ax1 > ax0 && ay1 > ay0 ) {
-		scissor.offset.x = ax0;
-		scissor.offset.y = ay0;
+		scissor.offset.x = (int)ax0;
+		scissor.offset.y = (int)ay0;
 		scissor.extent.width = (uint32_t)( ax1 - ax0 );
 		scissor.extent.height = (uint32_t)( ay1 - ay0 );
 	}
@@ -715,7 +733,7 @@ void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
    so the viewport and the scissor cannot disagree about where the rect is. */
 void VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h )
 {
-	int top = vkConfig.vidHeight - y - h;
+	int top = VK_Draw_TopY( y, h );
 
 	VK_Draw_ViewportRect( cmd, x, top, w, h, 0.0f, 1.0f );
 	VK_Draw_ScissorRect( cmd, x, top, w, h );
@@ -723,7 +741,7 @@ void VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h )
 
 void VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h )
 {
-	int top = vkConfig.vidHeight - y - h;
+	int top = VK_Draw_TopY( y, h );
 
 	VK_Draw_ViewportRect( cmd, x, top, w, h, 0.0f, 1.0f );
 	VK_Draw_ScissorRect( cmd, x, top, w, h );
