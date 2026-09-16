@@ -722,7 +722,12 @@ static void UploadCompressedDims( int width, int height, int iMipmapsAvailable,
 	if ( sh < 1 ) {
 		sh = 1;
 	}
-	*startLevelOut = iStartImage;
+	/* the create path passes NULL here; the store is a provable null write the
+	   compiler compiles to a trap, exactly as the transcode helper's own
+	   baseOut guard anticipates */
+	if ( startLevelOut ) {
+		*startLevelOut = iStartImage;
+	}
 	*outW = sw;
 	*outH = sh;
 }
