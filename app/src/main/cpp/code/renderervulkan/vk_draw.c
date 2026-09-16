@@ -587,6 +587,10 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	backEnd.in2D = qtrue;
 	}
 
+	/* The reference's RB_2D_SetWindow takes the 2D depth gate here, after the
+	   state block that turns depth off for the whole UI pass. */
+	VK_DepthGate2DTake();
+
 	memset( vk_current.ortho, 0, sizeof( vk_current.ortho ) );
 	memcpy( vk_current.ortho, m, sizeof( m ) );
 	vk_currentValid = qtrue;

@@ -163,7 +163,12 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 	/* The 2D window is two-sided, as the reference renderer's RB_2D_SetWindow is. */
 	key.cull = ( backEnd.in2D || tess.shader->lightmapIndex == LIGHTMAP_2D )
 			   ? CT_TWO_SIDED : tess.shader->cullType;
+	/* The reference's RB_2D_SetWindow turns depth off for the whole UI pass,
+	   whatever a UI shader's own state bits say. */
 	key.depthTest = ( stage->stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
+	if ( backEnd.in2D && VK_DepthGate2D() ) {
+		key.depthTest = qfalse;
+	}
 	key.depthWrite = ( stage->stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
 
 	pipeline = VK_Draw_Pipeline( &key );

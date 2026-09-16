@@ -1398,8 +1398,9 @@ void		VK_DepthFuncApply( int func );
 void		VK_Shade_Viewport3D( int x, int y, int w, int h );
 void		VK_ProgramsInit( void );
 void		VK_ProgramsShutdown( void );
-void		VK_DepthGate2D( void );
+qboolean	VK_DepthGate2D( void );
 void		VK_DepthGate2DTake( void );
+void		VK_DepthGate3DOpen( void );
 void		VK_StencilState( qboolean test, int func, int ref, unsigned int mask );
 void		VK_StencilStateReset( void );
 
