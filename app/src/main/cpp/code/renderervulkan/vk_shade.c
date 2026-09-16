@@ -2806,8 +2806,20 @@ static int VK_Shade_ClipTri( const float pj[16], const float *const v[3], float 
    the raw vertex box never saw it: a primitive whose corners all sit outside the
    volume still crosses the frame, and that is exactly the class the whole-vertex
    test missed.  So the triangles are clipped first and the survivor's screen
-   area is what gets measured.  Rows carry the state bits and the permutation
-   next to the shader, so the blend answer is on the same line. */
+   area is what gets measured.  A wall the camera stands next to fills the frame
+   too, so the row also carries the smallest box this shader drew this frame: a
+   stage whose own footprint is an outlier against its siblings is the broken
+   one, and a shader whose every draw is large is just close geometry. */
+typedef struct {
+	const shader_t	*shader;
+	int				 frame;
+	float			 minArea;
+} vkFootprintKey_t;
+
+#define VK_FOOTPRINT_KEYS 64
+
+static vkFootprintKey_t	s_footprint[VK_FOOTPRINT_KEYS];
+
 static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
 								   const vkIndex_t *indexes, int numIndexes )
 {
@@ -2815,11 +2827,39 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	float		m[16];
 	float		minx, miny, maxx, maxy;
 	float		cminx, cminy, cmaxx, cmaxy, clipArea;
-	int			i, v, tris, big, oob, oobMax, maxTri;
+	float		*sibMin = NULL, sibling = 0.0f;
+	int			i, v, tris, big, oob, oobMax, maxTri, key = -1;
 	static int	s_rows;
+	static int	s_frame = -1;
 
 	if ( !R_ProbeStatsOn() || !input || !indexes || numIndexes < 3 || !input->numVertexes ) {
 		return;
+	}
+
+	if ( s_frame != RB_FrameCount() ) {
+		s_frame = RB_FrameCount();
+		memset( s_footprint, 0, sizeof( s_footprint ) );
+	}
+	for ( i = 0; i < VK_FOOTPRINT_KEYS; i++ ) {
+		if ( s_footprint[i].shader == input->shader ) {
+			key = i;
+			break;
+		}
+		if ( s_footprint[i].shader == NULL ) {
+			s_footprint[i].shader = input->shader;
+			s_footprint[i].frame = s_frame;
+			s_footprint[i].minArea = 1e30f;
+			key = i;
+			break;
+		}
+	}
+	if ( key >= 0 ) {
+		if ( s_footprint[key].frame != s_frame ) {
+			s_footprint[key].frame = s_frame;
+			s_footprint[key].minArea = 1e30f;
+		}
+		sibMin = &s_footprint[key].minArea;
+		sibling = *sibMin;
 	}
 
 	if ( backEnd.in2D && VK_Draw_CurrentOrtho() ) {
@@ -2878,6 +2918,26 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		}
 
 		n = VK_Shade_ClipTri( pj, vert, ndc );
+
+		/* the raw box is the corners as projected, before the clip: a draw whose
+		   corners already sit on the unit cube is pre-projected vertex data, and
+		   only the unclipped corners can say so */
+		for ( v = 0; v < 3; v++ ) {
+			const float *xyz = vert[v];
+			float		 cw = pj[3] * xyz[0] + pj[7] * xyz[1] + pj[11] * xyz[2] + pj[15];
+			float		 nx, ny;
+
+			if ( cw < 1e-6f && cw > -1e-6f ) {
+				continue;
+			}
+			nx = ( pj[0] * xyz[0] + pj[4] * xyz[1] + pj[8]  * xyz[2] + pj[12] ) / cw;
+			ny = ( pj[1] * xyz[0] + pj[5] * xyz[1] + pj[9]  * xyz[2] + pj[13] ) / cw;
+			if ( nx < bx0 ) bx0 = nx;
+			if ( ny < by0 ) by0 = ny;
+			if ( nx > bx1 ) bx1 = nx;
+			if ( ny > by1 ) by1 = ny;
+		}
+
 		for ( k = 0; k < n; k++ ) {
 			float nx = ndc[k][0], ny = ndc[k][1];
 
@@ -2913,6 +2973,13 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		}
 	}
 
+	/* the sibling floor is the smallest box this shader drew this frame, taken
+	   after the walk so a lone draw reports its own area as its own floor */
+	if ( sibMin && clipArea < *sibMin ) {
+		*sibMin = clipArea;
+		sibling = clipArea;
+	}
+
 	/* an index past the vertices, one primitive whose clipped box covers an
 	   eighth of the frame, or a draw whose whole clipped box does with four
 	   triangles or fewer */
@@ -2928,12 +2995,12 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 
 	VK_Guard_Row( "VK:bigdraw",
 				  "n=%d shader='%s' in2d=%d tris=%d verts=%d idx=%d clip=(%.3f,%.3f)-(%.3f,%.3f) "
-				  "raw=(%.3f,%.3f)-(%.3f,%.3f) area=%.3f tri=%d bigtris=%d oobidx=%d oobmax=%d "
+				  "raw=(%.3f,%.3f)-(%.3f,%.3f) area=%.3f sib=%.3f tri=%d bigtris=%d oobidx=%d oobmax=%d "
 				  "dw=%d sb=0x%x prog=0x%06x stage=%d",
 				  s_rows, input->shader ? input->shader->name : "(null)",
 				  backEnd.in2D ? 1 : 0, tris, input->numVertexes, numIndexes,
 				  cminx, cminy, cmaxx, cmaxy, minx, miny, maxx, maxy,
-				  clipArea, maxTri, big, oob, oobMax,
+				  clipArea, sibling, maxTri, big, oob, oobMax,
 				  s_shade.depthWrite ? 1 : 0,
 				  (unsigned)s_shade.stateBits,
 				  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
