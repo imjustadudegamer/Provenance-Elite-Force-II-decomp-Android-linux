@@ -445,6 +445,10 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 		R_SetupShaders();
 	}
 
+	/* The reference inits the flares here, after the internal shaders exist: the
+	   dlight corona keeps the shader it looks up now for the whole run. */
+	R_InitLensFlare();
+
 	tr.registered = qtrue;
 
 	if ( ri.UI_LoadResource ) {

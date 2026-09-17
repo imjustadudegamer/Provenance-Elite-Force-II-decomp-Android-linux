@@ -2678,27 +2678,30 @@ void VK_Shade_Viewport3D( int x, int y, int w, int h )
 /* the depth range maps to the viewport's minDepth/maxDepth: the only form that reproduces the sky's (0,0) pin */
 static void VK_Shade_DepthRange( float n, float f )
 {
-	VkViewport viewport;
+	int				x, y, w, h;
 	VkCommandBuffer cmd = VK_Shade_CommandBuffer();
 
 	if ( cmd == VK_NULL_HANDLE ) {
 		return;
 	}
 
-	memset( &viewport, 0, sizeof( viewport ) );
 	if ( s_view3DValid ) {
-		viewport.x = (float)s_view3D[0];
-		viewport.y = (float)( vkConfig.vidHeight - s_view3D[1] - s_view3D[3] );
-		viewport.width = (float)s_view3D[2];
-		viewport.height = (float)s_view3D[3];
+		x = s_view3D[0];
+		y = vkConfig.vidHeight - s_view3D[1] - s_view3D[3];
+		w = s_view3D[2];
+		h = s_view3D[3];
 	} else {
-		viewport.width = (float)vkConfig.vidWidth;
-		viewport.height = (float)vkConfig.vidHeight;
+		x = 0;
+		y = 0;
+		w = vkConfig.vidWidth;
+		h = vkConfig.vidHeight;
 	}
-	viewport.minDepth = n;
-	viewport.maxDepth = f;
 
-	qvk.CmdSetViewport( cmd, 0, 1, &viewport );
+	/* GL's glDepthRange never touched x or y; the rect stays whatever glViewport
+	   last clamped.  This lane has to re-issue it, and the client's view rect can
+	   land outside the device's own bounds range, so it rides the same clamp the
+	   3D view took. */
+	VK_Draw_ViewportRect( cmd, x, y, w, h, n, f );
 }
 
 void vkDepthRange( float n, float f )
