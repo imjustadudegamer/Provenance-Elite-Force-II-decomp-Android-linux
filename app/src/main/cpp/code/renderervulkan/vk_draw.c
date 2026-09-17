@@ -94,8 +94,8 @@ static qboolean				vk_currentValid;
 /* the rectangle the reference clamps and this lane has to; defined below the
    draw state they read, called from the 2D window and the 3D view */
 static void VK_Draw_ScissorRect( VkCommandBuffer cmd, int x, int y, int w, int h );
-static void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
-								  float minDepth );
+void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
+						   float minDepth, float maxDepth );
 void VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h );
 void VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h );
 
@@ -679,8 +679,10 @@ static void VK_Draw_ScissorRect( VkCommandBuffer cmd, int x, int y, int w, int h
 
 /* The viewport has no framebuffer to be cut to, but it does have a device
    range, and a coordinate outside it is undefined too.  The rect is held inside
-   what the device said it takes. */
-static void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h, float minDepth )
+   what the device said it takes.  Every CmdSetViewport in this lane goes through
+   here, so no site can invent an out-of-range origin. */
+void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
+						   float minDepth, float maxDepth )
 {
 	VkViewport viewport;
 	float		lo, hi;
@@ -691,7 +693,7 @@ static void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int 
 	viewport.width = (float)( w > 0 ? w : 1 );
 	viewport.height = (float)( h > 0 ? h : 1 );
 	viewport.minDepth = minDepth;
-	viewport.maxDepth = 1.0f;
+	viewport.maxDepth = maxDepth;
 
 	lo = vk.deviceProps.limits.viewportBoundsRange[0];
 	hi = vk.deviceProps.limits.viewportBoundsRange[1];
@@ -715,7 +717,7 @@ void VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h )
 {
 	int top = vkConfig.vidHeight - y - h;
 
-	VK_Draw_ViewportRect( cmd, x, top, w, h, 0.0f );
+	VK_Draw_ViewportRect( cmd, x, top, w, h, 0.0f, 1.0f );
 	VK_Draw_ScissorRect( cmd, x, top, w, h );
 }
 
@@ -723,7 +725,7 @@ void VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h )
 {
 	int top = vkConfig.vidHeight - y - h;
 
-	VK_Draw_ViewportRect( cmd, x, top, w, h, 0.0f );
+	VK_Draw_ViewportRect( cmd, x, top, w, h, 0.0f, 1.0f );
 	VK_Draw_ScissorRect( cmd, x, top, w, h );
 }
 
