@@ -26,6 +26,10 @@ SRC = os.path.join(HERE, "..", "app", "src", "main", "cpp", "code", "renderervul
 FUNCTION = "RB_ImmBeginWithImage"
 BIND = "CmdBindPipeline"
 PUSH = "CmdPushConstants"
+# the value the run has to carry inside 2D: the active window's own ortho, which
+# the 3D getters do not hold.  Without this reference the run pushes proj x view
+# in 2D and every ROQ frame and UI quad lands off the screen.
+TWO_D_VALUE = "VK_Draw_CurrentOrtho"
 
 
 def function_span(lines, name):
@@ -97,7 +101,12 @@ def main():
 		print("  FAIL: the push follows the bind, so the first run draws before "
 			  "its ortho is recorded")
 		return 1
-	print("  ok: the push is at function scope and precedes the bind")
+	if not re.search(r'\b' + TWO_D_VALUE + r'\s*\(', "\n".join(lines[start:end + 1])):
+		print("  FAIL: the push never reads %s, so an in-2D run carries the 3D "
+			  "product and the ROQ and UI quads land off the screen" % TWO_D_VALUE)
+		return 1
+	print("  ok: the push is at function scope, precedes the bind, and carries "
+		  "the window's own ortho inside 2D")
 	return 0
 
 
