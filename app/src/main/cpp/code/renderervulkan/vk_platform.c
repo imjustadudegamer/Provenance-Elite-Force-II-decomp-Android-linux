@@ -162,7 +162,9 @@ void VKimp_FillConfig( glconfig_t *glconfig, int width, int height, float aspect
 	glconfig->numTextureUnits = 8;
 	glconfig->colorBits = 32;
 	glconfig->depthBits = 24;
-	glconfig->stencilBits = 8;
+	/* no stencil attachment is created, so the guards that arm the shadow
+	   overlay have to see none until one does exist */
+	glconfig->stencilBits = 0;
 	glconfig->driverType = GLDRV_ICD;
 	glconfig->hardwareType = GLHW_GENERIC;
 	glconfig->deviceSupportsGamma = qfalse;

@@ -32,6 +32,7 @@ root, for more details.
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "vk_local.h"
+#include "tr_local.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -59,11 +60,16 @@ static void VK_Target_PickDepth( void )
 	for ( i = 0; i < sizeof( vk_depthFormats ) / sizeof( vk_depthFormats[0] ); i++ ) {
 		if ( VK_Target_DepthOk( vk_depthFormats[i] ) ) {
 			vk.depthFormat = vk_depthFormats[i];
+			/* the stencil-bit count the game's own guards read: D32 and D16 carry
+			   no stencil, so the shadow-finish overlay that arms GL_NOTEQUAL has
+			   to stand down rather than paint the frame unclipped */
+			vkConfig.stencilBits = ( vk.depthFormat == VK_FORMAT_D24_UNORM_S8_UINT ) ? 8 : 0;
 			return;
 		}
 	}
 
 	vk.depthFormat = VK_FORMAT_UNDEFINED;
+	vkConfig.stencilBits = 0;
 	VK_Guard_Hit( VK_GSITE_DEVICE, "no depth-stencil format", VK_ERROR_FORMAT_NOT_SUPPORTED );
 }
 
