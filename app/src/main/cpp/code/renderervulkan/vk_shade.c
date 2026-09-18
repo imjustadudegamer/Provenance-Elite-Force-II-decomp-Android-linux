@@ -2871,9 +2871,10 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 {
 	const float	*mv, *pj;
 	float		m[16];
-	float		minx, miny, maxx, maxy;
 	float		cminx, cminy, cmaxx, cmaxy, clipArea;
+	float		bx0, by0, bx1, by1;
 	float		*sibMin = NULL, sibling = 0.0f;
+	qboolean	rawInside;
 	int			i, v, tris, big, oob, oobMax, maxTri, key = -1;
 	static int	s_rows;
 	static int	s_frame = -1;
@@ -2924,10 +2925,10 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		pj = m;
 	}
 
-	minx = miny = 2.0f;
-	maxx = maxy = -2.0f;
 	cminx = cminy = 2.0f;
 	cmaxx = cmaxy = -2.0f;
+	bx0 = by0 = 2.0f;
+	bx1 = by1 = -2.0f;
 	big = 0;
 	oob = 0;
 	oobMax = -1;
@@ -2938,7 +2939,6 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	for ( i = 0; i + 2 < numIndexes; i += 3 ) {
 		const float	*vert[3];
 		float		 ndc[16][2];
-		float		 bx0 = 2.0f, by0 = 2.0f, bx1 = -2.0f, by1 = -2.0f;
 		int			 n, k, inside = 0;
 
 		for ( v = 0; v < 3; v++ ) {
@@ -2965,9 +2965,10 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 
 		n = VK_Shade_ClipTri( pj, vert, ndc );
 
-		/* the raw box is the corners as projected, before the clip: a draw whose
-		   corners already sit on the unit cube is pre-projected vertex data, and
-		   only the unclipped corners can say so */
+		/* the raw box is the corners as projected, before the clip, and it keeps
+		   its own accumulator: a draw whose corners already sit on the unit cube
+		   is pre-projected vertex data, and only the unclipped corners can say
+		   so.  The clipped box is the polygon's own, and the two never mix. */
 		for ( v = 0; v < 3; v++ ) {
 			const float *xyz = vert[v];
 			float		 cw = pj[3] * xyz[0] + pj[7] * xyz[1] + pj[11] * xyz[2] + pj[15];
@@ -2984,38 +2985,31 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 			if ( ny > by1 ) by1 = ny;
 		}
 
-		for ( k = 0; k < n; k++ ) {
-			float nx = ndc[k][0], ny = ndc[k][1];
-
-			if ( nx < bx0 ) bx0 = nx;
-			if ( ny < by0 ) by0 = ny;
-			if ( nx > bx1 ) bx1 = nx;
-			if ( ny > by1 ) by1 = ny;
-		}
-
 		if ( n >= 3 ) {
 			/* NDC spans 2x2, so the frame is 4 units of area */
-			float area = ( bx1 - bx0 ) * ( by1 - by0 );
+			float cx0 = 2.0f, cy0 = 2.0f, cx1 = -2.0f, cy1 = -2.0f;
+			float area;
+
+			for ( k = 0; k < n; k++ ) {
+				if ( ndc[k][0] < cx0 ) cx0 = ndc[k][0];
+				if ( ndc[k][1] < cy0 ) cy0 = ndc[k][1];
+				if ( ndc[k][0] > cx1 ) cx1 = ndc[k][0];
+				if ( ndc[k][1] > cy1 ) cy1 = ndc[k][1];
+			}
+			area = ( cx1 - cx0 ) * ( cy1 - cy0 );
 
 			if ( area > clipArea ) {
 				clipArea = area;
 				maxTri = i / 3;
 			}
-			if ( bx0 < cminx ) cminx = bx0;
-			if ( by0 < cminy ) cminy = by0;
-			if ( bx1 > cmaxx ) cmaxx = bx1;
-			if ( by1 > cmaxy ) cmaxy = by1;
+			if ( cx0 < cminx ) cminx = cx0;
+			if ( cy0 < cminy ) cminy = cy0;
+			if ( cx1 > cmaxx ) cmaxx = cx1;
+			if ( cy1 > cmaxy ) cmaxy = cy1;
 			/* one primitive covering an eighth of the frame is no wall slice */
 			if ( area >= 0.5f ) {
 				big++;
 			}
-		}
-
-		for ( k = 0; k < n; k++ ) {
-			if ( ndc[k][0] < minx ) minx = ndc[k][0];
-			if ( ndc[k][1] < miny ) miny = ndc[k][1];
-			if ( ndc[k][0] > maxx ) maxx = ndc[k][0];
-			if ( ndc[k][1] > maxy ) maxy = ndc[k][1];
 		}
 	}
 
@@ -3026,11 +3020,15 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		sibling = clipArea;
 	}
 
-	/* an index past the vertices, one primitive whose clipped box covers an
-	   eighth of the frame, or a draw whose whole clipped box does with four
-	   triangles or fewer */
-	if ( !oob && !big
-		 && !( ( cmaxx - cminx ) >= 1.0f && ( cmaxy - cminy ) >= 1.0f && tris <= 4 ) ) {
+	/* A wall the camera stands beside fills the frame after the clip and its raw
+	   corners reach far past the volume, so area alone names ordinary geometry.
+	   A primitive that was never in world space has its corners inside the
+	   volume already, and that is the only footprint worth a row. */
+	rawInside = ( bx0 >= -1.0f && by0 >= -1.0f && bx1 <= 1.0f && by1 <= 1.0f );
+
+	/* an index past the vertices, or a primitive already inside the volume whose
+	   clipped area covers an eighth of the frame */
+	if ( !oob && !( rawInside && clipArea >= 0.5f ) ) {
 		return;
 	}
 
@@ -3045,7 +3043,7 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 				  "dw=%d sb=0x%x prog=0x%06x stage=%d ent=%d rt=%d model='%s'",
 				  s_rows, input->shader ? input->shader->name : "(null)",
 				  backEnd.in2D ? 1 : 0, tris, input->numVertexes, numIndexes,
-				  cminx, cminy, cmaxx, cmaxy, minx, miny, maxx, maxy,
+				  cminx, cminy, cmaxx, cmaxy, bx0, by0, bx1, by1,
 				  clipArea, sibling, maxTri, big, oob, oobMax,
 				  s_shade.depthWrite ? 1 : 0,
 				  (unsigned)s_shade.stateBits,
