@@ -367,33 +367,38 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 
 	/* The ortho is recorded on every run, at function scope: a run that trusted
 	   the previous run's push drew with a stale ortho, and a 2D quad under a
-	   stale ortho lands as a garbage sheet across the frame. */
+	   stale ortho lands as a garbage sheet across the frame.  Which ortho it
+	   carries depends on the space the run draws in -- inside 2D it is the
+	   window's own, the same value the window setup pushed, and the 3D getters
+	   do not hold it -- but the recording itself is unconditional. */
 	struct { float ortho[16]; float alphaTest[4]; } push;	/* vk_draw.c's layout */
-	const float *proj, *view;
+	const float *window, *proj, *view;
 	int r, c, k;
 
 	memset( &push, 0, sizeof( push ) );
-	proj = RB_GetProjectionMatrix();
-	view = RB_GetModelViewMatrix();
-	for ( r = 0; r < 4; r++ ) {
-		for ( c = 0; c < 4; c++ ) {
-			float sum = 0.0f;
+	window = backEnd.in2D ? VK_Draw_CurrentOrtho() : NULL;
+	if ( window ) {
+		memcpy( push.ortho, window, sizeof( push.ortho ) );
+	} else {
+		proj = RB_GetProjectionMatrix();
+		view = RB_GetModelViewMatrix();
+		for ( r = 0; r < 4; r++ ) {
+			for ( c = 0; c < 4; c++ ) {
+				float sum = 0.0f;
 
-			for ( k = 0; k < 4; k++ ) {
-				sum += proj[r * 4 + k] * view[k * 4 + c];
+				for ( k = 0; k < 4; k++ ) {
+					sum += proj[r * 4 + k] * view[k * 4 + c];
+				}
+				push.ortho[c * 4 + r] = sum;
 			}
-			push.ortho[c * 4 + r] = sum;
 		}
+		/* the push holds the product transposed, keeping the flat offsets of
+		   the negated row: 1, 5, 9, 13 */
+		VK_Mat4_ClipToWindow( push.ortho );
 	}
-	/* the push holds the product transposed, keeping the flat offsets of
-	   the negated row: 1, 5, 9, 13 */
-	VK_Mat4_ClipToWindow( push.ortho );
 	push.alphaTest[0] = 0.0f;
 	push.alphaTest[1] = 0.0f;
 
-	/* Recorded on every run, at function scope: a run that trusted the previous
-	   run's push drew with a stale ortho, and a 2D quad under a stale ortho
-	   lands as a garbage sheet across the frame. */
 	qvk.CmdPushConstants( vk.commandBuffers[s_rbSlot], VK_Draw_Layout(),
 						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 						  0, sizeof( push ), &push );
