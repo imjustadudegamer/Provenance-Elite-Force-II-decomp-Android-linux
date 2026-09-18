@@ -2929,11 +2929,12 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	VK_Guard_Row( "VK:bigdraw",
 				  "n=%d shader='%s' in2d=%d tris=%d verts=%d idx=%d clip=(%.3f,%.3f)-(%.3f,%.3f) "
 				  "raw=(%.3f,%.3f)-(%.3f,%.3f) area=%.3f tri=%d bigtris=%d oobidx=%d oobmax=%d "
-				  "sb=0x%x prog=0x%06x stage=%d",
+				  "dw=%d sb=0x%x prog=0x%06x stage=%d",
 				  s_rows, input->shader ? input->shader->name : "(null)",
 				  backEnd.in2D ? 1 : 0, tris, input->numVertexes, numIndexes,
 				  cminx, cminy, cmaxx, cmaxy, minx, miny, maxx, maxy,
 				  clipArea, maxTri, big, oob, oobMax,
+				  s_shade.depthWrite ? 1 : 0,
 				  (unsigned)s_shade.stateBits,
 				  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
 				  stage ? 1 : 0 );
