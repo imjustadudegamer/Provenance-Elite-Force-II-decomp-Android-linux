@@ -1002,6 +1002,52 @@ void VK_DepthGate3DOpen( void )
 	s_depthGate2D = qfalse;
 }
 
+/* ---- the blocking driver waits ------------------------------------------- */
+
+/* A hang stops making progress inside one of these, and a boot that stops here
+   otherwise says nothing.  Each wait names itself on the way in and on the way
+   out, with the thread and the caller's business, so the last row before a stop
+   is the wait that never returned and the side of the front end that asked. */
+static void VK_Sync_Row( const char *site, const char *why, qboolean leaving, long usec )
+{
+	VK_Guard_Row( "VK:sync", "site=%s why=%s phase=%s thr=%s id=%lu f=%d usec=%ld",
+				  site, why, leaving ? "leave" : "enter",
+				  VKimp_IsRenderThread() ? "render" : "main",
+				  VKimp_ThreadID(), RB_FrameCount(), usec );
+}
+
+VkResult VK_Sync_WaitForFences( VkFence fence, VkBool32 waitAll, const char *site, const char *why )
+{
+	VkResult result;
+	int		 t0;
+
+	if ( !R_ProbeStatsOn() ) {
+		return qvk.WaitForFences( vk.device, 1, &fence, waitAll, UINT64_MAX );
+	}
+
+	VK_Sync_Row( site, why, qfalse, 0 );
+	t0 = BE_Microseconds();
+	result = qvk.WaitForFences( vk.device, 1, &fence, waitAll, UINT64_MAX );
+	VK_Sync_Row( site, why, qtrue, BE_Microseconds() - t0 );
+	return result;
+}
+
+VkResult VK_Sync_DeviceWaitIdle( const char *site, const char *why )
+{
+	VkResult result;
+	int		 t0;
+
+	if ( !R_ProbeStatsOn() ) {
+		return qvk.DeviceWaitIdle( vk.device );
+	}
+
+	VK_Sync_Row( site, why, qfalse, 0 );
+	t0 = BE_Microseconds();
+	result = qvk.DeviceWaitIdle( vk.device );
+	VK_Sync_Row( site, why, qtrue, BE_Microseconds() - t0 );
+	return result;
+}
+
 /* ---- textures ------------------------------------------------------------ */
 
 void VK_SelectTexture( int tmu )

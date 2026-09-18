@@ -286,7 +286,7 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 		goto done;
 	}
 
-	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	result = VK_Sync_WaitForFences( fence, VK_TRUE, "offscreen-pass", "upload" );
 	if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "offscreen vkWaitForFences" ) ) {
 		goto done;
 	}

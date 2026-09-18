@@ -159,7 +159,7 @@ qboolean VK_Frame_Begin( int slot )
 		return qfalse;
 	}
 
-	result = qvk.WaitForFences( vk.device, 1, &vk.fences[slot], VK_FALSE, UINT64_MAX );
+	result = VK_Sync_WaitForFences( vk.fences[slot], VK_FALSE, "frame-fence", "frame" );
 	if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences" ) ) {
 		return qfalse;
 	}

@@ -657,7 +657,7 @@ qboolean VK_Device_Create( void )
 void VK_Device_Destroy( void )
 {
 	if ( vk.device && qvk.DestroyDevice ) {
-		qvk.DeviceWaitIdle( vk.device );
+		VK_Sync_DeviceWaitIdle( "device-destroy", "shutdown" );
 		qvk.DestroyDevice( vk.device, NULL );
 	}
 	vk.device = VK_NULL_HANDLE;
