@@ -365,34 +365,38 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	key.depthTest = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
 	key.depthWrite = ( stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
 
-	/* Outside 2D the push would be undefined: push projection times model view. */
-	if ( !backEnd.in2D ) {
-		const float *proj = RB_GetProjectionMatrix();
-		const float *view = RB_GetModelViewMatrix();
-		struct { float ortho[16]; float alphaTest[4]; } push;	/* vk_draw.c's layout */
-		int r, c, k;
+	/* The ortho is recorded on every run, at function scope: a run that trusted
+	   the previous run's push drew with a stale ortho, and a 2D quad under a
+	   stale ortho lands as a garbage sheet across the frame. */
+	struct { float ortho[16]; float alphaTest[4]; } push;	/* vk_draw.c's layout */
+	const float *proj, *view;
+	int r, c, k;
 
-		memset( &push, 0, sizeof( push ) );
-		for ( r = 0; r < 4; r++ ) {
-			for ( c = 0; c < 4; c++ ) {
-				float sum = 0.0f;
+	memset( &push, 0, sizeof( push ) );
+	proj = RB_GetProjectionMatrix();
+	view = RB_GetModelViewMatrix();
+	for ( r = 0; r < 4; r++ ) {
+		for ( c = 0; c < 4; c++ ) {
+			float sum = 0.0f;
 
-				for ( k = 0; k < 4; k++ ) {
-					sum += proj[r * 4 + k] * view[k * 4 + c];
-				}
-				push.ortho[c * 4 + r] = sum;
+			for ( k = 0; k < 4; k++ ) {
+				sum += proj[r * 4 + k] * view[k * 4 + c];
 			}
+			push.ortho[c * 4 + r] = sum;
 		}
-			/* the push holds the product transposed, keeping the flat offsets of
-		   the negated row: 1, 5, 9, 13 */
-		VK_Mat4_ClipToWindow( push.ortho );
-		push.alphaTest[0] = 0.0f;
-		push.alphaTest[1] = 0.0f;
-
-		qvk.CmdPushConstants( vk.commandBuffers[s_rbSlot], VK_Draw_Layout(),
-							  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-							  0, sizeof( push ), &push );
 	}
+	/* the push holds the product transposed, keeping the flat offsets of
+	   the negated row: 1, 5, 9, 13 */
+	VK_Mat4_ClipToWindow( push.ortho );
+	push.alphaTest[0] = 0.0f;
+	push.alphaTest[1] = 0.0f;
+
+	/* Recorded on every run, at function scope: a run that trusted the previous
+	   run's push drew with a stale ortho, and a 2D quad under a stale ortho
+	   lands as a garbage sheet across the frame. */
+	qvk.CmdPushConstants( vk.commandBuffers[s_rbSlot], VK_Draw_Layout(),
+						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+						  0, sizeof( push ), &push );
 
 	run->pipeline = VK_Draw_Pipeline( &key );
 	if ( run->pipeline == VK_NULL_HANDLE ) {
