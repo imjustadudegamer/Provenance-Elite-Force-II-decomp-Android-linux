@@ -206,7 +206,7 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 void VK_BringDown( void )
 {
 	if ( vk.device != VK_NULL_HANDLE && qvk.DeviceWaitIdle ) {
-		qvk.DeviceWaitIdle( vk.device );
+		VK_Sync_DeviceWaitIdle( "bringdown", "shutdown" );
 	}
 
 	VK_Draw_Shutdown();

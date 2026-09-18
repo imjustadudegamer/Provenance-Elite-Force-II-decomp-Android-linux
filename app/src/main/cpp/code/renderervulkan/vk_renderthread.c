@@ -67,6 +67,11 @@ qboolean VKimp_IsRenderThread( void )
 	return ( vk_renderThread && SDL_ThreadID() == vk_renderThreadId ) ? qtrue : qfalse;
 }
 
+unsigned long VKimp_ThreadID( void )
+{
+	return (unsigned long)SDL_ThreadID();
+}
+
 qboolean VKimp_MainOwnsFrame( void )
 {
 	return ( !vk_renderThread || SDL_ThreadID() == VKimp_MainThreadId() ) ? qtrue : qfalse;

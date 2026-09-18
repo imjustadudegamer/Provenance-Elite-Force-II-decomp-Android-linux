@@ -159,7 +159,8 @@ void VK_Texture_Shutdown( void )
 	}
 
 	if ( vk.commandPool != VK_NULL_HANDLE && qvk.DeviceWaitIdle ) {
-		VK_Guard_Result( VK_GSITE_SYNC, qvk.DeviceWaitIdle( vk.device ), "vkDeviceWaitIdle(textures)" );
+		VK_Guard_Result( VK_GSITE_SYNC, VK_Sync_DeviceWaitIdle( "texture-shutdown", "texture-shutdown" ),
+						 "vkDeviceWaitIdle(textures)" );
 	}
 
 	for ( i = 0; i < VK_MAX_TEXTURES; i++ ) {
@@ -474,7 +475,7 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 		goto done;
 	}
 
-	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	result = VK_Sync_WaitForFences( fence, VK_TRUE, "texture-upload", "upload" );
 	if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(upload)" ) ) {
 		goto done;
 	}
@@ -581,7 +582,7 @@ qboolean VK_Texture_Publish( int handle )
 		return qfalse;
 	}
 
-	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	result = VK_Sync_WaitForFences( fence, VK_TRUE, "texture-publish", "upload" );
 	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(publish)" );
 	tex->published = qtrue;
 
@@ -687,7 +688,7 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 		goto done;
 	}
 
-	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	result = VK_Sync_WaitForFences( fence, VK_TRUE, "texel-read", "upload" );
 	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(readtexel)" );
 
 	if ( mapped ) {
@@ -819,7 +820,7 @@ void VK_Texture_MakeMips( int handle )
 		return;
 	}
 
-	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	result = VK_Sync_WaitForFences( fence, VK_TRUE, "mip-build", "upload" );
 	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(mips)" );
 }
 
@@ -1020,7 +1021,7 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 		goto done;
 	}
 
-	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX ),
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, VK_Sync_WaitForFences( fence, VK_TRUE, "texel-readback", "upload" ),
 						   "readback vkWaitForFences" ) ) {
 		goto done;
 	}

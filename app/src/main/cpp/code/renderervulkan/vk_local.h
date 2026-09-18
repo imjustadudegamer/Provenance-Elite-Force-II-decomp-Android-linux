@@ -251,10 +251,15 @@ int RB_FrameBoneArena( void );
 extern volatile qboolean	vkRenderThreadActive;
 
 qboolean VKimp_IsRenderThread( void );
+unsigned long VKimp_ThreadID( void );
 qboolean VKimp_MainOwnsFrame( void );
 qboolean VKimp_SpawnRenderThread( void ( *function )( void ) );
 void *VKimp_RendererSleep( void );
 void VKimp_FrontEndSleep( void );
+
+/* every blocking driver wait goes through these, so a hang names its wait */
+VkResult VK_Sync_WaitForFences( VkFence fence, VkBool32 waitAll, const char *site, const char *why );
+VkResult VK_Sync_DeviceWaitIdle( const char *site, const char *why );
 void VKimp_WakeRenderer( void *data );
 void VKimp_ShutdownRenderThread( void );
 int VKimp_HandshakeViolations( void );

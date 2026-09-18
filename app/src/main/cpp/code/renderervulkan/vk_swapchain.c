@@ -438,7 +438,7 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 		goto done;
 	}
 
-	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX ),
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, VK_Sync_WaitForFences( fence, VK_TRUE, "swap-readback", "present" ),
 						   "readback vkWaitForFences" ) ) {
 		goto done;
 	}
@@ -471,7 +471,7 @@ qboolean VK_Swapchain_Recreate( int windowWidth, int windowHeight )
 	vkSwapchainPlan_t plan;
 
 	if ( vk.swapchain != VK_NULL_HANDLE ) {
-		qvk.DeviceWaitIdle( vk.device );
+		VK_Sync_DeviceWaitIdle( "swapchain-recreate", "present" );
 		VK_Swapchain_Destroy();
 	}
 

@@ -219,7 +219,7 @@ static qboolean VK_DemoBuffer_Init( void )
 		return qfalse;
 	}
 
-	result = qvk.WaitForFences( vk.device, 1, &fence, VK_TRUE, UINT64_MAX );
+	result = VK_Sync_WaitForFences( fence, VK_TRUE, "upload-fence", "upload" );
 	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(upload)" );
 
 	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
