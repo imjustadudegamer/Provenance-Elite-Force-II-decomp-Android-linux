@@ -3022,13 +3022,15 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 
 	/* A wall the camera stands beside fills the frame after the clip and its raw
 	   corners reach far past the volume, so area alone names ordinary geometry.
-	   A primitive that was never in world space has its corners inside the
-	   volume already, and that is the only footprint worth a row. */
+	   A primitive that was never in world space has its corners inside the volume
+	   already -- but so does a wall seen from close by, and those cover up to
+	   about 1.2 of the 4 units a frame holds.  Half a frame is past what a close
+	   wall reaches and well under what a sheet across the frame covers. */
 	rawInside = ( bx0 >= -1.0f && by0 >= -1.0f && bx1 <= 1.0f && by1 <= 1.0f );
 
 	/* an index past the vertices, or a primitive already inside the volume whose
-	   clipped area covers an eighth of the frame */
-	if ( !oob && !( rawInside && clipArea >= 0.5f ) ) {
+	   clipped area covers half the frame */
+	if ( !oob && !( rawInside && clipArea >= 2.0f ) ) {
 		return;
 	}
 

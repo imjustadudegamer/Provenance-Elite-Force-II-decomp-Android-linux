@@ -200,12 +200,15 @@ static void Measure( const float pj[16], const float *xyz, const int *indexes,
 }
 
 /* A wedge is one primitive that was never in world space to begin with: its
-   corners land inside the volume unclipped and its clipped area is large.  A
-   wall the camera stands beside spans far outside and is cut down, so raw is
-   not inside and it does not flag. */
+   corners land inside the volume unclipped and its clipped area covers half the
+   frame.  A wall the camera stands beside is inside too but only reaches about
+   1.2 of the 4 units, and a wall seen from far away is cut down from corners
+   far outside. */
+#define ANOMALY_AREA 2.0f
+
 static int Anomaly( const measure_t *m )
 {
-	return ( m->rawInside && m->area >= 0.5f ) ? qtrue : qfalse;
+	return ( m->rawInside && m->area >= ANOMALY_AREA ) ? qtrue : qfalse;
 }
 
 /* ---- fixtures ------------------------------------------------------------ */
@@ -395,6 +398,25 @@ int main( void )
 		CheckF( "area == 4.0", m.area, 4.0f, 1e-3f );
 		Check( "clip == raw == the cube", m.clip[0] == -1.0f && m.clip[2] == 1.0f, 1 );
 		Check( "flagged -- indistinguishable from a wedge", Anomaly( &m ), 1 );
+	}
+
+	/* (g) the close wall the -143557 boot left in the rows: every corner inside
+	   the volume because the camera is near it, covering about 0.6 of the frame.
+	   This is the shape the area floor exists to silence. */
+	{
+		float a[3] = { -0.973f, 0.007f, 0.5f };
+		float b[3] = { -0.371f, 0.007f, 0.5f };
+		float c[3] = { -0.371f, 0.982f, 0.5f };
+		float d[3] = { -0.973f, 0.982f, 0.5f };
+		int   q[6] = { 0, 1, 2, 0, 2, 3 };
+
+		memcpy( xyz[0], a, 12 ); memcpy( xyz[1], b, 12 );
+		memcpy( xyz[2], c, 12 ); memcpy( xyz[3], d, 12 );
+		Measure( ident, &xyz[0][0], q, 6, &m );
+		printf( "(g) close wall, corners inside, area ~0.6\n" );
+		Box( "raw", m.raw ); Box( "clip", m.clip );
+		Check( "raw inside the volume", m.rawInside, 1 );
+		Check( "not flagged", Anomaly( &m ), 0 );
 	}
 
 	printf( "%s (%d failure%s)\n", s_fail ? "RED" : "GREEN",
