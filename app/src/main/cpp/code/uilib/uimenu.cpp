@@ -789,9 +789,10 @@ static void MENU3DAndroidAdvancedVideoMenuFixup(Menu *menu)
 }
 #endif
 
+#ifdef __ANDROID__
 static const char *const audioRetailOnlyAudioCvars[] = {
-    "s_milesdriver",   
-    "s_reverb",        
+    "s_milesdriver",
+    "s_reverb",
     NULL
 };
 
@@ -844,6 +845,7 @@ static void AUDIOAudioMenuFixup(Menu *menu)
         audiow = audiow->getNextSibling();
     }
 }
+#endif
 
 
 bool MenuManager::PushMenu(str name)
@@ -868,9 +870,8 @@ bool MenuManager::PushMenu(str name)
         return false;
     }
 
-    AUDIOAudioMenuFixup(m);
-
 #ifdef __ANDROID__
+    AUDIOAudioMenuFixup(m);
     MENU3DAndroidVideoMenuFixup(m);
     MENU3DAndroidAdvancedVideoMenuFixup(m);
 #endif
@@ -928,9 +929,8 @@ bool MenuManager::TransitionMenu(str name)
         head->ProcessEvent(Event("hidemenu"));
     }
 
-    AUDIOAudioMenuFixup(m);
-
 #ifdef __ANDROID__
+    AUDIOAudioMenuFixup(m);
     MENU3DAndroidVideoMenuFixup(m);
     MENU3DAndroidAdvancedVideoMenuFixup(m);
 #endif
@@ -973,9 +973,8 @@ bool MenuManager::ShowMenu(str name)
         return false;
     }
 
-    AUDIOAudioMenuFixup(m);
-
 #ifdef __ANDROID__
+    AUDIOAudioMenuFixup(m);
     MENU3DAndroidVideoMenuFixup(m);
     MENU3DAndroidAdvancedVideoMenuFixup(m);
 #endif
