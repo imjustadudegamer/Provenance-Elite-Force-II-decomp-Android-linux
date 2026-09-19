@@ -407,6 +407,11 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 	R_IssuePendingRenderCommands();
 
+	/* The registration that follows frees and re-hands out every image and
+	   descriptor the in-flight frames are still reading.  GL got away with it by
+	   deferring the frees; retire the frames first. */
+	VK_Frame_WaitIdle();
+
 	*glconfig = vkConfig;
 
 	/* The registration sequence the font's shader cache keys on: it grows by
