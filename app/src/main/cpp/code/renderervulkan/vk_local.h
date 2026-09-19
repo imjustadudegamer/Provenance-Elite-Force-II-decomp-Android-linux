@@ -159,6 +159,12 @@ typedef struct {
 	VkCommandPool commandPool;
 	VkCommandBuffer commandBuffers[VK_FRAMES_IN_FLIGHT];
 	VkFence fences[VK_FRAMES_IN_FLIGHT];
+	/* A wait is only owed to a submission this engine made and has not retired:
+	   a walk that opens a pass and never reaches PRESENT leaves the fence reset,
+	   and waiting on that reset fence forever is the sublevel-transition hang. */
+	qboolean fencePending[VK_FRAMES_IN_FLIGHT];
+	/* The pass RC_VK_BEGIN opened, so a walk that dies before PRESENT can close it. */
+	qboolean passOpen;
 	VkSemaphore acquireSemaphores[VK_FRAMES_IN_FLIGHT];
 	VkSemaphore renderSemaphores[VK_FRAMES_IN_FLIGHT];
 	uint32_t acquiredImage;
@@ -224,6 +230,7 @@ qboolean VK_Frame_Acquire( int slot );
 void VK_Frame_RecordClear( int slot, const float rgba[4] );
 qboolean VK_Frame_RecordBegin( int slot );
 void VK_Frame_RecordEnd( int slot );
+void VK_Frame_Abandon( int slot );
 qboolean VK_Frame_Submit( int slot );
 qboolean VK_Frame_Present( int slot );
 int VK_Frame_Count( void );

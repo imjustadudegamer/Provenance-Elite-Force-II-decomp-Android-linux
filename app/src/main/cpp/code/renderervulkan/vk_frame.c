@@ -59,6 +59,13 @@ qboolean VK_Frame_Init( void )
 	frames = VK_Frame_Count();
 
 	memset( &poolInfo, 0, sizeof( poolInfo ) );
+	/* The fences come up signalled, so the first Begin of each slot owes a real
+	   wait: pending starts true and only a queue-accepted submit re-arms it. */
+	memset( vk.fencePending, 0, sizeof( vk.fencePending ) );
+	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		vk.fencePending[i] = qtrue;
+	}
+	vk.passOpen = qfalse;
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	poolInfo.queueFamilyIndex = vk.graphicsFamily;
@@ -148,6 +155,8 @@ void VK_Frame_Shutdown( void )
 
 	vk.frameReady = qfalse;
 	vk.acquired = qfalse;
+	memset( vk.fencePending, 0, sizeof( vk.fencePending ) );
+	vk.passOpen = qfalse;
 }
 
 qboolean VK_Frame_Begin( int slot )
@@ -159,9 +168,19 @@ qboolean VK_Frame_Begin( int slot )
 		return qfalse;
 	}
 
-	result = VK_Sync_WaitForFences( vk.fences[slot], VK_FALSE, "frame-fence", "frame" );
-	if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences" ) ) {
-		return qfalse;
+	/* UINT64_MAX is only survivable when a submission is actually owed.  An
+	   abandoned pass leaves the fence reset with nothing in flight, and the
+	   next Begin on that slot is the wait that never returns. */
+	if ( !vk.fencePending[slot] ) {
+		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) ) {
+			VK_Guard_Row( "VK:frame", "begin-without-submit slot=%d f=%d", slot, RB_FrameCount() );
+		}
+	} else {
+		result = VK_Sync_WaitForFences( vk.fences[slot], VK_FALSE, "frame-fence", "frame" );
+		if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences" ) ) {
+			return qfalse;
+		}
+		vk.fencePending[slot] = qfalse;
 	}
 
 	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.ResetFences( vk.device, 1, &vk.fences[slot] ),
@@ -241,6 +260,8 @@ qboolean VK_Frame_RecordBegin( int slot )
 	VkRenderPassBeginInfo beginInfo;
 	VkRect2D renderArea;
 
+	vk.passOpen = qtrue;
+
 	if ( vk.acquiredImage >= vk.framebufferCount ) {
 		VK_Guard_Hit( VK_GSITE_SYNC, "acquired image out of range", VK_ERROR_TOO_MANY_OBJECTS );
 		return qfalse;
@@ -316,6 +337,28 @@ void VK_Frame_RecordEnd( int slot )
 		qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
 	}
 
+	vk.passOpen = qfalse;
+	vk_back_end_slot = -1;
+}
+
+/* A walk that opened the pass and then left without PRESENT used to leave the
+   fence reset and the command buffer recording: the next Begin on that slot was
+   the wait that never returned.  The pool is created with RESET_COMMAND_BUFFER,
+   so ending here makes the buffer re-recordable and the fence stays retired. */
+void VK_Frame_Abandon( int slot )
+{
+	if ( !vk.passOpen ) {
+		return;
+	}
+
+	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE && qvk.EndCommandBuffer ) {
+		VK_Guard_Row( "VK:frame", "abandon-pass slot=%d f=%d", slot, RB_FrameCount() );
+		RB_2D_Flush();
+		qvk.EndCommandBuffer( vk.commandBuffers[slot] );
+	}
+
+	vk.passOpen = qfalse;
+	vk.acquired = qfalse;
 	vk_back_end_slot = -1;
 }
 
@@ -346,7 +389,14 @@ qboolean VK_Frame_Submit( int slot )
 
 	result = qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, vk.fences[slot] );
 
-	return VK_Guard_Result( VK_GSITE_SUBMIT, result, "vkQueueSubmit" );
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, result, "vkQueueSubmit" ) ) {
+		return qfalse;
+	}
+
+	/* Only a submission the queue accepted makes the fence worth waiting on. */
+	vk.fencePending[slot] = qtrue;
+
+	return qtrue;
 }
 
 qboolean VK_Frame_Present( int slot )
