@@ -1213,8 +1213,14 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 	cpuColor = VK_StageNeedsCPUColor( pStage );
 	cpuTexCoords = VK_StageNeedsCPUTexCoords( pStage );
 
-	/* 2D carries Draw_SetColor in a_Color, so u_BaseColor stays 1 there; 3D's constant-colour stages never fill a_Color */
-	if ( backEnd.in2D )
+	/* 2D carries Draw_SetColor in a_Color, so u_BaseColor stays 1 there for the
+	   gens that take their colour from the vertex.  Two gens read it anyway, and
+	   forcing 1 on them made every constant-colour 2D stage draw white: the
+	   retail viewmodes all tint through rgbGen const -- hud/structural 1 0.5 0,
+	   nightvision 0.15 1 0.25, phaseshift 1 0 0.8 -- so the tricorder's alternate
+	   viewmode came up with its CRT shader and no tint at all. */
+	if ( backEnd.in2D && pStage->rgbGen != CGEN_CONSTANT
+		 && pStage->rgbGen != CGEN_MULTIPLY_BY_WAVEFORM )
 	{
 		baseColor[0] = baseColor[1] = baseColor[2] = baseColor[3] = 1.0f;
 	}
