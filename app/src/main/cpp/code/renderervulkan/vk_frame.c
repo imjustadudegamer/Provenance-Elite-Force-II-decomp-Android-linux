@@ -362,6 +362,36 @@ void VK_Frame_Abandon( int slot )
 	vk_back_end_slot = -1;
 }
 
+/* The load tears down every image, shader and descriptor the last frames drew
+   through.  GL defers those frees behind the driver's own reference counts; a
+   Vulkan destroy is immediate, so the in-flight submissions have to be retired
+   first or the device wedges inside the next fence wait.  One call per map
+   load, never per frame. */
+void VK_Frame_WaitIdle( void )
+{
+	int i;
+
+	if ( !vk.frameReady ) {
+		return;
+	}
+
+	for ( i = 0; i < VK_Frame_Count(); i++ ) {
+		if ( !vk.fencePending[i] ) {
+			continue;
+		}
+		if ( !VK_Guard_Result( VK_GSITE_FENCE,
+							   VK_Sync_WaitForFences( vk.fences[i], VK_FALSE, "frame-fence", "quiesce" ),
+							   "vkWaitForFences(quiesce)" ) ) {
+			return;
+		}
+		vk.fencePending[i] = qfalse;
+	}
+
+	if ( qvk.QueueWaitIdle ) {
+		VK_Guard_Result( VK_GSITE_SYNC, qvk.QueueWaitIdle( vk.graphicsQueue ), "vkQueueWaitIdle(quiesce)" );
+	}
+}
+
 qboolean VK_Frame_Submit( int slot )
 {
 	VkSubmitInfo submitInfo;

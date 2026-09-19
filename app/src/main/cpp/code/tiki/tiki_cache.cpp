@@ -77,6 +77,16 @@ static qboolean TIKI_KeepLoaded(void)
     return s_tikiKeepLoaded && s_tikiKeepLoaded->integer ? qtrue : qfalse;
 }
 
+static cvar_t *s_tikiKeepSkel;
+
+static qboolean TIKI_KeepSkel(void)
+{
+    if (!s_tikiKeepSkel) {
+        s_tikiKeepSkel = Cvar_Get("tiki_keepSkel", "1", 0);
+    }
+    return s_tikiKeepSkel && s_tikiKeepSkel->integer ? qtrue : qfalse;
+}
+
 template<>
 int HashCode<pchar>(const pchar& key)
 {
@@ -382,6 +392,19 @@ void TIKI_FreeAll()
             kept++;
         }
 
+        /* The skeletons stay too.  Dropping them made every save restore re-read,
+           re-validate and re-repack every skb/skd/tan of every character model --
+           the measured 120ms-per-model leg inside a restore whose model work was
+           758ms over 141 setModels.  TIKI_RegisterSkel finds a retained row by
+           path, so a warm restore is a name lookup; TIKI_LoadSkelCache the cvar
+           below restores the retail teardown. */
+        if (TIKI_KeepSkel()) {
+            TIKI_TikiRollKeep(kept);
+
+            tiki_loading = true;
+            return;
+        }
+
         /* Drop the converted animation data through the same use-count walk the
            teardown uses, so the retained dtikianim_t's tanMesh rows stay
            consistent with skelcache and a warm level re-pages on demand. */
@@ -410,8 +433,6 @@ void TIKI_FreeAll()
                 }
             }
         }
-
-        TIKI_TikiRollKeep(kept);
 
         tiki_loading = true;
         return;

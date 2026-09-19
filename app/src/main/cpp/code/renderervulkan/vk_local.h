@@ -231,6 +231,7 @@ void VK_Frame_RecordClear( int slot, const float rgba[4] );
 qboolean VK_Frame_RecordBegin( int slot );
 void VK_Frame_RecordEnd( int slot );
 void VK_Frame_Abandon( int slot );
+void VK_Frame_WaitIdle( void );
 qboolean VK_Frame_Submit( int slot );
 qboolean VK_Frame_Present( int slot );
 int VK_Frame_Count( void );
