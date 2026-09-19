@@ -133,7 +133,7 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 
 	memset( &target, 0, sizeof( target ) );
 
-	if ( vk.offscreenPass == VK_NULL_HANDLE || vk.commandPool == VK_NULL_HANDLE ) {
+	if ( vk.offscreenPass == VK_NULL_HANDLE || vk.uploadPool == VK_NULL_HANDLE ) {
 		VK_Guard_Hit( VK_GSITE_SYNC, "offscreen probe without a pass or pool", VK_ERROR_INITIALIZATION_FAILED );
 		return qfalse;
 	}
@@ -210,7 +210,7 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.commandPool;
+	allocInfo.commandPool = vk.uploadPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
@@ -301,7 +301,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 
 	VK_Offscreen_Destroy( &target );

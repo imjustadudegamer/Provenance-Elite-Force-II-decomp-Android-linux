@@ -76,6 +76,11 @@ qboolean VK_Frame_Init( void )
 		return qfalse;
 	}
 
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.CreateCommandPool( vk.device, &poolInfo, NULL, &vk.uploadPool ),
+						   "vkCreateCommandPool(upload)" ) ) {
+		return qfalse;
+	}
+
 	memset( &bufferInfo, 0, sizeof( bufferInfo ) );
 	bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	bufferInfo.commandPool = vk.commandPool;
@@ -131,6 +136,11 @@ void VK_Frame_Shutdown( void )
 	if ( vk.device == VK_NULL_HANDLE ) {
 		return;
 	}
+
+	if ( vk.uploadPool != VK_NULL_HANDLE && qvk.DestroyCommandPool ) {
+		qvk.DestroyCommandPool( vk.device, vk.uploadPool, NULL );
+	}
+	vk.uploadPool = VK_NULL_HANDLE;
 
 	if ( vk.commandPool != VK_NULL_HANDLE && qvk.DestroyCommandPool ) {
 		qvk.DestroyCommandPool( vk.device, vk.commandPool, NULL );

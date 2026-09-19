@@ -157,6 +157,10 @@ typedef struct {
 	VkDeviceMemory vertexMemory;
 	VkCommandBuffer uploadCmd;
 	VkCommandPool commandPool;
+	/* Transient upload/readback buffers.  The pool a command buffer comes from
+	   must be externally synchronised, so the walk's frame buffers and the main
+	   thread's uploads cannot share one: under r_smp 1 they run at once. */
+	VkCommandPool uploadPool;
 	VkCommandBuffer commandBuffers[VK_FRAMES_IN_FLIGHT];
 	VkFence fences[VK_FRAMES_IN_FLIGHT];
 	/* A wait is only owed to a submission this engine made and has not retired:
