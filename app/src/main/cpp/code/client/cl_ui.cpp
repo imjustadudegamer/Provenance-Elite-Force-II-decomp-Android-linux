@@ -1110,8 +1110,14 @@ static void UI_Update_Impl(void)
                     UI_ClearBackground();                 
                     view3d->setShow(false);
                 }
+            } else if (cls.state == CA_DISCONNECTED && currentMenu) {
+                /* A front-end menu floats over the 3D view, and the 3D view is
+                   where the starfield and the ship live.  Retail leaves it
+                   behind the menu; hiding the view and filling black put a
+                   black rectangle behind every non-fullscreen menu, the controls
+                   screen among them.  Loading and connect still fill. */
             } else {
-                view3d->setShow(false);                   
+                view3d->setShow(false);
                 UI_ClearBackground();
 
             }
