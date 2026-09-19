@@ -675,6 +675,21 @@ void UI_CharEvent(int ch)
 
 void UI_ClearBackground(void)
 {
+    /* g_color_table[0] is opaque black, so this is the full-screen fill the
+       operator reads as "the bgcolor fill".  Naming the branch that took it is
+       what separates a real background from a wash painted under one. */
+    {
+        static int rows;
+        rows++;
+        if (rows <= 16 || (rows % 600) == 0) {
+            Menu *m = menuManager.CurrentMenu();
+            Com_Printf(
+                "[UI:bkgfill] n=%d menu='%s' full=%d state=%d rect=%gx%g\n", rows,
+                m ? m->m_name.c_str() : "(none)", (m && m->isFullscreen()) ? 1 : 0,
+                (int)cls.state, (float)uid.vidWidth, (float)uid.vidHeight);
+        }
+    }
+
     re.Set2DWindow(
         uid.originX,
         uid.surfaceHeight - uid.originY - uid.vidHeight,
