@@ -107,15 +107,32 @@ qboolean R_PendingRenderCommands( void )
 qboolean vk_frameOpen = qfalse;
 
 /* The list goes to the walk whole, from RE_EndFrame: a frame is one pass from
-   RC_VK_BEGIN to RC_VK_PRESENT, so a mid-frame flush is held until it ends. */
+   RC_VK_BEGIN to RC_VK_PRESENT, so a mid-frame flush is held until it ends.
+   The GL twin replays whatever a load-time flush finds, because GL draws outside
+   begin/end just land on the bound framebuffer.  Here a between-frames fragment
+   has no pass to land in and the slot's own submission may still be in flight,
+   so walking it would record into a live command buffer -- the sublevel hang.
+   It is dropped and named instead; the next frame redraws it. */
 void R_FlushRenderCommands( void )
 {
+	vkCommandList_t *list = RB_CommandList();
+	static int droppedRows;
+
 	if ( !tr.registered || vk_frameOpen || !R_PendingRenderCommands() ) {
 		return;
 	}
 
-	RB_ExecuteRenderCommands( RB_CommandList()->cmds );
-	RB_CommandList()->used = 0;
+	if ( droppedRows < 8 ) {
+		/* The opcode head names the recorder that drew outside the window, so the
+		   boot log identifies the leaker without a backtrace. */
+		int op0 = list->used >= (int)sizeof( int ) ? *( const int * )list->cmds : -1;
+		int op1 = list->used >= 16 ? *( const int * )( list->cmds + 8 ) : -1;
+		VK_Guard_Row( "VK:frame", "drop-fragment slot=%d bytes=%d f=%d op=%d,%d",
+					  RB_FrameSmpFrame(), list->used, RB_FrameCount(), op0, op1 );
+	}
+	droppedRows++;
+
+	list->used = 0;
 }
 
 void R_IssuePendingRenderCommands( void )
@@ -167,18 +184,38 @@ void RB_ExecuteRenderCommands( const void *data )
 {
 	const byte *cmds = ( const byte * )data;
 	int slot = rb_activeFrame ? rb_activeFrame->smpFrame : 0;
+	qboolean passOpen = qfalse;
+	qboolean inFrame = qfalse;
 
 	while ( 1 ) {
+		/* A draw that leaked out of the frame window sits ahead of the frame
+		   marker: RE_BeginFrame appends RC_VK_BEGIN after it.  Recording it would
+		   write into a command buffer nothing has begun, so the walk refuses the
+		   list rather than hand the driver an unbegun buffer.  An empty list just
+		   ends here. */
+		if ( !inFrame && *( const int * )cmds != RC_VK_BEGIN ) {
+			if ( *( const int * )cmds == RC_END_OF_LIST ) {
+				return;
+			}
+			VK_Guard_Row( "VK:frame", "walk-refuse head-op=%d slot=%d f=%d",
+						  *( const int * )cmds, slot, RB_FrameCount() );
+			goto abandoned;
+		}
+		if ( *( const int * )cmds == RC_VK_BEGIN ) {
+			inFrame = qtrue;
+		}
+
 		switch ( *( const int * )cmds ) {
 		case RC_VK_BEGIN:
 			cmds += PAD( sizeof( int ), sizeof( void * ) );
 			if ( !VK_Frame_Begin( slot ) ) {
-				return;
+				goto abandoned;
 			}
 			if ( !VK_Frame_Acquire( slot ) ) {
-				return;
+				goto abandoned;
 			}
 			VK_Frame_RecordBegin( slot );
+			passOpen = qtrue;
 			break;
 
 		case RC_2D_SET_WINDOW:
@@ -313,15 +350,18 @@ void RB_ExecuteRenderCommands( const void *data )
 			cmds += PAD( sizeof( int ), sizeof( void * ) );
 			RB_2D_Flush();
 			VK_Frame_RecordEnd( slot );
+			passOpen = qfalse;
 			if ( !VK_Frame_Submit( slot ) ) {
-				return;
+				goto abandoned;
 			}
 			if ( !VK_Frame_Present( slot ) ) {
-				return;
+				goto abandoned;
 			}
 			/* the presented image is the composited result: sampling it here is
 			   what separates "the dome drew" from "the dome is on screen" */
 			VK_Shade_ReadbackFrame( vk.acquiredImage );
+			/* Anything after the present belongs to the next pass, not this one. */
+			inFrame = qfalse;
 			break;
 
 		case RC_DRAW_SURFS:
@@ -334,8 +374,17 @@ void RB_ExecuteRenderCommands( const void *data )
 
 		case RC_END_OF_LIST:
 		default:
-			return;
+			goto abandoned;
 		}
+	}
+
+	/* RE_BeginFrame opens the pass and RE_EndFrame's PRESENT closes it.  Anything
+	   that ends the walk in between -- including a fragment a flush was handed --
+	   must close it here, or the fence stays reset and the next Begin on the slot
+	   waits forever. */
+abandoned:
+	if ( passOpen ) {
+		VK_Frame_Abandon( slot );
 	}
 }
 
