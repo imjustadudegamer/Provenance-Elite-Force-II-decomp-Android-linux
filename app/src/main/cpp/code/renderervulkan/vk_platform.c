@@ -453,6 +453,14 @@ void R_SetFullscreen( qboolean fullScreen, glconfig_t *vkConfigOut )
 	}
 
 	if ( vk.swapchain != VK_NULL_HANDLE ) {
+		/* This runs on the main thread, and the walk thread may be holding an
+		   acquired image from the swapchain about to be destroyed.  Park it and
+		   let the device drain before the recreate, or the destroy races an
+		   acquire and a present that are already in flight. */
+		if ( vk.smpActive && !VKimp_IsRenderThread() ) {
+			VKimp_FrontEndWaitIdle();
+		}
+		VK_Frame_WaitIdle();
 		VK_Swapchain_Recreate( width, height );
 	}
 }

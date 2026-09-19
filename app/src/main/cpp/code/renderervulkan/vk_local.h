@@ -99,6 +99,7 @@ typedef struct {
 	VkPresentModeKHR presentMode;
 	VkExtent2D extent;
 	uint32_t imageCount;
+	uint32_t minImageCount;
 	VkSurfaceTransformFlagBitsKHR preTransform;
 	VkCompositeAlphaFlagBitsKHR compositeAlpha;
 	VkImageUsageFlags usage;
@@ -125,6 +126,12 @@ typedef struct {
 	VkColorSpaceKHR swapchainColorSpace;
 	VkExtent2D swapchainExtent;
 	uint32_t swapchainImageCount;
+	/* The surface's own minimum, and how many images this process is holding
+	   between acquire and present.  Together they are VUID-07783's forward
+	   progress test, so the acquire timeout can be chosen from the spec's own
+	   predicate instead of guessed at. */
+	uint32_t swapchainMinImageCount;
+	int imagesHeld;
 	VkImage *swapchainImages;
 	VkImageView *swapchainViews;
 	VkPipelineCache pipelineCache;
@@ -236,7 +243,7 @@ qboolean VK_Frame_Acquire( int slot );
 void VK_Frame_RecordClear( int slot, const float rgba[4] );
 qboolean VK_Frame_RecordBegin( int slot );
 void VK_Frame_RecordEnd( int slot );
-void VK_Frame_Abandon( int slot );
+void VK_Frame_Retire( int slot );
 void VK_Frame_WaitIdle( void );
 qboolean VK_Frame_Submit( int slot );
 qboolean VK_Frame_Present( int slot );
@@ -258,6 +265,8 @@ void R_InitCommandBuffers( void );
 void R_ShutdownCommandBuffers( void );
 void R_SyncRenderThread( void );
 qboolean R_SmpActive( void );
+qboolean VKimp_RenderThreadAlive( void );
+int VKimp_ParkMsec( void );
 int RB_FrameSmpFrame( void );
 int RB_FrameCount( void );
 int RB_FrameBoneArena( void );
@@ -270,6 +279,16 @@ qboolean VKimp_MainOwnsFrame( void );
 qboolean VKimp_SpawnRenderThread( void ( *function )( void ) );
 void *VKimp_RendererSleep( void );
 void VKimp_FrontEndSleep( void );
+/* The slot a handed-off frame record refers to, so the handoff can claim it
+   under the mutex the front end's own wait reads. */
+int RB_FrameSlot( const void *frame );
+void RB_CommandListReset( void );
+int RB_WalkMsec( void );
+void VKimp_WalkBegin( int slot );
+void VKimp_WalkEnd( int slot );
+qboolean VKimp_SlotBusy( int slot );
+void VKimp_FrontEndWaitSlot( int slot );
+void VKimp_FrontEndWaitIdle( void );
 
 /* every blocking driver wait goes through these, so a hang names its wait */
 VkResult VK_Sync_WaitForFences( VkFence fence, VkBool32 waitAll, const char *site, const char *why );
