@@ -354,7 +354,7 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.commandPool;
+	allocInfo.commandPool = vk.uploadPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
@@ -454,7 +454,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
 		qvk.DestroyBuffer( vk.device, buffer, NULL );

@@ -159,9 +159,15 @@ void VKimp_WakeRenderer( void *data )
 {
 	SDL_LockMutex( vk_smpMutex );
 
-	if ( vk_smpData ) {
-		vk_handshakeViolations++;
-		VK_Guard_Hit( VK_GSITE_SYNC, "wake while a frame is still in flight", VK_ERROR_TOO_MANY_OBJECTS );
+	/* A frame the render thread has picked up but not finished is normal; a
+	   frame it has not picked up yet is the only reason a wake would be
+	   illegal, and turning the front end away is a deadlock by construction
+	   whenever the render thread is slower than one frame -- the front end has
+	   nothing else to do but offer the next frame and be refused forever.
+	   Wait for the handoff slot instead, so a wake is always legal when the
+	   render thread is free to take one. */
+	while ( vk_smpData != NULL ) {
+		SDL_CondWait( vk_renderCompletedEvent, vk_smpMutex );
 	}
 
 	vk_smpData = data;

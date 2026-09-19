@@ -158,7 +158,7 @@ void VK_Texture_Shutdown( void )
 		return;
 	}
 
-	if ( vk.commandPool != VK_NULL_HANDLE && qvk.DeviceWaitIdle ) {
+	if ( vk.uploadPool != VK_NULL_HANDLE && qvk.DeviceWaitIdle ) {
 		VK_Guard_Result( VK_GSITE_SYNC, VK_Sync_DeviceWaitIdle( "texture-shutdown", "texture-shutdown" ),
 						 "vkDeviceWaitIdle(textures)" );
 	}
@@ -395,7 +395,7 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.commandPool;
+	allocInfo.commandPool = vk.uploadPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
@@ -489,7 +489,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( staging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
 		qvk.DestroyBuffer( vk.device, staging, NULL );
@@ -526,7 +526,7 @@ qboolean VK_Texture_Publish( int handle )
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.commandPool;
+	allocInfo.commandPool = vk.uploadPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
@@ -590,7 +590,7 @@ qboolean VK_Texture_Publish( int handle )
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 
 	return qtrue;
@@ -635,7 +635,7 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.commandPool;
+	allocInfo.commandPool = vk.uploadPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
@@ -701,7 +701,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( mapped ) {
 		qvk.UnmapMemory( vk.device, memory );
@@ -741,7 +741,7 @@ void VK_Texture_MakeMips( int handle )
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.commandPool;
+	allocInfo.commandPool = vk.uploadPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
@@ -939,7 +939,7 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.commandPool;
+	allocInfo.commandPool = vk.uploadPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
@@ -1037,7 +1037,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.commandPool, 1, &cmd );
+		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
 		qvk.DestroyBuffer( vk.device, buffer, NULL );
