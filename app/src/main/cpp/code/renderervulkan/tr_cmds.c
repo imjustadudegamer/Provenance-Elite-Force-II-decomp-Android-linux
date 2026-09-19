@@ -69,12 +69,41 @@ static rbFrame_t		rb_frames[SMP_FRAMES];
 static rbFrame_t		*rb_activeFrame = NULL;
 static int				rb_frameCount = 0;
 static int				rb_issueRows = 0;
+static qboolean			rb_inlineFallback;
+
+/* Walk time, accumulated by whichever thread walked.  backEnd.backEndMsec was
+   only ever zeroed and read, so the fps row's be= was always 0 and a decline
+   could not be attributed to the back end at all.  Written on the walk thread
+   and drained by the front end once per row, which is a benign race for a
+   diagnostic that reports a five second window. */
+static volatile int		rb_walkMsec;
 
 cvar_t *r_smp;
+
+int RB_WalkMsec( void )
+{
+	int msec = rb_walkMsec;
+
+	rb_walkMsec = 0;
+
+	return msec;
+}
 
 static vkCommandList_t *RB_CommandList( void )
 {
 	return rb_commandLists[tr.smpFrame];
+}
+
+/* The front end's write position on the slot it is about to fill.  Only the
+   front end calls this, and only once it owns the slot, so the two writers of
+   used never overlap. */
+void RB_CommandListReset( void )
+{
+	vkCommandList_t *list = RB_CommandList();
+
+	if ( list ) {
+		list->used = 0;
+	}
 }
 
 int RB_FrameSmpFrame( void )
@@ -85,6 +114,11 @@ int RB_FrameSmpFrame( void )
 int RB_FrameCount( void )
 {
 	return rb_activeFrame ? rb_activeFrame->frameCount : rb_frameCount;
+}
+
+int RB_FrameSlot( const void *frame )
+{
+	return frame ? ( ( const rbFrame_t * )frame )->smpFrame : -1;
 }
 
 int RB_FrameBoneArena( void )
@@ -215,7 +249,9 @@ void RB_ExecuteRenderCommands( const void *data )
 				goto abandoned;
 			}
 			RB_FrameOpen( slot );
-			VK_Frame_RecordBegin( slot );
+			if ( !VK_Frame_RecordBegin( slot ) ) {
+				goto abandoned;
+			}
 			passOpen = qtrue;
 			break;
 
@@ -381,11 +417,11 @@ void RB_ExecuteRenderCommands( const void *data )
 
 	/* RE_BeginFrame opens the pass and RE_EndFrame's PRESENT closes it.  Anything
 	   that ends the walk in between -- including a fragment a flush was handed --
-	   must close it here, or the fence stays reset and the next Begin on the slot
-	   waits forever. */
+	   retires here: the pass is closed and the acquired image is submitted and
+	   presented back, so no walk path can hold a swapchain image. */
 abandoned:
 	if ( passOpen ) {
-		VK_Frame_Abandon( slot );
+		VK_Frame_Retire( slot );
 	}
 }
 
@@ -397,22 +433,33 @@ void RB_RenderThread( void )
 
 	while ( data != NULL ) {
 		rbFrame_t *frame = (rbFrame_t *)data;
+		int			walkStart;
+
+		/* The walk thread's own milestones.  A boot that stops with the front end
+		   parked on the handoff and no rows here says the thread never walked;
+		   these say how far it got before it stopped. */
+		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
+			VK_Guard_Row( "VK:smp", "walk-start f=%d slot=%d", rb_frameCount + 1, frame->smpFrame );
+		}
 
 		rb_activeFrame = frame;
+		/* Claimed in the handoff, so the front end cannot be writing this list
+		   while it is read.  The clear stays inside the claim because used is
+		   the front end's write position: clearing it after releasing the slot
+		   would clobber a frame the front end had already started. */
+		VKimp_WalkBegin( frame->smpFrame );
+		walkStart = ri.Milliseconds();
 		if ( frame->list ) {
 			RB_ExecuteRenderCommands( frame->list->cmds );
-			/* The inline path clears the list it walked; the threaded path has to
-			   as well, or the front end appends after frame N's bytes and the next
-			   walk of this list starts at offset 0 on frame N's stale commands. */
 			frame->list->used = 0;
 		}
+		rb_walkMsec += ri.Milliseconds() - walkStart;
 		frame->backEndMsec = 0;
 		rb_activeFrame = NULL;
+		VKimp_WalkEnd( frame->smpFrame );
 
 		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:smp", "side=render slot=%d arena=%d violations=%d frames=%d",
-						  frame->smpFrame, frame->boneArena,
-						  VKimp_HandshakeViolations(), rb_frameCount );
+			VK_Guard_Row( "VK:smp", "walk-done f=%d slot=%d", rb_frameCount, frame->smpFrame );
 		}
 
 		rb_issueRows++;
@@ -424,6 +471,7 @@ void RB_RenderThread( void )
 void R_IssueRenderCommands( void )
 {
 	rbFrame_t *frame;
+	int			walkStart;
 	vkCommandList_t *list = RB_CommandList();
 
 	if ( list ) {
@@ -445,16 +493,38 @@ void R_IssueRenderCommands( void )
 	frame->backEndMsec = 0;
 
 	if ( vk.smpActive && !VKimp_IsRenderThread() ) {
+		if ( !VKimp_RenderThreadAlive() ) {
+			/* The walk thread is gone.  Handing off would park on a handoff
+			   nothing will ever drain, so this frame walks inline and the boot
+			   names the fallback once. */
+			if ( !rb_inlineFallback ) {
+				rb_inlineFallback = qtrue;
+				VK_Guard_Row( "VK:smp", "walk-thread-gone frames=%d walking-inline", rb_frameCount );
+			}
+			rb_activeFrame = frame;
+			walkStart = ri.Milliseconds();
+			if ( list ) {
+				RB_ExecuteRenderCommands( list->cmds );
+				list->used = 0;
+			}
+			rb_walkMsec += ri.Milliseconds() - walkStart;
+			rb_activeFrame = NULL;
+			vk.frameSlot = ( vk.frameSlot + 1 ) % SMP_FRAMES;
+			return;
+		}
+
 		VKimp_WakeRenderer( frame );
 		vk.frameSlot = ( vk.frameSlot + 1 ) % SMP_FRAMES;
 		return;
 	}
 
 	rb_activeFrame = frame;
+	walkStart = ri.Milliseconds();
 	if ( list ) {
 		RB_ExecuteRenderCommands( list->cmds );
 		list->used = 0;
 	}
+	rb_walkMsec += ri.Milliseconds() - walkStart;
 	rb_activeFrame = NULL;
 
 	if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {

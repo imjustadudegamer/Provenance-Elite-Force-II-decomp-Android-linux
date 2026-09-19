@@ -166,6 +166,7 @@ qboolean VK_Swapchain_Plan( vkSwapchainPlan_t *plan, int windowWidth, int window
 	}
 
 	plan->imageCount = caps.minImageCount + 1;
+	plan->minImageCount = caps.minImageCount;
 	if ( caps.maxImageCount > 0 && plan->imageCount > caps.maxImageCount ) {
 		plan->imageCount = caps.maxImageCount;
 	}
@@ -258,6 +259,11 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 		vk.swapchain = VK_NULL_HANDLE;
 		return qfalse;
 	}
+
+	/* A new swapchain owns no held images and carries the surface's own minimum,
+	   which is the other half of the acquire's forward-progress test. */
+	vk.swapchainMinImageCount = plan->minImageCount;
+	vk.imagesHeld = 0;
 
 	vk.swapchainImages = (VkImage *)malloc( sizeof( VkImage ) * vk.swapchainImageCount );
 	vk.swapchainViews = (VkImageView *)calloc( vk.swapchainImageCount, sizeof( VkImageView ) );

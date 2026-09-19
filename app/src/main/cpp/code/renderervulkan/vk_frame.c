@@ -122,6 +122,7 @@ qboolean VK_Frame_Init( void )
 	vk.acquired = qfalse;
 	vk.acquiredImage = 0;
 	vk.lastPresentedImage = 0;
+	vk.imagesHeld = 0;
 
 	VK_Guard_Row( "VK:frame", "ready slots=%d images=%u", frames, vk.swapchainImageCount );
 
@@ -166,6 +167,7 @@ void VK_Frame_Shutdown( void )
 
 	vk.frameReady = qfalse;
 	vk.acquired = qfalse;
+	vk.imagesHeld = 0;
 	memset( vk.fencePending, 0, sizeof( vk.fencePending ) );
 	memset( vk.fenceRetired, 0, sizeof( vk.fenceRetired ) );
 	vk.passOpen = qfalse;
@@ -220,6 +222,64 @@ qboolean VK_Frame_Begin( int slot )
 	return qtrue;
 }
 
+/* Generous but finite, and only ever used in the state that needs it.  ~6
+   display periods: long enough that a momentarily stalled compositor is not
+   mistaken for a starved swapchain, short enough that the walk comes back. */
+#define VK_ACQUIRE_TIMEOUT_NS	100000000ULL
+
+/* VUID-07783 is conditional, not blanket: the timeout must not be UINT64_MAX
+   when forward progress cannot be guaranteed.  Forward progress is exactly
+   "every acquired image comes back", and the back end knows whether it does,
+   because it counts them.  Below the limit the acquire blocks indefinitely,
+   which is the Khronos samples' shape and what Android drivers want -- Adreno
+   refuses finite timeouts here and turns them into a per-frame warning with
+   ragged pacing.  At or past the limit this boot held all 4 images, so
+   blocking indefinitely is the wedge itself, and the finite timeout turns it
+   into a skipped frame while retire hands the images back. */
+static uint64_t VK_Frame_AcquireTimeout( void )
+{
+	uint32_t spare = vk.swapchainImageCount;
+
+	if ( vk.swapchainMinImageCount > 0 && vk.swapchainMinImageCount < spare ) {
+		spare -= vk.swapchainMinImageCount;
+	} else {
+		spare = 0;
+	}
+
+	if ( vk.imagesHeld > (int)spare ) {
+		return VK_ACQUIRE_TIMEOUT_NS;
+	}
+
+	return UINT64_MAX;
+}
+
+static VkResult VK_Frame_AcquireOnce( int slot )
+{
+	VkResult result;
+	uint64_t timeout = VK_Frame_AcquireTimeout();
+
+	result = qvk.AcquireNextImageKHR( vk.device, vk.swapchain, timeout,
+									  vk.acquireSemaphores[slot], VK_NULL_HANDLE, &vk.acquiredImage );
+
+	if ( result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ) {
+		VK_Guard_Hit( result == VK_ERROR_OUT_OF_DATE_KHR ? VK_GSITE_SWAPCHAIN_OUT_OF_DATE
+														 : VK_GSITE_SWAPCHAIN_SUBOPTIMAL,
+					  "acquire", result );
+
+		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+			return result;
+		}
+		if ( !VK_Target_Recreate() ) {
+			return result;
+		}
+
+		result = qvk.AcquireNextImageKHR( vk.device, vk.swapchain, VK_Frame_AcquireTimeout(),
+										  vk.acquireSemaphores[slot], VK_NULL_HANDLE, &vk.acquiredImage );
+	}
+
+	return result;
+}
+
 qboolean VK_Frame_Acquire( int slot )
 {
 	VkResult result;
@@ -232,27 +292,22 @@ qboolean VK_Frame_Acquire( int slot )
 		return qtrue;
 	}
 
-	result = qvk.AcquireNextImageKHR( vk.device, vk.swapchain, UINT64_MAX,
-									  vk.acquireSemaphores[slot], VK_NULL_HANDLE, &vk.acquiredImage );
-
-	if ( result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ) {
-		VK_Guard_Hit( result == VK_ERROR_OUT_OF_DATE_KHR ? VK_GSITE_SWAPCHAIN_OUT_OF_DATE
-														 : VK_GSITE_SWAPCHAIN_SUBOPTIMAL,
-					  "acquire", result );
-
-		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
-			return qfalse;
-		}
-		if ( !VK_Target_Recreate() ) {
-			return qfalse;
-		}
-
-		result = qvk.AcquireNextImageKHR( vk.device, vk.swapchain, UINT64_MAX,
-										  vk.acquireSemaphores[slot], VK_NULL_HANDLE, &vk.acquiredImage );
-	}
+	result = VK_Frame_AcquireOnce( slot );
 
 	if ( result == VK_ERROR_SURFACE_LOST_KHR ) {
 		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_LOST, "acquire", result );
+		return qfalse;
+	}
+
+	/* Nothing was acquired: the spec leaves the semaphore and the fence
+	   untouched, so this slot is clean for the next walk and no image is owed
+	   back.  Skipping the frame is the whole point of the finite timeout -- the
+	   next walk retries from a state that has an image to take. */
+	if ( result == VK_TIMEOUT || result == VK_NOT_READY ) {
+		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) ) {
+			VK_Guard_Row( "VK:frame", "acquire-empty slot=%d %s f=%d", slot,
+						  VK_Guard_ResultName( result ), RB_FrameCount() );
+		}
 		return qfalse;
 	}
 
@@ -260,6 +315,10 @@ qboolean VK_Frame_Acquire( int slot )
 		return qfalse;
 	}
 
+	/* The count the next acquire's timeout decision reads.  Nothing else in the
+	   back end may hold an image, so acquire is the only increment and present
+	   is the only decrement. */
+	vk.imagesHeld++;
 	vk.acquired = qtrue;
 
 	return qtrue;
@@ -276,12 +335,16 @@ qboolean VK_Frame_RecordBegin( int slot )
 	VkRenderPassBeginInfo beginInfo;
 	VkRect2D renderArea;
 
-	vk.passOpen = qtrue;
-
 	if ( vk.acquiredImage >= vk.framebufferCount ) {
 		VK_Guard_Hit( VK_GSITE_SYNC, "acquired image out of range", VK_ERROR_TOO_MANY_OBJECTS );
 		return qfalse;
 	}
+
+	/* passOpen has to mean "a render pass is recording", so it is set here and
+	   not on entry.  Set on entry, a failed begin left the walk holding a flag
+	   that said a pass was open while the command buffer had none, and the
+	   retire then ended a buffer that was never begun. */
+	vk.passOpen = qtrue;
 
 	memset( clearValues, 0, sizeof( clearValues ) );
 	clearValues[0].color.float32[0] = vk.clearColor[0];
@@ -351,6 +414,10 @@ void VK_Frame_RecordEnd( int slot )
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE ) {
 		RB_2D_Flush();
 		qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
+		/* Ending the buffer belongs with ending the pass, so the present path and
+		   the retire path both leave the command buffer in the same state: ended
+		   once, ready to submit. */
+		qvk.EndCommandBuffer( vk.commandBuffers[slot] );
 	}
 
 	vk.passOpen = qfalse;
@@ -359,23 +426,46 @@ void VK_Frame_RecordEnd( int slot )
 
 /* A walk that opened the pass and then left without PRESENT used to leave the
    fence reset and the command buffer recording: the next Begin on that slot was
-   the wait that never returned.  The pool is created with RESET_COMMAND_BUFFER,
-   so ending here makes the buffer re-recordable and the fence stays retired. */
-void VK_Frame_Abandon( int slot )
+   the wait that never returned.  Worse, it kept the acquired image.  The
+   20261014 boot held 2 images from the menu onward and climbed to all 4 by
+   shutdown, each one an abandoned walk that never handed its image back, and the
+   last acquire then had nothing left to take.
+
+   The pass and the image are the back end's, so closing them is the back end's
+   job on every exit.  Retire ends the pass -- finalLayout is PRESENT_SRC, so the
+   image is presentable the instant the pass ends -- submits what was recorded,
+   which also re-arms the fence so the next Begin on this slot waits on a real
+   submission again, and presents, which is the only way the presentation engine
+   ever gets an image back.  Acquire and present are therefore paired by
+   construction rather than by convention: every RC_VK_BEGIN acquires, and both
+   exits from the pass, the PRESENT marker and this retire, hand the image back.
+
+   The contents are whatever the walk managed to record, so a retired frame can
+   show a partial image.  That is the correct cost of a walk that died early; the
+   alternative was holding the image until the swapchain wedged.  Only a submit
+   the queue refused still leaves an image held, and that is a device failure the
+   guard names rather than a path this function can repair. */
+void VK_Frame_Retire( int slot )
 {
 	if ( !vk.passOpen ) {
 		return;
 	}
 
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE && qvk.EndCommandBuffer ) {
-		VK_Guard_Row( "VK:frame", "abandon-pass slot=%d f=%d", slot, RB_FrameCount() );
+		VK_Guard_Row( "VK:frame", "retire-pass slot=%d f=%d", slot, RB_FrameCount() );
 		RB_2D_Flush();
+		if ( qvk.CmdEndRenderPass ) {
+			qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
+		}
+		vk_back_end_slot = -1;
 		qvk.EndCommandBuffer( vk.commandBuffers[slot] );
 	}
 
 	vk.passOpen = qfalse;
-	vk.acquired = qfalse;
-	vk_back_end_slot = -1;
+
+	if ( VK_Frame_Submit( slot ) ) {
+		VK_Frame_Present( slot );
+	}
 }
 
 /* The load tears down every image, shader and descriptor the last frames drew
@@ -415,12 +505,9 @@ qboolean VK_Frame_Submit( int slot )
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkResult result;
 
+	/* The command buffer was ended by RecordEnd or Retire, whichever closed the
+	   pass; this only hands it to the queue. */
 	if ( !vk.frameReady ) {
-		return qfalse;
-	}
-
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( vk.commandBuffers[slot] ),
-						   "vkEndCommandBuffer" ) ) {
 		return qfalse;
 	}
 
@@ -465,10 +552,18 @@ qboolean VK_Frame_Present( int slot )
 
 	result = qvk.QueuePresentKHR( vk.presentQueue, &presentInfo );
 
+	/* SUBOPTIMAL means the image went to the presentation engine, so it is back
+	   in the pool and the held count drops.  OUT_OF_DATE means it may not have,
+	   but the swapchain is destroyed by the recreate below, which retires every
+	   image it owned and resets the count to zero. */
 	if ( result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ) {
 		VK_Guard_Hit( result == VK_ERROR_OUT_OF_DATE_KHR ? VK_GSITE_SWAPCHAIN_OUT_OF_DATE
 														 : VK_GSITE_SWAPCHAIN_SUBOPTIMAL,
 					  "present", result );
+
+		if ( result == VK_SUBOPTIMAL_KHR && vk.imagesHeld > 0 ) {
+			vk.imagesHeld--;
+		}
 
 		if ( VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
 			VK_Target_Recreate();
@@ -493,6 +588,11 @@ qboolean VK_Frame_Present( int slot )
 	   acquire, which has never been rendered to. */
 	vk.lastPresentedImage = vk.acquiredImage;
 	vk.acquired = qfalse;
+
+	/* Handed back, so the presentation engine owns it again. */
+	if ( vk.imagesHeld > 0 ) {
+		vk.imagesHeld--;
+	}
 
 	return qtrue;
 }

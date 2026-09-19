@@ -544,6 +544,21 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 	(void)stereoFrame;
 
+	/* The front end is about to fill this slot's list, so it has to be the only
+	   writer of it.  Two frames in flight means the front end comes back to a
+	   slot while the walk thread may still be reading the frame before last, and
+	   both the byte offsets and the prologue position follow from that.  Waiting
+	   here is the ring's own back pressure, not a serialization: the walk is
+	   already one frame behind, and the front end keeps a full frame of work
+	   queued ahead of it. */
+	if ( vk.smpActive && !VKimp_IsRenderThread() ) {
+		VKimp_FrontEndWaitSlot( tr.smpFrame );
+	}
+
+	/* The slot is owned, so the write position starts at the front of the list
+	   instead of after whatever the last walk of it left behind. */
+	RB_CommandListReset();
+
 	vk_frameOpen = qtrue;
 
 	/* The frame's list opens with the pass marker: the walk acquires, opens the
@@ -587,7 +602,9 @@ void VK_PerfFpsRow( void )
 
 	frames++;
 	feUsec += tr.frontEndMsec * 1000;
-	beUsec += backEnd.backEndMsec * 1000;
+	/* The walk owns its own time and drains it here, so be= is real under both
+	   r_smp values instead of always 0. */
+	beUsec += RB_WalkMsec() * 1000;
 
 	now = ri.Milliseconds();
 	if ( !t0 ) {
@@ -609,10 +626,10 @@ void VK_PerfFpsRow( void )
 	}
 
 	ri.Printf( PRINT_ALL,
-			   "[PERF:fps] t=%ds fps=%d drift=%+d%% base=%d fe=%lldms be=%lldms frames=%d smp=%d\n",
+			   "[PERF:fps] t=%ds fps=%d drift=%+d%% base=%d fe=%lldms be=%lldms park=%dms frames=%d smp=%d\n",
 			   ( int )( ( now - t0 ) / 1000 ), winFps,
 			   baseFps ? ( ( winFps - baseFps ) * 100 / baseFps ) : 0, baseFps,
-			   fe, be, frames, vk.smpActive ? 1 : 0 );
+			   fe, be, VKimp_ParkMsec(), frames, vk.smpActive ? 1 : 0 );
 
 	frames = 0;
 	feUsec = 0;
