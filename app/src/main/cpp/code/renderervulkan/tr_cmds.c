@@ -214,6 +214,7 @@ void RB_ExecuteRenderCommands( const void *data )
 			if ( !VK_Frame_Acquire( slot ) ) {
 				goto abandoned;
 			}
+			RB_FrameOpen( slot );
 			VK_Frame_RecordBegin( slot );
 			passOpen = qtrue;
 			break;
@@ -398,7 +399,13 @@ void RB_RenderThread( void )
 		rbFrame_t *frame = (rbFrame_t *)data;
 
 		rb_activeFrame = frame;
-		RB_ExecuteRenderCommands( frame->list->cmds );
+		if ( frame->list ) {
+			RB_ExecuteRenderCommands( frame->list->cmds );
+			/* The inline path clears the list it walked; the threaded path has to
+			   as well, or the front end appends after frame N's bytes and the next
+			   walk of this list starts at offset 0 on frame N's stale commands. */
+			frame->list->used = 0;
+		}
 		frame->backEndMsec = 0;
 		rb_activeFrame = NULL;
 
@@ -462,7 +469,7 @@ void R_InitCommandBuffers( void )
 {
 	int i;
 
-	r_smp = ri.Cvar_Get( "r_smp", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_smp = ri.Cvar_Get( "r_smp", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	vk.smpActive = r_smp->integer ? qtrue : qfalse;
 	vk.frameSlot = 0;
 
