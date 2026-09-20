@@ -64,6 +64,7 @@ qboolean VK_Frame_Init( void )
 	memset( vk.fencePending, 0, sizeof( vk.fencePending ) );
 	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
 		vk.fencePending[i] = qtrue;
+		vk.fenceRetired[i] = qfalse;
 	}
 	vk.passOpen = qfalse;
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -156,6 +157,7 @@ void VK_Frame_Shutdown( void )
 	vk.frameReady = qfalse;
 	vk.acquired = qfalse;
 	memset( vk.fencePending, 0, sizeof( vk.fencePending ) );
+	memset( vk.fenceRetired, 0, sizeof( vk.fenceRetired ) );
 	vk.passOpen = qfalse;
 }
 
@@ -170,9 +172,13 @@ qboolean VK_Frame_Begin( int slot )
 
 	/* UINT64_MAX is only survivable when a submission is actually owed.  An
 	   abandoned pass leaves the fence reset with nothing in flight, and the
-	   next Begin on that slot is the wait that never returns. */
+	   next Begin on that slot is the wait that never returns.  A slot the
+	   quiesce just retired also owes nothing, and that is the expected case --
+	   two rows a registration is noise, so only an unexplained skip is named. */
 	if ( !vk.fencePending[slot] ) {
-		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) ) {
+		if ( vk.fenceRetired[slot] ) {
+			vk.fenceRetired[slot] = qfalse;
+		} else if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) ) {
 			VK_Guard_Row( "VK:frame", "begin-without-submit slot=%d f=%d", slot, RB_FrameCount() );
 		}
 	} else {
@@ -385,6 +391,7 @@ void VK_Frame_WaitIdle( void )
 			return;
 		}
 		vk.fencePending[i] = qfalse;
+		vk.fenceRetired[i] = qtrue;
 	}
 
 	if ( qvk.QueueWaitIdle ) {
