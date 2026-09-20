@@ -2667,7 +2667,7 @@ void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs );
 void R_IssuePendingRenderCommands( void );
 void *R_GetCommandBufferReserved( int bytes, int reservedBytes );
 void RB_InitBackend( void );
-void RB_RecordFramePrologue( void );
+void RB_FrameOpen( int slot );
 qboolean RB_RecordSurfaces( VkCommandBuffer cmd );
 void RB_FramePrologue( void );
 

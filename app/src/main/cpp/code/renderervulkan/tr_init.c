@@ -546,10 +546,9 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 	vk_frameOpen = qtrue;
 
-	/* The frame's list opens with the pass marker: the walk acquires, opens
-	   the pass and clears, then performs what the frame recorded. */
-	RB_RecordFramePrologue();
-
+	/* The frame's list opens with the pass marker: the walk acquires, opens the
+	   pass and clears, then performs what the frame recorded.  The back end
+	   resets its own state there -- see RB_FrameOpen. */
 	cmd = ( int * )R_GetCommandBuffer( sizeof( *cmd ) );
 	if ( cmd ) {
 		*cmd = RC_VK_BEGIN;
@@ -562,10 +561,9 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 {
 	int *cmd;
 
-	/* The 2D batch the UI left open belongs to this frame; closing it before
-	   the present marker keeps the last quad in the right frame. */
-	RB_2D_Flush();
-
+	/* The back end owns the open 2D batch and closes it at the present marker,
+	   in its own walk.  Flushing it here reached into tess and the batch state
+	   from the front end while the render thread was walking them. */
 	cmd = ( int * )R_GetCommandBuffer( sizeof( *cmd ) );
 	if ( cmd ) {
 		*cmd = RC_VK_PRESENT;

@@ -2025,8 +2025,10 @@ void VK_Shade_Descriptors_Shutdown( void )
 
 int VK_Shade_CommandBufferSlot( void )
 {
-	/* The slot the walk opened the pass on: tr.smpFrame, like every per-frame resource. */
-	return tr.smpFrame;
+	/* The slot the walk opened the pass on, which under r_smp 1 is the frame the
+	   render thread is walking, not the frame the front end is already recording:
+	   tr.smpFrame has flipped to the next frame by then. */
+	return RB_FrameSmpFrame();
 }
 
 VkCommandBuffer VK_Shade_CommandBuffer( void )
@@ -3713,7 +3715,7 @@ void VK_Shade_NewFrame( void )
 	/* the front end wrote this frame's uniforms; the first draw uploads them into a fresh ring */
 	s_uboDirty = qtrue;
 
-	slot = tr.smpFrame;
+	slot = RB_FrameSmpFrame();
 	if ( slot >= 0 && slot < VK_FRAMES_IN_FLIGHT ) {
 		vk_shadeUboNext[slot] = 0;
 	}

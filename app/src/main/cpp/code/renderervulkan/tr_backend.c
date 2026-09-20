@@ -261,9 +261,13 @@ void rb_set_slot( int slot )
 	s_rbSlot = slot;
 }
 
-void RB_RecordFramePrologue( void )
+/* The frame's back-end state is reset where the frame is walked, not where it
+   is recorded.  RE_BeginFrame used to do this on the front end, which with
+   r_smp 1 rewrote the ring, the shade census and the 2D window cache while the
+   render thread was still walking the previous frame through them. */
+void RB_FrameOpen( int slot )
 {
-	VK_VertexRing_SetFrame( tr.smpFrame );	/* the ring this frame fills */
+	VK_VertexRing_SetFrame( slot );	/* the ring this frame fills */
 	VK_VertexRing_ResetFrame();
 	VK_Shade_NewFrame();
 	s_rbSlot = -1;
