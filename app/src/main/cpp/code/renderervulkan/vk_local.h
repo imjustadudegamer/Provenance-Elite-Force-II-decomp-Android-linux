@@ -163,6 +163,8 @@ typedef struct {
 	   a walk that opens a pass and never reaches PRESENT leaves the fence reset,
 	   and waiting on that reset fence forever is the sublevel-transition hang. */
 	qboolean fencePending[VK_FRAMES_IN_FLIGHT];
+	/* Set by the quiesce: the slot owes nothing for a reason the log need not name. */
+	qboolean fenceRetired[VK_FRAMES_IN_FLIGHT];
 	/* The pass RC_VK_BEGIN opened, so a walk that dies before PRESENT can close it. */
 	qboolean passOpen;
 	VkSemaphore acquireSemaphores[VK_FRAMES_IN_FLIGHT];
