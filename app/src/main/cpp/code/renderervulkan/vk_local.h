@@ -296,6 +296,12 @@ VkResult VK_Sync_DeviceWaitIdle( const char *site, const char *why );
 void VKimp_WakeRenderer( void *data );
 void VKimp_ShutdownRenderThread( void );
 int VKimp_HandshakeViolations( void );
+/* Every queue touch the port makes, under one lock.  VkQueue is host
+   synchronised and r_smp reaches it from two threads. */
+VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
+						  const VkSubmitInfo *submits, VkFence fence );
+VkResult VK_Queue_Present( VkQueue queue, const VkPresentInfoKHR *present );
+VkResult VK_Queue_WaitIdle( VkQueue queue );
 
 void VKimp_AdapterInit( void );
 void VKimp_Shutdown( void );
