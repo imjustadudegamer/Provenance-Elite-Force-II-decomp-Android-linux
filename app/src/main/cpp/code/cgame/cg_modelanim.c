@@ -291,6 +291,35 @@ static void CG_RunModelAnimation(
             state->base.frame    = framenum;
         }
 
+        /* The too-fast report needed a clock to read.  framenum is derived from
+           cg.time, so if animation runs ahead this row names which side moved:
+           tpf is the per-frame time the anim declares, cgt is the client clock
+           and dt is the real milliseconds since this entity last emitted.  A
+           frame advance that outruns dt/tpf is the counter-driven case, and the
+           same boot at a different frame rate answers it. */
+        if (PROBE_On()) {
+            static int  s_clockEnt = -1;
+            static int  s_lastTime;
+            static int  s_rows;
+            static int  s_lastFrame;
+
+            if (s_clockEnt != s->number) {
+                s_clockEnt = s->number;
+                s_lastTime = cg.time;
+                s_lastFrame = state->base.frame;
+            } else if (++s_rows % 120 == 0) {
+                Com_Printf(
+                    "[ANIM:clock] ent=%d anim=%d frame=%d oldframe=%d tpf=%.2f cgt=%d "
+                    "dt=%d advanced=%d expect=%.2f\n",
+                    s->number, state->base.anim & ANIM_MASK, state->base.frame,
+                    state->base.oldframe, state->time_per_frame, cg.time,
+                    cg.time - s_lastTime, state->base.frame - s_lastFrame,
+                    (float)(cg.time - s_lastTime) / state->time_per_frame);
+                s_lastTime  = cg.time;
+                s_lastFrame = state->base.frame;
+            }
+        }
+
         // 0x34854. Recomputed every frame, not only on advance. Clamped below at 0 and
         state->base.framelerp =
             1.0f

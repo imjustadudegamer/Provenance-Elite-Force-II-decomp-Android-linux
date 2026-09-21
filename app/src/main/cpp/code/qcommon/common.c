@@ -2593,6 +2593,9 @@ void Com_Frame( void ) {
 	int		timeAfter;
 
 	int		smpFrameStart, smpSpinStart, smpAfterSpin, smpBeforeServer, smpAfterServer, smpClientStart, smpFrameEnd;
+	/* the main-thread frame split: server against everything after it */
+	static int s_splitT0, s_splitFrames, s_splitSv, s_splitRest;
+	int        s_splitRestT0, s_splitNow;
 
 	int		ui_cfgUsec = 0, ui_vlogUsec = 0, ui_fnumUsec = 0;
 	int		ui_evUsec = 0, ui_spinIters = 0;
@@ -2768,6 +2771,11 @@ void Com_Frame( void ) {
 
 	smpAfterServer = Sys_Milliseconds();
 
+	s_splitFrames++;
+	s_splitSv += smpAfterServer - smpBeforeServer;
+
+	s_splitRestT0 = Sys_Milliseconds();
+
 	if ( com_dedicated->modified ) {
 		Cvar_Get( "dedicated", "0", 0 );
 		com_dedicated->modified = qfalse;
@@ -2806,6 +2814,25 @@ void Com_Frame( void ) {
 
 	smpFrameEnd = Sys_Milliseconds();
 
+	/* The fps row names the renderer's two sides and never parks the front end,
+	   which left most of the frame unaccounted for.  This is the rest of it: the
+	   server and everything the main thread does after it -- events, command
+	   buffer, client -- against the whole frame, so the cost centre the 1000 fps
+	   target has to attack is named instead of inferred. */
+	s_splitNow = Sys_Milliseconds();
+	s_splitRest += s_splitNow - s_splitRestT0;
+	if ( !s_splitT0 ) {
+		s_splitT0 = s_splitNow;
+	} else if ( s_splitNow - s_splitT0 >= 1000 ) {
+		Com_Printf(
+			"[PERF:frame] win=%dms frames=%d sv=%dms rest=%dms\n",
+			s_splitNow - s_splitT0, s_splitFrames, s_splitSv, s_splitRest );
+		s_splitSv = 0;
+		s_splitRest = 0;
+		s_splitFrames = 0;
+		s_splitT0 = s_splitNow;
+	}
+
 	if ( com_speeds->integer ) {
 		timeAfter = Sys_Milliseconds ();
 	}
@@ -2818,6 +2845,25 @@ void Com_Frame( void ) {
 	smpClientStart = smpAfterServer;
 	smpFrameEnd = Sys_Milliseconds();
 #endif
+
+	/* The fps row names the renderer's two sides and never parks the front end,
+	   which left most of the frame unaccounted for.  This is the rest of it: the
+	   server against everything the main thread does after it -- events, command
+	   buffer, client -- so the cost centre the 1000 fps target has to attack is
+	   named instead of inferred. */
+	s_splitNow = Sys_Milliseconds();
+	s_splitRest += s_splitNow - s_splitRestT0;
+	if ( !s_splitT0 ) {
+		s_splitT0 = s_splitNow;
+	} else if ( s_splitNow - s_splitT0 >= 1000 ) {
+		Com_Printf(
+			"[PERF:frame] win=%dms frames=%d sv=%dms rest=%dms\n",
+			s_splitNow - s_splitT0, s_splitFrames, s_splitSv, s_splitRest );
+		s_splitSv = 0;
+		s_splitRest = 0;
+		s_splitFrames = 0;
+		s_splitT0 = s_splitNow;
+	}
 
 
 	if ( com_speeds->integer ) {
