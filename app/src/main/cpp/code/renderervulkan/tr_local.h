@@ -2416,6 +2416,7 @@ int			RE_GetRegistrationSequence( void );
 qhandle_t	RE_ReplaceShader( const char *name, const char *text );	 
 void RE_BeginFrame( stereoFrame_t stereoFrame );
 void RE_EndFrame( int *frontEndMsec, int *backEndMsec );
+void VK_PerfFpsRow( void );
 void RE_SaveJPG(char* filename, int quality, int image_width, int image_height,
     unsigned char* image_buffer, int padding);
 size_t RE_SaveJPGToBuffer(byte* buffer, size_t bufSize, int quality,

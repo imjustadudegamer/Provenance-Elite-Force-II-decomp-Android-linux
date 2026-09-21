@@ -557,6 +557,69 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 
 
+/* The rate the operator sees, and which side is spending it.  The reported
+   decline -- 343 to 230 to 115 frames a second across one session -- was only
+   readable by diffing the probe rows, and no row named the split.  One row
+   every five seconds gives the whole curve and names front end against back
+   end, so the next boot measures the decline directly.  r_perfFps 0 stops it. */
+static cvar_t *s_perfFps;
+
+void VK_PerfFpsRow( void )
+{
+	static int		 frames;
+	static long long	 feUsec;
+	static long long		 beUsec;
+	static int		 t0;
+	static int		 baseFps = -1;
+	cvar_t			*cv;
+	int			 now;
+	int			 winFps;
+	long long		 fe;
+	long long		 be;
+
+	cv = s_perfFps;
+	if ( !cv ) {
+		cv = s_perfFps = ri.Cvar_Get( "r_perfFps", "1", CVAR_ARCHIVE );
+	}
+	if ( !cv || !cv->integer ) {
+		return;
+	}
+
+	frames++;
+	feUsec += tr.frontEndMsec * 1000;
+	beUsec += backEnd.backEndMsec * 1000;
+
+	now = ri.Milliseconds();
+	if ( !t0 ) {
+		t0 = now;
+		return;
+	}
+
+	if ( now - t0 < 5000 ) {
+		return;
+	}
+
+	/* The first window is the baseline: every later row carries the drift off
+	   it, so the decline is one number instead of a series to eyeball. */
+	fe = feUsec / 1000;
+	be = beUsec / 1000;
+	winFps = ( int )( ( double )frames * 1000.0 / ( double )( now - t0 ) );
+	if ( baseFps < 0 ) {
+		baseFps = winFps;
+	}
+
+	ri.Printf( PRINT_ALL,
+			   "[PERF:fps] t=%ds fps=%d drift=%+d%% base=%d fe=%lldms be=%lldms frames=%d smp=%d\n",
+			   ( int )( ( now - t0 ) / 1000 ), winFps,
+			   baseFps ? ( ( winFps - baseFps ) * 100 / baseFps ) : 0, baseFps,
+			   fe, be, frames, vk.smpActive ? 1 : 0 );
+
+	frames = 0;
+	feUsec = 0;
+	beUsec = 0;
+	t0     = now;
+}
+
 void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 {
 	int *cmd;
@@ -583,6 +646,8 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	if ( backEndMsec ) {
 		*backEndMsec = backEnd.backEndMsec;
 	}
+
+	VK_PerfFpsRow();
 
 	tr.frontEndMsec = 0;
 	backEnd.backEndMsec = 0;
