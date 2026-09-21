@@ -470,7 +470,7 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(upload)" ) ) {
 		goto done;
 	}
@@ -577,7 +577,7 @@ qboolean VK_Texture_Publish( int handle )
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(publish)" ) ) {
 		return qfalse;
 	}
@@ -683,7 +683,7 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(readtexel)" ) ) {
 		goto done;
 	}
@@ -815,7 +815,7 @@ void VK_Texture_MakeMips( int handle )
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(mips)" ) ) {
 		return;
 	}
@@ -1016,7 +1016,7 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "readback vkQueueSubmit" ) ) {
 		goto done;
 	}

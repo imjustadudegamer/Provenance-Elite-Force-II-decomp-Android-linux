@@ -214,7 +214,7 @@ static qboolean VK_DemoBuffer_Init( void )
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &vk.uploadCmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(upload)" ) ) {
 		return qfalse;
 	}

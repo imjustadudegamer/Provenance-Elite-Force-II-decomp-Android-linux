@@ -330,3 +330,54 @@ int VKimp_HandshakeViolations( void )
 {
 	return vk_handshakeViolations;
 }
+
+/* The graphics queue is host-synchronised, and under r_smp two threads reach
+   it: the walk thread submits frames while the main thread submits texture
+   uploads, publishes and readbacks.  The validation layer named it -- "object
+   of type VkQueue is simultaneously used in current thread ... and thread ...".
+   These three are every way the port touches a queue, so the lock lives here
+   and no call site has to remember it. */
+static SDL_mutex *vk_queueMutex;
+
+static SDL_mutex *VK_Queue_Mutex( void )
+{
+	if ( !vk_queueMutex ) {
+		vk_queueMutex = SDL_CreateMutex();
+	}
+
+	return vk_queueMutex;
+}
+
+VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
+						  const VkSubmitInfo *submits, VkFence fence )
+{
+	VkResult result;
+
+	SDL_LockMutex( VK_Queue_Mutex() );
+	result = qvk.QueueSubmit( queue, submitCount, submits, fence );
+	SDL_UnlockMutex( VK_Queue_Mutex() );
+
+	return result;
+}
+
+VkResult VK_Queue_Present( VkQueue queue, const VkPresentInfoKHR *present )
+{
+	VkResult result;
+
+	SDL_LockMutex( VK_Queue_Mutex() );
+	result = qvk.QueuePresentKHR( queue, present );
+	SDL_UnlockMutex( VK_Queue_Mutex() );
+
+	return result;
+}
+
+VkResult VK_Queue_WaitIdle( VkQueue queue )
+{
+	VkResult result;
+
+	SDL_LockMutex( VK_Queue_Mutex() );
+	result = qvk.QueueWaitIdle( queue );
+	SDL_UnlockMutex( VK_Queue_Mutex() );
+
+	return result;
+}

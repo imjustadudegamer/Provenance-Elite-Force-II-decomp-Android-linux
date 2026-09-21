@@ -495,7 +495,7 @@ void VK_Frame_WaitIdle( void )
 	}
 
 	if ( qvk.QueueWaitIdle ) {
-		VK_Guard_Result( VK_GSITE_SYNC, qvk.QueueWaitIdle( vk.graphicsQueue ), "vkQueueWaitIdle(quiesce)" );
+		VK_Guard_Result( VK_GSITE_SYNC, VK_Queue_WaitIdle( vk.graphicsQueue ), "vkQueueWaitIdle(quiesce)" );
 	}
 }
 
@@ -521,7 +521,7 @@ qboolean VK_Frame_Submit( int slot )
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &vk.renderSemaphores[slot];
 
-	result = qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, vk.fences[slot] );
+	result = VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, vk.fences[slot] );
 
 	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, result, "vkQueueSubmit" ) ) {
 		return qfalse;
@@ -550,7 +550,7 @@ qboolean VK_Frame_Present( int slot )
 	presentInfo.pSwapchains = &vk.swapchain;
 	presentInfo.pImageIndices = &vk.acquiredImage;
 
-	result = qvk.QueuePresentKHR( vk.presentQueue, &presentInfo );
+	result = VK_Queue_Present( vk.presentQueue, &presentInfo );
 
 	/* SUBOPTIMAL means the image went to the presentation engine, so it is back
 	   in the pool and the held count drops.  OUT_OF_DATE means it may not have,

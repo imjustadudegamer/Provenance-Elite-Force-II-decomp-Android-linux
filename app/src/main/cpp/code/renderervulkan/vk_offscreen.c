@@ -281,7 +281,7 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "offscreen vkQueueSubmit" ) ) {
 		goto done;
 	}

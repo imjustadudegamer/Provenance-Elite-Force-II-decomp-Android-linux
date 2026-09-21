@@ -439,7 +439,7 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, qvk.QueueSubmit( vk.graphicsQueue, 1, &submitInfo, fence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "readback vkQueueSubmit" ) ) {
 		goto done;
 	}
