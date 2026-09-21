@@ -805,6 +805,13 @@ int main( int argc, char **argv )
 	char *protocolCommand = NULL;
 #endif
 
+	/* Stdout goes to a file the operator reads, so it is block buffered and
+	   anything still in the buffer when the process ends is gone.  A boot that
+	   ends early loses exactly the rows that matter -- the probe family
+	   reported five rows out of a boot that ran hundreds of windows.  Line
+	   buffering lands every row, which is the whole point of printing them. */
+	setvbuf( stdout, NULL, _IOLBF, 0 );
+
 #ifdef USE_AUTOUPDATER
 	Sys_LaunchAutoupdater(argc, argv);
 #endif

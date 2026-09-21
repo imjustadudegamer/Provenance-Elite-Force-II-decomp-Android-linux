@@ -574,9 +574,12 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 /* The rate the operator sees, and which side is spending it.  The reported
    decline -- 343 to 230 to 115 frames a second across one session -- was only
-   readable by diffing the probe rows, and no row named the split.  One row
-   every five seconds gives the whole curve and names front end against back
-   end, so the next boot measures the decline directly.  r_perfFps 0 stops it. */
+   readable by diffing the probe rows, and no row named the split.  One row a
+   second gives the whole curve and names front end against back end, so the
+   next boot measures the decline directly.  A five second window produced no
+   row at all on a boot that only rendered 1.2 seconds of frames, which is why
+   this matches the one second cadence the rest of the probe family already
+   runs at.  r_perfFps 0 stops it. */
 static cvar_t *s_perfFps;
 
 void VK_PerfFpsRow( void )
@@ -612,7 +615,7 @@ void VK_PerfFpsRow( void )
 		return;
 	}
 
-	if ( now - t0 < 5000 ) {
+	if ( now - t0 < 1000 ) {
 		return;
 	}
 
