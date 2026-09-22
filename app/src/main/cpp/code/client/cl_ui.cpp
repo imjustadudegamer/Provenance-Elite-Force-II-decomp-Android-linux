@@ -939,6 +939,7 @@ static void UI_Update_Impl(void)
     const char  *rightHud;
     int          ammoIdx;
     str          menuName;
+    static int   uivk_orderRows;
 
     int          ui_z0, ui_z1, ui_z2, ui_z3;
     int          ui_stateT0 = -1;
@@ -1032,7 +1033,43 @@ static void UI_Update_Impl(void)
 
     int limit_uis_machine = LIMIT_Leg();
 
-    currentMenu = menuManager.CurrentMenu();              
+    currentMenu = menuManager.CurrentMenu();
+
+    /* The once-per-navigation row in UI_FocusMenuIfExists cannot see an order
+       that changes between frames, and a view that draws on some frames and is
+       covered on others reads as a flash.  This one is taken every frame the
+       menu paints, rate limited, and carries the child order itself: the first
+       entry in front= is what paints first. */
+    if (currentMenu && PROBE_On() && view3d && PROBE_Throttle(&uivk_orderRows, 16, 60)) {
+        int  orderTotal = uWinMan.GetChildCount();
+        int  orderV3d   = 0;
+        int  orderMenu  = 0;
+        char orderFront[1024];
+
+        orderFront[0] = 0;
+        for (int orderi = 1; orderi <= orderTotal && strlen(orderFront) < 900; orderi++) {
+            UIWidget *orderw = uWinMan.GetChild(orderi);
+
+            if (orderw == view3d) {
+                orderV3d = orderi;
+            }
+            if (orderw == currentMenu->GetContainerWidget()) {
+                orderMenu = orderi;
+            }
+            if (orderi <= 10) {
+                Q_strcat(orderFront, sizeof(orderFront),
+                         va("%d:%s ", orderi, orderw ? orderw->getName() : "(null)"));
+            }
+        }
+
+        PAINT_PROBE("paint:order",
+                    "perframe menu='%s' state=%d view3d=%d menu=%d "
+                    "verdict=%s | front=%s",
+                    currentMenu->m_name.c_str(), (int)cls.state, orderV3d, orderMenu,
+                    (orderV3d && orderMenu && orderV3d < orderMenu)
+                        ? "VIEW3D_OVER_MENU" : "menu_over_view3d",
+                    orderFront);
+    }
 
     if (ui_minicon->modified && ui_minicon->integer) {
         ui_minicon->modified = false;
