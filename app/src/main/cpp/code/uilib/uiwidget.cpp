@@ -4730,7 +4730,12 @@ void UIWidgetContainer::Draw(void)
     );
     uii.Rend_Scissor(uid.originX, uid.surfaceHeight - uid.originY - uid.vidHeight, uid.vidWidth, uid.vidHeight);
 
-    if (m_bgfill.a != 0.0) {
+    /* A container that is not the fullscreen menu does not own the screen, and
+       filling it hid the 3D view behind every floating panel: the controls
+       screen drew its starfield and ship and then had a full-screen box painted
+       over it, because this had no fullscreen gate and the data's bgfill alpha
+       is not zero.  Only a fullscreen container fills the frame. */
+    if (m_bgfill.a != 0.0 && m_fullscreen) {
         DrawBox(0, 0, uid.vidWidth, uid.vidHeight, m_bgfill, m_local_alpha);
     }
 
