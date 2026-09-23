@@ -174,7 +174,26 @@ qboolean VK_Swapchain_Plan( vkSwapchainPlan_t *plan, int windowWidth, int window
 		plan->imageCount = VK_FRAMES_IN_FLIGHT;
 	}
 
+	plan->currentTransform = caps.currentTransform;
+	plan->supportedTransforms = caps.supportedTransforms;
+	plan->currentExtent = caps.currentExtent;
+
+	/* The presentation engine transforms the image by (currentTransform relative
+	   to preTransform).  The front end authors a landscape frame in the surface's
+	   landscape extent, so on Android the pre-rotation must be IDENTITY: claiming
+	   currentTransform (ROTATE_90 on a portrait-native panel) tells the compositor
+	   the frame is already rotated and it presents a portrait image.  Android
+	   lists every transform as supported, so IDENTITY is the safe claim; on a
+	   surface that does not offer it, fall back to the surface's own answer. */
+#if defined(__ANDROID__)
+	if ( caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR ) {
+		plan->preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	} else {
+		plan->preTransform = caps.currentTransform;
+	}
+#else
 	plan->preTransform = caps.currentTransform;
+#endif
 	plan->compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	if ( !VK_FormatSupported( vk.physicalDevice, plan->format.format ) ) {
@@ -282,10 +301,14 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 		return qfalse;
 	}
 
-	VK_Guard_Row( "VK:swapchain", "created images=%u %ux%u format=%d present=%d",
+	VK_Guard_Row( "VK:swapchain",
+				  "created images=%u %ux%u format=%d present=%d currentExtent=%ux%u currentTransform=0x%x supportedTransforms=0x%x preTransform=0x%x",
 				  vk.swapchainImageCount,
 				  plan->extent.width, plan->extent.height,
-				  (int)plan->format.format, (int)plan->presentMode );
+				  (int)plan->format.format, (int)plan->presentMode,
+				  plan->currentExtent.width, plan->currentExtent.height,
+				  (unsigned)plan->currentTransform, (unsigned)plan->supportedTransforms,
+				  (unsigned)plan->preTransform );
 
 	return qtrue;
 }

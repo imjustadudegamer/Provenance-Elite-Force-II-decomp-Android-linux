@@ -297,8 +297,24 @@ qboolean R_GetModeInfo( int *width, int *height, float *windowAspect, int mode )
 {
 	const vidmode_t *vm;
 
-	if ( mode < 0 || mode >= s_numVidModes ) {
+	/* Retail @0x000171F0 refuses only modes below -1, and -1 is the custom mode
+	   read straight out of r_customwidth/r_customheight/r_customaspect.  -2 is the
+	   desktop arm and it lives in the platform layer (the reference's GLimp), not
+	   here, so the two negative modes stay split exactly as retail splits them. */
+	if ( mode < -1 || mode >= s_numVidModes ) {
 		return qfalse;
+	}
+
+	if ( mode == -1 ) {
+		cvar_t *cw = r_customwidth ? r_customwidth : ri.Cvar_Get( "r_customwidth", "1280", CVAR_ARCHIVE | CVAR_LATCH );
+		cvar_t *ch = r_customheight ? r_customheight : ri.Cvar_Get( "r_customheight", "720", CVAR_ARCHIVE | CVAR_LATCH );
+		cvar_t *ca = r_customaspect ? r_customaspect : ri.Cvar_Get( "r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
+
+		*width = cw->integer;
+		*height = ch->integer;
+		*windowAspect = ca->value;
+
+		return qtrue;
 	}
 
 	vm = &r_vidModes[mode];

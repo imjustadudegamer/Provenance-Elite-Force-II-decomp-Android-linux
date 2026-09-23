@@ -232,6 +232,28 @@ void VK_Surface_Destroy( void )
 
 static void VK_Platform_ModeSize( int mode, int *width, int *height, float *aspect )
 {
+	/* mode -2 is the desktop/native arm and GLimp owns it in the reference: the
+	   window is created at the display's own size and the frame fills it.  With
+	   SDL not yet initialised the display mode is unknown, so the same 640x480
+	   the reference assumes is the floor. */
+	if ( mode == -2 ) {
+		SDL_DisplayMode desktop;
+
+		memset( &desktop, 0, sizeof( desktop ) );
+
+		if ( SDL_GetDesktopDisplayMode( 0, &desktop ) == 0 && desktop.w > 0 && desktop.h > 0 ) {
+			*width = desktop.w;
+			*height = desktop.h;
+		} else {
+			*width = 640;
+			*height = 480;
+			VK_Guard_Row( "VK:mode", "desktop display mode unavailable, assuming 640x480" );
+		}
+
+		*aspect = (float)( *width ) / (float)( *height );
+		return;
+	}
+
 	if ( !R_GetModeInfo( width, height, aspect, mode ) ) {
 		R_GetModeInfo( width, height, aspect, VK_PLATFORM_FALLBACK_MODE );
 	}
@@ -341,9 +363,6 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 	fullscreen = r_fullscreen->integer;
 	headless = r_vkHeadless->integer ? qtrue : qfalse;
 	vk.headless = headless;
-	VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
-	vk_headlessWidth = width;
-	vk_headlessHeight = height;
 
 	/* the module owns its config; a parameter of that name would shadow it */
 	memset( &vkConfig, 0, sizeof( vkConfig ) );
@@ -368,7 +387,15 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 			SDL_DestroyWindow( SDL_window );
 			SDL_window = NULL;
 		}
+	}
 
+	/* After the video subsystem, because mode -2 resolves through the desktop
+	   display mode and SDL is the only source for it. */
+	VK_Platform_ModeSize( r_mode->integer, &width, &height, &aspect );
+	vk_headlessWidth = width;
+	vk_headlessHeight = height;
+
+	if ( !headless ) {
 		if ( !VKimp_WindowCreate( width, height, fullscreen, qfalse ) ) {
 			return qfalse;
 		}
@@ -421,8 +448,19 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 		ri.Cvar_Set( "r_mode", modeCvar );
 	}
 
-	VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d maxTextureSize=%d",
-				  mode, width, height, fullscreen, vkConfig.maxTextureSize );
+	{
+		int windowWidth = 0;
+		int windowHeight = 0;
+
+		if ( SDL_window ) {
+			SDL_GetWindowSize( SDL_window, &windowWidth, &windowHeight );
+		}
+
+		/* surface= is the window the swapchain is created against: the mode is
+		   right only when the two agree, so the row carries both. */
+		VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d surface=%dx%d maxTextureSize=%d",
+					  mode, width, height, fullscreen, windowWidth, windowHeight, vkConfig.maxTextureSize );
+	}
 
 	return qtrue;
 }

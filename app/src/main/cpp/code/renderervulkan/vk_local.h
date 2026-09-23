@@ -103,6 +103,11 @@ typedef struct {
 	VkSurfaceTransformFlagBitsKHR preTransform;
 	VkCompositeAlphaFlagBitsKHR compositeAlpha;
 	VkImageUsageFlags usage;
+	/* the surface's own answers, kept so the creation row can prove what the
+	   chosen preTransform was picked against */
+	VkSurfaceTransformFlagBitsKHR currentTransform;
+	VkSurfaceTransformFlagsKHR supportedTransforms;
+	VkExtent2D currentExtent;
 } vkSwapchainPlan_t;
 
 typedef struct {

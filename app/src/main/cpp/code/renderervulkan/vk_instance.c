@@ -178,6 +178,7 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 	const char *extensionNames[32];
 	uint32_t numExtensions = 0;
 	VkResult result = VK_ERROR_INITIALIZATION_FAILED;
+	uint32_t loaderApiVersion;
 	size_t i;
 	size_t versionIndex;
 
@@ -197,6 +198,12 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 		VK_Guard_Row( "VK:loader", "lib=%s runtime=1.0.0 enumerate-version-absent",
 					  VK_Procs_LoaderName() );
 	}
+
+	/* The loader's own report is the ceiling for the request.  A loader that
+	   accepts a number higher than it implements leaves the instance claiming an
+	   API no device has (loader 1.1 that took the 1.3 request), and every gate
+	   keyed on vk.instanceApiVersion then arms a path the device cannot run. */
+	loaderApiVersion = vk.instanceApiVersion;
 
 	if ( surfaceExtensions ) {
 		for ( i = 0; i < (size_t)numSurfaceExtensions && numExtensions < 30; i++ ) {
@@ -221,7 +228,15 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 	createInfo.ppEnabledLayerNames = vk_requestedLayers;
 
 	for ( versionIndex = 0; versionIndex < sizeof( vk_apiVersions ) / sizeof( vk_apiVersions[0] ); versionIndex++ ) {
-		app.apiVersion = vk_apiVersions[versionIndex];
+		uint32_t candidate = vk_apiVersions[versionIndex];
+
+		if ( VK_API_VERSION_MAJOR( candidate ) > VK_API_VERSION_MAJOR( loaderApiVersion )
+			 || ( VK_API_VERSION_MAJOR( candidate ) == VK_API_VERSION_MAJOR( loaderApiVersion )
+				  && VK_API_VERSION_MINOR( candidate ) > VK_API_VERSION_MINOR( loaderApiVersion ) ) ) {
+			continue;
+		}
+
+		app.apiVersion = candidate;
 		result = qvk.CreateInstance( &createInfo, NULL, &vk.instance );
 		if ( result == VK_SUCCESS ) {
 			break;
@@ -238,9 +253,11 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 
 	{
 		char apiName[32];
+		char loaderName[32];
 		VK_ApiName( vk.instanceApiVersion, apiName, sizeof( apiName ) );
-		VK_Guard_Row( "VK:instance", "api=%s extensions=%u layers=%u", apiName, numExtensions,
-					  vk_numRequestedLayers );
+		VK_ApiName( loaderApiVersion, loaderName, sizeof( loaderName ) );
+		VK_Guard_Row( "VK:instance", "api=%s loader=%s extensions=%u layers=%u", apiName, loaderName,
+					  numExtensions, vk_numRequestedLayers );
 	}
 
 	VK_Debug_Init();
@@ -302,14 +319,20 @@ static void VK_QueryDevice( vkPhysDevice_t *out )
 
 	qvk.GetPhysicalDeviceProperties( out->device, &out->props );
 
-	if ( vk.instanceApiVersion >= VK_API_VERSION_1_2 && qvk.GetPhysicalDeviceProperties2 ) {
+	/* vkGetPhysicalDeviceProperties2 is core in 1.1, so the chain runs whenever
+	   the instance is at least 1.1.  Its second block is a 1.2 structure, and a
+	   1.2 structure chained on a 1.1 device is a node the ICD does not fill --
+	   gate it on the DEVICE's own apiVersion, never on what the loader accepted. */
+	if ( vk.instanceApiVersion >= VK_API_VERSION_1_1 && qvk.GetPhysicalDeviceProperties2 ) {
 		memset( &props2, 0, sizeof( props2 ) );
 		props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
 		memset( &out->driverProps, 0, sizeof( out->driverProps ) );
 		out->driverProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
 		memset( &out->props12, 0, sizeof( out->props12 ) );
-		out->props12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
-		out->driverProps.pNext = &out->props12;
+		if ( out->props.apiVersion >= VK_API_VERSION_1_2 ) {
+			out->props12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+			out->driverProps.pNext = &out->props12;
+		}
 		props2.pNext = &out->driverProps;
 		qvk.GetPhysicalDeviceProperties2( out->device, &props2 );
 		p12 = out->driverProps.pNext;
