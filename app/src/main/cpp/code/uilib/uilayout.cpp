@@ -24,6 +24,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "ui_local.h"
 #include "../script/scriptexception.h"
 
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "1")) != 0)
+#include "../qcommon/qa_probe.h"
+
 Event EV_Layout_Menu
 (
     "menu",
@@ -117,6 +122,24 @@ void UILayout::ProcessCommands(void)
                 className = "UI";
                 className += newname;
                 widgetClass = getClass(className);
+                {
+                    /* The controls screen's RenderModel never reaches Draw, so
+                       either it was never constructed or it was constructed and
+                       never painted.  Naming every class the layout resolves,
+                       and whether it resolved, is what splits those two: a
+                       resolution the menu never asked for is a parse drop, and
+                       one that resolved but never drew is a paint drop. */
+                    static int s_clsRows;
+                    s_clsRows++;
+                    if (s_clsRows <= 400 || (s_clsRows % 200) == 0) {
+                        UIVK_PROBE(
+                            "menucls",
+                            "load=%d n=%d class='%s' resolved=%d order=%d",
+                            s_clsRows, m_currentcontainer ? m_currentcontainer->m_children.NumObjects() : -1,
+                            className.c_str(), widgetClass ? 1 : 0,
+                            m_currentwidget ? m_currentwidget->getOrderNum() : -1);
+                    }
+                }
                 if (!widgetClass) {
                     throw ScriptException("LOAD_BAD_WIDGET");
                 }
