@@ -214,7 +214,7 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "offscreen vkAllocateCommandBuffers" ) ) {
 		goto done;
 	}
@@ -301,7 +301,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
+		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 
 	VK_Offscreen_Destroy( &target );

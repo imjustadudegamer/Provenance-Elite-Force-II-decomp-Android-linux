@@ -399,7 +399,7 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "vkAllocateCommandBuffers(upload)" ) ) {
 		goto done;
 	}
@@ -489,7 +489,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
+		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( staging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
 		qvk.DestroyBuffer( vk.device, staging, NULL );
@@ -530,7 +530,7 @@ qboolean VK_Texture_Publish( int handle )
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "vkAllocateCommandBuffers(publish)" ) ) {
 		return qfalse;
 	}
@@ -590,7 +590,7 @@ qboolean VK_Texture_Publish( int handle )
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
+		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 
 	return qtrue;
@@ -639,7 +639,7 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "vkAllocateCommandBuffers(readtexel)" ) ) {
 		goto done;
 	}
@@ -701,7 +701,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
+		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( mapped ) {
 		qvk.UnmapMemory( vk.device, memory );
@@ -745,7 +745,7 @@ void VK_Texture_MakeMips( int handle )
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "vkAllocateCommandBuffers(mips)" ) ) {
 		return;
 	}
@@ -943,7 +943,7 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "readback vkAllocateCommandBuffers" ) ) {
 		goto done;
 	}
@@ -1037,7 +1037,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
+		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
 		qvk.DestroyBuffer( vk.device, buffer, NULL );

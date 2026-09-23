@@ -381,3 +381,30 @@ VkResult VK_Queue_WaitIdle( VkQueue queue )
 
 	return result;
 }
+
+/* The upload pool is shared by design, not by accident: registration loads
+   textures on the main thread, and a frame that reaches for art it does not
+   have yet -- a font atlas the first 2D draw touches, a cinematic frame -- does
+   the same work on the walk thread.  This boot did both, 15455 against 1, and
+   the validation layer named the pool rather than the queue.  A command pool is
+   host synchronised like the queue, so its allocate, free and reset take the
+   same lock. */
+VkResult VK_Pool_AllocBuffers( VkDevice device, const VkCommandBufferAllocateInfo *info,
+							   VkCommandBuffer *buffers )
+{
+	VkResult result;
+
+	SDL_LockMutex( VK_Queue_Mutex() );
+	result = qvk.AllocateCommandBuffers( device, info, buffers );
+	SDL_UnlockMutex( VK_Queue_Mutex() );
+
+	return result;
+}
+
+void VK_Pool_FreeBuffers( VkDevice device, VkCommandPool pool, uint32_t count,
+						  const VkCommandBuffer *buffers )
+{
+	SDL_LockMutex( VK_Queue_Mutex() );
+	qvk.FreeCommandBuffers( device, pool, count, buffers );
+	SDL_UnlockMutex( VK_Queue_Mutex() );
+}

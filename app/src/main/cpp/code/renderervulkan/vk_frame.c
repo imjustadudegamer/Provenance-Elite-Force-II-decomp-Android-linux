@@ -87,7 +87,7 @@ qboolean VK_Frame_Init( void )
 	bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	bufferInfo.commandBufferCount = (uint32_t)frames;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &bufferInfo, vk.commandBuffers ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &bufferInfo, vk.commandBuffers ),
 						   "vkAllocateCommandBuffers" ) ) {
 		return qfalse;
 	}
