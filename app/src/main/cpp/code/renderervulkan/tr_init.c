@@ -257,6 +257,42 @@ void R_RegisterCvars( void )
 	r_useglfog = ri.Cvar_Get("r_useglfog", "1", CVAR_ARCHIVE);
 }
 
+static cvar_t *s_vkSafeMode;
+static qboolean s_vkSafeModeArmed = qfalse;
+
+/* SDK doc 8: a bring-up that dies inside the driver cannot be caught, so the
+   next launch needs an on-disk fact.  The marker is armed before the compressed
+   texture bring-up and cleared by the first present; present at launch means
+   the last attempt died there, and this launch takes the decode-only path. */
+#define VK_SAFE_MODE_MARKER ".vk_safe_mode"
+
+qboolean VK_SafeModeMarkerPresent( void )
+{
+	return ( ri.FS_FileExists && ri.FS_FileExists( VK_SAFE_MODE_MARKER ) ) ? qtrue : qfalse;
+}
+
+void VK_SafeModeArm( void )
+{
+	fileHandle_t f;
+
+	if ( !ri.FS_OpenFileWrite ) {
+		return;
+	}
+
+	f = ri.FS_OpenFileWrite( VK_SAFE_MODE_MARKER );
+	if ( f ) {
+		ri.FS_Write( "1", 1, f );
+		ri.FS_CloseFile( f );
+	}
+}
+
+void VK_SafeModeClear( void )
+{
+	if ( ri.FS_RemoveHomeData ) {
+		ri.FS_RemoveHomeData( VK_SAFE_MODE_MARKER );
+	}
+}
+
 qboolean R_GetModeInfo( int *width, int *height, float *windowAspect, int mode )
 {
 	const vidmode_t *vm;
@@ -290,7 +326,20 @@ void R_Init( void )
 	tr.identityLight = 1.0f;
 	tr.identityLightByte = 255;
 	tr.overbrightBits = 0;
-	vkConfig.textureCompression = TC_S3TC;
+	/* The compressed-source path is only taken when the device can hold the
+	   blocks and the last bring-up did not die taking them.  A prior marker or
+	   an explicit r_vkSafeMode 1 forces the decode-only path, which is the one
+	   that cannot fault on a device without BC. */
+	s_vkSafeMode = ri.Cvar_Get( "r_vkSafeMode", "0", CVAR_ARCHIVE );
+	if ( s_vkSafeMode->integer || VK_SafeModeMarkerPresent() ) {
+		vkConfig.textureCompression = TC_NONE;
+		VK_Guard_Row( "VK:guard",
+					  "site=safe-mode detail=\"decode-only texture path\" cause=prior-crash" );
+	} else {
+		vkConfig.textureCompression = TC_S3TC;
+		VK_SafeModeArm();
+		s_vkSafeModeArmed = qtrue;
+	}
 
 	/* The .so is never unloaded, so one registration covers the process. */
 	if ( ri.Hunk_ClearNotify ) {
@@ -654,6 +703,15 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 
 	R_IssueRenderCommands();
 	vk_frameOpen = qfalse;
+
+	/* A completed frame is the bring-up succeeding, so the sentinel that
+	   guards the next launch against a crash during it comes down.  It comes
+	   down here, on the main thread: the present site runs on the walk thread
+	   under r_smp, and the filesystem is not the walk's to touch. */
+	if ( s_vkSafeModeArmed ) {
+		s_vkSafeModeArmed = qfalse;
+		VK_SafeModeClear();
+	}
 
 	/* The frame boundary: the scene pools, the back-end slot and tr.smpFrame are budgets the frame's
 	   walk has consumed. The reference renderer runs it here; this module ran it only from R_Init, so
