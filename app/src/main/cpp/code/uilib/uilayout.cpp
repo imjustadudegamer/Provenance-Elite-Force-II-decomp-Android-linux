@@ -134,7 +134,7 @@ void UILayout::ProcessCommands(void)
                     static int s_clsRows;
                     s_clsRows++;
                     if (s_clsRows <= 4096 || (s_clsRows % 200) == 0) {
-                        UIVK_PROBE(
+                        UIVK_CENSUS_PROBE(
                             "menucls",
                             "load=%d n=%d class='%s' resolved=%d order=%d",
                             s_clsRows, m_currentcontainer ? m_currentcontainer->m_children.NumObjects() : -1,

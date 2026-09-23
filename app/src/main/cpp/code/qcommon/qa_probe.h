@@ -55,22 +55,32 @@ static inline qboolean PROBE_Throttle(int *counter, int first, int every)
 	return ((*counter <= first) || ((*counter % every) == 0)) ? qtrue : qfalse;
 }
 
+/* Each expansion site carries its own counter.  A streaming family (one row per
+ * frame, per draw, per entity) wants the small window -- its tail is noise.  A
+ * census wants the opposite: the class or the screen it was armed for is
+ * exactly what the window hides.  PROBE_CENSUS_EMIT gives those sites the wide
+ * window; both windows answer to the master qa_probe gate. */
 #define PROBE_ROW_CAP 200
+#define PROBE_ROW_CAP_WIDE 4096
 
-#define PROBE_EMIT(prefix, tag, ...) \
+#define PROBE_EMIT_N(prefix, tag, cap, ...) \
 	do { \
 		static int s_probeRows; \
 		if (PROBE_On()) { \
-			if (s_probeRows < PROBE_ROW_CAP) { \
+			if (s_probeRows < (cap)) { \
 				s_probeRows++; \
 				PROBE_PRINT(prefix tag "] " __VA_ARGS__); \
-			} else if (s_probeRows == PROBE_ROW_CAP) { \
+			} else if (s_probeRows == (cap)) { \
 				s_probeRows++; \
 				PROBE_PRINT(prefix tag "] capped at %d rows; no further lines\n", \
-				                 PROBE_ROW_CAP); \
+				                 (cap)); \
 			} \
 		} \
 	} while (0)
+
+#define PROBE_EMIT(prefix, tag, ...) PROBE_EMIT_N(prefix, tag, PROBE_ROW_CAP, __VA_ARGS__)
+
+#define PROBE_CENSUS_EMIT(prefix, tag, ...) PROBE_EMIT_N(prefix, tag, PROBE_ROW_CAP_WIDE, __VA_ARGS__)
 
 #define PROBE(tag, ...) PROBE_EMIT("[PROBE:", tag, __VA_ARGS__)
 
@@ -108,5 +118,12 @@ static inline qboolean UIVK_EntTrashOn(void)
 	return uivk_enttrash_cached ? qtrue : qfalse;
 }
 #define UIVK_PROBE(tag, ...) PROBE_EMIT("[UIVK:", tag, __VA_ARGS__)
+
+/* Layout/class/screen censuses: every screen a boot loads has to fit. */
+#define UIVK_CENSUS_PROBE(tag, ...) PROBE_CENSUS_EMIT("[UIVK:", tag, __VA_ARGS__)
+
+#define PAINT_CENSUS_PROBE(tag, ...) PROBE_CENSUS_EMIT("[PAINT:", tag, __VA_ARGS__)
+
+#define WIDGET_CENSUS_PROBE(tag, ...) PROBE_CENSUS_EMIT("[WIDGET:", tag, __VA_ARGS__)
 
 #endif 
