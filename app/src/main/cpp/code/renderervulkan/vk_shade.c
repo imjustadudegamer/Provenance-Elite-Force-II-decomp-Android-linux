@@ -1159,10 +1159,26 @@ void VK_BindAnimatedImage( const textureBundle_t *bundle, int unit )
 		VK_Shade_BindImage( bundle->image[0], unit );
 		return;
 	}
-	/* the animated bundle: the frame is a function of the shader's own clock */
-	index = ( int )( tess.shaderTime * bundle->imageAnimationSpeed * 60.0f ) % bundle->numImageAnimations;
+	/* R_BindAnimatedImage @0x00034190, raw words: `lfs f1,0x78(tr)' (refdef
+	   floatTime), `lfs f0,0xc(bundle)' (speed), `fmuls', `lfs f1,0(2048.0f)',
+	   `fmuls', `fctiwz', `srawi. r4,r4,0xb' -- FUNCTABLE_SIZE * (speed * time),
+	   shifted down by FUNCTABLE_SIZE2, negatives clamped to 0, then wrapped, or
+	   clamped to the last frame under BUNDLE_ANIMATE_ONCE (0x34204..0x3421c).
+	   The scale is the wave-table size, not 60: 60 fast-forwarded every animMap
+	   by 60x while the clock that feeds it stayed correct, which is why the
+	   shader-clock row read clean. */
+	index = myftol( FUNCTABLE_SIZE * ( bundle->imageAnimationSpeed * backEnd.refdef.floatTime ) );
+	index >>= FUNCTABLE_SIZE2;
+
 	if ( index < 0 ) {
-		index += bundle->numImageAnimations;
+		index = 0;
+	}
+	if ( bundle->flags & BUNDLE_ANIMATE_ONCE ) {
+		if ( index >= bundle->numImageAnimations ) {
+			index = bundle->numImageAnimations - 1;
+		}
+	} else {
+		index %= bundle->numImageAnimations;
 	}
 	image = bundle->image[index];
 	VK_Shade_BindImage( image, unit );

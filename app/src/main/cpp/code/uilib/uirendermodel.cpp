@@ -325,26 +325,51 @@ void UIRenderModel::Draw(void)
            background depends on could not be read.  This site answers per
            widget, and it comes after UIWidget::Draw -- the row is the fill that
            was just painted, which is what a flat background wash is. */
-        static int s_menu3dRows;
-        s_menu3dRows++;
-        if (s_menu3dRows <= 480 || (s_menu3dRows % 240) == 0) {
-            UIVK_CENSUS_PROBE(
-                "menu3d",
-                "rm_draw seq=%d state=%d vis=%d show=%d alpha=%.3f screen=%.0f,%.0f %.0fx%.0f "
-                "static='%s' cvar='%s' cv='%s'",
-                s_menu3dRows,
-                (int)m_widgetState,
-                m_visible ? 1 : 0,
-                getShow() ? 1 : 0,
-                (double)m_local_alpha,
-                (double)m_screenframe.pos.x,
-                (double)m_screenframe.pos.y,
-                (double)m_screenframe.size.width,
-                (double)m_screenframe.size.height,
-                m_modelName.c_str(),
-                m_cvarname.c_str(),
-                m_cvarname.length() ? Cvar_VariableString(m_cvarname) : ""
-            );
+        /* Keyed on the widget, not on a global draw counter: CONTROLS is the one
+           front-end screen that draws two UIRenderModels every frame, and a
+           single counter sampled every 240 rows aliases exactly with the
+           two-per-frame pattern, so every sample landed on the same widget and
+           the second model never appeared in a boot. */
+        static const void *s_menu3dWidget[16];
+        static int         s_menu3dRows[16];
+        static int         s_menu3dWidgets;
+        int                slot = -1;
+
+        for (i = 0; i < s_menu3dWidgets; i++) {
+            if (s_menu3dWidget[i] == (const void *)this) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0 && s_menu3dWidgets < (int)(sizeof(s_menu3dWidget) / sizeof(s_menu3dWidget[0]))) {
+            slot                     = s_menu3dWidgets;
+            s_menu3dWidget[slot]     = (const void *)this;
+            s_menu3dRows[slot]       = 0;
+            s_menu3dWidgets++;
+        }
+
+        if (slot >= 0) {
+            s_menu3dRows[slot]++;
+            if (s_menu3dRows[slot] <= 8 || (s_menu3dRows[slot] % 240) == 0) {
+                UIVK_CENSUS_PROBE(
+                    "menu3d",
+                    "rm_draw widget=%p seq=%d state=%d vis=%d show=%d alpha=%.3f screen=%.0f,%.0f %.0fx%.0f "
+                    "static='%s' cvar='%s' cv='%s'",
+                    (const void *)this,
+                    s_menu3dRows[slot],
+                    (int)m_widgetState,
+                    m_visible ? 1 : 0,
+                    getShow() ? 1 : 0,
+                    (double)m_local_alpha,
+                    (double)m_screenframe.pos.x,
+                    (double)m_screenframe.pos.y,
+                    (double)m_screenframe.size.width,
+                    (double)m_screenframe.size.height,
+                    m_modelName.c_str(),
+                    m_cvarname.c_str(),
+                    m_cvarname.length() ? Cvar_VariableString(m_cvarname) : ""
+                );
+            }
         }
     }
 
