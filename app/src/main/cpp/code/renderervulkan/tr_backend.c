@@ -139,7 +139,9 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 			VK_Guard_Row( "VK:2ddraw",
 						  "n=%d shader='%s' img='%s' tex=%d verts=%d idx=%d "
 						  "rect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f) "
-						  "sb=0x%x col=%d,%d,%d,%d win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d)",
+						  "sb=0x%x col=%d,%d,%d,%d vert=%d,%d,%d,%d rgbGen=%d "
+						  "const=%d,%d,%d,%d alphaGen=%d "
+						  "win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d)",
 						  s_rows,
 						  tess.shader ? tess.shader->name : "?",
 						  image->imgName,
@@ -152,6 +154,12 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 						  stage->stateBits,
 						  backEnd.color2D[0], backEnd.color2D[1],
 						  backEnd.color2D[2], backEnd.color2D[3],
+						  tess.vertexColors[0][0], tess.vertexColors[0][1],
+						  tess.vertexColors[0][2], tess.vertexColors[0][3],
+						  (int)stage->rgbGen,
+						  stage->colorConst[0], stage->colorConst[1],
+						  stage->colorConst[2], stage->colorConst[3],
+						  (int)stage->alphaGen,
 						  vk_2dWindow[0], vk_2dWindow[1], vk_2dWindow[2], vk_2dWindow[3],
 						  vk_2dScissor[0], vk_2dScissor[1], vk_2dScissor[2], vk_2dScissor[3] );
 		}

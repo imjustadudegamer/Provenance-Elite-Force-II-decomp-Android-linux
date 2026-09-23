@@ -364,7 +364,7 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.AllocateCommandBuffers( vk.device, &allocInfo, &cmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "readback vkAllocateCommandBuffers" ) ) {
 		goto done;
 	}
@@ -460,7 +460,7 @@ done:
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		qvk.FreeCommandBuffers( vk.device, vk.uploadPool, 1, &cmd );
+		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 	if ( buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
 		qvk.DestroyBuffer( vk.device, buffer, NULL );

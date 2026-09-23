@@ -302,6 +302,12 @@ VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
 						  const VkSubmitInfo *submits, VkFence fence );
 VkResult VK_Queue_Present( VkQueue queue, const VkPresentInfoKHR *present );
 VkResult VK_Queue_WaitIdle( VkQueue queue );
+/* The upload command pool is reached from both threads, so its buffer
+   allocate and free are guarded with the queue. */
+VkResult VK_Pool_AllocBuffers( VkDevice device, const VkCommandBufferAllocateInfo *info,
+							   VkCommandBuffer *buffers );
+void VK_Pool_FreeBuffers( VkDevice device, VkCommandPool pool, uint32_t count,
+						  const VkCommandBuffer *buffers );
 
 void VKimp_AdapterInit( void );
 void VKimp_Shutdown( void );
