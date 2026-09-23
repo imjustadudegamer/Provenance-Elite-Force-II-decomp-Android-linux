@@ -294,27 +294,33 @@ static void CG_RunModelAnimation(
         /* The too-fast report needed a clock to read.  framenum is derived from
            cg.time, so if animation runs ahead this row names which side moved:
            tpf is the per-frame time the anim declares, cgt is the client clock
-           and dt is the real milliseconds since this entity last emitted.  A
-           frame advance that outruns dt/tpf is the counter-driven case, and the
-           same boot at a different frame rate answers it. */
+           and dt is the real milliseconds since this state last emitted.  Keyed
+           on the entity alone the row aliased every channel and every anim
+           switch -- a frame reset by a new anim read as a backward clock -- so
+           it is keyed on the state and the anim, and `driven` names the
+           movement-driven channel whose frame steps legitimately without time. */
         if (PROBE_On()) {
-            static int  s_clockEnt = -1;
+            static const void *s_clockState = NULL;
+            static int  s_clockAnim = -1;
             static int  s_lastTime;
             static int  s_rows;
             static int  s_lastFrame;
 
-            if (s_clockEnt != s->number) {
-                s_clockEnt = s->number;
-                s_lastTime = cg.time;
-                s_lastFrame = state->base.frame;
+            if (s_clockState != (const void *)state || s_clockAnim != (state->base.anim & ANIM_MASK)) {
+                s_clockState = (const void *)state;
+                s_clockAnim  = state->base.anim & ANIM_MASK;
+                s_lastTime   = cg.time;
+                s_lastFrame  = state->base.frame;
+                s_rows       = 0;
             } else if (++s_rows % 120 == 0) {
                 Com_Printf(
                     "[ANIM:clock] ent=%d anim=%d frame=%d oldframe=%d tpf=%.2f cgt=%d "
-                    "dt=%d advanced=%d expect=%.2f\n",
+                    "dt=%d advanced=%d expect=%.2f driven=%d state=%p\n",
                     s->number, state->base.anim & ANIM_MASK, state->base.frame,
                     state->base.oldframe, state->time_per_frame, cg.time,
                     cg.time - s_lastTime, state->base.frame - s_lastFrame,
-                    (float)(cg.time - s_lastTime) / state->time_per_frame);
+                    (float)(cg.time - s_lastTime) / state->time_per_frame,
+                    state->driven ? 1 : 0, (const void *)state);
                 s_lastTime  = cg.time;
                 s_lastFrame = state->base.frame;
             }
