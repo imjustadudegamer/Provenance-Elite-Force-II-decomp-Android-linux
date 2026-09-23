@@ -1518,7 +1518,7 @@ void Com_Init( char *commandLine ) {
 
 #ifdef __ANDROID__
 	// joystick term in CL_CreateCmd @0x16F490 is deliberately not transcribed
-#define ANDROID_DEFAULTS_VERSION 8
+#define ANDROID_DEFAULTS_VERSION 9
 	if ( Cvar_VariableIntegerValue( "in_androidDefaults" ) < ANDROID_DEFAULTS_VERSION )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );
@@ -2813,25 +2813,6 @@ void Com_Frame( void ) {
 	smp_loadInClient = 0;
 
 	smpFrameEnd = Sys_Milliseconds();
-
-	/* The fps row names the renderer's two sides and never parks the front end,
-	   which left most of the frame unaccounted for.  This is the rest of it: the
-	   server and everything the main thread does after it -- events, command
-	   buffer, client -- against the whole frame, so the cost centre the 1000 fps
-	   target has to attack is named instead of inferred. */
-	s_splitNow = Sys_Milliseconds();
-	s_splitRest += s_splitNow - s_splitRestT0;
-	if ( !s_splitT0 ) {
-		s_splitT0 = s_splitNow;
-	} else if ( s_splitNow - s_splitT0 >= 1000 ) {
-		Com_Printf(
-			"[PERF:frame] win=%dms frames=%d sv=%dms rest=%dms\n",
-			s_splitNow - s_splitT0, s_splitFrames, s_splitSv, s_splitRest );
-		s_splitSv = 0;
-		s_splitRest = 0;
-		s_splitFrames = 0;
-		s_splitT0 = s_splitNow;
-	}
 
 	if ( com_speeds->integer ) {
 		timeAfter = Sys_Milliseconds ();
