@@ -128,10 +128,12 @@ void UILayout::ProcessCommands(void)
                        never painted.  Naming every class the layout resolves,
                        and whether it resolved, is what splits those two: a
                        resolution the menu never asked for is a parse drop, and
-                       one that resolved but never drew is a paint drop. */
+                       one that resolved but never drew is a paint drop.  The
+                       table has to survive every screen a boot loads, so the
+                       window is the whole layout, not the first screen. */
                     static int s_clsRows;
                     s_clsRows++;
-                    if (s_clsRows <= 400 || (s_clsRows % 200) == 0) {
+                    if (s_clsRows <= 4096 || (s_clsRows % 200) == 0) {
                         UIVK_PROBE(
                             "menucls",
                             "load=%d n=%d class='%s' resolved=%d order=%d",
