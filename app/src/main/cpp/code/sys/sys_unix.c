@@ -167,14 +167,17 @@ static char *Sys_AndroidHomePath( char *buf, size_t bufsize )
 		const char *reason = NULL;
 
 		if( obbRoot == NULL || !*obbRoot )
-			obbRoot = "/data/local/tmp";       
+			obbRoot = "/data/local/tmp";
 
-		//     operator can still reach with adb, and it is NOT where the retail tree
-		Com_sprintf( candidate, sizeof( candidate ), "%s/%s", obbRoot, HOMEPATH_NAME );
+		/* One data root, flattened: the app's own OBB directory, so <root>/base
+		   is exactly the layout retail ships and the old <root>/<appdir>/base
+		   nesting is gone.  The engine and the launcher must name the same root
+		   (android.cmake bakes this one), so there is no second scanner. */
+		Com_sprintf( candidate, sizeof( candidate ), "%s", obbRoot );
 		if( Sys_AndroidMakeDirs( candidate ) )
 		{
 			chosen = candidate;
-			reason = "app dir inside the OBB root";
+			reason = "the OBB root (flattened)";
 		}
 		else
 		{
@@ -674,7 +677,16 @@ FILE *Sys_FOpen( const char *ospath, const char *mode ) {
 
 qboolean Sys_Mkdir( const char *path )
 {
-	int result = mkdir( path, 0750 );
+	int result;
+
+	/* An empty path names no directory, and mkdir("") is a guaranteed ENOENT.
+	   The legacy home var is empty on a split-path port, so this is the caller's
+	   normal state, not a failure to report. */
+	if ( !path || !path[0] ) {
+		return qtrue;
+	}
+
+	result = mkdir( path, 0750 );
 
 	if( result != 0 )
 	{

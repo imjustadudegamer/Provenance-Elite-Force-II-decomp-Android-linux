@@ -249,6 +249,11 @@ qboolean VK_Frame_Submit( int slot );
 qboolean VK_Frame_Present( int slot );
 int VK_Frame_Count( void );
 
+/* the persistent bring-up sentinel (SDK doc 8) */
+void VK_SafeModeArm( void );
+void VK_SafeModeClear( void );
+qboolean VK_SafeModeMarkerPresent( void );
+
 qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 									unsigned char *out, size_t outBytes );
 

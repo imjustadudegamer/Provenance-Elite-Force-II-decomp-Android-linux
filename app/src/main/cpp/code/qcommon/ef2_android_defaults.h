@@ -129,7 +129,7 @@ root, for more details.
 	"set mp_warmUpTime 10\n" \
 	"set mp_minPlayers 0\n" \
 	"set sv_maxclients 1\n" \
-	"seta cl_renderer \"gles3\"\n" \
+	"seta cl_renderer \"vulkan\"\n" \
 	"seta r_mode -2\n" \
 	"seta r_fullscreen 1\n" \
 	"seta r_swapInterval 1\n" \

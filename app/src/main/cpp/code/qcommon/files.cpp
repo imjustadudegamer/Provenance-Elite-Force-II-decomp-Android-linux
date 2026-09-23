@@ -2865,7 +2865,12 @@ static void FS_Startup(const char* gameName)
 	Cmd_AddCommand ("path", FS_Path_f);
 	Cmd_AddCommand ("touchFile", FS_TouchFile_f );
 
-	Sys_Mkdir(fs_homepath->string);
+	/* The port splits the old single home into config/data/state, all created
+	   above; the legacy single var stays empty here, and mkdir("") is not a
+	   directory request. */
+	if ( fs_homepath->string[0] ) {
+		Sys_Mkdir(fs_homepath->string);
+	}
 
 	FS_ReorderPurePaks();
 
