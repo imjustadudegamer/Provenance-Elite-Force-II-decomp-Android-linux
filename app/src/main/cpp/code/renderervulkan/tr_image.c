@@ -72,6 +72,9 @@ int		vk_filter_max = VK_TFILT_LINEAR;
 /* the texture the upload seam is filling: created before the uploads run */
 static int		s_vkUploadTex = -1;
 static qboolean	s_vkUploadMips = qfalse;
+/* The create chose RGBA8 because the device has no format for the compressed
+   source; the upload must then carry pixels, never the source blocks. */
+static qboolean	s_vkUploadDecoded = qfalse;
 
 #define FILE_HASH_SIZE		1024
 static	image_t*		hashTable[FILE_HASH_SIZE];
@@ -1107,6 +1110,117 @@ static void UploadCompressed(
 	}
 }
 
+/* The device has no BC/ASTC format for this source, so the create made an
+   RGBA8 image.  Uploading the source blocks into it is a copy whose row length
+   is the block size against a four-byte-per-pixel image -- the GPU reads past
+   the staging buffer and the device is lost on the first upload.  The payload
+   therefore follows the format the device actually has: the DXT chain is
+   decoded to RGBA8 and the copy is pixels. */
+static void UploadDecoded(
+	byte* data,
+	int width,
+	int height,
+	int numMipmaps,
+	int iMipmapsAvailable,
+	qboolean picmip,
+	int vkCompressMode,
+	int* format,
+	int* pUploadWidth,
+	int* pUploadHeight,
+	int* pBytesUsed
+) {
+	const byte* offset;
+	int i, iStartImage;
+	int blockSize, srcDxt;
+	int upW, upH, w, h;
+
+	offset = data;
+	iStartImage = 0;
+	UploadCompressedDims( width, height, iMipmapsAvailable, picmip,
+						  &iStartImage, &upW, &upH );
+	*pUploadWidth = upW;
+	*pUploadHeight = upH;
+	*format = VK_TF_RGBA8;
+
+	srcDxt = ( vkCompressMode == VK_TF_DXT1 ) ? SMP_DXT1
+		   : ( vkCompressMode == VK_TF_DXT5 ) ? SMP_DXT5 : SMP_DXT3;
+	blockSize = ( srcDxt == SMP_DXT1 ) ? 8 : 16;
+
+	/* the source chain is stored at the original extent; step past the levels
+	   picmip and the size clamp dropped, so the first decoded level is the one
+	   the create's level 0 names */
+	w = width;
+	h = height;
+	for ( i = 0; i < iStartImage; i++ ) {
+		int bw = ( w + 3 ) / 4;
+		int bh = ( h + 3 ) / 4;
+
+		if ( bw > 1 && bh > 1 ) {
+			offset += blockSize * bw * bh;
+		}
+		w >>= 1;
+		h >>= 1;
+		if ( !w ) w = 1;
+		if ( !h ) h = 1;
+	}
+
+	*pBytesUsed = 0;
+	w = upW;
+	h = upH;
+	for ( i = iStartImage; w > 0 || h > 0; i++ ) {
+		int bw, bh, bx, by, size;
+		byte *rgba;
+
+		if ( !w ) w = 1;
+		if ( !h ) h = 1;
+		bw = ( w + 3 ) / 4;
+		bh = ( h + 3 ) / 4;
+		size = blockSize * bw * bh;
+
+		rgba = (byte*)ri.Malloc( (size_t)w * (size_t)h * 4u );
+		for ( by = 0; by < bh; by++ ) {
+			for ( bx = 0; bx < bw; bx++ ) {
+				unsigned char blk[64];
+				int px, py;
+
+				SMP_DXTDecodeBlock( srcDxt, offset + ( by * bw + bx ) * blockSize, blk );
+				for ( py = 0; py < 4; py++ ) {
+					for ( px = 0; px < 4; px++ ) {
+						int dx = bx * 4 + px;
+						int dy = by * 4 + py;
+
+						if ( dx < w && dy < h ) {
+							memcpy( rgba + ( (size_t)dy * w + dx ) * 4u,
+									blk + ( py * 4 + px ) * 4, 4 );
+						}
+					}
+				}
+			}
+		}
+
+		if ( s_vkUploadTex >= 0 ) {
+			VK_Texture_Upload( s_vkUploadTex, i - iStartImage, w, h, rgba,
+							   (size_t)w * (size_t)h * 4u );
+		}
+		ri.Free( rgba );
+		*pBytesUsed += w * h * 4;
+
+		/* only a level the source actually carries may advance the read */
+		if ( i < iMipmapsAvailable && bw > 1 && bh > 1 ) {
+			offset += size;
+		}
+
+		w >>= 1;
+		h >>= 1;
+	}
+
+	s_vkUploadMips = ( numMipmaps > 1 ) ? qtrue : qfalse;
+	if ( numMipmaps <= 1 ) {
+		vk_filter_min = VK_TFILT_LINEAR;
+		vk_filter_max = VK_TFILT_LINEAR;
+	}
+}
+
 static void SMP_TranscodeRunJobPool(void* ud, smpTranscodeRows_t* ctx, int bh, int bw)
 {
 	(void)ud;
@@ -1351,18 +1465,40 @@ image_t* R_CreateImageOld(
 	   every copy's extent was short of the level's extent. */
 	{
 		qboolean	supported = qfalse;
+		qboolean	compressed = qfalse;
 		VkFormat	format;
 		int			mipLevels = 1;
 		int			upW = width, upH = height;
 
-		if ( vkCompressMode ) {
+		s_vkUploadDecoded = qfalse;
+
+		/* The format the device will take is decided BEFORE the payload is
+		   chosen.  Asking for S3TC that a device (a mobile tile renderer with
+		   ASTC but no BC) does not have must not leave an RGBA8 image fed with
+		   block data: that copy is the device-lost. */
+		format = VK_Texture_FormatFor( vkCompressMode ? vkCompressMode : VK_TF_RGBA8, &supported );
+
+		if ( vkCompressMode && supported ) {
 			if ( vkConfig.textureCompression != TC_NONE ) {
 				UploadCompressedDims( width, height, iMipmapsAvailable,
 									  allowPicmip, NULL, &upW, &upH );
+				compressed = qtrue;
 			} else if ( smp_texTranscode != SMP_TEXC_NONE ) {
 				UploadTranscodedDims( width, height, iMipmapsAvailable,
 									  allowPicmip, NULL, &upW, &upH );
+				compressed = qtrue;
 			}
+		}
+
+		if ( compressed ) {
+			mipLevels = SMP_MipLevelCount( upW, upH );
+		} else if ( vkCompressMode ) {
+			/* the device has no format for the source: the image is RGBA8 and
+			   the upload decodes the chain into it */
+			UploadCompressedDims( width, height, iMipmapsAvailable,
+								  allowPicmip, NULL, &upW, &upH );
+			format = VK_FORMAT_R8G8B8A8_UNORM;
+			s_vkUploadDecoded = qtrue;
 			mipLevels = SMP_MipLevelCount( upW, upH );
 		} else {
 			Upload32Dims( width, height, allowPicmip, &upW, &upH );
@@ -1371,8 +1507,6 @@ image_t* R_CreateImageOld(
 		if ( mipLevels < 1 ) {
 			mipLevels = 1;
 		}
-
-		format = VK_Texture_FormatFor( vkCompressMode ? vkCompressMode : VK_TF_RGBA8, &supported );
 
 		if ( !VK_Texture_Create( upW, upH, mipLevels, format, &s_vkUploadTex ) ) {
 			s_vkUploadTex = -1;
@@ -1408,7 +1542,28 @@ image_t* R_CreateImageOld(
 	int be_imgT0 = BE_On() ? BE_Microseconds() : 0;
 
 	if (vkCompressMode) {
-		if (vkConfig.textureCompression != TC_NONE) {
+		if (s_vkUploadDecoded) {
+			/* no device format for the source: the create made RGBA8, so the
+			   upload is the decoded chain, not the blocks */
+			s_gles3PathKind = 0;
+			s_gles3PathFmt = VK_TF_RGBA8;
+			s_gles3PathSrcDxt = (vkCompressMode == VK_TF_DXT1) ? SMP_DXT1
+							 : (vkCompressMode == VK_TF_DXT5) ? SMP_DXT5
+																					 : SMP_DXT3;
+			UploadDecoded(
+				(byte*)pic,
+				image->width,
+				image->height,
+				image->numMipmaps,
+				iMipmapsAvailable,
+				allowPicmip,
+				vkCompressMode,
+				&image->internalFormat,
+				&image->uploadWidth,
+				&image->uploadHeight,
+				&image->bytesUsed
+			);
+		} else if (vkConfig.textureCompression != TC_NONE) {
 			s_gles3PathKind = 1; 
 			s_gles3PathFmt = vkCompressMode;
 			s_gles3PathSrcDxt = (vkCompressMode == VK_TF_DXT1) ? SMP_DXT1
