@@ -1122,6 +1122,57 @@ static void ComputeTexCoords( shaderStage_t *pStage ) {
 	}
 }
 
+/* The 2D walk (RB_StageIterator2D) draws through the tess pipeline, whose only
+   colour input is the per-vertex one.  A stage whose rgbGen or alphaGen is not
+   one of the gens that vertex colour already carries therefore has to be
+   resolved into the colour array on the CPU, exactly as ComputeColors does for
+   the shade path: without it the stage draws with the vertex colour alone, so
+   every `rgbGen const` 2D stage came out white -- the retail viewmode tints
+   (hud/structural 1 0.5 0) and the whole inventory weapon bar (rgbGen const /
+   alphaGen const) among them.  The vertex-driven gens keep the array the 2D
+   quad wrote, which is what the engine's own 2D draws (arrows, sliders, the
+   logo) carry their tint in. */
+static qboolean VK_StageNeedsCPUColor2D( const shaderStage_t *pStage )
+{
+	switch ( pStage->rgbGen ) {
+	case CGEN_IDENTITY:
+	case CGEN_IDENTITY_LIGHTING:
+	case CGEN_GLOBAL_COLOR:
+	case CGEN_EXACT_VERTEX:
+	case CGEN_VERTEX:
+		break;
+	default:
+		return qtrue;
+	}
+
+	switch ( pStage->alphaGen ) {
+	case AGEN_SKIP:
+	case AGEN_IDENTITY:
+	case AGEN_GLOBAL_ALPHA:
+	case AGEN_VERTEX:
+		break;
+	default:
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+qboolean VK_StageResolve2DColor( shaderStage_t *pStage )
+{
+	if ( !pStage || !VK_StageNeedsCPUColor2D( pStage ) ) {
+		return qfalse;
+	}
+
+	ComputeColors( pStage );
+
+	if ( VK_StageNeedsCPUTexCoords( pStage ) ) {
+		ComputeTexCoords( pStage );
+	}
+
+	return qtrue;
+}
+
 static void RB_IterateStagesGeneric( shaderCommands_t *input )
 {
 	int stage;
@@ -1193,6 +1244,12 @@ void RB_StageIteratorGeneric( void )
 	if ((input->shader->flags & BUNDLE_ANIMATE_ONCE) != 0) {
 		input->shaderTime = backEnd.refdef.floatTime - backEnd.shaderStartTime;
 	}
+
+	/* the clock's inputs, one row per animated shader per second: the kind
+	   names which producer wrote the shaderStartTime this stage subtracted */
+	VK_Shade_NoteShaderTime( backEnd.currentEntity
+							 ? ( backEnd.currentEntity->e.reType == RT_SPRITE ? "sprite" : "entity" )
+							 : ( backEnd.currentStaticModel ? "static-model" : "world" ) );
 
 	RB_DeformTessGeometry();
 

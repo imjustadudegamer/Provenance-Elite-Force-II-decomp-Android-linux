@@ -317,13 +317,25 @@ void UIRenderModel::Draw(void)
     UIWidget::Draw();
 
     {
-        static int menu3dmvk_draw;
-        if (PROBE_Throttle(&menu3dmvk_draw, 4, 120)) {
-            UIVK_PROBE(
+        /* One row per model per frame for the first frames of a screen, then
+           sparsely.  The shared PROBE_Throttle counter this replaced sampled
+           whichever widget happened to land on the throttle's phase and hid the
+           other: the CONTROLS boot carried 17 rows for its munro preview and
+           none at all for the 0,0,640x480 stardome, so the composition the blue
+           background depends on could not be read.  This site answers per
+           widget, and it comes after UIWidget::Draw -- the row is the fill that
+           was just painted, which is what a flat background wash is. */
+        static int s_menu3dRows;
+        s_menu3dRows++;
+        if (s_menu3dRows <= 480 || (s_menu3dRows % 240) == 0) {
+            UIVK_CENSUS_PROBE(
                 "menu3d",
-                "rm_draw state=%d vis=%d alpha=%.3f screen=%.0f,%.0f %.0fx%.0f static='%s' cvar='%s' cv='%s'",
+                "rm_draw seq=%d state=%d vis=%d show=%d alpha=%.3f screen=%.0f,%.0f %.0fx%.0f "
+                "static='%s' cvar='%s' cv='%s'",
+                s_menu3dRows,
                 (int)m_widgetState,
                 m_visible ? 1 : 0,
+                getShow() ? 1 : 0,
                 (double)m_local_alpha,
                 (double)m_screenframe.pos.x,
                 (double)m_screenframe.pos.y,

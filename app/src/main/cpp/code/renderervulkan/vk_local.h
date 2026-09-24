@@ -302,7 +302,11 @@ void VKimp_WakeRenderer( void *data );
 void VKimp_ShutdownRenderThread( void );
 int VKimp_HandshakeViolations( void );
 /* Every queue touch the port makes, under one lock.  VkQueue is host
-   synchronised and r_smp reaches it from two threads. */
+   synchronised and r_smp reaches it from two threads.  The queue lock and the
+   upload section's lock are both created by VK_Sync_Init, once, on the main
+   thread from VK_Frame_Init, before either thread can reach a pool or a
+   queue. */
+void VK_Sync_Init( void );
 VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
 						  const VkSubmitInfo *submits, VkFence fence );
 VkResult VK_Queue_Present( VkQueue queue, const VkPresentInfoKHR *present );
@@ -315,6 +319,7 @@ void VK_Pool_FreeBuffers( VkDevice device, VkCommandPool pool, uint32_t count,
 						  const VkCommandBuffer *buffers );
 /* ...and because the pool is host synchronised while its buffers RECORD too,
    a whole one-shot upload transaction holds this section lock. */
+void VK_Upload_Init( void );
 void VK_Upload_Begin( void );
 void VK_Upload_End( void );
 /* Park the walk thread and drain its frame before re-laying out an image it

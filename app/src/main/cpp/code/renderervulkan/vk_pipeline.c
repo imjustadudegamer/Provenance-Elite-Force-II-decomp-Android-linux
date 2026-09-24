@@ -46,6 +46,81 @@ typedef struct {
 
 static vkPipelineState_t vk_pipeline;
 
+/* The vertex attribute locations a shader stage actually consumes, as a bitmask.
+   Read out of the module's own SPIR-V: every Input-storage OpVariable whose id
+   carries a Location decoration (the vertex stream's layout is one fixed stride,
+   and an attribute the stage does not read may not be declared in the pipeline's
+   vertex input state -- "Vertex attribute at location N not consumed by vertex
+   shader", the OutputNotConsumed class the layer reported once per pipeline).
+   Returns 0xFFFFFFFF when the module cannot be read, so an unreadable module
+   keeps today's bind-everything behaviour rather than dropping a real input. */
+unsigned int VK_Pipeline_VertexInputMask( const unsigned int *code, unsigned int words )
+{
+	unsigned int mask = 0;
+	unsigned int i, j;
+
+	if ( !code || words < 5 ) {
+		return 0xFFFFFFFFu;
+	}
+
+	for ( i = 5; i < words; ) {
+		unsigned int wc = code[i] >> 16;
+		unsigned int op = code[i] & 0xFFFFu;
+
+		if ( wc == 0 || i + wc > words ) {
+			break;
+		}
+
+		/* OpVariable = 59, storage class Input = 1, result id at operand 2 */
+		if ( op == 59 && wc >= 4 && code[i + 3] == 1 ) {
+			unsigned int id = code[i + 2];
+
+			for ( j = 5; j < words; ) {
+				unsigned int dwc = code[j] >> 16;
+				unsigned int dop = code[j] & 0xFFFFu;
+
+				if ( dwc == 0 || j + dwc > words ) {
+					break;
+				}
+
+				/* OpDecorate = 71, Decoration Location = 30.  The instruction
+				   is (wordCount << 16) | opcode, then target id, decoration,
+				   literal -- a Location decoration is FOUR words and the value
+				   is the fourth.  Reading it as five words with the operands
+				   shifted by one matched nothing and returned the
+				   bind-everything mask, which is the warning left unfixed. */
+				if ( dop == 71 && dwc >= 4 && code[j + 1] == id && code[j + 2] == 30 ) {
+					if ( code[j + 3] < 32 ) {
+						mask |= ( 1u << code[j + 3] );
+					}
+				}
+
+				j += dwc;
+			}
+		}
+
+		i += wc;
+	}
+
+	return mask ? mask : 0xFFFFFFFFu;
+}
+
+/* Keep only the attribute descriptions the stage consumes; the stride and the
+   binding are untouched, because the ring's vertex format is fixed. */
+unsigned int VK_Pipeline_TrimAttributes( VkVertexInputAttributeDescription *attribs,
+										 unsigned int count, unsigned int mask )
+{
+	unsigned int in, out;
+
+	for ( in = 0, out = 0; in < count; in++ ) {
+		if ( mask & ( 1u << attribs[in].location ) ) {
+			attribs[out++] = attribs[in];
+		}
+	}
+
+	return out;
+}
+
 static qboolean VK_Pipeline_Module( const unsigned int *code, unsigned int words,
 									VkShaderModule *module, const char *what )
 {
@@ -114,11 +189,13 @@ qboolean VK_Pipeline_Init( void )
 	attributes[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	attributes[1].offset = offsetof( vkDemoVertex_t, colour );
 
+
 	memset( &vertexInput, 0, sizeof( vertexInput ) );
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInput.vertexBindingDescriptionCount = 1;
 	vertexInput.pVertexBindingDescriptions = &binding;
-	vertexInput.vertexAttributeDescriptionCount = 2;
+	vertexInput.vertexAttributeDescriptionCount = VK_Pipeline_TrimAttributes(
+		attributes, 2, VK_Pipeline_VertexInputMask( vk_pos_vert_spv, VK_POS_VERT_SPV_WORDS ) );
 	vertexInput.pVertexAttributeDescriptions = attributes;
 
 	memset( &inputAssembly, 0, sizeof( inputAssembly ) );

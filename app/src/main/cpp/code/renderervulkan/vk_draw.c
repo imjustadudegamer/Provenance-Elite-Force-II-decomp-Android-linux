@@ -229,6 +229,7 @@ static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 	VkPipelineDynamicStateCreateInfo dynamicState;
 	VkGraphicsPipelineCreateInfo pipelineInfo;
 	VkResult result;
+	uint32_t attribCount;
 
 	memset( &binding, 0, sizeof( binding ) );
 	binding.binding = 0;
@@ -249,11 +250,15 @@ static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 	attributes[2].format = VK_FORMAT_R8G8B8A8_UNORM;
 	attributes[2].offset = offsetof( vkTessVertex_t, color );
 
+	/* Only what the tess vertex stage reads; the stride is the ring's. */
+	attribCount = VK_Pipeline_TrimAttributes( attributes, 3,
+					VK_Pipeline_VertexInputMask( vk_tess_vert_spv, VK_TESS_VERT_SPV_WORDS ) );
+
 	memset( &vertexInput, 0, sizeof( vertexInput ) );
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInput.vertexBindingDescriptionCount = 1;
 	vertexInput.pVertexBindingDescriptions = &binding;
-	vertexInput.vertexAttributeDescriptionCount = 3;
+	vertexInput.vertexAttributeDescriptionCount = attribCount;
 	vertexInput.pVertexAttributeDescriptions = attributes;
 
 	memset( &inputAssembly, 0, sizeof( inputAssembly ) );
