@@ -255,6 +255,7 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
 	tex->height = height;
 	tex->mipLevels = mipLevels;
 	tex->format = format;
+	tex->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	memset( &imageInfo, 0, sizeof( imageInfo ) );
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -334,6 +335,25 @@ void VK_Texture_Destroy( int handle )
 	memset( tex, 0, sizeof( *tex ) );
 }
 
+/* The access stage a layout is left in, for the barrier that leaves it.  A
+   barrier's srcAccessMask has to describe the accesses the old layout allowed
+   (Vulkan 1.4 s7.7), so it comes from the tracked layout, not from a guess. */
+static VkAccessFlags VK_Texture_LayoutAccess( VkImageLayout layout )
+{
+	switch ( layout ) {
+	case VK_IMAGE_LAYOUT_UNDEFINED:
+		return 0;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		return VK_ACCESS_TRANSFER_READ_BIT;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		return VK_ACCESS_TRANSFER_WRITE_BIT;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		return VK_ACCESS_SHADER_READ_BIT;
+	default:
+		return VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	}
+}
+
 qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes )
 {
@@ -372,6 +392,8 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 		return qfalse;
 	}
 
+	VK_Upload_Begin();
+
 	memset( &stagingInfo, 0, sizeof( stagingInfo ) );
 	stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	stagingInfo.size = (VkDeviceSize)bytes;
@@ -381,6 +403,7 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 	if ( !VK_Memory_CreateBuffer( stagingInfo.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 								  &staging, &stagingMemory ) ) {
+		VK_Upload_End();
 		return qfalse;
 	}
 
@@ -413,34 +436,23 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 		goto done;
 	}
 
-	/* A refill hits an image already in SHADER_READ_ONLY; the copy wants
-	   TRANSFER_DST, so transition back first. */
-	if ( tex->published ) {
-		VkImageMemoryBarrier back;
+	/* The copy wants TRANSFER_DST, and the image may be in any layout the boot
+	   already left it in: a refill hits SHADER_READ_ONLY, a later level of the
+	   same chain hits TRANSFER_DST.  One barrier from the TRACKED layout covers
+	   both, and its declared oldLayout is the layout the image actually holds
+	   -- declaring SHADER_READ_ONLY over an image that is in TRANSFER_DST is
+	   exactly the InvalidImageLayout the layer reported.  An already-published
+	   image has to be quiesced first: the walk thread may hold a recorded frame
+	   that samples it. */
+	if ( tex->layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
+		if ( tex->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ) {
+			VK_Upload_Quiesce();
+		}
 
-		memset( &back, 0, sizeof( back ) );
-		back.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		back.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		back.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		back.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		back.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		back.image = tex->image;
-		back.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		back.subresourceRange.levelCount = (uint32_t)tex->mipLevels;
-		back.subresourceRange.layerCount = 1;
-		back.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		back.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-		qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-								VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-								0, NULL, 0, NULL, 1, &back );
-		tex->published = qfalse;
-	}
-
-	if ( mipLevel == 0 ) {
-		VK_Texture_Barrier( cmd, tex->image, VK_IMAGE_LAYOUT_UNDEFINED,
-							VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
+		VK_Texture_Barrier( cmd, tex->image, tex->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							VK_Texture_LayoutAccess( tex->layout ),
 							VK_ACCESS_TRANSFER_WRITE_BIT, tex->mipLevels );
+		tex->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	}
 
 	memset( &region, 0, sizeof( region ) );
@@ -498,6 +510,8 @@ done:
 		qvk.FreeMemory( vk.device, stagingMemory, NULL );
 	}
 
+	VK_Upload_End();
+
 	return ok;
 }
 
@@ -514,6 +528,7 @@ qboolean VK_Texture_Publish( int handle )
 	VkSubmitInfo submitInfo;
 	VkImageMemoryBarrier barrier;
 	VkResult result;
+	qboolean ok = qfalse;
 
 	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
 		return qfalse;
@@ -524,6 +539,8 @@ qboolean VK_Texture_Publish( int handle )
 		return qfalse;
 	}
 
+	VK_Upload_Begin();
+
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.commandPool = vk.uploadPool;
@@ -532,7 +549,7 @@ qboolean VK_Texture_Publish( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "vkAllocateCommandBuffers(publish)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	memset( &beginInfo, 0, sizeof( beginInfo ) );
@@ -541,27 +558,32 @@ qboolean VK_Texture_Publish( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
 						   "vkBeginCommandBuffer(publish)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
-	memset( &barrier, 0, sizeof( barrier ) );
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = tex->image;
-	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	barrier.subresourceRange.levelCount = (uint32_t)tex->mipLevels;
-	barrier.subresourceRange.layerCount = 1;
-	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	/* The barrier leaves the layout the image is actually in.  An image already
+	   in SHADER_READ_ONLY (a publish after a publish) has nothing to transfer
+	   and must not declare a TRANSFER_DST it never held. */
+	if ( tex->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ) {
+		memset( &barrier, 0, sizeof( barrier ) );
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = tex->layout;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = tex->image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.levelCount = (uint32_t)tex->mipLevels;
+		barrier.subresourceRange.layerCount = 1;
+		barrier.srcAccessMask = VK_Texture_LayoutAccess( tex->layout );
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-							0, 0, NULL, 0, NULL, 1, &barrier );
+		qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+								0, 0, NULL, 0, NULL, 1, &barrier );
+	}
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(publish)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
@@ -569,7 +591,7 @@ qboolean VK_Texture_Publish( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
 						   "vkCreateFence(publish)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	memset( &submitInfo, 0, sizeof( submitInfo ) );
@@ -579,13 +601,18 @@ qboolean VK_Texture_Publish( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(publish)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	result = VK_Sync_WaitForFences( fence, VK_TRUE, "texture-publish", "upload" );
-	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(publish)" );
-	tex->published = qtrue;
+	if ( VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(publish)" ) ) {
+		/* the layout is only recorded once the transition is known to have run:
+		   a failed wait must not leave the tracker claiming SHADER_READ_ONLY */
+		tex->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		ok = qtrue;
+	}
 
+done:
 	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
@@ -593,7 +620,9 @@ qboolean VK_Texture_Publish( int handle )
 		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
 
-	return qtrue;
+	VK_Upload_End();
+
+	return ok;
 }
 
 /* A readback of texel (0,0): the offline proof that the copy actually landed. */
@@ -627,6 +656,8 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 								  &buffer, &memory ) ) {
 		return qfalse;
 	}
+
+	VK_Upload_Begin();
 
 	result = qvk.MapMemory( vk.device, memory, 0, 16, 0, &mapped );
 	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkMapMemory(readtexel)" ) ) {
@@ -713,6 +744,8 @@ done:
 		qvk.FreeMemory( vk.device, memory, NULL );
 	}
 
+	VK_Upload_End();
+
 	return ok;
 }
 
@@ -739,6 +772,8 @@ void VK_Texture_MakeMips( int handle )
 		return;
 	}
 
+	VK_Upload_Begin();
+
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.commandPool = vk.uploadPool;
@@ -747,6 +782,7 @@ void VK_Texture_MakeMips( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &cmd ),
 						   "vkAllocateCommandBuffers(mips)" ) ) {
+		VK_Upload_End();
 		return;
 	}
 
@@ -756,14 +792,14 @@ void VK_Texture_MakeMips( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
 						   "vkBeginCommandBuffer(mips)" ) ) {
-		return;
+		goto done;
 	}
 
 	mipWidth = (int32_t)tex->width;
 	mipHeight = (int32_t)tex->height;
 
-	VK_Texture_Barrier( cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-						VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+	VK_Texture_Barrier( cmd, tex->image, tex->layout,
+						VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_Texture_LayoutAccess( tex->layout ),
 						VK_ACCESS_TRANSFER_READ_BIT, 1 );
 
 	for ( level = 1; level < (uint32_t)tex->mipLevels; level++ ) {
@@ -798,8 +834,11 @@ void VK_Texture_MakeMips( int handle )
 		mipHeight = nextHeight;
 	}
 
+	/* the blit ran with both sides declared GENERAL */
+	tex->layout = VK_IMAGE_LAYOUT_GENERAL;
+
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(mips)" ) ) {
-		return;
+		goto done;
 	}
 
 	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
@@ -807,7 +846,7 @@ void VK_Texture_MakeMips( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
 						   "vkCreateFence(mips)" ) ) {
-		return;
+		goto done;
 	}
 
 	memset( &submitInfo, 0, sizeof( submitInfo ) );
@@ -817,11 +856,21 @@ void VK_Texture_MakeMips( int handle )
 
 	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(mips)" ) ) {
-		return;
+		goto done;
 	}
 
 	result = VK_Sync_WaitForFences( fence, VK_TRUE, "mip-build", "upload" );
 	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(mips)" );
+
+done:
+	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+		qvk.DestroyFence( vk.device, fence, NULL );
+	}
+	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
+		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
+	}
+
+	VK_Upload_End();
 }
 
 VkImageView VK_Texture_View( int handle )
@@ -931,6 +980,8 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 								  &buffer, &memory ) ) {
 		return qfalse;
 	}
+
+	VK_Upload_Begin();
 
 	result = qvk.MapMemory( vk.device, memory, 0, bytes, 0, &mapped );
 	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "readback vkMapMemory" ) ) {
@@ -1045,6 +1096,8 @@ done:
 	if ( memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
 		qvk.FreeMemory( vk.device, memory, NULL );
 	}
+
+	VK_Upload_End();
 
 	return ok;
 }

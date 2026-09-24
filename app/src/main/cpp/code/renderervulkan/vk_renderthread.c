@@ -331,6 +331,48 @@ int VKimp_HandshakeViolations( void )
 	return vk_handshakeViolations;
 }
 
+/* The upload pool is one pool, and a VkCommandPool is host-synchronised for its
+   WHOLE lifetime -- not only for allocate and free: Vulkan 1.4 s5.3 ("Host
+   Synchronization" for VkCommandPool) makes "use via recording commands on any
+   command buffers allocated from the pool" part of the same external
+   synchronization.  Locking vkAllocateCommandBuffers and vkFreeCommandBuffers
+   alone therefore still let the walk thread record (vkCmdPipelineBarrier) out
+   of the pool while the main thread allocated or freed from it, which is the
+   "VkCommandPool is simultaneously used in current thread ... and thread ..."
+   the layer reported for vkAllocateCommandBuffers, vkFreeCommandBuffers and
+   vkCmdPipelineBarrier.  One lock per one-shot upload transaction -- taken
+   before the allocate and released after the free -- is that whole lifetime. */
+static SDL_mutex *vk_uploadMutex;
+
+void VK_Upload_Begin( void )
+{
+	if ( !vk_uploadMutex ) {
+		vk_uploadMutex = SDL_CreateMutex();
+	}
+
+	SDL_LockMutex( vk_uploadMutex );
+}
+
+void VK_Upload_End( void )
+{
+	SDL_UnlockMutex( vk_uploadMutex );
+}
+
+/* A layout transition is a write to the image, so an image the walk thread may
+   still sample has to be quiesced first: the walk thread parked and holding no
+   frame is the only state in which no command buffer that references the image
+   can still be recorded-and-unsubmitted (Vulkan 1.4 s7.7/s7.9: a resource in
+   use by a pending submission must not be written).  Called from the render
+   thread it would wait on its own walk, so it is a no-op there. */
+void VK_Upload_Quiesce( void )
+{
+	if ( !vk.smpActive || VKimp_IsRenderThread() ) {
+		return;
+	}
+
+	VKimp_FrontEndWaitIdle();
+}
+
 /* The graphics queue is host-synchronised, and under r_smp two threads reach
    it: the walk thread submits frames while the main thread submits texture
    uploads, publishes and readbacks.  The validation layer named it -- "object

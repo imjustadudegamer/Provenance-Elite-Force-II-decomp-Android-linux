@@ -135,6 +135,7 @@ static qboolean VK_DemoBuffer_Init( void )
 	VkFenceCreateInfo fenceInfo;
 	VkFence fence = VK_NULL_HANDLE;
 	VkResult result;
+	qboolean ok = qfalse;
 
 	memset( &bufferInfo, 0, sizeof( bufferInfo ) );
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -170,6 +171,7 @@ static qboolean VK_DemoBuffer_Init( void )
 
 	memcpy( mapped, vk_demoVertices, VK_VERTEX_DEMO_BYTES );
 	qvk.UnmapMemory( vk.device, stagingMemory );
+	mapped = NULL;
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -177,9 +179,11 @@ static qboolean VK_DemoBuffer_Init( void )
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
+	VK_Upload_Begin();
+
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &vk.uploadCmd ),
 						   "vkAllocateCommandBuffers(upload)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	memset( &beginInfo, 0, sizeof( beginInfo ) );
@@ -188,7 +192,7 @@ static qboolean VK_DemoBuffer_Init( void )
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( vk.uploadCmd, &beginInfo ),
 						   "vkBeginCommandBuffer(upload)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	memset( &copyRegion, 0, sizeof( copyRegion ) );
@@ -198,7 +202,7 @@ static qboolean VK_DemoBuffer_Init( void )
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( vk.uploadCmd ),
 						   "vkEndCommandBuffer(upload)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
@@ -206,7 +210,7 @@ static qboolean VK_DemoBuffer_Init( void )
 
 	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
 						   "vkCreateFence(upload)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	memset( &submitInfo, 0, sizeof( submitInfo ) );
@@ -216,12 +220,15 @@ static qboolean VK_DemoBuffer_Init( void )
 
 	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, fence ),
 						   "vkQueueSubmit(upload)" ) ) {
-		return qfalse;
+		goto done;
 	}
 
 	result = VK_Sync_WaitForFences( fence, VK_TRUE, "upload-fence", "upload" );
-	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(upload)" );
+	if ( VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(upload)" ) ) {
+		ok = qtrue;
+	}
 
+done:
 	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
 		qvk.DestroyFence( vk.device, fence, NULL );
 	}
@@ -236,7 +243,9 @@ static qboolean VK_DemoBuffer_Init( void )
 	}
 	vk.uploadCmd = VK_NULL_HANDLE;
 
-	return qtrue;
+	VK_Upload_End();
+
+	return ok;
 }
 
 qboolean VK_VertexRing_Init( void )
@@ -329,7 +338,9 @@ void VK_VertexRing_Shutdown( void )
 
 	/* The demo triangle's buffer: M1's first-light proof, still owned here. */
 	if ( vk.uploadCmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
+		VK_Upload_Begin();
 		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &vk.uploadCmd );
+		VK_Upload_End();
 	}
 	vk.uploadCmd = VK_NULL_HANDLE;
 

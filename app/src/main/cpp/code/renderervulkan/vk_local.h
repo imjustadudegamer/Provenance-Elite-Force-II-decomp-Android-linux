@@ -313,6 +313,19 @@ VkResult VK_Pool_AllocBuffers( VkDevice device, const VkCommandBufferAllocateInf
 							   VkCommandBuffer *buffers );
 void VK_Pool_FreeBuffers( VkDevice device, VkCommandPool pool, uint32_t count,
 						  const VkCommandBuffer *buffers );
+/* ...and because the pool is host synchronised while its buffers RECORD too,
+   a whole one-shot upload transaction holds this section lock. */
+void VK_Upload_Begin( void );
+void VK_Upload_End( void );
+/* Park the walk thread and drain its frame before re-laying out an image it
+   may still sample. */
+void VK_Upload_Quiesce( void );
+
+/* The vertex-input builder declares only what the stage consumes: the locations
+   its SPIR-V reads, and the trim of the description array to match. */
+unsigned int VK_Pipeline_VertexInputMask( const unsigned int *code, unsigned int words );
+unsigned int VK_Pipeline_TrimAttributes( VkVertexInputAttributeDescription *attribs,
+										 unsigned int count, unsigned int mask );
 
 void VKimp_AdapterInit( void );
 void VKimp_Shutdown( void );

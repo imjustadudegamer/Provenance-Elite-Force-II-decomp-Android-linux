@@ -138,6 +138,8 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 		return qfalse;
 	}
 
+	VK_Upload_Begin();
+
 	memset( &imageInfo, 0, sizeof( imageInfo ) );
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -303,6 +305,8 @@ done:
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
 		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &cmd );
 	}
+
+	VK_Upload_End();
 
 	VK_Offscreen_Destroy( &target );
 

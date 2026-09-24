@@ -353,6 +353,8 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 		return qfalse;
 	}
 
+	VK_Upload_Begin();
+
 	result = qvk.MapMemory( vk.device, memory, 0, bytes, 0, &mapped );
 	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "readback vkMapMemory" ) ) {
 		goto done;
@@ -468,6 +470,8 @@ done:
 	if ( memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
 		qvk.FreeMemory( vk.device, memory, NULL );
 	}
+
+	VK_Upload_End();
 
 	return ok;
 }
