@@ -576,7 +576,7 @@ void UI_FocusMenuIfExists(void)
 
             int uivk_gap = (paintmenu && paintv3d) ? (paintv3d - paintmenu) : 0;
 
-            PAINT_PROBE("paint:order",
+            PAINT_CENSUS_PROBE("paint:order",
                        "menu='%s' children=%d containerIndex=%d depth=%.3f visible=%d | "
                        "view3dIndex=%d depth=%.3f visible=%d cls.state=%d tie=%d tieNC=%d nonurc=%d flip=%d prev3d=%d gap=%d | %s| front=%s| tieNames=%s guimouse=%d",
                        currentMenu->m_name.c_str(),
@@ -1152,7 +1152,14 @@ static void UI_Update_Impl(void)
                    where the starfield and the ship live.  Retail leaves it
                    behind the menu; hiding the view and filling black put a
                    black rectangle behind every non-fullscreen menu, the controls
-                   screen among them.  Loading and connect still fill. */
+                   screen among them.  Not hiding it is not enough: a fullscreen
+                   menu (the main menu's `fullscreen 1`) hides it every frame, so
+                   a menu that is not fullscreen has to ask for it back or it
+                   inherits that hidden state -- the boot row reads
+                   menu='controls' visible=0 against menu='main' visible=1. */
+                if (!view3d->LetterboxActive()) {
+                    view3d->setShow(true);
+                }
             } else {
                 view3d->setShow(false);
                 UI_ClearBackground();
