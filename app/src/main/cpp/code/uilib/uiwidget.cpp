@@ -3930,6 +3930,29 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
 
     UColor bgColor = getStateBackgroundColor();
     if (bgColor.a != 0.0) {
+        /* The opaque background wash a UIWidget paints is the only source of a
+           flat light-blue screen in the front end (background.inc's RenderModel
+           bgcolor 0.35 0.67 1.00).  Naming the writer, its class, its rect and
+           its place in the frame's draw order is what tells a composition
+           defect (the model that should cover the fill missing) from an order
+           defect (the fill painted over the model).  Gated and budgeted like
+           the other census rows. */
+        static int s_bgfillRows;
+        s_bgfillRows++;
+        if (s_bgfillRows <= 480 || (s_bgfillRows % 240) == 0) {
+            UIVK_CENSUS_PROBE(
+                "bgfill",
+                "seq=%d class='%s' name='%s' rect=%.0f,%.0f %.0fx%.0f rgba=%.3f,%.3f,%.3f,%.3f local_alpha=%.3f",
+                s_bgfillRows,
+                getClassname(),
+                getName() ? getName() : "(null)",
+                (double)m_frame.pos.x, (double)m_frame.pos.y,
+                (double)m_frame.size.width, (double)m_frame.size.height,
+                (double)bgColor.r, (double)bgColor.g, (double)bgColor.b, (double)bgColor.a,
+                (double)m_local_alpha
+            );
+        }
+
         DrawBox(0, 0, m_frame.size.width, m_frame.size.height, bgColor, bgColor.a * m_local_alpha);
     }
 

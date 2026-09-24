@@ -610,7 +610,11 @@ qboolean VK_EnsureBroughtUp( const char *where )
 	rmode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
 	mode = rmode ? rmode->integer : VK_PLATFORM_FALLBACK_MODE;
 
-	VK_Guard_Hit( VK_GSITE_DEVICE, where, VK_INCOMPLETE );
+	/* The entry row is informational, not a guard hit: the guard ledger answers
+	   "did a Vulkan call fail", and VK_INCOMPLETE here is a marker that reads as
+	   a failure result (site=device result=incomplete n=1) without one.  The
+	   real failure is the row below, which stays a hit. */
+	VK_Guard_Row( "VK:bringup", "site=%s entry", where );
 
 	if ( !R_SetMode( mode, &vkConfig ) ) {
 		VK_Guard_Hit( VK_GSITE_DEVICE, "bring-up failed", VK_ERROR_INITIALIZATION_FAILED );

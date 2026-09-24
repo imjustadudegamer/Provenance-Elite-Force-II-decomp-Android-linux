@@ -477,18 +477,70 @@ static int				vk_numProgModules;
 static vkProgram_t	vk_programs[VK_PROG_MAX];
 static int				vk_numPrograms;
 
-static const vkShaderModuleDef_t *VK_Program_Find( int family, unsigned defines, int isFragment )
+/* The module table is 682 entries and the permutation path asks for one
+   (family, defines, stage) triple per stage request -- 367 a frame in the
+   15:34 boot.  Both the old finder and the module loop that followed it walked
+   the whole table on every request, and the loop had no early exit, so a cache
+   hit on an already-built pipeline still paid about 2700 iterations.  One open
+   addressed index, built once from the same table, answers in a probe or two.
+   The def's key is (family, defines-without-the-family-byte, isFragment), which
+   is exactly what the callers pass. */
+#define VK_MODULE_HASH 2048
+static int				s_moduleIndex[VK_MODULE_HASH];	/* stored as slot + 1, 0 = empty */
+
+static unsigned VK_ModuleHash( int family, unsigned defines, int isFragment )
+{
+	unsigned h = (unsigned)family * 2654435761u;
+
+	h ^= ( defines & 0xFFFFu ) * 40503u;
+	h ^= (unsigned)isFragment * 2246822519u;
+
+	return h & ( VK_MODULE_HASH - 1u );
+}
+
+static void VK_ModuleIndexBuild( void )
 {
 	int i;
 
+	memset( s_moduleIndex, 0, sizeof( s_moduleIndex ) );
+
 	for ( i = 0; i < VK_SHADER_MODULE_COUNT; i++ ) {
-		if ( vk_progModules[i].def.family == family
-			 && vk_progModules[i].def.defines == defines
-			 && vk_progModules[i].def.isFragment == isFragment ) {
-			return &vk_progModules[i].def;
+		const vkShaderModuleDef_t *d = &vk_progModules[i].def;
+		unsigned h = VK_ModuleHash( d->family, d->defines, d->isFragment );
+
+		while ( s_moduleIndex[h] ) {
+			h = ( h + 1 ) & ( VK_MODULE_HASH - 1u );
+		}
+		s_moduleIndex[h] = i + 1;
+	}
+}
+
+static int VK_ModuleSlot( int family, unsigned defines, int isFragment )
+{
+	unsigned h = VK_ModuleHash( family, defines, isFragment );
+	unsigned start = h;
+
+	while ( s_moduleIndex[h] ) {
+		const vkShaderModuleDef_t *d = &vk_progModules[s_moduleIndex[h] - 1].def;
+
+		if ( d->family == family && d->defines == defines && d->isFragment == isFragment ) {
+			return s_moduleIndex[h] - 1;
+		}
+
+		h = ( h + 1 ) & ( VK_MODULE_HASH - 1u );
+		if ( h == start ) {
+			break;
 		}
 	}
-	return NULL;
+
+	return -1;
+}
+
+static const vkShaderModuleDef_t *VK_Program_Find( int family, unsigned defines, int isFragment )
+{
+	int slot = VK_ModuleSlot( family, defines, isFragment );
+
+	return ( slot >= 0 ) ? &vk_progModules[slot].def : NULL;
 }
 
 /* The lookup key is (family, permutation bits).  A program's defines bitmask
@@ -499,25 +551,20 @@ static const vkShaderModuleDef_t *VK_Program_Find( int family, unsigned defines,
    because VKP_FAMILY_STAGE is zero. */
 static qboolean VK_Program_Modules( int family, unsigned defines, VkShaderModule *vert, VkShaderModule *frag )
 {
-	const vkShaderModuleDef_t *v;
-	const vkShaderModuleDef_t *f;
-	int i;
+	int v;
+	int f;
 
 	defines &= ~VKP_FAMILY_MASK;
-	v = VK_Program_Find( family, defines, 0 );
-	f = VK_Program_Find( family, defines, 1 );
+	v = VK_ModuleSlot( family, defines, 0 );
+	f = VK_ModuleSlot( family, defines, 1 );
 
-	if ( !v || !f ) {
+	if ( v < 0 || f < 0 ) {
 		return qfalse;
 	}
-	for ( i = 0; i < VK_SHADER_MODULE_COUNT; i++ ) {
-		if ( vk_progModules[i].def.spv == v->spv ) {
-			*vert = vk_progModules[i].module;
-		}
-		if ( vk_progModules[i].def.spv == f->spv ) {
-			*frag = vk_progModules[i].module;
-		}
-	}
+
+	*vert = vk_progModules[v].module;
+	*frag = vk_progModules[f].module;
+
 	return qtrue;
 }
 
@@ -540,6 +587,9 @@ qboolean VK_Shade_Init( void )
 		vk_progModules[i].def = vkShaderModules[i];
 	}
 	vk_numProgModules = VK_SHADER_MODULE_COUNT;
+
+	/* the index is built from the table that was just filled, before any request */
+	VK_ModuleIndexBuild();
 
 	/* the miss census: every family the draw side can name must resolve through
 	   the same key VK_Shade_Pipeline uses, so a gap here is the whole class */
@@ -2133,6 +2183,7 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	vkShadePipeline_t	*slot = NULL;
 	VkResult result;
 	unsigned srcNibble, dstNibble;
+	uint32_t attribCount;
 	int i;
 
 	/* the cache key names the modules, so it keys on the permutation bits alone */
@@ -2179,11 +2230,21 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	attribs[4].location = ATTR_TEXCOORD1; attribs[4].binding = 0;
 	attribs[4].format = VK_FORMAT_R32G32_SFLOAT; attribs[4].offset = 44;
 
+	/* Declare only the locations this permutation's vertex stage reads.  The
+	   ring's stride is fixed, so the binding and the offsets are unchanged. */
+	{
+		const vkShaderModuleDef_t *vdef = VK_Program_Find( family, defines, 0 );
+		unsigned int mask = vdef ? VK_Pipeline_VertexInputMask( vdef->spv, vdef->words )
+								 : 0xFFFFFFFFu;
+
+		attribCount = VK_Pipeline_TrimAttributes( attribs, 5, mask );
+	}
+
 	memset( &vertexInput, 0, sizeof( vertexInput ) );
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInput.vertexBindingDescriptionCount = 1;
 	vertexInput.pVertexBindingDescriptions = &binding;
-	vertexInput.vertexAttributeDescriptionCount = 5;
+	vertexInput.vertexAttributeDescriptionCount = attribCount;
 	vertexInput.pVertexAttributeDescriptions = attribs;
 
 	memset( &assembly, 0, sizeof( assembly ) );
@@ -2455,6 +2516,74 @@ static int s_frameDrawSurfs;    /* draw surfs those commands carried */
 static int s_framePermReq;      /* permutation lookups */
 static int s_framePermMiss;     /* lookups with no SPIR-V for the key */
 static int s_framePermMissRows; /* [VK:perm] rows this frame */
+
+/* The shader clock, one row per animated shader per second: the fields that
+   settle whether an animation runs at real seconds.  `tess.shaderTime` is the
+   value the stage's tcMod/gen actually advances on; `floatTime` is
+   refdef.time*0.001 and `start` is the entity/sprite/world shaderStartTime the
+   ANIMATE_ONCE arm subtracts.  A stage that advances ~1.0 per second of
+   refdef time is right whatever its unit; one that advances ~1000 is a unit
+   mix, and the tree's own producers disagree -- the model and tempmodel paths
+   write seconds (cg.time/1000.0) while the sprite path writes a negated
+   millisecond value, which the Mac CG_ModelAnim @0x00034F00 then divides by a
+   per-entity float.  The row names which of them the stage in front of the
+   operator is using. */
+void VK_Shade_NoteShaderTime( const char *kind )
+{
+	static const void	*s_seenShader[24];
+	static int			s_seenSecond[24];
+	static int			s_seenCount;
+	static int			s_rows;
+	const shader_t		*sh = tess.shader;
+	const shaderStage_t	*st;
+	int					second;
+	int					i;
+
+	if ( !sh ) {
+		return;
+	}
+
+	second = (int)( backEnd.refdef.time / 1000 );
+
+	for ( i = 0; i < s_seenCount; i++ ) {
+		if ( s_seenShader[i] == (const void *)sh && s_seenSecond[i] == second ) {
+			return;
+		}
+	}
+
+	if ( s_seenCount < (int)( sizeof( s_seenShader ) / sizeof( s_seenShader[0] ) ) ) {
+		s_seenShader[s_seenCount] = sh;
+		s_seenSecond[s_seenCount] = second;
+		s_seenCount++;
+	} else {
+		i                                = s_rows % (int)( sizeof( s_seenShader ) / sizeof( s_seenShader[0] ) );
+		s_seenShader[i]                  = sh;
+		s_seenSecond[i]                  = second;
+	}
+
+	st = tess.xstages[0];
+
+	s_rows++;
+	if ( s_rows > 600 ) {
+		return;
+	}
+
+	VK_Guard_Row( "VK:shadertime",
+				  "shader='%s' kind=%s animate_once=%d floatTime=%.3f start=%.3f "
+				  "tessShaderTime=%.3f passes=%d tcMod0=%d tcMod1=%d rgbGen=%d alphaGen=%d refdefTime=%d",
+				  sh->name,
+				  kind,
+				  ( sh->flags & BUNDLE_ANIMATE_ONCE ) ? 1 : 0,
+				  (double)backEnd.refdef.floatTime,
+				  (double)backEnd.shaderStartTime,
+				  (double)tess.shaderTime,
+				  sh->numUnfoggedPasses,
+				  st ? st->bundle[0].numTexMods : 0,
+				  st ? st->bundle[1].numTexMods : 0,
+				  st ? (int)st->rgbGen : -1,
+				  st ? (int)st->alphaGen : -1,
+				  backEnd.refdef.time );
+}
 
 void VK_Shade_NoteDraw( int shade )
 {

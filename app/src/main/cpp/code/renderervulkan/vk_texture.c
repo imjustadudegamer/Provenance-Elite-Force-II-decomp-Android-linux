@@ -147,6 +147,9 @@ qboolean VK_Texture_Init( void )
 	memset( vk_samplers, 0, sizeof( vk_samplers ) );
 	vk_numSamplers = 0;
 
+	/* the upload section lock exists before either thread can reach a pool */
+	VK_Upload_Init();
+
 	return qtrue;
 }
 
@@ -392,6 +395,14 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 		return qfalse;
 	}
 
+	/* Quiesce BEFORE the upload section is taken.  The walk thread can reach a
+	   lazy texture load inside the frame this parks, and that load needs the
+	   section: waiting for the walk while holding it would wait for a thread
+	   that is waiting for us. */
+	if ( tex->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ) {
+		VK_Upload_Quiesce();
+	}
+
 	VK_Upload_Begin();
 
 	memset( &stagingInfo, 0, sizeof( stagingInfo ) );
@@ -441,14 +452,8 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 	   same chain hits TRANSFER_DST.  One barrier from the TRACKED layout covers
 	   both, and its declared oldLayout is the layout the image actually holds
 	   -- declaring SHADER_READ_ONLY over an image that is in TRANSFER_DST is
-	   exactly the InvalidImageLayout the layer reported.  An already-published
-	   image has to be quiesced first: the walk thread may hold a recorded frame
-	   that samples it. */
+	   exactly the InvalidImageLayout the layer reported. */
 	if ( tex->layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
-		if ( tex->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ) {
-			VK_Upload_Quiesce();
-		}
-
 		VK_Texture_Barrier( cmd, tex->image, tex->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							VK_Texture_LayoutAccess( tex->layout ),
 							VK_ACCESS_TRANSFER_WRITE_BIT, tex->mipLevels );

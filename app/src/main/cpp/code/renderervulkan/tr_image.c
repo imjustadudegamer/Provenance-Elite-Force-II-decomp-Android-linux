@@ -998,12 +998,12 @@ done:
 
 	s_vkUploadMips = numMipmaps ? qtrue : qfalse;
 
-	/* The filter pair the twin pushed into the object; anisotropy stays off. */
-	if (numMipmaps)
-	{
-		vk_filter_min = vk_filter_min;
-	}
-	else
+	/* The filter pair the sampler is built from; anisotropy stays off.  The
+	   mipmapped arm has nothing left to write in this lane -- the sampler reads
+	   vk_filter_min/vk_filter_max directly and the default already is the
+	   mipmap-capable filter, where the twin pushed gl_filter_min into the
+	   object.  Only the single-level arm changes them. */
+	if (!numMipmaps)
 	{
 		vk_filter_min = VK_TFILT_LINEAR;
 		vk_filter_max = VK_TFILT_LINEAR;
@@ -1323,7 +1323,12 @@ static void UploadTranscoded(
 
 	*pUploadWidth = upW;
 	*pUploadHeight = upH;
-	*format = (srcDxt == SMP_DXT1) ? VK_TF_DXT1
+	/* The payload is the transcode target, not the DXT the pixels came from:
+	   the chain this helper uploads is ASTC/ETC2 blocks, and internalFormat is
+	   what every reader of the image names it by. */
+	*format = (target == SMP_TEXC_ASTC_4x4) ? VK_TF_ASTC_4x4
+			: (target == SMP_TEXC_ETC2_RGBA8) ? VK_TF_ETC2_RGBA8
+			: (srcDxt == SMP_DXT1) ? VK_TF_DXT1
 			: (srcDxt == SMP_DXT5) ? VK_TF_DXT5
 									: VK_TF_DXT3;
 
@@ -1584,9 +1589,11 @@ image_t* R_CreateImageOld(
 			);
 		} else if (smp_texTranscode != SMP_TEXC_NONE) {
 			s_gles3PathKind = (smp_texTranscode == SMP_TEXC_ASTC_4x4) ? 3 : 2;
+			/* the census `fmt=' names the payload, and the payload is the
+			   transcode target's block format */
 			s_gles3PathFmt = (smp_texTranscode == SMP_TEXC_ASTC_4x4)
-								? VK_TF_RGBA8
-								: VK_TF_RGBA8;
+								? VK_TF_ASTC_4x4
+								: VK_TF_ETC2_RGBA8;
 			s_gles3PathSrcDxt = (vkCompressMode == VK_TF_DXT1) ? SMP_DXT1
 							 : (vkCompressMode == VK_TF_DXT5) ? SMP_DXT5
 																					 : SMP_DXT3;

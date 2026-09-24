@@ -344,11 +344,19 @@ int VKimp_HandshakeViolations( void )
    before the allocate and released after the free -- is that whole lifetime. */
 static SDL_mutex *vk_uploadMutex;
 
-void VK_Upload_Begin( void )
+/* Created once, from the sync init below, before either thread can reach an
+   upload: a lazily created mutex has a window in which both threads create one
+   and only one of them guards. */
+void VK_Upload_Init( void )
 {
 	if ( !vk_uploadMutex ) {
 		vk_uploadMutex = SDL_CreateMutex();
 	}
+}
+
+void VK_Upload_Begin( void )
+{
+	VK_Upload_Init();
 
 	SDL_LockMutex( vk_uploadMutex );
 }
@@ -384,10 +392,28 @@ static SDL_mutex *vk_queueMutex;
 static SDL_mutex *VK_Queue_Mutex( void )
 {
 	if ( !vk_queueMutex ) {
-		vk_queueMutex = SDL_CreateMutex();
+		/* VK_Sync_Init is what makes this unreachable -- VK_Frame_Init calls it
+		   before it creates a pool or touches a queue.  If an ordering change
+		   ever gets here, name it: SDL_LockMutex(NULL) is a silent no-op, so
+		   without the row the section would simply not exist. */
+		VK_Guard_Row( "VK:sync", "queue mutex missing; VK_Sync_Init was not reached" );
 	}
 
 	return vk_queueMutex;
+}
+
+/* Both host-synchronised objects under r_smp -- the graphics queue and the
+   upload command pool -- take their lock from here, once, on the main thread in
+   VK_Frame_Init before either thread can reach a pool or a queue.  Creating
+   either mutex on first use leaves a window in which both threads find it null
+   and create one each, so only one of them guards. */
+void VK_Sync_Init( void )
+{
+	if ( !vk_queueMutex ) {
+		vk_queueMutex = SDL_CreateMutex();
+	}
+
+	VK_Upload_Init();
 }
 
 VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,

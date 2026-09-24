@@ -79,7 +79,7 @@ void RB_InitBackend( void )
 /* ---- the stage pass: one stage, one pipeline, one bind, one indexed draw;
  * the state tuple carries blend, depth, cull and alpha test. */
 
-static qboolean RB_StagePass( shaderStage_t *stage )
+static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 {
 	vkPipelineKey_t key;
 	VkPipeline pipeline;
@@ -199,11 +199,13 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 		return qfalse;
 	}
 
-	/* the 2D pack reads nothing from the stage: xyz, st and colour are the
-	   surface's own, so every stage of this surface draws one slice */
+	/* xyz, st and colour are the surface's own; which colour array that is
+	   depends on the stage's gens -- RB_StageIterator2D resolved the ones the
+	   tess pipeline cannot express into svars.colors and hands that array in,
+	   the vertex-driven ones keep the quad's own vertexColors. */
 	if ( stage && VK_VertexRing_StreamMatch( tess.numVertexes, tess.numIndexes,
 											 tess.texCoords[0][0], tess.texCoords[0][0], 0,
-											 tess.vertexColors, NULL,
+											 colors, NULL,
 											 &vertexBase, &indexBase ) ) {
 		VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
 		VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );
@@ -223,16 +225,16 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 		ringVerts[i].st[0] = tess.texCoords[i][0][0];
 		ringVerts[i].st[1] = tess.texCoords[i][0][1];
 
-		if ( tess.vertexColorValid ) {
-			ringVerts[i].color[0] = tess.vertexColors[i][0];
-			ringVerts[i].color[1] = tess.vertexColors[i][1];
-			ringVerts[i].color[2] = tess.vertexColors[i][2];
-			ringVerts[i].color[3] = tess.vertexColors[i][3];
-		} else {
+		if ( colors == tess.vertexColors && !tess.vertexColorValid ) {
 			ringVerts[i].color[0] = 254;
 			ringVerts[i].color[1] = 254;
 			ringVerts[i].color[2] = 254;
 			ringVerts[i].color[3] = 254;
+		} else {
+			ringVerts[i].color[0] = colors[i][0];
+			ringVerts[i].color[1] = colors[i][1];
+			ringVerts[i].color[2] = colors[i][2];
+			ringVerts[i].color[3] = colors[i][3];
 		}
 	}
 
@@ -246,7 +248,7 @@ static qboolean RB_StagePass( shaderStage_t *stage )
 	if ( stage ) {
 		VK_VertexRing_StreamStore( tess.numVertexes, tess.numIndexes,
 								   tess.texCoords[0][0], tess.texCoords[0][0], 0,
-								   tess.vertexColors, NULL, vertexBase, indexBase );
+								   colors, NULL, vertexBase, indexBase );
 	}
 
 	/* The ring is bound per surface: a bind is cheaper than tracking which. */
@@ -1201,13 +1203,29 @@ void RB_StageIterator2D( void )
 {
 	int stage;
 
+	/* This lane's 2D dispatch is RB_StageIterator2D, which never reaches
+	   RB_StageIteratorGeneric, so the clock row is taken here as well: a
+	   scrolling 2D shader (a wall panel's screen, a HUD effect) animates off
+	   the same tess.shaderTime. */
+	tess.shaderTime = backEnd.refdef.floatTime;
+	VK_Shade_NoteShaderTime( "2d" );
+
 	for ( stage = 0; stage < tess.numPasses; stage++ ) {
-		if ( !tess.xstages[stage] || !tess.xstages[stage]->active ) {
+		shaderStage_t *pStage = tess.xstages[stage];
+		const color4ub_t *colors;
+
+		if ( !pStage || !pStage->active ) {
 			continue;
 		}
+
+		/* A stage whose gens the tess pipeline cannot express is resolved into
+		   the CPU colour array first; the vertex-driven ones keep the 2D quad's
+		   own colour (see VK_StageResolve2DColor). */
+		colors = VK_StageResolve2DColor( pStage ) ? tess.svars.colors : tess.vertexColors;
+
 		/* the 2D walk was the one iterator that never reported into the frame's
 		   stage census, so a menu-heavy frame under-counted its own stages */
 		VK_Shade_NoteStage( tess.shader );
-		RB_StagePass( tess.xstages[stage] );
+		RB_StagePass( pStage, colors );
 	}
 }

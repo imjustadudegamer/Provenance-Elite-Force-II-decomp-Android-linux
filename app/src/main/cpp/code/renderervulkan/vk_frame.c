@@ -58,6 +58,10 @@ qboolean VK_Frame_Init( void )
 
 	frames = VK_Frame_Count();
 
+	/* The queue and upload-section locks exist before the first pool, buffer or
+	   queue touch on either thread. */
+	VK_Sync_Init();
+
 	memset( &poolInfo, 0, sizeof( poolInfo ) );
 	/* The fences come up signalled, so the first Begin of each slot owes a real
 	   wait: pending starts true and only a queue-accepted submit re-arms it. */

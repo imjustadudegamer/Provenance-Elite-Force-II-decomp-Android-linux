@@ -2709,6 +2709,8 @@ void		VK_2DOrder_Note( const char *shader );
 void		VK_Shade_NoteDraw( int shade );
 void		VK_Shade_NoteSurfCmds( int surfs );
 void		VK_Shade_NoteStage( const struct shader_s *shader );
+/* one row per animated shader per second: the shader clock's inputs */
+void		VK_Shade_NoteShaderTime( const char *kind );
 	void		VK_Shade_ReadbackFrame( unsigned imageIndex );
 int		VK_Shade_FrameBatches( void );
 void		VK_Shade_NotePerm( int miss );
