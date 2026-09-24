@@ -1878,6 +1878,7 @@ void RB_CheckOverflow( int verts, int indexes );
 
 void RB_StageIteratorGeneric( void );
 void RB_StageIterator2D( void );
+qboolean VK_StageResolve2DColor( shaderStage_t *pStage );
 void RB_StageIteratorVertexLitTextureUnfogged_2D( void );
 void RB_StageIteratorSky( void );
 void RB_StageIteratorVertexLitTextureUnfogged( void );
@@ -2863,7 +2864,12 @@ typedef struct {
 	int			mipLevels;
 	VkFormat	format;
 	qboolean	inUse;
-	qboolean	published;	/* already moved to SHADER_READ_ONLY_OPTIMAL */
+	/* The layout the image is in right now.  Every barrier this module records
+	   declares this as its oldLayout and writes the new one back, so a
+	   transition can never claim a layout the image is not in (Vulkan 1.4
+	   s7.9.2: `oldLayout` must match the layout the image is actually in, or be
+	   VK_IMAGE_LAYOUT_UNDEFINED). */
+	VkImageLayout layout;
 } vkTexture_t;
 
 #define VK_MAX_TEXTURES MAX_DRAWIMAGES
@@ -2898,6 +2904,11 @@ int      VK_Texture_BytesUsed( void );
 #define VK_TF_DXT1				0x83F0
 #define VK_TF_DXT3				0x83F2
 #define VK_TF_DXT5				0x83F3
+/* the two block formats this module's own transcoder emits: a transcode chain
+   is not the S3TC payload it came from, and internalFormat says what was
+   uploaded */
+#define VK_TF_ETC2_RGBA8		0x9278
+#define VK_TF_ASTC_4x4			0x93B0
 
 /* the wrap decisions an image carries in wrapClampModeX/Y: repeat unless the
    shader asked for a clamp */
