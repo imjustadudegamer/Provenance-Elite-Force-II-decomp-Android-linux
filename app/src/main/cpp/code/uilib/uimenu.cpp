@@ -1374,6 +1374,13 @@ static void AdaptHideNamed(UIWidget *container, const char *const *names, int co
     }
 }
 
+/* Widget builders the touch section owns.  Its gate used to be the presence of
+   `cl_touchLook', and that cvar reaches Linux because the Android data pak's
+   global/default.cfg is the only default.cfg the Linux base tree has, so the
+   Linux settings menus grew a whole Touch Controls section.  Gating the section
+   and its helpers themselves means a stray cvar or config can never re-inject
+   it, which the cvar test could not promise. */
+#ifdef __ANDROID__
 static UIWidget *AdaptWidget(
     UIWidget *parent, const char *resource, const char *name, float x, float y, float w, float h
 )
@@ -1421,6 +1428,9 @@ static void AdaptCommand(UIWidget *wid, const char *command, ...)
     wid->ProcessEvent(ev);
 }
 
+/* The touch section lives only in the Android build.  Gating the section and
+   its helpers themselves, rather than the cvar presence, means a stray config
+   can never re-inject it. */
 static void AdaptTouchTooltip(UIWidget *wid, const char *tooltip)
 {
     AdaptCommand(wid, "hovercommand", va("globalwidgetcommand tooltip_controls title \"%s\"", tooltip), NULL);
@@ -1510,6 +1520,7 @@ static void AdaptTouchSection(UIWidget *container)
     AdaptTouchCheckbox(container, "TouchCrouchToggle", 187, "Crouch Toggle", "cl_crouchToggle",
                        "Tap crouch to hold it down");
 }
+#endif /* __ANDROID__ */
 
 static void AdaptHideAt(UIWidget *container, float x, float y, float w, float h)
 {
@@ -1576,7 +1587,9 @@ void UI_AdaptSettingsMenus(void)
 
         if (!stricmp(container->getName(), "controls")) {
             AdaptHideNamed(container, s_adaptBindWidgets, bindCount);
+#ifdef __ANDROID__
             AdaptTouchSection(container);
+#endif
         }
     }
 }

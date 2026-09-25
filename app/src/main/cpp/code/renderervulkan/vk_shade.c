@@ -1070,15 +1070,27 @@ VkResult VK_Sync_WaitForFences( VkFence fence, VkBool32 waitAll, const char *sit
 {
 	VkResult result;
 	int		 t0;
+	qboolean row = R_ProbeStatsOn();
+	/* the walk's own frame fence: the device owns this wait, and the walk's
+	   cost row has to be able to subtract it from its CPU time */
+	qboolean walkFence = ( !strcmp( site, "frame-fence" ) && !strcmp( why, "frame" )
+						   && VKimp_IsRenderThread() && VK_WalkStatOn() );
 
-	if ( !R_ProbeStatsOn() ) {
+	if ( !row && !walkFence ) {
 		return qvk.WaitForFences( vk.device, 1, &fence, waitAll, UINT64_MAX );
 	}
 
-	VK_Sync_Row( site, why, qfalse, 0 );
+	if ( row ) {
+		VK_Sync_Row( site, why, qfalse, 0 );
+	}
 	t0 = BE_Microseconds();
 	result = qvk.WaitForFences( vk.device, 1, &fence, waitAll, UINT64_MAX );
-	VK_Sync_Row( site, why, qtrue, BE_Microseconds() - t0 );
+	if ( walkFence ) {
+		VK_WalkStat_Add( VK_WP_FENCE, (long long)( BE_Microseconds() - t0 ) );
+	}
+	if ( row ) {
+		VK_Sync_Row( site, why, qtrue, BE_Microseconds() - t0 );
+	}
 	return result;
 }
 
@@ -1791,6 +1803,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	int					base = 0, indexBase = 0;
 	int					i;
 	VkCommandBuffer		cmd;
+	long long			walkT0;
 
 	if ( !input || input->numVertexes <= 0 || numIndexes <= 0 ) {
 		return;
@@ -1809,19 +1822,26 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		 && VK_VertexRing_StreamMatch( input->numVertexes, numIndexes,
 									   texcoord0, texcoord1, tcStrideFloats,
 									   colors, normals, &base, &indexBase ) ) {
+		walkT0 = VK_WALK_T0();
 		if ( !VK_Shade_Bind( cmd, input->shader ) ) {
+			VK_WALK_ADD( walkT0, VK_WP_BIND );
 			VK_VertexRing_Flushed();
 			return;
 		}
+		VK_WALK_ADD( walkT0, VK_WP_BIND );
 		VK_Shade_FootprintRow( input, stage, indexes, numIndexes );
+		walkT0 = VK_WALK_T0();
 		VK_Draw_BindRingOffset( cmd, base );
 		VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, 0 );
+		VK_WALK_ADD( walkT0, VK_WP_REC );
 		VK_VertexRing_Flushed();
 		return;
 	}
 
+	walkT0 = VK_WALK_T0();
 	/* the shade vertex is wider than the 2D tess slot: reserve bytes */
 	if ( !VK_VertexRing_ReserveBytes( input->numVertexes * VK_STREAM_STRIDE, &base ) ) {
+		VK_WALK_ADD( walkT0, VK_WP_PACK );
 		VK_Guard_Hit( VK_GSITE_ALLOC, "tess ring exhausted", VK_INCOMPLETE );
 		return;
 	}
@@ -1832,11 +1852,13 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	if ( indexes ) {
 		idx = VK_VertexRing_ReserveIndexes( numIndexes, &indexBase );
 		if ( !idx ) {
+			VK_WALK_ADD( walkT0, VK_WP_PACK );
 			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
 			return;
 		}
 		memcpy( idx, indexes, numIndexes * sizeof( vkIndex_t ) );
 	}
+	VK_WALK_ADD( walkT0, VK_WP_PACK );
 
 	if ( stage && colors == NULL
 		 && texcoord0 == input->texCoords[0][0]
@@ -1848,15 +1870,20 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	}
 
 	cmd = VK_Shade_CommandBuffer();
+	walkT0 = VK_WALK_T0();
 	if ( !VK_Shade_Bind( cmd, input->shader ) ) {
 			/* nothing is bound: recording the draw anyway faults the driver, and VK_Shade_Bind's rows name the reason */
+		VK_WALK_ADD( walkT0, VK_WP_BIND );
 		VK_VertexRing_Flushed();
 		return;
 	}
+	VK_WALK_ADD( walkT0, VK_WP_BIND );
 
 	VK_Shade_FootprintRow( input, stage, indexes, numIndexes );
+	walkT0 = VK_WALK_T0();
 	VK_Draw_BindRingOffset( cmd, base );
 	VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, 0 );
+	VK_WALK_ADD( walkT0, VK_WP_REC );
 	VK_VertexRing_Flushed();
 }
 
@@ -3031,6 +3058,7 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	int			i, v, tris, big, oob, oobMax, maxTri, key = -1;
 	static int	s_rows;
 	static int	s_frame = -1;
+	static int	s_lastToken;
 
 	if ( !R_ProbeStatsOn() || !input || !indexes || numIndexes < 3 || !input->numVertexes ) {
 		return;
@@ -3038,8 +3066,21 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 
 	if ( s_frame != RB_FrameCount() ) {
 		s_frame = RB_FrameCount();
+		s_lastToken = 0;
 		memset( s_footprint, 0, sizeof( s_footprint ) );
 	}
+
+	/* One census a batch.  The stage walk reaches this for every stage of a
+	   batch, and every stage of a batch carries the same triangles, so the
+	   per-triangle clip ran three to five times over the same geometry --
+	   measured at 22500 clips a frame, 3.1 ms, against 6558 unique triangles
+	   and 0.9 ms.  The batch token is the same RB_BeginSurface identity the
+	   ring slice shares, so a repeat is the same batch and every number the row
+	   reports is unchanged. */
+	if ( s_lastToken && s_lastToken == VK_VertexRing_SliceToken() ) {
+		return;
+	}
+	s_lastToken = VK_VertexRing_SliceToken();
 	for ( i = 0; i < VK_FOOTPRINT_KEYS; i++ ) {
 		if ( s_footprint[i].shader == input->shader ) {
 			key = i;

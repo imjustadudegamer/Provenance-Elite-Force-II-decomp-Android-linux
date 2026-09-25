@@ -910,7 +910,10 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			continue;
 		}
 		if ( drawSurf->sort == (unsigned)oldSort && *drawSurf->surface != SF_SPRITE ) {
+			long long walkT0 = VK_WALK_T0();
+
 			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			VK_WALK_ADD( walkT0, VK_WP_GEN );
 			continue;
 		}
 		oldSort = (int)drawSurf->sort;
@@ -1010,7 +1013,12 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 		}
 
-		rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+		{
+			long long walkT0 = VK_WALK_T0();
+
+			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			VK_WALK_ADD( walkT0, VK_WP_GEN );
+		}
 	}
 
 	if (oldShader != NULL) {
