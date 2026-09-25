@@ -89,6 +89,62 @@ int RB_WalkMsec( void )
 	return msec;
 }
 
+/* The walk's own cost attribution.  be= is the whole walk and it contains a
+   blocking frame-fence wait the device owns, so a saturated walk does not say
+   whether to cut CPU work or device work -- on the full-resolution operator
+   boot that wait was 8.9 ms of a ~20 ms frame.  These phases split the walk:
+   the surface generation (skinning and tessellation), the vertex pack into the
+   ring, the shader/descriptor bind, the command recording, and the fence wait.
+   Gated with the r_perfFps row that prints them; the counters are written on
+   the walk thread and drained by the front end, the same benign race rb_walkMsec
+   already carries. */
+static long long	s_walkPhaseUsec[VK_WP_PHASES];
+static long long	s_walkVerts;
+static long long	s_walkSurfs;
+static long long	s_walkFrames;
+
+qboolean VK_WalkStatOn( void )
+{
+	static cvar_t *cv;
+
+	if ( !cv ) {
+		cv = ri.Cvar_Get( "r_perfFps", "1", CVAR_ARCHIVE );
+	}
+
+	return ( cv && cv->integer ) ? qtrue : qfalse;
+}
+
+void VK_WalkStat_Add( int phase, long long usec )
+{
+	if ( phase >= 0 && phase < VK_WP_PHASES ) {
+		s_walkPhaseUsec[phase] += usec;
+	}
+}
+
+void VK_WalkStat_Frame( int verts, int surfs )
+{
+	s_walkVerts += verts;
+	s_walkSurfs += surfs;
+	s_walkFrames++;
+}
+
+void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfsOut,
+					   long long *framesOut )
+{
+	int i;
+
+	for ( i = 0; i < VK_WP_PHASES; i++ ) {
+		usecOut[i] = s_walkPhaseUsec[i];
+		s_walkPhaseUsec[i] = 0;
+	}
+	*vertsOut = s_walkVerts;
+	*surfsOut = s_walkSurfs;
+	*framesOut = s_walkFrames;
+	s_walkVerts = 0;
+	s_walkSurfs = 0;
+	s_walkFrames = 0;
+}
+
 static vkCommandList_t *RB_CommandList( void )
 {
 	return rb_commandLists[tr.smpFrame];
@@ -454,6 +510,14 @@ void RB_RenderThread( void )
 			frame->list->used = 0;
 		}
 		rb_walkMsec += ri.Milliseconds() - walkStart;
+		{
+			/* the demand the frame just walked: slots are vertices, and the
+			   census counts the surfaces the ring stored */
+			int used, bytes, indexes, drops, surfs;
+
+			VK_VertexRing_FrameDemand( &used, &bytes, &indexes, &drops, &surfs );
+			VK_WalkStat_Frame( used, surfs );
+		}
 		frame->backEndMsec = 0;
 		rb_activeFrame = NULL;
 		VKimp_WalkEnd( frame->smpFrame );

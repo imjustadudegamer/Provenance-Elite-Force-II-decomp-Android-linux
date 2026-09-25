@@ -44,6 +44,8 @@ root, for more details.
 
 #include "tr_local.h"
 
+#include <time.h>
+
 /* Named in the header: the back end reaches it for a shader that carries 3D
    terms the 2D walk does not evaluate. */
 void VK_M3_Touched( const char *what )
@@ -98,9 +100,24 @@ qboolean R_ProbeStatsOn( void )
 	return ( probe && probe->integer ) ? qtrue : qfalse;
 }
 
+/* The renderer's own clock.  It was `ri.Milliseconds() * 1000`, which is a
+   millisecond value scaled: every `usec=` row it feeds (the sync waits, the 2D
+   phases, the upload prices) was therefore quantised to a millisecond, and a
+   cost under one read as zero.  A stage bind is far below that, so the walk's
+   attribution had no resolution where the time actually goes.  CLOCK_MONOTONIC
+   is the real microsecond source; the 2^32 us range wraps in ~71 minutes and
+   every caller reads a difference, so the truncation is the engine's own
+   Milliseconds idiom, not a new trap. */
 int BE_Microseconds( void )
 {
-	return ri.Milliseconds() * 1000;
+	struct timespec ts;
+
+	if ( clock_gettime( CLOCK_MONOTONIC, &ts ) != 0 ) {
+		return ri.Milliseconds() * 1000;
+	}
+
+	return (int)( (unsigned)( (unsigned long long)ts.tv_sec * 1000000ULL
+							  + (unsigned long long)ts.tv_nsec / 1000ULL ) );
 }
 
 int BE_Armed( void )

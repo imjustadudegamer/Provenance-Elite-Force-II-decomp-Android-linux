@@ -2823,6 +2823,7 @@ void      VK_VertexRing_StreamStore( int vertexes, int indexes,
                                      const void *colors, const void *normals,
                                      int base, int indexBase );
 void      VK_VertexRing_StreamForget( void );
+int       VK_VertexRing_SliceToken( void );
 void      VK_VertexRing_SurfaceBegin( void );
 void      VK_VertexRing_FrameDemand( int *usedOut, int *vertexesOut, int *indexesOut,
                                      int *dropsOut, int *surfacesOut );

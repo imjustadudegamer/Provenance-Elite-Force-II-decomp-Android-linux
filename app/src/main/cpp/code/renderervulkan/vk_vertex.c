@@ -469,6 +469,14 @@ void VK_VertexRing_StreamForget( void )
 	vk_streamSlice.tcStride = -1;
 }
 
+/* The batch the walk is inside.  Every RB_BeginSurface bumps it, so two calls
+   that agree on vertex count, index count and source pointers but belong to
+   different batches are still distinguishable. */
+int VK_VertexRing_SliceToken( void )
+{
+	return vk_sliceToken;
+}
+
 void VK_VertexRing_FrameDemand( int *usedOut, int *vertexesOut, int *indexesOut,
 								int *dropsOut, int *surfacesOut )
 {

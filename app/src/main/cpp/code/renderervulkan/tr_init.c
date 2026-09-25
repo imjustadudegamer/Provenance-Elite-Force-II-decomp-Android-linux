@@ -699,6 +699,38 @@ void VK_PerfFpsRow( void )
 			   baseFps ? ( ( winFps - baseFps ) * 100 / baseFps ) : 0, baseFps,
 			   fe, be, VKimp_ParkMsec(), frames, vk.smpActive ? 1 : 0 );
 
+	/* be= is the whole walk and it contains the blocking frame-fence wait the
+	   device owns, so "the walk thread is busy" does not say which side to cut.
+	   This row splits it per frame: the fence wait the device owns against the
+	   CPU the walk spends generating surfaces, packing the ring, binding and
+	   recording, with the frame's own vertices and surfaces so a before/after
+	   comparison is one line. */
+	{
+		long long	phase[VK_WP_PHASES];
+		long long	verts, surfs, wframes, sum = 0;
+		double		nf;
+		int			i;
+
+		VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
+		for ( i = 0; i < VK_WP_PHASES; i++ ) {
+			sum += phase[i];
+		}
+		nf = wframes ? (double)wframes : 1.0;
+		ri.Printf( PRINT_ALL,
+				   "[PERF:walk] win=%dms frames=%lld verts/frame=%.0f surf/frame=%.1f "
+				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms fence=%.2fms misc=%.2fms "
+				   "cpu=%.2fms walk=%.2fms\n",
+				   now - t0, wframes, (double)verts / nf, (double)surfs / nf,
+				   (double)phase[VK_WP_GEN] / nf / 1000.0,
+				   (double)phase[VK_WP_PACK] / nf / 1000.0,
+				   (double)phase[VK_WP_BIND] / nf / 1000.0,
+				   (double)phase[VK_WP_REC] / nf / 1000.0,
+				   (double)phase[VK_WP_FENCE] / nf / 1000.0,
+				   ( (double)be * 1000.0 - (double)sum ) / nf / 1000.0,
+				   ( (double)sum - (double)phase[VK_WP_FENCE] ) / nf / 1000.0,
+				   wframes ? (double)be / (double)wframes : 0.0 );
+	}
+
 	frames = 0;
 	feUsec = 0;
 	beUsec = 0;

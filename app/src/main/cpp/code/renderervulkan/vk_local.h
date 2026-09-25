@@ -294,6 +294,18 @@ void VKimp_FrontEndSleep( void );
 int RB_FrameSlot( const void *frame );
 void RB_CommandListReset( void );
 int RB_WalkMsec( void );
+
+/* The walk's cost split, printed by the r_perfFps row that owns the gate. */
+enum { VK_WP_GEN = 0, VK_WP_PACK, VK_WP_BIND, VK_WP_REC, VK_WP_FENCE, VK_WP_PHASES };
+qboolean VK_WalkStatOn( void );
+void VK_WalkStat_Add( int phase, long long usec );
+void VK_WalkStat_Frame( int verts, int surfs );
+void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfsOut,
+					   long long *framesOut );
+/* -1 is "not timed", so a real reading of 0 is still a reading */
+#define VK_WALK_T0()        ( VK_WalkStatOn() ? BE_Microseconds() : -1 )
+#define VK_WALK_ADD(t0, ph) do { if ( (t0) >= 0 ) { VK_WalkStat_Add( (ph), BE_Microseconds() - (t0) ); } } while ( 0 )
+
 void VKimp_WalkBegin( int slot );
 void VKimp_WalkEnd( int slot );
 qboolean VKimp_SlotBusy( int slot );
