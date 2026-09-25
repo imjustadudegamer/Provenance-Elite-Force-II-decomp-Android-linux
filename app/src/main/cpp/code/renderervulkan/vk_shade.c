@@ -1149,17 +1149,16 @@ void VK_SelectTexture( int tmu )
 
 /* The drawn colour of a stage's texture, read back off the device once per
    image at the moment the walk first binds it.  The parse, the decode and the
-   colour maths can all be verified on the CPU and the cone still come out
+   colour maths can all be verified on the CPU and a surface still come out
    wrong, because the one thing no offline reading answers is what the sampler
-   actually holds: the radar fov source is a green DXT3, the port's decoder is
-   correct, the stage is rgbGen const white with GL_SRC_ALPHA/GL_ONE, and the
-   cone is red -- so the question is whether the device texture is red or the
-   draw is.  Bound (not uploaded) because that is when the image is published
-   and in SHADER_READ_ONLY, which is what the copy-source layout must be.  Its
-   own gate, default off: one readback is a submit and a fence, so it must not
-   ride the master probe gate into a performance boot.  Every image gets a row,
-   so a miscoloured surface the operator names on any screen is answered by the
-   same boot, not by a second instrument. */
+   actually holds.  Bound (not uploaded) because that is when the image is
+   published and in SHADER_READ_ONLY, which is what the copy-source layout must
+   be.  One readback is a submit and a fence, so it rides the master qa_probe
+   gate rather than being always-on: a quiet build does none, and a diagnostic
+   boot (`+set qa_probe 1`) answers every image, once each.  Every image gets a
+   row, so a miscoloured surface the operator names on any screen is answered by
+   the same boot, not by a second instrument.  r_texelProbe 0 turns it off
+   inside an otherwise armed boot. */
 #define VK_TEXEL_PROBE_MAX 4096
 static byte s_texelProbed[VK_TEXEL_PROBE_MAX];
 
@@ -1171,9 +1170,9 @@ static void VK_Shade_TexelProbe( image_t *image )
 	const char     *name;
 
 	if ( !cv ) {
-		cv = ri.Cvar_Get( "r_texelProbe", "0", 0 );
+		cv = ri.Cvar_Get( "r_texelProbe", "1", 0 );
 	}
-	if ( !cv || !cv->integer ) {
+	if ( !cv || !cv->integer || !R_ProbeStatsOn() ) {
 		return;
 	}
 

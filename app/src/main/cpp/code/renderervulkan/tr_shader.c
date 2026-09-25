@@ -1123,6 +1123,23 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 				stage->colorConst[0] = 255 * color[0];
 				stage->colorConst[1] = 255 * color[1];
 				stage->colorConst[2] = 255 * color[2];
+				/* Three components name no alpha, so the constant is opaque.  The
+				   field is the stage's colour constant and its alpha belongs with
+				   the colour: RB_CalcColorFromConstant copies all four bytes into
+				   the vertex colours, and alphaGen const is the only thing that
+				   has any business writing the fourth.  Shipped content depends on
+				   it -- 438 `rgbGen const` stages across the paks and not one
+				   carries a fourth component -- and with this left at the stage's
+				   zero every one of them draws with a zero vertex alpha, which is
+				   invisible under GL_SRC_ALPHA blending and discarded outright by
+				   an alphaFunc GT0.  The radar fov cone is exactly that stage:
+				   `blendFunc GL_SRC_ALPHA GL_ONE`, `alphaFunc GT0`, `rgbGen const
+				   1.0 1.0 1.0` over a green 51,199,0 texture, and it never draws.
+				   Guarded rather than unconditional so the order of this line and
+				   an explicit `alphaGen const` in the same stage cannot matter. */
+				if ( stage->alphaGen != AGEN_CONSTANT ) {
+					stage->colorConst[3] = 255;
+				}
 
 				stage->rgbGen = CGEN_CONSTANT;
 			}
