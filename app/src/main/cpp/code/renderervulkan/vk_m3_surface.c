@@ -120,6 +120,20 @@ int BE_Microseconds( void )
 							  + (unsigned long long)ts.tv_nsec / 1000ULL ) );
 }
 
+/* The same instant without the int truncation: the 32-bit form goes negative
+   after 2^31 us of uptime, which is a legal reading its callers' "-1 = not
+   timed" sentinels cannot tell from "not timed". */
+long long BE_Microseconds64( void )
+{
+	struct timespec ts;
+
+	if ( clock_gettime( CLOCK_MONOTONIC, &ts ) != 0 ) {
+		return (long long)ri.Milliseconds() * 1000LL;
+	}
+
+	return (long long)ts.tv_sec * 1000000LL + (long long)ts.tv_nsec / 1000LL;
+}
+
 int BE_Armed( void )
 {
 	return R_ProbeStatsOn() ? 1 : 0;
