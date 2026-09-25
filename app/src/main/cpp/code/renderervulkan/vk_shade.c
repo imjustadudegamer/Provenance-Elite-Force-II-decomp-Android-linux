@@ -1117,13 +1117,63 @@ void VK_SelectTexture( int tmu )
 	s_shade.currentTmu = tmu;
 }
 
+/* The drawn colour of a stage's texture, read back off the device once per
+   image at the moment the walk first binds it.  The parse, the decode and the
+   colour maths can all be verified on the CPU and the cone still come out
+   wrong, because the one thing no offline reading answers is what the sampler
+   actually holds: the radar fov source is a green DXT3, the port's decoder is
+   correct, the stage is rgbGen const white with GL_SRC_ALPHA/GL_ONE, and the
+   cone is red -- so the question is whether the device texture is red or the
+   draw is.  Bound (not uploaded) because that is when the image is published
+   and in SHADER_READ_ONLY, which is what the copy-source layout must be.  Its
+   own gate, default off: one readback is a submit and a fence, so it must not
+   ride the master probe gate into a performance boot.  Every image gets a row,
+   so a miscoloured surface the operator names on any screen is answered by the
+   same boot, not by a second instrument. */
+#define VK_TEXEL_PROBE_MAX 4096
+static byte s_texelProbed[VK_TEXEL_PROBE_MAX];
+
+static void VK_Shade_TexelProbe( image_t *image )
+{
+	static cvar_t *cv;
+	unsigned char  px[4];
+	int            handle;
+	const char     *name;
+
+	if ( !cv ) {
+		cv = ri.Cvar_Get( "r_texelProbe", "0", 0 );
+	}
+	if ( !cv || !cv->integer ) {
+		return;
+	}
+
+	handle = (int)image->texnum;
+	if ( handle < 0 || handle >= VK_TEXEL_PROBE_MAX || s_texelProbed[handle] ) {
+		return;
+	}
+	s_texelProbed[handle] = 1;
+
+	name = image->imgName[0] ? image->imgName : "(unnamed)";
+	if ( !VK_Texture_ReadTexel( handle, image->uploadWidth / 2, image->uploadHeight / 2, px ) ) {
+		VK_Guard_Row( "VK:texel", "name=%s w=%d h=%d read=fail", name,
+					  image->uploadWidth, image->uploadHeight );
+		return;
+	}
+
+	VK_Guard_Row( "VK:texel",
+				  "name=%s w=%d h=%d upto=%dx%d mips=%d fmt=0x%x wrap=%d,%d texel_mid=%u,%u,%u,%u",
+				  name, image->width, image->height, image->uploadWidth, image->uploadHeight,
+				  image->numMipmaps, (unsigned)image->internalFormat,
+				  (int)image->wrapClampModeX, (int)image->wrapClampModeY,
+				  (unsigned)px[0], (unsigned)px[1], (unsigned)px[2], (unsigned)px[3] );
+}
+
 static void VK_Shade_BindImage( image_t *image, int tmu )
 {
 	VkImageView view = VK_NULL_HANDLE;
 	VkSampler sampler = VK_NULL_HANDLE;
 
-	if ( !image || image->texnum < 0 ) {
-		s_shade.texView[tmu] = VK_NULL_HANDLE;
+	if ( !image || image->texnum < 0 ) {		s_shade.texView[tmu] = VK_NULL_HANDLE;
 		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
 		s_shade.texBound[tmu] = 0;
 		return;
@@ -1139,6 +1189,8 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 	s_shade.texView[tmu] = view;
 	s_shade.texSampler[tmu] = sampler;
 	s_shade.texBound[tmu] = 1;
+
+	VK_Shade_TexelProbe( image );
 }
 
 void VK_Bind( image_t *image )
@@ -3554,8 +3606,80 @@ static void VK_Shade_FlatReset( void )
 	memset( s_flat, 0, sizeof( s_flat ) );
 }
 
-static void VK_Shade_FlatAdd( const unsigned char *p, int x, int y )
+/* The frame's hue census, over the same host copy the flat boxes read.  A shape
+   the nine fixed samples miss is answered by counting which primitive channel
+   dominates each pixel and where those pixels are: the radar cone is a green
+   texel under rgbGen const white, so the boot that opens the radar has to show
+   its pixels green-dominant, and a red-clustered box names the same defect with
+   no coordinate guessed in advance.  Position-independent on purpose, so it is
+   a class instrument and not one surface's probe. */
+typedef struct {
+	unsigned long long	n;
+	int					minx, miny, maxx, maxy;
+	unsigned long long	sum[3];
+} vkHueRun_t;
+
+static vkHueRun_t	s_hue[3];
+
+static void VK_Shade_HueReset( void )
 {
+	int i;
+
+	memset( s_hue, 0, sizeof( s_hue ) );
+	for ( i = 0; i < 3; i++ ) {
+		s_hue[i].minx = s_hue[i].miny = 0x7fffffff;
+		s_hue[i].maxx = s_hue[i].maxy = -1;
+	}
+}
+
+static void VK_Shade_HueAdd( const unsigned char *p, int x, int y )
+{
+	int			 r = p[2], g = p[1], b = p[0];
+	int			 hi, lo, which;
+	vkHueRun_t	*run;
+
+	hi = r > g ? r : g;
+	hi = hi > b ? hi : b;
+	lo = r < g ? r : g;
+	lo = lo < b ? lo : b;
+
+	/* a grey or a dim pixel is not a hue: 40 of separation and 64 of level keeps
+	   the UI's greys, the black bars and the dark world out of the counts */
+	if ( hi - lo < 40 || hi < 64 ) {
+		return;
+	}
+	which = ( hi == r ) ? 0 : ( hi == g ) ? 1 : 2;
+	run = &s_hue[which];
+	run->n++;
+	run->sum[0] += (unsigned)p[2];
+	run->sum[1] += (unsigned)p[1];
+	run->sum[2] += (unsigned)p[0];
+	if ( x < run->minx ) run->minx = x;
+	if ( y < run->miny ) run->miny = y;
+	if ( x > run->maxx ) run->maxx = x;
+	if ( y > run->maxy ) run->maxy = y;
+}
+
+static void VK_Shade_HueRow( int frame )
+{
+	static const char *name[3] = { "red", "green", "blue" };
+	int i;
+
+	for ( i = 0; i < 3; i++ ) {
+		vkHueRun_t *r = &s_hue[i];
+
+		if ( !r->n ) {
+			continue;
+		}
+		VK_Guard_Row( "VK:hue",
+					  "frame=%d %s n=%llu box=(%d,%d)-(%d,%d) mean=%u,%u,%u",
+					  frame, name[i], r->n, r->minx, r->miny, r->maxx, r->maxy,
+					  (unsigned)( r->sum[0] / r->n ), (unsigned)( r->sum[1] / r->n ),
+					  (unsigned)( r->sum[2] / r->n ) );
+	}
+}
+
+static void VK_Shade_FlatAdd( const unsigned char *p, int x, int y ){
 	/* the swapchain is BGRA in memory; the row names r,g,b,a, so the key packs
 	   the four bytes the same way the row prints them */
 	unsigned	key = ( (unsigned)p[2] << 24 ) | ( (unsigned)p[1] << 16 )
@@ -3771,12 +3895,17 @@ void VK_Shade_ReadbackFrame( uint32_t imageIndex )
 		int fx, fy;
 
 		VK_Shade_FlatReset();
+		VK_Shade_HueReset();
 		for ( fy = 0; fy < s_swapH; fy += step ) {
 			for ( fx = 0; fx < s_swapW; fx += step ) {
-				VK_Shade_FlatAdd( s_swapPixels + ( (size_t)fy * s_swapW + fx ) * 4, fx, fy );
+				const unsigned char *p = s_swapPixels + ( (size_t)fy * s_swapW + fx ) * 4;
+
+				VK_Shade_FlatAdd( p, fx, fy );
+				VK_Shade_HueAdd( p, fx, fy );
 			}
 		}
 		VK_Shade_FlatRows( s_frames );
+		VK_Shade_HueRow( s_frames );
 		VK_Shade_GridRows( s_frames );
 	}
 
