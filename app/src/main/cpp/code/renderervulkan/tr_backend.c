@@ -917,6 +917,14 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			continue;
 		}
 		oldSort = (int)drawSurf->sort;
+
+		/* The per-surface bookkeeping between the surface generators: the sort
+		   decompose, the entity rotation and the shader-change flush.  It is
+		   measured as its own window and the binds it flushes inside it are
+		   subtracted, so `rest` stays the accounting error and not this cost. */
+		long long shadeT0 = VK_WALK_T0();
+		long long shadeNested0 = VK_WalkStat_Nested();
+
 		if (*drawSurf->surface != SF_SPRITE) {
 			R_DecomposeSort(drawSurf->sort, &entityNum, &shader, &fogNum, &dlightMap);
 			bStaticModel = qfalse;
@@ -1011,6 +1019,11 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 		if (*drawSurf->surface == SF_SPRITE) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
+		}
+
+		if ( shadeT0 >= 0 ) {
+			VK_WalkStat_Add( VK_WP_SHADE, BE_Microseconds64() - shadeT0
+							 - ( VK_WalkStat_Nested() - shadeNested0 ) );
 		}
 
 		{

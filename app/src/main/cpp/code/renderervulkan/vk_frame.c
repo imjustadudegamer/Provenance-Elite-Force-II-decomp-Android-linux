@@ -47,6 +47,131 @@ int VK_Frame_Count( void )
 	return frames;
 }
 
+/* ---- the GPU side of the frame ------------------------------------------ */
+
+static long long s_gpuBucketUsec[VK_GPU_BUCKETS];
+static long long s_gpuMarks;
+static long long s_gpuHitCap;
+
+/* One command buffer per slot, and the slot's results are read only after its
+   own fence has signalled, so a mark costs a timestamp and nothing waits on it.
+   The slot is reset by the same command buffer that fills it: CmdResetQueryPool
+   is legal outside a render pass, which is exactly where RecordBegin is. */
+void VK_PerfGpu_FrameBegin( int slot )
+{
+	vk.gpuMarkCount[slot] = 0;
+	vk.gpuFrameOpen = qfalse;
+
+	if ( !vk.gpuPerfReady || !VK_WalkStatOn() || !qvk.CmdResetQueryPool ) {
+		return;
+	}
+
+	vk.gpuFrameOpen = qtrue;
+
+	qvk.CmdResetQueryPool( vk.commandBuffers[slot], vk.gpuQueryPool,
+						   (uint32_t)( slot * VK_GPU_MAX_MARKS ), (uint32_t)VK_GPU_MAX_MARKS );
+
+	VK_PerfGpu_Mark( slot, VK_GPU_CLEAR );
+}
+
+void VK_PerfGpu_Mark( int slot, int bucket )
+{
+	int i;
+
+	if ( !vk.gpuFrameOpen || !vk.gpuPerfReady || !qvk.CmdWriteTimestamp ) {
+		return;
+	}
+
+	i = vk.gpuMarkCount[slot];
+	if ( i >= VK_GPU_MAX_MARKS ) {
+		s_gpuHitCap++;
+		return;
+	}
+
+	qvk.CmdWriteTimestamp( vk.commandBuffers[slot], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+						   vk.gpuQueryPool, (uint32_t)( slot * VK_GPU_MAX_MARKS + i ) );
+	vk.gpuMarkBucket[slot][i] = (unsigned char)bucket;
+	vk.gpuMarkCount[slot] = i + 1;
+}
+
+/* The terminal mark closes the last class's interval; it carries no bucket of
+   its own.  Without it the final interval -- the 2D batch's flushed draws -- is
+   unattributed. */
+void VK_PerfGpu_FrameEnd( int slot )
+{
+	int i;
+
+	if ( !vk.gpuFrameOpen || !vk.gpuPerfReady || !qvk.CmdWriteTimestamp ) {
+		return;
+	}
+
+	i = vk.gpuMarkCount[slot];
+	if ( i > 0 && i < VK_GPU_MAX_MARKS ) {
+		qvk.CmdWriteTimestamp( vk.commandBuffers[slot], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+							   vk.gpuQueryPool, (uint32_t)( slot * VK_GPU_MAX_MARKS + i ) );
+		vk.gpuMarkCount[slot] = i + 1;
+	}
+
+	vk.gpuFrameOpen = qfalse;
+}
+
+void VK_PerfGpu_Collect( int slot )
+{
+	uint64_t stamps[VK_GPU_MAX_MARKS];
+	int count, i;
+
+	if ( !vk.gpuPerfReady ) {
+		return;
+	}
+
+	count = vk.gpuMarkCount[slot];
+	vk.gpuMarkCount[slot] = 0;
+
+	if ( count < 2 || !qvk.GetQueryPoolResults ) {
+		return;
+	}
+
+	if ( !VK_Guard_Result( VK_GSITE_QUIRK,
+						   qvk.GetQueryPoolResults( vk.device, vk.gpuQueryPool,
+													(uint32_t)( slot * VK_GPU_MAX_MARKS ), (uint32_t)count,
+													sizeof( stamps ), stamps, sizeof( uint64_t ),
+													VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT ),
+						   "vkGetQueryPoolResults(timestamp)" ) ) {
+		return;
+	}
+
+	/* The interval between two marks belongs to the class the earlier mark
+	   opened, so the bucket is read one index back from the closing stamp. */
+	for ( i = 1; i < count; i++ ) {
+		int		 bucket = vk.gpuMarkBucket[slot][i - 1];
+		uint64_t delta = stamps[i] - stamps[i - 1];
+
+		if ( bucket >= 0 && bucket < VK_GPU_BUCKETS ) {
+			s_gpuBucketUsec[bucket] += (long long)( (double)delta * (double)vk.gpuTimestampPeriod * 0.001 );
+		}
+	}
+
+	s_gpuMarks += count;
+}
+
+void VK_PerfGpu_Take( long long *usecOut, long long *marksOut, long long *hitCapOut )
+{
+	int i;
+
+	for ( i = 0; i < VK_GPU_BUCKETS; i++ ) {
+		usecOut[i] = s_gpuBucketUsec[i];
+		s_gpuBucketUsec[i] = 0;
+	}
+	if ( marksOut ) {
+		*marksOut = s_gpuMarks;
+	}
+	if ( hitCapOut ) {
+		*hitCapOut = s_gpuHitCap;
+	}
+	s_gpuMarks = 0;
+	s_gpuHitCap = 0;
+}
+
 qboolean VK_Frame_Init( void )
 {
 	VkCommandPoolCreateInfo poolInfo;
@@ -128,6 +253,44 @@ qboolean VK_Frame_Init( void )
 	vk.lastPresentedImage = 0;
 	vk.imagesHeld = 0;
 
+	/* The GPU pass split needs one timestamp query per mark per slot.  Its
+	   availability is the graphics queue family's own timestampValidBits plus a
+	   usable period; where either is missing the row simply reports no device
+	   split instead of costing anything. */
+	vk.gpuPerfReady = qfalse;
+	vk.gpuQueryPool = VK_NULL_HANDLE;
+	vk.gpuTimestampPeriod = vk.deviceProps.limits.timestampPeriod;
+
+	if ( vk.gpuTimestampPeriod > 0.0f && qvk.CreateQueryPool && qvk.CmdResetQueryPool
+		 && qvk.CmdWriteTimestamp && qvk.GetQueryPoolResults
+		 && qvk.GetPhysicalDeviceQueueFamilyProperties ) {
+		uint32_t				familyCount = 0;
+		uint32_t				validBits = 0;
+		VkQueueFamilyProperties	*families;
+		VkQueryPoolCreateInfo	queryInfo;
+
+		qvk.GetPhysicalDeviceQueueFamilyProperties( vk.physicalDevice, &familyCount, NULL );
+		families = (VkQueueFamilyProperties *)malloc( familyCount * sizeof( *families ) );
+
+		if ( families && familyCount > vk.graphicsFamily ) {
+			qvk.GetPhysicalDeviceQueueFamilyProperties( vk.physicalDevice, &familyCount, families );
+			validBits = families[vk.graphicsFamily].timestampValidBits;
+		}
+		free( families );
+
+		memset( &queryInfo, 0, sizeof( queryInfo ) );
+		queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		queryInfo.queryCount = VK_FRAMES_IN_FLIGHT * VK_GPU_MAX_MARKS;
+
+		if ( validBits > 0
+			 && VK_Guard_Result( VK_GSITE_QUIRK,
+								 qvk.CreateQueryPool( vk.device, &queryInfo, NULL, &vk.gpuQueryPool ),
+								 "vkCreateQueryPool(timestamp)" ) ) {
+			vk.gpuPerfReady = qtrue;
+		}
+	}
+
 	VK_Guard_Row( "VK:frame", "ready slots=%d images=%u", frames, vk.swapchainImageCount );
 
 	return qtrue;
@@ -141,6 +304,13 @@ void VK_Frame_Shutdown( void )
 	if ( vk.device == VK_NULL_HANDLE ) {
 		return;
 	}
+
+	if ( vk.gpuQueryPool != VK_NULL_HANDLE && qvk.DestroyQueryPool ) {
+		qvk.DestroyQueryPool( vk.device, vk.gpuQueryPool, NULL );
+	}
+	vk.gpuQueryPool = VK_NULL_HANDLE;
+	vk.gpuPerfReady = qfalse;
+	memset( vk.gpuMarkCount, 0, sizeof( vk.gpuMarkCount ) );
 
 	if ( vk.uploadPool != VK_NULL_HANDLE && qvk.DestroyCommandPool ) {
 		qvk.DestroyCommandPool( vk.device, vk.uploadPool, NULL );
@@ -203,21 +373,32 @@ qboolean VK_Frame_Begin( int slot )
 			return qfalse;
 		}
 		vk.fencePending[slot] = qfalse;
+
+		/* The slot's fence has signalled, so its timestamps are resolvable and
+		   no wait is added by reading them. */
+		VK_PerfGpu_Collect( slot );
 	}
 
-	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.ResetFences( vk.device, 1, &vk.fences[slot] ),
-						   "vkResetFences" ) ) {
-		return qfalse;
-	}
+	{
+		long long openT0 = VK_WALK_T0();
 
-	memset( &beginInfo, 0, sizeof( beginInfo ) );
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.ResetFences( vk.device, 1, &vk.fences[slot] ),
+							   "vkResetFences" ) ) {
+			VK_WALK_ADD( openT0, VK_WP_OPEN );
+			return qfalse;
+		}
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC,
-						   qvk.BeginCommandBuffer( vk.commandBuffers[slot], &beginInfo ),
-						   "vkBeginCommandBuffer" ) ) {
-		return qfalse;
+		memset( &beginInfo, 0, sizeof( beginInfo ) );
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		if ( !VK_Guard_Result( VK_GSITE_SYNC,
+							   qvk.BeginCommandBuffer( vk.commandBuffers[slot], &beginInfo ),
+							   "vkBeginCommandBuffer" ) ) {
+			VK_WALK_ADD( openT0, VK_WP_OPEN );
+			return qfalse;
+		}
+		VK_WALK_ADD( openT0, VK_WP_OPEN );
 	}
 
 	vk.acquired = qfalse;
@@ -371,6 +552,11 @@ qboolean VK_Frame_RecordBegin( int slot )
 	beginInfo.clearValueCount = 2;
 	beginInfo.pClearValues = clearValues;
 
+	/* The pool is reset and the frame's first timestamp written here, before the
+	   pass opens: CmdResetQueryPool is legal outside a render pass, and the
+	   clear the pass performs is then the first interval. */
+	VK_PerfGpu_FrameBegin( slot );
+
 	qvk.CmdBeginRenderPass( vk.commandBuffers[slot], &beginInfo, VK_SUBPASS_CONTENTS_INLINE );
 
 	/* From here to RecordEnd the back end has a command buffer; the tess
@@ -417,6 +603,9 @@ void VK_Frame_RecordEnd( int slot )
 {
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE ) {
 		RB_2D_Flush();
+		/* The flush is what records the 2D batch's draws, so the terminal
+		   timestamp comes after it: the UI interval has to contain them. */
+		VK_PerfGpu_FrameEnd( slot );
 		qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
 		/* Ending the buffer belongs with ending the pass, so the present path and
 		   the retire path both leave the command buffer in the same state: ended
@@ -458,6 +647,7 @@ void VK_Frame_Retire( int slot )
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE && qvk.EndCommandBuffer ) {
 		VK_Guard_Row( "VK:frame", "retire-pass slot=%d f=%d", slot, RB_FrameCount() );
 		RB_2D_Flush();
+		VK_PerfGpu_FrameEnd( slot );
 		if ( qvk.CmdEndRenderPass ) {
 			qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
 		}
