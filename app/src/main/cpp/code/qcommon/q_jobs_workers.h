@@ -18,33 +18,39 @@ root, for more details.
 #ifndef __QJOBS_WORKERS_H__
 #define __QJOBS_WORKERS_H__
 
-#define JOBPOOL_MAX_WORKERS			7
-#define JOBPOOL_MAX_TOTAL			7
-#define JOBPOOL_CRITICAL_ANDROID	3
-#define JOBPOOL_CRITICAL_OTHER		4
+/* The array the pool is declared with, never the size the rule hands out. */
+#define JOBPOOL_MAX_WORKERS			64
 
+/* One rule for every machine.  The frame's own threads are reserved first --
+   the main/sim thread and the render thread r_smp starts -- and every core
+   left is a worker; nothing else is hardcoded, because the compositor and
+   driver threads a device also runs are not a fixed count and the OS owns
+   them.  The critical (renderer) pool and the non-critical (client) pool are
+   separate modules' pools, so they split the headroom instead of each claiming
+   it and oversubscribing the machine when a load runs both. */
 static inline void JobPool_SplitWorkersRule( int coreCount, int isAndroid,
 											 int requested, int critical,
 											 int *outWorkers )
 {
-	int total, share, crit;
+	int total, crit, share;
+
+	(void)isAndroid;
 
 	if ( !outWorkers ) {
 		return;
 	}
 
-	total = coreCount - 1;
-	if ( total > JOBPOOL_MAX_TOTAL ) {
-		total = JOBPOOL_MAX_TOTAL;
-	}
+	total = coreCount - 2;
 	if ( total < 0 ) {
 		total = 0;
 	}
-
-	crit = ( isAndroid ? JOBPOOL_CRITICAL_ANDROID : JOBPOOL_CRITICAL_OTHER );
-	if ( crit > total ) {
-		crit = total;
+	if ( total > JOBPOOL_MAX_WORKERS ) {
+		total = JOBPOOL_MAX_WORKERS;
 	}
+
+	/* the renderer's pool takes the larger half so a load's decode keeps the
+	   cores it needs; the client's pool takes the rest */
+	crit = ( total + 1 ) / 2;
 
 	share = critical ? crit : ( total - crit );
 
