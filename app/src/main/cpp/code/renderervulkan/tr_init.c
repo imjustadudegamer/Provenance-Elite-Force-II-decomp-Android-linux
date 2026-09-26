@@ -701,13 +701,14 @@ void VK_PerfFpsRow( void )
 
 	/* be= is the whole walk and it contains the blocking frame-fence wait the
 	   device owns, so "the walk thread is busy" does not say which side to cut.
-	   This row splits it per frame: the fence wait the device owns against the
-	   CPU the walk spends generating surfaces, packing the ring, binding and
-	   recording, with the frame's own vertices and surfaces so a before/after
-	   comparison is one line. */
+	   This row splits it per frame, and every opcode the walk executes lands in
+	   one of the buckets, so `rest=` is the accounting error: a residual that is
+	   not near zero is the instrument's own defect and not a cost.  acq= is the
+	   image the device has to hand back and out= is the submit and present, so
+	   the device waits are named separately from the CPU. */
 	{
 		long long	phase[VK_WP_PHASES];
-		long long	verts, surfs, wframes, sum = 0;
+		long long	verts, surfs, wframes, sum = 0, dev = 0;
 		double		nf;
 		int			i;
 
@@ -715,19 +716,27 @@ void VK_PerfFpsRow( void )
 		for ( i = 0; i < VK_WP_PHASES; i++ ) {
 			sum += phase[i];
 		}
+		dev = phase[VK_WP_FENCE] + phase[VK_WP_ACQ];
 		nf = wframes ? (double)wframes : 1.0;
 		ri.Printf( PRINT_ALL,
 				   "[PERF:walk] win=%dms frames=%lld verts/frame=%.0f surf/frame=%.1f "
-				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms fence=%.2fms misc=%.2fms "
-				   "cpu=%.2fms walk=%.2fms\n",
+				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms fence=%.2fms acq=%.2fms "
+				   "open=%.2fms ui=%.2fms out=%.2fms pix=%.2fms rest=%.2fms "
+				   "cpu=%.2fms dev=%.2fms walk=%.2fms\n",
 				   now - t0, wframes, (double)verts / nf, (double)surfs / nf,
 				   (double)phase[VK_WP_GEN] / nf / 1000.0,
 				   (double)phase[VK_WP_PACK] / nf / 1000.0,
 				   (double)phase[VK_WP_BIND] / nf / 1000.0,
 				   (double)phase[VK_WP_REC] / nf / 1000.0,
 				   (double)phase[VK_WP_FENCE] / nf / 1000.0,
+				   (double)phase[VK_WP_ACQ] / nf / 1000.0,
+				   (double)phase[VK_WP_OPEN] / nf / 1000.0,
+				   (double)phase[VK_WP_UI] / nf / 1000.0,
+				   (double)phase[VK_WP_OUT] / nf / 1000.0,
+				   (double)phase[VK_WP_PIX] / nf / 1000.0,
 				   ( (double)be * 1000.0 - (double)sum ) / nf / 1000.0,
-				   ( (double)sum - (double)phase[VK_WP_FENCE] ) / nf / 1000.0,
+				   ( (double)sum - (double)dev ) / nf / 1000.0,
+				   (double)dev / nf / 1000.0,
 				   wframes ? (double)be / (double)wframes : 0.0 );
 	}
 

@@ -477,6 +477,21 @@ static int				vk_numProgModules;
 static vkProgram_t	vk_programs[VK_PROG_MAX];
 static int				vk_numPrograms;
 
+/* Every boot-persistent cache in this file is looked up by value and was
+   searched by walking the entries it had filled, so the per-draw cost grew with
+   the boot instead of staying flat.  VK_GetProgram is one of them: it is asked
+   once per stage of every surface, and its table is 256 long.  Each index below
+   stores the entry index plus one, so 0 is "empty", and the insert uses the same
+   probe the lookup starts at, so an inserted key is always found.  The index is
+   at least twice its table, so a full table still leaves an empty slot. */
+#define VK_PROG_HASH 512
+static int				s_programIndex[VK_PROG_HASH];
+
+static unsigned VK_ProgramHash( unsigned defines )
+{
+	return ( defines * 2654435761u ) & ( VK_PROG_HASH - 1u );
+}
+
 /* The module table is 682 entries and the permutation path asks for one
    (family, defines, stage) triple per stage request -- 367 a frame in the
    15:34 boot.  Both the old finder and the module loop that followed it walked
@@ -635,6 +650,7 @@ void VK_Shade_Shutdown( void )
 	}
 	vk_numProgModules = 0;
 	vk_numPrograms = 0;
+	memset( s_programIndex, 0, sizeof( s_programIndex ) );
 }
 
 /* the family a defines bitmask carries; the reference renderer's high byte */
@@ -655,11 +671,17 @@ static int VK_Family_Of( unsigned defines )
 vkProgram_t *VK_GetProgram( unsigned defines )
 {
 	vkProgram_t *p;
-	int i;
+	unsigned	h = VK_ProgramHash( defines );
+	int			i;
 
-	for ( i = 0; i < vk_numPrograms; i++ ) {
-		if ( vk_programs[i].defines == defines && vk_programs[i].linked ) {
-			return &vk_programs[i];
+	for ( i = 0; i < VK_PROG_HASH; i++ ) {
+		int at = s_programIndex[( h + i ) & ( VK_PROG_HASH - 1u )];
+
+		if ( !at ) {
+			break;
+		}
+		if ( vk_programs[at - 1].defines == defines && vk_programs[at - 1].linked ) {
+			return &vk_programs[at - 1];
 		}
 	}
 	if ( vk_numPrograms >= VK_PROG_MAX ) {
@@ -684,6 +706,14 @@ vkProgram_t *VK_GetProgram( unsigned defines )
 	p->defines = defines;
 	p->program = VK_Family_Of( defines );
 	p->linked = qtrue;
+	for ( i = 0; i < VK_PROG_HASH; i++ ) {
+		int *at = &s_programIndex[( h + i ) & ( VK_PROG_HASH - 1u )];
+
+		if ( !*at ) {
+			*at = vk_numPrograms;
+			break;
+		}
+	}
 	return p;
 }
 
@@ -1999,6 +2029,34 @@ typedef struct {
 static vkShadePipeline_t	vk_shadePipelines[VK_SHADE_PIPELINES];
 static int					vk_numShadePipelines;
 
+/* Both cache tables below are looked up by binding, not by index, and both were
+   searched by walking every entry they had filled.  The bind cost therefore
+   grew with the boot: the operator's session filled the set table to 1792 of
+   4096, which is a 1792-entry chain of seven pointer compares on every bind,
+   every stage, every surface.  These indexes make a hit O(1).  Each stores the
+   entry index plus one, so 0 is "no entry", and the insert uses the same window
+   the lookup starts at, so a key that was inserted is always found.  The tables
+   hold at most VK_SHADE_SETS/VK_SHADE_PIPELINES entries and the index is twice
+   that, so there is always an empty slot and no probe can run off the end. */
+#define VK_SHADE_HASH_BITS	13
+#define VK_SHADE_HASH_SIZE	( 1 << VK_SHADE_HASH_BITS )
+#define VK_SHADE_HASH_MASK	( VK_SHADE_HASH_SIZE - 1 )
+
+static int vk_shadePipelineHash[VK_SHADE_HASH_SIZE];
+static int vk_shadeSetHash[VK_SHADE_HASH_SIZE];
+
+static unsigned VK_Shade_HashWords( const uintptr_t *w, int n )
+{
+	unsigned	h = 2166136261u;
+	int			i;
+
+	for ( i = 0; i < n; i++ ) {
+		h = ( h ^ (unsigned)( w[i] & 0xffffffffu ) ) * 16777619u;
+		h = ( h ^ (unsigned)( ( (uint64_t)w[i] >> 32 ) & 0xffffffffu ) ) * 16777619u;
+	}
+	return h;
+}
+
 static VkDescriptorSetLayout	vk_shadeSetLayout;
 static VkPipelineLayout			vk_shadeLayout;
 static VkBuffer					vk_shadeUbo[VK_FRAMES_IN_FLIGHT];
@@ -2172,6 +2230,10 @@ void VK_Shade_Descriptors_Shutdown( void )
 	   that no longer exists. */
 	memset( vk_shadeSets, 0, sizeof( vk_shadeSets ) );
 	memset( vk_shadeSetKeys, 0, sizeof( vk_shadeSetKeys ) );
+	/* The indexes point into the tables above: leaving them behind would make a
+	   re-init return a handle from the pool this call just destroyed. */
+	memset( vk_shadePipelineHash, 0, sizeof( vk_shadePipelineHash ) );
+	memset( vk_shadeSetHash, 0, sizeof( vk_shadeSetHash ) );
 }
 
 int VK_Shade_CommandBufferSlot( void )
@@ -2279,7 +2341,10 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	VkResult result;
 	unsigned srcNibble, dstNibble;
 	uint32_t attribCount;
-	int i;
+	uintptr_t pkey[6];
+	unsigned phash;
+	int newIndex;
+	int probe;
 
 	/* the cache key names the modules, so it keys on the permutation bits alone */
 	defines &= ~VKP_FAMILY_MASK;
@@ -2293,20 +2358,33 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 		return VK_NULL_HANDLE;
 	}
 	VK_Shade_NotePerm( 0 );
-	for ( i = 0; i < vk_numShadePipelines; i++ ) {
-		if ( vk_shadePipelines[i].used && vk_shadePipelines[i].stateBits == stateBits
-			 && vk_shadePipelines[i].family == family && vk_shadePipelines[i].defines == defines
-			 && vk_shadePipelines[i].cull == cull
-			 && vk_shadePipelines[i].polygonOffset == polygonOffset
-			 && vk_shadePipelines[i].topology == topology ) {
-			return vk_shadePipelines[i].pipeline;
+
+	pkey[0] = stateBits;      pkey[1] = (uintptr_t)family;
+	pkey[2] = defines;        pkey[3] = (uintptr_t)cull;
+	pkey[4] = polygonOffset;  pkey[5] = (uintptr_t)topology;
+	phash = VK_Shade_HashWords( pkey, 6 ) & VK_SHADE_HASH_MASK;
+
+	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
+		int at = vk_shadePipelineHash[( phash + probe ) & VK_SHADE_HASH_MASK];
+
+		if ( !at ) {
+			break;
+		}
+		at--;
+		if ( vk_shadePipelines[at].used && vk_shadePipelines[at].stateBits == stateBits
+			 && vk_shadePipelines[at].family == family && vk_shadePipelines[at].defines == defines
+			 && vk_shadePipelines[at].cull == cull
+			 && vk_shadePipelines[at].polygonOffset == polygonOffset
+			 && vk_shadePipelines[at].topology == topology ) {
+			return vk_shadePipelines[at].pipeline;
 		}
 	}
 	if ( vk_numShadePipelines >= VK_SHADE_PIPELINES ) {
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade pipeline table full", VK_INCOMPLETE );
 		return VK_NULL_HANDLE;
 	}
-	slot = &vk_shadePipelines[vk_numShadePipelines];
+	newIndex = vk_numShadePipelines;
+	slot = &vk_shadePipelines[newIndex];
 
 	memset( &binding, 0, sizeof( binding ) );
 	binding.binding = 0;
@@ -2438,6 +2516,14 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	slot->polygonOffset = polygonOffset;
 	slot->topology = topology;
 	slot->used = qtrue;
+	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
+		int *at = &vk_shadePipelineHash[( phash + probe ) & VK_SHADE_HASH_MASK];
+
+		if ( !*at ) {
+			*at = newIndex + 1;
+			break;
+		}
+	}
 	vk_numShadePipelines++;
 	if ( ( vk_numShadePipelines & 15 ) == 1 ) {
 		VK_Guard_Row( "VK:shade", "pipelines=%d of %d sets=%d of %d",
@@ -2487,7 +2573,9 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	VkSampler defSampler;
 	VkResult result;
 	vkShadeSetKey_t key;
-	int i, found = -1;
+	uintptr_t skey[7];
+	unsigned shash;
+	int i, found = -1, probe;
 
 	memset( &key, 0, sizeof( key ) );
 	key.slot = VK_Shade_CommandBufferSlot();
@@ -2496,17 +2584,30 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	key.sampler[1] = v1 ? s_shade.texSampler[1] : VK_NULL_HANDLE;
 	key.sampler[2] = wave ? waveSampler : VK_NULL_HANDLE;
 
-	for ( i = 0; i < vk_numShadeSets; i++ ) {
-		if ( !vk_shadeSetKeys[i].written ) {
+	skey[0] = (uintptr_t)key.slot;
+	skey[1] = (uintptr_t)key.view[0];      skey[2] = (uintptr_t)key.view[1];
+	skey[3] = (uintptr_t)key.view[2];
+	skey[4] = (uintptr_t)key.sampler[0];   skey[5] = (uintptr_t)key.sampler[1];
+	skey[6] = (uintptr_t)key.sampler[2];
+	shash = VK_Shade_HashWords( skey, 7 ) & VK_SHADE_HASH_MASK;
+
+	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
+		int at = vk_shadeSetHash[( shash + probe ) & VK_SHADE_HASH_MASK];
+
+		if ( !at ) {
+			break;
+		}
+		at--;
+		if ( !vk_shadeSetKeys[at].written ) {
 			continue;
 		}
-		if ( vk_shadeSetKeys[i].slot == key.slot
-			 && vk_shadeSetKeys[i].view[0] == key.view[0] && vk_shadeSetKeys[i].view[1] == key.view[1]
-			 && vk_shadeSetKeys[i].view[2] == key.view[2]
-			 && vk_shadeSetKeys[i].sampler[0] == key.sampler[0]
-			 && vk_shadeSetKeys[i].sampler[1] == key.sampler[1]
-			 && vk_shadeSetKeys[i].sampler[2] == key.sampler[2] ) {
-			return vk_shadeSets[i];
+		if ( vk_shadeSetKeys[at].slot == key.slot
+			 && vk_shadeSetKeys[at].view[0] == key.view[0] && vk_shadeSetKeys[at].view[1] == key.view[1]
+			 && vk_shadeSetKeys[at].view[2] == key.view[2]
+			 && vk_shadeSetKeys[at].sampler[0] == key.sampler[0]
+			 && vk_shadeSetKeys[at].sampler[1] == key.sampler[1]
+			 && vk_shadeSetKeys[at].sampler[2] == key.sampler[2] ) {
+			return vk_shadeSets[at];
 		}
 	}
 	if ( vk_numShadeSets >= VK_SHADE_SETS ) {
@@ -2587,6 +2688,14 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	vk_numShadeSets = found + 1;
 	vk_shadeSetKeys[found] = key;
 	vk_shadeSetKeys[found].written = qtrue;
+	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
+		int *at = &vk_shadeSetHash[( shash + probe ) & VK_SHADE_HASH_MASK];
+
+		if ( !*at ) {
+			*at = found + 1;
+			break;
+		}
+	}
 	{
 		/* The working set, measured rather than guessed: a set is created once
 		   per distinct (frame slot, three views, three samplers) key and lives
@@ -3599,6 +3708,31 @@ typedef struct {
    screen is ~9600 hits and the histogram holds it with room for a real scene's
    noise.  Linear probe, no allocation, rebuilt every sampled frame. */
 #define VK_FLAT_BUCKETS	4096
+
+/* A rendered frame carries far more than VK_FLAT_BUCKETS distinct colours, so
+   the table fills within the first few thousand samples.  Once it is full a
+   linear probe that runs to the capacity is O(4096) per sample, and the census
+   costs sampled-pixels x 4096: measured offline at 47 ms per 800x600 readback
+   and 253 ms per 1920x1200 one, which is the walk's whole residual bucket.  The
+   probe is therefore bounded, and insert and lookup use the SAME bound, so
+   every key that was inserted stays findable and a miss costs the bound. */
+#define VK_FLAT_PROBE	32
+
+/* The census is an instrument, so its price must not scale with the resolution
+   it is measuring: the scan is given a fixed sample budget and the step is
+   derived from the frame. */
+#define VK_PIX_BUDGET	32768
+
+static int VK_Shade_CensusStep( int w, int h )
+{
+	int step = 1;
+
+	while ( step < 64 && ( w / step ) * ( h / step ) > VK_PIX_BUDGET ) {
+		step++;
+	}
+	return step;
+}
+
 static vkFlatRun_t	s_flat[VK_FLAT_BUCKETS];
 
 static void VK_Shade_FlatReset( void )
@@ -3687,7 +3821,7 @@ static void VK_Shade_FlatAdd( const unsigned char *p, int x, int y ){
 	unsigned	h = ( key * 2654435761u ) & ( VK_FLAT_BUCKETS - 1 );
 	int			i;
 
-	for ( i = 0; i < VK_FLAT_BUCKETS; i++ ) {
+	for ( i = 0; i < VK_FLAT_PROBE; i++ ) {
 		vkFlatRun_t *r = &s_flat[( h + i ) & ( VK_FLAT_BUCKETS - 1 )];
 
 		if ( r->count == 0 ) {
@@ -3789,9 +3923,12 @@ static void VK_Shade_GridRows( int frame )
 			int			sx, sy, n = 0;
 			int			x0 = gx * cx, y0 = gy * cy;
 			int			x1 = x0 + cx, y1 = y0 + cy;
+			int			sxs = ( cx + 7 ) / 8, sys = ( cy + 7 ) / 8;
 
-			for ( sy = y0; sy < y1 && sy < s_swapH; sy += 2 ) {
-				for ( sx = x0; sx < x1 && sx < s_swapW; sx += 2 ) {
+			if ( sxs < 1 ) sxs = 1;
+			if ( sys < 1 ) sys = 1;
+			for ( sy = y0; sy < y1 && sy < s_swapH; sy += sys ) {
+				for ( sx = x0; sx < x1 && sx < s_swapW; sx += sxs ) {
 					const unsigned char *p = s_swapPixels
 						+ ( (size_t)sy * s_swapW + sx ) * 4;
 
@@ -3823,9 +3960,12 @@ static void VK_Shade_GridRows( int frame )
 			int			sx, sy, n = 0;
 			int			x0 = gx * cx, y0 = gy * cy;
 			int			x1 = x0 + cx, y1 = y0 + cy;
+			int			sxs = ( cx + 7 ) / 8, sys = ( cy + 7 ) / 8;
 
-			for ( sy = y0; sy < y1 && sy < s_swapH; sy += 2 ) {
-				for ( sx = x0; sx < x1 && sx < s_swapW; sx += 2 ) {
+			if ( sxs < 1 ) sxs = 1;
+			if ( sys < 1 ) sys = 1;
+			for ( sy = y0; sy < y1 && sy < s_swapH; sy += sys ) {
+				for ( sx = x0; sx < x1 && sx < s_swapW; sx += sxs ) {
 					const unsigned char *p = s_swapPixels
 						+ ( (size_t)sy * s_swapW + sx ) * 4;
 
@@ -3926,8 +4066,11 @@ void VK_Shade_ReadbackFrame( uint32_t imageIndex )
 	s_swapValid = 1;
 
 	{
-		/* the presented frame's own map: the coarse grid and the flat boxes */
-		int step = 4;
+		/* the presented frame's own map: the coarse grid and the flat boxes.
+		   The step comes from the fixed sample budget, so this pass costs the
+		   same at 800x600 and at 1920x1200 instead of scaling with the pixels
+		   whose defect it is measuring. */
+		int step = VK_Shade_CensusStep( s_swapW, s_swapH );
 		int fx, fy;
 
 		VK_Shade_FlatReset();

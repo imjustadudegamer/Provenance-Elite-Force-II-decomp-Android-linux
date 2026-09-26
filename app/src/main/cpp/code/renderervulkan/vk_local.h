@@ -295,8 +295,19 @@ int RB_FrameSlot( const void *frame );
 void RB_CommandListReset( void );
 int RB_WalkMsec( void );
 
-/* The walk's cost split, printed by the r_perfFps row that owns the gate. */
-enum { VK_WP_GEN = 0, VK_WP_PACK, VK_WP_BIND, VK_WP_REC, VK_WP_FENCE, VK_WP_PHASES };
+/* The walk's cost split, printed by the r_perfFps row that owns the gate.  Every
+   opcode the walk executes lands in one of these, so `rest` is the accounting
+   error and not a bucket: a residual that is large is the instrument's own
+   defect, not a cost. */
+enum {
+	VK_WP_GEN = 0, VK_WP_PACK, VK_WP_BIND, VK_WP_REC, VK_WP_FENCE,
+	VK_WP_ACQ,   /* vkAcquireNextImageKHR: the device returning a presented image */
+	VK_WP_OPEN,  /* pass open, framebuffer open, command buffer record begin */
+	VK_WP_UI,    /* the RC_2D_* cases: the whole 2D command path */
+	VK_WP_OUT,   /* record end, queue submit, queue present */
+	VK_WP_PIX,   /* the presented-frame readback: device copy plus the host census */
+	VK_WP_PHASES
+};
 qboolean VK_WalkStatOn( void );
 void VK_WalkStat_Add( int phase, long long usec );
 void VK_WalkStat_Frame( int verts, int surfs );
