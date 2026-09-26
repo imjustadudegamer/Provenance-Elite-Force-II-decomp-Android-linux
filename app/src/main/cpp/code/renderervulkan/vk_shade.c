@@ -3307,28 +3307,30 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	   what it did. */
 	{
 		float	px0 = 2.0f, py0 = 2.0f, px1 = -2.0f, py1 = -2.0f;
-		int		poob = 0, vi;
+		int		poob = 0;
 
-		for ( i = 0; i < numIndexes; i++ ) {
-			const float	*p;
-			float		cw, nx, ny;
+		for ( i = 0; i + 2 < numIndexes; i += 3 ) {
+			for ( v = 0; v < 3; v++ ) {
+				int			vi = indexes[i + v];
+				const float	*p;
+				float		cw, nx, ny;
 
-			vi = indexes[i];
-			if ( vi < 0 || vi >= input->numVertexes ) {
-				poob = 1;
-				continue;
+				if ( vi < 0 || vi >= input->numVertexes ) {
+					poob = 1;
+					continue;
+				}
+				p = input->xyz[vi];
+				cw = pj[3] * p[0] + pj[7] * p[1] + pj[11] * p[2] + pj[15];
+				if ( cw < 1e-6f && cw > -1e-6f ) {
+					continue;
+				}
+				nx = ( pj[0] * p[0] + pj[4] * p[1] + pj[8]  * p[2] + pj[12] ) / cw;
+				ny = ( pj[1] * p[0] + pj[5] * p[1] + pj[9]  * p[2] + pj[13] ) / cw;
+				if ( nx < px0 ) px0 = nx;
+				if ( ny < py0 ) py0 = ny;
+				if ( nx > px1 ) px1 = nx;
+				if ( ny > py1 ) py1 = ny;
 			}
-			p = input->xyz[vi];
-			cw = pj[3] * p[0] + pj[7] * p[1] + pj[11] * p[2] + pj[15];
-			if ( cw < 1e-6f && cw > -1e-6f ) {
-				continue;
-			}
-			nx = ( pj[0] * p[0] + pj[4] * p[1] + pj[8]  * p[2] + pj[12] ) / cw;
-			ny = ( pj[1] * p[0] + pj[5] * p[1] + pj[9]  * p[2] + pj[13] ) / cw;
-			if ( nx < px0 ) px0 = nx;
-			if ( ny < py0 ) py0 = ny;
-			if ( nx > px1 ) px1 = nx;
-			if ( ny > py1 ) py1 = ny;
 		}
 
 		/* no row can print: the predicate below needs oob or rawInside, and the
