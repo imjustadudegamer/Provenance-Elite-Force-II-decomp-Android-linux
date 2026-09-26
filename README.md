@@ -4,7 +4,8 @@ A native port of *Star Trek: Voyager: Elite Force II* (Ritual Entertainment,
 published by Activision, 2003) to Android and Linux. The retail game runs on a
 de-MOHAAd id Tech 3 engine, the [OpenMoHAA](https://github.com/openmoh/openmohaa)
 lineage that descends from id Software's Quake III Arena GPL release, with a
-GLES 3.0 renderer written for this port. The engine, the game, the client game,
+Vulkan renderer written for this port and the GLES 3.0 backend built beside it
+as the reference twin. The engine, the game, the client game,
 the renderer and the model layer all build from one tree in `app/src/main/cpp/`.
 
 **Download the APK from Releases and install it. You do not need to build
@@ -29,7 +30,9 @@ and there is an answer.
 
 ## Features
 
-- **GLES 3.0 renderer**, written for this port and the only one it comes with.
+- **Vulkan renderer**, written for this port and the one it ships with. The
+  GLES 3.0 backend is built beside it as the reference twin and selected with
+  `cl_renderer gles3`.
 - **Touch controls**: a virtual stick, a look area, and on-screen pills for fire,
   jump, crouch, use and reload, with the on-screen art packed into the app.
 - **Full gamepad support** through SDL's GameController API. Dual sticks,
@@ -46,8 +49,10 @@ and there is an answer.
 
 ## Requirements
 
-- **Android 8.0 (API 26) or newer**, `arm64-v8a`, OpenGL ES 3.0.
-- Or **Linux x86-64** with OpenGL ES 3.0 drivers.
+- **Android 8.0 (API 26) or newer**, `arm64-v8a`, a Vulkan 1.0 or newer driver.
+- Or **Linux x86-64** with a Vulkan 1.0 or newer driver.
+- The GLES 3.0 reference twin needs an OpenGL ES 3.0 driver instead, and is
+  selected with `+set cl_renderer gles3`.
 - Your own retail *Elite Force II* data: the game's `.pk3` paks and the game DLL.
   The DLL is part of the required set purely as a proof-of-ownership check. It is
   never executed by this port.
@@ -72,15 +77,15 @@ adb push base/. /sdcard/Android/obb/com.provenanceef2/base/
 Linux target has to be built from source. It is the same engine and the same tree
 as the Android build. A platform switch selects the glue, not a fork.
 
-Prerequisites: a C++ toolchain, CMake 3.31.5 or newer, Ninja, and OpenGL ES 3.0
-drivers.
+Prerequisites: a C++ toolchain, CMake 3.31.5 or newer, Ninja, and a Vulkan 1.0
+or newer driver.
 
 ```sh
 cd app/src/main/cpp
-cmake --preset linux-gles3 && ninja -C build-linux-gles3 -j16
+cmake --preset linux-gles3 && ninja -C build -j16
 ```
 
-That produces, in `build-linux-gles3/Release/`:
+That produces, in `build/Release/`:
 
 | file | what it is |
 |---|---|
@@ -88,10 +93,11 @@ That produces, in `build-linux-gles3/Release/`:
 | `provenanceef2ded` | the dedicated server |
 | `game.so` | the game module, opened at run time |
 | `cgame.so` | the client-game module, opened at run time |
-| `renderer_gles3.so` | the GLES 3.0 renderer |
+| `renderer_vulkan.so` | the shipping Vulkan renderer, `cl_renderer`'s default |
+| `renderer_gles3.so` | the GLES 3.0 reference twin |
 
-`game.so`, `cgame.so` and `renderer_gles3.so` are opened out of the client's own
-directory at run time, so the five belong together. The same directory also
+`game.so`, `cgame.so`, `renderer_vulkan.so` and `renderer_gles3.so` are opened
+out of the client's own directory at run time, so the six belong together. The same directory also
 builds offline evidence harnesses, which are not for play.
 
 The engine reads its game data from a `base/` directory under its data root,
@@ -100,7 +106,7 @@ the retail data alongside the binaries:
 
 ```
 <dir>/provenanceef2
-<dir>/game.so   cgame.so   renderer_gles3.so
+<dir>/game.so   cgame.so   renderer_vulkan.so   renderer_gles3.so
 <dir>/base/*.pk3
 <dir>/base/global/*.cfg
 ```
@@ -155,13 +161,13 @@ app/build_apk.sh assembleRelease        # the release variant
 ```
 
 The Linux build is in [Linux](#linux) above. Its output lands in
-`build-linux-gles3/Release/`. The gate for every change is a clean rebuild at
-0 warnings and 0 errors, and `ldd -r` reporting 0 undefined symbols on all five.
+`build/Release/`. The gate for every change is a clean rebuild at
+0 warnings and 0 errors, and `ldd -r` reporting 0 undefined symbols on all six.
 
 ## Documentation
 
 Start at `docs/ARCHITECTURE.md`. `docs/BUILD.md` covers both targets,
-`docs/RENDERER.md` the GLES 3.0 backend, `docs/PROVENANCE.md` the evidence, and
+`docs/RENDERER.md` the renderer, `docs/PROVENANCE.md` the evidence, and
 `docs/ANDROID_PORT.md` the launcher, the import and the controls.
 
 ## Licence

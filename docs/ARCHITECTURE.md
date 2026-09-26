@@ -3,8 +3,8 @@
 A native Android port of *Star Trek: Voyager, Elite Force II*, built on a
 de-MOHAAd id Tech 3 engine lineage. Every function, struct, table and constant is
 held to the EF2 SDK and the retail Mac PPC binaries; the engine, the game DLL,
-the cgame, the GLES 3.0 renderer and the tiki/skeletor model layer all build from
-one tree.
+the cgame, the Vulkan renderer (with its GLES 3.0 twin) and the tiki/skeletor
+model layer all build from one tree.
 
 ## Repository layout
 
@@ -12,7 +12,7 @@ one tree.
 |---|---|
 | `app/` | the Android module (`build.gradle.kts`, manifest, assets, java, res) |
 | `app/src/main/cpp/` | **all native source**: the engine modules, the renderer, the vendored third-party libraries, the CMake build |
-| `docs/` | project documentation (this file, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`) and `docs/closeouts/` for historical material |
+| `docs/` | project documentation (this file, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`) |
 | `personal/scripts/` (untracked) | the build/capture wrappers |
 | `tools/` | release tooling: the notice codemod, `license_lint.py`, `ship_text_lint.py`, `provenance_ledger.py` |
 | `LICENSING.md`, `PROVENANCE.tsv`, `COPYING.txt` | the licence statement, the per-file provenance ledger and the GPLv2 text. `docs/EF2-SDK-licenseAgreement.txt` is the Ritual SDK agreement, shipped verbatim |
@@ -39,7 +39,8 @@ carries the notice for its own provenance, `PROVENANCE.tsv` records it, and
 | `fgame/` | the game module, entities, actors, weapons, AI, script responses |
 | `cgame/` | the client-game module, prediction, entities, HUD, radar, effects |
 | `uilib/` | the menu library: widgets, menus, the UI import/export tables |
-| `renderergles3/` | the shipping renderer: GLES 3.0 programs, state, buffers, the shader model |
+| `renderervulkan/` | the shipping renderer: the Vulkan instance/swapchain/frame, pipelines, descriptors, and the SPIR-V shader model |
+| `renderergles3/` | the GLES 3.0 reference twin, built beside Vulkan and selectable with `cl_renderer gles3` |
 | `renderercommon/` | renderer headers shared across backends |
 | `tiki/`, `skeletor/` | the model container/parser and the skeletal animation layer |
 | `botlib/` | the bot AI library (AAS routing and navigation) |
@@ -55,18 +56,23 @@ carries the notice for its own provenance, `PROVENANCE.tsv` records it, and
 `game_import_t` / `cgi` function tables, exactly as retail does. `uilib` is
 compiled into the same executable as the client and reaches the engine through
 `uiimport_t` and `uiexport_t`. The renderer is a separate shared object behind
-`refexport_t`, selected by the `cl_renderer` cvar.
+`refexport_t`, selected by the `cl_renderer` cvar, whose compiled default is
+`vulkan`.
 
 ## Platform and renderer switch
 
-Two CMake cache variables select the target:
+Two CMake cache variables select the target, and a third names the default:
 
 - `EF2_PLATFORM`, `linux` or `android`; picks the platform glue and the data
   root.
-- `EF2_RENDERER`, `gles3`; the fixed-function and Vulkan backends are deleted,
-  so `gles3` is the only value.
+- `EF2_RENDERER`, `gles3`; gates the GLES 3.0 reference twin's sources and is the
+  only accepted value (the fixed-function backend is deleted). It exists so a
+  stale cache entry fails loudly instead of selecting nothing.
+- `EF2_DEFAULT_RENDERER`, `vulkan`; `cl_renderer`'s compiled default. The Vulkan
+  module is built unconditionally beside the GLES 3.0 twin, and the two are
+  dlopened as `renderer_vulkan` / `renderer_gles3`.
 
 The accepted divergences from retail are confined to platform glue, the sound
-backend and the GLES 3.0 renderer/platform layer. Everything else is held
-retail-exact against the SDK and the retail binaries; the citations that back
+backend and the renderer's platform layer (the Vulkan renderer and its GLES 3.0
+twin). Everything else is held retail-exact against the SDK and the retail binaries; the citations that back
 each claim are recorded in `personal/RE_REFERENCE_CITATIONS.tsv`.

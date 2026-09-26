@@ -270,6 +270,78 @@ void R_IssuePendingRenderCommands( void )
 	R_FlushRenderCommands();
 }
 
+/* ---- the frame's paint order, as the walk meets it ----------------------- */
+
+/* The readback says what colour a rect holds; only the recorded order says
+   whether the fill that colour came from was walked before or after the 3D
+   batch it hid.  Every 2D box -- the widget fills, and the menu background wash
+   among them -- and every surface batch's own rect is noted here in walk order,
+   so one boot answers a composition question a target read cannot.  Gated like
+   the other rows and emitted when the sequence changes. */
+#define VK_ORDER_MAX	28
+
+static char		s_orderLine[1024];
+static int		s_orderLen;
+static int		s_orderCount;
+static int		s_orderMore;
+static unsigned	s_orderHash;
+static unsigned	s_orderLast;
+static int		s_orderFrames;
+static int		s_orderHave;
+
+static void VK_Order_Note( const char *text )
+{
+	int len = (int)strlen( text );
+
+	if ( s_orderCount >= VK_ORDER_MAX || s_orderLen + len + 2 >= (int)sizeof( s_orderLine ) ) {
+		s_orderMore++;
+		return;
+	}
+	if ( s_orderCount ) {
+		s_orderLine[s_orderLen++] = '|';
+	}
+	memcpy( s_orderLine + s_orderLen, text, len + 1 );
+	s_orderLen += len;
+	s_orderCount++;
+}
+
+/* Emitted at the present, the one point where the frame's sequence is whole. */
+static void VK_Order_Frame( void )
+{
+	char	full[1152];
+
+	if ( !s_orderCount ) {
+		return;
+	}
+
+	if ( s_orderMore ) {
+		Com_sprintf( full, sizeof( full ), "%s|+%d", s_orderLine, s_orderMore );
+	} else {
+		Q_strncpyz( full, s_orderLine, sizeof( full ) );
+	}
+
+	s_orderHash = 0;
+	{
+		const char *p = full;
+
+		while ( *p ) {
+			s_orderHash = ( s_orderHash ^ (unsigned char)*p++ ) * 16777619u;
+		}
+	}
+
+	s_orderFrames++;
+	if ( !s_orderHave || s_orderHash != s_orderLast || ( s_orderFrames % 600 ) == 0 ) {
+		VK_Guard_Row( "VK:order", "%s", full );
+		s_orderLast = s_orderHash;
+		s_orderHave = qtrue;
+	}
+
+	s_orderLine[0] = 0;
+	s_orderLen = 0;
+	s_orderCount = 0;
+	s_orderMore = 0;
+}
+
 void R_SyncRenderThread( void )
 {
 	if ( !vk.smpActive || VKimp_IsRenderThread() ) {
@@ -344,10 +416,21 @@ void RB_ExecuteRenderCommands( const void *data )
 		   under its own full-screen fill.  Flushing here restores the recorded
 		   order, and the flush is charged to the 2D class it belongs to. */
 		if ( op == RC_DRAW_SURFS || op == RC_SPRITE_SURFS ) {
+			const drawSurfsCommand_t *ocmd = ( const drawSurfsCommand_t * )cmds;
 			long long flushT0 = VK_WALK_T0();
 
 			RB_2D_Flush();
 			VK_WALK_ADD( flushT0, VK_WP_UI );
+
+			{
+				char	note[80];
+
+				Com_sprintf( note, sizeof( note ), "%s(%d,%d %dx%d n=%d)",
+							 op == RC_DRAW_SURFS ? "surf" : "spr",
+							 ocmd->refdef.x, ocmd->refdef.y, ocmd->refdef.width, ocmd->refdef.height,
+							 ocmd->numDrawSurfs );
+				VK_Order_Note( note );
+			}
 		}
 
 		/* One GPU timestamp per class change, written before the case runs: the
@@ -496,6 +579,15 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			box2DCommand_t *cmd = ( box2DCommand_t * )cmds;
 
+			{
+				char	note[64];
+
+				Com_sprintf( note, sizeof( note ), "box(%.0f,%.0f %.0fx%.0f a%d)",
+							 (double)cmd->x, (double)cmd->y, (double)cmd->w, (double)cmd->h,
+							 (int)backEnd.color2D[3] );
+				VK_Order_Note( note );
+			}
+
 			RB_2D_Box( cmd->x, cmd->y, cmd->w, cmd->h, cmd->blend ? qtrue : qfalse );
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
 			break;
@@ -546,6 +638,8 @@ void RB_ExecuteRenderCommands( const void *data )
 
 				RB_2D_Flush();
 				VK_WALK_ADD( uiT0, VK_WP_UI );
+
+				VK_Order_Frame();
 
 				outT0 = VK_WALK_T0();
 				VK_Frame_RecordEnd( slot );
