@@ -94,7 +94,7 @@ qboolean R_ProbeStatsOn( void )
 	static cvar_t *probe;
 
 	if ( !probe ) {
-		probe = ri.Cvar_Get( "qa_probe", "1", 0 );
+		probe = ri.Cvar_Get( "qa_probe", "0", 0 );
 	}
 
 	return ( probe && probe->integer ) ? qtrue : qfalse;

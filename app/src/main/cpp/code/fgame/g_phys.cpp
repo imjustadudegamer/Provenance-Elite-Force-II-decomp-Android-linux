@@ -1138,7 +1138,7 @@ static qboolean G_EntTrashProbeOn( void ) {
 	static cvar_t *enttrash_probe;
 
 	if ( !enttrash_probe ) {
-		enttrash_probe = gi.cvar( "qa_probe", "1", 0 );
+		enttrash_probe = gi.cvar( "qa_probe", "0", 0 );
 	}
 	return enttrash_probe->integer ? qtrue : qfalse;
 }
@@ -1161,7 +1161,7 @@ static void G_EntTrash_Record( Entity *ent, int movetype )
 		static cvar_t *enttrash_probe;
 
 		if ( !enttrash_probe ) {
-			enttrash_probe = gi.cvar( "qa_probe", "1", 0 );
+			enttrash_probe = gi.cvar( "qa_probe", "0", 0 );
 		}
 		if ( !enttrash_probe->integer ) {
 			return;
@@ -1367,7 +1367,7 @@ void G_RunEntity(Entity *ent)
         return;
     }
 
-    if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "1", 0)->integer) {
+    if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "0", 0)->integer) {
         static int  uivk_nf_reported[MAX_GENTITIES];
         static vec3_t uivk_nf_lastorg[MAX_GENTITIES];
         static vec3_t uivk_nf_lastvel[MAX_GENTITIES];

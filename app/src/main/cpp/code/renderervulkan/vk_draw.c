@@ -80,6 +80,73 @@ static int				vk_numPipelines;
 static int				s_pipelineIndex[VK_DRAW_PIPELINE_HASH];
 static int				s_setIndex[VK_DRAW_SET_HASH];
 
+/* the ring's index buffer, per frame slot: it is bound once per command buffer */
+static VkBuffer			s_indexBound[VK_FRAMES_IN_FLIGHT];
+static int				s_indexBoundFrame[VK_FRAMES_IN_FLIGHT];
+
+/* The pipeline and the set bound at set 0 are command-buffer state, so binding
+   values that are already in force is a no-op the driver still charges for: the
+   menu's frame is 145 to 331 draws and most repeats follow one another.  Every
+   bind in the renderer goes through these two functions -- the 2D lane binds its
+   own layout at set 0, so a cache that only the shade path maintained would
+   serve a stale pipeline to a 3D draw that followed a 2D one.  Keyed on the
+   frame as well as the slot: a fresh command buffer has no state at all. */
+static VkCommandBuffer	s_boundPipeCmd[VK_FRAMES_IN_FLIGHT];
+static VkCommandBuffer	s_boundSetCmd[VK_FRAMES_IN_FLIGHT];
+static VkPipeline		s_boundPipeline[VK_FRAMES_IN_FLIGHT];
+static int				s_boundPipelineFrame[VK_FRAMES_IN_FLIGHT];
+static VkPipelineLayout	s_boundSetLayout[VK_FRAMES_IN_FLIGHT];
+static VkDescriptorSet	s_boundSet[VK_FRAMES_IN_FLIGHT];
+static uint32_t			s_boundSetOffset[VK_FRAMES_IN_FLIGHT];
+static int				s_boundSetFrame[VK_FRAMES_IN_FLIGHT];
+
+static int VK_Draw_BindSlot( void )
+{
+	int slot = RB_FrameSmpFrame();
+
+	return ( slot >= 0 && slot < VK_FRAMES_IN_FLIGHT ) ? slot : 0;
+}
+
+void VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline )
+{
+	int slot = VK_Draw_BindSlot();
+	int frame = RB_FrameCount();
+
+	/* The command buffer is part of the key: a frame slot maps to one buffer for
+	   the walk, but the bring-up paths record into their own, and state does not
+	   carry between buffers. */
+	if ( s_boundPipelineFrame[slot] == frame && s_boundPipeCmd[slot] == cmd
+		 && s_boundPipeline[slot] == pipeline ) {
+		VK_WalkStat_Count( VK_ELIDE_PIPE );
+		return;
+	}
+	qvk.CmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
+	s_boundPipeCmd[slot] = cmd;
+	s_boundPipeline[slot] = pipeline;
+	s_boundPipelineFrame[slot] = frame;
+}
+
+void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
+					  uint32_t dynamicOffset )
+{
+	int slot = VK_Draw_BindSlot();
+	int frame = RB_FrameCount();
+
+	if ( s_boundSetFrame[slot] == frame && s_boundSetCmd[slot] == cmd
+		 && s_boundSetLayout[slot] == layout
+		 && s_boundSet[slot] == set && s_boundSetOffset[slot] == dynamicOffset ) {
+		VK_WalkStat_Count( VK_ELIDE_SET );
+		return;
+	}
+	qvk.CmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set,
+							   1, &dynamicOffset );
+	s_boundSetCmd[slot] = cmd;
+	s_boundSetLayout[slot] = layout;
+	s_boundSet[slot] = set;
+	s_boundSetOffset[slot] = dynamicOffset;
+	s_boundSetFrame[slot] = frame;
+}
+
 static unsigned VK_Draw_PipelineHash( const vkPipelineKey_t *key )
 {
 	unsigned h = (unsigned)key->topology * 2654435761u;
@@ -381,6 +448,16 @@ qboolean VK_Draw_Init( void )
 	vk_numSets = 0;
 	memset( s_pipelineIndex, 0, sizeof( s_pipelineIndex ) );
 	memset( s_setIndex, 0, sizeof( s_setIndex ) );
+	memset( s_indexBound, 0, sizeof( s_indexBound ) );
+	memset( s_indexBoundFrame, 0, sizeof( s_indexBoundFrame ) );
+	memset( s_boundPipeCmd, 0, sizeof( s_boundPipeCmd ) );
+	memset( s_boundSetCmd, 0, sizeof( s_boundSetCmd ) );
+	memset( s_boundPipeline, 0, sizeof( s_boundPipeline ) );
+	memset( s_boundPipelineFrame, 0, sizeof( s_boundPipelineFrame ) );
+	memset( s_boundSetLayout, 0, sizeof( s_boundSetLayout ) );
+	memset( s_boundSet, 0, sizeof( s_boundSet ) );
+	memset( s_boundSetOffset, 0, sizeof( s_boundSetOffset ) );
+	memset( s_boundSetFrame, 0, sizeof( s_boundSetFrame ) );
 	memset( &vk_current, 0, sizeof( vk_current ) );
 	vk_currentValid = qfalse;
 
@@ -593,8 +670,7 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 		set = vk_sets[i].set;
 	}
 
-	qvk.CmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_draw.layout, 0, 1, &set,
-							   0, NULL );
+	VK_Draw_BindSet( cmd, vk_draw.layout, set, 0 );
 
 	return qtrue;
 }
@@ -837,6 +913,8 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 {
 	VkBuffer buffers[2];
 	VkDeviceSize offsets[2];
+	int			slot = RB_FrameSmpFrame();
+	int			frame = RB_FrameCount();
 
 	offsets[0] = vertexOffset;
 	offsets[1] = 0;
@@ -846,9 +924,22 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 
 	qvk.CmdBindVertexBuffers( cmd, 0, 1, &buffers[0], &offsets[0] );
 
-	/* glIndex_t is a 32-bit index; the buffer is filled with those. */
-	if ( buffers[1] != VK_NULL_HANDLE ) {
+	/* The index buffer never moves: it is the ring's own, always at offset 0, and
+	   this is the only CmdBindIndexBuffer in the renderer.  Binding it once per
+	   command buffer instead of once per draw halves the driver calls this
+	   function makes, and the offset means the vertex bind cannot be skipped.
+	   The cache is keyed on the frame as well as the slot because a fresh
+	   command buffer has no state at all. */
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		slot = 0;
+	}
+	if ( buffers[1] != VK_NULL_HANDLE
+		 && ( s_indexBound[slot] != buffers[1] || s_indexBoundFrame[slot] != frame ) ) {
 		qvk.CmdBindIndexBuffer( cmd, buffers[1], 0, VK_INDEX_TYPE_UINT32 );
+		s_indexBound[slot] = buffers[1];
+		s_indexBoundFrame[slot] = frame;
+	} else if ( buffers[1] != VK_NULL_HANDLE ) {
+		VK_WalkStat_Count( VK_ELIDE_INDEX );
 	}
 }
 

@@ -99,7 +99,7 @@ qboolean MeleeAttack(
     int                 num_traces;
     Vector              end;
 
-    qboolean gameplay_probe   = gi.cvar("qa_probe", "1", 0)->integer ? qtrue : qfalse;
+    qboolean gameplay_probe   = gi.cvar("qa_probe", "0", 0)->integer ? qtrue : qfalse;
     str      gameplay_damaged = "";
 
     end = original_end;
@@ -1941,7 +1941,7 @@ float BulletAttack(
             trace = G_Trace(start, vec_zero, vec_zero, end, owner, MASK_SHOT, false, "BulletAttack");
         }
 
-        if (gi.cvar("qa_probe", "1", 0)->integer) {
+        if (gi.cvar("qa_probe", "0", 0)->integer) {
             gi.Printf("[UIVK:shoot] own=%d i=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) hitent=%d mod=%d(%s) dmg=%.1f\n",
                       owner ? owner->entnum : -1,
                       i,

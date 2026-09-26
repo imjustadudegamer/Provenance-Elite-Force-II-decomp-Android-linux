@@ -363,7 +363,9 @@ static void VK_VertexRing_FrameRow( void )
 	static int	rows;
 	static int	lastUsed = -1;
 	static int	lastDrops = -1;
+	static int	bootPeak;
 	int used, bytes, indexes, drops, surfaces, refused;
+	int demand;
 
 	VK_VertexRing_FrameDemandFull( &used, &bytes, &indexes, &drops, &surfaces, &refused );
 
@@ -371,10 +373,27 @@ static void VK_VertexRing_FrameRow( void )
 		return;
 	}
 
+	/* What the frame asked the ring for: what it took plus what a full ring
+	   refused.  A frame that refuses has no other way to say how big it was, and
+	   the ceiling's next correction reads this number. */
+	demand = used + refused;
+	if ( demand > bootPeak ) {
+		bootPeak = demand;
+		if ( bootPeak > ( VK_RING_MAX_VERTEXES / 2 ) ) {
+			/* the ceiling is a multiple of the engine's batch, and the frame's
+			   batch count is not bounded by it, so crossing half is the warning
+			   that comes before the refusals do */
+			VK_Guard_Row( "VK:ring",
+						  "peak demand=%d of %d slots (%.1f%%) f=%d",
+						  bootPeak, VK_RING_MAX_VERTEXES,
+						  100.0 * bootPeak / VK_RING_MAX_VERTEXES, RB_FrameCount() );
+		}
+	}
+
 	rows++;
 	if ( rows <= 8 || used != lastUsed || drops != lastDrops || ( rows % 600 ) == 0 ) {
-		VK_Guard_Row( "VK:ring", "frame slots=%d of %d vertex-bytes=%d indexes=%d surfaces=%d drops=%d refused-slots=%d",
-					  used, VK_RING_MAX_VERTEXES, bytes, indexes, surfaces, drops, refused );
+		VK_Guard_Row( "VK:ring", "frame slots=%d of %d demand=%d peak=%d vertex-bytes=%d indexes=%d surfaces=%d drops=%d refused-slots=%d",
+					  used, VK_RING_MAX_VERTEXES, demand, bootPeak, bytes, indexes, surfaces, drops, refused );
 	}
 	lastUsed = used;
 	lastDrops = drops;

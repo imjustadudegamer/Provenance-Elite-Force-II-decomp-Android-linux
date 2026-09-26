@@ -37,7 +37,7 @@ static qboolean CHAN_TagProbeOn(void)
 	static cvar_t *chan_qa;
 
 	if (!chan_qa) {
-		chan_qa = Cvar_Get("qa_probe", "1", 0);
+		chan_qa = Cvar_Get("qa_probe", "0", 0);
 	}
 	return (chan_qa && chan_qa->integer) ? qtrue : qfalse;
 }

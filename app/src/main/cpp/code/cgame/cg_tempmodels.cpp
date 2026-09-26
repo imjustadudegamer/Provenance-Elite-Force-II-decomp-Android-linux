@@ -616,7 +616,7 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
             const char *bones_step_model = p->modelname.c_str();
 
             if (!bones_probe) {
-                bones_probe = cgi.Cvar_Get("qa_probe", "1", 0);
+                bones_probe = cgi.Cvar_Get("qa_probe", "0", 0);
             }
 
             if (bones_step_model && bones_step_model[0]
@@ -1330,7 +1330,7 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
             const char *bones_em_model = m_spawnthing->GetModel();
 
             if (!bones_probe) {
-                bones_probe = cgi.Cvar_Get("qa_probe", "1", 0);
+                bones_probe = cgi.Cvar_Get("qa_probe", "0", 0);
             }
             Vector      bones_skew;
 

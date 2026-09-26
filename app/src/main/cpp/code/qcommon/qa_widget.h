@@ -31,7 +31,7 @@ static inline qboolean WIDGET_On(void)
 	static cvar_t *v;
 
 	if (!v) {
-		v = WIDGET_PROBE_GET("qa_probe", "1", 0);
+		v = WIDGET_PROBE_GET("qa_probe", "0", 0);
 	}
 	return (v && v->integer) ? qtrue : qfalse;
 }

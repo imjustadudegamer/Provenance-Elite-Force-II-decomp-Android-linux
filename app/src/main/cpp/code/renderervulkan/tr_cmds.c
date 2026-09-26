@@ -102,6 +102,7 @@ static long long	s_walkPhaseUsec[VK_WP_PHASES];
 static long long	s_walkVerts;
 static long long	s_walkSurfs;
 static long long	s_walkFrames;
+static long long	s_walkElisions[VK_ELIDE_HITS];
 
 qboolean VK_WalkStatOn( void )
 {
@@ -143,6 +144,23 @@ void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfs
 	s_walkVerts = 0;
 	s_walkSurfs = 0;
 	s_walkFrames = 0;
+}
+
+void VK_WalkStat_Count( int what )
+{
+	if ( what >= 0 && what < VK_ELIDE_HITS ) {
+		s_walkElisions[what]++;
+	}
+}
+
+void VK_WalkStat_TakeElisions( long long *out )
+{
+	int i;
+
+	for ( i = 0; i < VK_ELIDE_HITS; i++ ) {
+		out[i] = s_walkElisions[i];
+		s_walkElisions[i] = 0;
+	}
 }
 
 static vkCommandList_t *RB_CommandList( void )

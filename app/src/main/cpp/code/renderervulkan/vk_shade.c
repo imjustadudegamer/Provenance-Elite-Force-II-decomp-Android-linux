@@ -2072,6 +2072,8 @@ static int						vk_numShadeSets;
 #define VK_UBO_HIGHWATER_FLOOR		256
 static int						vk_shadeUboSliceBytes = VK_UBO_SIZE_PAD;
 static int						vk_shadeUboNext[VK_FRAMES_IN_FLIGHT];
+static VkDeviceSize				vk_shadeUboLast[VK_FRAMES_IN_FLIGHT];
+static qboolean					vk_shadeUboLastValid[VK_FRAMES_IN_FLIGHT];
 
 /* What a cached set was written for: it carries the frame slot's UBO too. */
 typedef struct {
@@ -2233,6 +2235,7 @@ void VK_Shade_Descriptors_Shutdown( void )
 	/* The indexes point into the tables above: leaving them behind would make a
 	   re-init return a handle from the pool this call just destroyed. */
 	memset( vk_shadePipelineHash, 0, sizeof( vk_shadePipelineHash ) );
+	memset( vk_shadeUboLastValid, 0, sizeof( vk_shadeUboLastValid ) );
 	memset( vk_shadeSetHash, 0, sizeof( vk_shadeSetHash ) );
 }
 
@@ -2254,7 +2257,11 @@ VkCommandBuffer VK_Shade_CommandBuffer( void )
 	return vk.commandBuffers[slot];
 }
 
-/* copy the staging block into the next ring slice; -1 when the ring is out */
+/* copy the staging block into the next ring slice; -1 when the ring is out.
+   A draw whose uniforms no setter touched since the last copy is byte-identical
+   to the slice the previous draw took, so it shares that slice instead of
+   spending a ring slot and a copy: the same bytes at the same dynamic offset,
+   which is also what lets the bind omit a repeated descriptor set. */
 static VkDeviceSize VK_Shade_WriteUBO( void )
 {
 	int			slot = VK_Shade_CommandBufferSlot();
@@ -2263,6 +2270,11 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 
 	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT || !vk_shadeUboMapped[slot] ) {
 		return ( VkDeviceSize )-1;
+	}
+
+	if ( !s_uboDirty && vk_shadeUboLastValid[slot] ) {
+		VK_WalkStat_Count( VK_ELIDE_UBO );
+		return vk_shadeUboLast[slot];
 	}
 
 	slice = vk_shadeUboNext[slot];
@@ -2281,6 +2293,8 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 	memcpy( vk_shadeUboMapped[slot] + offset, s_ubo, s_uboHighWater );
 	s_uboDirty = qfalse;
 	s_uboHighWater = VK_UBO_HIGHWATER_FLOOR;
+	vk_shadeUboLast[slot] = offset;
+	vk_shadeUboLastValid[slot] = qtrue;
 
 	return offset;
 }
@@ -2973,9 +2987,8 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 		}
 		uboOffset = ( uint32_t )slice;
 	}
-	qvk.CmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
-	qvk.CmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_shadeLayout, 0, 1, &set,
-							   1, &uboOffset );
+	VK_Draw_BindPipeline( cmd, pipeline );
+	VK_Draw_BindSet( cmd, vk_shadeLayout, set, uboOffset );
 	return qtrue;
 }
 
@@ -4233,5 +4246,6 @@ void VK_Shade_NewFrame( void )
 	slot = RB_FrameSmpFrame();
 	if ( slot >= 0 && slot < VK_FRAMES_IN_FLIGHT ) {
 		vk_shadeUboNext[slot] = 0;
+		vk_shadeUboLastValid[slot] = qfalse;
 	}
 }

@@ -265,6 +265,14 @@ static cvar_t *r_vkHeadless;
 static const char *const vk_validationLayer = "VK_LAYER_KHRONOS_validation";
 static const char *const vk_debugExtension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
+/* Whether the walk's driver calls are being validated.  The layer wraps every
+   vkCmd* call, so a frame cost measured with it armed is not the shipping cost;
+   the perf row carries this so a measurement states its own conditions. */
+int VK_Platform_Validation( void )
+{
+	return ( r_vkValidate && r_vkValidate->integer ) ? 1 : 0;
+}
+
 qboolean VKimp_WindowCreate( int width, int height, int fullscreen, qboolean hidden )
 {
 	Uint32 flags = SDL_WINDOW_VULKAN;

@@ -1001,7 +1001,7 @@ void Animate::FrameDeltaEvent( Event *ev )
 {
 	frame_delta = ev->GetVector( 1 );
 
-	if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "1", 0)->integer) {
+	if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "0", 0)->integer) {
 		static int uivk_nd_count[MAX_GENTITIES];
 		int       uivk_nd_e = self->edict - g_entities;
 

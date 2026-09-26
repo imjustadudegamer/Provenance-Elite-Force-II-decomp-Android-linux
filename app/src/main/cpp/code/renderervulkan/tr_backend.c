@@ -188,7 +188,7 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		return qfalse;
 	}
 
-	qvk.CmdBindPipeline( vk.commandBuffers[s_rbSlot], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
+	VK_Draw_BindPipeline( vk.commandBuffers[s_rbSlot], pipeline );
 	VK_Draw_SetAlphaTest( vk.commandBuffers[s_rbSlot], stage->stateBits );
 
 	/* wrapClampModeX/Y hold the legacy wrap enum: REPEAT is 10497, not 0, and the
@@ -434,7 +434,7 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 		return;
 	}
 
-	qvk.CmdBindPipeline( vk.commandBuffers[s_rbSlot], VK_PIPELINE_BIND_POINT_GRAPHICS, run->pipeline );
+	VK_Draw_BindPipeline( vk.commandBuffers[s_rbSlot], run->pipeline );
 	/* the run's own state, as the stage pass does: a leftover push would arm the
 	   previous surface's test on this one */
 	VK_Draw_SetAlphaTest( vk.commandBuffers[s_rbSlot], stateBits );
