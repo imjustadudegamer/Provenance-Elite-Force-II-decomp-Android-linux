@@ -338,7 +338,7 @@ qboolean VK_Pipeline_DrawDemo( VkCommandBuffer cmd )
 	qvk.CmdSetViewport( cmd, 0, 1, &viewport );
 	qvk.CmdSetScissor( cmd, 0, 1, &scissor );
 
-	qvk.CmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_pipeline.demoPipeline );
+	VK_Draw_BindPipeline( cmd, vk_pipeline.demoPipeline );
 	qvk.CmdBindVertexBuffers( cmd, 0, 1, &vk.vertexBuffer, &offset );
 	qvk.CmdDraw( cmd, 3, 1, 0, 0 );
 

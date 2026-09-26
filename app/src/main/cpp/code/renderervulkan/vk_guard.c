@@ -155,6 +155,17 @@ void VK_Guard_Hit( vkGuardSite_t site, const char *detail, VkResult result )
 
 	n = ++vk_guardSiteHits[site];
 
+	/* A site that fails every draw fails once per draw.  The vertex ring's
+	   exhaustion hit 217636 times in one boot and printed a row for each: 19 MB
+	   of a 32 MB log, and the emission inside the walk was up to 15 ms of a
+	   15 ms frame, so the instrument was what turned a capacity shortfall into a
+	   stall.  Every other row family in this renderer names the first few hits
+	   and then one in 600; this is the same cadence, and n= stays the true
+	   count. */
+	if ( n > 8 && ( n % 600 ) != 0 ) {
+		return;
+	}
+
 	/* A row with nothing after detail= cannot be triaged, so an unnamed one
 	   says so instead of printing an empty field. */
 	VK_Guard_Row( "VK:guard",

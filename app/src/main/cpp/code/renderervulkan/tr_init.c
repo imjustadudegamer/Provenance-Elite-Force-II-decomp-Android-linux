@@ -694,10 +694,11 @@ void VK_PerfFpsRow( void )
 	}
 
 	ri.Printf( PRINT_ALL,
-			   "[PERF:fps] t=%ds fps=%d drift=%+d%% base=%d fe=%lldms be=%lldms park=%dms frames=%d smp=%d\n",
+			   "[PERF:fps] t=%ds fps=%d drift=%+d%% base=%d fe=%lldms be=%lldms park=%dms frames=%d smp=%d val=%d probe=%d\n",
 			   ( int )( ( now - t0 ) / 1000 ), winFps,
 			   baseFps ? ( ( winFps - baseFps ) * 100 / baseFps ) : 0, baseFps,
-			   fe, be, VKimp_ParkMsec(), frames, vk.smpActive ? 1 : 0 );
+			   fe, be, VKimp_ParkMsec(), frames, vk.smpActive ? 1 : 0,
+			   VK_Platform_Validation(), R_ProbeStatsOn() ? 1 : 0 );
 
 	/* be= is the whole walk and it contains the blocking frame-fence wait the
 	   device owns, so "the walk thread is busy" does not say which side to cut.
@@ -708,11 +709,13 @@ void VK_PerfFpsRow( void )
 	   the device waits are named separately from the CPU. */
 	{
 		long long	phase[VK_WP_PHASES];
+		long long	elide[VK_ELIDE_HITS];
 		long long	verts, surfs, wframes, sum = 0, dev = 0;
 		double		nf;
 		int			i;
 
 		VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
+		VK_WalkStat_TakeElisions( elide );
 		for ( i = 0; i < VK_WP_PHASES; i++ ) {
 			sum += phase[i];
 		}
@@ -722,7 +725,7 @@ void VK_PerfFpsRow( void )
 				   "[PERF:walk] win=%dms frames=%lld verts/frame=%.0f surf/frame=%.1f "
 				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms fence=%.2fms acq=%.2fms "
 				   "open=%.2fms ui=%.2fms out=%.2fms pix=%.2fms rest=%.2fms "
-				   "cpu=%.2fms dev=%.2fms walk=%.2fms\n",
+				   "cpu=%.2fms dev=%.2fms walk=%.2fms elide_idx=%.1f/f elide_ubo=%.1f/f\n",
 				   now - t0, wframes, (double)verts / nf, (double)surfs / nf,
 				   (double)phase[VK_WP_GEN] / nf / 1000.0,
 				   (double)phase[VK_WP_PACK] / nf / 1000.0,
@@ -737,7 +740,9 @@ void VK_PerfFpsRow( void )
 				   ( (double)be * 1000.0 - (double)sum ) / nf / 1000.0,
 				   ( (double)sum - (double)dev ) / nf / 1000.0,
 				   (double)dev / nf / 1000.0,
-				   wframes ? (double)be / (double)wframes : 0.0 );
+				   wframes ? (double)be / (double)wframes : 0.0,
+				   (double)elide[VK_ELIDE_INDEX] / nf,
+				   (double)elide[VK_ELIDE_UBO] / nf );
 	}
 
 	frames = 0;

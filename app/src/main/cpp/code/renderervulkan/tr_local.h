@@ -2790,12 +2790,22 @@ typedef struct {
 } vkTessVertex_t;
 
 #define VK_TESS_VERTEX_BYTES ( (int)sizeof( vkTessVertex_t ) )
-/* A level frame, not a menu frame, is the demand the ring has to hold: the boot that found this me
-   asured 1,481 draw surfs and 155 reserves refused at the old 24,000-slot ceiling. 24 tess batches
-   per surface slot is the multiple that covers it with headroom; the [VK:ring] frame row names wh
-   at a legal frame actually used and refused, so the multiple is checked, not assumed. */
-#define VK_RING_MAX_VERTEXES ( SHADER_MAX_VERTEXES * 24 )
-#define VK_RING_MAX_INDEXES  ( SHADER_MAX_INDEXES * 24 )
+/* A level frame, not a menu frame, is the demand the ring has to hold, and the
+   demand is set by the frame's draw-surf count, which the engine does not
+   bound.  The ceiling is therefore checked against the frames that actually
+   happen, and it has now been raised twice by that check:
+     - a boot measuring 1,481 draw surfs refused 155 reserves at 24,000 slots;
+     - a boot measuring 3,596 draw surfs refused 529 at 72,000, and the pair
+       `slots + refused-slots` put that frame's demand at 111,259 slots, i.e.
+       37.1 of the engine's 3,000-vertex batches.
+   Streaming efficiency did not change between those boots: the ring used 21.0
+   slots per draw surf in the frames that refused and 26.1 in the frames that
+   fit, so this is capacity and not a re-pack, and the multiple has to cover the
+   demand the engine produces.  48 batches is 144,000 slots, 29% over the
+   measured worst frame; `demand=` and `peak=` on the [VK:ring] frame row name
+   both numbers on every boot so the next correction is read, not guessed. */
+#define VK_RING_MAX_VERTEXES ( SHADER_MAX_VERTEXES * 48 )
+#define VK_RING_MAX_INDEXES  ( SHADER_MAX_INDEXES * 48 )
 
 qboolean VK_VertexRing_Init( void );
 void     VK_VertexRing_Shutdown( void );
@@ -2843,6 +2853,12 @@ typedef struct {
 } vkPipelineKey_t;
 
 VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key );
+
+/* The only two sites that bind a pipeline or a set, so the per-command-buffer
+   state cache behind them cannot go stale: a repeated bind is skipped. */
+void     VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline );
+void     VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
+						  uint32_t dynamicOffset );
 qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler sampler );
 extern	 int	vk_2dWindow[4];		/* x y w h of the 2D window in force */
 extern	 int	vk_2dScissor[4];	/* x y w h of the 2D scissor in force */

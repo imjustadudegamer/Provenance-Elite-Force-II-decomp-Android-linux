@@ -233,6 +233,9 @@ void VK_Pipeline_Shutdown( void );
 qboolean VK_Pipeline_DrawDemo( VkCommandBuffer cmd );
 
 void VK_Draw_BindRing( VkCommandBuffer cmd );
+void VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline );
+void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
+					  uint32_t dynamicOffset );
 qboolean VK_Vertex_Init( void );
 void VK_Vertex_Shutdown( void );
 
@@ -277,6 +280,7 @@ void R_SyncRenderThread( void );
 qboolean R_SmpActive( void );
 qboolean VKimp_RenderThreadAlive( void );
 int VKimp_ParkMsec( void );
+int VK_Platform_Validation( void );
 int RB_FrameSmpFrame( void );
 int RB_FrameCount( void );
 int RB_FrameBoneArena( void );
@@ -311,6 +315,12 @@ enum {
 qboolean VK_WalkStatOn( void );
 void VK_WalkStat_Add( int phase, long long usec );
 void VK_WalkStat_Frame( int verts, int surfs );
+/* Batching elisions the frame made, so a change that removes driver calls says
+   how many it removed instead of only how the wall time moved.  VK_WP_HITS is
+   the number of the frame's own counters the row prints. */
+enum { VK_ELIDE_INDEX = 0, VK_ELIDE_UBO, VK_ELIDE_PIPE, VK_ELIDE_SET, VK_ELIDE_HITS };
+void VK_WalkStat_Count( int what );
+void VK_WalkStat_TakeElisions( long long *out );
 void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfsOut,
 					   long long *framesOut );
 /* -1 is "not timed", so a real reading of 0 is still a reading */

@@ -323,7 +323,7 @@ void Sentient::freeConditionals(Container<Conditional *> &conditionalsToDelete)
 // the corollary that is retail's own design and must NOT be "fixed": an I-MOD hit prints
 void Sentient::ArmorDamage(::Damage &damage)
 {
-    if (gi.cvar("qa_probe", "1", 0)->integer) {
+    if (gi.cvar("qa_probe", "0", 0)->integer) {
         int         uivk_stateflags = 0;
         const char *uivk_arm       = "-";
 
@@ -355,7 +355,7 @@ void Sentient::ArmorDamage(::Damage &damage)
     if (damageModSystem) {
         damageModSystem->resolveDamage(damage);
 
-        if (gi.cvar("qa_probe", "1", 0)->integer) {
+        if (gi.cvar("qa_probe", "0", 0)->integer) {
             gi.Printf("[UIVK:dmg] step=resolve tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d dead=%d df=%d\n",
                       entnum,
                       damage.attacker ? damage.attacker->entnum : -1,
@@ -1134,7 +1134,7 @@ void Sentient::ArmorDamage(float damage, Entity *inflictor, Entity *attacker, co
     }
 
     if (Immune(meansofdeath)) {
-        if (gi.cvar("qa_probe", "1", 0)->integer) {
+        if (gi.cvar("qa_probe", "0", 0)->integer) {
             gi.Printf("[UIVK:dmg] step=immune tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f dt=%d tkd=%d dead=%d EARLY-OUT\n",
                       entnum,
                       attacker ? attacker->entnum : -1,
