@@ -1,7 +1,8 @@
 # renderer_gles3.cmake -- the GLES 3.0 renderer.
 #
-# This target is the programme's shipping renderer and the ONLY one: it is a
-# FORK of the fixed-function renderer's sources with its substrate swapped:
+# This target is the GLES 3.0 reference twin, built beside the shipping Vulkan
+# renderer.  It is a FORK of the fixed-function renderer's sources with its
+# substrate swapped:
 #
 #     fixed-function desktop GL  ->  GLES 3.0 + GLSL ES 3.0
 #     GLX via SDL_opengl.h       ->  EGL/SDL GLES3 (Android + Linux desktop)
@@ -15,12 +16,13 @@
 #   gl_gles3_platform.c   -- this target's platform layer
 #   gles3_firstlight.c    -- the provable first-light bootstrap
 #   tools/gen_qgl_gles3.py -- the loader's generated proc list
-# The coverage matrix in docs/RENDERER.md records, per translation
-# unit, whether its arms were already ES3-clean or were replaced by the
-# shade/shader and geometry changes.
+# The per-translation-unit coverage (whether an arm was already ES3-clean or was
+# replaced by the shade/shader and geometry changes) is recorded in the citation
+# register with the source it belongs to.
 #
 # Configuration (app/src/main/cpp/CMakeLists.txt EF2_RENDERER):
-#   gles3       -> this target; cl_renderer defaults to "gles3"
+#   gles3       -> this target; it is the reference twin.  The renderer
+#                  `cl_renderer` defaults to is the Vulkan one (EF2_DEFAULT_RENDERER).
 
 if(NOT BUILD_CLIENT OR NOT BUILD_RENDERER_GLES3)
     return()

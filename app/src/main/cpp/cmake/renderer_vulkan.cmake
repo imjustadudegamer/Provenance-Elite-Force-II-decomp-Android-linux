@@ -7,7 +7,7 @@
 #
 # It loads through the same seam as every other renderer: cl_renderer builds
 # "renderer_%s", so this module is selected with `+set cl_renderer vulkan`
-# and the compiled default stays "gles3".
+# and it is the compiled default (EF2_DEFAULT_RENDERER).
 #
 # No link-time Vulkan dependency: the loader is dlopen'd at run time
 # (libvulkan.so.1 on desktop, libvulkan.so on Android) and every proc comes

@@ -460,7 +460,12 @@ void RB_ImmEndDeferred( void )
 }
 
 /* A run reaches the ring whole: the setters rewrite the slice, so an early
-   commit would miss vertices. */
+   commit would miss vertices.  A commit consumes exactly the slice it drew,
+   so a second commit of the same run draws what came after the first, not the
+   run again.  Re-issuing the run put every earlier quad of a run back on the
+   screen at the last commit's position in the command buffer -- after any 3D
+   batch that ran in between -- which is the menu fill over its own star dome
+   and the flashing the operator reported. */
 void RB_ImmCommit( void )
 {
 	vkImmRun_t *run = &s_imm;
@@ -503,6 +508,9 @@ void RB_ImmCommit( void )
 
 	backEnd.pc.c_vertexes += run->verts;
 	backEnd.pc.c_surfaces++;
+
+	run->base += run->verts;
+	run->verts = 0;
 	run->pending = qfalse;
 }
 

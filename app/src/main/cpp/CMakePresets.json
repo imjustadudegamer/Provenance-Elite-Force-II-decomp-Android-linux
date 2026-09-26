@@ -6,16 +6,16 @@
       "renderer-switch": [
         "the ONE-tree renderer/platform switch.",
         "",
-        "linux-gles3   -- the shipping substrate: renderer_gles3.so; it is the",
-        "   only renderer left (the fixed-function and Vulkan backends are",
-        "   deleted by decision), so the client's cl_renderer default is",
-        "   'gles3'.",
+        "linux-gles3   -- the Linux reference.  Both renderers are built",
+        "   (renderer_vulkan.so and the GLES 3.0 twin renderer_gles3.so) and",
+        "   the client's cl_renderer default is 'vulkan' (EF2_DEFAULT_RENDERER);",
+        "   the output lands in build/Release/.",
         "android-gles3 -- the device target.  Needs an NDK on the host:",
         "   export EF2_ANDROID_NDK=<ndk root> first.",
         "",
-        "The switch is two cache variables (EF2_PLATFORM, EF2_RENDERER) declared",
-        "in the top-level CMakeLists.txt; BUILD_RENDERER_GLES3 keeps working",
-        "verbatim underneath them."
+        "The switch is two cache variables (EF2_PLATFORM, EF2_RENDERER) plus the",
+        "default (EF2_DEFAULT_RENDERER), declared in the top-level CMakeLists.txt;",
+        "BUILD_RENDERER_GLES3 keeps working verbatim underneath them."
       ]
     }
   },
@@ -42,7 +42,7 @@
     },
     {
       "name": "android-gles3",
-      "displayName": "Android (arm64-v8a), GLES 3.0 backend [needs EF2_ANDROID_NDK]",
+      "displayName": "Android (arm64-v8a), Vulkan default with the GLES 3.0 twin [needs EF2_ANDROID_NDK]",
       "inherits": "base",
       "cacheVariables": {
         "EF2_PLATFORM": "android",

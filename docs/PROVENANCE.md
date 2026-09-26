@@ -12,7 +12,8 @@ witnesses, in priority order:
 
 A claim that cannot be tied to one of these is recorded as open, not asserted.
 The accepted divergences from retail are confined to platform glue, the sound
-backend and the GLES 3.0 renderer/platform layer.
+backend and the renderer's platform layer (the Vulkan renderer and its GLES 3.0
+twin).
 
 ## The licence ledger
 
@@ -28,7 +29,9 @@ machine-checked:
   the OpenMoHAA tree at `personal/upstream/openmohaa-main/` first, then the EF2
   SDK. `renderergles3/` is matched against OpenMoHAA's `renderergl2/` and
   `renderergl1/` backends by filename, because the port's renderer is a renamed
-  GLES 3.0 descendant of them, not port-original code.
+  GLES 3.0 descendant of them, not port-original code; `renderervulkan/` is the
+  same renderer mirrored onto Vulkan file for file, and carries the same GPL
+  lineage notice.
 - `LICENSING.md` states what each bucket means and why no single licence covers
   the tree. `tools/license_lint.py` fails if a file carries no notice or two
   conflicting ones.
@@ -55,6 +58,6 @@ when a corpus is absent.
 - **No log carries a network address.** Diagnostics keep the port, the state and
   the failure reason; the address-free form is `NET_AdrToLogString`.
 - **Startup logging is minimal.** The engine prints the device model and the CPU
-  model and the CPU model, and nothing further.
+  model, and nothing further.
 - **The prose speaks in the engine's terms.** Names, identifiers and quoted
   evidence come from the engine, the renderer or retail.

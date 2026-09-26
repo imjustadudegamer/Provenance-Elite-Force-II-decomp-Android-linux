@@ -1,9 +1,10 @@
 # Build
 
-One source tree, two targets: Android (arm64-v8a, the shipping GLES 3.0 backend)
-and Linux x86-64 (the same engine, used for the offline corpora and the desktop
-reference). There is no fork, a single `EF2_PLATFORM` / `EF2_RENDERER` switch in
-`app/src/main/cpp/CMakeLists.txt` selects the platform glue and the renderer.
+One source tree, two targets: Android (arm64-v8a, the shipping Vulkan backend,
+with the GLES 3.0 twin built beside it) and Linux x86-64 (the same engine, used
+for the offline corpora, the desktop reference and local play). There is no fork:
+`EF2_PLATFORM` selects the platform glue, `EF2_RENDERER=gles3` gates the GLES 3.0
+twin, and `EF2_DEFAULT_RENDERER=vulkan` is `cl_renderer`'s compiled default.
 
 ## Android
 
@@ -20,7 +21,8 @@ app/build_apk.sh assembleRelease        # the release variant, same signing key
 `build_apk.sh` runs the tree-isolation guard first (a build must not absorb
 untracked or modified work the CMake globs would compile in), then Gradle's
 `externalNativeBuild`, which configures the engine CMake with the NDK toolchain
-and `-DEF2_PLATFORM=android -DEF2_RENDERER=gles3`. When `$HOME` is not writable
+and `-DEF2_PLATFORM=android -DEF2_RENDERER=gles3 -DEF2_DEFAULT_RENDERER=vulkan`.
+When `$HOME` is not writable
 it redirects Gradle and ccache state to copies under `personal/evidence/` and prints
 the substitution; a normal interactive shell is unaffected.
 
@@ -29,10 +31,10 @@ the substitution; a normal interactive shell is unaffected.
 ```sh
 cd app/src/main/cpp
 cmake --preset linux-gles3
-ninja -C build-linux-gles3 -j16
+ninja -C build -j16
 ```
 
-Binaries under `build-linux-gles3/Release/`:
+Binaries under `build/Release/`:
 
 | file | what it is |
 |---|---|
@@ -40,20 +42,21 @@ Binaries under `build-linux-gles3/Release/`:
 | `provenanceef2ded` | the dedicated server |
 | `game.so` | the game module, dlopened at run time |
 | `cgame.so` | the client-game module, dlopened at run time |
-| `renderer_gles3.so` | the shipping GLES 3.0 backend |
+| `renderer_vulkan.so` | the shipping Vulkan backend, `cl_renderer`'s default |
+| `renderer_gles3.so` | the GLES 3.0 reference twin |
 
 The probe binaries in the same directory (`gles3_firstlight`,
-`smp_hwtex_probe`, `progcache_probe`, …) are offline evidence harnesses.
-They are built by the `tests` CMake target and are never executed.
+`smp_hwtex_probe`, `progcache_probe`, …) are offline evidence harnesses for the
+GLES 3.0 twin. They are built by the Linux configuration and are never executed.
 
 ## The gate
 
 Every change must pass, on a clean rebuild:
 
 - `ninja -j16`, 0 warnings / 0 errors;
-- `ldd -r`, 0 undefined on all five binaries;
-- `tools/license_lint.py`, `tools/ship_text_lint.py` and
-  `tools/provenance_ledger.py --check`, all green.
+- `ldd -r`, 0 undefined on all six binaries;
+- `tools/license_lint.py`, `tools/ship_text_lint.py`,
+  `tools/comment_budget.py` and `tools/provenance_ledger.py --check`, all green.
 
 ## What ships in the APK
 
@@ -61,7 +64,8 @@ Every change must pass, on a clean rebuild:
 |---|---|
 | `libmain.so` | the whole engine client; `SDL_main` is its entry point |
 | `libgame.so`, `libcgame.so` | the game / client-game modules, dlopened as on the desktop |
-| `librenderer_gles3.so` | the shipping GLES 3.0 backend |
+| `librenderer_vulkan.so` | the shipping Vulkan backend, `cl_renderer`'s default |
+| `librenderer_gles3.so` | the GLES 3.0 reference twin |
 | `libSDL2.so`, `libopenal.so`, `libc++_shared.so` | window/event/context, OpenAL Soft, the NDK runtime |
 | `assets/base/zpak-android.pk3` | the on-screen touch art plus `global/default.cfg`, `global/defaultcontrols.cfg`, `global/defaultoptions.cfg` |
 
