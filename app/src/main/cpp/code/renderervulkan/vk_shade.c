@@ -3847,6 +3847,42 @@ static void VK_Shade_GridRows( int frame )
 /* Called from the present seam.  Reads the presented image back once and
    samples a fixed grid, so one boot says whether the dome's stage draws are in
    the composited frame or only ever in a target the 2D pass then covers. */
+#define VK_3DRECT_MAX 4
+static struct { int x, y, w, h; } s_ui3D[VK_3DRECT_MAX];
+static int s_ui3DCount;
+
+/* The UI names each 3D widget rect it is about to render.  The nine fixed
+   samples cannot answer the CONTROLS question -- the frame is dominated by the
+   0.35,0.67,1.00 wash of the full-screen RenderModel, and whether the stardome
+   ever reaches the framebuffer is exactly "what colour is inside the stardome's
+   own rect at present".  Deduped, so a per-frame caller keeps a stable list. */
+void VK_Shade_Note3DRect( int x, int y, int w, int h )
+{
+	int i;
+
+	if ( w <= 0 || h <= 0 ) {
+		return;
+	}
+	for ( i = 0; i < s_ui3DCount; i++ ) {
+		if ( s_ui3D[i].x == x && s_ui3D[i].y == y
+			 && s_ui3D[i].w == w && s_ui3D[i].h == h ) {
+			return;
+		}
+	}
+	if ( s_ui3DCount < VK_3DRECT_MAX ) {
+		s_ui3D[s_ui3DCount].x = x;
+		s_ui3D[s_ui3DCount].y = y;
+		s_ui3D[s_ui3DCount].w = w;
+		s_ui3D[s_ui3DCount].h = h;
+		s_ui3DCount++;
+	} else {
+		s_ui3D[i % VK_3DRECT_MAX].x = x;
+		s_ui3D[i % VK_3DRECT_MAX].y = y;
+		s_ui3D[i % VK_3DRECT_MAX].w = w;
+		s_ui3D[i % VK_3DRECT_MAX].h = h;
+	}
+}
+
 void VK_Shade_ReadbackFrame( uint32_t imageIndex )
 {
 	static int	s_frames;
@@ -3917,6 +3953,18 @@ void VK_Shade_ReadbackFrame( uint32_t imageIndex )
 						  s_frames, s_swapW, s_swapH, spot[i].tag, x, y,
 						  px[0], px[1], px[2], px[3],
 						  vk.clearColor[0], vk.clearColor[1], vk.clearColor[2] );
+		}
+	}
+
+	/* what landed inside each UI 3D widget's own rect: the wash and the model
+	   are told apart by the colour at the model's own centre */
+	for ( i = 0; i < s_ui3DCount; i++ ) {
+		x = s_ui3D[i].x + s_ui3D[i].w / 2;
+		y = s_ui3D[i].y + s_ui3D[i].h / 2;
+		if ( VK_ModelPixelAtSwap( x, y, px ) ) {
+			VK_Guard_Row( "VK:readback", "frame=%d at=ui3d%d rect=%d,%d %dx%d x=%d y=%d rgba=%d,%d,%d,%d",
+						  s_frames, i, s_ui3D[i].x, s_ui3D[i].y, s_ui3D[i].w, s_ui3D[i].h,
+						  x, y, px[0], px[1], px[2], px[3] );
 		}
 	}
 }

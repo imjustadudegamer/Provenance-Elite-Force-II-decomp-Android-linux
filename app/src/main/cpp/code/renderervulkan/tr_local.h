@@ -2712,6 +2712,9 @@ void		VK_Shade_NoteStage( const struct shader_s *shader );
 /* one row per animated shader per second: the shader clock's inputs */
 void		VK_Shade_NoteShaderTime( const char *kind );
 	void		VK_Shade_ReadbackFrame( unsigned imageIndex );
+/* a UI 3D widget's screen rect, so the presented frame can be asked what ended
+   up inside it: CONTROLS draws two RenderModels and one of them is covered */
+void		VK_Shade_Note3DRect( int x, int y, int w, int h );
 int		VK_Shade_FrameBatches( void );
 void		VK_Shade_NotePerm( int miss );
 

@@ -325,6 +325,15 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	BE_RootBegin( BE_FAM_FE );
 
+	/* A UI 3D widget's rect: CL_Draw3DModel is the only caller that sets
+	   RDF_NOWORLDMODEL with its own rectangle, and CONTROLS is the screen that
+	   runs two of them.  Registering the rect here lets the present-time
+	   readback ask what colour is inside it, which is the one thing the fixed
+	   nine-point grid cannot answer. */
+	if ( fd->rdflags & RDF_NOWORLDMODEL ) {
+		VK_Shade_Note3DRect( fd->x, fd->y, fd->width, fd->height );
+	}
+
 	if (!tr.world && !( fd->rdflags & RDF_NOWORLDMODEL ) ) {
 		ri.Error (ERR_DROP, "R_RenderScene: NULL worldmodel");
 	}

@@ -1315,16 +1315,32 @@ struct adaptRow_s {
 };
 
 static adaptRow_s s_adaptRows[] = {
-    {"video",         "$$VideoMode$$",              "r_mode",                      "reslist",     NULL              },
-    {"video",         "$$ColorDepth$$",             "r_texturebits",               "colorlist",   NULL              },
-    {"video",         "$$FullScreen$$",             "r_fullscreen",                NULL,          NULL              },
     {"advancedvideo", "$$FullScreenAntialiasing$$", "r_arb_multisample",           NULL,          NULL              },
     {"advancedvideo", "$$NvidiaAntiAliasing$$",     "r_ext_nv_multisample_filter", NULL,          NULL              },
+    {"video",         "$$ColorDepth$$",             "r_texturebits",               "colorlist",   NULL              },
+    {"controls",      NULL,                         NULL,                          NULL,          "menu/mp/bar-fix" },
+};
+
+/* These rows stay hidden on BOTH targets because the option does not exist in
+   this lane, not because the menu is Android's: `r_texturebits` is registered
+   (renderervulkan/tr_init.c:173) and never read again, and
+   `r_arb_multisample` / `r_ext_nv_multisample_filter` are not referenced there
+   at all -- every pipeline it builds is VK_SAMPLE_COUNT_1_BIT (vk_draw.c:293,
+   vk_pipeline.c:228, vk_shade.c:2369).  The controls row hides retail's bind
+   scrollbar, which this port's own bind tables replace.  A shown-but-dead
+   option is worse than a hidden one. */
+
+#ifdef __ANDROID__
+/* Options the port DOES service, hidden only because the Android build's menus
+   were trimmed for touch.  The Linux build shows retail's rows for them. */
+static adaptRow_s s_adaptRowsAndroid[] = {
+    {"video",         "$$VideoMode$$",              "r_mode",                      "reslist",     NULL              },
+    {"video",         "$$FullScreen$$",             "r_fullscreen",                NULL,          NULL              },
     {"audio",         "$$SoundDriver$$",            "s_milesdriver",               "sounddriver", NULL              },
     {"GameOptions",   "$$DataRate$$",               "rate",                        NULL,          NULL              },
     {"GameOptions",   "$$LowBandwidth$$",           "mp_lowBandwidth",             NULL,          NULL              },
-    {"controls",      NULL,                         NULL,                          NULL,          "menu/mp/bar-fix" },
 };
+#endif
 
 static const char *s_adaptBindWidgets[] = {   // the controls page's keyboard apparatus
     "WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList",
@@ -1522,6 +1538,10 @@ static void AdaptTouchSection(UIWidget *container)
 }
 #endif /* __ANDROID__ */
 
+/* Both of these serve rows and prompts the Android menus trim; the Linux build
+   keeps retail's own rows and its shipped promptadvancedvideo prompt menu, so
+   they are built only where they are used. */
+#ifdef __ANDROID__
 static void AdaptHideAt(UIWidget *container, float x, float y, float w, float h)
 {
     Container<UIWidget *>& children = container->getChildren();
@@ -1556,6 +1576,7 @@ static void AdaptRepointCommand(UIWidget *container, const char *from, const cha
         }
     }
 }
+#endif /* __ANDROID__ */
 
 void UI_AdaptSettingsMenus(void)
 {
@@ -1577,6 +1598,13 @@ void UI_AdaptSettingsMenus(void)
             }
         }
 
+#ifdef __ANDROID__
+        for (j = 0; j < (int)(sizeof(s_adaptRowsAndroid) / sizeof(s_adaptRowsAndroid[0])); j++) {
+            if (!stricmp(container->getName(), s_adaptRowsAndroid[j].menu)) {
+                AdaptHideRow(container, &s_adaptRowsAndroid[j]);
+            }
+        }
+
         if (!stricmp(container->getName(), "video")) {
             AdaptRepointCommand(container, "promptadvancedvideo", "transitionmenu advancedvideo 0");
         }
@@ -1584,6 +1612,7 @@ void UI_AdaptSettingsMenus(void)
         if (!stricmp(container->getName(), "GameOptions")) {
             AdaptHideAt(container, 586, 231, 16, 16);   // the data-rate pulldown: no name, no cvar, no title
         }
+#endif
 
         if (!stricmp(container->getName(), "controls")) {
             AdaptHideNamed(container, s_adaptBindWidgets, bindCount);
