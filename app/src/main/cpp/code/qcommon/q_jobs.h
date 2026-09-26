@@ -69,9 +69,7 @@ extern "C" {
 
 void JobPool_Init( const char *name, int requestedWorkers );
 
-#define JOBPOOL_MAX_TOTAL			7
-#define JOBPOOL_CRITICAL_ANDROID	3
-#define JOBPOOL_CRITICAL_OTHER		4
+#include "q_jobs_workers.h"
 
 void JobPool_SplitWorkers( int coreCount, int isAndroid, int requested, int critical,
 						   int *outWorkers );
