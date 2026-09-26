@@ -75,18 +75,31 @@ static qboolean			rb_inlineFallback;
    only ever zeroed and read, so the fps row's be= was always 0 and a decline
    could not be attributed to the back end at all.  Written on the walk thread
    and drained by the front end once per row, which is a benign race for a
-   diagnostic that reports a five second window. */
-static volatile int		rb_walkMsec;
+   diagnostic that reports a five second window.  Microseconds, because the
+   phase split is microseconds: an integer-millisecond walk total left a
+   quantisation error of up to a millisecond per frame in the row's accounting
+   residual, and a residual that is the ruler's own error cannot show a bucket
+   that does not sum. */
+static volatile long long	rb_walkUsec;
 
 cvar_t *r_smp;
 
 int RB_WalkMsec( void )
 {
-	int msec = rb_walkMsec;
+	long long usec = rb_walkUsec;
 
-	rb_walkMsec = 0;
+	rb_walkUsec = 0;
 
-	return msec;
+	return (int)( usec / 1000 );
+}
+
+long long RB_WalkUsec64( void )
+{
+	long long usec = rb_walkUsec;
+
+	rb_walkUsec = 0;
+
+	return usec;
 }
 
 /* The walk's own cost attribution.  be= is the whole walk and it contains a
@@ -96,7 +109,7 @@ int RB_WalkMsec( void )
    the surface generation (skinning and tessellation), the vertex pack into the
    ring, the shader/descriptor bind, the command recording, and the fence wait.
    Gated with the r_perfFps row that prints them; the counters are written on
-   the walk thread and drained by the front end, the same benign race rb_walkMsec
+   the walk thread and drained by the front end, the same benign race rb_walkUsec
    already carries. */
 static long long	s_walkPhaseUsec[VK_WP_PHASES];
 static long long	s_walkVerts;
@@ -120,6 +133,14 @@ void VK_WalkStat_Add( int phase, long long usec )
 	if ( phase >= 0 && phase < VK_WP_PHASES ) {
 		s_walkPhaseUsec[phase] += usec;
 	}
+}
+
+/* The binds a surface loop's own window contains.  The per-surface bookkeeping
+   flushes the previous batch inside its window, so an outer wrap that simply
+   added its elapsed time would charge those binds twice. */
+long long VK_WalkStat_Nested( void )
+{
+	return s_walkPhaseUsec[VK_WP_BIND] + s_walkPhaseUsec[VK_WP_REC] + s_walkPhaseUsec[VK_WP_PACK];
 }
 
 void VK_WalkStat_Frame( int verts, int surfs )
@@ -294,6 +315,7 @@ void RB_ExecuteRenderCommands( const void *data )
 	int slot = rb_activeFrame ? rb_activeFrame->smpFrame : 0;
 	qboolean passOpen = qfalse;
 	qboolean inFrame = qfalse;
+	int gpuLastCat = -1;
 
 	while ( 1 ) {
 		/* A draw that leaked out of the frame window sits ahead of the frame
@@ -315,32 +337,62 @@ void RB_ExecuteRenderCommands( const void *data )
 			inFrame = qtrue;
 		}
 
-		/* The 2D cases carry the UI cost and the surface cases carry the ring
-		   phases, so the whole switch body is timed here: whatever a case does
-		   that no inner phase claims is charged to the case.  Without this the
-		   unattributed time collected in one residual bucket and read as an
-		   unexplained cost. */
+		/* One GPU timestamp per class change, written before the case runs: the
+		   interval that follows a mark is the work that mark's class records, so
+		   a mark after the case would charge the draws to the previous class.
+		   The frame's single pass is split into clear, world, sprites and the 2D
+		   batch; the terminal mark before pass end closes the last one. */
+		{
+			int gpuCat = -1;
+
+			if ( op == RC_DRAW_SURFS ) {
+				gpuCat = VK_GPU_WORLD;
+			} else if ( op == RC_SPRITE_SURFS ) {
+				gpuCat = VK_GPU_SPRITE;
+			} else if ( op >= RC_2D_COLOR && op <= RC_2D_STRETCH_RAW ) {
+				gpuCat = VK_GPU_UI;
+			}
+
+			if ( gpuCat >= 0 && gpuCat != gpuLastCat ) {
+				VK_PerfGpu_Mark( slot, gpuCat );
+				gpuLastCat = gpuCat;
+			}
+		}
+
+		/* The 2D family is the UI cost; the surface cases time their own ring
+		   phases.  The case body is wrapped so whatever a 2D case does that no
+		   inner phase claims is still charged to UI, and the walk's per-case
+		   overhead is measured rather than dropped. */
 		{
 		long long walkT0 = VK_WALK_T0();
 
 		switch ( op ) {
 		case RC_VK_BEGIN:
 			cmds += PAD( sizeof( int ), sizeof( void * ) );
+			/* Begin owns the fence wait and the acquire, each timed at its own
+			   site; timing it here as well charged both to open and made the
+			   row's accounting error negative -- the split only sums if no
+			   bucket contains another. */
 			if ( !VK_Frame_Begin( slot ) ) {
 				goto abandoned;
 			}
 			{
 				long long acqT0 = VK_WALK_T0();
+				long long openT0;
 
 				if ( !VK_Frame_Acquire( slot ) ) {
 					VK_WALK_ADD( acqT0, VK_WP_ACQ );
 					goto abandoned;
 				}
 				VK_WALK_ADD( acqT0, VK_WP_ACQ );
-			}
-			RB_FrameOpen( slot );
-			if ( !VK_Frame_RecordBegin( slot ) ) {
-				goto abandoned;
+
+				openT0 = VK_WALK_T0();
+				RB_FrameOpen( slot );
+				if ( !VK_Frame_RecordBegin( slot ) ) {
+					VK_WALK_ADD( openT0, VK_WP_OPEN );
+					goto abandoned;
+				}
+				VK_WALK_ADD( openT0, VK_WP_OPEN );
 			}
 			passOpen = qtrue;
 			break;
@@ -521,9 +573,7 @@ void RB_ExecuteRenderCommands( const void *data )
 			goto abandoned;
 		}
 
-		if ( op == RC_VK_BEGIN ) {
-			VK_WALK_ADD( walkT0, VK_WP_OPEN );
-		} else if ( op >= RC_2D_COLOR && op <= RC_2D_STRETCH_RAW ) {
+		if ( op >= RC_2D_COLOR && op <= RC_2D_STRETCH_RAW ) {
 			VK_WALK_ADD( walkT0, VK_WP_UI );
 		}
 		}
@@ -547,7 +597,7 @@ void RB_RenderThread( void )
 
 	while ( data != NULL ) {
 		rbFrame_t *frame = (rbFrame_t *)data;
-		int			walkStart;
+		long long	walkStart;
 
 		/* The walk thread's own milestones.  A boot that stops with the front end
 		   parked on the handoff and no rows here says the thread never walked;
@@ -562,12 +612,12 @@ void RB_RenderThread( void )
 		   the front end's write position: clearing it after releasing the slot
 		   would clobber a frame the front end had already started. */
 		VKimp_WalkBegin( frame->smpFrame );
-		walkStart = ri.Milliseconds();
+		walkStart = BE_Microseconds64();
 		if ( frame->list ) {
 			RB_ExecuteRenderCommands( frame->list->cmds );
 			frame->list->used = 0;
 		}
-		rb_walkMsec += ri.Milliseconds() - walkStart;
+		rb_walkUsec += BE_Microseconds64() - walkStart;
 		{
 			/* the demand the frame just walked: slots are vertices, and the
 			   census counts the surfaces the ring stored */
@@ -593,7 +643,7 @@ void RB_RenderThread( void )
 void R_IssueRenderCommands( void )
 {
 	rbFrame_t *frame;
-	int			walkStart;
+	long long	walkStart;
 	vkCommandList_t *list = RB_CommandList();
 
 	if ( list ) {
@@ -624,12 +674,12 @@ void R_IssueRenderCommands( void )
 				VK_Guard_Row( "VK:smp", "walk-thread-gone frames=%d walking-inline", rb_frameCount );
 			}
 			rb_activeFrame = frame;
-			walkStart = ri.Milliseconds();
+			walkStart = BE_Microseconds64();
 			if ( list ) {
 				RB_ExecuteRenderCommands( list->cmds );
 				list->used = 0;
 			}
-			rb_walkMsec += ri.Milliseconds() - walkStart;
+			rb_walkUsec += BE_Microseconds64() - walkStart;
 			rb_activeFrame = NULL;
 			vk.frameSlot = ( vk.frameSlot + 1 ) % SMP_FRAMES;
 			return;
@@ -641,12 +691,12 @@ void R_IssueRenderCommands( void )
 	}
 
 	rb_activeFrame = frame;
-	walkStart = ri.Milliseconds();
+	walkStart = BE_Microseconds64();
 	if ( list ) {
 		RB_ExecuteRenderCommands( list->cmds );
 		list->used = 0;
 	}
-	rb_walkMsec += ri.Milliseconds() - walkStart;
+	rb_walkUsec += BE_Microseconds64() - walkStart;
 	rb_activeFrame = NULL;
 
 	if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {

@@ -110,6 +110,24 @@ typedef struct {
 	VkExtent2D currentExtent;
 } vkSwapchainPlan_t;
 
+/* The device side of the frame.  be= contains the frame-fence wait, but the wait
+   is the device draining a single pass that holds the clear, the world, the
+   sprites and the 2D batch; a fence number alone cannot say which of them to cut.
+   The walk writes a GPU timestamp whenever the work class changes, so the next
+   row attributes the pass.  There is one pass per frame, so these buckets are
+   that pass's phases; the terminal mark is end-of-pass and carries no bucket. */
+enum {
+	VK_GPU_CLEAR = 0,  /* pass open: the colour/depth clear and pass setup */
+	VK_GPU_WORLD,      /* RC_DRAW_SURFS: world/static surface geometry */
+	VK_GPU_SPRITE,     /* RC_SPRITE_SURFS: sprite surfaces */
+	VK_GPU_UI,         /* the RC_2D_* cases: the whole 2D batch, flushed by pass end */
+	VK_GPU_BUCKETS
+};
+/* A transition per class change, bounded by the classes plus interleavings; the
+   cap is a runaway guard, not a budget -- a frame that hits it stops marking and
+   the row's marks= counter names it. */
+#define VK_GPU_MAX_MARKS 32
+
 typedef struct {
 	qboolean initialized;
 	VkInstance instance;
@@ -192,6 +210,15 @@ typedef struct {
 	qboolean targetReady;
 	qboolean frameReady;
 	float clearColor[4];
+	/* GPU-side pass attribution.  One timestamp query per mark per slot; the
+	   pool is reset by the slot's own command buffer, and results are read only
+	   after that slot's fence has signalled, so no host wait is added. */
+	VkQueryPool gpuQueryPool;
+	qboolean gpuPerfReady;
+	float gpuTimestampPeriod;
+	int gpuMarkCount[VK_FRAMES_IN_FLIGHT];
+	unsigned char gpuMarkBucket[VK_FRAMES_IN_FLIGHT][VK_GPU_MAX_MARKS];
+	qboolean gpuFrameOpen;
 } vkContext_t;
 
 extern vkContext_t vk;
@@ -298,6 +325,7 @@ void VKimp_FrontEndSleep( void );
 int RB_FrameSlot( const void *frame );
 void RB_CommandListReset( void );
 int RB_WalkMsec( void );
+long long RB_WalkUsec64( void );
 
 /* The walk's cost split, printed by the r_perfFps row that owns the gate.  Every
    opcode the walk executes lands in one of these, so `rest` is the accounting
@@ -308,6 +336,7 @@ enum {
 	VK_WP_ACQ,   /* vkAcquireNextImageKHR: the device returning a presented image */
 	VK_WP_OPEN,  /* pass open, framebuffer open, command buffer record begin */
 	VK_WP_UI,    /* the RC_2D_* cases: the whole 2D command path */
+	VK_WP_SHADE, /* per-surface shader/entity bookkeeping, minus the binds it flushes */
 	VK_WP_OUT,   /* record end, queue submit, queue present */
 	VK_WP_PIX,   /* the presented-frame readback: device copy plus the host census */
 	VK_WP_PHASES
@@ -315,6 +344,9 @@ enum {
 long long BE_Microseconds64( void );
 qboolean VK_WalkStatOn( void );
 void VK_WalkStat_Add( int phase, long long usec );
+/* The nested buckets a caller's window contains, so an outer wrap can subtract
+   them and no phase is counted twice. */
+long long VK_WalkStat_Nested( void );
 void VK_WalkStat_Frame( int verts, int surfs );
 /* Batching elisions the frame made, so a change that removes driver calls says
    how many it removed instead of only how the wall time moved.  VK_WP_HITS is
@@ -336,6 +368,12 @@ void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfs
    clock that cannot collide with it. */
 #define VK_WALK_T0()        ( VK_WalkStatOn() ? BE_Microseconds64() : -1LL )
 #define VK_WALK_ADD(t0, ph) do { if ( (t0) >= 0 ) { VK_WalkStat_Add( (ph), BE_Microseconds64() - (t0) ); } } while ( 0 )
+
+void VK_PerfGpu_FrameBegin( int slot );
+void VK_PerfGpu_Mark( int slot, int bucket );
+void VK_PerfGpu_FrameEnd( int slot );
+void VK_PerfGpu_Collect( int slot );
+void VK_PerfGpu_Take( long long *usecOut, long long *marksOut, long long *hitCapOut );
 
 void VKimp_WalkBegin( int slot );
 void VKimp_WalkEnd( int slot );

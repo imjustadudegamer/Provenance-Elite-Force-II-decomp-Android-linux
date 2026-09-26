@@ -671,8 +671,11 @@ void VK_PerfFpsRow( void )
 	frames++;
 	feUsec += tr.frontEndMsec * 1000;
 	/* The walk owns its own time and drains it here, so be= is real under both
-	   r_smp values instead of always 0. */
-	beUsec += RB_WalkMsec() * 1000;
+	   r_smp values instead of always 0.  It comes across in microseconds: the
+	   phase split is microseconds, and rounding the total to whole milliseconds
+	   put up to a millisecond per frame of the ruler's own error into the
+	   accounting residual. */
+	beUsec += RB_WalkUsec64();
 
 	now = ri.Milliseconds();
 	if ( !t0 ) {
@@ -710,39 +713,52 @@ void VK_PerfFpsRow( void )
 	{
 		long long	phase[VK_WP_PHASES];
 		long long	elide[VK_ELIDE_HITS];
+		long long	gpu[VK_GPU_BUCKETS];
+		long long	gpuMarks = 0, gpuCap = 0, gpuTotal;
 		long long	verts, surfs, wframes, sum = 0, dev = 0;
 		double		nf;
 		int			i;
 
 		VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
 		VK_WalkStat_TakeElisions( elide );
+		VK_PerfGpu_Take( gpu, &gpuMarks, &gpuCap );
 		for ( i = 0; i < VK_WP_PHASES; i++ ) {
 			sum += phase[i];
 		}
 		dev = phase[VK_WP_FENCE] + phase[VK_WP_ACQ];
+		gpuTotal = gpu[VK_GPU_CLEAR] + gpu[VK_GPU_WORLD] + gpu[VK_GPU_SPRITE] + gpu[VK_GPU_UI];
 		nf = wframes ? (double)wframes : 1.0;
 		ri.Printf( PRINT_ALL,
 				   "[PERF:walk] win=%dms frames=%lld verts/frame=%.0f surf/frame=%.1f "
-				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms fence=%.2fms acq=%.2fms "
+				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms shade=%.2fms fence=%.2fms acq=%.2fms "
 				   "open=%.2fms ui=%.2fms out=%.2fms pix=%.2fms rest=%.2fms "
-				   "cpu=%.2fms dev=%.2fms walk=%.2fms elide_idx=%.1f/f elide_ubo=%.1f/f\n",
+				   "cpu=%.2fms dev=%.2fms walk=%.2fms elide_idx=%.1f/f elide_ubo=%.1f/f "
+				   "gpu_clear=%.2fms gpu_world=%.2fms gpu_sprite=%.2fms gpu_ui=%.2fms "
+				   "gpu=%.2fms gmarks=%.1f/f gcap=%lld\n",
 				   now - t0, wframes, (double)verts / nf, (double)surfs / nf,
 				   (double)phase[VK_WP_GEN] / nf / 1000.0,
 				   (double)phase[VK_WP_PACK] / nf / 1000.0,
 				   (double)phase[VK_WP_BIND] / nf / 1000.0,
 				   (double)phase[VK_WP_REC] / nf / 1000.0,
+				   (double)phase[VK_WP_SHADE] / nf / 1000.0,
 				   (double)phase[VK_WP_FENCE] / nf / 1000.0,
 				   (double)phase[VK_WP_ACQ] / nf / 1000.0,
 				   (double)phase[VK_WP_OPEN] / nf / 1000.0,
 				   (double)phase[VK_WP_UI] / nf / 1000.0,
 				   (double)phase[VK_WP_OUT] / nf / 1000.0,
 				   (double)phase[VK_WP_PIX] / nf / 1000.0,
-				   ( (double)be * 1000.0 - (double)sum ) / nf / 1000.0,
+				   ( (double)beUsec - (double)sum ) / nf / 1000.0,
 				   ( (double)sum - (double)dev ) / nf / 1000.0,
 				   (double)dev / nf / 1000.0,
-				   wframes ? (double)be / (double)wframes : 0.0,
+				   (double)beUsec / nf / 1000.0,
 				   (double)elide[VK_ELIDE_INDEX] / nf,
-				   (double)elide[VK_ELIDE_UBO] / nf );
+				   (double)elide[VK_ELIDE_UBO] / nf,
+				   (double)gpu[VK_GPU_CLEAR] / nf / 1000.0,
+				   (double)gpu[VK_GPU_WORLD] / nf / 1000.0,
+				   (double)gpu[VK_GPU_SPRITE] / nf / 1000.0,
+				   (double)gpu[VK_GPU_UI] / nf / 1000.0,
+				   (double)gpuTotal / nf / 1000.0,
+				   (double)gpuMarks / nf, gpuCap );
 	}
 
 	frames = 0;
