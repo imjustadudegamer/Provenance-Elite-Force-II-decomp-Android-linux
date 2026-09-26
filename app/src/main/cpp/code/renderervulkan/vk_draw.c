@@ -69,6 +69,39 @@ typedef struct {
 static vkPipelineSlot_t	vk_pipelines[VK_PIPELINE_SLOTS];
 static int				vk_numPipelines;
 
+/* Both caches below are looked up by value and were searched by walking the
+   entries they had filled, so one 2D draw cost O(fill) and the menu's per-frame
+   cost grew with the boot.  The indexes store the entry index plus one (0 is
+   empty) and insert with the same probe the lookup starts at, so an inserted
+   key is always found. */
+#define VK_DRAW_PIPELINE_HASH 256
+#define VK_DRAW_SET_HASH      ( VK_DRAW_SET_SLOTS * 2 )
+
+static int				s_pipelineIndex[VK_DRAW_PIPELINE_HASH];
+static int				s_setIndex[VK_DRAW_SET_HASH];
+
+static unsigned VK_Draw_PipelineHash( const vkPipelineKey_t *key )
+{
+	unsigned h = (unsigned)key->topology * 2654435761u;
+
+	h ^= key->stateBits * 2246822519u;
+	h ^= (unsigned)key->cull * 3266489917u;
+	h ^= (unsigned)key->depthTest * 668265263u;
+	h ^= (unsigned)key->depthWrite * 374761393u;
+	h ^= (unsigned)key->textured * 2654435761u;
+
+	return h & ( VK_DRAW_PIPELINE_HASH - 1u );
+}
+
+static unsigned VK_Draw_SetHash( VkImageView view, VkSampler sampler )
+{
+	uint64_t	h = (uint64_t)(uintptr_t)view * 0x9E3779B97F4A7C15ULL;
+
+	h ^= (uint64_t)(uintptr_t)sampler + 0x9E3779B97F4A7C15ULL + ( h << 6 ) + ( h >> 2 );
+
+	return (unsigned)( ( h ^ ( h >> 32 ) ) & ( VK_DRAW_SET_HASH - 1u ) );
+}
+
 /* ---- the descriptor sets: one per (view, sampler) pair, cached; the menu
  * rebinds the same art every frame */
 #define VK_SET_SLOTS VK_DRAW_SET_SLOTS
@@ -346,6 +379,8 @@ qboolean VK_Draw_Init( void )
 	vk_numPipelines = 0;
 	memset( vk_sets, 0, sizeof( vk_sets ) );
 	vk_numSets = 0;
+	memset( s_pipelineIndex, 0, sizeof( s_pipelineIndex ) );
+	memset( s_setIndex, 0, sizeof( s_setIndex ) );
 	memset( &vk_current, 0, sizeof( vk_current ) );
 	vk_currentValid = qfalse;
 
@@ -389,6 +424,7 @@ void VK_Draw_Shutdown( void )
 		vk_pipelines[i].used = qfalse;
 	}
 	vk_numPipelines = 0;
+	memset( s_pipelineIndex, 0, sizeof( s_pipelineIndex ) );
 
 	if ( vk_draw.layout != VK_NULL_HANDLE && qvk.DestroyPipelineLayout ) {
 		qvk.DestroyPipelineLayout( vk.device, vk_draw.layout, NULL );
@@ -413,12 +449,24 @@ void VK_Draw_Shutdown( void )
 
 VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 {
-	int i;
+	unsigned	h;
+	int			i, probe;
 
-	for ( i = 0; i < vk_numPipelines; i++ ) {
-		if ( vk_pipelines[i].used
-			 && memcmp( &vk_pipelines[i].key, key, sizeof( *key ) ) == 0 ) {
-			return vk_pipelines[i].pipeline;
+	if ( !key ) {
+		return VK_NULL_HANDLE;
+	}
+	h = VK_Draw_PipelineHash( key );
+
+	for ( probe = 0; probe < VK_DRAW_PIPELINE_HASH; probe++ ) {
+		int at = s_pipelineIndex[( h + probe ) & ( VK_DRAW_PIPELINE_HASH - 1u )];
+
+		if ( !at ) {
+			break;
+		}
+		at--;
+		if ( vk_pipelines[at].used
+			 && memcmp( &vk_pipelines[at].key, key, sizeof( *key ) ) == 0 ) {
+			return vk_pipelines[at].pipeline;
 		}
 	}
 
@@ -443,6 +491,15 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 		vk_numPipelines = i + 1;
 	}
 
+	for ( probe = 0; probe < VK_DRAW_PIPELINE_HASH; probe++ ) {
+		int *at = &s_pipelineIndex[( h + probe ) & ( VK_DRAW_PIPELINE_HASH - 1u )];
+
+		if ( !*at ) {
+			*at = i + 1;
+			break;
+		}
+	}
+
 	VK_PipelineCache_Save();
 
 	return vk_pipelines[i].pipeline;
@@ -454,16 +511,25 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 	VkDescriptorImageInfo imageInfo;
 	VkWriteDescriptorSet write;
 	VkDescriptorSet set = VK_NULL_HANDLE;
-	int i;
+	unsigned	h;
+	int i, probe;
 
 	if ( view == VK_NULL_HANDLE || sampler == VK_NULL_HANDLE ) {
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "bind of an empty view or sampler", VK_ERROR_INITIALIZATION_FAILED );
 		return qfalse;
 	}
 
-	for ( i = 0; i < VK_SET_SLOTS; i++ ) {
-		if ( vk_sets[i].used && vk_sets[i].view == view && vk_sets[i].sampler == sampler ) {
-			set = vk_sets[i].set;
+	h = VK_Draw_SetHash( view, sampler );
+
+	for ( probe = 0; probe < VK_DRAW_SET_HASH; probe++ ) {
+		int at = s_setIndex[( h + probe ) & ( VK_DRAW_SET_HASH - 1u )];
+
+		if ( !at ) {
+			break;
+		}
+		at--;
+		if ( vk_sets[at].used && vk_sets[at].view == view && vk_sets[at].sampler == sampler ) {
+			set = vk_sets[at].set;
 			break;
 		}
 	}
@@ -513,6 +579,15 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 
 		if ( i == vk_numSets ) {
 			vk_numSets = i + 1;
+		}
+
+		for ( probe = 0; probe < VK_DRAW_SET_HASH; probe++ ) {
+			int *at = &s_setIndex[( h + probe ) & ( VK_DRAW_SET_HASH - 1u )];
+
+			if ( !*at ) {
+				*at = i + 1;
+				break;
+			}
 		}
 
 		set = vk_sets[i].set;

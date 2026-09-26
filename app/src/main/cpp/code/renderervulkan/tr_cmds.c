@@ -283,26 +283,42 @@ void RB_ExecuteRenderCommands( const void *data )
 		   write into a command buffer nothing has begun, so the walk refuses the
 		   list rather than hand the driver an unbegun buffer.  An empty list just
 		   ends here. */
-		if ( !inFrame && *( const int * )cmds != RC_VK_BEGIN ) {
-			if ( *( const int * )cmds == RC_END_OF_LIST ) {
+		int op = *( const int * )cmds;
+
+		if ( !inFrame && op != RC_VK_BEGIN ) {
+			if ( op == RC_END_OF_LIST ) {
 				return;
 			}
 			VK_Guard_Row( "VK:frame", "walk-refuse head-op=%d slot=%d f=%d",
-						  *( const int * )cmds, slot, RB_FrameCount() );
+						  op, slot, RB_FrameCount() );
 			goto abandoned;
 		}
-		if ( *( const int * )cmds == RC_VK_BEGIN ) {
+		if ( op == RC_VK_BEGIN ) {
 			inFrame = qtrue;
 		}
 
-		switch ( *( const int * )cmds ) {
+		/* The 2D cases carry the UI cost and the surface cases carry the ring
+		   phases, so the whole switch body is timed here: whatever a case does
+		   that no inner phase claims is charged to the case.  Without this the
+		   unattributed time collected in one residual bucket and read as an
+		   unexplained cost. */
+		{
+		long long walkT0 = VK_WALK_T0();
+
+		switch ( op ) {
 		case RC_VK_BEGIN:
 			cmds += PAD( sizeof( int ), sizeof( void * ) );
 			if ( !VK_Frame_Begin( slot ) ) {
 				goto abandoned;
 			}
-			if ( !VK_Frame_Acquire( slot ) ) {
-				goto abandoned;
+			{
+				long long acqT0 = VK_WALK_T0();
+
+				if ( !VK_Frame_Acquire( slot ) ) {
+					VK_WALK_ADD( acqT0, VK_WP_ACQ );
+					goto abandoned;
+				}
+				VK_WALK_ADD( acqT0, VK_WP_ACQ );
 			}
 			RB_FrameOpen( slot );
 			if ( !VK_Frame_RecordBegin( slot ) ) {
@@ -441,18 +457,35 @@ void RB_ExecuteRenderCommands( const void *data )
 
 		case RC_VK_PRESENT:
 			cmds += PAD( sizeof( int ), sizeof( void * ) );
-			RB_2D_Flush();
-			VK_Frame_RecordEnd( slot );
-			passOpen = qfalse;
-			if ( !VK_Frame_Submit( slot ) ) {
-				goto abandoned;
+			{
+				long long uiT0 = VK_WALK_T0();
+				long long outT0;
+
+				RB_2D_Flush();
+				VK_WALK_ADD( uiT0, VK_WP_UI );
+
+				outT0 = VK_WALK_T0();
+				VK_Frame_RecordEnd( slot );
+				passOpen = qfalse;
+				if ( !VK_Frame_Submit( slot ) ) {
+					VK_WALK_ADD( outT0, VK_WP_OUT );
+					goto abandoned;
+				}
+				if ( !VK_Frame_Present( slot ) ) {
+					VK_WALK_ADD( outT0, VK_WP_OUT );
+					goto abandoned;
+				}
+				VK_WALK_ADD( outT0, VK_WP_OUT );
+
+				/* the presented image is the composited result: sampling it here is
+				   what separates "the dome drew" from "the dome is on screen" */
+				{
+					long long pixT0 = VK_WALK_T0();
+
+					VK_Shade_ReadbackFrame( vk.acquiredImage );
+					VK_WALK_ADD( pixT0, VK_WP_PIX );
+				}
 			}
-			if ( !VK_Frame_Present( slot ) ) {
-				goto abandoned;
-			}
-			/* the presented image is the composited result: sampling it here is
-			   what separates "the dome drew" from "the dome is on screen" */
-			VK_Shade_ReadbackFrame( vk.acquiredImage );
 			/* Anything after the present belongs to the next pass, not this one. */
 			inFrame = qfalse;
 			break;
@@ -468,6 +501,13 @@ void RB_ExecuteRenderCommands( const void *data )
 		case RC_END_OF_LIST:
 		default:
 			goto abandoned;
+		}
+
+		if ( op == RC_VK_BEGIN ) {
+			VK_WALK_ADD( walkT0, VK_WP_OPEN );
+		} else if ( op >= RC_2D_COLOR && op <= RC_2D_STRETCH_RAW ) {
+			VK_WALK_ADD( walkT0, VK_WP_UI );
+		}
 		}
 	}
 
