@@ -15,7 +15,7 @@ gcc -std=gnu17 -O1 -g -o ./vbostatic_oracle vbostatic_oracle.c \
 ./vbostatic_oracle 0
 rc=0
 
-for m in 1 2 3 4; do
+for m in 1 2 3 4 5; do
 	if ./vbostatic_oracle "$m" >/dev/null 2>&1; then
 		echo "  FAIL  planted fault $m was not detected"
 		rc=1

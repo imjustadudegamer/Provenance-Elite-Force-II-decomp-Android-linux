@@ -78,6 +78,9 @@ static int				harnessBoundIndex;
 static VkBuffer			harnessSoftHandle;
 static VkBuffer			harnessDevIndexHandle;
 
+/* the planted-fault selector, read by the flush emulation below */
+static int				harnessMutant;
+
 static int	harnessCurrentSoftStart;
 
 static VkCommandBuffer	harnessCmd = (VkCommandBuffer)1;
@@ -213,11 +216,53 @@ void VK_Harness_InstallProcs( void )
 	qvk.CmdCopyBuffer = harnessCmdCopyBuffer;
 }
 
-/* the engine's surface batch boundary: the harness keeps the counters, which is
-   all the fast arm's accounting needs */
+/* the engine's surface batch boundary.  RB_EndSurface is where an arena batch
+   reaches the GPU, so the harness has to emulate the iterator's arm of it: if
+   the item list cannot tile the batch, the shipping arm drops the geometry (the
+   tess arrays were never written, so streaming cannot recover it).  A stub that
+   only bumped a counter could not see that, which is the gap this closes. */
+static int		harnessArenaFlushes;
+static int		harnessArenaItems;
+static int		harnessArenaMissed;		/* a claimed batch the item list refused */
+static int		harnessStreamFlushes;
+
+static void HarnessIteratorDraw( void )
+{
+	vkStaticItemView_t	items[VK_STATIC_BATCH_MAX];
+	int					n;
+
+	if ( tess.numIndexes == 0 ) {
+		return;
+	}
+
+	if ( !RB_VboStaticArenaBatch() ) {
+		/* a streamed batch: the pack path inside the iterator draws it, and this
+		   harness does not link that path */
+		harnessStreamFlushes++;
+		return;
+	}
+
+	/* the shipping RB_VBO_StaticDrawBatch's own validation and draw */
+	n = RB_VboStaticBatchItems( items, VK_STATIC_BATCH_MAX );
+	if ( n <= 0 ) {
+		harnessArenaMissed++;
+		return;
+	}
+	harnessArenaItems += n;
+	RB_VboStaticDrawRuns( harnessCmd, tess.numIndexes, items, n );
+	harnessArenaFlushes++;
+}
+
 void RB_EndSurface( void )
 {
 	harnessFrame++;		/* one draw boundary */
+
+	if ( harnessMutant == 5 ) {
+		return;			/* planted fault: the flush loses what the fast arm claimed */
+	}
+
+	HarnessIteratorDraw();
+	tess.numIndexes = 0;
 }
 
 void RB_BeginSurface( shader_t *shader, int fogNum )
@@ -242,7 +287,6 @@ void VK_Shade_NoteDraw( qboolean b ) { ( void )b; }
 
 static int	failures;
 static int	checks;
-static int	harnessMutant;
 
 #define CHECK( cond, ... ) do { \
 	checks++; \
@@ -271,6 +315,10 @@ static void HarnessReset( void )
 	harnessDrawCount = 0;
 	harnessGuardHits = 0;
 	harnessBoundIndex = 0;
+	harnessArenaFlushes = 0;
+	harnessArenaItems = 0;
+	harnessArenaMissed = 0;
+	harnessStreamFlushes = 0;
 	memset( streamVerts, 0, sizeof( streamVerts ) );
 	memset( streamIdx, 0, sizeof( streamIdx ) );
 	memset( &tess, 0, sizeof( tess ) );
@@ -553,6 +601,90 @@ int main( int argc, char **argv )
 		tess.numIndexes = 0;
 		CHECK( RB_VboStaticTrySurface( surfaces[2], SF_FACE ) == qtrue,
 			   "a fresh batch's resident surface was not taken" );
+	}
+
+	/* ---- 6. a claimed surface is always drawn ------------------------------
+	   The operator's RenderDoc captures show world pixels with NO event in
+	   Pixel History: the geometry is absent from submission, not textured
+	   wrong.  The only place the arena arm can lose geometry silently is the
+	   item-list validation at the batch's own RB_EndSurface flush (the tess
+	   arrays were never written, so a refusal drops the batch).  This drives a
+	   mixed walk -- claimed, claimed, not-resident, claimed, claimed -- so a
+	   mode flip happens with items already accepted, and asserts that every
+	   index of every claimed surface reached a draw exactly once. */
+	{
+		static vkStaticItemView_t	items[VK_STATIC_BATCH_MAX];
+		static vkIndex_t			got[4096];
+		int							gotCount, k, n;
+
+		HarnessReset();
+		HarnessStreamBatch( 0 );
+		RB_VboStaticBakeFrame( 0 );		/* all N_SURF resident now */
+
+		/* frame 2: the walk claims 0 and 1, then meets a surface the arena does
+		   not hold (drop it from the table), then claims two more */
+		RB_VboStaticReset();
+		tess.numVertexes = 0;
+		tess.numIndexes = 0;
+		harnessDrawCount = 0;
+
+		CHECK( RB_VboStaticTrySurface( surfaces[0], SF_FACE ) == qtrue, "surface 0 not claimed" );
+		CHECK( RB_VboStaticTrySurface( surfaces[1], SF_FACE ) == qtrue, "surface 1 not claimed" );
+
+		{
+			vkStaticRegion_t	*e = VK_StaticFind( surfaces[3] );
+
+			if ( e ) {
+				memset( e, 0, sizeof( *e ) );	/* surface 3 is no longer resident */
+			}
+		}
+
+		/* the mode flip happens here; the two claimed surfaces must be flushed */
+		CHECK( RB_VboStaticTrySurface( surfaces[3], SF_FACE ) == qfalse,
+			   "the dropped surface was still claimed" );
+		CHECK( RB_VboStaticArenaBatch() == qfalse, "the batch did not flip to stream" );
+		CHECK( harnessArenaMissed == 0,
+			   "the flush refused the %d claimed surfaces (%d item(s))",
+			   harnessArenaItems ? harnessArenaItems : 2, harnessArenaItems );
+		CHECK( harnessArenaFlushes == 1, "the flip emitted %d arena flushes, want 1",
+			   harnessArenaFlushes );
+
+		/* a surface accepted into an arena batch stays drawn even when a later
+		   surface of the same batch cannot be */
+		CHECK( RB_VboStaticTrySurface( surfaces[4], SF_FACE ) == qfalse,
+			   "a resident surface after the flip was claimed as arena again" );
+
+		/* end of batch: the stream batch's pack path owns 3 and 4.  The harness
+		   does not emulate the generator's own tess writes, so the stream
+		   batch's counters are not asserted here -- only that its surfaces were
+		   not drawn from the arena. */
+		RB_EndSurface();
+
+		/* replay what the arena flush drew: surfaces 0 and 1, once each, in order */
+		gotCount = 0;
+		for ( k = 0; k < harnessDrawCount && gotCount < 4096; k++ ) {
+			const vkIndex_t	*src = ( harnessDrawSrc[k] == 1 )
+									? s_stageIboMap + harnessDraws[k].firstIndex
+									: s_softMap + harnessDraws[k].firstIndex;
+			int				j;
+
+			for ( j = 0; j < harnessDraws[k].count && gotCount < 4096; j++ ) {
+				got[gotCount++] = src[j];
+			}
+		}
+		CHECK( gotCount == 2 * SURF_IDX,
+			   "the flip drew %d indexes, want %d (the claimed surfaces)",
+			   gotCount, 2 * SURF_IDX );
+		for ( k = 0; k < gotCount && k < 2 * SURF_IDX; k++ ) {
+			CHECK( got[k] == (vkIndex_t)( ( k / SURF_IDX ) * SURF_VERTS + ( k % SURF_IDX ) % SURF_VERTS ),
+				   "index %d drew %u, want the claimed surface's own vertex",
+				   k, got[k] );
+		}
+
+		/* the item list must tile the claimed surfaces even when the frame's
+		   later surfaces were not resident */
+		n = RB_VboStaticBatchItems( items, VK_STATIC_BATCH_MAX );
+		CHECK( n <= 0, "the streamed batch still validated %d arena items", n );
 	}
 
 	printf( "vbostatic oracle: %d checks, %d failures\n", checks, failures );
