@@ -3425,14 +3425,17 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 	if ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) {
 		VK_Guard_Row( "VK:stagebind",
 					  "n=%d d=%d shader='%s' stage=%d prog=0x%06x sb=0x%x mt=%d "
-					  "b0='%s' tex0=%u b1='%s' tex1=%u",
+					  "b0='%s' tex0=%u b1='%s' tex1=%u rg=%d ag=%d const=%u,%u,%u,%u",
 					  s_rows, in2D ? 1 : 0,
 					  shader->name,
 					  stageIndex,
 					  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
 					  (unsigned)pStage->stateBits,
 					  (unsigned)pStage->multitextureEnv,
-					  n0, t0, n1, t1 );
+					  n0, t0, n1, t1,
+					  (int)pStage->rgbGen, (int)pStage->alphaGen,
+					  (unsigned)pStage->colorConst[0], (unsigned)pStage->colorConst[1],
+					  (unsigned)pStage->colorConst[2], (unsigned)pStage->colorConst[3] );
 	}
 }
 

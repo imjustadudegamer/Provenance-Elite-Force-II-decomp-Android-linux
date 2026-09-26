@@ -141,7 +141,7 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 						  "rect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f) "
 						  "sb=0x%x col=%d,%d,%d,%d vert=%d,%d,%d,%d rgbGen=%d "
 						  "const=%d,%d,%d,%d alphaGen=%d "
-						  "win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d)",
+						  "win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d) wrap=%d,%d clamp=%d",
 						  s_rows,
 						  tess.shader ? tess.shader->name : "?",
 						  image->imgName,
@@ -161,7 +161,11 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 						  stage->colorConst[2], stage->colorConst[3],
 						  (int)stage->alphaGen,
 						  vk_2dWindow[0], vk_2dWindow[1], vk_2dWindow[2], vk_2dWindow[3],
-						  vk_2dScissor[0], vk_2dScissor[1], vk_2dScissor[2], vk_2dScissor[3] );
+						  vk_2dScissor[0], vk_2dScissor[1], vk_2dScissor[2], vk_2dScissor[3],
+						  (int)image->wrapClampModeX, (int)image->wrapClampModeY,
+						  ( image->flags & IMGFLAG_CLAMPTOEDGE
+							|| image->wrapClampModeX != VK_TWRAP_REPEAT
+							|| image->wrapClampModeY != VK_TWRAP_REPEAT ) ? 1 : 0 );
 		}
 	}
 
@@ -187,8 +191,16 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 	qvk.CmdBindPipeline( vk.commandBuffers[s_rbSlot], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
 	VK_Draw_SetAlphaTest( vk.commandBuffers[s_rbSlot], stage->stateBits );
 
-	clamp = ( tess.shader->clampTime != 0.0f )
-			|| ( image->flags & IMGFLAG_CLAMPTOEDGE ) ? qtrue : qfalse;
+	/* wrapClampModeX/Y hold the legacy wrap enum: REPEAT is 10497, not 0, and the
+	   loader sets them from `clampmap' -- the GLES3 twin's whole 2D pass samples
+	   by exactly this mode.  Testing only IMGFLAG_CLAMPTOEDGE, a flag the font
+	   atlas alone carries, left every 2D clampmap stage on REPEAT, so a
+	   linear-sampled panel bled its opposite edge into the border and left the
+	   seam between neighbours.  clampTime is not a wrap: it is a tcMod clock and
+	   no shipped shader sets it. */
+	clamp = ( image->flags & IMGFLAG_CLAMPTOEDGE )
+			|| ( image->wrapClampModeX != VK_TWRAP_REPEAT )
+			|| ( image->wrapClampModeY != VK_TWRAP_REPEAT ) ? qtrue : qfalse;
 	mipmap = ( image->numMipmaps > 1 ) ? qtrue : qfalse;
 
 	if ( !VK_Texture_Sampler( clamp, mipmap, qtrue, &sampler ) ) {
