@@ -26,7 +26,11 @@ SCAN_ROOTS = ("app/src/main/cpp/code", "app/src/main/java/com/provenanceef2",
 SCAN_EXT = (".c", ".h", ".cpp", ".hpp", ".java", ".py", ".sh", ".md",
             ".cmake", ".txt", ".kts", ".xml", ".inc", ".glsl")
 SKIP_COMPONENTS = ("thirdparty", ".git", ".build", "__pycache__", "build",
-                   "build-linux-gles3", "node_modules")
+                   "build-linux-gles3", "node_modules",
+                   # the gitignored worktree area: workstream scratch and its
+                   # copied launchers carry absolute paths by construction, and
+                   # none of it is shipped text
+                   "wt")
 HOME_PATH = re.compile(r"(?:/home/|/Users/|\\\\Users\\\\)([A-Za-z0-9_.<>-]+)")
 HOME_PLACEHOLDERS = {"<user>", "<name>", "user", "name", "username", "you"}
 CFG_LITERAL = re.compile(r'"([A-Za-z0-9_./-]+\.cfg)"')
