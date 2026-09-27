@@ -651,7 +651,6 @@ void VK_PerfFpsRow( void )
 {
 	static int		 frames;
 	static long long	 feUsec;
-	static long long		 beUsec;
 	static int		 t0;
 	static int		 baseFps = -1;
 	cvar_t			*cv;
@@ -659,23 +658,24 @@ void VK_PerfFpsRow( void )
 	int			 winFps;
 	long long		 fe;
 	long long		 be;
+	long long		 phase[VK_WP_PHASES];
+	long long		 shadePart[VK_WS_PARTS];
+	long long		 elide[VK_ELIDE_HITS];
+	long long		 gpu[VK_GPU_BUCKETS];
+	long long		 gpuMarks = 0, gpuCap = 0;
+	long long		 verts = 0, surfs = 0, wframes = 0, walkUsec;
 
 	cv = s_perfFps;
 	if ( !cv ) {
 		cv = s_perfFps = ri.Cvar_Get( "r_perfFps", "1", CVAR_ARCHIVE );
 	}
-	if ( !cv || !cv->integer ) {
+	/* the timing is the cost, so the master probe gate owns the row too */
+	if ( !cv || !cv->integer || !R_ProbeStatsOn() ) {
 		return;
 	}
 
 	frames++;
 	feUsec += tr.frontEndMsec * 1000;
-	/* The walk owns its own time and drains it here, so be= is real under both
-	   r_smp values instead of always 0.  It comes across in microseconds: the
-	   phase split is microseconds, and rounding the total to whole milliseconds
-	   put up to a millisecond per frame of the ruler's own error into the
-	   accounting residual. */
-	beUsec += RB_WalkUsec64();
 
 	now = ri.Milliseconds();
 	if ( !t0 ) {
@@ -687,10 +687,21 @@ void VK_PerfFpsRow( void )
 		return;
 	}
 
+	/* The walk owns its own time and drains it here, so be= is real under both
+	   r_smp values instead of always 0.  The walk total and its buckets are
+	   written by the walk thread, so they drain together at one instant: reading
+	   them a printf apart let a frame land in one and not the other, which is
+	   the accountant's own error. */
+	walkUsec = RB_WalkUsec64();
+	VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
+	VK_WalkStat_TakeShade( shadePart );
+	VK_WalkStat_TakeElisions( elide );
+	VK_PerfGpu_Take( gpu, &gpuMarks, &gpuCap );
+
 	/* The first window is the baseline: every later row carries the drift off
 	   it, so the decline is one number instead of a series to eyeball. */
 	fe = feUsec / 1000;
-	be = beUsec / 1000;
+	be = walkUsec / 1000;
 	winFps = ( int )( ( double )frames * 1000.0 / ( double )( now - t0 ) );
 	if ( baseFps < 0 ) {
 		baseFps = winFps;
@@ -711,23 +722,22 @@ void VK_PerfFpsRow( void )
 	   image the device has to hand back and out= is the submit and present, so
 	   the device waits are named separately from the CPU. */
 	{
-		long long	phase[VK_WP_PHASES];
-		long long	elide[VK_ELIDE_HITS];
-		long long	gpu[VK_GPU_BUCKETS];
-		long long	gpuMarks = 0, gpuCap = 0, gpuTotal;
-		long long	verts, surfs, wframes, sum = 0, dev = 0;
-		double		nf;
+		long long	gpuTotal;
+		long long	sum = 0, dev = 0, shadeSum = 0;
+		double		nf, perSurf, shadeMs;
 		int			i;
 
-		VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
-		VK_WalkStat_TakeElisions( elide );
-		VK_PerfGpu_Take( gpu, &gpuMarks, &gpuCap );
 		for ( i = 0; i < VK_WP_PHASES; i++ ) {
 			sum += phase[i];
+		}
+		for ( i = 0; i < VK_WS_PARTS; i++ ) {
+			shadeSum += shadePart[i];
 		}
 		dev = phase[VK_WP_FENCE] + phase[VK_WP_ACQ];
 		gpuTotal = gpu[VK_GPU_CLEAR] + gpu[VK_GPU_WORLD] + gpu[VK_GPU_SPRITE] + gpu[VK_GPU_UI];
 		nf = wframes ? (double)wframes : 1.0;
+		perSurf = surfs ? (double)surfs : 1.0;
+		shadeMs = (double)phase[VK_WP_SHADE] / nf / 1000.0;
 		ri.Printf( PRINT_ALL,
 				   "[PERF:walk] win=%dms frames=%lld verts/frame=%.0f surf/frame=%.1f "
 				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms shade=%.2fms fence=%.2fms acq=%.2fms "
@@ -747,10 +757,10 @@ void VK_PerfFpsRow( void )
 				   (double)phase[VK_WP_UI] / nf / 1000.0,
 				   (double)phase[VK_WP_OUT] / nf / 1000.0,
 				   (double)phase[VK_WP_PIX] / nf / 1000.0,
-				   ( (double)beUsec - (double)sum ) / nf / 1000.0,
+				   ( (double)walkUsec - (double)sum ) / nf / 1000.0,
 				   ( (double)sum - (double)dev ) / nf / 1000.0,
 				   (double)dev / nf / 1000.0,
-				   (double)beUsec / nf / 1000.0,
+				   (double)walkUsec / nf / 1000.0,
 				   (double)elide[VK_ELIDE_INDEX] / nf,
 				   (double)elide[VK_ELIDE_UBO] / nf,
 				   (double)gpu[VK_GPU_CLEAR] / nf / 1000.0,
@@ -759,11 +769,27 @@ void VK_PerfFpsRow( void )
 				   (double)gpu[VK_GPU_UI] / nf / 1000.0,
 				   (double)gpuTotal / nf / 1000.0,
 				   (double)gpuMarks / nf, gpuCap );
+
+		/* The shade window's split.  OTHER is the remainder, so the parts sum
+		   to shade= and the us/sf column names the carrier, as gen= does. */
+		ri.Printf( PRINT_ALL,
+				   "[PERF:shade] win=%dms frames=%lld surf/f=%.1f shade=%.2fms(%.1fus/sf) "
+				   "dec=%.1f srf=%.1f rot=%.1f mv=%.1f sdl=%.1f sph=%.1f oth=%.1f (us/sf) "
+				   "parts=%.2fms\n",
+				   now - t0, wframes, (double)surfs / nf, shadeMs,
+				   (double)phase[VK_WP_SHADE] / perSurf,
+				   (double)shadePart[VK_WS_DECOMPOSE] / perSurf,
+				   (double)shadePart[VK_WS_SURFACE] / perSurf,
+				   (double)shadePart[VK_WS_ROTATE] / perSurf,
+				   (double)shadePart[VK_WS_MODELVIEW] / perSurf,
+				   (double)shadePart[VK_WS_STATICDLIGHTS] / perSurf,
+				   (double)shadePart[VK_WS_SPHERE] / perSurf,
+				   (double)shadePart[VK_WS_OTHER] / perSurf,
+				   (double)shadeSum / nf / 1000.0 );
 	}
 
 	frames = 0;
 	feUsec = 0;
-	beUsec = 0;
 	t0     = now;
 }
 

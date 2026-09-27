@@ -369,6 +369,23 @@ void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfs
 #define VK_WALK_T0()        ( VK_WalkStatOn() ? BE_Microseconds64() : -1LL )
 #define VK_WALK_ADD(t0, ph) do { if ( (t0) >= 0 ) { VK_WalkStat_Add( (ph), BE_Microseconds64() - (t0) ); } } while ( 0 )
 
+/* An outer wrap that contains an inner bucket charges only what the inner
+   buckets did not: GEN and UI reach the stage iterator, whose bind/record/pack
+   are charged at their own sites.  A leaf wrap keeps the plain form. */
+#define VK_WALK_NEST0() ( VK_WalkStatOn() ? VK_WalkStat_Nested() : 0LL )
+#define VK_WALK_ADD_NET(t0, n0, ph) do { if ( (t0) >= 0 ) { \
+	long long vk_net = VK_WalkStat_Nested() - (n0); \
+	long long vk_usec = BE_Microseconds64() - (t0) - vk_net; \
+	VK_WalkStat_Add( (ph), vk_usec > 0 ? vk_usec : 0 ); } } while ( 0 )
+
+/* The shade window's parts; the residual is OTHER, so they sum to it. */
+enum {
+	VK_WS_DECOMPOSE = 0, VK_WS_SURFACE, VK_WS_ROTATE, VK_WS_MODELVIEW,
+	VK_WS_STATICDLIGHTS, VK_WS_SPHERE, VK_WS_OTHER, VK_WS_PARTS
+};
+void VK_WalkStat_ShadeAdd( int part, long long usec );
+void VK_WalkStat_TakeShade( long long *usecOut );
+
 void VK_PerfGpu_FrameBegin( int slot );
 void VK_PerfGpu_Mark( int slot, int bucket );
 void VK_PerfGpu_FrameEnd( int slot );

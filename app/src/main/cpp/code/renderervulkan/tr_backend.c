@@ -866,6 +866,43 @@ void RB_BeginDrawingView (void) {
 	}
 }
 
+/* One shade part, net of the binds its own flush issued (RB_BeginSurface and
+   RB_EndSurface reach the stage iterator); returned so OTHER is the remainder. */
+static long long VK_Shade_PartCharge( int part, long long t0, long long nested0 )
+{
+	long long usec;
+
+	if ( t0 < 0 ) {
+		return 0;
+	}
+
+	usec = BE_Microseconds64() - t0 - ( VK_WalkStat_Nested() - nested0 );
+	if ( usec < 0 ) {
+		usec = 0;
+	}
+
+	VK_WalkStat_ShadeAdd( part, usec );
+
+	return usec;
+}
+
+/* Close the shade window: charge the residual to OTHER so the parts sum to the
+   window, then charge the window to the walk bucket. */
+static void VK_Shade_WindowClose( long long shadeT0, long long nested0, long long parts )
+{
+	long long usec, other;
+
+	if ( shadeT0 < 0 ) {
+		return;
+	}
+
+	usec = BE_Microseconds64() - shadeT0 - ( VK_WalkStat_Nested() - nested0 );
+	other = usec - parts;
+
+	VK_WalkStat_ShadeAdd( VK_WS_OTHER, other > 0 ? other : 0 );
+	VK_WalkStat_Add( VK_WP_SHADE, usec );
+}
+
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	shader_t		*shader, *oldShader;
 	int				entityNum, oldEntityNum;
@@ -919,19 +956,25 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		}
 		if ( drawSurf->sort == (unsigned)oldSort && *drawSurf->surface != SF_SPRITE ) {
 			long long walkT0 = VK_WALK_T0();
+			long long walkNest0 = VK_WALK_NEST0();
 
 			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
-			VK_WALK_ADD( walkT0, VK_WP_GEN );
+			VK_WALK_ADD_NET( walkT0, walkNest0, VK_WP_GEN );
 			continue;
 		}
 		oldSort = (int)drawSurf->sort;
 
 		/* The per-surface bookkeeping between the surface generators: the sort
-		   decompose, the entity rotation and the shader-change flush.  It is
-		   measured as its own window and the binds it flushes inside it are
-		   subtracted, so `rest` stays the accounting error and not this cost. */
+		   decompose, the entity rotation and the shader-change flush.  Each
+		   named part is charged net of the binds it flushes; OTHER is the
+		   residual, so the parts sum to the window. */
 		long long shadeT0 = VK_WALK_T0();
 		long long shadeNested0 = VK_WalkStat_Nested();
+		long long shadeParts = 0;
+		long long partT0, partNested0;
+
+		partT0 = VK_WALK_T0();
+		partNested0 = VK_WalkStat_Nested();
 
 		if (*drawSurf->surface != SF_SPRITE) {
 			R_DecomposeSort(drawSurf->sort, &entityNum, &shader, &fogNum, &dlightMap);
@@ -943,15 +986,21 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			dlightMap = 0;
 			bStaticModel = qfalse;
 		}
+		shadeParts += VK_Shade_PartCharge( VK_WS_DECOMPOSE, partT0, partNested0 );
 
 		if ( shader == NULL ) {
-			continue;	/* the guard named the key */
+			/* the guard named the key; the window still closes or its parts
+			   would sit outside every shade total */
+			VK_Shade_WindowClose( shadeT0, shadeNested0, shadeParts );
+			continue;
 		}
 
 		if (shader != oldShader || fogNum != oldFogNum || dlightMap != oldDlightMap
 			|| (shader->noMerge & 1)
 			|| ( entityNum != oldEntityNum && !shader->entityMergable )
 			|| ( bStaticModel != oldbStaticModel && !shader->entityMergable )) {
+			partT0 = VK_WALK_T0();
+			partNested0 = VK_WalkStat_Nested();
 			if (oldShader != NULL) {
 				RB_EndSurface();
 			}
@@ -959,12 +1008,16 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			oldShader = shader;
 			oldFogNum = fogNum;
 			oldDlightMap = dlightMap;
+			shadeParts += VK_Shade_PartCharge( VK_WS_SURFACE, partT0, partNested0 );
 		}
 
 		if ( entityNum != oldEntityNum || bStaticModel != oldbStaticModel ) {
 			depthRange = qfalse;
 
 			backEnd.sphere.TessFunction = NULL;
+
+			partT0 = VK_WALK_T0();
+			partNested0 = VK_WalkStat_Nested();
 
 			if (bStaticModel) {
 				backEnd.currentEntity = 0;
@@ -994,8 +1047,12 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 					R_TransformDlights(backEnd.refdef.num_dlights, backEnd.refdef.dlights, &backEnd.ori);
 				}
 			}
+			shadeParts += VK_Shade_PartCharge( VK_WS_ROTATE, partT0, partNested0 );
 
+			partT0 = VK_WALK_T0();
+			partNested0 = VK_WalkStat_Nested();
 			RB_LoadModelViewMatrix(  backEnd.ori.modelMatrix );
+			shadeParts += VK_Shade_PartCharge( VK_WS_MODELVIEW, partT0, partNested0 );
 
 			if ( oldDepthRange != depthRange ) {
 				if ( depthRange ) {
@@ -1012,6 +1069,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 		if (bStaticModel)
 		{
+			partT0 = VK_WALK_T0();
+			partNested0 = VK_WalkStat_Nested();
 			if (!r_fullbright->integer) {
 				RB_Static_BuildDLights();
 			}
@@ -1019,26 +1078,28 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			if (!backEnd.currentStaticModel->bStaticLightingCalculated) {
 				RB_Static_SetupModel();
 			}
+			shadeParts += VK_Shade_PartCharge( VK_WS_STATICDLIGHTS, partT0, partNested0 );
 		}
 		else if (backEnd.currentEntity->e.tiki && shader->needsLSpherical)
 		{
+			partT0 = VK_WALK_T0();
+			partNested0 = VK_WalkStat_Nested();
 			R_Sphere_SetupEntity();
+			shadeParts += VK_Shade_PartCharge( VK_WS_SPHERE, partT0, partNested0 );
 		}
 
 		if (*drawSurf->surface == SF_SPRITE) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 		}
 
-		if ( shadeT0 >= 0 ) {
-			VK_WalkStat_Add( VK_WP_SHADE, BE_Microseconds64() - shadeT0
-							 - ( VK_WalkStat_Nested() - shadeNested0 ) );
-		}
+		VK_Shade_WindowClose( shadeT0, shadeNested0, shadeParts );
 
 		{
 			long long walkT0 = VK_WALK_T0();
+			long long walkNest0 = VK_WALK_NEST0();
 
 			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
-			VK_WALK_ADD( walkT0, VK_WP_GEN );
+			VK_WALK_ADD_NET( walkT0, walkNest0, VK_WP_GEN );
 		}
 	}
 
