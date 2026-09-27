@@ -112,6 +112,7 @@ long long RB_WalkUsec64( void )
    the walk thread and drained by the front end, the same benign race rb_walkUsec
    already carries. */
 static long long	s_walkPhaseUsec[VK_WP_PHASES];
+static long long	s_walkShadeUsec[VK_WS_PARTS];
 static long long	s_walkVerts;
 static long long	s_walkSurfs;
 static long long	s_walkFrames;
@@ -125,13 +126,33 @@ qboolean VK_WalkStatOn( void )
 		cv = ri.Cvar_Get( "r_perfFps", "1", CVAR_ARCHIVE );
 	}
 
-	return ( cv && cv->integer ) ? qtrue : qfalse;
+	/* r_perfFps is the family switch; qa_probe is the master gate and the
+	   timing itself is the cost, so a probe-off boot pays neither. */
+	return ( cv && cv->integer && R_ProbeStatsOn() ) ? qtrue : qfalse;
 }
 
 void VK_WalkStat_Add( int phase, long long usec )
 {
 	if ( phase >= 0 && phase < VK_WP_PHASES ) {
 		s_walkPhaseUsec[phase] += usec;
+	}
+}
+
+/* One named part of the shade window, charged and drained with the window. */
+void VK_WalkStat_ShadeAdd( int part, long long usec )
+{
+	if ( part >= 0 && part < VK_WS_PARTS ) {
+		s_walkShadeUsec[part] += usec;
+	}
+}
+
+void VK_WalkStat_TakeShade( long long *usecOut )
+{
+	int i;
+
+	for ( i = 0; i < VK_WS_PARTS; i++ ) {
+		usecOut[i] = s_walkShadeUsec[i];
+		s_walkShadeUsec[i] = 0;
 	}
 }
 
@@ -418,9 +439,10 @@ void RB_ExecuteRenderCommands( const void *data )
 		if ( op == RC_DRAW_SURFS || op == RC_SPRITE_SURFS ) {
 			const drawSurfsCommand_t *ocmd = ( const drawSurfsCommand_t * )cmds;
 			long long flushT0 = VK_WALK_T0();
+			long long flushNest0 = VK_WALK_NEST0();
 
 			RB_2D_Flush();
-			VK_WALK_ADD( flushT0, VK_WP_UI );
+			VK_WALK_ADD_NET( flushT0, flushNest0, VK_WP_UI );
 
 			{
 				char	note[80];
@@ -461,6 +483,7 @@ void RB_ExecuteRenderCommands( const void *data )
 		   overhead is measured rather than dropped. */
 		{
 		long long walkT0 = VK_WALK_T0();
+		long long caseNest0 = VK_WALK_NEST0();
 
 		switch ( op ) {
 		case RC_VK_BEGIN:
@@ -634,10 +657,11 @@ void RB_ExecuteRenderCommands( const void *data )
 			cmds += PAD( sizeof( int ), sizeof( void * ) );
 			{
 				long long uiT0 = VK_WALK_T0();
+				long long uiNest0 = VK_WALK_NEST0();
 				long long outT0;
 
 				RB_2D_Flush();
-				VK_WALK_ADD( uiT0, VK_WP_UI );
+				VK_WALK_ADD_NET( uiT0, uiNest0, VK_WP_UI );
 
 				VK_Order_Frame();
 
@@ -681,7 +705,7 @@ void RB_ExecuteRenderCommands( const void *data )
 		}
 
 		if ( op >= RC_2D_COLOR && op <= RC_2D_STRETCH_RAW ) {
-			VK_WALK_ADD( walkT0, VK_WP_UI );
+			VK_WALK_ADD_NET( walkT0, caseNest0, VK_WP_UI );
 		}
 		}
 	}
@@ -719,12 +743,14 @@ void RB_RenderThread( void )
 		   the front end's write position: clearing it after releasing the slot
 		   would clobber a frame the front end had already started. */
 		VKimp_WalkBegin( frame->smpFrame );
-		walkStart = BE_Microseconds64();
+		walkStart = VK_WALK_T0();
 		if ( frame->list ) {
 			RB_ExecuteRenderCommands( frame->list->cmds );
 			frame->list->used = 0;
 		}
-		rb_walkUsec += BE_Microseconds64() - walkStart;
+		if ( walkStart >= 0 ) {
+			rb_walkUsec += BE_Microseconds64() - walkStart;
+		}
 		{
 			/* the demand the frame just walked: slots are vertices, and the
 			   census counts the surfaces the ring stored */
@@ -781,12 +807,14 @@ void R_IssueRenderCommands( void )
 				VK_Guard_Row( "VK:smp", "walk-thread-gone frames=%d walking-inline", rb_frameCount );
 			}
 			rb_activeFrame = frame;
-			walkStart = BE_Microseconds64();
+			walkStart = VK_WALK_T0();
 			if ( list ) {
 				RB_ExecuteRenderCommands( list->cmds );
 				list->used = 0;
 			}
-			rb_walkUsec += BE_Microseconds64() - walkStart;
+			if ( walkStart >= 0 ) {
+				rb_walkUsec += BE_Microseconds64() - walkStart;
+			}
 			rb_activeFrame = NULL;
 			vk.frameSlot = ( vk.frameSlot + 1 ) % SMP_FRAMES;
 			return;
@@ -798,12 +826,14 @@ void R_IssueRenderCommands( void )
 	}
 
 	rb_activeFrame = frame;
-	walkStart = BE_Microseconds64();
+	walkStart = VK_WALK_T0();
 	if ( list ) {
 		RB_ExecuteRenderCommands( list->cmds );
 		list->used = 0;
 	}
-	rb_walkUsec += BE_Microseconds64() - walkStart;
+	if ( walkStart >= 0 ) {
+		rb_walkUsec += BE_Microseconds64() - walkStart;
+	}
 	rb_activeFrame = NULL;
 
 	if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {

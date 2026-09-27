@@ -246,7 +246,7 @@ fgame/ai_dmnet.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_dmnet.cpp	0.998
 fgame/ai_dmnet.h	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_dmnet.h	1.000
 fgame/ai_dmq3.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_dmq3.cpp	0.994
 fgame/ai_dmq3.h	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_dmq3.h	1.000
-fgame/ai_main.cpp	vendored	recovered third-party notice	-	0.000	dlls/game/ai_main.cpp	0.838
+fgame/ai_main.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_main.cpp	0.838
 fgame/ai_main.h	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_main.h	0.875
 fgame/ai_team.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_team.cpp	0.996
 fgame/ai_team.h	sdk	Ritual EF2 SDK	-	0.000	dlls/game/ai_team.h	1.000
@@ -1108,7 +1108,7 @@ qcommon/net_ip.c	gpl	recovered GPL banner	qcommon/net_ip.c	0.749	-	0.000
 qcommon/output.h	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/output.h	0.939
 qcommon/platform.h	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/platform.h	1.000
 qcommon/q_jobs.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-qcommon/q_jobs.h	vendored	recovered third-party notice	-	0.000	-	0.000
+qcommon/q_jobs.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/q_jobs_workers.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/q_math.c	gpl	recovered GPL banner	qcommon/q_math.c	0.974	dlls/game/q_math.c	0.263
 qcommon/q_platform.h	gpl	recovered GPL banner	qcommon/q_platform.h	0.892	-	0.000

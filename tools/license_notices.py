@@ -92,7 +92,9 @@ LICENCE_HINT = re.compile(
     r"Permission is hereby granted|SPDX-License-Identifier|May not be distributed",
     re.I,
 )
-PORT_AUTHORED = re.compile(r"EF2 port|decompilation port|PROVENANCE:|GENERATED|do not edit|this port", re.I)
+PORT_AUTHORED = re.compile(
+    r"EF2 port|decompilation port|PROVENANCE:|GENERATED|do not edit|this port|"
+    r"the port\b|the enclosing project|COPYING\.txt", re.I)
 
 
 def read(path):
@@ -193,6 +195,11 @@ def notice_class(block):
     if LICENCE_HINT.search(block):
         if re.search(r"GNU General Public License", block):
             return "gpl"
+        # A bare Id Software copyright line is the id Tech 3 lineage's own header
+        # with the GPL text dropped; it is not a third party's licence notice, so
+        # it must not short-circuit the ancestor/module decision that follows.
+        if re.search(r"[Ii]d Software", block) and not re.search(r"Ritual Entertainment", block):
+            return "idsw"
         return "thirdparty"
     return "none"
 
