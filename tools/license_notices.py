@@ -92,7 +92,7 @@ LICENCE_HINT = re.compile(
     r"Permission is hereby granted|SPDX-License-Identifier|May not be distributed",
     re.I,
 )
-PORT_AUTHORED = re.compile(r"EF2 port|PROVENANCE:|GENERATED|do not edit|this port", re.I)
+PORT_AUTHORED = re.compile(r"EF2 port|decompilation port|PROVENANCE:|GENERATED|do not edit|this port", re.I)
 
 
 def read(path):
