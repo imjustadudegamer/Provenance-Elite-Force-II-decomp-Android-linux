@@ -1496,6 +1496,25 @@ void UIWidget::Motion(void)
 
     t = (float)uid.time / 1000.0f;
 
+    /* The one-shot slide that restarts instead of settling names itself here: a
+       settled widget stops printing, while a restarting one keeps printing with
+       frac back near 0 and m_starttime equal to the current t.  Gated by the
+       master probe, so a normal boot is silent. */
+    if (PROBE_On() && (m_direction || m_fadetime != 0.0f)) {
+        static int motion_rows;
+
+        if (PROBE_Throttle(&motion_rows, 4, 4)) {
+            Com_Printf(
+                "[UI:motion] name='%s' dir=%d dir_orig=%d type=%d fade=%.3f mtime=%.3f t=%.3f "
+                "start=%.3f alpha=%.3f frame=(%.1f,%.1f %.1fx%.1f) show=%d move=%d\n",
+                m_name.c_str(), (int)m_direction, (int)m_direction_orig, (int)m_motiontype,
+                m_fadetime, m_motiontime, t, m_starttime, m_alpha,
+                m_frame.pos.x, m_frame.pos.y, m_frame.size.width, m_frame.size.height,
+                getShow() ? 1 : 0, m_bMoveActive ? 1 : 0
+            );
+        }
+    }
+
     if (m_fadetime != 0.0f) {
         m_alpha = (t - m_starttime) / m_fadetime;
 
