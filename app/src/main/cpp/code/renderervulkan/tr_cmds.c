@@ -337,6 +337,19 @@ void RB_ExecuteRenderCommands( const void *data )
 			inFrame = qtrue;
 		}
 
+		/* The 2D batch is recorded when it flushes, not where its commands sit,
+		   so a 3D batch that follows one in the list would overtake it in the
+		   command buffer.  The front end paints a widget's background and then
+		   asks for that widget's 3D model, so the CONTROLS stardome landed
+		   under its own full-screen fill.  Flushing here restores the recorded
+		   order, and the flush is charged to the 2D class it belongs to. */
+		if ( op == RC_DRAW_SURFS || op == RC_SPRITE_SURFS ) {
+			long long flushT0 = VK_WALK_T0();
+
+			RB_2D_Flush();
+			VK_WALK_ADD( flushT0, VK_WP_UI );
+		}
+
 		/* One GPU timestamp per class change, written before the case runs: the
 		   interval that follows a mark is the work that mark's class records, so
 		   a mark after the case would charge the draws to the previous class.
