@@ -3292,6 +3292,52 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		pj = m;
 	}
 
+	/* The census is the walk's most expensive probe.  It clipped every triangle
+	   of every batch once a frame, and the operator's 800x600 window drew
+	   19,433 of them (58,299 indexes, [VK:ring] beside the quoted
+	   [PERF:walk] row), which the clip loop's own measurement prices at
+	   0.138 us each (22500 clips = 3.1 ms, vk_shade.c:3248) -- 2.7 ms of that
+	   row's 3.55 ms shade window, for a row that has read zero since the wedge
+	   closed.  The row can only print on an out-of-range index or on a batch
+	   whose raw corners are all inside the volume, and both are decided without
+	   clipping a triangle: one projection pass gives the raw box, and the clip
+	   loop below runs only for a batch that can still print.  Offline replay
+	   (personal/scratch/r12_footprint/micro.c): 75.4 ns per triangle clipped
+	   against 5.7 ns for the pass, so a batch that cannot print costs 7% of
+	   what it did. */
+	{
+		float	px0 = 2.0f, py0 = 2.0f, px1 = -2.0f, py1 = -2.0f;
+		int		poob = 0, vi;
+
+		for ( i = 0; i < numIndexes; i++ ) {
+			const float	*p;
+			float		cw, nx, ny;
+
+			vi = indexes[i];
+			if ( vi < 0 || vi >= input->numVertexes ) {
+				poob = 1;
+				continue;
+			}
+			p = input->xyz[vi];
+			cw = pj[3] * p[0] + pj[7] * p[1] + pj[11] * p[2] + pj[15];
+			if ( cw < 1e-6f && cw > -1e-6f ) {
+				continue;
+			}
+			nx = ( pj[0] * p[0] + pj[4] * p[1] + pj[8]  * p[2] + pj[12] ) / cw;
+			ny = ( pj[1] * p[0] + pj[5] * p[1] + pj[9]  * p[2] + pj[13] ) / cw;
+			if ( nx < px0 ) px0 = nx;
+			if ( ny < py0 ) py0 = ny;
+			if ( nx > px1 ) px1 = nx;
+			if ( ny > py1 ) py1 = ny;
+		}
+
+		/* no row can print: the predicate below needs oob or rawInside, and the
+		   clip would only price a footprint nothing reports */
+		if ( !poob && !( px0 >= -1.0f && py0 >= -1.0f && px1 <= 1.0f && py1 <= 1.0f ) ) {
+			return;
+		}
+	}
+
 	cminx = cminy = 2.0f;
 	cmaxx = cmaxy = -2.0f;
 	bx0 = by0 = 2.0f;
@@ -3380,8 +3426,9 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		}
 	}
 
-	/* the sibling floor is the smallest box this shader drew this frame, taken
-	   after the walk so a lone draw reports its own area as its own floor */
+	/* the sibling floor is the smallest box this shader drew this frame, over
+	   the batches the census ran on, taken after the walk so a lone draw
+	   reports its own area as its own floor */
 	if ( sibMin && clipArea < *sibMin ) {
 		*sibMin = clipArea;
 		sibling = clipArea;
