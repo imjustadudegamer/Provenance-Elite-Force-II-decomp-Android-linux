@@ -30,12 +30,17 @@ executed.
 ## Assets
 
 `app/src/main/assets/base/zpak-android.pk3` carries the on-screen touch art, the
-port's front-end text override, and `global/defaultcontrols.cfg` /
-`global/defaultoptions.cfg`, generated from
-`code/qcommon/ef2_android_defaults.h` by `app/make_zpak.py`. Those two are the
-payloads the shipped "Restore Controls" / "Restore Defaults" prompt menus exec by
-name; the pak does not carry `global/default.cfg`, because nothing reads that path
-any more (see Configuration).
+port's front-end text override, and `global/default.cfg` /
+`global/defaultcontrols.cfg` / `global/defaultoptions.cfg`, all generated from
+`code/qcommon/ef2_android_defaults.h` by `app/make_zpak.py` so they cannot drift
+from the engine's own first-boot defaults. The two `defaultcontrols` /
+`defaultoptions` names are the payloads the shipped "Restore Controls" /
+"Restore Defaults" prompt menus exec. `global/default.cfg` is kept packed even
+though the current engine has no reader for it: the pak is read by whatever
+binary the launcher points at, and binaries up to `c8d4dd90` still exec that path
+and still `Com_Error` on it in `FS_InitFilesystem`/`FS_Restart`. Dropping the
+entry broke exactly that (a stale binary plus this pak aborted with
+`Com_Error: FATAL: Couldn't load default.cfg` at 2026-10-15 09:03).
 
 ## Configuration
 
