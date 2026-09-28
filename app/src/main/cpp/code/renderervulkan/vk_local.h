@@ -262,7 +262,7 @@ qboolean VK_Pipeline_DrawDemo( VkCommandBuffer cmd );
 void VK_Draw_BindRing( VkCommandBuffer cmd );
 void VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline );
 void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
-					  uint32_t dynamicOffset );
+					  uint32_t dynamicOffset, uint32_t dynamicCount );
 qboolean VK_Vertex_Init( void );
 void VK_Vertex_Shutdown( void );
 

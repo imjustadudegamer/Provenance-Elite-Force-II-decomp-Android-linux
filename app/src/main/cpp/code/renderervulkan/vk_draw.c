@@ -97,6 +97,7 @@ static VkPipeline		s_boundPipeline[VK_FRAMES_IN_FLIGHT];
 static int				s_boundPipelineFrame[VK_FRAMES_IN_FLIGHT];
 static VkPipelineLayout	s_boundSetLayout[VK_FRAMES_IN_FLIGHT];
 static VkDescriptorSet	s_boundSet[VK_FRAMES_IN_FLIGHT];
+static uint32_t			s_boundSetDynCount[VK_FRAMES_IN_FLIGHT];
 static uint32_t			s_boundSetOffset[VK_FRAMES_IN_FLIGHT];
 static int				s_boundSetFrame[VK_FRAMES_IN_FLIGHT];
 
@@ -126,24 +127,49 @@ void VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline )
 	s_boundPipelineFrame[slot] = frame;
 }
 
+/* `dynamicCount' is the number of DYNAMIC descriptors the BOUND SET's own layout
+   declares, and it must match it exactly (VUID-vkCmdBindDescriptorSets-
+   dynamicOffsetCount-00359).  It is a parameter because this renderer has two
+   descriptor layouts and they differ precisely here: the shade layout declares
+   its uniform block VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC (the ring slice
+   rides the dynamic offset), while the 2D/immediate layout declares a single
+   COMBINED_IMAGE_SAMPLER and nothing dynamic at all.  Passing 1 for the 2D
+   layout -- which this function did for every 2D bind, offset 0 included -- is
+   an API error, and the operator's validation run caught it 105,618 times: an
+   invalid bind is not the bind the caller asked for, so the set the draw needs
+   is not the set the GPU has.
+
+   The spec is explicit (Vulkan 1.3, vkspec.txt line 95811):
+   `VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359  dynamicOffsetCount
+   must be equal to the total number of dynamic descriptors in pDescriptorSets',
+   and lines 95756-95766 give the effective offset as `the sum of the relative
+   offset taken from pDynamicOffsets, and the base address of the buffer plus
+   base offset in the descriptor set' -- which is how the ring slice reaches the
+   shade layout's uniform block, and why the 2D layout (no dynamic descriptor,
+   nothing to add) must be bound with no offsets at all. */
 void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
-					  uint32_t dynamicOffset )
+					  uint32_t dynamicOffset, uint32_t dynamicCount )
 {
 	int slot = VK_Draw_BindSlot();
 	int frame = RB_FrameCount();
 
 	if ( s_boundSetFrame[slot] == frame && s_boundSetCmd[slot] == cmd
 		 && s_boundSetLayout[slot] == layout
-		 && s_boundSet[slot] == set && s_boundSetOffset[slot] == dynamicOffset ) {
+		 && s_boundSet[slot] == set && s_boundSetOffset[slot] == dynamicOffset
+		 && s_boundSetDynCount[slot] == dynamicCount ) {
 		VK_WalkStat_Count( VK_ELIDE_SET );
 		return;
 	}
+	if ( dynamicCount > 1 ) {
+		dynamicCount = 1;		/* one binding, one dynamic descriptor, one offset */
+	}
 	qvk.CmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set,
-							   1, &dynamicOffset );
+							   dynamicCount, &dynamicOffset );
 	s_boundSetCmd[slot] = cmd;
 	s_boundSetLayout[slot] = layout;
 	s_boundSet[slot] = set;
 	s_boundSetOffset[slot] = dynamicOffset;
+	s_boundSetDynCount[slot] = dynamicCount;
 	s_boundSetFrame[slot] = frame;
 }
 
@@ -670,7 +696,7 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 		set = vk_sets[i].set;
 	}
 
-	VK_Draw_BindSet( cmd, vk_draw.layout, set, 0 );
+	VK_Draw_BindSet( cmd, vk_draw.layout, set, 0, 0 );
 
 	return qtrue;
 }

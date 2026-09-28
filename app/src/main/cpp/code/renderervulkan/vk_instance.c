@@ -55,12 +55,36 @@ static const char *vk_requestedLayers[8];
 static uint32_t vk_numRequestedLayers;
 static VkDebugUtilsMessengerEXT vk_debugMessenger = VK_NULL_HANDLE;
 
+/* One row per DISTINCT message, then counters.
+ *
+ * This callback used to print every message the layer produced.  That is the
+ * right shape only while the layer is quiet: the operator's 2026-10-15 09:28
+ * run, the first with validation armed by the launcher, produced 105,618
+ * copies of one VUID (the 2D bind's dynamicOffsetCount, fixed in this round)
+ * and the run spent its own frame time inside this printf -- `[PERF:walk] ui'
+ * read 4.82 ms with validation armed against 0.19 ms with it off, i.e. the
+ * instrument was ~96% of the bucket it was being read through, and the log
+ * grew to 74 MB.
+ *
+ * Deduping on the message id keeps what caught the bug -- the first occurrence
+ * of every distinct VUID, printed in full, so a new class of error is never
+ * hidden -- and makes the repeats cost a counter.  A repeated id still says so
+ * on a geometric schedule, and the total is always rowed, so nothing is
+ * silently dropped. */
+#define VK_VALID_ID_MAX		64
+static uint32_t	s_validId[VK_VALID_ID_MAX];
+static int		s_validHits[VK_VALID_ID_MAX];
+static int		s_validIds;
+static int		s_validTotal;
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL VK_DebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT severity,
 	VkDebugUtilsMessageTypeFlagsEXT types,
 	const VkDebugUtilsMessengerCallbackDataEXT *data, void *userData )
 {
 	const char *kind = "other";
+	uint32_t	id = data ? (uint32_t)data->messageIdNumber : 0u;
+	int			i;
 
 	(void)userData;
 
@@ -70,11 +94,48 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VK_DebugCallback(
 		kind = "performance";
 	}
 
+	s_validTotal++;
+
+	for ( i = 0; i < s_validIds; i++ ) {
+		if ( s_validId[i] == id ) {
+			break;
+		}
+	}
+
+	if ( i < s_validIds ) {
+		s_validHits[i]++;
+		if ( s_validHits[i] < 4 || ( s_validHits[i] % 4096 ) == 0 ) {
+			VK_Guard_Row( "VK:valid", "kind=%s severity=%d code=%d hits=%d total=%d repeat=1",
+						  kind, (int)severity, (int)id, s_validHits[i], s_validTotal );
+		}
+		return VK_FALSE;
+	}
+
+	if ( s_validIds >= VK_VALID_ID_MAX ) {
+		static qboolean	s_idCapRow;
+
+		if ( !s_idCapRow ) {
+			s_idCapRow = qtrue;
+			VK_Guard_Row( "VK:valid",
+						  "kind=%s severity=%d code=%d distinct=%d+ (id table full) total=%d -- "
+						  "further ids are counted, not named",
+						  kind, (int)severity, (int)id, VK_VALID_ID_MAX, s_validTotal );
+		}
+		return VK_FALSE;
+	}
+
+	s_validId[s_validIds]   = id;
+	s_validHits[s_validIds] = 1;
+	s_validIds++;
+
+	/* the first occurrence of a distinct message is the diagnosis: print it whole */
 	VK_Guard_Row( "VK:valid",
-				  "kind=%s severity=%d code=%d \"%s\"",
+				  "kind=%s severity=%d code=%d distinct=%d total=%d \"%s\"",
 				  kind,
 				  (int)severity,
-				  data->messageIdNumber,
+				  (int)id,
+				  s_validIds,
+				  s_validTotal,
 				  data->pMessage ? data->pMessage : "" );
 
 	return VK_FALSE;

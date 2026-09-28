@@ -3099,7 +3099,7 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 		uboOffset = ( uint32_t )slice;
 	}
 	VK_Draw_BindPipeline( cmd, pipeline );
-	VK_Draw_BindSet( cmd, vk_shadeLayout, set, uboOffset );
+	VK_Draw_BindSet( cmd, vk_shadeLayout, set, uboOffset, 1 );
 	return qtrue;
 }
 
@@ -3365,6 +3365,26 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	static int	s_rows;
 	static int	s_frame = -1;
 	static int	s_lastToken;
+
+	/* Its own gate, default OFF.  The row exists to name a draw whose own
+	   vertices cover half the frame; that question was answered when the wedge
+	   closed (r12) and the row has read zero since, while the census still walks
+	   every triangle of every batch every frame -- the offline measurement is
+	   5.7 ns per triangle (docs/controls' r12 proof, personal/scratch/
+	   r12_footprint/micro.c), i.e. ~68 us of a 12000-triangle frame, 7% of the
+	   operator's 1 ms target, for a row that prints nothing.  qa_probe alone no
+	   longer buys that cost; `r_footprintProbe 1' arms it for the investigation
+	   that needs it. */
+	{
+		static cvar_t	*s_fpCvar;
+
+		if ( !s_fpCvar ) {
+			s_fpCvar = ri.Cvar_Get( "r_footprintProbe", "0", 0 );
+		}
+		if ( !s_fpCvar || !s_fpCvar->integer ) {
+			return;
+		}
+	}
 
 	if ( !R_ProbeStatsOn() || !input || !indexes || numIndexes < 3 || !input->numVertexes ) {
 		return;
@@ -3648,18 +3668,27 @@ void VK_GlErrAt( const char *what )
 
 void VK_CensusShutdownAll( void ) { }
 
+/* One attempt, whatever the outcome.  This is called from VK_Shade_Bind, i.e.
+   once per draw; while the guard was only `s_waveTableHandle >= 0' a FAILED
+   creation left the handle at -1 and every later bind re-ran the whole LUT fill
+   plus vkCreateImage + an upload + a publish (a device copy and a fence wait) --
+   a per-flush cost that no walk bucket charges and no row named.  Now the
+   attempt happens once and says what it did. */
+static qboolean	s_waveTableTried;
+
 void VK_CreateWaveTable( void )
 {
 	static float	lut[FUNCTABLE_SIZE * 5];
 	int				i;
 	int				handle = -1;
 
-	if ( s_waveTableHandle >= 0 ) {
+	if ( s_waveTableHandle >= 0 || s_waveTableTried ) {
 		return;
 	}
 	if ( !qvk.CreateImage || !qvk.MapMemory ) {
 		return;
 	}
+	s_waveTableTried = qtrue;
 
 	for ( i = 0; i < FUNCTABLE_SIZE; i++ ) {
 		lut[0 * FUNCTABLE_SIZE + i] = tr.sinTable[i];
@@ -3670,18 +3699,24 @@ void VK_CreateWaveTable( void )
 	}
 
 	if ( !VK_Texture_Create( FUNCTABLE_SIZE, 5, 1, VK_FORMAT_R32_SFLOAT, &handle ) ) {
+		VK_Guard_Row( "VK:wave", "status=create-failed w=%d h=5 fmt=R32_SFLOAT bytes=%d",
+					  (int)FUNCTABLE_SIZE, (int)sizeof( lut ) );
 		return;
 	}
 	if ( !VK_Texture_Upload( handle, 0, FUNCTABLE_SIZE, 5, lut, sizeof( lut ) ) ) {
 		VK_Texture_Destroy( handle );
+		VK_Guard_Row( "VK:wave", "status=upload-failed handle=%d", handle );
 		return;
 	}
 	if ( !VK_Texture_Publish( handle ) ) {
 		VK_Texture_Destroy( handle );
+		VK_Guard_Row( "VK:wave", "status=publish-failed handle=%d", handle );
 		return;
 	}
 
 	s_waveTableHandle = handle;
+	VK_Guard_Row( "VK:wave", "status=created handle=%d w=%d h=5 bytes=%d",
+				  handle, (int)FUNCTABLE_SIZE, (int)sizeof( lut ) );
 }
 
 void VK_DestroyWaveTable( void )
@@ -3690,6 +3725,8 @@ void VK_DestroyWaveTable( void )
 		VK_Texture_Destroy( s_waveTableHandle );
 		s_waveTableHandle = -1;
 	}
+	/* a destroyed table is a new attempt's business, not a remembered failure */
+	s_waveTableTried = qfalse;
 }
 
 int VK_WaveTable( void )
