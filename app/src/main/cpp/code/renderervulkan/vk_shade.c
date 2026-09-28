@@ -1913,10 +1913,16 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 
 	cmd = VK_Shade_CommandBuffer();
 
-	if ( !VK_Shade_Bind( cmd, input->shader ) ) {
-		/* nothing is bound: recording the draw anyway faults the driver, and
-		   VK_Shade_Bind's rows name the reason */
-		return qtrue;
+	{
+		long long		walkT0 = VK_WALK_T0();
+
+		if ( !VK_Shade_Bind( cmd, input->shader ) ) {
+			/* nothing is bound: recording the draw anyway faults the driver, and
+			   VK_Shade_Bind's rows name the reason */
+			VK_WALK_ADD( walkT0, VK_WP_BIND );
+			return qtrue;
+		}
+		VK_WALK_ADD( walkT0, VK_WP_BIND );
 	}
 
 	/* the census reads the positions the draw reads: the arena's staging copy */
@@ -1928,7 +1934,19 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 	s_fpItems = NULL;
 	s_fpItemCount = 0;
 
-	RB_VboStaticDrawRuns( cmd, input->numIndexes, items, numItems );
+	{
+		/* The arena arm's bind and record are charged where the streaming arm
+		   charges its own.  Without this they landed in the enclosing SHADE
+		   window's residual, which is why `[PERF:shade] srf' read as one
+		   undifferentiated per-flush cost and the 1000 fps carrier could not be
+		   named.  The sum is unchanged -- VK_WalkStat_Nested() carries BIND and
+		   REC, so the enclosing window subtracts exactly what they gain -- only
+		   the attribution moves. */
+		long long		walkT0 = VK_WALK_T0();
+
+		RB_VboStaticDrawRuns( cmd, input->numIndexes, items, numItems );
+		VK_WALK_ADD( walkT0, VK_WP_REC );
+	}
 
 	return qtrue;
 }
@@ -3007,6 +3025,23 @@ void VK_Shade_PermRow( const char *shader, int family, unsigned defines )
 	s_framePermMissRows++;
 }
 
+/* A refused bind loses the draw, and with it whatever geometry the batch carried
+   -- the one place in this lane where pixels vanish without a hole in the frame.
+   The `[VK:draw3d] refusals=' row only prints on a batch-count change, so a
+   refusal in a steady-state frame is invisible; the operator's real-GPU run is
+   exactly that shape. This names the refusing table at the refusal, rate
+   limited, so a silent loss becomes a diagnosis from one line. */
+static void VK_Shade_DropRow( const char *why )
+{
+	static int	s_rows;
+
+	s_rows++;
+	if ( s_rows <= 64 || ( s_rows % 600 ) == 0 ) {
+		ri.Printf( PRINT_ALL, "[VK:drop] why=%s frame=%d drops=%d n=%d\n",
+				   why ? why : "-", RB_FrameCount(), s_frameShadeDrops, s_rows );
+	}
+}
+
 /* The bind carries a stage's program and textures and answers whether a pipeline is bound. */
 qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 {
@@ -3020,6 +3055,7 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	(void)shader;
 	if ( !s_shade.prog ) {
 		s_frameShadeDrops++;
+		VK_Shade_DropRow( "no-program" );
 		return qfalse;
 	}
 	family = VK_Family_Of( s_shade.prog->defines );
@@ -3028,6 +3064,7 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 								  s_shade.cull, s_shade.polygonOffset, s_shade.topology );
 	if ( pipeline == VK_NULL_HANDLE ) {
 		s_frameShadeDrops++;
+		VK_Shade_DropRow( "pipeline-table" );
 		return qfalse;
 	}
 	if ( s_shade.texBound[0] ) {
@@ -3048,6 +3085,7 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	set = VK_Shade_Set( v0, v1, wave, waveSampler );
 	if ( set == VK_NULL_HANDLE ) {
 		s_frameShadeDrops++;
+		VK_Shade_DropRow( "descriptor-set-table" );
 		return qfalse;
 	}
 	{
@@ -3055,6 +3093,7 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 
 		if ( slice == ( VkDeviceSize )-1 ) {
 			s_frameShadeDrops++;
+			VK_Shade_DropRow( "uniform-ring" );
 			return qfalse;
 		}
 		uboOffset = ( uint32_t )slice;
