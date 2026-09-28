@@ -1391,11 +1391,13 @@ static void AdaptHideNamed(UIWidget *container, const char *const *names, int co
 }
 
 /* Widget builders the touch section owns.  Its gate used to be the presence of
-   `cl_touchLook', and that cvar reaches Linux because the Android data pak's
-   global/default.cfg is the only default.cfg the Linux base tree has, so the
-   Linux settings menus grew a whole Touch Controls section.  Gating the section
-   and its helpers themselves means a stray cvar or config can never re-inject
-   it, which the cvar test could not promise. */
+   `cl_touchLook', and that cvar reached Linux because the launcher staged the
+   retail install's loose base/global/default.cfg, which shadowed the port's own
+   copy inside zpak-android.pk3, so the Linux settings menus grew a whole Touch
+   Controls section.  Neither the loose copy nor the boot cfg exec exists any
+   more (the defaults ship compiled in ef2_android_defaults.h), and gating the
+   section and its helpers themselves means a stray cvar or config can never
+   re-inject it, which the cvar test could not promise. */
 #ifdef __ANDROID__
 static UIWidget *AdaptWidget(
     UIWidget *parent, const char *resource, const char *name, float x, float y, float w, float h

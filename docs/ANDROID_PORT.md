@@ -29,23 +29,28 @@ executed.
 
 ## Assets
 
-`app/src/main/assets/base/zpak-android.pk3` carries the on-screen touch art and
-the port's own `global/default.cfg`, `global/defaultcontrols.cfg` and
+`app/src/main/assets/base/zpak-android.pk3` carries the on-screen touch art, the
+port's front-end text override, and `global/defaultcontrols.cfg` /
 `global/defaultoptions.cfg`, generated from
-`code/qcommon/ef2_android_defaults.h` by `app/make_zpak.py`. The engine
-hard-requires `global/default.cfg`; keeping it in the pak leaves `config.cfg` as
-the one loose cfg. A retail install's loose `base/global/default.cfg` still wins,
-because loose directories search before the paks.
+`code/qcommon/ef2_android_defaults.h` by `app/make_zpak.py`. Those two are the
+payloads the shipped "Restore Controls" / "Restore Defaults" prompt menus exec by
+name; the pak does not carry `global/default.cfg`, because nothing reads that path
+any more (see Configuration).
 
 ## Configuration
 
-Exactly one loose cfg exists on disk: `config.cfg` in the engine's write root.
-It holds every setting and every key binding, is exec'd at every boot and
-rewritten on exit. The name is the compile-time `EF2_CONFIG_FILE`; the dedicated
-server uses `config_server.cfg`. The first-boot defaults are command text in the
-binary (`EF2_ANDROID_DEFAULT_COMMANDS`) applied once per
-`ANDROID_DEFAULTS_VERSION` and persisted straight into `config.cfg`. Bump that
-constant whenever the defaults header changes.
+Exactly ONE cfg is loaded at launch: `config.cfg` in the engine's write root. It
+holds every setting and every key binding, is exec'd at every boot and rewritten
+on exit. The name is the compile-time `EF2_CONFIG_FILE`; the dedicated server uses
+`config_server.cfg`. No `global/*.cfg` is exec'd: retail's three-config launch
+(`global/default.cfg`, `global/game.cfg`, then `config.cfg`) is gone, and with it
+the loose-before-paks double source whose retail copy grew a Touch Controls
+section in the Linux settings menu.
+
+The first-boot defaults are command text in the binary
+(`EF2_ANDROID_DEFAULT_COMMANDS`) applied once per `ANDROID_DEFAULTS_VERSION` and
+persisted straight into `config.cfg`, on both platforms and from one source. Bump
+that constant whenever the defaults header changes.
 
 There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
 

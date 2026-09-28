@@ -3109,10 +3109,10 @@ void FS_InitFilesystem( void ) {
 	FS_Startup(BASEGAME);
 	FS_SetRestrictions();
 
-	if ( FS_ReadFile( "global/default.cfg", NULL ) <= 0 ) {
-		Com_Error( ERR_FATAL, "Couldn't load default.cfg" );
-	}
-
+	/* No `global/default.cfg' check.  The launch no longer execs a global cfg:
+	   the defaults are folded in once from ef2_android_defaults.h, and the one
+	   config it loads is config.cfg, which Com_Init seeds when it is absent.
+	   Requiring a file nothing reads would abort a correct tree. */
 }
 
 void FS_Restart( int checksumFeed ) {
@@ -3125,10 +3125,6 @@ void FS_Restart( int checksumFeed ) {
 
 	FS_Startup(BASEGAME);
 	SMP_LOAD_END( fs );
-
-	if ( FS_ReadFile( "global/default.cfg", NULL ) <= 0 ) {
-		Com_Error( ERR_FATAL, "Couldn't load default.cfg" );
-	}
 }
 
 

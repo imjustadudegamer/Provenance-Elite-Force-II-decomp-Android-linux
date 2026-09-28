@@ -1439,14 +1439,13 @@ void Com_Init( char *commandLine ) {
 
 	Cbuf_Execute( 0 );
 
-	Cbuf_AddText( "exec global/default.cfg\n" );
-
-	Cmd_AddCommand( "setd", Cvar_SetD_f );
-	Cbuf_AddText( "exec global/game.cfg\n" );
-	Cbuf_Execute( 0 );
-	Cmd_RemoveCommand( "setd" );
-
-
+	/* No boot cfg is exec'd.  Retail's `exec global/default.cfg' then
+	   `exec global/game.cfg' are id Tech 3's three-config launch: the loose
+	   install copy shadows the port's own copy inside zpak-android.pk3 under
+	   loose-before-paks, and on Linux the retail copy is what grew the Touch
+	   section in the settings menu (board 2026-10-15).  The defaults are folded
+	   in once by the versioned seed below, and the launch loads exactly one
+	   config: config.cfg. */
 	cvar_global_force = qtrue;
 	Cbuf_Execute( 0 );
 	cvar_global_force = qfalse;
@@ -1516,9 +1515,16 @@ void Com_Init( char *commandLine ) {
 
 	Cbuf_Execute( 0 );
 
-#ifdef __ANDROID__
-	// joystick term in CL_CreateCmd @0x16F490 is deliberately not transcribed
-#define ANDROID_DEFAULTS_VERSION 9
+	/* The port's one defaults source, folded in once on EVERY platform: the
+	   compiled EF2_ANDROID_DEFAULT_COMMANDS, whose retail-recovered text is the
+	   union of the shipped global/defaultcontrols.cfg and global/defaultoptions.cfg
+	   (zpak-android.pk3) and is platform-neutral where those two are not (its
+	   cl_renderer is the compiled renderer default, not the zpak's stale gles3).
+	   The version gate is kept, and with it the archived cvar's name: an
+	   existing Android install whose config.cfg carries in_androidDefaults 9 must
+	   still re-seed when this version moves, and a Linux install that has never
+	   seen the cvar seeds on its first boot.  Nothing global/*.cfg is read. */
+#define ANDROID_DEFAULTS_VERSION 10
 	if ( Cvar_VariableIntegerValue( "in_androidDefaults" ) < ANDROID_DEFAULTS_VERSION )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );
@@ -1528,7 +1534,6 @@ void Com_Init( char *commandLine ) {
 
 		Com_WriteConfigToFile( EF2_CONFIG_FILE );
 	}
-#endif
 
 	{
 		fileHandle_t f;
@@ -1581,10 +1586,10 @@ void Com_Init( char *commandLine ) {
 
 	cvar_modifiedFlags &= ~CVAR_ARCHIVE;
 
-#ifdef __ANDROID__
+	/* the seed above ran on this boot (or an earlier one), so its `seta' values
+	   must reach the archive on either platform, not only Android */
 	if ( Cvar_VariableIntegerValue( "in_androidDefaults" ) )
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
-#endif
 
 	com_maxfps = Cvar_Get( "com_maxfps", "85", CVAR_ARCHIVE );
 	/* limit-pace: PORT-ONLY, beyond retail's list above.  Safe defaults and NOT
