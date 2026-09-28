@@ -67,7 +67,7 @@ Every change must pass, on a clean rebuild:
 | `librenderer_vulkan.so` | the shipping Vulkan backend, `cl_renderer`'s default |
 | `librenderer_gles3.so` | the GLES 3.0 reference twin |
 | `libSDL2.so`, `libopenal.so`, `libc++_shared.so` | window/event/context, OpenAL Soft, the NDK runtime |
-| `assets/base/zpak-android.pk3` | the on-screen touch art, the front-end text override, and `global/defaultcontrols.cfg` / `global/defaultoptions.cfg` (the Restore Controls / Restore Defaults payloads) |
+| `assets/base/zpak-android.pk3` | the on-screen touch art, the front-end text override, and `global/{default,defaultcontrols,defaultoptions}.cfg` (the boot baseline plus the Restore Controls / Restore Defaults payloads) |
 
 Retail game data is not distributed. `zpak-android.pk3` is generated from
 `code/qcommon/ef2_android_defaults.h` by `app/make_zpak.py`, so the binary

@@ -8,28 +8,30 @@ The rule is that the port must have exactly ONE cfg at launch -- the unified sta
 `config.cfg` in the engine's write root -- with the defaults folded in once from
 `code/qcommon/ef2_android_defaults.h`.
 
-This pak carries the two cfg files the shipped menus still exec by name, the
-"Restore Controls" and "Restore Defaults" button payloads:
+This pak carries the three cfg names the data can ask for: the two the shipped
+menus exec by name (the "Restore Controls" and "Restore Defaults" payloads)
 
     loc/Eng/ui/menu_promptrestorecontrols.urc: exec global/defaultcontrols.cfg
     loc/Eng/ui/menu_promptrestoredefaults.urc: exec global/defaultoptions.cfg
 
-Both are generated from the SAME `EF2_ANDROID_DEFAULT_COMMANDS` text the engine
-applies as its first-boot seed, so the buttons and the seed can never drift.
+and `global/default.cfg` itself.  All three are generated from the SAME
+`EF2_ANDROID_DEFAULT_COMMANDS` text the engine applies as its first-boot seed, so
+they cannot drift from the engine's own defaults.
 
-The pak does NOT carry `global/default.cfg`.  It used to: retail's
-`FS_InitFilesystem`/`FS_Restart` ended with
+`global/default.cfg` is kept IN THE PAK even though the engine no longer reads it,
+because the pak and the binary version independently: the run tree links this pak
+from the source tree while the binary comes from whatever build directory the
+launcher points at, so a binary of ANY vintage must boot against it.  Binaries up
+to `c8d4dd90` still exec the path and still Com_Error on it in
+`FS_InitFilesystem`/`FS_Restart`; from `c8d4dd90` on, no boot cfg is exec'd (the
+seed is compiled in) and neither check exists.  Dropping the entry broke exactly
+that: a stale binary plus this pak aborted with "Com_Error: FATAL: Couldn't load
+default.cfg" on 2026-10-15 09:03.
 
-    if ( FS_ReadFile( "global/default.cfg", NULL ) <= 0 )
-        Com_Error( ERR_FATAL, "Couldn't load default.cfg" );
-
-and `Com_Init` exec'd the path, so a minimal install with only the retail paks
-crashed on the first launch ("Com_Error: FATAL: Couldn't load default.cfg").  The
-engine now execs no boot cfg (the seed below is compiled in) and those two checks
-are gone, so the file has no reader left.  Shipping it anyway was the loose/pak
-double source: a retail install's LOOSE `base/global/default.cfg` shadows the pak
-copy under loose-before-paks, which is how the Linux settings menu grew the Touch
-section.
+What is gone is the LOOSE source, which is the one that mattered: the launcher
+used to copy retail's `base/global/*.cfg` into the run tree, and under
+loose-before-paks that copy shadowed this pak's files -- which is how the Linux
+settings menu grew the Touch section.
 
 The pak is DETERMINISTIC: fixed timestamps and sorted entries, so regenerating it
 without a source change produces a byte-identical file and does not force an asset
@@ -102,13 +104,14 @@ def collect():
             continue
         path = os.path.join(ASSET_DIR, "gfx/touch", f)
         entries["gfx/touch/" + f] = open(path, "rb").read()
-    # TWO names, the payloads the shipped "Restore Controls" / "Restore Defaults"
-    # prompt menus exec by name.  Both are generated from the SAME header text the
-    # engine's first-boot seed uses, so the buttons cannot drift from the seed.
-    # `global/default.cfg` is deliberately NOT packed: nothing reads it any more
-    # (the boot exec is gone and neither FS_InitFilesystem nor FS_Restart checks
-    # the path), and a retail install's loose copy would shadow it regardless.
+    # THREE names, all from the same header text: the two the shipped "Restore
+    # Controls" / "Restore Defaults" prompt menus exec by name, and the boot
+    # baseline `global/default.cfg` that binaries up to c8d4dd90 still exec and
+    # still Com_Error on.  The pak is read by whatever binary the launcher points
+    # at, so the baseline stays packed even though the current engine has no
+    # reader for it (see the module docstring).
     text = default_commands()
+    entries["global/default.cfg"] = ("unbindall\n" + text).encode("utf-8")
     lines = [l for l in text.split("\n") if l.strip()]
     binds = [l for l in lines if l.startswith("bind ") or l == "unbindall"]
     cvars = [l for l in lines if l.startswith(("seta ", "set "))]
