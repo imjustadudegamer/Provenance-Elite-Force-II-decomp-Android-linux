@@ -67,6 +67,22 @@ void R_InitNextFrame( void ) {
 	backEndData = backEndDataBuf[tr.smpFrame];
 	backEndData->commands.used = 0;
 
+	/* The frame's pose arena, rewound ONCE per frame -- here, at the boundary --
+	   and never per view.  Every view a frame records poses its skinned models
+	   into TIKI_Skel_Bones_Arena[tr.smpFrame] and stamps the rows it used on the
+	   entity (`ent->e.bonestart'); the walk thread draws them later from those
+	   rows.  A reset inside RE_RenderScene therefore rewinds the cursor at the
+	   SECOND view of a frame, and that view's poses overwrite the first view's
+	   before the walk has read them: the first view draws with the second view's
+	   skeleton.  CONTROLS is the screen that shows it -- its two UIRenderModels
+	   (the background.inc stardome, posed first, and the player preview) leave the
+	   dome with no pixels while the preview is correct -- and any two-view
+	   gameplay frame (the world view plus a HUD 3D model) has the same shape.
+	   The arena is already doubled by smpFrame parity so the front end can pose
+	   frame N+1 while the walk reads frame N; the cursor is part of that buffer.
+	   Control: docs/controls/bonearm. */
+	TIKI_Reset_Caches_Arena( tr.smpFrame );
+
 	r_firstSceneDrawSurf = 0;
 	r_firstSceneSpriteSurf = 0;
 
@@ -337,8 +353,6 @@ void RE_RenderScene( const refdef_t *fd ) {
 	if (!tr.world && !( fd->rdflags & RDF_NOWORLDMODEL ) ) {
 		ri.Error (ERR_DROP, "R_RenderScene: NULL worldmodel");
 	}
-
-	TIKI_Reset_Caches_Arena( tr.smpFrame );
 
 	backEnd.in2D = qfalse;
 	tr.refdef.x = fd->x;
