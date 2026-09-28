@@ -1514,8 +1514,23 @@ image_t* R_CreateImageOld(
 		}
 
 		if ( !VK_Texture_Create( upW, upH, mipLevels, format, &s_vkUploadTex ) ) {
+			/* A failed creation leaves texnum 0 here, and 0 is a REAL slot
+			   (`*default`, the engine's own missing-texture image), so every
+			   stage that binds this image silently samples another texture
+			   instead of failing loudly -- the shape a streaked or
+			   whole-missing texture takes with no row that names it.  The
+			   fallback stays (it is the same one retail's GL default texture
+			   gives); what changes is that the image names itself once. */
+			static int	s_uploadFailRows;
+
 			s_vkUploadTex = -1;
 			image->texnum = 0;
+			if ( s_uploadFailRows < 32 || ( s_uploadFailRows % 240 ) == 0 ) {
+				ri.Printf( PRINT_ALL, "[VK:imgup] FAILED name=%s w=%d h=%d mips=%d fmt=0x%04x n=%d\n",
+						   image->imgName[0] ? image->imgName : "(unnamed)",
+						   upW, upH, mipLevels, (unsigned)format, s_uploadFailRows );
+			}
+			s_uploadFailRows++;
 		} else {
 			image->texnum = (unsigned int)s_vkUploadTex;
 		}
