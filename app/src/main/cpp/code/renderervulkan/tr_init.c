@@ -826,6 +826,22 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	   the pools drained once and stayed drained -- the entity pool hit its cap ~1.3s into the menu. */
 	R_InitNextFrame();
 
+	/* The 2D window/scissor elision cache belongs to the thread that RECORDS the
+	   commands: this one.  It is dropped here, at the frame boundary, so every
+	   frame's first Set2DWindow/RE_Scissor is recorded into that frame's fresh
+	   command buffer -- a fresh buffer has no viewport or scissor at all, and a
+	   command the front end elided because the PREVIOUS frame asked for the same
+	   rect draws with whatever the buffer happens to carry.  The reference twin
+	   drops it exactly here (renderergles3/tr_cmds.c, right after
+	   R_InitNextFrame in its frame boundary); this lane instead dropped it from
+	   RB_FrameOpen on the WALK thread, which is a different thread and a
+	   different frame under r_smp: whether the front end's first window request
+	   saw a valid or an invalid cache was a race, so the elision came and went
+	   frame by frame -- the flashing 2D the operator kept reporting.  Both
+	   R_AddDrawSurfCmd and R_AddSpriteSurfCmd drop it too, because a 3D pass
+	   overwrites the viewport and scissor a cached 2D rect describes. */
+	R_Invalidate2DWindowCache();
+
 	if ( frontEndMsec ) {
 		*frontEndMsec = tr.frontEndMsec;
 	}

@@ -2860,7 +2860,7 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key );
    state cache behind them cannot go stale: a repeated bind is skipped. */
 void     VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline );
 void     VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
-						  uint32_t dynamicOffset );
+						  uint32_t dynamicOffset, uint32_t dynamicCount );
 qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler sampler );
 extern	 int	vk_2dWindow[4];		/* x y w h of the 2D window in force */
 extern	 int	vk_2dScissor[4];	/* x y w h of the 2D scissor in force */

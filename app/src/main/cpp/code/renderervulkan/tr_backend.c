@@ -295,8 +295,12 @@ void RB_FrameOpen( int slot )
 	VK_Shade_NewFrame();
 	s_rbSlot = -1;
 
-	/* every frame is a fresh command buffer: window and scissor are re-recorded */
-	R_Invalidate2DWindowCache();
+	/* No 2D window/scissor invalidation here.  That cache belongs to the FRONT
+	   END's recording stream, and this runs on the walk thread for a frame the
+	   front end recorded earlier: dropping it from here raced the front end's
+	   recording of the NEXT frame, which is what made a frame's first 2D window
+	   be elided on some frames and recorded on others.  The front end drops it
+	   at its own frame boundary (RE_EndFrame) and after every 3D command. */
 }
 
 qboolean RB_RecordSurfaces( VkCommandBuffer cmd )
