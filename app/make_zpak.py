@@ -4,41 +4,40 @@ make_zpak.py -- build the port's own Android pak: app/src/main/assets/base/zpak-
 
 WHY THIS EXISTS
 ---------------
-The rule is that the port must have exactly ONE LOOSE cfg -- the
-unified state `config.cfg` in the engine's write root -- while cfgs that live
-INSIDE pak files are fine to keep.
+The rule is that the port must have exactly ONE cfg at launch -- the unified state
+`config.cfg` in the engine's write root -- with the defaults folded in once from
+`code/qcommon/ef2_android_defaults.h`.
 
-Retail keeps its key-bind and cvar defaults in a LOOSE `base/global/default.cfg`, and
-the engine HARD-REQUIRES that path: `FS_InitFilesystem` and `FS_Restart` both end with
-retail's own check
+This pak carries the two cfg files the shipped menus still exec by name, the
+"Restore Controls" and "Restore Defaults" button payloads:
+
+    loc/Eng/ui/menu_promptrestorecontrols.urc: exec global/defaultcontrols.cfg
+    loc/Eng/ui/menu_promptrestoredefaults.urc: exec global/defaultoptions.cfg
+
+Both are generated from the SAME `EF2_ANDROID_DEFAULT_COMMANDS` text the engine
+applies as its first-boot seed, so the buttons and the seed can never drift.
+
+The pak does NOT carry `global/default.cfg`.  It used to: retail's
+`FS_InitFilesystem`/`FS_Restart` ended with
 
     if ( FS_ReadFile( "global/default.cfg", NULL ) <= 0 )
         Com_Error( ERR_FATAL, "Couldn't load default.cfg" );
 
-so a minimal install that has only the retail paks (which is exactly what the port's
-import flow asks for) crashes on the first launch.  That is what happened on the
-Pixel 1:
-
-    Com_Error: FATAL: Couldn't load default.cfg
-    ... assertion "code != ERR_FATAL" failed
-
-This script puts a PORT-AUTHORED `global/default.cfg` -- the same command text the
-engine already applies as `EF2_ANDROID_DEFAULT_COMMANDS`, parsed straight out of
-`app/src/main/cpp/code/qcommon/ef2_android_defaults.h` so the two can never drift --
-into the port's own pak.  The path then resolves from the pak, no retail data is
-shipped or copied, no engine check is weakened, and the only loose cfg left is
-`config.cfg`.  A retail install's LOOSE `global/default.cfg` still wins, because the
-loose base directories are earlier in the search path than the paks (the device's own
-`[UIVK:pakmount]` list prints slot 0/1 as directories and slot 2 as this pak), so
-retail behaviour is preserved wherever retail shipped the file.
+and `Com_Init` exec'd the path, so a minimal install with only the retail paks
+crashed on the first launch ("Com_Error: FATAL: Couldn't load default.cfg").  The
+engine now execs no boot cfg (the seed below is compiled in) and those two checks
+are gone, so the file has no reader left.  Shipping it anyway was the loose/pak
+double source: a retail install's LOOSE `base/global/default.cfg` shadows the pak
+copy under loose-before-paks, which is how the Linux settings menu grew the Touch
+section.
 
 The pak is DETERMINISTIC: fixed timestamps and sorted entries, so regenerating it
 without a source change produces a byte-identical file and does not force an asset
 re-extraction.
 
 Usage:
-    python3 android/make_zpak.py            # regenerate the pak
-    python3 android/make_zpak.py --check     # verify it is current, exit 1 if not
+    python3 app/make_zpak.py            # regenerate the pak
+    python3 app/make_zpak.py --check     # verify it is current, exit 1 if not
 """
 import argparse
 import hashlib
@@ -103,20 +102,13 @@ def collect():
             continue
         path = os.path.join(ASSET_DIR, "gfx/touch", f)
         entries["gfx/touch/" + f] = open(path, "rb").read()
-    # THREE names, because the shipped menus exec all three:
-    #   * global/default.cfg          -- the boot baseline (retail's FS_InitFilesystem requires the path)
-    #   * global/defaultcontrols.cfg  -- the "Restore Controls" button
-    #        (loc/Eng/ui/menu_promptrestorecontrols.urc: stuffcommand "exec global/defaultcontrols.cfg")
-    #   * global/defaultoptions.cfg   -- the "Restore Defaults" button
-    #        (loc/Eng/ui/menu_promptrestoredefaults.urc: stuffcommand "exec global/defaultoptions.cfg")
-    # All three are generated from the SAME header text, so they cannot drift from the
-    # engine's own first-boot defaults.  Retail ships them as LOOSE files in base/global/;
-    # the rule is that the port has exactly ONE loose cfg, so they live here.
+    # TWO names, the payloads the shipped "Restore Controls" / "Restore Defaults"
+    # prompt menus exec by name.  Both are generated from the SAME header text the
+    # engine's first-boot seed uses, so the buttons cannot drift from the seed.
+    # `global/default.cfg` is deliberately NOT packed: nothing reads it any more
+    # (the boot exec is gone and neither FS_InitFilesystem nor FS_Restart checks
+    # the path), and a retail install's loose copy would shadow it regardless.
     text = default_commands()
-    # Retail's default.cfg opens with `unbindall' (its own reset semantics); the
-    # header macro stays a pure command list, so the generator adds it here.
-    entries["global/default.cfg"] = ("unbindall\n" + text).encode("utf-8")
-
     lines = [l for l in text.split("\n") if l.strip()]
     binds = [l for l in lines if l.startswith("bind ") or l == "unbindall"]
     cvars = [l for l in lines if l.startswith(("seta ", "set "))]
