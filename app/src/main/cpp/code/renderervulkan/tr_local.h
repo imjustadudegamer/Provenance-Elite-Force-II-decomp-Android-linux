@@ -2659,6 +2659,8 @@ void RB_StretchRawDraw( const stretchRaw2DCommand_t *cmd );
 unsigned char *VK_VertexRing_Mapped( void );
 int		VK_VertexRing_ReserveBytes( int bytes, int *byteBaseOut );
 void	VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset );
+void	VK_Draw_BindVertexBuffer( VkCommandBuffer cmd, VkBuffer buffer, VkDeviceSize offset );
+void	VK_Draw_BindIndexBuffer( VkCommandBuffer cmd, VkBuffer buffer );
 void RB_Texcoord2f( float s, float t );
 void RB_Vertex2f( vec_t x, vec_t y );
 void RB_Color4bv( unsigned char *colors );

@@ -1796,20 +1796,20 @@ void VK_BeginShadow( void )
 }
 
 /* ---- the tessellation stream --------------------------------------------- */
-/* the vertex the SPIR-V reads: position, normal, colour, two texcoord pairs */
-typedef struct {
-	float	xyz[4];
-	float	normal[4];
-	byte	color[4];
-	float	st[2][2];
-} vkStreamVertex_t;
+/* vkStreamVertex_t and VK_STREAM_STRIDE are published by tr_vbo.h: the static
+   arena holds exactly the bytes VK_Stream_Pack writes here. */
 
 /* the census that names a draw whose own vertices cover half the frame; it is
    defined below the shade state it reports and called from both tess arms */
 static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
 								   const vkIndex_t *indexes, int numIndexes );
 
-#define VK_STREAM_STRIDE ( (int)sizeof( vkStreamVertex_t ) )
+/* When the draw reads its vertexes from the static arena instead of the tess
+   arrays, the census must read them there too.  Non-NULL only for the duration
+   of one static draw call; the arrays below name the batch's items. */
+static const float			*s_fpStageFloats;
+static const vkStaticItemView_t	*s_fpItems;
+static int					s_fpItemCount;
 
 static void VK_Stream_Pack( vkStreamVertex_t *out, const shaderCommands_t *input, int v,
 							const float *tc0, const float *tc1, int tcStrideFloats,
@@ -1850,12 +1850,6 @@ static void VK_Stream_Pack( vkStreamVertex_t *out, const shaderCommands_t *input
 	}
 }
 
-void RB_VboStaticReset( void ) { }
-void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx )
-{
-	(void)surf; (void)vertStart; (void)numVerts; (void)idxStart; (void)numIdx;
-}
-void RB_VboStaticForget( void ) { }
 void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
 							  int *normalized, const void **pointer )
 {
@@ -1867,9 +1861,77 @@ void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
 	if ( pointer ) { *pointer = NULL; }
 }
 
-void RB_VBO_Init( void ) { }
-void RB_VBO_Shutdown( void ) { }
-void RB_VBO_BeginFrame( void ) { }
+/* ---- the static arena's draw arm ----------------------------------------- */
+/* The reference renderer's static path: a batch whose every surface is already
+   resident in the device-local arena draws its index blocks directly instead of
+   re-packing the tess stream.  The signature is the lightmapped multitexture
+   iterator's own single call, so nothing else can reach it.  Item runs of at
+   least MIN_IBO_RUN draw where they lie; the rest are grouped, in index order. */
+static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
+										const float *texcoord0, const float *texcoord1,
+										int tcStrideFloats, const unsigned char *colors,
+										const float *normals, const void *stage )
+{
+	vkStaticItemView_t	items[VK_STATIC_BATCH_MAX];
+	int					numItems;
+	VkCommandBuffer		cmd;
+
+	/* Not this arm's batch: the streaming path owns it. */
+	if ( !RB_VboStaticArenaBatch() ) {
+		return qfalse;
+	}
+
+	/* From here the batch's tess arrays were never written, so a fallback to
+	   the streaming pack would read another batch's bytes.  An inconsistency is
+	   named and the draw dropped: a missing draw is diagnosable, garbage is not. */
+	if ( input != &tess || stage != NULL ) {
+		VK_Guard_Hit( VK_GSITE_QUIRK, "static batch drawn off the tess command", VK_INCOMPLETE );
+		return qtrue;
+	}
+	if ( colors != (const unsigned char *)tess.constantColor255 ) {
+		VK_Guard_Hit( VK_GSITE_QUIRK, "static batch colour source is not the constant", VK_INCOMPLETE );
+		return qtrue;
+	}
+	if ( tcStrideFloats != 4
+		 || texcoord0 != (const float *)input->texCoords[0][0]
+		 || texcoord1 != (const float *)input->texCoords[0][0] + 2
+		 || normals != input->normal[0] ) {
+		VK_Guard_Hit( VK_GSITE_QUIRK, "static batch texcoord source is not the tess store", VK_INCOMPLETE );
+		return qtrue;
+	}
+	if ( !input->shader || input->shader->needsNormal
+		 || input->currentStageIteratorFunc != RB_StageIteratorLightmappedMultitextureUnfogged ) {
+		VK_Guard_Hit( VK_GSITE_QUIRK, "static batch shader is not the lightmapped signature", VK_INCOMPLETE );
+		return qtrue;
+	}
+
+	numItems = RB_VboStaticBatchItems( items, VK_STATIC_BATCH_MAX );
+	if ( numItems <= 0 ) {
+		VK_Guard_Hit( VK_GSITE_QUIRK, "static batch items do not tile the batch", VK_INCOMPLETE );
+		return qtrue;
+	}
+
+	cmd = VK_Shade_CommandBuffer();
+
+	if ( !VK_Shade_Bind( cmd, input->shader ) ) {
+		/* nothing is bound: recording the draw anyway faults the driver, and
+		   VK_Shade_Bind's rows name the reason */
+		return qtrue;
+	}
+
+	/* the census reads the positions the draw reads: the arena's staging copy */
+	s_fpStageFloats = RB_VboStaticStageFloats();
+	s_fpItems = items;
+	s_fpItemCount = numItems;
+	VK_Shade_FootprintRow( input, stage, input->indexes, input->numIndexes );
+	s_fpStageFloats = NULL;
+	s_fpItems = NULL;
+	s_fpItemCount = 0;
+
+	RB_VboStaticDrawRuns( cmd, input->numIndexes, items, numItems );
+
+	return qtrue;
+}
 
 /* the draw: pack into the ring slice the batch reserves, one indexed draw */
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
@@ -1887,6 +1949,12 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	long long			walkT0;
 
 	if ( !input || input->numVertexes <= 0 || numIndexes <= 0 ) {
+		return;
+	}
+
+	/* the static arena's arm: nothing is packed and no tess array is read */
+	if ( RB_VBO_StaticDrawBatch( input, texcoord0, texcoord1, tcStrideFloats,
+								 colors, normals, stage ) ) {
 		return;
 	}
 
@@ -1940,6 +2008,11 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		memcpy( idx, indexes, numIndexes * sizeof( vkIndex_t ) );
 	}
 	VK_WALK_ADD( walkT0, VK_WP_PACK );
+
+	/* A recorded surface's packed bytes are exactly the arena's, so the bake
+	   copies them out of the ring it just filled and the next frame draws from
+	   the device-local copy instead. */
+	RB_VboStaticBakeFrame( base );
 
 	if ( stage && colors == NULL
 		 && texcoord0 == input->texCoords[0][0]
@@ -3219,6 +3292,27 @@ typedef struct {
 
 static vkFootprintKey_t	s_footprint[VK_FOOTPRINT_KEYS];
 
+/* The position of batch-local vertex vi: the tess arrays for a streamed batch,
+   the static arena's staging copy for an arena batch whose generator never ran. */
+static const float *VK_Shade_FootprintPos( const shaderCommands_t *input, int vi )
+{
+	int		i;
+
+	if ( !s_fpItems ) {
+		return input->xyz[vi];
+	}
+
+	for ( i = 0; i < s_fpItemCount; i++ ) {
+		if ( vi >= s_fpItems[i].vertStart && vi < s_fpItems[i].vertStart + s_fpItems[i].numVerts ) {
+			return s_fpStageFloats
+				   + (size_t)( s_fpItems[i].first + vi - s_fpItems[i].vertStart )
+					 * ( VK_STREAM_STRIDE / (int)sizeof( float ) );
+		}
+	}
+
+	return NULL;
+}
+
 static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
 								   const vkIndex_t *indexes, int numIndexes )
 {
@@ -3319,7 +3413,11 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 					poob = 1;
 					continue;
 				}
-				p = input->xyz[vi];
+				p = VK_Shade_FootprintPos( input, vi );
+				if ( !p ) {
+					poob = 1;
+					continue;
+				}
 				cw = pj[3] * p[0] + pj[7] * p[1] + pj[11] * p[2] + pj[15];
 				if ( cw < 1e-6f && cw > -1e-6f ) {
 					continue;
@@ -3372,7 +3470,15 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 				inside = -1;
 				continue;
 			}
-			vert[v] = input->xyz[vi];
+			vert[v] = VK_Shade_FootprintPos( input, vi );
+			if ( !vert[v] ) {
+				oob++;
+				if ( vi > oobMax ) {
+					oobMax = vi;
+				}
+				inside = -1;
+				continue;
+			}
 		}
 		if ( inside == -1 ) {
 			continue;

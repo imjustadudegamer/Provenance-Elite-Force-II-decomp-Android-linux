@@ -948,6 +948,29 @@ void VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, i
 	qvk.CmdDrawIndexed( cmd, (uint32_t)indexCount, 1, (uint32_t)firstIndex, (int32_t)vertexBase, 0 );
 }
 
+/* The static arena's own binds.  Both keep the index elision cache honest: a
+   buffer bound here is what the next ring bind must compare against. */
+void VK_Draw_BindVertexBuffer( VkCommandBuffer cmd, VkBuffer buffer, VkDeviceSize offset )
+{
+	VkDeviceSize	offsets[1];
+
+	offsets[0] = offset;
+	qvk.CmdBindVertexBuffers( cmd, 0, 1, &buffer, offsets );
+}
+
+void VK_Draw_BindIndexBuffer( VkCommandBuffer cmd, VkBuffer buffer )
+{
+	int		slot = RB_FrameSmpFrame();
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		slot = 0;
+	}
+
+	qvk.CmdBindIndexBuffer( cmd, buffer, 0, VK_INDEX_TYPE_UINT32 );
+	s_indexBound[slot] = buffer;
+	s_indexBoundFrame[slot] = RB_FrameCount();
+}
+
 void VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex )
 {
 	qvk.CmdDraw( cmd, (uint32_t)vertexCount, 1, (uint32_t)firstVertex, 0 );

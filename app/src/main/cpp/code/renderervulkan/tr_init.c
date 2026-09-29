@@ -32,6 +32,7 @@ root, for more details.
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
+#include "tr_vbo.h"
 
 cvar_t* r_ignore;
 cvar_t* r_jobs;
@@ -476,6 +477,9 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 	   descriptor the in-flight frames are still reading.  GL got away with it by
 	   deferring the frees; retire the frames first. */
 	VK_Frame_WaitIdle();
+
+	/* Frees the surface pointers the static arena's residency keys on. */
+	RB_VboStaticForget();
 
 	*glconfig = vkConfig;
 
