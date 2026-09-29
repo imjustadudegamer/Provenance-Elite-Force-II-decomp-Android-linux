@@ -1585,4 +1585,5 @@ renderervulkan/tr_vbo.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.
 renderervulkan/tr_vbo_imm.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/tr_world.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_shade.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_vbo.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_shaders_embedded3d.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000

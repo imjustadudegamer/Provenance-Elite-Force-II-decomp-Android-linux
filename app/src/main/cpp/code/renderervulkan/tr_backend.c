@@ -291,6 +291,7 @@ void RB_FrameOpen( int slot )
 {
 	VK_VertexRing_SetFrame( slot );	/* the ring this frame fills */
 	VK_VertexRing_ResetFrame();
+	RB_VBO_BeginFrame();
 	VK_Shade_NewFrame();
 	s_rbSlot = -1;
 
@@ -958,7 +959,11 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			long long walkT0 = VK_WALK_T0();
 			long long walkNest0 = VK_WALK_NEST0();
 
-			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			/* the static arena's arm: a resident world surface advances the
+			   counters its generator would have, without generating */
+			if ( !RB_VboStaticTrySurface( drawSurf->surface, *drawSurf->surface ) ) {
+				rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			}
 			VK_WALK_ADD_NET( walkT0, walkNest0, VK_WP_GEN );
 			continue;
 		}
@@ -1098,7 +1103,9 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			long long walkT0 = VK_WALK_T0();
 			long long walkNest0 = VK_WALK_NEST0();
 
-			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			if ( !RB_VboStaticTrySurface( drawSurf->surface, *drawSurf->surface ) ) {
+				rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			}
 			VK_WALK_ADD_NET( walkT0, walkNest0, VK_WP_GEN );
 		}
 	}

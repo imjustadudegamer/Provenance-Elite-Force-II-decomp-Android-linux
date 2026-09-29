@@ -48,9 +48,18 @@ static inline void JobPool_SplitWorkersRule( int coreCount, int isAndroid,
 		total = JOBPOOL_MAX_WORKERS;
 	}
 
-	/* the renderer's pool takes the larger half so a load's decode keeps the
-	   cores it needs; the client's pool takes the rest */
-	crit = ( total + 1 ) / 2;
+	/* the renderer's pool takes the larger half so the walk's parallel ranges
+	   keep the cores they need; the client's pool takes the rest.  An even
+	   headroom halves exactly, so the renderer takes one more there: it is the
+	   pool the frame blocks on, and the client's loads run between frames.  On
+	   the smallest machines the two stay equal so a load is not starved. */
+	crit = total - total / 2;
+	if ( total >= 4 && ( total & 1 ) == 0 ) {
+		crit++;
+	}
+	if ( crit > total ) {
+		crit = total;
+	}
 
 	share = critical ? crit : ( total - crit );
 

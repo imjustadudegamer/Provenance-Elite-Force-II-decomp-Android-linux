@@ -33,6 +33,7 @@ root, for more details.
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "vk_firstlight.h"
 #include "vk_local.h"
+#include "tr_vbo.h"
 
 static vkHomePathFn_t vk_homePathFn = NULL;
 static int vk_firstLightState = 0;
@@ -167,6 +168,13 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 			return qfalse;
 		}
 
+		if ( !RB_VBO_Init() ) {
+			VK_FirstLightRow( "fail", "stage=vbo" );
+			VK_Sentinel_Clear();
+			VK_BringDown();
+			return qfalse;
+		}
+
 		if ( !VK_Pipeline_Init() ) {
 			VK_FirstLightRow( "fail", "stage=pipeline" );
 			VK_Sentinel_Clear();
@@ -214,6 +222,7 @@ void VK_BringDown( void )
 	VK_Shade_Descriptors_Shutdown();
 	VK_Texture_Shutdown();
 	VK_Pipeline_Shutdown();
+	RB_VBO_Shutdown();
 	VK_Vertex_Shutdown();
 	VK_Descriptor_Shutdown();
 	VK_Frame_Shutdown();

@@ -57,6 +57,7 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/tr_swipe.cpp
     ${SOURCE_DIR}/renderervulkan/tr_ghost.cpp
     ${SOURCE_DIR}/renderervulkan/vk_shade.c
+    ${SOURCE_DIR}/renderervulkan/vk_vbo.c
     ${SOURCE_DIR}/renderervulkan/vk_m3_surface.c
     ${SOURCE_DIR}/renderervulkan/tr_util.cpp
     # the Vulkan substrate
