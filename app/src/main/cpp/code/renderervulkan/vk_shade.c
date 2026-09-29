@@ -1951,6 +1951,33 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 	return qtrue;
 }
 
+/* The pack, as a JobPool range.  Order is preserved by construction: every
+   element reads and writes only its own index, so which worker runs which chunk
+   cannot move a byte.  The control docs/controls/jobwalk drives both forms over
+   many shapes and compares them byte for byte. */
+#define VK_PACK_CHUNK	256
+
+typedef struct {
+	vkStreamVertex_t		*verts;
+	const shaderCommands_t	*input;
+	const float				*tc0;
+	const float				*tc1;
+	int						 tcStride;
+	const unsigned char		*colors;
+	const float				*normals;
+} vkPackCtx_t;
+
+static void VK_Stream_PackRange( void *vctx, int begin, int end )
+{
+	const vkPackCtx_t	*c = (const vkPackCtx_t *)vctx;
+	int					 i;
+
+	for ( i = begin; i < end; i++ ) {
+		VK_Stream_Pack( &c->verts[i], c->input, i, c->tc0, c->tc1, c->tcStride,
+						c->colors, c->normals );
+	}
+}
+
 /* the draw: pack into the ring slice the batch reserves, one indexed draw */
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const vkIndex_t *indexes, int numIndexes,
@@ -1962,7 +1989,6 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	vkStreamVertex_t	*verts;
 	vkIndex_t			*idx;
 	int					base = 0, indexBase = 0;
-	int					i;
 	VkCommandBuffer		cmd;
 	long long			walkT0;
 
@@ -2013,8 +2039,28 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		return;
 	}
 	verts = ( vkStreamVertex_t * )( ( byte * )VK_VertexRing_Mapped() + base );
-	for ( i = 0; i < input->numVertexes; i++ ) {
-		VK_Stream_Pack( &verts[i], input, i, texcoord0, texcoord1, tcStrideFloats, colors, normals );
+	{
+		/* The one walk loop that is data-parallel by construction, and the
+		   JobPool contract (q_jobs.h) fits it element for element: the range is
+		   final before the batch is kicked (the ring slice is already reserved),
+		   vertex i is a pure function of i and the immutable sources, no two
+		   chunks write the same byte (each i writes its own stride-sized slot),
+		   the body calls nothing banned, and every element's expression order is
+		   unchanged -- so the parallel bytes are the sequential bytes, which is
+		   what the arena's bake and the ring's stream-store both then compare
+		   against.  Below VK_PACK_CHUNK vertices the pool runs it inline, so a
+		   small surface pays nothing for the dispatch. */
+		vkPackCtx_t		packCtx;
+
+		packCtx.verts      = verts;
+		packCtx.input      = input;
+		packCtx.tc0        = texcoord0;
+		packCtx.tc1        = texcoord1;
+		packCtx.tcStride   = tcStrideFloats;
+		packCtx.colors     = colors;
+		packCtx.normals    = normals;
+
+		JobPool_ParallelRange( input->numVertexes, VK_PACK_CHUNK, VK_Stream_PackRange, &packCtx );
 	}
 	if ( indexes ) {
 		idx = VK_VertexRing_ReserveIndexes( numIndexes, &indexBase );
