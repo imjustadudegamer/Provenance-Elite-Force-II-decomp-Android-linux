@@ -1707,6 +1707,11 @@ void RB_2D_ShaderTime( float startTime );
 
 /* Drops the recorded window/scissor coalescing state. */
 void R_Invalidate2DWindowCache( void );
+/* The widget's placement inside the pass's screen-space 2D window: the UI says
+   where the widget is and the renderer adds it to the 2D vertices, the way
+   retail's screen-space glVertex2f stream already carries it. */
+void Set2DOrigin( float x, float y );
+
 void RB_2D_Flush( void );
 /* The immediate (box and line) run alone, which a window change still closes. */
 void RB_2D_FlushImmediate( void );
@@ -2313,6 +2318,17 @@ typedef struct {
 	int			x, y, width, height;
 } scissor2DCommand_t;
 
+/* The widget's placement inside the pass's one screen-space 2D window.  Retail
+   keeps glViewport/glOrtho constant for every widget and puts the placement in
+   the vertices (retail-menu-solomatch-final.trace calls 10103-10124:
+   glViewport(0,0,640,480), glOrtho(0,640,480,0,-1,1), glVertex2f in screen space
+   clipped by glScissor), so this record carries the offset the 2D vertex writers
+   add, and the per-widget ortho is gone. */
+typedef struct {
+	int			commandId;
+	float		x, y;
+} origin2DCommand_t;
+
 typedef struct {
 	int			commandId;
 	float		startTime;
@@ -2357,6 +2373,7 @@ typedef enum {
 	RC_2D_LINE_LOOP,
 	RC_2D_SET_WINDOW,
 	RC_2D_SCISSOR,
+	RC_2D_ORIGIN,
 	RC_2D_FONT_STRING,
 	RC_2D_SHADER_TIME,
 	RC_2D_STRETCH_RAW,
@@ -2871,6 +2888,8 @@ void     VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescri
 						  uint32_t dynamicOffset, uint32_t dynamicCount );
 qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler sampler );
 extern	 int	vk_2dWindow[4];		/* x y w h of the 2D window in force */
+extern	 float	vk_2dOrigin[2];	/* the widget's placement in that window */
+void     VK_Draw_Set2DOrigin( float x, float y );
 extern	 int	vk_2dScissor[4];	/* x y w h of the 2D scissor in force */
 void     VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 						float left, float right, float bottom, float top, float n, float f );

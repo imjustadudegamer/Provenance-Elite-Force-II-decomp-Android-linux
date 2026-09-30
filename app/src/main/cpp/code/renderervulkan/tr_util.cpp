@@ -118,6 +118,14 @@ void RB_Vertex3fv(vec3_t v)
 
 void RB_Vertex3f(vec_t x, vec_t y, vec_t z)
 {
+    /* The 2D pass draws in the widget's own coordinates and its placement rides
+       on the vertices, as retail's screen-space glVertex2f stream does; the 3D
+       pass is untouched because backEnd.in2D is false there. */
+    if ( backEnd.in2D ) {
+        x += vk_2dOrigin[0];
+        y += vk_2dOrigin[1];
+    }
+
     tess.xyz[tess.numVertexes][0] = x;
     tess.xyz[tess.numVertexes][1] = y;
     tess.xyz[tess.numVertexes][2] = z;

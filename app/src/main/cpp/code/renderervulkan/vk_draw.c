@@ -707,6 +707,17 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 int	vk_2dWindow[4]   = { 0, 0, 0, 0 };
 int	vk_2dScissor[4]  = { 0, 0, 0, 0 };
 
+/* The widget's placement in the 2D window: the window defines the pass's whole
+   space (retail's constant glViewport/glOrtho), so setting one drops the
+   placement, and the widget records its own right after. */
+float	vk_2dOrigin[2]   = { 0.0f, 0.0f };
+
+void VK_Draw_Set2DOrigin( float x, float y )
+{
+	vk_2dOrigin[0] = x;
+	vk_2dOrigin[1] = y;
+}
+
 void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 					float left, float right, float bottom, float top, float n, float f )
 {
@@ -716,6 +727,10 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 
 	vk_2dWindow[0] = x; vk_2dWindow[1] = y; vk_2dWindow[2] = w; vk_2dWindow[3] = h;
 	vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = w; vk_2dScissor[3] = h;
+
+	/* a window defines the space; the widget that asked for it places itself */
+	vk_2dOrigin[0] = 0.0f;
+	vk_2dOrigin[1] = 0.0f;
 
 	rl = right - left;
 	tb = top - bottom;

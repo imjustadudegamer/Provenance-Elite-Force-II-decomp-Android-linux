@@ -131,6 +131,13 @@ void RB_Vertex3fv(vec3_t v)
 
 void RB_Vertex3f(vec_t x, vec_t y, vec_t z)
 {
+    /* the 2D placement rides on the vertices, as retail's screen-space
+       glVertex2f stream carries it; the 3D pass is untouched */
+    if ( backEnd.in2D ) {
+        x += gles3_2dOrigin[0];
+        y += gles3_2dOrigin[1];
+    }
+
     tess.xyz[tess.numVertexes][0] = x;
     tess.xyz[tess.numVertexes][1] = y;
     tess.xyz[tess.numVertexes][2] = z;

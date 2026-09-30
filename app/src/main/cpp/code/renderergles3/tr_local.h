@@ -1649,6 +1649,9 @@ void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t 
 void RB_2D_Box( float x, float y, float w, float h, qboolean blend );
 void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int stipple_mask );
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f );
+/* The widget's placement in that window: the twin carries it in the vertices too. */
+void Set2DOrigin( float x, float y );
+extern float gles3_2dOrigin[2];
 void RB_2D_Scissor( int x, int y, int width, int height );
 void RB_2D_ShaderTime( float startTime );
 
@@ -2240,6 +2243,13 @@ typedef struct {
 	int			x, y, width, height;
 } scissor2DCommand_t;
 
+/* The widget's placement inside the pass's one screen-space 2D window (retail's
+   constant glViewport/glOrtho with the position in the vertices). */
+typedef struct {
+	int			commandId;
+	float		x, y;
+} origin2DCommand_t;
+
 typedef struct {
 	int			commandId;
 	float		startTime;
@@ -2284,6 +2294,7 @@ typedef enum {
 	RC_2D_LINE_LOOP,
 	RC_2D_SET_WINDOW,
 	RC_2D_SCISSOR,
+	RC_2D_ORIGIN,
 	RC_2D_FONT_STRING,
 	RC_2D_SHADER_TIME
 } renderCommand_t;

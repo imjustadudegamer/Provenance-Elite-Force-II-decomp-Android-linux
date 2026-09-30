@@ -1006,6 +1006,7 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp )
 
 	re.SetColor = Draw_SetColor;
 	re.Set2DWindow = Set2DWindow;
+	re.Set2DOrigin = Set2DOrigin;
 	re.DrawStretchPic = Draw_StretchPic;
 	re.DrawTilePic = Draw_TilePic;
 	re.DrawTilePicOffset = Draw_TilePicOffset;
