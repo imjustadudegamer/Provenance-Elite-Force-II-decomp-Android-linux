@@ -406,6 +406,16 @@ void ProjectDlightTexture( void ) {
 	}
 }
 
+/* The 2D draw colour is the quad's own.  Every 2D quad carries the colour in
+   force at its append (RB_Color4bv(backEnd.color2D) in tr_draw.c's
+   RB_2D_StretchPic and friends), and a 2D batch now spans many widgets
+   (tr_draw.c RB_2D_Span*), so the two generators that read the draw colour have
+   to read it from the quad being drawn rather than from whatever the walk's
+   last Draw_SetColor left in backEnd.color2D.  In the old sequencing a batch
+   was one widget, so the two were the same value; this keeps them the same
+   value now, and is what the missing and mis-tinted menu 2D was. */
+static qboolean s_2DColorFromVertex;
+
 static void ComputeColors( shaderStage_t *pStage )
 {
 	int		i;
@@ -603,7 +613,19 @@ static void ComputeColors( shaderStage_t *pStage )
 			RB_CalcColorFromConstant((unsigned char*)tess.svars.colors, pStage->colorConst);
 			break;
 		case CGEN_GLOBAL_COLOR:
-			RB_CalcColorFromConstant((unsigned char*)tess.svars.colors, backEnd.color2D);
+			if ( s_2DColorFromVertex ) {
+				/* RB_CalcColorFromConstant writes all four channels, so this does
+				   too: an alpha gen that leaves the alpha alone must still land on
+				   the quad's own alpha, not on whatever the array held. */
+				for ( i = 0; i < tess.numVertexes; i++ ) {
+					tess.svars.colors[i][0] = tess.vertexColors[i][0];
+					tess.svars.colors[i][1] = tess.vertexColors[i][1];
+					tess.svars.colors[i][2] = tess.vertexColors[i][2];
+					tess.svars.colors[i][3] = tess.vertexColors[i][3];
+				}
+			} else {
+				RB_CalcColorFromConstant((unsigned char*)tess.svars.colors, backEnd.color2D);
+			}
 			break;
 		case CGEN_SCOORD:
 			RB_CalcRGBFromTexCoords(
@@ -733,7 +755,13 @@ static void ComputeColors( shaderStage_t *pStage )
 		RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, pStage->colorConst[3]);
 		break;
 	case AGEN_GLOBAL_ALPHA:
-		RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, backEnd.color2D[3]);
+		if ( s_2DColorFromVertex ) {
+			for ( i = 0; i < tess.numVertexes; i++ ) {
+				tess.svars.colors[i][3] = tess.vertexColors[i][3];
+			}
+		} else {
+			RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, backEnd.color2D[3]);
+		}
 		break;
 	case AGEN_SKYALPHA:
 		RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, tr.refdef.sky_alpha * 255.0);
@@ -1164,7 +1192,11 @@ qboolean VK_StageResolve2DColor( shaderStage_t *pStage )
 		return qfalse;
 	}
 
+	/* The global-colour and global-alpha generators take the quad's own colour
+	   here: see the note on s_2DColorFromVertex. */
+	s_2DColorFromVertex = qtrue;
 	ComputeColors( pStage );
+	s_2DColorFromVertex = qfalse;
 
 	if ( VK_StageNeedsCPUTexCoords( pStage ) ) {
 		ComputeTexCoords( pStage );

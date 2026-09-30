@@ -209,11 +209,61 @@ static void harnessCmdCopyBuffer( VkCommandBuffer cmd, VkBuffer src, VkBuffer ds
 	}
 }
 
+/* The arena bake's copies now go into a transfer command buffer of their own
+   (a buffer copy may not be recorded inside a render pass), so the harness has
+   to own that buffer too: these stubs say "the frame's transfer buffer exists
+   and is where the copies land", which is what the bake's own checks read. */
+static VkCommandBuffer	harnessXferCmd = ( VkCommandBuffer )&harnessCopyCount;
+static int				harnessXferOpen;
+
+VkResult VK_Pool_AllocBuffers( VkDevice device, const VkCommandBufferAllocateInfo *info,
+							   VkCommandBuffer *out )
+{
+	( void )device; ( void )info;
+	*out = harnessXferCmd;
+	return VK_SUCCESS;
+}
+
+static VkResult harnessBeginCommandBuffer( VkCommandBuffer cmd, const VkCommandBufferBeginInfo *info )
+{
+	( void )cmd; ( void )info;
+	harnessXferOpen = 1;
+	return VK_SUCCESS;
+}
+
+static VkResult harnessEndCommandBuffer( VkCommandBuffer cmd )
+{
+	( void )cmd;
+	harnessXferOpen = 0;
+	return VK_SUCCESS;
+}
+
+static VkResult harnessResetCommandBuffer( VkCommandBuffer cmd, VkCommandBufferResetFlags flags )
+{
+	( void )cmd; ( void )flags;
+	return VK_SUCCESS;
+}
+
+static void harnessCmdPipelineBarrier( VkCommandBuffer cmd, VkPipelineStageFlags src,
+									   VkPipelineStageFlags dst, VkDependencyFlags flags,
+									   uint32_t memCount, const VkMemoryBarrier *mem,
+									   uint32_t bufCount, const VkBufferMemoryBarrier *bufs,
+									   uint32_t imgCount, const VkImageMemoryBarrier *imgs )
+{
+	( void )cmd; ( void )src; ( void )dst; ( void )flags;
+	( void )memCount; ( void )mem; ( void )bufCount; ( void )bufs;
+	( void )imgCount; ( void )imgs;
+}
+
 void VK_Harness_InstallProcs( void )
 {
 	qvk.MapMemory = harnessMapMemory;
 	qvk.UnmapMemory = harnessUnmapMemory;
 	qvk.CmdCopyBuffer = harnessCmdCopyBuffer;
+	qvk.BeginCommandBuffer = harnessBeginCommandBuffer;
+	qvk.EndCommandBuffer = harnessEndCommandBuffer;
+	qvk.ResetCommandBuffer = harnessResetCommandBuffer;
+	qvk.CmdPipelineBarrier = harnessCmdPipelineBarrier;
 }
 
 /* the engine's surface batch boundary.  RB_EndSurface is where an arena batch

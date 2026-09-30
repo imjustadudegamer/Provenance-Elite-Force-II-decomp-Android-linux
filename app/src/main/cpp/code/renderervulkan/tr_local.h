@@ -1703,13 +1703,21 @@ void RB_2D_TilePicOffset( shader_t *shader, float x, float y, float w, float h, 
 void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t vTexCoords[3] );
 void RB_2D_Box( float x, float y, float w, float h, qboolean blend );
 void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int stipple_mask );
-void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f );
-void RB_2D_Scissor( int x, int y, int width, int height );
 void RB_2D_ShaderTime( float startTime );
 
 /* Drops the recorded window/scissor coalescing state. */
 void R_Invalidate2DWindowCache( void );
 void RB_2D_Flush( void );
+/* The immediate (box and line) run alone, which a window change still closes. */
+void RB_2D_FlushImmediate( void );
+/* The batch's state spans: a window or scissor change inside a batch is a span
+   rather than a flush.  RB_2D_SpanBreak runs before the new state is applied,
+   RB_2D_SpanNote after, and a qfalse from either means the caller flushes. */
+void RB_2D_SpanReset( void );
+int  RB_2D_SpanCount( void );
+void RB_2D_SpanGet( int i, int *firstIndex, int *count, float *ortho, int *win, int *scn );
+qboolean RB_2D_SpanBreak( void );
+qboolean RB_2D_SpanNote( void );
 void D2_StringBegin( int *t0 );
 void D2_StringEnd( int t0 );
 /* Draws the batch and drops the census before a purge frees the names they hold. */
@@ -2867,6 +2875,11 @@ extern	 int	vk_2dScissor[4];	/* x y w h of the 2D scissor in force */
 void     VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 						float left, float right, float bottom, float top, float n, float f );
 void     VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int height );
+/* The 2D state in force, and its re-application: a batch that spans a window or
+   scissor change draws once per span, each with the state its quads were
+   authored under (tr_draw.c RB_2D_Span*). */
+qboolean VK_Draw_2DStateGet( float *ortho, int *win, int *scn );
+void     VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *win, const int *scn );
 void     VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits );
 void     VK_Draw_DisableScissor( VkCommandBuffer cmd );
 void     VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase );
@@ -2877,6 +2890,11 @@ void     VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h );
 void     VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
 							   float minDepth, float maxDepth );
 int      VK_Draw_TopY( int y, int h );
+
+/* The arena bake's copies: a command buffer of their own, submitted ahead of the
+   frame's (a buffer copy may not be recorded inside a render pass), or
+   VK_NULL_HANDLE when the walk baked nothing. */
+VkCommandBuffer VK_VboStaticXferClose( int slot );
 
 /* ---- textures ------------------------------------------------------------ */
 
@@ -2904,7 +2922,7 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
 qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes );
 qboolean VK_Texture_Publish( int handle );
-qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] );
+qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked );
 void     VK_Texture_MakeMips( int handle );
 void     VK_Texture_Destroy( int handle );
 VkImageView VK_Texture_View( int handle );

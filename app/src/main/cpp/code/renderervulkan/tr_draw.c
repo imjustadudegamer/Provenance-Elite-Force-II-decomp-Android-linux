@@ -197,6 +197,138 @@ static int       s_2dTriBase;
 
 #define RB_2D_TRI_BOX_MAX 256
 
+/* ---- the 2D batch's spans ------------------------------------------------ */
+
+/* A widget sets its own window (and often its own scissor) before it draws, so
+   a menu's 2D run is a window change every few quads.  Ending the surface at
+   each one re-did the stage pass for a handful of vertices: pipeline lookup,
+   texture and descriptor bind, uniform ring slice, index copy, draw.  None of
+   that is what changed -- only the ortho push constant and the viewport and
+   scissor, which are dynamic state -- so the batch now keeps one span per state
+   and the draw re-applies each span's copy before the span's own indexed draw.
+   The quads, their order and their clip rects are unchanged; what goes away is
+   the surface work per widget.
+
+   Each span is (firstIndex, ortho, window rect, scissor rect).  Span i draws
+   the indexes [first[i], first[i+1]) of the batch's index range, and the last
+   span runs to the batch's end.  Under two spans the batch draws exactly as it
+   did before: one draw, with the state already in the command buffer. */
+#define RB_2D_SPAN_MAX	256
+
+static float	s_2dSpanOrtho[RB_2D_SPAN_MAX][16];
+static int		s_2dSpanWin[RB_2D_SPAN_MAX][4];
+static int		s_2dSpanScn[RB_2D_SPAN_MAX][4];
+static int		s_2dSpanFirst[RB_2D_SPAN_MAX];
+static int		s_2dSpanCount;
+
+void RB_2D_SpanReset( void ) {
+	s_2dSpanCount = 0;
+}
+
+int RB_2D_SpanCount( void ) {
+	return s_2dSpanCount;
+}
+
+/* A span's index range and the state its quads were authored under.  count is 0
+   for a span that got no quads, which the draw skips. */
+void RB_2D_SpanGet( int i, int *firstIndex, int *count, float *ortho, int *win, int *scn ) {
+	int	end;
+
+	if ( i < 0 || i >= s_2dSpanCount ) {
+		*firstIndex = 0; *count = 0;
+		return;
+	}
+
+	end = ( i + 1 < s_2dSpanCount ) ? s_2dSpanFirst[i + 1] : tess.numIndexes;
+	*firstIndex = s_2dSpanFirst[i];
+	*count = end - s_2dSpanFirst[i];
+	memcpy( ortho, s_2dSpanOrtho[i], sizeof( s_2dSpanOrtho[i] ) );
+	memcpy( win, s_2dSpanWin[i], sizeof( s_2dSpanWin[i] ) );
+	memcpy( scn, s_2dSpanScn[i], sizeof( s_2dSpanScn[i] ) );
+}
+
+/* The walk is about to apply a new 2D state with the batch still open: the
+   quads already queued were authored under the state in force, which closes as
+   a span.  qfalse means the split cannot be represented -- no window has been
+   set, so the state those quads carry cannot be named, or the table is full --
+   and the caller flushes the batch instead, which is what every window change
+   did before. */
+qboolean RB_2D_SpanBreak( void ) {
+	if ( !s_2dBatchOpen || tess.numIndexes == 0 ) {
+		return qtrue;			/* nothing queued under the old state */
+	}
+	if ( s_2dSpanCount + 2 > RB_2D_SPAN_MAX ) {
+		return qfalse;
+	}
+	if ( s_2dSpanCount == 0 ) {
+		if ( !VK_Draw_2DStateGet( s_2dSpanOrtho[0], s_2dSpanWin[0], s_2dSpanScn[0] ) ) {
+			return qfalse;
+		}
+		s_2dSpanFirst[0] = 0;
+		s_2dSpanCount = 1;
+	}
+	return qtrue;
+}
+
+/* After the new state is applied: the quads that follow belong to it.  The
+   state is always nameable here -- VK_Draw_Set2D and VK_Draw_SetScissor both
+   set it -- and RB_2D_SpanBreak reserved the room, so this does not fail. */
+qboolean RB_2D_SpanNote( void ) {
+	float	ortho[16];
+	int		win[4], scn[4];
+
+	if ( !s_2dBatchOpen ) {
+		return qtrue;
+	}
+	if ( s_2dSpanCount >= RB_2D_SPAN_MAX
+		 || !VK_Draw_2DStateGet( ortho, win, scn ) ) {
+		VK_Guard_Row( "VK:span", "site=note detail=\"no room or no state\" n=%d idx=%d",
+					  s_2dSpanCount, tess.numIndexes );
+		s_2dSpanCount = 0;
+		return qfalse;
+	}
+
+	if ( s_2dSpanCount > 0 && s_2dSpanFirst[s_2dSpanCount - 1] == tess.numIndexes ) {
+		s_2dSpanCount--;		/* that segment got no quads: this replaces it */
+	}
+
+	s_2dSpanFirst[s_2dSpanCount] = tess.numIndexes;
+	memcpy( s_2dSpanOrtho[s_2dSpanCount], ortho, sizeof( ortho ) );
+	memcpy( s_2dSpanWin[s_2dSpanCount], win, sizeof( win ) );
+	memcpy( s_2dSpanScn[s_2dSpanCount], scn, sizeof( scn ) );
+	s_2dSpanCount++;
+	return qtrue;
+}
+
+/* The immediate run of boxes and lines: its vertices carry no span of their
+   own, so a window change still closes it, as it always did. */
+void RB_2D_FlushImmediate( void ) {
+	if ( s_2dTriOpen ) {
+		int	got;
+
+/* the reference renderer's tr_draw.c carries this note in full */
+		RB_ImmEndDeferred();
+		s_2dTriOpen  = qfalse;
+		s_2dTriBlend = -1;
+		s_d2Batches++;
+
+		got = RB_ImmStreamVerts() - s_2dTriBase;
+		if ( got != s_2dTriVerts ) {
+			static int	s_rows;
+
+			s_d2Drops += s_2dTriVerts - got;
+			s_rows++;
+			if ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) {
+				ri.Printf( PRINT_ALL, "[2D:drop] box lost=%d asked=%d got=%d f=%d\n",
+						   s_2dTriVerts - got, s_2dTriVerts, got, RB_FrameCount() );
+			}
+		}
+		s_d2VertsDrawn += got;
+		RB_ImmFlush();
+		/* Same: the pipeline bind and the draw returned their own result. */
+	}
+}
+
 void RB_2D_Flush( void ) {
 	if ( s_2dBatchOpen ) {
 		int	verts;
@@ -224,31 +356,9 @@ void RB_2D_Flush( void ) {
 
 		RB_EndSurface();
 		/* The tess path reports its own VkResult at the call site; nothing polls here. */
+		RB_2D_SpanReset();
 	}
-	if ( s_2dTriOpen ) {
-		int	got;
-
-/* the reference renderer's tr_draw.c carries this note in full */
-		RB_ImmEndDeferred();
-		s_2dTriOpen  = qfalse;
-		s_2dTriBlend = -1;
-		s_d2Batches++;
-
-		got = RB_ImmStreamVerts() - s_2dTriBase;
-		if ( got != s_2dTriVerts ) {
-			static int	s_rows;
-
-			s_d2Drops += s_2dTriVerts - got;
-			s_rows++;
-			if ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) {
-				ri.Printf( PRINT_ALL, "[2D:drop] box lost=%d asked=%d got=%d f=%d\n",
-						   s_2dTriVerts - got, s_2dTriVerts, got, RB_FrameCount() );
-			}
-		}
-		s_d2VertsDrawn += got;
-		RB_ImmFlush();
-		/* Same: the pipeline bind and the draw returned their own result. */
-	}
+	RB_2D_FlushImmediate();
 }
 
 /* the reference renderer's tr_draw.c carries this note in full */
@@ -501,67 +611,13 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
 	}
 }
 
-void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {
-	/* The tuple is in force: pushing the window again would split the batch. */
-	if ( r_window2DValid && r_scissor2DValid &&
-		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&
-		 r_window2DOrtho[0] == left && r_window2DOrtho[1] == right && r_window2DOrtho[2] == bottom &&
-		 r_window2DOrtho[3] == top && r_window2DOrtho[4] == n && r_window2DOrtho[5] == f &&
-		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == w && r_scissor2D[3] == h ) {
-		return;
-	}
-
-	RB_2D_Flush();
-
-	/* The window is recorded, not issued: the record carries viewport, scissor, ortho. */
-	{
-		setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
-
-		if ( cmd ) {
-			cmd->commandId = RC_2D_SET_WINDOW;
-			cmd->x = x; cmd->y = y; cmd->w = w; cmd->h = h;
-			cmd->left = left; cmd->right = right; cmd->bottom = bottom; cmd->top = top;
-			cmd->n = n; cmd->f = f;
-		}
-	}
-
-	r_window2DValid = qtrue;
-	r_window2D[0] = x; r_window2D[1] = y; r_window2D[2] = w; r_window2D[3] = h;
-	r_window2DOrtho[0] = left; r_window2DOrtho[1] = right; r_window2DOrtho[2] = bottom;
-	r_window2DOrtho[3] = top; r_window2DOrtho[4] = n; r_window2DOrtho[5] = f;
-	r_scissor2DValid = qtrue;
-	r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = w; r_scissor2D[3] = h;
-
-	if (!backEnd.in2D)
-	{
-		backEnd.refdefTime = ri.Milliseconds();
-		backEnd.in2D = qtrue;
-		backEnd.refdefFloatTime = backEnd.refdefTime / 1000.0;
-		backEnd.shaderStartTime = 0;
-	}
-}
-
-void RB_2D_Scissor( int x, int y, int width, int height ) {
-	if ( r_scissor2DValid &&
-		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == width && r_scissor2D[3] == height ) {
-		return;
-	}
-
-	RB_2D_Flush();
-
-	/* Recorded like the window: the walk makes it vkCmdSetScissor, top-left origin. */
-	{
-		scissor2DCommand_t *cmd = ( scissor2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
-
-		if ( cmd ) {
-			cmd->commandId = RC_2D_SCISSOR;
-			cmd->x = x; cmd->y = y; cmd->width = width; cmd->height = height;
-		}
-	}
-
-	r_scissor2DValid = qtrue;
-	r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = width; r_scissor2D[3] = height;
-}
+/* RB_2D_SetWindow and RB_2D_Scissor used to live here.  They were the walk's
+   names, but the walk reaches the window and the scissor through the
+   RC_2D_SET_WINDOW and RC_2D_SCISSOR cases in tr_cmds.c, so nothing in this
+   lane ever called them: they were dead.  What they did do was flush the 2D
+   batch from whatever thread called them, which is the front end's, and that
+   is the walk's tess store -- a latent cross-thread touch of the batch state.
+   Set2DWindow and RE_Scissor below are the live recorders. */
 
 void RB_2D_ShaderTime( float startTime ) {
 	if (backEnd.in2D)

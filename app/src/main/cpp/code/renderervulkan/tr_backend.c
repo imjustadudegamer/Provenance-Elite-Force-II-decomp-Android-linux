@@ -76,6 +76,42 @@ void RB_InitBackend( void )
 /* the tessellation store lives in tr_shade.c, as in the reference renderer */
 
 
+/* A 2D batch that crossed a window or scissor change draws once per span, each
+   draw preceded by the state its quads were authored under.  Under two spans
+   this is the single draw the batch always made: nothing about a run that sets
+   one window changes.  The vertices are packed once for the whole batch, so a
+   span only moves the first index and re-pushes the ortho and the two rects. */
+static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase, int numIndexes )
+{
+	int	spans = RB_2D_SpanCount();
+	int	i;
+
+	if ( spans < 2 ) {
+		VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, vertexBase );
+		VK_Shade_NoteDraw( qfalse );
+		return;
+	}
+
+	for ( i = 0; i < spans; i++ ) {
+		float	ortho[16];
+		int		win[4], scn[4];
+		int		first = 0, count = 0;
+
+		RB_2D_SpanGet( i, &first, &count, ortho, win, scn );
+		if ( count <= 0 ) {
+			continue;
+		}
+
+		VK_Draw_2DStateApply( cmd, ortho, win, scn );
+		VK_Draw_DrawIndexed( cmd, count, indexBase + first, vertexBase );
+		VK_Shade_NoteDraw( qfalse );
+		/* One entry per span: the order transcript keeps the granularity it had
+		   when each window ended the surface. */
+		VK_2DOrder_Note( tess.shader ? tess.shader->name : "?" );
+	}
+}
+
+
 /* ---- the stage pass: one stage, one pipeline, one bind, one indexed draw;
  * the state tuple carries blend, depth, cull and alpha test. */
 
@@ -220,8 +256,7 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 											 colors, NULL,
 											 &vertexBase, &indexBase ) ) {
 		VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
-		VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );
-		VK_Shade_NoteDraw( qfalse );
+		RB_StageDrawSpan( vk.commandBuffers[s_rbSlot], indexBase, vertexBase, tess.numIndexes );
 		return qtrue;
 	}
 
@@ -265,8 +300,7 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 
 	/* The ring is bound per surface: a bind is cheaper than tracking which. */
 	VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
-	VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );
-	VK_Shade_NoteDraw( qfalse );
+	RB_StageDrawSpan( vk.commandBuffers[s_rbSlot], indexBase, vertexBase, tess.numIndexes );
 
 	vk_ring_note( vertexBase + tess.numVertexes, indexBase + tess.numIndexes );
 
@@ -293,6 +327,7 @@ void RB_FrameOpen( int slot )
 	VK_VertexRing_ResetFrame();
 	RB_VBO_BeginFrame();
 	VK_Shade_NewFrame();
+	RB_2D_SpanReset();
 	s_rbSlot = -1;
 
 	/* No 2D window/scissor invalidation here.  That cache belongs to the FRONT

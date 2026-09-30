@@ -824,6 +824,45 @@ void VK_Draw_DisableScissor( VkCommandBuffer cmd )
 	qvk.CmdSetScissor( cmd, 0, 1, &scissor );
 }
 
+/* ---- the 2D state a span carries ----------------------------------------- */
+
+/* The window command sets a viewport AND a scissor, and a later RE_Scissor
+   replaces the scissor alone, so the state in force is the window's rect and
+   the scissor the last of the two left.  Both globals above hold it, and the
+   ortho is the push constant VK_Draw_Set2D wrote.  A batch that crosses a
+   window or scissor change keeps one span per state instead of ending the
+   surface: the walk copies the state here and re-applies it before each span's
+   draw, which is the same three calls in the same order the change itself made.
+   qfalse when no window has been set, which is the case that cannot be named
+   and so cannot be spanned. */
+qboolean VK_Draw_2DStateGet( float *ortho, int *win, int *scn )
+{
+	if ( !vk_currentValid ) {
+		return qfalse;
+	}
+
+	memcpy( ortho, vk_current.ortho, 16 * sizeof( float ) );
+	memcpy( win, vk_2dWindow, 4 * sizeof( int ) );
+	memcpy( scn, vk_2dScissor, 4 * sizeof( int ) );
+	return qtrue;
+}
+
+void VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *win, const int *scn )
+{
+	/* The ortho alone: this runs after the stage pass set the alpha test, and
+	   the window's own push zeroes that field.  The push range covers the whole
+	   constant block, and ortho is its first member. */
+	qvk.CmdPushConstants( cmd, vk_draw.layout,
+						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+						  offsetof( vkPushConstants_t, ortho ), 16 * sizeof( float ), ortho );
+
+	VK_Draw_Window2D( cmd, win[0], win[1], win[2], win[3] );
+
+	if ( scn[0] != win[0] || scn[1] != win[1] || scn[2] != win[2] || scn[3] != win[3] ) {
+		VK_Draw_SetScissor( cmd, scn[0], scn[1], scn[2], scn[3] );
+	}
+}
+
 /* ---- the rectangle the reference clamps and this lane has to ------------- */
 
 /* The client's box is bottom-left and Vulkan's is top-left, and the client's
