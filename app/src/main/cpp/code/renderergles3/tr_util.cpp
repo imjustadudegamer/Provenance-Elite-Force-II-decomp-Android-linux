@@ -123,24 +123,48 @@ static void addTriangle(void)
     tess.numVertexes++;
 }
 
+/* THE 2D placement, in one place.  Retail keeps glViewport and glOrtho constant
+   for the whole 2D pass and carries each widget's placement in its screen-space
+   vertex stream (retail-menu-solomatch-final.trace calls 10103-10124: constant
+   glViewport(0,0,640,480) + glOrtho(0,640,480,0), per-widget glScissor), so a
+   port vertex is written in the widget's own coordinates and placed here.
+   Every 2D writer -- the surface batch, the immediate stream and the font/glyph
+   runs -- calls this at the LAST step, after any glyph or HUD scale, exactly as
+   the Vulkan lane does.  `backEnd.in2D` keeps the 3D pass untouched. */
+void RB_2DPlaceVertex(float *xyz)
+{
+    if ( backEnd.in2D ) {
+        xyz[0] += gles3_2dOrigin[0];
+        xyz[1] += gles3_2dOrigin[1];
+    }
+}
+
+void RB_2DPlaceRange(int first, int count)
+{
+    int i;
+
+    for ( i = 0; i < count; i++ ) {
+        RB_2DPlaceVertex(tess.xyz[first + i]);
+    }
+}
+
 void RB_Vertex3fv(vec3_t v)
 {
-    VectorCopy(v, tess.xyz[tess.numVertexes]);
+    int ndx = tess.numVertexes;
+
+    VectorCopy(v, tess.xyz[ndx]);
+    RB_2DPlaceVertex(tess.xyz[ndx]);
     addTriangle();
 }
 
 void RB_Vertex3f(vec_t x, vec_t y, vec_t z)
 {
-    /* the 2D placement rides on the vertices, as retail's screen-space
-       glVertex2f stream carries it; the 3D pass is untouched */
-    if ( backEnd.in2D ) {
-        x += gles3_2dOrigin[0];
-        y += gles3_2dOrigin[1];
-    }
+    int ndx = tess.numVertexes;
 
-    tess.xyz[tess.numVertexes][0] = x;
-    tess.xyz[tess.numVertexes][1] = y;
-    tess.xyz[tess.numVertexes][2] = z;
+    tess.xyz[ndx][0] = x;
+    tess.xyz[ndx][1] = y;
+    tess.xyz[ndx][2] = z;
+    RB_2DPlaceVertex(tess.xyz[ndx]);
     addTriangle();
 }
 
