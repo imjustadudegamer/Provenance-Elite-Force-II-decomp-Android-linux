@@ -520,11 +520,26 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )cmds;
 
-			/* Pending 2D runs close first, or their quads draw under the next window's viewport and ortho. */
-			RB_2D_Flush();
+			/* The queued quads were authored under the window in force, so they
+			   close as a span and the new state opens as the next one: the batch
+			   does NOT end here.  Only the immediate run has to close, because
+			   its vertices carry no span -- and only one of the two is ever open.
+			   A split that cannot be represented falls back to the flush this
+			   case always did. */
+			RB_2D_FlushImmediate();
+			if ( !RB_2D_SpanBreak() ) {
+				RB_2D_Flush();
+			}
 
 			VK_Draw_Set2D( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->w, cmd->h,
 						   cmd->left, cmd->right, cmd->bottom, cmd->top, cmd->n, cmd->f );
+
+			/* The state just applied is the one the next quads belong to.  A qfalse
+			   cannot happen here -- RB_2D_SpanBreak reserved the room and the state
+			   was just named -- and closes the batch if it ever does. */
+			if ( !RB_2D_SpanNote() ) {
+				RB_2D_Flush();
+			}
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
 			break;
 		}
@@ -533,9 +548,19 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			scissor2DCommand_t *cmd = ( scissor2DCommand_t * )cmds;
 
-			RB_2D_Flush();
+			RB_2D_FlushImmediate();
+			if ( !RB_2D_SpanBreak() ) {
+				RB_2D_Flush();
+			}
 
 			VK_Draw_SetScissor( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->width, cmd->height );
+
+			/* The state just applied is the one the next quads belong to.  A qfalse
+			   cannot happen here -- RB_2D_SpanBreak reserved the room and the state
+			   was just named -- and closes the batch if it ever does. */
+			if ( !RB_2D_SpanNote() ) {
+				RB_2D_Flush();
+			}
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
 			break;
 		}
@@ -603,11 +628,16 @@ void RB_ExecuteRenderCommands( const void *data )
 			box2DCommand_t *cmd = ( box2DCommand_t * )cmds;
 
 			{
-				char	note[64];
+				char	note[96];
 
-				Com_sprintf( note, sizeof( note ), "box(%.0f,%.0f %.0fx%.0f a%d)",
+				/* The colour as well as the alpha: an opaque full-screen imm box is
+				   a flash or the menu's own background, and which one it is is the
+				   colour.  backEnd.color2D is the colour in force here, which is
+				   the one the box is drawn with (RB_ImmColor4f bakes it). */
+				Com_sprintf( note, sizeof( note ), "box(%.0f,%.0f %.0fx%.0f a%d rgb=%d,%d,%d)",
 							 (double)cmd->x, (double)cmd->y, (double)cmd->w, (double)cmd->h,
-							 (int)backEnd.color2D[3] );
+							 (int)backEnd.color2D[3],
+							 (int)backEnd.color2D[0], (int)backEnd.color2D[1], (int)backEnd.color2D[2] );
 				VK_Order_Note( note );
 			}
 

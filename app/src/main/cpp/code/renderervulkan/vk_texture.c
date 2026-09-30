@@ -630,8 +630,11 @@ done:
 	return ok;
 }
 
-/* A readback of texel (0,0): the offline proof that the copy actually landed. */
-qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
+/* A readback of one texel: the offline proof that the copy actually landed, and
+   the only way a run names which art a slot really holds.  `blocked' reports
+   whether the image is block-compressed, in which case the bytes returned are
+   the block's own and not an RGBA texel. */
+qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked )
 {
 	vkTexture_t *tex;
 	VkCommandBufferAllocateInfo allocInfo;
@@ -645,8 +648,14 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 	void *mapped = NULL;
 	VkResult result;
+	VkImageLayout origLayout;
+	size_t texelOffset = 0;
+	int bx = 0, by = 0, extentW = 1, extentH = 1;
 	qboolean ok = qfalse;
 
+	if ( blocked ) {
+		*blocked = 0;
+	}
 	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
 		return qfalse;
 	}
@@ -656,11 +665,15 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 		return qfalse;
 	}
 
+	/* a compressed block is at most 16 bytes, and an uncompressed texel is 4;
+	   the copy writes one row of one block-aligned region */
 	if ( !VK_Memory_CreateBuffer( 16, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 								  &buffer, &memory ) ) {
 		return qfalse;
 	}
+
+	origLayout = tex->layout;
 
 	VK_Upload_Begin();
 
@@ -689,18 +702,80 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 		goto done;
 	}
 
-	memset( &region, 0, sizeof( region ) );
-	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.imageSubresource.layerCount = 1;
-	region.imageOffset.x = x;
-	region.imageOffset.y = y;
-	region.imageExtent.width = 1;
-	region.imageExtent.height = 1;
-	region.imageExtent.depth = 1;
+	/* A copy source must be in a transfer layout, and a texel of a
+	   block-compressed image lives inside a block: a 1x1 region at (x,y)
+	   violates the format's block extent, the queue family's transfer
+	   granularity, and the layout rule -- three VUIDs, one per baked surface.
+	   The image is copied where it is (the layout it is actually in, which this
+	   module tracks per texture) after a barrier into TRANSFER_SRC_OPTIMAL, the
+	   region is the block that holds the texel, aligned down and clipped to the
+	   subresource edge (the spec lets an extent that is not a whole number of
+	   blocks end there), and the bytes are picked apart on the CPU. */
+	{
+		VkImageMemoryBarrier	barrier;
+		int						bw = 1, bh = 1;
+		int						bytesPerTexel = 4;
 
-	/* the image is in SHADER_READ_ONLY after Publish; a copy source is a read */
-	qvk.CmdCopyImageToBuffer( cmd, tex->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-							  buffer, 1, &region );
+		switch ( tex->format ) {
+		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:	bw = 4; bh = 4; bytesPerTexel = 8;  break;
+		case VK_FORMAT_BC2_UNORM_BLOCK:
+		case VK_FORMAT_BC3_UNORM_BLOCK:			bw = 4; bh = 4; bytesPerTexel = 16; break;
+		default:								break;
+		}
+		if ( bw > 1 ) {
+			*blocked = 1;
+		}
+
+		memset( &barrier, 0, sizeof( barrier ) );
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = tex->layout;
+		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = tex->image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.layerCount = 1;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+		qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+								VK_PIPELINE_STAGE_TRANSFER_BIT,
+								0, 0, NULL, 0, NULL, 1, &barrier );
+
+		bx = ( x / bw ) * bw;
+		by = ( y / bh ) * bh;
+		extentW = ( ( bx + bw ) < tex->width ) ? bw : tex->width - bx;
+		extentH = ( ( by + bh ) < tex->height ) ? bh : tex->height - by;
+		if ( extentW < 1 ) extentW = 1;
+		if ( extentH < 1 ) extentH = 1;
+
+		memset( &region, 0, sizeof( region ) );
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.layerCount = 1;
+		region.imageOffset.x = bx;
+		region.imageOffset.y = by;
+		region.imageExtent.width = (uint32_t)extentW;
+		region.imageExtent.height = (uint32_t)extentH;
+		region.imageExtent.depth = 1;
+
+		qvk.CmdCopyImageToBuffer( cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+								  buffer, 1, &region );
+
+		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		barrier.newLayout = origLayout;
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+								VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+								0, 0, NULL, 0, NULL, 1, &barrier );
+
+		/* the texel's own bytes for an uncompressed image: the copied row starts
+		   at the block's left edge, so its column is the remainder */
+		texelOffset = ( ( y - by ) * extentW + ( x - bx ) ) * ( bw > 1 ? 0 : 4 );
+		(void)bytesPerTexel;
+	}
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(readtexel)" ) ) {
 		goto done;
@@ -728,7 +803,11 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4] )
 	(void)VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(readtexel)" );
 
 	if ( mapped ) {
-		memcpy( out, mapped, 4 );
+		if ( blocked && *blocked ) {
+			memcpy( out, mapped, 4 );		/* the block's first four bytes */
+		} else {
+			memcpy( out, (const byte *)mapped + texelOffset, 4 );
+		}
 		ok = qtrue;
 	}
 

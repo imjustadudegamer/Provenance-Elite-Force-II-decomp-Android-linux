@@ -1404,6 +1404,46 @@ void UIWidget::set2D(void)
 {
     int limit_subT0 = LIMIT_SubT0();
 
+    /* A zero-extent window is the whole 2D defect: the ortho the window carries
+       is degenerate (left == right), so every quad the widget queues is
+       transformed through an identity and lands at raw coordinates, and the
+       0-wide viewport and empty scissor then clip it away -- text misplaced and
+       fills missing, with no refusal anywhere.  Retail authors these windows
+       (dm_scoreboard.urc's `scrollbar_width 0', its `column "..." 0' in the
+       dmscore RowColumn, menu_startserver's 0-width map-file column, read from
+       the paks), and UIRowColumn::addItem @0x000866xx sets each cell's frame
+       width straight from the column width and then accepts it if
+       doesWidgetFit says it fits -- so the frame is faithful.  What the row does
+       with a zero-width cell is the question, and this row names the source:
+       the widget, its frame, the clipped frame, the authored frame the scale
+       was applied to, and the scale. */
+    if (m_screenframe.size.width == 0.0f || m_screenframe.size.height == 0.0f) {
+        static int s_zeroRows;
+
+        s_zeroRows++;
+        if (s_zeroRows <= 240 || (s_zeroRows % 240) == 0) {
+            UIVK_CENSUS_PROBE(
+                "zerowin",
+                "n=%d class='%s' name='%s' screen=%.0f,%.0f %.0fx%.0f "
+                "frame=%.0f,%.0f %.0fx%.0f authored=%.0f,%.0f %.0fx%.0f "
+                "clip=%.0f,%.0f %.0fx%.0f scale=%.3f,%.3f hud=%.3f/%d",
+                s_zeroRows,
+                getClassname(),
+                getName() ? getName() : "(null)",
+                (double)m_screenframe.pos.x, (double)m_screenframe.pos.y,
+                (double)m_screenframe.size.width, (double)m_screenframe.size.height,
+                (double)m_frame.pos.x, (double)m_frame.pos.y,
+                (double)m_frame.size.width, (double)m_frame.size.height,
+                (double)m_authoredFrame.pos.x, (double)m_authoredFrame.pos.y,
+                (double)m_authoredFrame.size.width, (double)m_authoredFrame.size.height,
+                (double)m_clippedframe.pos.x, (double)m_clippedframe.pos.y,
+                (double)m_clippedframe.size.width, (double)m_clippedframe.size.height,
+                (double)uid.scaleRes[0], (double)uid.scaleRes[1],
+                (double)s_hudScaleValue, s_hudScaleDepth
+            );
+        }
+    }
+
     uii.Rend_Set2D(
         uid.originX + (int)m_screenframe.pos.x,
         uid.surfaceHeight - uid.originY - (int)(m_screenframe.size.height + m_screenframe.pos.y),

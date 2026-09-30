@@ -1167,6 +1167,7 @@ static void VK_Shade_TexelProbe( image_t *image )
 	static cvar_t *cv;
 	unsigned char  px[4];
 	int            handle;
+	int            blocked = 0;
 	const char     *name;
 
 	if ( !cv ) {
@@ -1183,17 +1184,21 @@ static void VK_Shade_TexelProbe( image_t *image )
 	s_texelProbed[handle] = 1;
 
 	name = image->imgName[0] ? image->imgName : "(unnamed)";
-	if ( !VK_Texture_ReadTexel( handle, image->uploadWidth / 2, image->uploadHeight / 2, px ) ) {
+	if ( !VK_Texture_ReadTexel( handle, image->uploadWidth / 2, image->uploadHeight / 2, px, &blocked ) ) {
 		VK_Guard_Row( "VK:texel", "name=%s w=%d h=%d read=fail", name,
 					  image->uploadWidth, image->uploadHeight );
 		return;
 	}
 
+	/* A block-compressed image has no texel to report: the four numbers are the
+	   block's first four bytes, and the row says so rather than letting them
+	   read as an RGBA texel. */
 	VK_Guard_Row( "VK:texel",
-				  "name=%s w=%d h=%d upto=%dx%d mips=%d fmt=0x%x wrap=%d,%d texel_mid=%u,%u,%u,%u",
+				  "name=%s w=%d h=%d upto=%dx%d mips=%d fmt=0x%x wrap=%d,%d %s=%u,%u,%u,%u",
 				  name, image->width, image->height, image->uploadWidth, image->uploadHeight,
 				  image->numMipmaps, (unsigned)image->internalFormat,
 				  (int)image->wrapClampModeX, (int)image->wrapClampModeY,
+				  blocked ? "blk_mid" : "texel_mid",
 				  (unsigned)px[0], (unsigned)px[1], (unsigned)px[2], (unsigned)px[3] );
 }
 
@@ -2499,21 +2504,19 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	/* the cache key names the modules, so it keys on the permutation bits alone */
 	defines &= ~VKP_FAMILY_MASK;
 
-	if ( !VK_Program_Modules( family, defines, &vert, &frag ) ) {
-		/* the mask names the permutation the offline build has to add, and the
-		   shader names where the content asked for it: a next gap is one boot
-		   from diagnosed instead of one census from inferred */
-		VK_Shade_NotePerm( 1 );
-		VK_Shade_PermRow( shader, family, defines );
-		return VK_NULL_HANDLE;
-	}
-	VK_Shade_NotePerm( 0 );
-
 	pkey[0] = stateBits;      pkey[1] = (uintptr_t)family;
 	pkey[2] = defines;        pkey[3] = (uintptr_t)cull;
 	pkey[4] = polygonOffset;  pkey[5] = (uintptr_t)topology;
 	phash = VK_Shade_HashWords( pkey, 6 ) & VK_SHADE_HASH_MASK;
 
+	/* The probe comes first, and a hit returns before the program lookup: this
+	   key carries the family and the permutation bits, which are the module
+	   lookup's whole input, so a pipeline that is already built proves the
+	   modules are (the table and the module cache are created and dropped
+	   together).  A bind per surface per frame is the hot path, and the two
+	   hash probes the lookup costs were paid on every one of them.  The
+	   permutation census is unchanged: a hit still counts a request, and the
+	   miss row still prints where the modules are actually missing. */
 	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
 		int at = vk_shadePipelineHash[( phash + probe ) & VK_SHADE_HASH_MASK];
 
@@ -2526,9 +2529,20 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 			 && vk_shadePipelines[at].cull == cull
 			 && vk_shadePipelines[at].polygonOffset == polygonOffset
 			 && vk_shadePipelines[at].topology == topology ) {
+			VK_Shade_NotePerm( 0 );
 			return vk_shadePipelines[at].pipeline;
 		}
 	}
+
+	if ( !VK_Program_Modules( family, defines, &vert, &frag ) ) {
+		/* the mask names the permutation the offline build has to add, and the
+		   shader names where the content asked for it: a next gap is one boot
+		   from diagnosed instead of one census from inferred */
+		VK_Shade_NotePerm( 1 );
+		VK_Shade_PermRow( shader, family, defines );
+		return VK_NULL_HANDLE;
+	}
+	VK_Shade_NotePerm( 0 );
 	if ( vk_numShadePipelines >= VK_SHADE_PIPELINES ) {
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade pipeline table full", VK_INCOMPLETE );
 		return VK_NULL_HANDLE;

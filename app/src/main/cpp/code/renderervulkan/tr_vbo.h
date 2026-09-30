@@ -125,6 +125,11 @@ qboolean RB_VboStaticArenaBatch( void );
    bytes at ringByteBase; the staging and device copies are recorded into cmd. */
 void RB_VboStaticBakeFrame( int ringByteBase );
 
+/* The bake's copies: a command buffer of their own, submitted ahead of the
+   frame's (a buffer copy may not be recorded inside a render pass), or
+   VK_NULL_HANDLE when the walk baked nothing. */
+VkCommandBuffer VK_VboStaticXferClose( int slot );
+
 /* Draws the batch's arena items in index order: device-local runs of at least
    MIN_IBO_RUN in the device index buffer, every remaining short run grouped into
    one host-visible pass. */

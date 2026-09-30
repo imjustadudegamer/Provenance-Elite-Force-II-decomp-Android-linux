@@ -697,6 +697,9 @@ qboolean VK_Frame_Submit( int slot )
 {
 	VkSubmitInfo submitInfo;
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	VkCommandBuffer buffers[2];
+	VkCommandBuffer xfer;
+	uint32_t count = 0;
 	VkResult result;
 
 	/* The command buffer was ended by RecordEnd or Retire, whichever closed the
@@ -705,13 +708,23 @@ qboolean VK_Frame_Submit( int slot )
 		return qfalse;
 	}
 
+	/* The arena bake's copies, when the walk made any, are a command buffer of
+	   their own (a copy may not be recorded inside a render pass) and they come
+	   FIRST: every draw of this frame that reads the arena is in the buffer that
+	   follows, so queue order is the order the copies were recorded in. */
+	xfer = VK_VboStaticXferClose( slot );
+	if ( xfer != VK_NULL_HANDLE ) {
+		buffers[count++] = xfer;
+	}
+	buffers[count++] = vk.commandBuffers[slot];
+
 	memset( &submitInfo, 0, sizeof( submitInfo ) );
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = &vk.acquireSemaphores[slot];
 	submitInfo.pWaitDstStageMask = &waitStage;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &vk.commandBuffers[slot];
+	submitInfo.commandBufferCount = count;
+	submitInfo.pCommandBuffers = buffers;
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &vk.renderSemaphores[slot];
 

@@ -103,6 +103,96 @@ static int				s_bakedSurfaces;
 static int				s_arenaBatches;
 static int				s_streamBatches;
 
+/* ---- the bake's transfers ------------------------------------------------- */
+
+/* The bake copies the ring's packed bytes into the device-local arena, and
+   vkCmdCopyBuffer may not be recorded inside a render pass -- the walk is
+   inside one for the whole frame, and the validation layer named it
+   (VUID-vkCmdCopyBuffer-renderpass, once per baked surface).  The copies go
+   into a second command buffer for the same frame, submitted ahead of the
+   frame's own buffer, so queue order still puts them before every draw of the
+   frame that reads the arena: the order recording them inline gave, without the
+   invalid call site. */
+static VkCommandBuffer	s_xferCmd[VK_FRAMES_IN_FLIGHT];
+static qboolean			s_xferReady[VK_FRAMES_IN_FLIGHT];
+static qboolean			s_xferOpen[VK_FRAMES_IN_FLIGHT];
+
+static VkCommandBuffer VK_StaticXferCmd( void )
+{
+	VkCommandBufferAllocateInfo	allocInfo;
+	VkCommandBufferBeginInfo	beginInfo;
+	int							slot = RB_FrameSmpFrame();
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		slot = 0;
+	}
+	if ( s_xferOpen[slot] ) {
+		return s_xferCmd[slot];
+	}
+
+	if ( !s_xferReady[slot] ) {
+		memset( &allocInfo, 0, sizeof( allocInfo ) );
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.commandPool = vk.uploadPool;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocInfo.commandBufferCount = 1;
+
+		if ( !VK_Guard_Result( VK_GSITE_SYNC,
+							   VK_Pool_AllocBuffers( vk.device, &allocInfo, &s_xferCmd[slot] ),
+							   "vkAllocateCommandBuffers(static transfer)" ) ) {
+			return VK_NULL_HANDLE;
+		}
+		s_xferReady[slot] = qtrue;
+	}
+
+	qvk.ResetCommandBuffer( s_xferCmd[slot], 0 );
+
+	memset( &beginInfo, 0, sizeof( beginInfo ) );
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( s_xferCmd[slot], &beginInfo ),
+						   "vkBeginCommandBuffer(static transfer)" ) ) {
+		return VK_NULL_HANDLE;
+	}
+
+	s_xferOpen[slot] = qtrue;
+	return s_xferCmd[slot];
+}
+
+/* The frame's transfer buffer, ended and barriered, or VK_NULL_HANDLE when the
+   walk baked nothing this frame.  The barrier makes the copies' writes visible
+   to the vertex and index input of the frame buffer that follows in the same
+   submission. */
+VkCommandBuffer VK_VboStaticXferClose( int slot )
+{
+	VkMemoryBarrier	barrier;
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT || !s_xferOpen[slot] ) {
+		return VK_NULL_HANDLE;
+	}
+
+	memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+
+	qvk.CmdPipelineBarrier( s_xferCmd[slot],
+							VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_HOST_BIT,
+							VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+							0, 1, &barrier, 0, NULL, 0, NULL );
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( s_xferCmd[slot] ),
+						   "vkEndCommandBuffer(static transfer)" ) ) {
+		s_xferOpen[slot] = qfalse;
+		return VK_NULL_HANDLE;
+	}
+
+	s_xferOpen[slot] = qfalse;
+	return s_xferCmd[slot];
+}
+
+
 static unsigned VK_StaticHash( const void *p )
 {
 	size_t	v = (size_t)p >> 4;
@@ -407,7 +497,12 @@ static qboolean VK_StaticBake( const vkStaticRec_t *r, const vkIndex_t *indexes,
 			(vkIndex_t)( e->first + ( indexes[r->idxStart + j] - r->vertStart ) );
 	}
 
-	cmd = VK_Shade_CommandBuffer();
+	/* not VK_Shade_CommandBuffer(): the frame buffer is inside its render pass
+	   for the whole walk, and a buffer copy may not be recorded there */
+	cmd = VK_StaticXferCmd();
+	if ( cmd == VK_NULL_HANDLE ) {
+		return qfalse;
+	}
 
 	memset( &copyRegion, 0, sizeof( copyRegion ) );
 	copyRegion.srcOffset = (VkDeviceSize)( (size_t)e->first * VK_STREAM_STRIDE );
