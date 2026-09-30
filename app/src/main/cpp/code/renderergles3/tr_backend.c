@@ -1688,6 +1688,13 @@ static const void *RB_2DSetWindow( const void *data ) {
 	return (const void *)(cmd + 1);
 }
 
+static const void *RB_2DOrigin( const void *data ) {
+	const origin2DCommand_t *cmd = (const origin2DCommand_t *)data;
+
+	Set2DOrigin( cmd->x, cmd->y );
+	return (const void *)(cmd + 1);
+}
+
 static const void *RB_2DScissor( const void *data ) {
 	const scissor2DCommand_t *cmd = (const scissor2DCommand_t *)data;
 
@@ -2397,6 +2404,7 @@ static const char *RB_GlErrCmdName( int id ) {
 	case RC_2D_LINE_LOOP:		return "2D_LINE_LOOP";
 	case RC_2D_SET_WINDOW:		return "2D_SET_WINDOW";
 	case RC_2D_SCISSOR:			return "2D_SCISSOR";
+	case RC_2D_ORIGIN:			return "2D_ORIGIN";
 	case RC_2D_FONT_STRING:		return "2D_FONT_STRING";
 	case RC_2D_SHADER_TIME:		return "2D_SHADER_TIME";
 	default:					return "UNKNOWN_CMD";
@@ -2573,6 +2581,9 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			break;
 		case RC_2D_SCISSOR:
 			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DScissor(data) );
+			break;
+		case RC_2D_ORIGIN:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DOrigin(data) );
 			break;
 		case RC_2D_FONT_STRING:
 			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DFontString(data) );

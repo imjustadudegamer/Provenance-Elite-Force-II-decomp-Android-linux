@@ -1164,6 +1164,19 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
 	D2_End( D2P_lineloop, t0 );
 }
 
+/* The widget's placement inside the window the pass sets: retail carries it in
+   the vertices (glVertex2f in screen space), so this records an offset the walk's
+   2D vertex writers add, and the ortho stays the one constant screen ortho. */
+void Set2DOrigin(float x, float y) {
+	origin2DCommand_t *cmd = ( origin2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
+
+	if ( cmd ) {
+		cmd->commandId = RC_2D_ORIGIN;
+		cmd->x = x;
+		cmd->y = y;
+	}
+}
+
 void Set2DWindow(int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f) {
 	int		t0;
 

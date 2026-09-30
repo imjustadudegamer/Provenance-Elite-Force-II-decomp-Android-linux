@@ -565,6 +565,15 @@ void RB_ExecuteRenderCommands( const void *data )
 			break;
 		}
 
+		case RC_2D_ORIGIN:
+		{
+			origin2DCommand_t *cmd = ( origin2DCommand_t * )cmds;
+
+			VK_Draw_Set2DOrigin( cmd->x, cmd->y );
+			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
+			break;
+		}
+
 		case RC_2D_COLOR:
 		{
 			color2DCommand_t *cmd = ( color2DCommand_t * )cmds;

@@ -579,6 +579,12 @@ void RB_ImmVertex2f( float x, float y )
 		return;
 	}
 
+	/* the same placement rule the surface batch's writer applies */
+	if ( backEnd.in2D ) {
+		x += vk_2dOrigin[0];
+		y += vk_2dOrigin[1];
+	}
+
 	v->xyz[0] = x;
 	v->xyz[1] = y;
 }
@@ -617,6 +623,11 @@ void RB_ImmVertex3f( float x, float y, float z )
 
 	if ( !v ) {
 		return;
+	}
+
+	if ( backEnd.in2D ) {
+		x += vk_2dOrigin[0];
+		y += vk_2dOrigin[1];
 	}
 
 	v->xyz[0] = x;

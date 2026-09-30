@@ -550,6 +550,27 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
 	}
 }
 
+/* The widget's placement in the 2D window.  Retail keeps glViewport/glOrtho
+   constant for every widget and carries the placement in the vertices
+   (retail-menu-solomatch-final.trace 10103-10124), so the twin does the same. */
+float	gles3_2dOrigin[2] = { 0.0f, 0.0f };
+
+void Set2DOrigin( float x, float y ) {
+	if ( glConfig.smpActive ) {
+		origin2DCommand_t *cmd = ( origin2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
+
+		if ( cmd ) {
+			cmd->commandId = RC_2D_ORIGIN;
+			cmd->x = x;
+			cmd->y = y;
+		}
+		return;
+	}
+
+	gles3_2dOrigin[0] = x;
+	gles3_2dOrigin[1] = y;
+}
+
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {
 	/* The same tuple the batch was opened under is already in force: keep the
 	   batch open and issue nothing.  A 3D pass leaves the depth gate open and
@@ -563,6 +584,9 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 	}
 
 	RB_2D_Flush();
+
+	gles3_2dOrigin[0] = 0.0f;
+	gles3_2dOrigin[1] = 0.0f;
 
 	qglViewport(x, y, w, h);
 	qglScissor(x, y, w, h);

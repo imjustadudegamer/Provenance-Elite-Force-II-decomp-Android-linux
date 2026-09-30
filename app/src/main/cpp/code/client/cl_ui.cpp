@@ -2331,6 +2331,7 @@ static void CL_VerifyUIImports(void)
         uii.Rend_LoadFont         != re.LoadFont            ||
         uii.Rend_Scissor          != re.Scissor             ||
         uii.Rend_Set2D            != re.Set2DWindow         ||
+        uii.Rend_Set2DOrigin      != re.Set2DOrigin         ||
         uii.Rend_SetColor         != re.SetColor) {
         Com_Error(ERR_FATAL,
                   "uii.Rend_* does not match the current refexport_t: the UI's cached "
@@ -2353,6 +2354,7 @@ void CL_FillUIImports(void)
     uii.Rend_RegisterModel     = re.RegisterModel;
     uii.Rend_Scissor           = re.Scissor;
     uii.Rend_Set2D             = re.Set2DWindow;
+    uii.Rend_Set2DOrigin       = re.Set2DOrigin;
     uii.Rend_SetColor          = re.SetColor;
 
     uii.Cmd_Stuff                   = Cbuf_AddText;

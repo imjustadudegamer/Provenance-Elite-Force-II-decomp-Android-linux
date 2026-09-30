@@ -75,6 +75,7 @@ extern "C" {
         void (*Rend_Set2D)(                                                    
             int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f
         );
+        void (*Rend_Set2DOrigin)(float x, float y);                            
         void (*Rend_SetColor)(const vec4_t rgba);                              
         void (*Rend_Scissor)(int x, int y, int width, int height);             
         void (*Rend_DrawPicStretched)(                                         
