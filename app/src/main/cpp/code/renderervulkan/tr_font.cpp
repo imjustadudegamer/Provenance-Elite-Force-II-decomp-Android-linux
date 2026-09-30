@@ -696,6 +696,9 @@ static void R_FontRunWrite( void ) {
 			tess.xyz[tess.numVertexes + 3][1] *= s_fontRunHeightScale;
 		}
 
+		/* the glyph quad is a 2D quad like any other: placed once, after the scale */
+		RB_2DPlaceRange( tess.numVertexes, 4 );
+
 		/* The glyph quad carries the 2D colour per vertex, as the stretch-pic
 		   quads do, or the text inherits the previous surface's colour. */
 		{
@@ -772,6 +775,10 @@ void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs ) {
 			tess.xyz[tess.numVertexes + 3][0] *= cmd->widthScale;
 			tess.xyz[tess.numVertexes + 3][1] *= cmd->heightScale;
 		}
+
+		/* the recorded run writes the same quads the immediate body does, so it
+		   takes the same placement, at the same point in the transform */
+		RB_2DPlaceRange( tess.numVertexes, 4 );
 
 		/* The font stage's colour is CGEN_GLOBAL_COLOR, which the reference
 		   remaps to the vertex colour in 2D; carry Draw_SetColor as the body. */
@@ -1044,6 +1051,9 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
                 tess.xyz[tess.numVertexes + 3][0] *= fWidthScale;
                 tess.xyz[tess.numVertexes + 3][1] *= fHeightScale;
             }
+
+            /* after the HUD scale: the placement is an offset, not a scaled value */
+            RB_2DPlaceRange( tess.numVertexes, 4 );
 
             x += s_fontGeneralScale * loc->size[0] * 256.0;
 
