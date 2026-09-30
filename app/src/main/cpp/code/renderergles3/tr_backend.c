@@ -1620,6 +1620,10 @@ const void *RB_StretchPic ( const void *data ) {
 	tess.texCoords[ numVerts + 3 ][0][0] = cmd->s1;
 	tess.texCoords[ numVerts + 3 ][0][1] = cmd->t2;
 
+	/* the legacy entry point draws through the window in force, so it takes the
+	   window's own placement too (a no-op outside the 2D pass) */
+	RB_2DPlaceRange( numVerts, 4 );
+
 	return (const void *)(cmd + 1);
 }
 
@@ -1766,6 +1770,10 @@ static const void *RB_2DFontString( const void *data ) {
 				tess.xyz[tess.numVertexes + 3][0] *= cmd->widthScale;
 				tess.xyz[tess.numVertexes + 3][1] *= cmd->heightScale;
 			}
+
+			/* the recorded run writes the same quads the immediate body does, so
+			   it takes the same placement, at the same point in the transform */
+			RB_2DPlaceRange( tess.numVertexes, 4 );
 
 			tess.numVertexes += 4;
 			tess.numIndexes += 6;

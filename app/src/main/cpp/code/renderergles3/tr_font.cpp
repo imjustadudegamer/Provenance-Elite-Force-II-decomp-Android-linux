@@ -680,6 +680,9 @@ static void R_FontRunWrite( void ) {
 			tess.xyz[tess.numVertexes + 3][1] *= s_fontRunHeightScale;
 		}
 
+		/* the glyph quad is a 2D quad like any other: placed once, after the scale */
+		RB_2DPlaceRange( tess.numVertexes, 4 );
+
 		tess.numVertexes += 4;
 		tess.numIndexes += 6;
 	}
@@ -938,6 +941,9 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
                 tess.xyz[tess.numVertexes + 3][0] *= fWidthScale;
                 tess.xyz[tess.numVertexes + 3][1] *= fHeightScale;
             }
+
+            /* after the HUD scale: the placement is an offset, not a scaled value */
+            RB_2DPlaceRange( tess.numVertexes, 4 );
 
             x += s_fontGeneralScale * loc->size[0] * 256.0;
 

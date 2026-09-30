@@ -2002,6 +2002,9 @@ void RB_StreamEndDrawSurf(void);
 void RB_Vertex3fv(vec3_t v);
 void RB_Vertex3f(vec_t x, vec_t y, vec_t z);
 void RB_Vertex2f(vec_t x, vec_t y);
+/* the single 2D placement site: every 2D vertex writer ends with one of these */
+void RB_2DPlaceVertex(float *xyz);
+void RB_2DPlaceRange(int first, int count);
 void RB_Color4f(vec_t r, vec_t g, vec_t b, vec_t a);
 void RB_Color3f(vec_t r, vec_t g, vec_t b);
 void RB_Color3fv(vec3_t col);

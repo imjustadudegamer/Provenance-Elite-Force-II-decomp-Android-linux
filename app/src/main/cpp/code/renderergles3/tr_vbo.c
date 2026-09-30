@@ -2100,14 +2100,10 @@ void RB_ImmVertex2f( float x, float y )
 	rbVertex_t	*v = RB_ImmNewVertex();
 
 	if ( v ) {
-		if ( backEnd.in2D ) {
-			x += gles3_2dOrigin[0];
-			y += gles3_2dOrigin[1];
-		}
-
 		v->xyz[0] = x;
 		v->xyz[1] = y;
 		v->xyz[2] = 0.0f;
+		RB_2DPlaceVertex( v->xyz );
 	}
 }
 
@@ -2116,14 +2112,10 @@ void RB_ImmVertex3f( float x, float y, float z )
 	rbVertex_t	*v = RB_ImmNewVertex();
 
 	if ( v ) {
-		if ( backEnd.in2D ) {
-			x += gles3_2dOrigin[0];
-			y += gles3_2dOrigin[1];
-		}
-
 		v->xyz[0] = x;
 		v->xyz[1] = y;
 		v->xyz[2] = z;
+		RB_2DPlaceVertex( v->xyz );
 	}
 }
 
