@@ -154,6 +154,7 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 
 		float x0 = tess.xyz[0][0], y0 = tess.xyz[0][1];
 		float x1 = x0, y1 = y0;
+		float gx0, gy0, gx1, gy1;
 		int   v;
 
 		for ( v = 1; v < tess.numVertexes; v++ ) {
@@ -161,6 +162,23 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 			if ( tess.xyz[v][0] > x1 ) x1 = tess.xyz[v][0];
 			if ( tess.xyz[v][1] < y0 ) y0 = tess.xyz[v][1];
 			if ( tess.xyz[v][1] > y1 ) y1 = tess.xyz[v][1];
+		}
+
+		/* The rect the quad actually lands in, in the SAME space the trace logs:
+		   a vertex is written with its widget's placement already on it
+		   (RB_2DPlaceVertex), the window maps its ortho onto its viewport, and
+		   retail's glVertex2f/glScissor are bottom-left.  `srect` is therefore
+		   directly comparable, call for call, with the trace's stream and with
+		   `win`/`scn` below. */
+		{
+			float	sx = ( vkConfig.vidWidth  > 0 ) ? (float)vk_2dWindow[2] / (float)vkConfig.vidWidth  : 1.0f;
+			float	sy = ( vkConfig.vidHeight > 0 ) ? (float)vk_2dWindow[3] / (float)vkConfig.vidHeight : 1.0f;
+			float	baseY = (float)( vk_2dWindow[1] + vk_2dWindow[3] );
+
+			gx0 = (float)vk_2dWindow[0] + x0 * sx;
+			gx1 = (float)vk_2dWindow[0] + x1 * sx;
+			gy0 = baseY - y1 * sy;
+			gy1 = baseY - y0 * sy;
 		}
 
 		/* the order transcript: the rate-limited row above cannot answer a
@@ -174,7 +192,7 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		if ( s_rows <= 40 || ( s_rows % 64 ) == 0 ) {
 			VK_Guard_Row( "VK:2ddraw",
 						  "n=%d shader='%s' img='%s' tex=%d verts=%d idx=%d "
-						  "rect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f) "
+						  "srect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f) "
 						  "sb=0x%x col=%d,%d,%d,%d vert=%d,%d,%d,%d rgbGen=%d "
 						  "const=%d,%d,%d,%d alphaGen=%d "
 						  "win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d) wrap=%d,%d clamp=%d",
@@ -183,7 +201,7 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 						  image->imgName,
 						  (int)image->texnum,
 						  tess.numVertexes, tess.numIndexes,
-						  x0, y0, x1, y1,
+						  gx0, gy0, gx1, gy1,
 						  tess.texCoords[0][0][0], tess.texCoords[0][0][1],
 						  tess.texCoords[tess.numVertexes - 1][0][0],
 						  tess.texCoords[tess.numVertexes - 1][0][1],
@@ -579,14 +597,9 @@ void RB_ImmVertex2f( float x, float y )
 		return;
 	}
 
-	/* the same placement rule the surface batch's writer applies */
-	if ( backEnd.in2D ) {
-		x += vk_2dOrigin[0];
-		y += vk_2dOrigin[1];
-	}
-
 	v->xyz[0] = x;
 	v->xyz[1] = y;
+	RB_2DPlaceVertex( v->xyz );
 }
 
 void RB_ImmColor4f( float r, float g, float b, float a )
@@ -625,14 +638,10 @@ void RB_ImmVertex3f( float x, float y, float z )
 		return;
 	}
 
-	if ( backEnd.in2D ) {
-		x += vk_2dOrigin[0];
-		y += vk_2dOrigin[1];
-	}
-
 	v->xyz[0] = x;
 	v->xyz[1] = y;
 	v->xyz[2] = z;
+	RB_2DPlaceVertex( v->xyz );
 }
 
 void RB_ImmVertex3fv( const float *pos )
