@@ -44,18 +44,27 @@ entry broke exactly that (a stale binary plus this pak aborted with
 
 ## Configuration
 
-Exactly ONE cfg is loaded at launch: `config.cfg` in the engine's write root. It
-holds every setting and every key binding, is exec'd at every boot and rewritten
-on exit. The name is the compile-time `EF2_CONFIG_FILE`; the dedicated server uses
-`config_server.cfg`. No `global/*.cfg` is exec'd: retail's three-config launch
-(`global/default.cfg`, `global/game.cfg`, then `config.cfg`) is gone, and with it
-the loose-before-paks double source whose retail copy grew a Touch Controls
-section in the Linux settings menu.
+Exactly ONE config is loaded at launch: `config.cfg` in the engine's write root.
+It holds every setting and every key binding, is exec'd at every boot and
+rewritten on exit. The name is the compile-time `EF2_CONFIG_FILE`; the dedicated
+server uses `config_server.cfg`. No `global/default.cfg` is exec'd: that is the
+defaults file, the loose-before-paks copy of it grew the Touch Controls section
+in the Linux settings menu, and the compiled seed replaces it.
+
+One boot cfg is exec'd and it is not a defaults file: `global/game.cfg` ships
+inside retail's pak0 and carries the game-side `setd` values the engine has
+nowhere else -- `introCommand` (the only thing that starts the intro RoQs),
+`ui_mainMenuModel`, `cg_3rd_person`, `r_znear`, `g_statefile`, `g_playermodel`
+and the `mp_*` defaults. It is applied before `config.cfg`, exactly where retail
+applies it, so the archive wins every value it names.
 
 The first-boot defaults are command text in the binary
-(`EF2_ANDROID_DEFAULT_COMMANDS`) applied once per `ANDROID_DEFAULTS_VERSION` and
-persisted straight into `config.cfg`, on both platforms and from one source. Bump
-that constant whenever the defaults header changes.
+(`EF2_ANDROID_DEFAULT_COMMANDS`) applied once per `PORT_DEFAULTS_SEED` and
+persisted straight into `config.cfg`, on both platforms and from one source. The
+gate is `port_defaultsSeed`, a cvar only this code writes: the old gate read the
+Android install's own `in_androidDefaults`, and a stray `14` in a shared write
+root silently outran the constant `10`, so the defaults were never folded in at
+all. Bump `PORT_DEFAULTS_SEED` whenever the defaults header changes.
 
 There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
 
@@ -75,7 +84,7 @@ under it (both resolve to 0.934226, ratio 1.000000, 0.000 dB). `s_sfxvolume`
 stays at retail's 0.60: raising dialogue alone meets the target, so the effects
 side is untouched. `s_dialogvolume` is `CVAR_ARCHIVE`, so the value also ships as
 `seta s_dialogvolume 0.96` in `EF2_ANDROID_DEFAULT_COMMANDS` (with
-`ANDROID_DEFAULTS_VERSION` bumped) for an install whose `config.cfg` already
+`PORT_DEFAULTS_SEED` bumped) for an install whose `config.cfg` already
 archived retail's 0.60. Both gains are computed from the port's own source
 arithmetic, before and after; the default must not be "corrected" back to 0.60.
 

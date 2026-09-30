@@ -1439,13 +1439,27 @@ void Com_Init( char *commandLine ) {
 
 	Cbuf_Execute( 0 );
 
-	/* No boot cfg is exec'd.  Retail's `exec global/default.cfg' then
-	   `exec global/game.cfg' are id Tech 3's three-config launch: the loose
-	   install copy shadows the port's own copy inside zpak-android.pk3 under
-	   loose-before-paks, and on Linux the retail copy is what grew the Touch
-	   section in the settings menu (board 2026-10-15).  The defaults are folded
-	   in once by the versioned seed below, and the launch loads exactly one
-	   config: config.cfg. */
+	/* ONE boot cfg is exec'd, and it is not a defaults file: `global/game.cfg'
+	   ships inside the retail pak (pak0, 1222 B, 52 lines) and carries the
+	   game-side `setd' values the engine has nowhere else -- above all
+	   `setd introCommand "defaultSoundTrack none; cinematic paramount.roq;
+	   ... cinematic intro.roq; afterCinematic ... pushmenu main"', which is the
+	   ONLY thing that starts the intro (UI_StartIntro_f reads introCommand and
+	   nothing else), plus `ui_mainMenuModel', `cg_3rd_person', `r_znear',
+	   `g_statefile', `g_playermodel' and the mp_* defaults.  It is applied here,
+	   before config.cfg, exactly where retail applies it, so the archived config
+	   wins every value it names.  Removing this exec is what turned the intro
+	   into a black screen until ESC (operator run 2026-10-15 09:06): game.cfg is
+	   data, not a second source of the defaults.
+	   `exec global/default.cfg' stays gone: that IS the defaults file, it is the
+	   one a loose retail copy shadowed (loose-before-paks), and the compiled
+	   seed below folds it in once on both platforms. */
+	Cmd_AddCommand( "setd", Cvar_SetD_f );
+	Cbuf_AddText( "exec global/game.cfg\n" );
+	Cbuf_Execute( 0 );
+	Cmd_RemoveCommand( "setd" );
+
+
 	cvar_global_force = qtrue;
 	Cbuf_Execute( 0 );
 	cvar_global_force = qfalse;
@@ -1520,17 +1534,24 @@ void Com_Init( char *commandLine ) {
 	   union of the shipped global/defaultcontrols.cfg and global/defaultoptions.cfg
 	   (zpak-android.pk3) and is platform-neutral where those two are not (its
 	   cl_renderer is the compiled renderer default, not the zpak's stale gles3).
-	   The version gate is kept, and with it the archived cvar's name: an
-	   existing Android install whose config.cfg carries in_androidDefaults 9 must
-	   still re-seed when this version moves, and a Linux install that has never
-	   seen the cvar seeds on its first boot.  Nothing global/*.cfg is read. */
-#define ANDROID_DEFAULTS_VERSION 10
-	if ( Cvar_VariableIntegerValue( "in_androidDefaults" ) < ANDROID_DEFAULTS_VERSION )
+
+	   The gate is a cvar only THIS code writes.  It used to read the Android
+	   install's own `in_androidDefaults', and that is not a safe gate: any build
+	   that ever ran against the shared write root owns that value, and the
+	   operator's root carries `seta in_androidDefaults "14"' while this constant
+	   is 10 -- so the seed silently never ran and the defaults were not folded in
+	   at all.  `port_defaultsSeed' starts at 0 on every install, is bumped only
+	   here, and cannot be outrun by a stray value.  `in_androidDefaults' is still
+	   written so an Android install keeps one continuous history of the seed. */
+#define PORT_DEFAULTS_SEED 1
+	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );
 		Cbuf_Execute( 0 );
+		Cvar_Get( "port_defaultsSeed", "0", CVAR_ARCHIVE );
+		Cvar_Set( "port_defaultsSeed", XSTRING( PORT_DEFAULTS_SEED ) );
 		Cvar_Get( "in_androidDefaults", "0", CVAR_ARCHIVE );
-		Cvar_Set( "in_androidDefaults", XSTRING( ANDROID_DEFAULTS_VERSION ) );
+		Cvar_Set( "in_androidDefaults", "10" );
 
 		Com_WriteConfigToFile( EF2_CONFIG_FILE );
 	}
@@ -1587,8 +1608,11 @@ void Com_Init( char *commandLine ) {
 	cvar_modifiedFlags &= ~CVAR_ARCHIVE;
 
 	/* the seed above ran on this boot (or an earlier one), so its `seta' values
-	   must reach the archive on either platform, not only Android */
-	if ( Cvar_VariableIntegerValue( "in_androidDefaults" ) )
+	   must reach the archive on either platform, not only Android.  Keyed on the
+	   seed's own cvar, so a stray or zero `in_androidDefaults' cannot switch the
+	   archiving off. */
+	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" )
+		 || Cvar_VariableIntegerValue( "in_androidDefaults" ) )
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 
 	com_maxfps = Cvar_Get( "com_maxfps", "85", CVAR_ARCHIVE );
