@@ -1404,6 +1404,20 @@ void UIWidget::set2D(void)
 {
     int limit_subT0 = LIMIT_SubT0();
 
+    /* ONE window for the whole 2D pass, and the widget clips with the scissor.
+       This is retail's own shape, from retail-menu-solomatch-final.trace calls
+       10103-10124 and the repeats that follow: glViewport(0, 0, 640, 480),
+       glMatrixMode(GL_PROJECTION), glLoadIdentity(), glOrtho(0, 640, 480, 0, -1, 1),
+       glMatrixMode(GL_MODELVIEW), glLoadIdentity(), and then glVertex2f in SCREEN
+       coordinates, with glScissor(<the widget's clip>) the only per-widget state
+       (the trace's are (49,51,320,26), (424,53,123,26), (371,49,256,32), ...).
+       The port used to fold the widget's placement into a per-widget ortho and
+       viewport, which is why an ortho whose left equalled its right needed a
+       degenerate branch: the transform stopped meaning anything.  Placement rides
+       on the vertices now (Rend_Set2DOrigin, added by the renderer's 2D vertex
+       writers), so the ortho is constant and can never degenerate, and a widget
+       with a zero-extent frame is merely clipped to nothing by its scissor, as it
+       is in retail. */
     /* A zero-extent window is the whole 2D defect: the ortho the window carries
        is degenerate (left == right), so every quad the widget queues is
        transformed through an identity and lands at raw coordinates, and the
@@ -1445,16 +1459,21 @@ void UIWidget::set2D(void)
     }
 
     uii.Rend_Set2D(
-        uid.originX + (int)m_screenframe.pos.x,
-        uid.surfaceHeight - uid.originY - (int)(m_screenframe.size.height + m_screenframe.pos.y),
-        m_screenframe.size.width,
-        m_screenframe.size.height,
-        m_clippedorigin.x,
-        m_clippedorigin.x + m_screenframe.size.width,
-        m_clippedorigin.y + m_screenframe.size.height,
-        m_clippedorigin.y,
+        uid.originX,
+        uid.surfaceHeight - uid.originY - uid.vidHeight,
+        uid.vidWidth,
+        uid.vidHeight,
+        0, uid.vidWidth, uid.vidHeight, 0,
         -1.0,
         1.0
+    );
+
+    /* The widget's own window, as the offset the vertex writers add: a local
+       (vx, vy) used to land at the window's (x + vx - clippedorigin.x, ...), and
+       it must land at the same place inside the one screen window. */
+    uii.Rend_Set2DOrigin(
+        m_screenframe.pos.x - m_clippedorigin.x,
+        (float)uid.vidHeight - m_screenframe.size.height - m_screenframe.pos.y - m_clippedorigin.y
     );
 
     LIMIT_SubPushEnd(limit_subT0);
