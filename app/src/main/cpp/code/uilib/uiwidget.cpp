@@ -1469,11 +1469,18 @@ void UIWidget::set2D(void)
     );
 
     /* The widget's own window, as the offset the vertex writers add: a local
-       (vx, vy) used to land at the window's (x + vx - clippedorigin.x, ...), and
-       it must land at the same place inside the one screen window. */
+       vertex used to land at the widget's (screenframe.pos - clippedorigin)
+       inside a viewport placed at the widget's own frame, and it must land at
+       the same screen position inside the one screen window.  BOTH axes are
+       therefore screenframe.pos - clippedorigin.  The y term must NOT be the
+       frame's GL-viewport box (surfaceHeight - originY - h - pos.y, which is
+       what the per-widget window used to pass as its viewport y): the constant
+       window's ortho is y-down like retail's glOrtho(0, 640, 480, 0), so a
+       vertex y already counts down from the pass's own origin and a second
+       flip mirrors the widget about the middle of the screen. */
     uii.Rend_Set2DOrigin(
         m_screenframe.pos.x - m_clippedorigin.x,
-        (float)uid.vidHeight - m_screenframe.size.height - m_screenframe.pos.y - m_clippedorigin.y
+        m_screenframe.pos.y - m_clippedorigin.y
     );
 
     LIMIT_SubPushEnd(limit_subT0);
