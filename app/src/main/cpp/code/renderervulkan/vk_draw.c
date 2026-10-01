@@ -723,7 +723,6 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 {
 	float m[16];
 	float rl, tb, fn;
-	qboolean degenerate;
 
 	vk_2dWindow[0] = x; vk_2dWindow[1] = y; vk_2dWindow[2] = w; vk_2dWindow[3] = h;
 	vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = w; vk_2dScissor[3] = h;
@@ -735,37 +734,26 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	rl = right - left;
 	tb = top - bottom;
 	fn = f - n;
-	degenerate = ( rl == 0.0f || tb == 0.0f || fn == 0.0f ) ? qtrue : qfalse;
 
-	if ( degenerate ) {
-		/* Retail's own UI authors zero-extent windows (menu_controls' bindscroll, its two "table fudge"
-		   columns, menu_loadgame's width-0 columns); the dims travel set2D -> Set2DWindow -> this record
-		   verbatim and nothing rasterises. A diagnosis row: [VK:guard] stays the error stream. */
-		static int s_rows;
+	/* The 2D pass has ONE window for every widget -- the screen -- and a widget
+	   clips with the scissor, which is retail's own shape
+	   (retail-menu-solomatch-final.trace 10103-10124: constant glViewport and
+	   glOrtho(0, 640, 480, 0, -1, 1), glVertex2f in screen space, per-widget
+	   glScissor).  The widget's placement is a vertex origin now, so this ortho is
+	   the screen ortho and cannot degenerate; the guards keep a caller that does
+	   pass a zero range from producing a non-finite matrix. */
+	if ( rl == 0.0f ) { rl = 1.0f; }
+	if ( tb == 0.0f ) { tb = 1.0f; }
+	if ( fn == 0.0f ) { fn = 1.0f; }
 
-		if ( s_rows < 8 || ( s_rows % 500 ) == 0 ) {
-			VK_Guard_Row( "VK:2dwin",
-						  "site=sync detail=\"degenerate 2D window x=%d y=%d w=%d h=%d "
-						  "l=%g r=%g b=%g t=%g n=%g f=%g\" n=%u",
-						  x, y, w, h, left, right, bottom, top, n, f, s_rows + 1 );
-		}
-		s_rows++;
-	}
-
-	/* The window is issued either way, as the reference does: the zero-extent
-	   scissor rasterises nothing.  Returning left the last window in force. */
 	memset( m, 0, sizeof( m ) );
-	if ( !degenerate ) {
-		m[0]  = 2.0f / rl;
-		m[5]  = -2.0f / tb;
-		m[10] = -1.0f / fn;
-		m[12] = -( right + left ) / rl;
-		m[13] = ( top + bottom ) / tb;
-		m[14] = 0.5f - ( f + n ) / ( 2.0f * fn );
-		m[15] = 1.0f;
-	} else {
-		m[0] = m[5] = m[10] = m[15] = 1.0f;
-	}
+	m[0]  = 2.0f / rl;
+	m[5]  = -2.0f / tb;
+	m[10] = -1.0f / fn;
+	m[12] = -( right + left ) / rl;
+	m[13] = ( top + bottom ) / tb;
+	m[14] = 0.5f - ( f + n ) / ( 2.0f * fn );
+	m[15] = 1.0f;
 
 	{
 		vkPushConstants_t push;

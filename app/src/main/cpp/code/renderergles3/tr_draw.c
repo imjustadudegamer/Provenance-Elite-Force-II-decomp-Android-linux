@@ -1113,6 +1113,7 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 		 r_window2DOrtho[0] == left && r_window2DOrtho[1] == right && r_window2DOrtho[2] == bottom &&
 		 r_window2DOrtho[3] == top && r_window2DOrtho[4] == n && r_window2DOrtho[5] == f &&
 		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == w && r_scissor2D[3] == h ) {
+		Set2DOrigin( 0.0f, 0.0f );
 		return;
 	}
 
@@ -1133,6 +1134,9 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 			r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = w; r_scissor2D[3] = h;
 		}
 	}
+
+	/* the window defines the space: the placement the last widget set is gone */
+	Set2DOrigin( 0.0f, 0.0f );
 }
 
 void RE_Scissor(int x, int y, int width, int height) {
