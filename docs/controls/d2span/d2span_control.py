@@ -95,17 +95,21 @@ def stream(menu_like=True):
     ev = []
     ev.append(("win", "A"))
     ev.append(("color", "c0"))
+    ev.append(("origin", "A"))
     ev.append(("quad", 6))
     if menu_like:
         ev.append(("win", "B"))          # the next widget's own window
         ev.append(("color", "c1"))       # and its own Draw_SetColor
+        ev.append(("origin", "B"))       # and its own placement (Rend_Set2DOrigin)
         ev.append(("quad", 6))
         ev.append(("scn", "B/2"))        # its own scissor
         ev.append(("color", "c2"))
+        ev.append(("origin", "C"))
         ev.append(("quad", 6))
         ev.append(("win", "C"))
         ev.append(("quad", 6))
         ev.append(("shader", "s2"))      # a different material ends the batch
+        ev.append(("origin", "D"))
         ev.append(("quad", 6))
         ev.append(("win", "D"))
         ev.append(("quad", 6))
@@ -123,11 +127,15 @@ def old_model(ev):
     recorded = {}                 # quad id -> state at record time
     color = None                  # backEnd.color2D, per widget in this sequencing
     colorOf = {}                  # quad id -> the colour it was drawn with
+    origin = None                 # the window's ortho carried the placement
+    originOf = {}                 # quad id -> the placement baked into it
     qid = 0
 
     for kind, arg in ev:
         if kind == "color":
             color = arg
+        elif kind == "origin":
+            origin = arg
         elif kind in ("win", "scn"):
             if queue:
                 draws.append((state, queue))
@@ -140,13 +148,14 @@ def old_model(ev):
         elif kind == "quad":
             recorded[qid] = state
             colorOf[qid] = color
+            originOf[qid] = origin
             queue.append(qid)
             qid += 1
 
     if queue:
         draws.append((state, queue))
     return {"draws": draws, "recorded": recorded,
-            "color": colorOf,
+            "color": colorOf, "origin": originOf,
             "ends": len(draws), "spans": sum(1 for st, q in draws if q)}
 
 
@@ -160,6 +169,9 @@ def new_model(ev, mutant=0):
     recorded = {}
     color = None                  # the walk's live backEnd.color2D
     colorOf = {}                  # quad id -> the colour recorded with it
+    origin = None                 # the walk's live placement, added at append
+    originOf = {}                 # quad id -> the placement baked into it
+    drawnOrigin = {}              # quad id -> the placement it is drawn with
     drawnColor = {}               # quad id -> the colour it is drawn with
     ends = 0
     qid = 0
@@ -178,6 +190,7 @@ def new_model(ev, mutant=0):
             drawn.append((state, [q for q, fi in queue]))
             for q, fi in queue:
                 drawnColor[q] = color if mutant == 7 else colorOf[q]
+                drawnOrigin[q] = origin if mutant == 12 else originOf[q]
         else:
             for i, (first, st) in enumerate(spans):
                 end = spans[i + 1][0] if i + 1 < len(spans) else batch_indexes
@@ -188,11 +201,14 @@ def new_model(ev, mutant=0):
                     drawn.append((st, part))
                     for q in part:
                         drawnColor[q] = color if mutant == 7 else colorOf[q]
+                        drawnOrigin[q] = origin if mutant == 12 else originOf[q]
         spans, queue, batch_indexes = [], [], 0
 
     for kind, arg in ev:
         if kind == "color":
             color = arg                # RC_2D_COLOR, live during the walk
+        elif kind == "origin":
+            origin = arg               # RC_2D_ORIGIN, live during the walk
         elif kind in ("win", "scn"):
             # RB_2D_SpanBreak(): the queued quads close under the state in force
             if queue and batch_indexes > 0 and len(spans) == 0:
@@ -209,12 +225,14 @@ def new_model(ev, mutant=0):
         elif kind == "quad":
             recorded[qid] = state
             colorOf[qid] = color
+            originOf[qid] = origin
             queue.append((qid, batch_indexes))
             batch_indexes += arg
             qid += 1
 
     end_surface()
     return {"draws": drawn, "recorded": recorded, "color": colorOf,
+            "origin": originOf, "drawnOrigin": drawnOrigin,
             "drawnColor": drawnColor,
             "ends": ends, "spans": sum(1 for st, q in drawn if q)}
 
@@ -266,6 +284,17 @@ def run_model(mutant):
             check(new["drawnColor"][q] == new["color"][q],
                   "%s: quad %d is drawn with colour %r, recorded with %r"
                   % (tag, q, new["drawnColor"][q], new["color"][q]))
+
+        # the placement is baked into the quad's own vertices at append, so a span
+        # holding several widgets draws each where it was recorded
+        for q in sorted(old["origin"]):
+            check(old["origin"].get(q) == new["origin"].get(q),
+                  "%s: quad %d was recorded at placement %r, now %r"
+                  % (tag, q, old["origin"].get(q), new["origin"].get(q)))
+        for q in sorted(new["drawnOrigin"]):
+            check(new["drawnOrigin"][q] == new["origin"][q],
+                  "%s: quad %d is drawn at placement %r, recorded at %r"
+                  % (tag, q, new["drawnOrigin"][q], new["origin"][q]))
 
 
 def main():
@@ -346,6 +375,26 @@ def main():
               "ComputeColors' %s does not read the quad's own colour in 2D" % gen)
     check("backEnd.color2D" in colors,
           "the 3D path lost its draw colour (backEnd.color2D)")
+
+    # --- the placement rides on the vertices, not in the span state --------
+    util = read(os.path.join(VK, "tr_util.cpp"))
+    backend = read(os.path.join(VK, "tr_backend.c"))
+    vert = body(util, "void RB_Vertex3f(")
+    imm = body(backend, "void RB_ImmVertex2f(")
+    if mutant == 13:
+        vert = vert.replace("x += vk_2dOrigin[0];", "")
+        vert = vert.replace("y += vk_2dOrigin[1];", "")
+    check("x += vk_2dOrigin[0];" in vert and "y += vk_2dOrigin[1];" in vert
+          and "backEnd.in2D" in vert,
+          "the surface batch's 2D vertex writer does not bake the widget's placement "
+          "into the vertex, so a span holding several widgets cannot be right")
+    check("x += vk_2dOrigin[0];" in imm and "backEnd.in2D" in imm,
+          "the immediate stream's 2D vertex writer does not bake the placement")
+    check("origin" not in body(batch, "void RB_2D_SpanGet(").lower(),
+          "the span state carries a placement, so a span would move the quads a "
+          "later widget recorded")
+    check("origin" not in body(draw, "static void RB_StageDrawSpan(").lower(),
+          "the span draw applies a placement, which belongs on the vertices")
 
     span_get = body(batch, "void RB_2D_SpanGet(")
     check("tess.numIndexes" in span_get,

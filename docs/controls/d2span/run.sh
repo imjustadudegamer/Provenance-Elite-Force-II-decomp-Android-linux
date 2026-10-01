@@ -17,7 +17,7 @@ if ! python3 ./d2span_control.py 0; then
 fi
 
 # model faults: the handshake the source pins describe, broken in the model
-for m in 1 2 3 6; do
+for m in 1 2 3 6 12 13; do
 	if python3 ./d2span_control.py "$m" >/dev/null 2>&1; then
 		echo "  FAIL  model fault $m was not detected"
 		rc=1
