@@ -134,8 +134,14 @@ static void D2_End( int slot, int t0 ) {
 /* the reference renderer's tr_draw.c carries this note in full */
 static int D2_Prepare( void ) {
 	/* The twin's prefix flushed the recorded frame; there is no immediate mode
-	   here, so it collapses to nothing. */
-	return 0;
+	   here, so the FLUSH collapses to nothing.  The timestamp must not: D2_End
+	   drops a zero t0, so returning 0 here left every slot whose recorder goes
+	   through D2_Prepare -- box, stretchpic, stretchpic2, tilepic, setwindow,
+	   scissor, lineloop, trianglepic -- reading 0 in the [2D:sum] roll, which
+	   reads as "the boxes never reach the 2D path" when the box path is exactly
+	   what they are.  Only setcolor and drawstring, which take D2_T0 directly,
+	   were ever counted. */
+	return D2_T0();
 }
 
 static void D2_Roll( void ) {
