@@ -19,6 +19,19 @@ r_smp -- so whether the front end's first window request of a frame saw a valid
 cache was a race: the window was recorded on some frames and elided on others,
 which is the flashing 2D the operator kept reporting.
 
+It also pins the shape the trace gives the 2D pass itself, because the two go
+together: with a per-widget window the cache had a window command per widget to
+elide, and with retail's shape there is ONE window for the pass.  From
+retail-menu-solomatch-final.trace calls 10103-10124 (and the repeats that
+follow): `glViewport(0, 0, 640, 480)`, `glMatrixMode(GL_PROJECTION)`,
+`glLoadIdentity()`, `glOrtho(0, 640, 480, 0, -1, 1)`, `glMatrixMode(GL_MODELVIEW)`,
+`glLoadIdentity()`, then `glVertex2f` in SCREEN space, with `glScissor` the only
+per-widget state -- `(49,51,320,26)`, `(424,53,123,26)`, `(371,49,256,32)`,
+`(458,393,138,32)`, `(44,393,138,32)`, `(320,393,138,32)`, `(182,393,138,32)`,
+`(435,20,96,32)`, `(40,9,40,16)`, `(20,9,25,16)`, all nonzero.  So the control
+requires the constant window + the vertex origin, forbids a degenerate-ortho
+branch, and proves the placement is unchanged by the rewrite.
+
 Build/run: docs/controls/d2window/run.sh
 """
 import os
@@ -140,6 +153,96 @@ def main():
         if frame_drop and on3d:
             check(got == ["A", "A"],
                   "%s: expected both window requests recorded, got %r" % (lane, got))
+
+    # --- retail's 2D shape (trace 10103-10124) ----------------------------
+    #
+    # The scissor rects the trace sets, in the 640x480 virtual space the UI uses.
+    TRACE_SCISSORS = (
+        (49, 51, 320, 26), (424, 53, 123, 26), (371, 49, 256, 32),
+        (458, 393, 138, 32), (44, 393, 138, 32), (320, 393, 138, 32),
+        (182, 393, 138, 32), (435, 20, 96, 32), (40, 9, 40, 16), (20, 9, 25, 16),
+    )
+
+    uiw = read(os.path.join(CODE, "uilib", "uiwidget.cpp"))
+    set2d = body(uiw, "void UIWidget::set2D(void)")
+
+    # the constant screen window, then the widget's placement, then its scissor
+    check("uid.originX," in set2d and "uid.vidWidth," in set2d,
+          "UIWidget::set2D does not ask for the pass's screen window")
+    if mutant == 4:
+        set2d = set2d.replace("0, uid.vidWidth, uid.vidHeight, 0,",
+                              "m_clippedorigin.x, m_clippedorigin.x + m_screenframe.size.width, "
+                              "m_clippedorigin.y + m_screenframe.size.height, m_clippedorigin.y,")
+    if mutant == 5:
+        set2d = set2d.replace("uii.Rend_Set2DOrigin(", "uii.Rend_Set2DOriginDropped(")
+    check("0, uid.vidWidth, uid.vidHeight, 0," in set2d,
+          "the 2D window's ortho is not the constant screen ortho (the trace's "
+          "glOrtho(0, 640, 480, 0, -1, 1))")
+    check("uii.Rend_Set2DOrigin(" in set2d,
+          "the widget does not publish its placement, so every widget would draw "
+          "at the screen origin")
+    check("m_screenframe.pos.x - m_clippedorigin.x" in set2d,
+          "the published placement is not the widget's screen position (the "
+          "placement the per-widget window used to carry in its ortho)")
+    check("uii.Rend_Scissor(" in set2d,
+          "the widget does not clip itself, and the scissor is the only per-widget "
+          "state retail has")
+    check("m_clippedorigin.x,\n        m_clippedorigin.x + m_screenframe.size.width," not in set2d,
+          "a widget still passes its own frame as the window's ortho")
+
+    for (sx, sy, sw, sh) in TRACE_SCISSORS:
+        check(sw > 0 and sh > 0,
+              "the trace's scissor (%d,%d,%d,%d) is empty, so a draw would vanish" % (sx, sy, sw, sh))
+
+    # the placement the rewrite promises: old window+ortho and new window+origin
+    # put the same vertex at the same place
+    for (sx, sy, sw, sh) in TRACE_SCISSORS:
+        for (px, py) in ((sx, sy), (sx + 7, sy + 3), (sx + sw - 1, sy + sh - 1)):
+            for (vx, vy) in ((0.0, 0.0), (5.0, 1.2), (sw - 1.0, sh - 1.0)):
+                for (cox, coy) in ((0.0, 0.0), (-3.0, -2.0)):
+                    W, H, vidW, vidH, originX, originY = float(sw), float(sh), 640.0, 480.0, 0.0, 40.0
+                    # old: window at (originX+px, ...), ortho cox..cox+W
+                    old_x = originX + px + vx - cox
+                    old_y = (originY + vidH) - H - py + vy - coy
+                    # new: one screen window, origin ox/oy on the vertices
+                    ox = px - cox
+                    oy = vidH - H - py - coy
+                    new_x = originX + vx + ox
+                    new_y = (originY + vidH) - vidH + vy + oy
+                    check(abs(old_x - new_x) < 1e-4 and abs(old_y - new_y) < 1e-4,
+                          "the rewrite moved a vertex: old=(%g,%g) new=(%g,%g) at "
+                          "clip (%d,%d,%d,%d)" % (old_x, old_y, new_x, new_y, sx, sy, sw, sh))
+
+    # no degenerate-ortho branch, and the placement is applied in the vertex writers
+    for lane, paths in LANES.items():
+        if lane == "vulkan":
+            vkdraw = read(os.path.join(CODE, "renderervulkan", "vk_draw.c"))
+            body2d = vkdraw[vkdraw.find("void VK_Draw_Set2D("):]
+            body2d = body2d[:body2d.find("\n}\n") + 3]
+            check("degenerate = " not in body2d and "if ( degenerate )" not in body2d,
+                  "VK_Draw_Set2D still special-cases a degenerate ortho range with an "
+                  "identity in place of the ortho")
+            check("VK:2dwin" not in vkdraw,
+                  "the degenerate-window row is still there, but a widget's window "
+                  "is the screen now and cannot degenerate")
+            util = read(os.path.join(CODE, "renderervulkan", "tr_util.cpp"))
+            backend = read(os.path.join(CODE, "renderervulkan", "tr_backend.c"))
+            check("backEnd.in2D" in body(util, "void RB_Vertex3f("),
+                  "the surface batch's 2D vertex writer does not apply the placement")
+            check("vk_2dOrigin" in body(backend, "void RB_ImmVertex2f(") and
+                  "backEnd.in2D" in body(backend, "void RB_ImmVertex2f("),
+                  "the immediate stream's 2D vertex writer does not apply the placement")
+
+        # a window defines the space in the recorder, on the elided path too
+        drawpath = (os.path.join(CODE, "renderervulkan", "tr_draw.c") if lane == "vulkan"
+                    else os.path.join(CODE, "renderergles3", "tr_draw.c"))
+        rec = body(read(drawpath), "void Set2DWindow(")
+        if mutant == 6:
+            rec = rec.replace("Set2DOrigin( 0.0f, 0.0f );", "")
+        check(rec.count("Set2DOrigin( 0.0f, 0.0f );") >= 2,
+              "%s: Set2DWindow does not drop the placement on both the elided and "
+              "the recorded path, so a screen-space caller can inherit a widget's "
+              "origin" % lane)
 
     print("2dwindow control: %d checks, %d failures" % (checks, failures))
     return 1 if failures else 0
