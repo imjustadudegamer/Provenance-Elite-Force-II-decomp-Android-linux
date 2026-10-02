@@ -873,6 +873,57 @@ def main():
                           "the census, so a new 2D path can bypass the placement"
                           % (lane, fname, line))
 
+    # the ring/immediate vertex struct is the same class at one remove: a 2D imm
+    # writer must place its vertex, and the packs must NOT -- they copy vertices
+    # the writers already placed, and a second offset there would move every 2D
+    # quad twice
+    VERTEX_WRITES = {
+        ("vulkan", "tr_backend.c"): {
+            "static vkTessVertex_t *RB_Imm_NewVertex(": "guard",
+            "void RB_ImmVertex2f(": "placed",
+            "void RB_ImmVertex3f(": "placed",
+        },
+        ("vulkan", "vk_shade.c"): {"static void VK_Stream_Pack(": "pack"},
+        ("vulkan", "tr_curve.c"): {"static void LerpDrawVert(": "3d"},
+        ("gles3", "tr_vbo.c"): {
+            "static rbVertex_t *RB_ImmNewVertex(": "guard",
+            "void RB_ImmVertex2f(": "placed",
+            "void RB_ImmVertex3f(": "placed",
+            "static void RB_VboPackRange(": "pack",
+        },
+        ("gles3", "tr_curve.c"): {"static void LerpDrawVert(": "3d"},
+    }
+    for (lane, fname), table in VERTEX_WRITES.items():
+        text = read(os.path.join(CODE, LANES[lane]["dir"], fname))
+        for header, verdict in table.items():
+            b = body(text, header)
+            check(b is not None, "%s/%s: %s is gone from the tree" % (lane, fname, header))
+            if not b:
+                continue
+            if verdict == "placed":
+                if mutant == 12:
+                    b = b.replace("RB_2DPlaceVertex( v->xyz );", "")
+                check("RB_2DPlaceVertex(" in b,
+                      "%s/%s: %s writes a 2D vertex without the placement" % (lane, fname, header))
+            else:
+                check("RB_2DPlaceVertex(" not in b,
+                      "%s/%s: %s adds the 2D placement where it must not (%s)"
+                      % (lane, fname, header, verdict))
+        for m in re.finditer(r"->xyz\s*\[[0-9]\]\s*[-+*/]?=", text):
+            known = False
+            for header in table:
+                b = body(text, header)
+                if b and text.find(header) <= m.start() < text.find(header) + len(b):
+                    known = True
+                    break
+            if not known:
+                check(False,
+                      "%s/%s:%d writes a vertex struct and is not classified"
+                      % (lane, fname, text.count("\n", 0, m.start()) + 1))
+    check("RB_2DPlaceVertex" not in body(read(LANES["vulkan"]["backend"]), "void RB_ImmCommit("),
+          "RB_ImmCommit applies the placement to vertices the writers already "
+          "placed, moving every immediate 2D quad twice")
+
     # the origin arithmetic exists in exactly one place per lane
     for lane, paths in LANES.items():
         sym = paths["origin"]
