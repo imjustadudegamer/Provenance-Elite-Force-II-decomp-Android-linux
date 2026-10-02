@@ -302,7 +302,11 @@ def fb_point(window, ortho, vx, vy, H):
 
 
 def main():
-    mutant = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    # `report` prints the per-resolution evidence the checks otherwise only
+    # assert: the pillarbox rect, the UI scale, and a worked widget's placed
+    # rect and scissor at 800x600, 1280x720, 1920x1080 and 1920x1200.
+    report = len(sys.argv) > 1 and sys.argv[1] == "report"
+    mutant = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 0
 
     for lane, paths in LANES.items():
         frame = read(paths["frame"])
@@ -549,9 +553,13 @@ def main():
 
     RESOLUTIONS = ((800, 600, 0), (800, 600, 2), (1280, 720, 1), (1920, 1080, 1),
                    (1920, 1080, 0), (1920, 1200, 1), (1920, 1200, 2), (1920, 1200, 0))
+    if report:
+        print("resolution   mode  pillarbox(dx,dy,dw,dh)  scale(vidw/640,vidh/480)  "
+              "sample scissor (bottom-left)  placed rect (top-left)")
     for (W, H, mode) in RESOLUTIONS:
         dx, dy, dw, dh = pillarbox(W, H, mode)
         sxr, syr = float(dw) / 640.0, float(dh) / 480.0
+        sample = None
         for (sx, sy, sw, sh) in TRACE_SCISSORS:
             # the trace's scissor is bottom-left in the 640x480 space
             ax, ay = float(sx), 480.0 - float(sy) - float(sh)
@@ -591,6 +599,14 @@ def main():
                   and abs(scn[2] - fw) < 0.01 and abs(scn[3] - fh) < 0.01,
                   "at %dx%d mode %d the widget's scissor %r does not cover its own "
                   "frame" % (W, H, mode, scn))
+            if report and (sx, sy, sw, sh) == TRACE_SCISSORS[0]:
+                sample = (scn, rect)
+        if report and sample:
+            scn, rect = sample
+            print("%4dx%-6d %-5d (%d,%d,%d,%d)%-8s %.3f,%.3f%-14s "
+                  "(%g,%g,%g,%g)   (%.1f,%.1f)-(%.1f,%.1f)"
+                  % (W, H, mode, dx, dy, dw, dh, "", sxr, syr, "",
+                     scn[0], scn[1], scn[2], scn[3], rect[0], rect[1], rect[2], rect[3]))
 
     # --- ui_hudScale > 1: the placement is an offset, NOT a scaled quantity --
     #
