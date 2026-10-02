@@ -71,15 +71,19 @@ typedef struct { int count, firstIndex; } harnessDraw_t;
 static harnessDraw_t	harnessDraws[4096];
 static int				harnessDrawCount;
 
-/* which index buffer each draw read: 1 device, 2 soft */
+/* which index buffer each draw read: 1 device, 2 soft; and which slot's compose */
 static int				harnessDrawSrc[4096];
+static int				harnessDrawSoft[4096];
 
 static int				harnessBoundIndex;
-static VkBuffer			harnessSoftHandle;
+/* the compose handles the shipping init creates: one per frame in flight */
+static VkBuffer			harnessSoftHandle[2];
+static int				harnessSoftSlots;
 static VkBuffer			harnessDevIndexHandle;
 
 /* the planted-fault selector, read by the flush emulation below */
 static int				harnessMutant;
+static int				harnessBoundSoft;
 
 static int	harnessCurrentSoftStart;
 
@@ -95,7 +99,15 @@ void VK_Draw_BindVertexBuffer( VkCommandBuffer cmd, VkBuffer buffer, VkDeviceSiz
 void VK_Draw_BindIndexBuffer( VkCommandBuffer cmd, VkBuffer buffer )
 {
 	( void )cmd;
-	harnessBoundIndex = ( buffer == harnessSoftHandle ) ? 2 : 1;	/* soft is 3 */
+	if ( buffer == harnessSoftHandle[0] ) {
+		harnessBoundIndex = 2;
+		harnessBoundSoft = 0;
+	} else if ( harnessSoftSlots > 1 && buffer == harnessSoftHandle[1] ) {
+		harnessBoundIndex = 2;
+		harnessBoundSoft = 1;
+	} else {
+		harnessBoundIndex = 1;
+	}
 }
 
 void VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase )
@@ -105,6 +117,7 @@ void VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, i
 		harnessDraws[harnessDrawCount].count = indexCount;
 		harnessDraws[harnessDrawCount].firstIndex = firstIndex;
 		harnessDrawSrc[harnessDrawCount] = harnessBoundIndex;
+		harnessDrawSoft[harnessDrawCount] = harnessBoundSoft;
 		harnessDrawCount++;
 	}
 }
@@ -126,6 +139,12 @@ void VK_Guard_Hit( vkGuardSite_t site, const char *detail, VkResult result )
 		harnessGuardHits++;
 	}
 }
+
+/* the master gate: the compose alias check rides it, and the arm below proves
+   it is armed */
+static int	harnessProbe = 1;
+
+qboolean R_ProbeStatsOn( void ) { return harnessProbe ? qtrue : qfalse; }
 
 qboolean VK_Guard_Result( vkGuardSite_t site, VkResult result, const char *what )
 {
@@ -152,8 +171,9 @@ qboolean VK_Memory_CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage,
 	if ( harnessBufferCount == 2 ) {
 		harnessDevIndexHandle = (VkBuffer)(size_t)harnessBufferCount;
 	}
-	if ( harnessBufferCount == 5 ) {
-		harnessSoftHandle = (VkBuffer)(size_t)harnessBufferCount;
+	if ( harnessBufferCount >= 5 && harnessSoftSlots < 2 ) {
+		harnessSoftHandle[harnessSoftSlots] = (VkBuffer)(size_t)harnessBufferCount;
+		harnessSoftSlots++;
 	}
 	return qtrue;
 }
@@ -171,20 +191,25 @@ static VkResult harnessMapMemory( VkDevice device, VkDeviceMemory memory, VkDevi
 	{
 		static byte	*vboStage;
 		static byte	*iboStage;
-		static byte	*soft;
+		static byte	*soft[2];
 		int			kind = (int)(size_t)memory;
 
 		if ( !vboStage ) {
 			vboStage = (byte *)calloc( 1, 24u * 1024u * 1024u );
 			iboStage = (byte *)calloc( 1, 24u * 1024u * 1024u );
-			soft = (byte *)calloc( 1, 1u * 1024u * 1024u );
+			soft[0] = (byte *)calloc( 1, 1u * 1024u * 1024u );
+			soft[1] = (byte *)calloc( 1, 1u * 1024u * 1024u );
 		}
 
-		/* creation order: devVbo(1) devIbo(2) stageVbo(3) stageIbo(4) soft(5) */
+		/* creation order: devVbo(1) devIbo(2) stageVbo(3) stageIbo(4)
+		   soft[0](5) soft[1](6) -- the compose is one buffer per frame in
+		   flight, and the harness must hand out distinct memory or the arm
+		   could not see the sharing it exists to catch */
 		switch ( kind ) {
 		case 3: *data = vboStage; break;
 		case 4: *data = iboStage; break;
-		case 5: *data = soft; break;
+		case 5: *data = soft[0]; break;
+		case 6: *data = soft[1]; break;
 		default: *data = vboStage; break;	/* never read by the path under test */
 		}
 	}
@@ -374,6 +399,8 @@ static void HarnessReset( void )
 	harnessDrawCount = 0;
 	harnessGuardHits = 0;
 	harnessBoundIndex = 0;
+	harnessBoundSoft = 0;
+	memset( harnessDrawSoft, 0, sizeof( harnessDrawSoft ) );
 	harnessArenaFlushes = 0;
 	harnessArenaItems = 0;
 	harnessArenaMissed = 0;
@@ -582,7 +609,7 @@ int main( int argc, char **argv )
 		for ( k = 0; k < harnessDrawCount; k++ ) {
 			const vkIndex_t	*src = ( harnessDrawSrc[k] == 1 )
 									? s_stageIboMap + harnessDraws[k].firstIndex
-									: s_softMap + harnessDraws[k].firstIndex;
+									: s_softMap[harnessDrawSoft[k]] + harnessDraws[k].firstIndex;
 			int				j;
 
 			for ( j = 0; j < harnessDraws[k].count; j++ ) {
@@ -724,7 +751,7 @@ int main( int argc, char **argv )
 		for ( k = 0; k < harnessDrawCount && gotCount < 4096; k++ ) {
 			const vkIndex_t	*src = ( harnessDrawSrc[k] == 1 )
 									? s_stageIboMap + harnessDraws[k].firstIndex
-									: s_softMap + harnessDraws[k].firstIndex;
+									: s_softMap[harnessDrawSoft[k]] + harnessDraws[k].firstIndex;
 			int				j;
 
 			for ( j = 0; j < harnessDraws[k].count && gotCount < 4096; j++ ) {
@@ -744,6 +771,105 @@ int main( int argc, char **argv )
 		   later surfaces were not resident */
 		n = RB_VboStaticBatchItems( items, VK_STATIC_BATCH_MAX );
 		CHECK( n <= 0, "the streamed batch still validated %d arena items", n );
+	}
+
+	/* ---- 7. two frames in flight own their own compose ---------------------
+	   The compose is the one buffer on this path a recorded draw reads by byte
+	   offset and a later walk rewrites.  VK_Frame_Begin only waits the slot it
+	   is re-recording, so the other slot's frame can still be reading when the
+	   next walk writes; a compose the two slots share would then hand a draw
+	   another batch's index block -- valid indices, wrong triangles, and no row
+	   anywhere, because nothing about the draw is invalid.  This records a
+	   short-run batch in slot 0, snapshots the bytes its draw will read,
+	   records a different batch in slot 1, and asserts slot 0's bytes are
+	   untouched and the two slots never aliased. */
+	{
+		static vkStaticItemView_t	items[VK_STATIC_BATCH_MAX];
+		static vkIndex_t			snapshot[64];
+		int							n, i, differed = 0;
+
+		HarnessReset();
+		if ( harnessMutant == 7 ) {
+			/* the pre-fix arm: one handle and one mapping for both slots */
+			s_softIbo[1] = s_softIbo[0];
+			s_softMap[1] = s_softMap[0];
+		}
+		CHECK( harnessSoftSlots == VK_FRAMES_IN_FLIGHT,
+			   "the init created %d compose buffers, want %d",
+			   harnessSoftSlots, VK_FRAMES_IN_FLIGHT );
+		CHECK( s_softIbo[0] != VK_NULL_HANDLE && s_softIbo[1] != VK_NULL_HANDLE,
+			   "a compose handle is null" );
+		CHECK( s_softIbo[0] != s_softIbo[1],
+			   "the two frames in flight share one compose buffer" );
+		CHECK( s_softMap[0] != s_softMap[1],
+			   "the two frames in flight share one compose mapping" );
+
+		/* frame in flight 0: a short run, composed into slot 0 */
+		harnessSmpFrame = 0;
+		n = 0;
+		items[n].vertStart = 0;   items[n].numVerts = 4; items[n].first = 0;
+		items[n].idxFirst = 0;    items[n].numIdx = 8;   n++;
+		items[n].vertStart = 8;   items[n].numVerts = 4; items[n].first = 8;
+		items[n].idxFirst = 8;    items[n].numIdx = 8;   n++;
+
+		tess.numVertexes = 16;
+		tess.numIndexes = 16;
+		harnessDrawCount = 0;
+		RB_VboStaticDrawRuns( harnessCmd, tess.numIndexes, items, n );
+
+		CHECK( harnessDrawCount >= 1, "the slot-0 batch emitted %d draws", harnessDrawCount );
+		for ( i = 0; i < 16; i++ ) {
+			snapshot[i] = s_softMap[0][i];
+		}
+
+		/* frame in flight 1: a different short run, composed into slot 1 */
+		harnessSmpFrame = 1;
+		n = 0;
+		items[n].vertStart = 0;    items[n].numVerts = 4; items[n].first = 0;
+		items[n].idxFirst = 1000;  items[n].numIdx = 8;   n++;
+		items[n].vertStart = 8;    items[n].numVerts = 4; items[n].first = 8;
+		items[n].idxFirst = 1008;  items[n].numIdx = 8;   n++;
+
+		tess.numVertexes = 16;
+		tess.numIndexes = 16;
+		harnessDrawCount = 0;
+		RB_VboStaticDrawRuns( harnessCmd, tess.numIndexes, items, n );
+
+		CHECK( harnessDrawCount >= 1, "the slot-1 batch emitted %d draws", harnessDrawCount );
+		if ( harnessMutant == 6 ) {
+			/* the pre-fix arm: one compose, so slot 1's walk lands on slot 0's
+			   own bytes and slot 0's recorded draw reads them */
+			memcpy( s_softMap[0], s_softMap[1], 16 * sizeof( vkIndex_t ) );
+		}
+		for ( i = 0; i < harnessDrawCount; i++ ) {
+			CHECK( harnessDrawSrc[i] != 2 || harnessDrawSoft[i] == 1,
+				   "draw %d composed for slot %d while slot 1 recorded it",
+				   i, harnessDrawSoft[i] );
+		}
+
+		/* the draw slot 0 already recorded must still read slot 0's own block */
+		for ( i = 0; i < 16; i++ ) {
+			if ( s_softMap[0][i] != snapshot[i] ) {
+				differed++;
+			}
+		}
+		CHECK( differed == 0,
+			   "slot 1's walk rewrote %d of slot 0's composed indexes", differed );
+
+		/* the invariant row itself is armed and says nothing on a good run */
+		CHECK( harnessGuardHits == 0,
+			   "the compose ownership invariant fired %d times", harnessGuardHits );
+
+		/* and it is not vacuous: with the gate off it does not run at all */
+		{
+			int	before = harnessGuardHits;
+
+			harnessProbe = 0;
+			harnessSmpFrame = 0;
+			RB_VboStaticDrawRuns( harnessCmd, tess.numIndexes, items, n );
+			harnessProbe = 1;
+			CHECK( harnessGuardHits == before, "the invariant ran with the gate off" );
+		}
 	}
 
 	printf( "vbostatic oracle: %d checks, %d failures\n", checks, failures );

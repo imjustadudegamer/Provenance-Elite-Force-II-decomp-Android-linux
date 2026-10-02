@@ -24,8 +24,10 @@ root, for more details.
  * device-local vertex arena and its rebased index block into a device-local
  * index arena, and the draw reads those instead of the frame's streaming rings.
  * Device-local runs of at least MIN_IBO_RUN are drawn where they lie; the
- * remaining short runs are grouped into one host-visible index buffer and drawn
- * in a single call, in index order.
+ * remaining short runs are grouped into a host-visible index buffer and drawn
+ * in a single call, in index order.  That compose is the one buffer here a
+ * recorded draw reads by byte offset and a later walk rewrites, so it is per
+ * frame in flight like every other shared surface on this path.
  *
  * The residency key is the surface pointer, exactly as the reference's
  * `vboItemIndex' is stamped on the surface: RE_BeginRegistration frees the
@@ -76,13 +78,24 @@ enum {
 	VK_SB_STREAM		/* at least one surface streams: the whole batch streams */
 };
 
-static VkBuffer			s_devVbo, s_devIbo, s_softIbo;
-static VkDeviceMemory	s_devVboMem, s_devIboMem, s_softIboMem;
+static VkBuffer			s_devVbo, s_devIbo;
+static VkDeviceMemory	s_devVboMem, s_devIboMem;
 static VkBuffer			s_stageVbo, s_stageIbo;
 static VkDeviceMemory	s_stageVboMem, s_stageIboMem;
 static byte				*s_stageVboMap;
 static vkIndex_t		*s_stageIboMap;
-static vkIndex_t		*s_softMap;
+
+/* The short-run compose, one per frame in flight.  The vertex/index rings
+   (vk_vertex.c) and this path's transfer command buffers are per slot for the
+   same reason: a slot's command buffer may be read by the GPU until its own
+   fence signals, and VK_Frame_Begin only waits the slot it is re-recording, so
+   the other slot's frame can still be in flight.  A compose the two slots
+   share is rewritten by the next slot's walk while that draw reads it, and the
+   draw then reads another batch's index block -- valid indices, wrong
+   triangles, and no row anywhere, because nothing about the draw is invalid. */
+static VkBuffer			s_softIbo[VK_FRAMES_IN_FLIGHT];
+static VkDeviceMemory	s_softIboMem[VK_FRAMES_IN_FLIGHT];
+static vkIndex_t		*s_softMap[VK_FRAMES_IN_FLIGHT];
 
 static vkStaticRegion_t	s_hash[VK_STATIC_HASH_SIZE];
 static vkStaticRec_t	s_rec[VK_STATIC_BATCH_MAX];
@@ -96,6 +109,11 @@ static qboolean			s_arenaFull;
 static qboolean			s_forgetPending;
 static qboolean			s_ready;
 static cvar_t			*s_cvar;
+
+/* what the last arena draw actually read from: the census reports the submitted
+   geometry beside the expected stage set.  0 none, 1 device runs, 2 the compose */
+static int				s_lastRunMode;
+static int				s_lastRunIdx;
 
 /* what the row reports */
 static int				s_fastSurfaces;
@@ -597,10 +615,55 @@ qboolean RB_VboStaticArenaBatch( void )
 	return ( s_batchMode == VK_SB_ARENA ) ? qtrue : qfalse;
 }
 
+/* The compose a draw this slot records into.  The slot is the one the walk's
+   command buffer comes from, so the compose is owned by exactly the frame that
+   reads it. */
+static int VK_SoftSlot( void )
+{
+	int slot = RB_FrameSmpFrame();
+
+	return ( slot >= 0 && slot < VK_FRAMES_IN_FLIGHT ) ? slot : 0;
+}
+
+/* The invariant the per-slot compose rests on, asserted rather than assumed:
+   two frames in flight must not resolve to one buffer.  A single compose is
+   what this path had, and the row names it if an arm reintroduces the sharing,
+   instead of the sharing showing up as another batch's triangles.  One pointer
+   compare per slot, on the census cadence, behind the master gate. */
+static void VK_SoftAliasCheck( void )
+{
+	static int	s_rows;
+	int			a, b;
+
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
+
+	s_rows++;
+	if ( s_rows > 8 && ( s_rows % 600 ) != 0 ) {
+		return;
+	}
+
+	for ( a = 0; a < VK_FRAMES_IN_FLIGHT; a++ ) {
+		if ( s_softIbo[a] == VK_NULL_HANDLE ) {
+			continue;
+		}
+		for ( b = a + 1; b < VK_FRAMES_IN_FLIGHT; b++ ) {
+			if ( s_softIbo[a] == s_softIbo[b] || s_softMap[a] == s_softMap[b] ) {
+				VK_Guard_Hit( VK_GSITE_SYNC,
+							  "the soft index compose is shared by two frames in flight",
+							  VK_INCOMPLETE );
+				return;
+			}
+		}
+	}
+}
+
 void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
 						   const vkStaticItemView_t *items, int numItems )
 {
 	int		i = 0;
+	int		slot = VK_SoftSlot();
 	int		softFirst = 0;
 	int		softPending = 0;
 	int		runTotal = 0;
@@ -610,6 +673,11 @@ void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
 	}
 
 	( void )numIndexes;
+
+	VK_SoftAliasCheck();
+
+	s_lastRunMode = 0;
+	s_lastRunIdx = 0;
 
 	VK_Draw_BindVertexBuffer( cmd, s_devVbo, 0 );
 
@@ -626,26 +694,30 @@ void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
 
 		if ( runTotal >= VK_STATIC_MIN_IBO_RUN ) {
 			if ( softPending > 0 ) {
-				VK_Draw_BindIndexBuffer( cmd, s_softIbo );
+				VK_Draw_BindIndexBuffer( cmd, s_softIbo[slot] );
 				VK_Draw_DrawIndexed( cmd, softPending, softFirst, 0 );
 				softFirst += softPending;
 				softPending = 0;
 			}
 			VK_Draw_BindIndexBuffer( cmd, s_devIbo );
 			VK_Draw_DrawIndexed( cmd, runTotal, items[i].idxFirst, 0 );
+			s_lastRunMode = 1;
+			s_lastRunIdx += runTotal;
 		} else {
 			int	k;
 
 			for ( k = i; k <= j; k++ ) {
 				if ( softPending + items[k].numIdx > VK_STATIC_SOFT_INDEXES ) {
-					VK_Draw_BindIndexBuffer( cmd, s_softIbo );
+					VK_Draw_BindIndexBuffer( cmd, s_softIbo[slot] );
 					VK_Draw_DrawIndexed( cmd, softPending, softFirst, 0 );
 					softFirst += softPending;
 					softPending = 0;
 				}
-				memcpy( s_softMap + softPending, s_stageIboMap + items[k].idxFirst,
+				memcpy( s_softMap[slot] + softPending, s_stageIboMap + items[k].idxFirst,
 						(size_t)items[k].numIdx * sizeof( vkIndex_t ) );
 				softPending += items[k].numIdx;
+				s_lastRunMode = 2;
+				s_lastRunIdx += items[k].numIdx;
 			}
 		}
 
@@ -653,8 +725,19 @@ void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
 	}
 
 	if ( softPending > 0 ) {
-		VK_Draw_BindIndexBuffer( cmd, s_softIbo );
+		VK_Draw_BindIndexBuffer( cmd, s_softIbo[slot] );
 		VK_Draw_DrawIndexed( cmd, softPending, softFirst, 0 );
+	}
+}
+
+/* the geometry the last arena batch actually submitted, for the census */
+void RB_VboStaticLastRun( int *modeOut, int *numIdxOut )
+{
+	if ( modeOut ) {
+		*modeOut = s_lastRunMode;
+	}
+	if ( numIdxOut ) {
+		*numIdxOut = s_lastRunIdx;
 	}
 }
 
@@ -688,12 +771,17 @@ void RB_VBO_BeginFrame( void )
 
 qboolean RB_VBO_Init( void )
 {
+	int i;
+
 	if ( s_ready ) {
 		return qtrue;
 	}
 
 	memset( s_hash, 0, sizeof( s_hash ) );
 	memset( s_rec, 0, sizeof( s_rec ) );
+	memset( s_softIbo, 0, sizeof( s_softIbo ) );
+	memset( s_softIboMem, 0, sizeof( s_softIboMem ) );
+	memset( s_softMap, 0, sizeof( s_softMap ) );
 	s_recCount = 0;
 	s_recOverflow = qfalse;
 	s_batchMode = VK_SB_UNKNOWN;
@@ -736,40 +824,48 @@ qboolean RB_VBO_Init( void )
 						   "vkMapMemory(static index arena)" ) ) {
 		return qfalse;
 	}
-	if ( !VK_Memory_CreateBuffer( (VkDeviceSize)VK_STATIC_SOFT_INDEXES * sizeof( vkIndex_t ),
-								  VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-								  &s_softIbo, &s_softIboMem ) ) {
-		return qfalse;
-	}
-	if ( !VK_Guard_Result( VK_GSITE_ALLOC,
-						   qvk.MapMemory( vk.device, s_softIboMem, 0, VK_WHOLE_SIZE, 0,
-										  (void **)&s_softMap ),
-						   "vkMapMemory(static soft indexes)" ) ) {
-		return qfalse;
+	/* One compose per frame in flight: the draw a slot records reads it until
+	   that slot's fence signals, and the other slot's frame may still be in
+	   flight when the next walk writes. */
+	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		if ( !VK_Memory_CreateBuffer( (VkDeviceSize)VK_STATIC_SOFT_INDEXES * sizeof( vkIndex_t ),
+									  VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+									  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+									  &s_softIbo[i], &s_softIboMem[i] ) ) {
+			return qfalse;
+		}
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC,
+							   qvk.MapMemory( vk.device, s_softIboMem[i], 0, VK_WHOLE_SIZE, 0,
+											  (void **)&s_softMap[i] ),
+							   "vkMapMemory(static soft indexes)" ) ) {
+			return qfalse;
+		}
 	}
 
 	s_ready = qtrue;
 
-	VK_Guard_Row( "VK:vbo", "arena vertexes=%u (%.1f MiB) indexes=%u (%.1f MiB) soft=%d run=%d",
+	VK_Guard_Row( "VK:vbo", "arena vertexes=%u (%.1f MiB) indexes=%u (%.1f MiB) soft=%d x %d run=%d",
 				  VK_STATIC_ARENA_VERTS,
 				  (double)VK_STATIC_ARENA_VERTS * VK_STREAM_STRIDE / ( 1024.0 * 1024.0 ),
 				  VK_STATIC_ARENA_INDEXES,
 				  (double)VK_STATIC_ARENA_INDEXES * sizeof( vkIndex_t ) / ( 1024.0 * 1024.0 ),
-				  VK_STATIC_SOFT_INDEXES, VK_STATIC_MIN_IBO_RUN );
+				  VK_STATIC_SOFT_INDEXES, VK_FRAMES_IN_FLIGHT, VK_STATIC_MIN_IBO_RUN );
+
+	VK_SoftAliasCheck();
 
 	return qtrue;
 }
 
 void RB_VBO_Shutdown( void )
 {
+	int i;
+
 	if ( vk.device == VK_NULL_HANDLE ) {
 		return;
 	}
 
 	if ( s_stageVboMap ) { qvk.UnmapMemory( vk.device, s_stageVboMem ); s_stageVboMap = NULL; }
 	if ( s_stageIboMap ) { qvk.UnmapMemory( vk.device, s_stageIboMem ); s_stageIboMap = NULL; }
-	if ( s_softMap ) { qvk.UnmapMemory( vk.device, s_softIboMem ); s_softMap = NULL; }
 
 	if ( s_devVbo != VK_NULL_HANDLE ) { qvk.DestroyBuffer( vk.device, s_devVbo, NULL ); s_devVbo = VK_NULL_HANDLE; }
 	if ( s_devVboMem != VK_NULL_HANDLE ) { qvk.FreeMemory( vk.device, s_devVboMem, NULL ); s_devVboMem = VK_NULL_HANDLE; }
@@ -779,8 +875,11 @@ void RB_VBO_Shutdown( void )
 	if ( s_stageVboMem != VK_NULL_HANDLE ) { qvk.FreeMemory( vk.device, s_stageVboMem, NULL ); s_stageVboMem = VK_NULL_HANDLE; }
 	if ( s_stageIbo != VK_NULL_HANDLE ) { qvk.DestroyBuffer( vk.device, s_stageIbo, NULL ); s_stageIbo = VK_NULL_HANDLE; }
 	if ( s_stageIboMem != VK_NULL_HANDLE ) { qvk.FreeMemory( vk.device, s_stageIboMem, NULL ); s_stageIboMem = VK_NULL_HANDLE; }
-	if ( s_softIbo != VK_NULL_HANDLE ) { qvk.DestroyBuffer( vk.device, s_softIbo, NULL ); s_softIbo = VK_NULL_HANDLE; }
-	if ( s_softIboMem != VK_NULL_HANDLE ) { qvk.FreeMemory( vk.device, s_softIboMem, NULL ); s_softIboMem = VK_NULL_HANDLE; }
+	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		if ( s_softMap[i] ) { qvk.UnmapMemory( vk.device, s_softIboMem[i] ); s_softMap[i] = NULL; }
+		if ( s_softIbo[i] != VK_NULL_HANDLE ) { qvk.DestroyBuffer( vk.device, s_softIbo[i], NULL ); s_softIbo[i] = VK_NULL_HANDLE; }
+		if ( s_softIboMem[i] != VK_NULL_HANDLE ) { qvk.FreeMemory( vk.device, s_softIboMem[i], NULL ); s_softIboMem[i] = VK_NULL_HANDLE; }
+	}
 
 	s_ready = qfalse;
 }
