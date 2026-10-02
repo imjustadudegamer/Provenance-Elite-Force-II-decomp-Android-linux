@@ -1,7 +1,8 @@
 #!/bin/sh
 # The 2D batch's state spans: green on the shipping sequencing and model, red on
-# each planted fault -- in the handshake the model mirrors, and in the source
-# texts themselves.  Never launches the game.
+# each planted fault -- in the handshake the model mirrors, in the source texts
+# themselves, and in the one placement site every 2D writer (the surface batch,
+# the immediate stream and the font/glyph runs) ends with.  Never launches.
 set -e
 
 here=$( cd "$( dirname "$0" )" && pwd )
@@ -17,7 +18,7 @@ if ! python3 ./d2span_control.py 0; then
 fi
 
 # model faults: the handshake the source pins describe, broken in the model
-for m in 1 2 3 6 12 13; do
+for m in 1 2 3 6 12 13 15; do
 	if python3 ./d2span_control.py "$m" >/dev/null 2>&1; then
 		echo "  FAIL  model fault $m was not detected"
 		rc=1
@@ -80,5 +81,16 @@ colour_fault() {
 
 colour_fault 10 "10 the 2D colour flag dropped"
 colour_fault 11 "11 the global-colour 2D branch"
+
+# 14: the glyph run's placement is gone, so a text run's quads stay in
+# widget-local coordinates while the widget's scissor is its screen rect
+sed 's/RB_2DPlaceRange( tess.numVertexes, 4 );//' "$src/tr_font.cpp" > "$mut/tr_font.cpp"
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$src/tr_draw.c" \
+	"$src/tr_shade.c" "$mut/tr_font.cpp" >/dev/null 2>&1; then
+	echo "  FAIL  source fault 14 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 14 detected"
+fi
 
 exit $rc

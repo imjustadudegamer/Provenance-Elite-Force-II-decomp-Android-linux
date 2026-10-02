@@ -165,20 +165,36 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		}
 
 		/* The rect the quad actually lands in, in the SAME space the trace logs:
-		   a vertex is written with its widget's placement already on it
-		   (RB_2DPlaceVertex), the window maps its ortho onto its viewport, and
-		   retail's glVertex2f/glScissor are bottom-left.  `srect` is therefore
-		   directly comparable, call for call, with the trace's stream and with
-		   `win`/`scn` below. */
+		   a vertex carries its widget's placement (RB_2DPlaceVertex), the window
+		   maps its ortho onto its viewport, and retail's glVertex2f/glScissor are
+		   bottom-left.  The ortho range is recovered from the pushed matrix
+		   (m[0] = 2/(r-l), m[12] = -(r+l)/(r-l), m[5] = -2/(t-b),
+		   m[13] = (t+b)/(t-b)), so the row is right for a pillarboxed or a
+		   window-sized window too, and `srect` diffs call for call against the
+		   trace's stream and against `win`/`scn` below. */
 		{
-			float	sx = ( vkConfig.vidWidth  > 0 ) ? (float)vk_2dWindow[2] / (float)vkConfig.vidWidth  : 1.0f;
-			float	sy = ( vkConfig.vidHeight > 0 ) ? (float)vk_2dWindow[3] / (float)vkConfig.vidHeight : 1.0f;
-			float	baseY = (float)( vk_2dWindow[1] + vk_2dWindow[3] );
+			const float	*o = VK_Draw_CurrentOrtho();
+			float		winX = (float)vk_2dWindow[0];
+			float		winY = (float)vk_2dWindow[1];
+			float		winW = (float)vk_2dWindow[2];
+			float		winH = (float)vk_2dWindow[3];
 
-			gx0 = (float)vk_2dWindow[0] + x0 * sx;
-			gx1 = (float)vk_2dWindow[0] + x1 * sx;
-			gy0 = baseY - y1 * sy;
-			gy1 = baseY - y0 * sy;
+			if ( o && o[0] != 0.0f && o[5] != 0.0f ) {
+				float	wx = 2.0f / o[0];				/* right - left */
+				float	lx = ( -o[12] * wx - wx ) * 0.5f;
+				float	tb = -2.0f / o[5];				/* top - bottom */
+				float	ty = tb * ( o[13] + 1.0f ) * 0.5f;
+
+				gx0 = winX + ( x0 - lx ) / wx * winW;
+				gx1 = winX + ( x1 - lx ) / wx * winW;
+				gy0 = winY + winH + ( y1 - ty ) / tb * winH;
+				gy1 = winY + winH + ( y0 - ty ) / tb * winH;
+			} else {
+				gx0 = winX + x0;
+				gx1 = winX + x1;
+				gy0 = winY + winH - y1;
+				gy1 = winY + winH - y0;
+			}
 		}
 
 		/* the order transcript: the rate-limited row above cannot answer a

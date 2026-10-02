@@ -105,6 +105,7 @@ def stream(menu_like=True):
         ev.append(("scn", "B/2"))        # its own scissor
         ev.append(("color", "c2"))
         ev.append(("origin", "C"))
+        ev.append(("glyph", 6))          # a text run: one quad per glyph, same span
         ev.append(("quad", 6))
         ev.append(("win", "C"))
         ev.append(("quad", 6))
@@ -115,7 +116,13 @@ def stream(menu_like=True):
         ev.append(("quad", 6))
     else:
         ev.append(("quad", 6))
+        ev.append(("origin", "A2"))
+        ev.append(("glyph", 6))          # a HUD label in the same surface
         ev.append(("quad", 6))
+        ev.append(("color", "c1"))
+        ev.append(("origin", "A3"))
+        ev.append(("glyph", 12))
+        ev.append(("color", "c0"))
     return ev
 
 
@@ -129,6 +136,7 @@ def old_model(ev):
     colorOf = {}                  # quad id -> the colour it was drawn with
     origin = None                 # the window's ortho carried the placement
     originOf = {}                 # quad id -> the placement baked into it
+    glyphs = []                   # the quads that are glyphs of a text run
     qid = 0
 
     for kind, arg in ev:
@@ -145,17 +153,19 @@ def old_model(ev):
             if queue:
                 draws.append((state, queue))
                 queue = []
-        elif kind == "quad":
+        elif kind in ("quad", "glyph"):
             recorded[qid] = state
             colorOf[qid] = color
             originOf[qid] = origin
             queue.append(qid)
+            if kind == "glyph":
+                glyphs.append(qid)
             qid += 1
 
     if queue:
         draws.append((state, queue))
     return {"draws": draws, "recorded": recorded,
-            "color": colorOf, "origin": originOf,
+            "color": colorOf, "origin": originOf, "glyphs": glyphs,
             "ends": len(draws), "spans": sum(1 for st, q in draws if q)}
 
 
@@ -173,6 +183,7 @@ def new_model(ev, mutant=0):
     originOf = {}                 # quad id -> the placement baked into it
     drawnOrigin = {}              # quad id -> the placement it is drawn with
     drawnColor = {}               # quad id -> the colour it is drawn with
+    glyphs = []                   # the quads that are glyphs of a text run
     ends = 0
     qid = 0
 
@@ -222,18 +233,20 @@ def new_model(ev, mutant=0):
                 spans.append((batch_indexes, state))
         elif kind == "shader":
             end_surface()
-        elif kind == "quad":
+        elif kind in ("quad", "glyph"):
             recorded[qid] = state
             colorOf[qid] = color
             originOf[qid] = origin
             queue.append((qid, batch_indexes))
             batch_indexes += arg
+            if kind == "glyph":
+                glyphs.append(qid)
             qid += 1
 
     end_surface()
     return {"draws": drawn, "recorded": recorded, "color": colorOf,
             "origin": originOf, "drawnOrigin": drawnOrigin,
-            "drawnColor": drawnColor,
+            "drawnColor": drawnColor, "glyphs": glyphs,
             "ends": ends, "spans": sum(1 for st, q in drawn if q)}
 
 
@@ -285,6 +298,22 @@ def run_model(mutant):
                   "%s: quad %d is drawn with colour %r, recorded with %r"
                   % (tag, q, new["drawnColor"][q], new["color"][q]))
 
+        # a text run is exactly the same shape: one quad per glyph, each placed
+        # at append, so a span holding two widgets' runs draws each glyph where
+        # it was recorded
+        check(len(new["glyphs"]) > 0,
+              "%s: the stream carried no glyph quads, so the font path is not "
+              "exercised" % tag)
+        check(sorted(old["glyphs"]) == sorted(new["glyphs"]),
+              "%s: the spans drew a different set of glyph quads (%r vs %r)"
+              % (tag, sorted(old["glyphs"]), sorted(new["glyphs"])))
+        for q in new["glyphs"]:
+            check(q in nd,
+                  "%s: glyph quad %d is never drawn" % (tag, q))
+            check(new["drawnOrigin"].get(q) == new["origin"].get(q),
+                  "%s: glyph quad %d is drawn at placement %r, recorded at %r"
+                  % (tag, q, new["drawnOrigin"].get(q), new["origin"].get(q)))
+
         # the placement is baked into the quad's own vertices at append, so a span
         # holding several widgets draws each where it was recorded
         for q in sorted(old["origin"]):
@@ -303,6 +332,9 @@ def main():
     draw_path = sys.argv[3] if len(sys.argv) > 3 else DRAW
     batch_path = sys.argv[4] if len(sys.argv) > 4 else BATCH
     shade_path = sys.argv[5] if len(sys.argv) > 5 else os.path.join(VK, "tr_shade.c")
+    font_path = sys.argv[6] if len(sys.argv) > 6 else os.path.join(VK, "tr_font.cp" + "p")
+    util_path = sys.argv[7] if len(sys.argv) > 7 else os.path.join(VK, "tr_util.cpp")
+    imm_path = sys.argv[8] if len(sys.argv) > 8 else None
 
     cmds = read(cmds_path)
     draw = read(draw_path)
@@ -377,19 +409,57 @@ def main():
           "the 3D path lost its draw colour (backEnd.color2D)")
 
     # --- the placement rides on the vertices, not in the span state --------
-    util = read(os.path.join(VK, "tr_util.cpp"))
+    #
+    # One choke point per lane (RB_2DPlaceVertex/range in tr_util.cpp) adds the
+    # widget's offset, and EVERY 2D writer ends with it: the surface batch, the
+    # immediate stream and the font/glyph runs.  The placement is baked at append,
+    # so a span holding quads and glyphs from many widgets draws each where it was
+    # recorded -- reading a live origin at draw time would give the batch the last
+    # widget's, which is the missing and mis-placed menu 2D.
+    util = read(util_path)
     backend = read(os.path.join(VK, "tr_backend.c"))
-    vert = body(util, "void RB_Vertex3f(")
-    imm = body(backend, "void RB_ImmVertex2f(")
+    choke = body(util, "void RB_2DPlaceVertex(")
     if mutant == 13:
-        vert = vert.replace("x += vk_2dOrigin[0];", "")
-        vert = vert.replace("y += vk_2dOrigin[1];", "")
-    check("x += vk_2dOrigin[0];" in vert and "y += vk_2dOrigin[1];" in vert
-          and "backEnd.in2D" in vert,
-          "the surface batch's 2D vertex writer does not bake the widget's placement "
-          "into the vertex, so a span holding several widgets cannot be right")
-    check("x += vk_2dOrigin[0];" in imm and "backEnd.in2D" in imm,
-          "the immediate stream's 2D vertex writer does not bake the placement")
+        choke = choke.replace("xyz[0] += vk_2dOrigin[0];", "")
+        choke = choke.replace("xyz[1] += vk_2dOrigin[1];", "")
+    check("xyz[0] += vk_2dOrigin[0];" in choke and "xyz[1] += vk_2dOrigin[1];" in choke
+          and "backEnd.in2D" in choke,
+          "the single placement site does not add the widget's offset (both axes, "
+          "in2D-guarded), so a span holding several widgets cannot be right")
+    vert = body(util, "void RB_Vertex3f(")
+    check("RB_2DPlaceVertex(" in vert,
+          "the surface batch's 2D vertex writer does not go through the placement "
+          "site, so a span holding several widgets cannot be right")
+    imm = body(backend, "void RB_ImmVertex2f(")
+    imm = body(read(imm_path), "void RB_ImmVertex2f(") if imm_path else imm
+    check("RB_2DPlaceVertex(" in imm,
+          "the immediate stream's 2D vertex writer does not go through the "
+          "placement site")
+
+    # the font/glyph runs: one quad per glyph, each placed, and placed AFTER the
+    # glyph's own width/height scale (the placement is an offset, not a scaled
+    # quantity)
+    font = read(font_path)
+    for header in ("static void R_FontRunWrite(", "void RB_FontRunDraw(",
+                   "void R_DrawString_sgl("):
+        b = body(font, header)
+        if not b:
+            continue
+        if mutant == 15:
+            # planted: the placement moves above the glyph scale
+            b = b.replace("RB_2DPlaceRange( tess.numVertexes, 4 );", "", 1)
+            i = b.find("tess.xyz[tess.numVertexes][0] =")
+            b = b[:i] + "RB_2DPlaceRange( tess.numVertexes, 4 );\n" + b[i:]
+        check("RB_2DPlaceRange(" in b,
+              "the glyph run %s writes its quads without the placement, so a span's "
+              "glyphs land in widget-local coordinates and the widget's scissor "
+              "clips the text away" % header)
+        i_scale = max([b.rfind("*= s_fontRun"), b.rfind("*= fWidthScale"),
+                       b.rfind("*= cmd->widthScale")])
+        i_place = b.rfind("RB_2DPlaceRange(")
+        check(i_scale > 0 and i_place > i_scale,
+              "the glyph run %s places its quads before the glyph width/height "
+              "scale, so the widget's offset is scaled too" % header)
     check("origin" not in body(batch, "void RB_2D_SpanGet(").lower(),
           "the span state carries a placement, so a span would move the quads a "
           "later widget recorded")

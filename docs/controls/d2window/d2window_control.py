@@ -499,6 +499,163 @@ def main():
     except ExprError as e:
         check(False, "the shipping scissor expression could not be evaluated: %s" % e)
 
+    # --- EVERY RESOLUTION: the pillarbox, the scale and the placement ------
+    #
+    # The UI lives in the 640x480 virtual space and the client pillarboxes it:
+    # SCR_AndroidDisplayRect (client/cl_scrn.cpp:51) centres a 16:9 (mode 1) or
+    # 4:3 (mode 2) rect inside the surface, and CL_FillUIDef
+    # (client/cl_ui.cpp:2245) puts that rect into uid.originX/Y, uid.vidWidth/
+    # vidHeight and uid.scaleRes = vid/640, vid/480.  A widget's authored frame
+    # is scaled by scaleRes (UIWidget::ChangeResolution, uiwidget.cpp:3033-3036),
+    # so the placement has to hold for every (dx, dy, dw, dh) the division can
+    # produce.  The pillarbox numbers below are the shipped algorithm, pinned by
+    # its source; the placement numbers are the shipped expressions.
+    scrn = read(os.path.join(CODE, "client", "cl_scrn.cpp"))
+    pbody = body(scrn, "void SCR_AndroidDisplayRect(")
+    check(pbody is not None and "16.0f / 9.0f" in pbody and "4.0f / 3.0f" in pbody
+          and "( surfaceW - w ) / 2" in pbody and "( surfaceH - h ) / 2" in pbody,
+          "SCR_AndroidDisplayRect is no longer the centred pillarbox division the "
+          "resolution model reproduces")
+    change = body(uiw, "void UIWidget::ChangeResolution(")
+    check(change is not None
+          and "(float)(int)(0.5f + scalex * m_authoredFrame.pos.x)" in change
+          and "(float)(int)(0.5f + scaley * m_authoredFrame.pos.y)" in change,
+          "ChangeResolution no longer scales the authored frame by scaleRes, so the "
+          "resolution model below is measuring a different widget")
+
+    def pillarbox(W, H, mode):
+        """SCR_AndroidDisplayRect, transcribed."""
+        if mode == 1:
+            target = 16.0 / 9.0
+        elif mode == 2:
+            target = 4.0 / 3.0
+        else:
+            return 0, 0, W, H
+        if W <= 0 or H <= 0:
+            return 0, 0, W, H
+        if float(W) / float(H) > target:
+            w = max(1, int(H * target + 0.5))
+            return (W - w) // 2, 0, w, H
+        h = max(1, int(W / target + 0.5))
+        return 0, (H - h) // 2, W, h
+
+    def change_resolution(ax, ay, aw, ah, sx, sy):
+        """UIWidget::ChangeResolution:3033-3036, transcribed."""
+        nx = float(int(0.5 + sx * ax))
+        ny = float(int(0.5 + sy * ay))
+        nw = float(int(0.5 + (sx * (aw + ax) - nx)))
+        nh = float(int(0.5 + (sy * (ah + ay) - ny)))
+        return nx, ny, nw, nh
+
+    RESOLUTIONS = ((800, 600, 0), (800, 600, 2), (1280, 720, 1), (1920, 1080, 1),
+                   (1920, 1080, 0), (1920, 1200, 1), (1920, 1200, 2), (1920, 1200, 0))
+    for (W, H, mode) in RESOLUTIONS:
+        dx, dy, dw, dh = pillarbox(W, H, mode)
+        sxr, syr = float(dw) / 640.0, float(dh) / 480.0
+        for (sx, sy, sw, sh) in TRACE_SCISSORS:
+            # the trace's scissor is bottom-left in the 640x480 space
+            ax, ay = float(sx), 480.0 - float(sy) - float(sh)
+            fx, fy, fw, fh = change_resolution(ax, ay, float(sw), float(sh), sxr, syr)
+            sym = {
+                "m_screenframe.pos.x": fx, "m_screenframe.pos.y": fy,
+                "m_screenframe.size.width": fw, "m_screenframe.size.height": fh,
+                "m_clippedorigin.x": 0.0, "m_clippedorigin.y": 0.0,
+                "m_clippedframe.pos.x": fx, "m_clippedframe.pos.y": fy,
+                "m_clippedframe.size.width": fw, "m_clippedframe.size.height": fh,
+                "uid.vidWidth": float(dw), "uid.vidHeight": float(dh),
+                "uid.originX": float(dx), "uid.originY": float(dy),
+                "uid.surfaceHeight": float(H),
+            }
+            try:
+                ox, oy = set2d_origin(set2d, sym)
+                win = set2d_window(set2d, sym)
+                scn = set2d_scissor(set2d, sym)
+            except ExprError as e:
+                check(False, "the placement expression failed at %dx%d mode %d: %s"
+                      % (W, H, mode, e))
+                continue
+            check(abs(win[0] - dx) < 0.01 and abs(win[1] - (H - dy - dh)) < 0.01
+                  and abs(win[2] - dw) < 0.01 and abs(win[3] - dh) < 0.01,
+                  "the pass window at %dx%d mode %d is %r, not the pillarbox rect "
+                  "(%d,%d,%d,%d)" % (W, H, mode, win[0:4], dx, H - dy - dh, dw, dh))
+            p0 = fb_point(tuple(win[0:4]), tuple(win[4:8]), 0.0 + ox, 0.0 + oy, float(H))
+            p1 = fb_point(tuple(win[0:4]), tuple(win[4:8]), fw + ox, fh + oy, float(H))
+            rect = (min(p0[0], p1[0]), min(p0[1], p1[1]), max(p0[0], p1[0]), max(p0[1], p1[1]))
+            check(abs(rect[0] - (dx + fx)) < 0.01 and abs(rect[1] - (dy + fy)) < 0.01
+                  and abs(rect[2] - (dx + fx + fw)) < 0.01
+                  and abs(rect[3] - (dy + fy + fh)) < 0.01,
+                  "at %dx%d mode %d a widget at (%g,%g) %gx%g lands at "
+                  "(%.2f,%.2f)-(%.2f,%.2f), not on its own frame/scale"
+                  % (W, H, mode, fx, fy, fw, fh, rect[0], rect[1], rect[2], rect[3]))
+            check(abs(scn[0] - (dx + fx)) < 0.01 and abs(scn[1] - (H - dy - fh - fy)) < 0.01
+                  and abs(scn[2] - fw) < 0.01 and abs(scn[3] - fh) < 0.01,
+                  "at %dx%d mode %d the widget's scissor %r does not cover its own "
+                  "frame" % (W, H, mode, scn))
+
+    # --- ui_hudScale > 1: the placement is an offset, NOT a scaled quantity --
+    #
+    # A noresize widget is authored in screen pixels; ChangeResolution scales its
+    # frame by s_hudScaleValue and the font is told the same factor
+    # (uiwidget.cpp:3013-3024), while UIFont::Print divides the draw origin by
+    # that factor because the renderer multiplies the glyph's own coordinates by
+    # it (uifont.cpp:131-141).  So a glyph vertex is local*scale and the widget's
+    # placement is added AFTER it: exactly the order the glyph writers now use.
+    # A widget away from the origin is what makes the wrong order visible.
+    for (s, W, H, mode) in ((1.2, 800, 600, 0), (1.5, 1280, 720, 1),
+                            (2.0, 1920, 1080, 1), (2.0, 1920, 1200, 2)):
+        dx, dy, dw, dh = pillarbox(W, H, mode)
+        authored = (400.0, 300.0, 120.0, 40.0)
+        fx, fy, fw, fh = change_resolution(authored[0], authored[1], authored[2],
+                                           authored[3], s, s)
+        sym = {
+            "m_screenframe.pos.x": fx, "m_screenframe.pos.y": fy,
+            "m_screenframe.size.width": fw, "m_screenframe.size.height": fh,
+            "m_clippedorigin.x": 0.0, "m_clippedorigin.y": 0.0,
+            "m_clippedframe.pos.x": fx, "m_clippedframe.pos.y": fy,
+            "m_clippedframe.size.width": fw, "m_clippedframe.size.height": fh,
+            "uid.vidWidth": float(dw), "uid.vidHeight": float(dh),
+            "uid.originX": float(dx), "uid.originY": float(dy),
+            "uid.surfaceHeight": float(H),
+        }
+        try:
+            ox, oy = set2d_origin(set2d, sym)
+            win = set2d_window(set2d, sym)
+        except ExprError as e:
+            check(False, "the placement expression failed at ui_hudScale %g: %s" % (s, e))
+            continue
+        # a glyph run inside the widget: its own coordinates are scaled by s, the
+        # placement is not
+        local = (0.25 * fw, 0.25 * fh, 0.75 * fw, 0.75 * fh)
+        for (tag, add_x, add_y) in (("placed", ox, oy), ("pre-scale", 0.0, 0.0)):
+            for mul in ((1.0,) if tag == "placed" else (1.0,)):
+                q0 = fb_point(tuple(win[0:4]), tuple(win[4:8]),
+                              local[0] * mul + add_x, local[1] * mul + add_y, float(H))
+                q1 = fb_point(tuple(win[0:4]), tuple(win[4:8]),
+                              local[2] * mul + add_x, local[3] * mul + add_y, float(H))
+                inside = (min(q0[0], q1[0]) >= dx + fx - 0.01
+                          and min(q0[1], q1[1]) >= dy + fy - 0.01
+                          and max(q0[0], q1[0]) <= dx + fx + fw + 0.01
+                          and max(q0[1], q1[1]) <= dy + fy + fh + 0.01)
+                if tag == "placed":
+                    check(inside,
+                          "at ui_hudScale %g (%dx%d mode %d) a glyph run inside the "
+                          "widget lands outside it: (%.1f,%.1f)-(%.1f,%.1f) vs "
+                          "(%.1f,%.1f,%.1f,%.1f)"
+                          % (s, W, H, mode, min(q0[0], q1[0]), min(q0[1], q1[1]),
+                             max(q0[0], q1[0]), max(q0[1], q1[1]),
+                             dx + fx, dy + fy, fw, fh))
+                else:
+                    # the wrong order: the placement is scaled with the glyphs,
+                    # i.e. vertex = (local + placement) * scale
+                    pre = fb_point(tuple(win[0:4]), tuple(win[4:8]),
+                                   (local[0] + ox) * s, (local[1] + oy) * s, float(H))
+                    pre_inside = (dx + fx - 0.01 <= pre[0] <= dx + fx + fw + 0.01
+                                  and dy + fy - 0.01 <= pre[1] <= dy + fy + fh + 0.01)
+                    check(not pre_inside,
+                          "at ui_hudScale %g the pre-scale placement would still "
+                          "land inside the widget, so this case cannot tell the two "
+                          "orders apart" % s)
+
     # --- THE FONT PATH: a glyph quad must land inside its widget's clip ----
     #
     # Numbers from the operator's run-20261015-105154 game.log at 800x600 (with
@@ -814,11 +971,33 @@ def main():
     row = body(read(LANES["vulkan"]["backend"]), "static qboolean RB_StagePass(")
     check(row is not None and "srect=(%.1f,%.1f)-(%.1f,%.1f)" in row,
           "the 2D draw row does not print the screen-space rect")
-    check(row is not None and "baseY - y1 * sy" in row and "baseY - y0 * sy" in row,
-          "the 2D draw row prints the vertex rect unflipped, which is not the "
-          "space the trace's glScissor/glVertex stream is in")
-    check("RB_2DPlaceVertex" in read(LANES["vulkan"]["backend"]),
+    check(row is not None and "VK_Draw_CurrentOrtho()" in row
+          and "winY + winH + ( y1 - ty ) / tb * winH" in row
+          and "winX + ( x0 - lx ) / wx * winW" in row,
+          "the 2D draw row does not map the vertex rect through the window's own "
+          "ortho to the bottom-left space the trace's glScissor/glVertex stream "
+          "uses, so it cannot be diffed against the trace")
+    check(row is not None and "RB_2DPlaceVertex" in row,
           "the 2D draw row's comment no longer names the choke point it relies on")
+
+    # the row's own inversion, modelled on the matrix VK_Draw_Set2D writes for the
+    # pass's constant window: for the credits button's placed vertex y (498.75 at
+    # 800x600, from the operator's run) the row must report the trace's glScissor
+    # y range (61.25 .. 101.25), because that is what makes a row comparable
+    if row is not None and "m[5]  = -2.0f / tb;" in (vkbody or ""):
+        m5 = -2.0 / (0.0 - 600.0)          # ortho (0, 800, 600, 0)
+        m13 = (0.0 + 600.0) / (0.0 - 600.0)
+        tb = -2.0 / m5
+        ty = tb * (m13 + 1.0) * 0.5
+        # the row maps the vertex rect's y1 to the box's low edge and y0 to the
+        # high one (the vertex y counts down, glScissor counts up)
+        gy_low = 0.0 + 600.0 + (538.75 - ty) / tb * 600.0
+        gy_high = 0.0 + 600.0 + (498.75 - ty) / tb * 600.0
+        check(abs(gy_low - 61.25) < 0.01 and abs(gy_high - 101.25) < 0.01,
+              "the row's window-to-glScissor mapping puts the credits quad at "
+              "(%.2f,%.2f), not on the trace's glScissor box (61.25,101.25)"
+              % (gy_low, gy_high))
+
     if mutant == 8:
         # the glyph path is what made the row report local coordinates
         check(False,
