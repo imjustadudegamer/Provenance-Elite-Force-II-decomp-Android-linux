@@ -952,7 +952,7 @@ static long long VK_Shade_PartCharge( int part, long long t0, long long nested0 
 		return 0;
 	}
 
-	usec = BE_Microseconds64() - t0 - ( VK_WalkStat_Nested() - nested0 );
+	usec = BE_Microseconds64() - t0 - VK_WalkStat_NestedSince( nested0 );
 	if ( usec < 0 ) {
 		usec = 0;
 	}
@@ -972,7 +972,7 @@ static void VK_Shade_WindowClose( long long shadeT0, long long nested0, long lon
 		return;
 	}
 
-	usec = BE_Microseconds64() - shadeT0 - ( VK_WalkStat_Nested() - nested0 );
+	usec = BE_Microseconds64() - shadeT0 - VK_WalkStat_NestedSince( nested0 );
 	other = usec - parts;
 
 	VK_WalkStat_ShadeAdd( VK_WS_OTHER, other > 0 ? other : 0 );

@@ -349,6 +349,11 @@ void VK_WalkStat_Add( int phase, long long usec );
 /* The nested buckets a caller's window contains, so an outer wrap can subtract
    them and no phase is counted twice. */
 long long VK_WalkStat_Nested( void );
+/* The nested amount a window added, robust to a drain landing inside it: the
+   counters are cumulative since the last drain and the front end drains them, so
+   `Nested() - n0` goes negative on a mid-window drain and the window's own
+   subtraction then ADDS the whole stale count instead of removing a part of it. */
+long long VK_WalkStat_NestedSince( long long n0 );
 void VK_WalkStat_Frame( int verts, int surfs );
 /* Batching elisions the frame made, so a change that removes driver calls says
    how many it removed instead of only how the wall time moved.  VK_WP_HITS is
@@ -376,7 +381,7 @@ void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfs
    are charged at their own sites.  A leaf wrap keeps the plain form. */
 #define VK_WALK_NEST0() ( VK_WalkStatOn() ? VK_WalkStat_Nested() : 0LL )
 #define VK_WALK_ADD_NET(t0, n0, ph) do { if ( (t0) >= 0 ) { \
-	long long vk_net = VK_WalkStat_Nested() - (n0); \
+	long long vk_net = VK_WalkStat_NestedSince( n0 ); \
 	long long vk_usec = BE_Microseconds64() - (t0) - vk_net; \
 	VK_WalkStat_Add( (ph), vk_usec > 0 ? vk_usec : 0 ); } } while ( 0 )
 
