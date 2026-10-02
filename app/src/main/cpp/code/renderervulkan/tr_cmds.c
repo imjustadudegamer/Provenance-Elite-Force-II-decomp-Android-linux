@@ -164,6 +164,22 @@ long long VK_WalkStat_Nested( void )
 	return s_walkPhaseUsec[VK_WP_BIND] + s_walkPhaseUsec[VK_WP_REC] + s_walkPhaseUsec[VK_WP_PACK];
 }
 
+/* The same reading as a window's own contribution.  The three counters are
+   cumulative since the last drain and the front end drains them at a 1 s
+   cadence, so `Nested() - n0` is negative whenever a drain landed between the
+   window's open and its close -- and a negative "nested" makes the window's
+   subtraction turn into an addition of the stale count, which is a bucket
+   inflated by an amount that never happened (the residual is then large and
+   negative, which the row reads as an accounting error).  After a drain the
+   counter holds exactly what was added since it, so in that case it IS the
+   window's contribution. */
+long long VK_WalkStat_NestedSince( long long n0 )
+{
+	long long n = VK_WalkStat_Nested();
+
+	return ( n < n0 ) ? n : ( n - n0 );
+}
+
 void VK_WalkStat_Frame( int verts, int surfs )
 {
 	s_walkVerts += verts;
