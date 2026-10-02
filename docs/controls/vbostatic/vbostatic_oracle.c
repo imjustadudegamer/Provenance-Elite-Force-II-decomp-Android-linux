@@ -216,10 +216,19 @@ static void harnessCmdCopyBuffer( VkCommandBuffer cmd, VkBuffer src, VkBuffer ds
 static VkCommandBuffer	harnessXferCmd = ( VkCommandBuffer )&harnessCopyCount;
 static int				harnessXferOpen;
 
-VkResult VK_Pool_AllocBuffers( VkDevice device, const VkCommandBufferAllocateInfo *info,
+/* The pool the arena's transfer buffer comes from: the shipping code asks the
+   calling thread's own one-shot pool for it, and the harness owns no pools, so
+   the stub answers a non-null handle and the allocate below hands back the
+   harness's own transfer buffer. */
+VkCommandPool VK_Upload_Pool( void )
+{
+	return ( VkCommandPool )&harnessXferOpen;
+}
+
+VkResult VK_Pool_AllocBuffers( VkCommandPool pool, const VkCommandBufferAllocateInfo *info,
 							   VkCommandBuffer *out )
 {
-	( void )device; ( void )info;
+	( void )pool; ( void )info;
 	*out = harnessXferCmd;
 	return VK_SUCCESS;
 }
