@@ -137,9 +137,113 @@ static const short vk_uboMap[VK_U_COUNT] = {
 	VK_UBO_OFF_U_FOGFIXCOLOR,
 	VK_UBO_OFF_U_FLATMODE,
 };
+/* the same positional index as vk_uboMap, but for each member's writable span
+   in bytes.  These come out of the generated header next to the offsets, so
+   the packer's clamp cannot drift from the compiler's own layout.
+   The hand-written table this replaced gave every vec2, vec3 and vec4 a span
+   of 4: VK_Ubo_Set clamped against it, so u_BaseColor published only its red
+   channel and every rgbGen const / rgbGen global stage multiplied the texel by
+   (1,0,0) -- the volume lights drew red and the radar fov cone lost its green.
+   u_WaveRGB, u_EntityColor, u_ClipPlane, u_FogColor, u_FogSVector, u_FogTVector
+   and u_TexMod0/1 past their first tcMod were truncated the same way. */
 static const int vk_uboSize[VK_U_COUNT] = {
-	64, 0, 64, 4, 4, 4, 4, 48, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 64, 64, 4, 4, 4, 4, 0, 0, 4, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+	VK_UBO_SIZE_U_MVP,
+	0,                     /* u_ModelView: not in the block */
+	VK_UBO_SIZE_U_MODELMATRIX,
+	VK_UBO_SIZE_U_VIEWORIGIN,
+	VK_UBO_SIZE_U_VIEWAXIS0,
+	VK_UBO_SIZE_U_LOCALVIEWORIGIN,
+	VK_UBO_SIZE_U_ENTITYORIGIN,
+	VK_UBO_SIZE_U_ENTITYAXIS,
+	VK_UBO_SIZE_U_ENTITYCOLOR,
+	VK_UBO_SIZE_U_BASECOLOR,
+	VK_UBO_SIZE_U_VERTCOLOR,
+	VK_UBO_SIZE_U_IDENTITYLIGHT,
+	VK_UBO_SIZE_U_IDENTITYLIGHTBYTE,
+	VK_UBO_SIZE_U_ENTITYFADE,
+	VK_UBO_SIZE_U_PORTALRANGE,
+	VK_UBO_SIZE_U_SPECORIGIN,
+	VK_UBO_SIZE_U_SUNDIRECTION,
+	VK_UBO_SIZE_U_SKYALPHA,
+	VK_UBO_SIZE_U_SKYSCROLL,
+	VK_UBO_SIZE_U_SKYALPHAMODE,
+	VK_UBO_SIZE_U_ENTITYTEXCOORD,
+	VK_UBO_SIZE_U_COLORGEN,
+	VK_UBO_SIZE_U_ALPHAGEN,
+	VK_UBO_SIZE_U_ALPHAMIN,
+	VK_UBO_SIZE_U_ALPHAMAX,
+	VK_UBO_SIZE_U_ALPHACONST,
+	VK_UBO_SIZE_U_ALPHACONSTMIN,
+	VK_UBO_SIZE_U_WAVERGB,
+	VK_UBO_SIZE_U_WAVEALPHA,
+	VK_UBO_SIZE_U_FREQRGB,
+	VK_UBO_SIZE_U_FREQALPHA,
+	VK_UBO_SIZE_U_TCGEN0,
+	VK_UBO_SIZE_U_TCGEN1,
+	VK_UBO_SIZE_U_TCGEN0VEC0,
+	VK_UBO_SIZE_U_TCGEN0VEC1,
+	VK_UBO_SIZE_U_TCGEN1VEC0,
+	VK_UBO_SIZE_U_TCGEN1VEC1,
+	VK_UBO_SIZE_U_NUMTEXMOD0,
+	VK_UBO_SIZE_U_NUMTEXMOD1,
+	VK_UBO_SIZE_U_TEXMOD0,
+	VK_UBO_SIZE_U_TEXMOD1,
+	VK_UBO_SIZE_U_ALPHATEST,
+	VK_UBO_SIZE_U_FORCEALPHA,
+	VK_UBO_SIZE_U_TEXENV0,
+	VK_UBO_SIZE_U_TEXENV1,
+	0,                     /* u_Tex0: not in the block */
+	0,                     /* u_Tex1: not in the block */
+	VK_UBO_SIZE_U_TEX1COLOR,
+	0,                     /* u_WaveTable: not in the block */
+	VK_UBO_SIZE_U_CLIPPLANE,
+	VK_UBO_SIZE_U_CLIPPLANEENABLE,
+	VK_UBO_SIZE_U_SHADERTIME,
+	VK_UBO_SIZE_U_ACFF,
+	VK_UBO_SIZE_U_FOGNUM,
+	VK_UBO_SIZE_U_FOGTCSCALE,
+	VK_UBO_SIZE_U_FOGSCONSTANT,
+	VK_UBO_SIZE_U_FOGSVECTOR,
+	VK_UBO_SIZE_U_FOGTCONSTANT,
+	VK_UBO_SIZE_U_FOGTVECTOR,
+	VK_UBO_SIZE_U_FOGVIEWOUTSIDE,
+	VK_UBO_SIZE_U_FOGCOLOR,
+	VK_UBO_SIZE_U_FOGDENSITYARM,
+	VK_UBO_SIZE_U_FOGOOLEN,
+	VK_UBO_SIZE_U_FOGPLANECONST,
+	VK_UBO_SIZE_U_FOGDVIEW,
+	VK_UBO_SIZE_U_FOGDENSITYTVECTOR,
+	VK_UBO_SIZE_U_FOGMODE,
+	VK_UBO_SIZE_U_FOGSTART,
+	VK_UBO_SIZE_U_FOGEND,
+	VK_UBO_SIZE_U_FOGFIXCOLOR,
+	VK_UBO_SIZE_U_FLATMODE,
 };
+
+/* the clamp is only safe while each span is the compiler's own.  A span smaller
+   than the member truncates it -- that is how u_BaseColor published (r,0,0,0)
+   and every rgbGen const stage multiplied its texel by (1,0,0) -- and one larger
+   than the gap to the next member would run over it.  Both are build failures
+   here rather than device symptoms to chase. */
+typedef char vk_ubo_span_vec4[( VK_UBO_SIZE_U_BASECOLOR == 16
+							   && VK_UBO_SIZE_U_ENTITYCOLOR == 16
+							   && VK_UBO_SIZE_U_VERTCOLOR == 16
+							   && VK_UBO_SIZE_U_WAVERGB == 16
+							   && VK_UBO_SIZE_U_WAVEALPHA == 16
+							   && VK_UBO_SIZE_U_CLIPPLANE == 16
+							   && VK_UBO_SIZE_U_FOGCOLOR == 16
+							   && VK_UBO_SIZE_U_FOGFIXCOLOR == 16
+							   && VK_UBO_SIZE_U_TEX1COLOR == 16
+							   && VK_UBO_SIZE_U_ENTITYTEXCOORD == 16 ) ? 1 : -1];
+typedef char vk_ubo_span_vec3[( VK_UBO_SIZE_U_VIEWORIGIN >= 12
+							   && VK_UBO_SIZE_U_SUNDIRECTION >= 12
+							   && VK_UBO_SIZE_U_FOGSVECTOR >= 12
+							   && VK_UBO_SIZE_U_FOGTVECTOR >= 12
+							   && VK_UBO_SIZE_U_FOGDENSITYTVECTOR >= 12
+							   && VK_UBO_SIZE_U_LOCALVIEWORIGIN >= 12
+							   && VK_UBO_SIZE_U_SPECORIGIN >= 12 ) ? 1 : -1];
+typedef char vk_ubo_span_array[( VK_UBO_SIZE_U_TEXMOD0 == TR_MAX_TEXMODS * 4 * 4 * sizeof( float )
+								&& VK_UBO_SIZE_U_TEXMOD1 == TR_MAX_TEXMODS * 4 * 4 * sizeof( float ) ) ? 1 : -1];
 
 #define VK_UBO_SIZE_PAD	2048		/* the std140 block, rounded up for the bind range */
 
