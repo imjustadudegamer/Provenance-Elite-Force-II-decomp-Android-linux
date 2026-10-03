@@ -18,7 +18,7 @@ if ! python3 ./d2span_control.py 0; then
 fi
 
 # model faults: the handshake the source pins describe, broken in the model
-for m in 1 2 3 6 12 13 15 16 19 20; do
+for m in 1 2 3 6 12 13 15 16 19 20 21; do
 	if python3 ./d2span_control.py "$m" >/dev/null 2>&1; then
 		echo "  FAIL  model fault $m was not detected"
 		rc=1
@@ -35,7 +35,7 @@ source_fault() {
 	# $1 = mutated file, $2 = name; the control is run with the mutation in the
 	# slot the fault belongs to (cmds, draw, batch)
 	case "$2" in
-	4|5|9) python3 ./d2span_control.py 0 "$mut/tr_cmds.c" >/dev/null 2>&1 ;;
+	4|5|9|21) python3 ./d2span_control.py 0 "$mut/tr_cmds.c" "$src/tr_backend.c" "$mut/tr_draw.c" >/dev/null 2>&1 ;;
 	7|8|19|20) python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$mut/tr_backend.c" >/dev/null 2>&1 ;;
 	esac && {
 		echo "  FAIL  source fault $2 was not detected"
@@ -64,6 +64,11 @@ source_fault "$mut/tr_backend.c" 7
 sed '/^void RB_FrameOpen( int slot )/,/^}/ s/RB_2D_SpanReset();//' \
 	"$src/tr_backend.c" > "$mut/tr_backend.c"
 source_fault "$mut/tr_backend.c" 8
+
+# 21: the purge flushes again, so the arena-free notify draws
+sed '/^void RB_2D_OwnersPurged( void ) {/,/^}/ s/RB_2D_SpanReset();/RB_2D_Flush();/' \
+	"$src/tr_draw.c" > "$mut/tr_draw.c"
+source_fault "$mut/tr_draw.c" 21
 
 # 19: the span's state is not re-applied before its draw, so a batch draws
 # under whatever state the command buffer was left in
