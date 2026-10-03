@@ -18,7 +18,7 @@ if ! python3 ./d2span_control.py 0; then
 fi
 
 # model faults: the handshake the source pins describe, broken in the model
-for m in 1 2 3 6 12 13 15 16; do
+for m in 1 2 3 6 12 13 15 16 19 20; do
 	if python3 ./d2span_control.py "$m" >/dev/null 2>&1; then
 		echo "  FAIL  model fault $m was not detected"
 		rc=1
@@ -36,7 +36,7 @@ source_fault() {
 	# slot the fault belongs to (cmds, draw, batch)
 	case "$2" in
 	4|5|9) python3 ./d2span_control.py 0 "$mut/tr_cmds.c" >/dev/null 2>&1 ;;
-	7|8)   python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$mut/tr_backend.c" >/dev/null 2>&1 ;;
+	7|8|19|20) python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$mut/tr_backend.c" >/dev/null 2>&1 ;;
 	esac && {
 		echo "  FAIL  source fault $2 was not detected"
 		rc=1
@@ -52,8 +52,11 @@ sed '/op == RC_DRAW_SURFS || op == RC_SPRITE_SURFS/,/VK_WALK_ADD_NET/ s/RB_2D_Fl
 	"$src/tr_cmds.c" > "$mut/tr_cmds.c"
 source_fault "$mut/tr_cmds.c" 5
 
-# 7: the stage pass draws the batch once instead of per span
-sed 's/RB_StageDrawSpan( vk.commandBuffers\[s_rbSlot\], indexBase, vertexBase, tess.numIndexes );/VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );/' \
+# 7: the stage pass draws the batch once instead of per span.  The call is two
+# lines (the coverage census made the parameter list long), so the mutation
+# brackets the continuation rather than matching one line.
+sed -e 's#RB_StageDrawSpan( vk.commandBuffers\[s_rbSlot\], indexBase, vertexBase, tess.numIndexes,#VK_Draw_DrawIndexed( vk.commandBuffers[s_rbSlot], tess.numIndexes, indexBase, vertexBase );/*#' \
+    -e 's#^[[:space:]]*pipeline, stage, image );#						  */#' \
 	"$src/tr_backend.c" > "$mut/tr_backend.c"
 source_fault "$mut/tr_backend.c" 7
 
@@ -61,6 +64,18 @@ source_fault "$mut/tr_backend.c" 7
 sed '/^void RB_FrameOpen( int slot )/,/^}/ s/RB_2D_SpanReset();//' \
 	"$src/tr_backend.c" > "$mut/tr_backend.c"
 source_fault "$mut/tr_backend.c" 8
+
+# 19: the span's state is not re-applied before its draw, so a batch draws
+# under whatever state the command buffer was left in
+sed 's/VK_Draw_2DStateApply( cmd, ortho, win, scn );//' \
+	"$src/tr_backend.c" > "$mut/tr_backend.c"
+source_fault "$mut/tr_backend.c" 19
+
+# 20: the census echoes the span's own scissor instead of reading the rect
+# Vulkan was given, so it can never report a foreign clip
+sed 's/VK_Draw_LastScissorRect( clip );/memcpy( clip, scn, sizeof( clip ) );/' \
+	"$src/tr_backend.c" > "$mut/tr_backend.c"
+source_fault "$mut/tr_backend.c" 20
 
 # 9: the break call is gone, so the queued quads keep the new state
 sed 's/RB_2D_SpanBreak()/RB_2D_SpanBreakX()/' "$src/tr_cmds.c" > "$mut/tr_cmds.c"
