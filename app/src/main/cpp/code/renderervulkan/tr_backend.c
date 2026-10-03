@@ -51,7 +51,14 @@ root, for more details.
 #include "tr_program.h"
 #include "tr_vbo.h"
 
+/* qa_probe is the master instrument switch (qcommon/qa_probe.h): every census
+   family below answers to it, so a default build emits none of this. */
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 #include <string.h>
+#include <math.h>
 
 /* defined by the mirrored 3D front end */
 backEndState_t		backEnd;
@@ -76,17 +83,414 @@ void RB_InitBackend( void )
 /* the tessellation store lives in tr_shade.c, as in the reference renderer */
 
 
+/* ---- the 2D coverage census ---------------------------------------------- *
+ *
+ * WHY.  The main menu's six LCARS background tiles are each a one-quad batch
+ * with its own shader and its own clip, and the frame's transcript says all six
+ * were issued; the operator's screen shows one of them.  "Issued" and
+ * "rasterised" are different claims, and the gap between them is this census.
+ *
+ * The scissor test is the mechanism that produces the gap: a sample outside the
+ * scissor rectangle "will have [its] coverage set to 0" (vkspec.txt:202812-202816,
+ * section 35.2 "Scissor Test"), and the rect Vulkan is given is the clamped one
+ * VK_Draw_SetScissor handed it (offset >= 0, VUID-vkCmdSetScissor-x-00595,
+ * vkspec.txt:202864).  The rect a draw runs under is dynamic state that a batch
+ * replays per span, so it is readable only here, beside the draw -- which is
+ * where this census reads it, rather than recomputing it.
+ *
+ * For every span the frame draws it names the pipeline bound, the scissor rect
+ * ACTUALLY in force (read back from the clamp), the ortho the push constant
+ * carried, the ring slice and descriptor set the draw read, the blend/depth/
+ * alpha-test tuple, the index range, the texture sampled, the quad's own screen
+ * rect, and the pixel area of
+ *     quad rect  INTERSECT  applied scissor  INTERSECT  render area.
+ * px=0 is proof that the draw cannot rasterise a pixel.  Each row also carries
+ * the three rects that say where the state came from: `authoredscn` is the span
+ * table's copy (the state the quad's batch recorded it under), `appliedscn` is
+ * what VK_Draw_2DStateApply re-issued for this draw, and `walkscn` is the walk's
+ * live 2D mirror at the flush -- which under the defect that hid the LCARS tiles
+ * held the PREVIOUS widget's clip.  The frame summary then names every shader
+ * with its issued/covered counts, which is the whole-frame answer.
+ * vk_2dCover 2 adds a readback cross-check over the presented frame's own host
+ * copy: a span whose intersection is non-empty but whose readback holds only the
+ * clear colour is the OTHER failure class (a rejected fragment, a blend that
+ * resolves to nothing, a sampler that never landed), which the scissor cannot
+ * explain.
+ *
+ * Gate: qa_probe AND vk_2dCover, default 0.  A default build emits none of it.
+ * ------------------------------------------------------------------------- */
+
+/* Declared here rather than in tr_local.h: the accessors live in vk_draw.c and
+   tr_backend.c is their only consumer. */
+void	 VK_Draw_LastScissorRect( int out[4] );
+qboolean VK_Draw_LastScissorValid( void );
+qboolean VK_Draw_2DAppliedGet( int *win, int *scn );
+int		 VK_Draw_LastSetIndex( void );
+qboolean VK_ModelPixelAtSwap( int x, int y, byte out[4] );
+
+#define RB_2DCOV_SPAN_MAX	1024
+
+typedef struct {
+	char		shader[64];
+	char		image[64];
+	int			win[4], scn[4], clip[4];
+	int			quad[4];
+	long long	px;
+	int			first, count;
+	int			vertices;
+	unsigned	stateBits;
+} rb2dCov_t;
+
+static rb2dCov_t	s_2dCov[RB_2DCOV_SPAN_MAX];
+static int			s_2dCovCount;
+static int			s_2dCovFrame = -1;
+static cvar_t	   *s_2dCovCvar;
+static byte			s_2dCovReadPx[4];
+
+static qboolean RB_2DCoverOn( void )
+{
+	if ( !PROBE_On() ) {
+		return qfalse;
+	}
+	if ( !s_2dCovCvar ) {
+		s_2dCovCvar = ri.Cvar_Get( "vk_2dCover", "0", 0 );
+	}
+	return ( s_2dCovCvar && s_2dCovCvar->integer ) ? qtrue : qfalse;
+}
+
+static int RB_2DCoverLevel( void )
+{
+	if ( !RB_2DCoverOn() ) {
+		return 0;
+	}
+	return s_2dCovCvar ? s_2dCovCvar->integer : 1;
+}
+
+/* The quad's own screen rect over the vertex range the span's indexes name: a
+   2D vertex already carries its placement (RB_2DPlaceVertex, tr_util.cpp) and
+   the port's 2D space is Vulkan's, so no transform is needed. */
+static qboolean RB_2DCoverQuadRect( int first, int count, int out[4] )
+{
+	float	x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+	int		i, n = 0;
+
+	for ( i = 0; i < count; i++ ) {
+		int	idx = (int)tess.indexes[first + i];
+
+		if ( idx < 0 || idx >= tess.numVertexes ) {
+			continue;
+		}
+		if ( !n ) {
+			x0 = x1 = tess.xyz[idx][0];
+			y0 = y1 = tess.xyz[idx][1];
+		} else {
+			if ( tess.xyz[idx][0] < x0 ) x0 = tess.xyz[idx][0];
+			if ( tess.xyz[idx][0] > x1 ) x1 = tess.xyz[idx][0];
+			if ( tess.xyz[idx][1] < y0 ) y0 = tess.xyz[idx][1];
+			if ( tess.xyz[idx][1] > y1 ) y1 = tess.xyz[idx][1];
+		}
+		n++;
+	}
+
+	memset( out, 0, 4 * sizeof( int ) );
+	if ( !n ) {
+		return qfalse;
+	}
+
+	out[0] = (int)floor( x0 );
+	out[1] = (int)floor( y0 );
+	out[2] = (int)ceil( x1 ) + 1;
+	out[3] = (int)ceil( y1 ) + 1;
+	return qtrue;
+}
+
+/* (quad INTERSECT scissor INTERSECT render area), in pixels. */
+static long long RB_2DCoverArea( const int quad[4], const int scn[4], int out[4] )
+{
+	int	x0 = quad[0] > scn[0] ? quad[0] : scn[0];
+	int	y0 = quad[1] > scn[1] ? quad[1] : scn[1];
+	int	x1 = quad[2] < scn[0] + scn[2] ? quad[2] : scn[0] + scn[2];
+	int	y1 = quad[3] < scn[1] + scn[3] ? quad[3] : scn[1] + scn[3];
+
+	if ( x1 < x0 ) x1 = x0;
+	if ( y1 < y0 ) y1 = y0;
+
+	if ( out ) {
+		out[0] = x0; out[1] = y0;
+		out[2] = x1 - x0; out[3] = y1 - y0;
+	}
+	if ( x1 <= x0 || y1 <= y0 ) {
+		return 0;
+	}
+	return (long long)( x1 - x0 ) * (long long)( y1 - y0 );
+}
+
+/* The readback cross-check, over the host copy the frame census takes: content
+   where geometry and clip both allow pixels, read back as the clear colour only,
+   is a draw that reached the command buffer and painted nothing. */
+static void RB_2DCoverReadback( const int clip[4], unsigned *distinct,
+								unsigned *nonclear, unsigned *centre )
+{
+	static byte	seen[24][4];
+	const float	*clear = vk.clearColor;
+	unsigned	ns = 0;
+	int			sx, sy;
+
+	*distinct = 0;
+	*nonclear = 0;
+	*centre   = 0;
+
+	if ( clip[2] <= 0 || clip[3] <= 0 ) {
+		return;
+	}
+
+	for ( sy = 0; sy < 4; sy++ ) {
+		for ( sx = 0; sx < 8; sx++ ) {
+			int		x = clip[0] + clip[2] * ( 2 * sx + 1 ) / 16;
+			int		y = clip[1] + clip[3] * ( 2 * sy + 1 ) / 8;
+			byte	px[4];
+			unsigned i;
+
+			if ( !VK_ModelPixelAtSwap( x, y, px ) ) {
+				return;				/* no host copy for this frame */
+			}
+			if ( px[0] != (byte)( clear[0] * 255.0f ) || px[1] != (byte)( clear[1] * 255.0f )
+				 || px[2] != (byte)( clear[2] * 255.0f ) ) {
+				(*nonclear)++;
+			}
+			for ( i = 0; i < ns; i++ ) {
+				if ( seen[i][0] == px[0] && seen[i][1] == px[1]
+					 && seen[i][2] == px[2] && seen[i][3] == px[3] ) {
+					break;
+				}
+			}
+			if ( i == ns && ns < 24 ) {
+				memcpy( seen[ns], px, 4 );
+				ns++;
+			}
+		}
+	}
+
+	*distinct = ns;
+	if ( VK_ModelPixelAtSwap( clip[0] + clip[2] / 2, clip[1] + clip[3] / 2, s_2dCovReadPx ) ) {
+		*centre = ( (unsigned)s_2dCovReadPx[0] << 24 ) | ( (unsigned)s_2dCovReadPx[1] << 16 )
+				  | ( (unsigned)s_2dCovReadPx[2] << 8 ) | (unsigned)s_2dCovReadPx[3];
+	}
+}
+
+/* One row per span: the state the draw ran under and the pixels it could reach. */
+static void RB_2DCoverSpan( int level, const float *ortho, const int *win, const int *scn,
+							int first, int count, int indexBase, int vertexBase,
+							VkPipeline pipeline, const shaderStage_t *stage, const image_t *image )
+{
+	int			clip[4], quad[4], appliedScn[4], appliedWin[4];
+	int			area[4];
+	long long	px;
+	qboolean	haveQuad;
+	rb2dCov_t  *c = NULL;
+	const char *shaderName = tess.shader ? tess.shader->name : "?";
+	const char *imageName  = image ? image->imgName : "(none)";
+
+	/* the rect actually in force: read back from the clamp, not recomputed */
+	if ( VK_Draw_LastScissorValid() ) {
+		VK_Draw_LastScissorRect( clip );
+	} else {
+		memset( clip, 0, sizeof( clip ) );
+	}
+
+	if ( !VK_Draw_2DAppliedGet( appliedWin, appliedScn ) ) {
+		memcpy( appliedScn, scn, sizeof( appliedScn ) );
+	}
+
+	haveQuad = RB_2DCoverQuadRect( first, count, quad );
+	px       = RB_2DCoverArea( quad, clip, area );
+
+	if ( s_2dCovCount < RB_2DCOV_SPAN_MAX ) {
+		c = &s_2dCov[s_2dCovCount++];
+		memset( c, 0, sizeof( *c ) );
+		Com_sprintf( c->shader, sizeof( c->shader ), "%s", shaderName );
+		Com_sprintf( c->image, sizeof( c->image ), "%s", imageName );
+		memcpy( c->win, win, sizeof( c->win ) );
+		memcpy( c->scn, appliedScn, sizeof( c->scn ) );
+		memcpy( c->clip, clip, sizeof( c->clip ) );
+		memcpy( c->quad, quad, sizeof( c->quad ) );
+		c->px        = px;
+		c->first     = first;
+		c->count     = count;
+		c->vertices  = tess.numVertexes;
+		c->stateBits = stage ? stage->stateBits : 0u;
+	}
+
+	if ( level >= 1 ) {
+		VK_Guard_Row( "VK:2dcov",
+					  "f=%d span first=%d count=%d shader='%s' img='%s' verts=%d "
+					  "pipe=0x%llx set=%d slice=v%d/i%d "
+					  "win=(%d,%d,%d,%d) authoredscn=(%d,%d,%d,%d) appliedscn=(%d,%d,%d,%d) "
+					  "walkscn=(%d,%d,%d,%d) scissor=(%d,%d %dx%d) quad=(%d,%d)-(%d,%d) clip=(%d,%d %dx%d) "
+					  "px=%lld ort=(%.4f,%.4f,%.4f,%.4f) sb=0x%x atest=%d blend=%d/%d depth=%d/%d "
+					  "state=%s%s",
+					  RB_FrameCount(), first, count, shaderName, imageName, tess.numVertexes,
+					  (unsigned long long)(uintptr_t)pipeline, VK_Draw_LastSetIndex(),
+					  vertexBase, indexBase,
+					  win[0], win[1], win[2], win[3],
+					  scn[0], scn[1], scn[2], scn[3],
+					  appliedScn[0], appliedScn[1], appliedScn[2], appliedScn[3],
+					  vk_2dScissor[0], vk_2dScissor[1], vk_2dScissor[2], vk_2dScissor[3],
+					  clip[0], clip[1], clip[2], clip[3],
+					  quad[0], quad[1], quad[2], quad[3],
+					  area[0], area[1], area[2], area[3], px,
+					  ortho[0], ortho[5], ortho[12], ortho[13],
+					  stage ? stage->stateBits : 0u,
+					  stage ? (int)( ( stage->stateBits & VKS_ATEST_BITS ) >> 28 ) : 0,
+					  stage ? (int)( stage->stateBits & VKS_SRCBLEND_BITS ) : 0,
+					  stage ? (int)( ( stage->stateBits & VKS_DSTBLEND_BITS ) >> 4 ) : 0,
+					  stage && ( stage->stateBits & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
+					  stage && ( stage->stateBits & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
+					  px > 0 ? "RASTER" : "CLIP0",
+					  haveQuad ? "" : " QUAD=EMPTY" );
+	}
+}
+
+/* The frame's whole answer, emitted where the next frame opens: every span of
+   the frame that ended is listed by shader with the pixels it could reach, so a
+   shader that was issued and covered nothing is one line. */
+static void RB_2DCoverFrame( void )
+{
+	int	level = RB_2DCoverLevel();
+
+	if ( s_2dCovCount > 0 ) {
+		int	i, j, raster = 0, clip0 = 0;
+
+		for ( i = 0; i < s_2dCovCount; i++ ) {
+			if ( s_2dCov[i].px > 0 ) {
+				raster++;
+			} else {
+				clip0++;
+			}
+		}
+
+		VK_Guard_Row( "VK:2dcov",
+					  "frame=%d draws=%d raster=%d clip0=%d level=%d",
+					  s_2dCovFrame, s_2dCovCount, raster, clip0, level );
+
+		for ( i = 0; i < s_2dCovCount; i++ ) {
+			int			issued = 0, covered = 0;
+			long long	px = 0;
+
+			if ( !s_2dCov[i].shader[0] ) {
+				continue;
+			}
+			for ( j = 0; j < i; j++ ) {
+				if ( s_2dCov[j].shader[0]
+					 && strcmp( s_2dCov[j].shader, s_2dCov[i].shader ) == 0 ) {
+					break;
+				}
+			}
+			if ( j < i ) {
+				continue;			/* already reported at its first span */
+			}
+			for ( j = i; j < s_2dCovCount; j++ ) {
+				if ( strcmp( s_2dCov[j].shader, s_2dCov[i].shader ) == 0 ) {
+					issued++;
+					px += s_2dCov[j].px;
+					if ( s_2dCov[j].px > 0 ) {
+						covered++;
+					}
+				}
+			}
+			VK_Guard_Row( "VK:2dcov",
+						  "frame=%d shader='%s' img='%s' issued=%d covered=%d px=%lld %s",
+						  s_2dCovFrame, s_2dCov[i].shader, s_2dCov[i].image,
+						  issued, covered, px,
+						  covered ? "" : "VERDICT=ISSUED_NOT_RASTERISED" );
+		}
+
+		/* The readback cross-check: level 2, over the presented frame's copy. */
+		if ( level >= 2 ) {
+			for ( i = 0; i < s_2dCovCount; i++ ) {
+				unsigned distinct, nonclear, centre;
+
+				RB_2DCoverReadback( s_2dCov[i].clip, &distinct, &nonclear, &centre );
+				VK_Guard_Row( "VK:2dcov",
+							  "frame=%d rb shader='%s' clip=(%d,%d %dx%d) distinct=%u nonclear=%u "
+							  "centre=0x%08x %s",
+							  s_2dCovFrame, s_2dCov[i].shader,
+							  s_2dCov[i].clip[0], s_2dCov[i].clip[1],
+							  s_2dCov[i].clip[2], s_2dCov[i].clip[3],
+							  distinct, nonclear, centre,
+							  ( s_2dCov[i].px > 0 && nonclear == 0 )
+							  ? "VERDICT=CLIP_OK_NO_CONTENT" : "" );
+			}
+		}
+	}
+
+	s_2dCovCount = 0;
+	s_2dCovFrame = RB_FrameCount();
+}
+
 /* A 2D batch that crossed a window or scissor change draws once per span, each
    draw preceded by the state its quads were authored under.  Under two spans
    this is the single draw the batch always made: nothing about a run that sets
    one window changes.  The vertices are packed once for the whole batch, so a
    span only moves the first index and re-pushes the ortho and the two rects. */
-static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase, int numIndexes )
+static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase, int numIndexes,
+							  VkPipeline pipeline, const shaderStage_t *stage, const image_t *image )
 {
 	int	spans = RB_2D_SpanCount();
+	int	level = backEnd.in2D ? RB_2DCoverLevel() : 0;
 	int	i;
 
 	if ( spans < 2 ) {
+		/* One draw for the whole batch, under whatever state the command buffer
+		   holds: for a 2D batch that is the arm which cannot say what its quads
+		   were authored under (tr_draw.c RB_2D_SpanCount reports a single span as
+		   two, so a one-state batch never lands here). */
+		if ( level ) {
+			int	clip[4], quad[4], area[4];
+			long long px;
+
+			if ( VK_Draw_LastScissorValid() ) {
+				VK_Draw_LastScissorRect( clip );
+			} else {
+				memset( clip, 0, sizeof( clip ) );
+			}
+			/* No span state to apply: the draw runs under the command buffer's
+			   scissor, which is the last rect VK_Draw_ScissorRect was given, and
+			   that is what the coverage is measured against.  A one-shot writer
+			   (the glyph run, the triangle fan) is drawn where it is written, so
+			   this IS its authored state; a batch lands here only when its run
+			   could not be named. */
+			RB_2DCoverQuadRect( 0, numIndexes, quad );
+			px = RB_2DCoverArea( quad, clip, area );
+
+			VK_Guard_Row( "VK:2dcov",
+						  "f=%d span=WHOLE shader='%s' img='%s' spans=%d idx=[0,%d) verts=%d "
+						  "scissor=(%d,%d %dx%d) quad=(%d,%d)-(%d,%d) clip=(%d,%d %dx%d) "
+						  "px=%lld state=CMDBUF%s",
+						  RB_FrameCount(), tess.shader ? tess.shader->name : "?",
+						  image ? image->imgName : "(none)", spans,
+						  numIndexes, tess.numVertexes,
+						  clip[0], clip[1], clip[2], clip[3],
+						  quad[0], quad[1], quad[2], quad[3],
+						  area[0], area[1], area[2], area[3], px,
+						  backEnd.in2D ? "" : " (3D)" );
+
+			if ( backEnd.in2D && s_2dCovCount < RB_2DCOV_SPAN_MAX ) {
+				rb2dCov_t	*c = &s_2dCov[s_2dCovCount++];
+
+				memset( c, 0, sizeof( *c ) );
+				Com_sprintf( c->shader, sizeof( c->shader ), "%s",
+							 tess.shader ? tess.shader->name : "?" );
+				Com_sprintf( c->image, sizeof( c->image ), "%s",
+							 image ? image->imgName : "(none)" );
+				memcpy( c->clip, clip, sizeof( c->clip ) );
+				memcpy( c->quad, quad, sizeof( c->quad ) );
+				c->vertices = tess.numVertexes;
+				c->count    = numIndexes;
+				c->stateBits = stage ? stage->stateBits : 0u;
+				c->px       = px;
+			}
+		}
 		VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, vertexBase );
 		VK_Shade_NoteDraw( qfalse );
 		return;
@@ -103,6 +507,12 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 		}
 
 		VK_Draw_2DStateApply( cmd, ortho, win, scn );
+
+		if ( level ) {
+			RB_2DCoverSpan( level, ortho, win, scn, first, count, indexBase, vertexBase,
+							pipeline, stage, image );
+		}
+
 		VK_Draw_DrawIndexed( cmd, count, indexBase + first, vertexBase );
 		VK_Shade_NoteDraw( qfalse );
 		/* One entry per span: the order transcript keeps the granularity it had
@@ -290,7 +700,8 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 											 colors, NULL,
 											 &vertexBase, &indexBase ) ) {
 		VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
-		RB_StageDrawSpan( vk.commandBuffers[s_rbSlot], indexBase, vertexBase, tess.numIndexes );
+		RB_StageDrawSpan( vk.commandBuffers[s_rbSlot], indexBase, vertexBase, tess.numIndexes,
+						  pipeline, stage, image );
 		return qtrue;
 	}
 
@@ -334,7 +745,8 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 
 	/* The ring is bound per surface: a bind is cheaper than tracking which. */
 	VK_Draw_BindRing( vk.commandBuffers[s_rbSlot] );
-	RB_StageDrawSpan( vk.commandBuffers[s_rbSlot], indexBase, vertexBase, tess.numIndexes );
+	RB_StageDrawSpan( vk.commandBuffers[s_rbSlot], indexBase, vertexBase, tess.numIndexes,
+					  pipeline, stage, image );
 
 	vk_ring_note( vertexBase + tess.numVertexes, indexBase + tess.numIndexes );
 
@@ -357,6 +769,8 @@ void rb_set_slot( int slot )
    render thread was still walking the previous frame through them. */
 void RB_FrameOpen( int slot )
 {
+	RB_2DCoverFrame();				/* the frame that ended, by shader */
+
 	VK_VertexRing_SetFrame( slot );	/* the ring this frame fills */
 	VK_VertexRing_ResetFrame();
 	RB_VBO_BeginFrame();

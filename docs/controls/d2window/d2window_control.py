@@ -19,18 +19,27 @@ r_smp -- so whether the front end's first window request of a frame saw a valid
 cache was a race: the window was recorded on some frames and elided on others,
 which is the flashing 2D the operator kept reporting.
 
-It also pins the shape the trace gives the 2D pass itself, because the two go
-together: with a per-widget window the cache had a window command per widget to
-elide, and with retail's shape there is ONE window for the pass.  From
-retail-menu-solomatch-final.trace calls 10103-10124 (and the repeats that
-follow): `glViewport(0, 0, 640, 480)`, `glMatrixMode(GL_PROJECTION)`,
-`glLoadIdentity()`, `glOrtho(0, 640, 480, 0, -1, 1)`, `glMatrixMode(GL_MODELVIEW)`,
-`glLoadIdentity()`, then `glVertex2f` in SCREEN space, with `glScissor` the only
-per-widget state -- `(49,51,320,26)`, `(424,53,123,26)`, `(371,49,256,32)`,
-`(458,393,138,32)`, `(44,393,138,32)`, `(320,393,138,32)`, `(182,393,138,32)`,
-`(435,20,96,32)`, `(40,9,40,16)`, `(20,9,25,16)`, all nonzero.  So the control
-requires the constant window + the vertex origin, forbids a degenerate-ortho
-branch, and proves the placement is unchanged by the rewrite.
+It also pins the shape the trace gives the 2D pass itself.  Retail opens the pass
+on the screen window -- retail-menu-solomatch-final.trace 10103-10109:
+`glViewport(0, 0, 640, 480)`, `glMatrixMode(GL_PROJECTION)`, `glLoadIdentity()`,
+`glOrtho(0, 640, 480, 0, -1, 1)`, `glMatrixMode(GL_MODELVIEW)`,
+`glLoadIdentity()` -- and a TEXT/BOX widget keeps it, with `glVertex2f` in SCREEN
+space and `glScissor` its only per-widget state: `(49,51,320,26)`,
+`(424,53,123,26)`, `(371,49,256,32)`, `(458,393,138,32)`, `(44,393,138,32)`,
+`(320,393,138,32)`, `(182,393,138,32)`, `(435,20,96,32)`, `(40,9,40,16)`,
+`(20,9,25,16)`.
+
+A MATERIAL widget does NOT keep it.  retail-menu-jul04.trace 12614-12620 gives
+the first LCARS tile its OWN window -- `glViewport(0, 224, 256, 256)` +
+`glOrtho(0, 256, 256, 0)` + `glScissor(0, 224, 256, 256)` -- and 12645-12649 is
+the same for the next tile at x=256, 12707-12719 for the tile at (0,-32) with the
+state block's clamped `glScissor(0,0,256,224)`.  So the port's one screen window
+plus the placement it publishes has to reproduce a PER-WIDGET window, and the
+checks below prove it does, on the tiles' own numbers.  (The claim this file used
+to carry -- that retail had one window for the whole pass -- was read off the
+pass opener, calls 10103-10124, and is refuted by the tile pass.)  The control
+also forbids a degenerate-ortho branch and proves the placement is unchanged by
+the rewrite.
 
 THE PLACEMENT (the r14-round-7 defect).  The rewrite put the widget's placement
 on the vertices, in ONE choke point per lane (`RB_2DPlaceVertex`, tr_util.cpp),
@@ -451,8 +460,53 @@ def main():
                               "clip (%d,%d,%d,%d) origin (%.0f,%.0f)"
                               % (old[0], old[1], new[0], new[1], sx, sy, sw, sh, cox, coy))
 
-        # and the widget itself: its own local top-left (clippedorigin) must land
-        # on the widget's screenframe, which is the mirror the pre-fix y broke.
+        # retail's MATERIAL widgets: each sets its OWN window, one per widget
+        # (retail-menu-jul04.trace 12614-12620 for the first tile, 12645-12649 for
+        # the second, 12707-12719 for the fourth, 12800-12812 for the logo).  The
+        # port's one screen window plus the shipped placement must land the same
+        # local vertex on the same framebuffer pixel as that per-widget window,
+        # and these are the rects the operator's missing-LCARS frame is made of.
+        RETAIL_WIDGET_WINDOWS = (
+            ("bkg_01", (0, 224, 256, 256), (0, 224, 256, 256)),
+            ("bkg_02", (256, 224, 256, 256), (256, 224, 256, 256)),
+            ("bkg_03", (512, 224, 128, 256), (512, 224, 128, 256)),
+            ("bkg_04", (0, -32, 256, 256), (0, 0, 256, 224)),
+            ("bkg_05", (256, -32, 256, 256), (256, 0, 256, 224)),
+            ("bkg_06", (512, -32, 128, 256), (512, 0, 128, 224)),
+            ("logo", (174, 375, 288, 133), (174, 375, 288, 105)),
+        )
+        for (w_name, vp, wscn) in RETAIL_WIDGET_WINDOWS:
+            vx0, vy0, vw, vh = vp
+            check(vw > 0 and vh > 0 and wscn[2] > 0 and wscn[3] > 0,
+                  "retail's %s window/scissor is degenerate" % w_name)
+            vidW, vidH, originX, originY, surfaceH = 640.0, 480.0, 0.0, 0.0, 480.0
+            sf = (float(vx0), surfaceH - float(vy0) - float(vh), float(vw), float(vh))
+            sym = {
+                "m_screenframe.pos.x": sf[0], "m_screenframe.pos.y": sf[1],
+                "m_screenframe.size.width": sf[2], "m_screenframe.size.height": sf[3],
+                "m_clippedorigin.x": 0.0, "m_clippedorigin.y": 0.0,
+                "m_clippedframe.pos.x": sf[0], "m_clippedframe.pos.y": sf[1],
+                "m_clippedframe.size.width": sf[2], "m_clippedframe.size.height": sf[3],
+                "uid.vidWidth": vidW, "uid.vidHeight": vidH,
+                "uid.originX": originX, "uid.originY": originY,
+                "uid.surfaceHeight": surfaceH,
+            }
+            ox, oy = set2d_origin(set2d, sym)
+            win = set2d_window(set2d, sym)
+            for (vx, vy) in ((0.0, 0.0), (1.0, 1.0), (float(vw), float(vh))):
+                # retail: the widget's own window, its local ortho, local vertex
+                old = fb_point((float(vx0), float(vy0), float(vw), float(vh)),
+                               (0.0, float(vw), float(vh), 0.0), vx, vy, float(surfaceH))
+                # the port: the pass's screen window and the shipped placement
+                new = fb_point(tuple(win[0:4]), tuple(win[4:8]),
+                               vx + ox, vy + oy, float(surfaceH))
+                check(abs(old[0] - new[0]) < 1e-4 and abs(old[1] - new[1]) < 1e-4,
+                      "retail's %s per-widget window and the port's screen window + "
+                      "placement disagree at local (%g,%g): retail=(%g,%g) "
+                      "port=(%g,%g)" % (w_name, vx, vy, old[0], old[1], new[0], new[1]))
+
+    # and the widget itself: its own local top-left (clippedorigin) must land
+    # on the widget's screenframe, which is the mirror the pre-fix y broke.
         # Numbers from the operator's run-20261015-105154 log at 800x600: the
         # menu/main/credits button, authored rect (371,399,256,32) in the 640x480
         # space (locpak1.pk3 loc/Eng/ui/menu_main.urc:225) -> screenframe

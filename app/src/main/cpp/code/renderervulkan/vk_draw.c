@@ -173,6 +173,18 @@ void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptor
 	s_boundSetFrame[slot] = frame;
 }
 
+/* ---- what the last 2D state application and bind actually set ------------- */
+
+/* The 2D state the walk applies is dynamic state that a batch replays per span,
+   so "the state a draw ran under" is not readable from the batch any other way.
+   Each setter records itself, and the census reads the record beside the draw. */
+static int	s_2dLastScissor[4];
+static qboolean s_2dLastScissorValid;
+static int	s_2dAppliedWin[4];
+static int	s_2dAppliedScn[4];
+static qboolean s_2dAppliedValid;
+static int	s_2dLastSetIndex = -1;
+
 static unsigned VK_Draw_PipelineHash( const vkPipelineKey_t *key )
 {
 	unsigned h = (unsigned)key->topology * 2654435761u;
@@ -698,6 +710,10 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 
 	VK_Draw_BindSet( cmd, vk_draw.layout, set, 0, 0 );
 
+	/* the set this quad samples through; i is vk_sets[]'s own index for the
+	   (view,sampler) pair, so an aliased or stale pair is nameable in the row */
+	s_2dLastSetIndex = i;
+
 	return qtrue;
 }
 
@@ -807,11 +823,19 @@ void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 
 	memset( values, 0, sizeof( values ) );
 
+	/* The selector rides a push constant and the fragment stage discards on it,
+	   so the value is command-buffer state that outlives the draw that set it.
+	   Returning early on "no alpha test" therefore left the PREVIOUS stage's
+	   selector in force, and a stage that never asked for one drew under it --
+	   the reference's own trace shows the logo's additive passes as
+	   glDisable(GL_ALPHA_TEST) (retail-menu-jul04.trace 12833, 12877) while the
+	   stage before them enabled it (:12634/:12635).  Zero is therefore
+	   PUBLISHED, not skipped, exactly as the reference's glDisable does. */
 	switch ( stateBits & VKS_ATEST_BITS ) {
 	case VKS_ATEST_GT_0:	values[0] = 1.0f;			break;
 	case VKS_ATEST_LT_80:	values[0] = 2.0f;			break;
 	case VKS_ATEST_GE_80:	values[0] = 4.0f;			break;
-	default:				return;		/* no alpha test: leave it off */
+	default:				values[0] = 0.0f;			break;
 	}
 
 	qvk.CmdPushConstants( cmd, vk_draw.layout,
@@ -886,6 +910,11 @@ void VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *w
 	}
 
 	vk_2dReplaying = qfalse;
+
+	/* The state this draw will run under, kept for the census. */
+	memcpy( s_2dAppliedWin, win, sizeof( s_2dAppliedWin ) );
+	memcpy( s_2dAppliedScn, scn, sizeof( s_2dAppliedScn ) );
+	s_2dAppliedValid = qtrue;
 }
 
 /* ---- the rectangle the reference clamps and this lane has to ------------- */
@@ -938,7 +967,56 @@ static void VK_Draw_ScissorRect( VkCommandBuffer cmd, int x, int y, int w, int h
 		scissor.extent.height = (uint32_t)( ay1 - ay0 );
 	}
 
+	/* What Vulkan is actually told, kept for the coverage census: the census may
+	   report the rect in force, and a rect it recomputed itself could disagree
+	   with the one the draw ran under.  VkRect2D's offset must be >= 0
+	   (VUID-vkCmdSetScissor-x-00595, vkspec.txt:202864) and offset+extent must
+	   not overflow (00596/00597, :202868), which is why the clamp exists. */
+	s_2dLastScissor[0] = scissor.offset.x;
+	s_2dLastScissor[1] = scissor.offset.y;
+	s_2dLastScissor[2] = (int)scissor.extent.width;
+	s_2dLastScissor[3] = (int)scissor.extent.height;
+	s_2dLastScissorValid = qtrue;
+
 	qvk.CmdSetScissor( cmd, 0, 1, &scissor );
+}
+
+void VK_Draw_LastScissorRect( int out[4] )
+{
+	if ( !out ) {
+		return;
+	}
+	memcpy( out, s_2dLastScissor, sizeof( s_2dLastScissor ) );
+}
+
+qboolean VK_Draw_LastScissorValid( void )
+{
+	return s_2dLastScissorValid;
+}
+
+/* The window and scissor the last span re-application restored.  The census
+   compares this against the span table's own copy: a draw whose applied rect is
+   not the rect it was authored under is a draw under a foreign clip, which is
+   the defect class this instrument exists to name. */
+qboolean VK_Draw_2DAppliedGet( int *win, int *scn )
+{
+	if ( !s_2dAppliedValid ) {
+		return qfalse;
+	}
+	if ( win ) {
+		memcpy( win, s_2dAppliedWin, sizeof( s_2dAppliedWin ) );
+	}
+	if ( scn ) {
+		memcpy( scn, s_2dAppliedScn, sizeof( s_2dAppliedScn ) );
+	}
+	return qtrue;
+}
+
+/* The descriptor set the last texture bind selected: the census names the set a
+   quad sampled through, so a stale or aliased set is visible in the row. */
+int VK_Draw_LastSetIndex( void )
+{
+	return s_2dLastSetIndex;
 }
 
 /* The viewport has no framebuffer to be cut to, but it does have a device

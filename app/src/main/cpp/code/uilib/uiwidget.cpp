@@ -1405,19 +1405,25 @@ void UIWidget::set2D(void)
     int limit_subT0 = LIMIT_SubT0();
 
     /* ONE window for the whole 2D pass, and the widget clips with the scissor.
-       This is retail's own shape, from retail-menu-solomatch-final.trace calls
-       10103-10124 and the repeats that follow: glViewport(0, 0, 640, 480),
-       glMatrixMode(GL_PROJECTION), glLoadIdentity(), glOrtho(0, 640, 480, 0, -1, 1),
-       glMatrixMode(GL_MODELVIEW), glLoadIdentity(), and then glVertex2f in SCREEN
-       coordinates, with glScissor(<the widget's clip>) the only per-widget state
-       (the trace's are (49,51,320,26), (424,53,123,26), (371,49,256,32), ...).
-       The port used to fold the widget's placement into a per-widget ortho and
-       viewport, which is why an ortho whose left equalled its right needed a
-       degenerate branch: the transform stopped meaning anything.  Placement rides
-       on the vertices now (Rend_Set2DOrigin, added by the renderer's 2D vertex
-       writers), so the ortho is constant and can never degenerate, and a widget
-       with a zero-extent frame is merely clipped to nothing by its scissor, as it
-       is in retail. */
+       Retail's pass opens on the screen window -- retail-menu-solomatch-final.trace
+       10103-10109: glViewport(0, 0, 640, 480), glOrtho(0, 640, 480, 0, -1, 1),
+       with glVertex2f in screen space and glScissor(<the widget's clip>) -- and a
+       TEXT/BOX widget keeps it (the trace's clips are (49,51,320,26),
+       (424,53,123,26), (371,49,256,32), ...).  A MATERIAL widget does not: retail
+       gives it its own viewport and its own local ortho, one per widget, with a
+       matching scissor -- retail-menu-jul04.trace 12613-12620 for the first LCARS
+       tile is glViewport(0, 224, 256, 256) + glOrtho(0, 256, 256, 0) + glScissor
+       (0, 224, 256, 256), and 12645-12649 is the same for the next tile at x=256.
+       The widget's own window is exactly the widget's rect, which is what this
+       port reproduces with the constant screen window plus the placement it bakes
+       into the vertices, so both of retail's shapes land on the same screen rect.
+       The port used to fold the placement into a per-widget ortho and viewport,
+       which is why an ortho whose left equalled its right needed a degenerate
+       branch: the transform stopped meaning anything.  Placement rides on the
+       vertices now (Rend_Set2DOrigin, added by the renderer's 2D vertex writers),
+       so the ortho is constant and can never degenerate, and a widget with a
+       zero-extent frame is merely clipped to nothing by its scissor, as it is in
+       retail. */
     /* A zero-extent window is the whole 2D defect: the ortho the window carries
        is degenerate (left == right), so every quad the widget queues is
        transformed through an identity and lands at raw coordinates, and the
