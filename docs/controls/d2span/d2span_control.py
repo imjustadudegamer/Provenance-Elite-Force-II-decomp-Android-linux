@@ -962,6 +962,27 @@ def main():
           "the draw path that uses whatever state is in force at the flush "
           "instead of the state the span was authored under")
 
+    # --- the hunk-clear purge drops the batch, it does not draw it ----------
+    #
+    # RB_2D_OwnersPurged is the notify the arena free precedes (tr_init.c), and
+    # the front end calls it: RB_2D_Flush() would reach RB_EndSurface ->
+    # RB_StageIterator2D -> RB_StagePass -> vk.commandBuffers[s_rbSlot] on the
+    # wrong thread, with s_rbSlot -1 until a walk opens a frame.
+    purge = body(batch, "void RB_2D_OwnersPurged( void )")
+    if mutant == 21:
+        purge = purge.replace("RB_2D_SpanReset();", "RB_2D_Flush();")
+    check("RB_2D_Flush()" not in purge,
+          "the purge flushes, so it draws on the front end's thread into the walk "
+          "thread's command buffer")
+    for frag in ("s_2dBatchOpen", "s_2dBatchShader = NULL", "s_2dBatchVerts",
+                 "s_2dTriOpen"):
+        check(frag in purge,
+              "the purge does not drop the pending 2D work (%r missing), so a "
+              "later quad extends a batch whose shader the free invalidated, or "
+              "the immediate run outlives the state it was queued under" % frag)
+    check("RB_2D_SpanReset();" in purge,
+          "the purge does not drop the spans, so the next batch redraws them")
+
     # --- the replay does not become the state it restores -------------------
     #
     # VK_Draw_2DStateApply re-issues a span's state while the run is inside a

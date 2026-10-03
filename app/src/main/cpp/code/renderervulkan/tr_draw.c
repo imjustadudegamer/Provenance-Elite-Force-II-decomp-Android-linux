@@ -381,9 +381,31 @@ void RB_2D_Flush( void ) {
 	RB_2D_FlushImmediate();
 }
 
-/* the reference renderer's tr_draw.c carries this note in full */
+/* The hunk-clear notify: the arena the batch's shader and stages live in is
+   freed right after this returns, and this runs on the FRONT END's thread.  The
+   pending 2D work is therefore DROPPED, never drawn -- RB_2D_Flush() would draw,
+   and RB_EndSurface reaches RB_StageIterator2D and RB_StagePass, which write
+   vk.commandBuffers[s_rbSlot] on the walk thread's command buffer while s_rbSlot
+   is still -1 (RB_FrameOpen, tr_backend.c, sets it), i.e. an index of -1.
+   The normal path never reaches that: RB_2D_Flush is guarded on s_2dBatchOpen
+   and RB_2D_FlushImmediate on s_2dTriOpen, and both walk exits flush before a
+   frame ends -- VK_Frame_RecordEnd (vk_frame.c) on the present path and
+   VK_Frame_Retire on the abandoned one -- so between frames this function is a
+   draw-free no-op either way and the span reset below is all it does.  What
+   clearing the two flags removes is the misuse path where one is open here.
+   Both are DROPPED rather than committed: the batch's shader and stages are the
+   memory being freed, and the immediate run's vertices are already in the vertex
+   ring (not the arena) with a Vulkan pipeline and image, so leaving its run open
+   costs nothing -- the next immediate draw ends and commits it on the walk
+   thread, which is where a draw belongs. */
 void RB_2D_OwnersPurged( void ) {
-	RB_2D_Flush();
+	s_2dBatchOpen   = qfalse;
+	s_2dBatchShader = NULL;
+	s_2dBatchVerts  = 0;
+
+	s_2dTriOpen     = qfalse;
+
+	RB_2D_SpanReset();
 }
 
 static void RB_2D_Batch( shader_t *shader ) {
