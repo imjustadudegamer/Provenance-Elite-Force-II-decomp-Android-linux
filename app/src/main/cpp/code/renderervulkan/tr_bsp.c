@@ -1933,8 +1933,7 @@ void R_ClearWorld(void) {
     tr.world = NULL;
     tr.worldMapLoaded = qfalse;
 
-    /* Every pointer s_worldData holds was in the arena the registration just
-       freed.  RE_LoadWorldMap memsets it again before the next load, so this
-       only closes the window between the two. */
+    /* Every pointer here was in the arena just freed; RE_LoadWorldMap memsets
+       it again, this closes the window between. */
     Com_Memset( &s_worldData, 0, sizeof( s_worldData ) );
 }

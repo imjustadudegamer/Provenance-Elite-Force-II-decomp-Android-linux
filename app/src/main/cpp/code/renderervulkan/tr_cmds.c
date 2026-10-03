@@ -911,12 +911,10 @@ void R_InitCommandBuffers( void )
 
 	for ( i = 0; i < SMP_FRAMES; i++ ) {
 		if ( !rb_commandLists[i] ) {
-			/* The front end records into this list every frame and the walk
-			   reads it.  ri.Hunk_Clear frees the renderer's static arena at
-			   every map change, so the list cannot live there: it comes from
-			   the renderer pool, which no registration and no path in this
-			   port purges (ri.Clear has no caller).  h_low is not a lifetime
-			   here -- CL_RefStaticMalloc ignores the preference. */
+			/* Recorded into every frame and read by the walk, and
+			   ri.Hunk_Clear frees the arena at every map change: the list
+			   must come from the renderer pool, not the arena.  h_low is not
+			   a lifetime here -- CL_RefStaticMalloc ignores the preference. */
 			rb_commandLists[i] = ( vkCommandList_t * )ri.Malloc( sizeof( vkCommandList_t ) );
 		}
 		memset( rb_commandLists[i], 0, sizeof( *rb_commandLists[i] ) );
