@@ -331,39 +331,243 @@ int VKimp_HandshakeViolations( void )
 	return vk_handshakeViolations;
 }
 
-/* The upload pool is one pool, and a VkCommandPool is host-synchronised for its
-   WHOLE lifetime -- not only for allocate and free: Vulkan 1.4 s5.3 ("Host
-   Synchronization" for VkCommandPool) makes "use via recording commands on any
-   command buffers allocated from the pool" part of the same external
-   synchronization.  Locking vkAllocateCommandBuffers and vkFreeCommandBuffers
-   alone therefore still let the walk thread record (vkCmdPipelineBarrier) out
-   of the pool while the main thread allocated or freed from it, which is the
-   "VkCommandPool is simultaneously used in current thread ... and thread ..."
-   the layer reported for vkAllocateCommandBuffers, vkFreeCommandBuffers and
-   vkCmdPipelineBarrier.  One lock per one-shot upload transaction -- taken
-   before the allocate and released after the free -- is that whole lifetime. */
-static SDL_mutex *vk_uploadMutex;
+/* ---- command pools: one pool per producer, one lock per pool ---------------
 
-/* Created once, from the sync init below, before either thread can reach an
-   upload: a lazily created mutex has a window in which both threads create one
-   and only one of them guards. */
+   Vulkan 1.4 s6.2, "Command Pools" (vkspec.txt:14741-14745): "Command pools are
+   externally synchronized, meaning that a command pool must not be used
+   concurrently in multiple threads.  That includes use via recording commands
+   on any command buffers allocated from the pool, as well as operations that
+   allocate, free, and reset command buffers or the pool itself."  The per-call
+   Host Synchronization clauses repeat it for every pool operation
+   (vkspec.txt:15000, :15067, :15160, :15277, :15340, :15440 and :18948-18953).
+
+   One shared upload pool therefore cannot be guarded by a lock held only around
+   one-shot transactions, because one of its command buffers -- the static
+   arena's transfer buffer -- records ACROSS a frame, so its recording window is
+   the frame.  Locking that window would serialise the walk behind every upload;
+   leaving it out is the "VkCommandPool is simultaneously used in current thread
+   ... and thread ..." the layer reported at vkAllocateCommandBuffers.  Two
+   mutexes do not fix it either: they do not exclude each other.
+
+   The port instead gives each thread its own pool.  Within a thread use is
+   sequential by construction and across threads the pools are disjoint, so
+   every pool has exactly one owner and the whole-lifetime rule is met with one
+   lock per pool and no frame-long critical section. */
+
+#define VK_POOL_OWNERS	16
+
+typedef struct {
+	unsigned long	owner;	/* the only thread that may touch it; 0 = the walk's frame pool */
+	VkCommandPool	pool;
+	SDL_mutex		*lock;
+} vk_poolOwner_t;
+
+static vk_poolOwner_t	s_poolOwners[VK_POOL_OWNERS];
+static int				s_poolOwnerCount;
+static SDL_mutex		*s_poolTableMutex;
+
+/* Created once, from VK_Sync_Init on the main thread before any pool exists: a
+   lazily created table mutex has a window in which both threads create one and
+   only one of them guards. */
+void VK_Pool_Init( void )
+{
+	if ( !s_poolTableMutex ) {
+		s_poolTableMutex = SDL_CreateMutex();
+	}
+}
+
+static vk_poolOwner_t *VK_Pool_Find( VkCommandPool pool )
+{
+	int i;
+
+	for ( i = 0; i < s_poolOwnerCount; i++ ) {
+		if ( s_poolOwners[i].pool == pool ) {
+			return &s_poolOwners[i];
+		}
+	}
+
+	return NULL;
+}
+
+/* Register a pool together with the one lock that is its whole lifetime.
+   owner 0 marks a pool the engine may only record from a single thread at a
+   time (the walk's frame pool); every other pool belongs to its creating
+   thread and refuses a different one. */
+qboolean VK_Pool_Register( VkCommandPool pool, unsigned long owner )
+{
+	vk_poolOwner_t *slot;
+
+	if ( pool == VK_NULL_HANDLE ) {
+		return qfalse;
+	}
+
+	VK_Pool_Init();
+
+	SDL_LockMutex( s_poolTableMutex );
+
+	if ( VK_Pool_Find( pool ) != NULL ) {
+		SDL_UnlockMutex( s_poolTableMutex );
+		return qtrue;
+	}
+	if ( s_poolOwnerCount >= VK_POOL_OWNERS ) {
+		SDL_UnlockMutex( s_poolTableMutex );
+		VK_Guard_Hit( VK_GSITE_SYNC, "command pool table full", VK_ERROR_TOO_MANY_OBJECTS );
+		return qfalse;
+	}
+
+	slot = &s_poolOwners[s_poolOwnerCount];
+	slot->pool = pool;
+	slot->owner = owner;
+	slot->lock = SDL_CreateMutex();
+	s_poolOwnerCount++;
+
+	SDL_UnlockMutex( s_poolTableMutex );
+
+	return ( slot->lock != NULL ) ? qtrue : qfalse;
+}
+
+/* The one lock for this pool.  A pool registered to another thread names the
+   illegal use here, once per call, so a run shows the thread that stepped out
+   of its own pool instead of only the API call that tripped the layer. */
+static SDL_mutex *VK_Pool_LockOf( VkCommandPool pool )
+{
+	vk_poolOwner_t	*slot;
+	SDL_mutex		*lock = NULL;
+
+	if ( !s_poolTableMutex ) {
+		return NULL;
+	}
+
+	SDL_LockMutex( s_poolTableMutex );
+
+	slot = VK_Pool_Find( pool );
+	if ( slot ) {
+		if ( slot->owner != 0 && slot->owner != (unsigned long)SDL_ThreadID() ) {
+			if ( R_ProbeStatsOn() ) {
+				VK_Guard_Row( "VK:pool", "cross-thread pool use thr=%lu owner=%lu",
+							  (unsigned long)SDL_ThreadID(), slot->owner );
+			}
+		}
+		lock = slot->lock;
+	}
+
+	SDL_UnlockMutex( s_poolTableMutex );
+
+	return lock;
+}
+
+/* The calling thread's own one-shot pool, allocated, recorded, submitted and
+   freed entirely from this thread.  Two threads that race here create two
+   pools, each keyed to its own thread, which is the intended state. */
+VkCommandPool VK_Upload_Pool( void )
+{
+	VkCommandPoolCreateInfo	poolInfo;
+	VkCommandPool			created = VK_NULL_HANDLE;
+	VkCommandPool			pool = VK_NULL_HANDLE;
+	unsigned long			me = (unsigned long)SDL_ThreadID();
+	int						i;
+
+	VK_Pool_Init();
+
+	SDL_LockMutex( s_poolTableMutex );
+	for ( i = 0; i < s_poolOwnerCount; i++ ) {
+		if ( s_poolOwners[i].owner == me ) {
+			pool = s_poolOwners[i].pool;
+			break;
+		}
+	}
+	SDL_UnlockMutex( s_poolTableMutex );
+
+	if ( pool != VK_NULL_HANDLE ) {
+		return pool;
+	}
+
+	if ( vk.device == VK_NULL_HANDLE ) {
+		return VK_NULL_HANDLE;
+	}
+
+	memset( &poolInfo, 0, sizeof( poolInfo ) );
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	poolInfo.queueFamilyIndex = vk.graphicsFamily;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC,
+						   qvk.CreateCommandPool( vk.device, &poolInfo, NULL, &created ),
+						   "vkCreateCommandPool(one-shot owner)" ) ) {
+		return VK_NULL_HANDLE;
+	}
+
+	if ( !VK_Pool_Register( created, me ) ) {
+		qvk.DestroyCommandPool( vk.device, created, NULL );
+		return VK_NULL_HANDLE;
+	}
+
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:pool", "one-shot pool thr=%lu total=%d", me, VK_Pool_Count() );
+	}
+
+	return created;
+}
+
+qboolean VK_Upload_Ready( void )
+{
+	return ( vk.device != VK_NULL_HANDLE && vk.frameReady ) ? qtrue : qfalse;
+}
+
+int VK_Pool_Count( void )
+{
+	return s_poolOwnerCount;
+}
+
+/* No render thread may be alive here: RE_Shutdown joins it before VK_BringDown,
+   so no buffer can outlive the pool it came from. */
+void VK_Pool_ShutdownAll( void )
+{
+	int i;
+
+	if ( !s_poolTableMutex ) {
+		return;
+	}
+
+	SDL_LockMutex( s_poolTableMutex );
+
+	for ( i = 0; i < s_poolOwnerCount; i++ ) {
+		if ( s_poolOwners[i].pool != VK_NULL_HANDLE && qvk.DestroyCommandPool ) {
+			qvk.DestroyCommandPool( vk.device, s_poolOwners[i].pool, NULL );
+		}
+		s_poolOwners[i].pool = VK_NULL_HANDLE;
+		s_poolOwners[i].owner = 0;
+		if ( s_poolOwners[i].lock ) {
+			SDL_DestroyMutex( s_poolOwners[i].lock );
+			s_poolOwners[i].lock = NULL;
+		}
+	}
+	s_poolOwnerCount = 0;
+
+	SDL_UnlockMutex( s_poolTableMutex );
+}
+
 void VK_Upload_Init( void )
 {
-	if ( !vk_uploadMutex ) {
-		vk_uploadMutex = SDL_CreateMutex();
-	}
+	VK_Pool_Init();
 }
 
 void VK_Upload_Begin( void )
 {
-	VK_Upload_Init();
+	SDL_mutex *lock = VK_Pool_LockOf( VK_Upload_Pool() );
 
-	SDL_LockMutex( vk_uploadMutex );
+	if ( lock ) {
+		SDL_LockMutex( lock );
+	}
 }
 
 void VK_Upload_End( void )
 {
-	SDL_UnlockMutex( vk_uploadMutex );
+	SDL_mutex *lock = VK_Pool_LockOf( VK_Upload_Pool() );
+
+	if ( lock ) {
+		SDL_UnlockMutex( lock );
+	}
 }
 
 /* A layout transition is a write to the image, so an image the walk thread may
@@ -403,7 +607,7 @@ static SDL_mutex *VK_Queue_Mutex( void )
 }
 
 /* Both host-synchronised objects under r_smp -- the graphics queue and the
-   upload command pool -- take their lock from here, once, on the main thread in
+   command-pool table -- take their lock from here, once, on the main thread in
    VK_Frame_Init before either thread can reach a pool or a queue.  Creating
    either mutex on first use leaves a window in which both threads find it null
    and create one each, so only one of them guards. */
@@ -413,7 +617,7 @@ void VK_Sync_Init( void )
 		vk_queueMutex = SDL_CreateMutex();
 	}
 
-	VK_Upload_Init();
+	VK_Pool_Init();
 }
 
 VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
@@ -450,29 +654,42 @@ VkResult VK_Queue_WaitIdle( VkQueue queue )
 	return result;
 }
 
-/* The upload pool is shared by design, not by accident: registration loads
-   textures on the main thread, and a frame that reaches for art it does not
-   have yet -- a font atlas the first 2D draw touches, a cinematic frame -- does
-   the same work on the walk thread.  This boot did both, 15455 against 1, and
-   the validation layer named the pool rather than the queue.  A command pool is
-   host synchronised like the queue, so its allocate, free and reset take the
-   same lock. */
-VkResult VK_Pool_AllocBuffers( VkDevice device, const VkCommandBufferAllocateInfo *info,
+/* The pool is the unit of host synchronization, so every allocate and free
+   takes the pool's own lock -- the same one VK_Upload_Begin holds for a whole
+   one-shot transaction.  SDL mutexes are recursive, so a transaction that calls
+   through here does not deadlock on itself.  Called on the walk's frame pool the
+   lock is simply uncontended: only one thread records a frame. */
+VkResult VK_Pool_AllocBuffers( VkCommandPool pool, const VkCommandBufferAllocateInfo *info,
 							   VkCommandBuffer *buffers )
 {
-	VkResult result;
+	SDL_mutex	*lock = VK_Pool_LockOf( pool );
+	VkResult	 result;
 
-	SDL_LockMutex( VK_Queue_Mutex() );
-	result = qvk.AllocateCommandBuffers( device, info, buffers );
-	SDL_UnlockMutex( VK_Queue_Mutex() );
+	if ( lock ) {
+		SDL_LockMutex( lock );
+	}
+
+	result = qvk.AllocateCommandBuffers( vk.device, info, buffers );
+
+	if ( lock ) {
+		SDL_UnlockMutex( lock );
+	}
 
 	return result;
 }
 
-void VK_Pool_FreeBuffers( VkDevice device, VkCommandPool pool, uint32_t count,
+void VK_Pool_FreeBuffers( VkCommandPool pool, uint32_t count,
 						  const VkCommandBuffer *buffers )
 {
-	SDL_LockMutex( VK_Queue_Mutex() );
-	qvk.FreeCommandBuffers( device, pool, count, buffers );
-	SDL_UnlockMutex( VK_Queue_Mutex() );
+	SDL_mutex *lock = VK_Pool_LockOf( pool );
+
+	if ( lock ) {
+		SDL_LockMutex( lock );
+	}
+
+	qvk.FreeCommandBuffers( vk.device, pool, count, buffers );
+
+	if ( lock ) {
+		SDL_UnlockMutex( lock );
+	}
 }
