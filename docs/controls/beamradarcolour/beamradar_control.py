@@ -236,6 +236,111 @@ def main():
     ok = bool(ident_arm) and ("color.a = 255.0" in ident_arm.group(0)) == (mutate != 2)
     check(ok, "the identity-alpha arm forces an opaque vertex alpha")
 
+    # 4. the stage-uniform publish: the whole vec4 reaches the block, and the
+    #    flat diagnostic is inert while r_worldFlat is 0.  Both facts are
+    #    source-shaped, so an offline reading settles them; the two faults this
+    #    section exists to catch are the hand-written span table that clamped
+    #    every vec3/vec4 to 4 bytes (u_BaseColor published as (r,0,0,0), which
+    #    is the red tint) and a flat gate that publishes a mode at cvar 0.
+    embp = os.path.join(src, "renderervulkan", "vk_shaders_embedded3d.h")
+    if check(os.path.exists(embp), "the generated header ships"):
+        emb = open(embp, encoding="latin1").read()
+        off = {n: int(v) for n, v in re.findall(r"VK_UBO_OFF_U_(\w+) = (\d+)", emb)}
+        span = {n: int(v) for n, v in re.findall(r"VK_UBO_SIZE_U_(\w+) = (\d+)", emb)}
+        if mutate == 5:
+            span = {k: 4 for k in span}
+        if mutate == 6:
+            clamp = 4                       # a packer that ignores the span table
+        else:
+            clamp = None
+        check(sorted(off) == sorted(span) and bool(off),
+              "the generated header carries an offset and a span for the same %d members"
+              % len(off))
+        # no member's span may run over the member the compiler put behind it
+        order = sorted(off.items(), key=lambda kv: kv[1])
+        overlap = [order[i][0] for i in range(len(order) - 1)
+                   if span.get(order[i][0], 0) > order[i + 1][1] - order[i][1]]
+        check(not overlap, "no member's span runs over its neighbour (offenders: %s)" % overlap)
+        # the members whose truncation is the defect: a vec4 needs all 16 bytes
+        for nm in ("ENTITYCOLOR", "BASECOLOR", "VERTCOLOR", "WAVERGB", "WAVEALPHA",
+                   "CLIPPLANE", "FOGCOLOR", "FOGFIXCOLOR", "TEX1COLOR", "ENTITYTEXCOORD"):
+            check(span.get(nm) == 16, "u_%s's published span is 16 bytes (got %s)"
+                  % (nm[0] + nm[1:].lower(), span.get(nm)))
+        for nm in ("TEXMOD0", "TEXMOD1"):
+            check(span.get(nm) == 256, "u_%s's published span is 256 bytes (got %s)"
+                  % (nm[0] + nm[1:].lower(), span.get(nm)))
+        # the packer, simulated: publish (1,1,1,1) into u_BaseColor and read the
+        # block back the way the vertex shader does
+        if check("BASECOLOR" in off and "BASECOLOR" in span,
+                 "u_BaseColor is a block member"):
+            block = bytearray(2048)
+
+            def setu(name, values):
+                o = off[name]
+                b = [v for v in values][: len(values)]
+                raw = b"".join(struct.pack("<f", v) for v in b)
+                n = clamp if clamp is not None else span[name]
+                block[o:o + n] = raw[:n]
+
+            setu("BASECOLOR", (1.0, 1.0, 1.0, 1.0))
+            got = struct.unpack_from("<4f", block, off["BASECOLOR"])
+            check(abs(got[0] - 1.0) < 1e-6 and abs(got[1] - 1.0) < 1e-6,
+                  "publishing (1,1,1,1) into u_BaseColor lands (1,1,1,1), got (%.3f,%.3f,%.3f,%.3f)" % got)
+
+    # the positional index: every table entry names the generated span of its own
+    # uniform, so a reorder cannot silently clamp the wrong member
+    tl = os.path.join(src, "renderervulkan", "tr_program.h")
+    shp = os.path.join(src, "renderervulkan", "vk_shade.c")
+    if os.path.exists(shp):
+        sh = open(shp, encoding="latin1").read()
+        tab = open(tl, encoding="latin1").read()
+        mt = re.search(r"#define VK_UNIFORM_TABLE(.*?)\n\n", tab, re.S)
+        names = re.findall(r"X\(\s*(\w+),", mt.group(1)) if mt else []
+        # the table names its tcMod uniforms NUMTCMOD0/TCMOD0; the block member
+        # (and so the generated span) is NUMTEXMOD0/TEXMOD0.  Same member.
+        alias = {"NUMTCMOD0": "NUMTEXMOD0", "NUMTCMOD1": "NUMTEXMOD1",
+                 "TCMOD0": "TEXMOD0", "TCMOD1": "TEXMOD1"}
+        ms = re.search(r"static const int vk_uboSize\[VK_U_COUNT\] = \{(.*?)\};", sh, re.S)
+        entries = re.sub(r"/\*.*?\*/", "", ms.group(1), flags=re.S).strip().rstrip(",")
+        entries = [e.strip() for e in entries.split(",")]
+        bad = []
+        for i, nm in enumerate(names):
+            if i >= len(entries):
+                bad.append("%s:missing" % nm)
+                continue
+            e = entries[i]
+            if e == "0":
+                continue
+            if e != "VK_UBO_SIZE_U_" + alias.get(nm, nm):
+                bad.append("%s:%s" % (nm, e))
+        check(not bad and len(names) == len(entries),
+              "vk_uboSize indexes the generated span of its own uniform (offenders: %s)" % bad[:4])
+
+        # the flat gate: a cvar of 0 must return 0 before anything else is read
+        mf = re.search(r"int VK_WorldFlatMode\( void \)\s*\{(.*?)\n\}", sh, re.S)
+        if check(mf is not None, "VK_WorldFlatMode is present"):
+            body = mf.group(1)
+            if mutate == 7:
+                body = body.replace("r_worldFlat->integer <= 0 || ", "")
+            check(re.search(r"if \(\s*!r_worldFlat \|\| r_worldFlat->integer <= 0", body) is not None
+                  and re.search(r"return 0;", body) is not None,
+                  "the flat gate returns 0 while r_worldFlat is <= 0")
+            mode_read = re.search(r"mode\s*=\s*r_worldFlat->integer", body)
+            check(mode_read is not None
+                  and body.index("return 0;") < mode_read.start(),
+                  "the mode is read only after the gate refused")
+        # the mode is published by every stage draw, so no draw inherits a mode
+        msu = re.search(r"void VK_SetupStageUniforms\(.*?\n\}", sh, re.S)
+        if check(msu is not None, "VK_SetupStageUniforms is present"):
+            tail = msu.group(0)
+            pub = re.search(r"\n\tVK_SetUniform1i\( p, VK_U_FLATMODE, flat \);", tail)
+            if mutate == 8 and pub:
+                tail = tail.replace(pub.group(0),
+                                    "\n\tif ( flat ) " + pub.group(0).strip())
+                pub = re.search(r"\n\tVK_SetUniform1i\( p, VK_U_FLATMODE, flat \);", tail)
+            check(pub is not None,
+                  "u_FlatMode is published by every stage draw, not only when it is set")
+
     return 1 if FAILS else 0
 
 

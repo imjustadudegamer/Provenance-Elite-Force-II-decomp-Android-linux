@@ -431,6 +431,18 @@ def main():
         "vk_sprite": "VK_SHADER_FAM_SPRITE", "vk_sunflare": "VK_SHADER_FAM_SUNFLARE",
         "vk_shadow": "VK_SHADER_FAM_SHADOW", "vk_wire": "VK_SHADER_FAM_WIRE",
     }
+    # a member's writable span: the bytes from its own offset up to the next
+    # member's, and for the last one the block's 16-byte-aligned tail.  This is
+    # the layout the compiler chose, so it is also the largest memcpy that can
+    # never run over a neighbour.  Hand-writing these is how u_BaseColor lost
+    # its G, B and A: the packer clamped every vec3/vec4 to 4 bytes.
+    spans = []
+    for i, (_name, off) in enumerate(ref_offsets):
+        if i + 1 < len(ref_offsets):
+            span = ref_offsets[i + 1][1] - off
+        else:
+            span = ((off + 15) & ~15) - off
+        spans.append(span if span > 0 else 1)
     with open(OUT, "w") as fh:
         fh.write(HEADER_PREAMBLE.replace("@FINGERPRINT@", fingerprint()))
         fh.write("/* the std140 block's member offsets, read back out of the compiled SPIR-V,\n"
@@ -438,6 +450,14 @@ def main():
                  " * these. */\nenum {\n")
         for i, (name, off) in enumerate(ref_offsets):
             fh.write("\tVK_UBO_OFF_%s = %d%s\n" % (name.upper(), off, "," if i + 1 < len(ref_offsets) else ""))
+        fh.write("};\n\n")
+        fh.write("/* each member's writable span in bytes, derived from the offsets above:\n"
+                 " * own offset up to the next member's, the block's aligned tail for the\n"
+                 " * last one.  A packer that clamps against these can never truncate a\n"
+                 " * vec3 or vec4 again, and can never run over a neighbour either. */\n")
+        fh.write("enum {\n")
+        for i, (name, off) in enumerate(ref_offsets):
+            fh.write("\tVK_UBO_SIZE_%s = %d%s\n" % (name.upper(), spans[i], "," if i + 1 < len(ref_offsets) else ""))
         fh.write("};\n\n")
         for i, (family, kind, mask, code) in enumerate(modules):
             words = struct.unpack("<%dI" % (len(code) // 4), code)
