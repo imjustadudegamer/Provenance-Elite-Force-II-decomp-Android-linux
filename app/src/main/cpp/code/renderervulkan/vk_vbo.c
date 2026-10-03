@@ -133,12 +133,17 @@ static VkCommandBuffer VK_StaticXferCmd( void )
 	if ( !s_xferReady[slot] ) {
 		memset( &allocInfo, 0, sizeof( allocInfo ) );
 		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocInfo.commandPool = vk.uploadPool;
+		/* This buffer records ACROSS the frame -- the bake copies land in it as
+		   the walk bakes and it is ended at submit.  A pool is host-synchronised
+		   while its buffers record (Vulkan 1.4 s6.2, vkspec.txt:14741), so it
+		   must come from the WALK THREAD's own pool, never from a pool the main
+		   thread's uploads share. */
+		allocInfo.commandPool = VK_Upload_Pool();
 		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 		allocInfo.commandBufferCount = 1;
 
 		if ( !VK_Guard_Result( VK_GSITE_SYNC,
-							   VK_Pool_AllocBuffers( vk.device, &allocInfo, &s_xferCmd[slot] ),
+							   VK_Pool_AllocBuffers( VK_Upload_Pool(), &allocInfo, &s_xferCmd[slot] ),
 							   "vkAllocateCommandBuffers(static transfer)" ) ) {
 			return VK_NULL_HANDLE;
 		}

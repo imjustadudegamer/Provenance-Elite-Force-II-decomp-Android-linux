@@ -205,8 +205,10 @@ qboolean VK_Frame_Init( void )
 		return qfalse;
 	}
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.CreateCommandPool( vk.device, &poolInfo, NULL, &vk.uploadPool ),
-						   "vkCreateCommandPool(upload)" ) ) {
+	/* The frame pool is recorded by the walk alone -- whichever thread walks is
+	   its only user -- so owner 0 is "one walker at a time".  Every transient
+	   transfer pool is created per thread by VK_Upload_Pool. */
+	if ( !VK_Pool_Register( vk.commandPool, 0 ) ) {
 		return qfalse;
 	}
 
@@ -216,7 +218,7 @@ qboolean VK_Frame_Init( void )
 	bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	bufferInfo.commandBufferCount = (uint32_t)frames;
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &bufferInfo, vk.commandBuffers ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.commandPool, &bufferInfo, vk.commandBuffers ),
 						   "vkAllocateCommandBuffers" ) ) {
 		return qfalse;
 	}
@@ -312,14 +314,10 @@ void VK_Frame_Shutdown( void )
 	vk.gpuPerfReady = qfalse;
 	memset( vk.gpuMarkCount, 0, sizeof( vk.gpuMarkCount ) );
 
-	if ( vk.uploadPool != VK_NULL_HANDLE && qvk.DestroyCommandPool ) {
-		qvk.DestroyCommandPool( vk.device, vk.uploadPool, NULL );
-	}
-	vk.uploadPool = VK_NULL_HANDLE;
-
-	if ( vk.commandPool != VK_NULL_HANDLE && qvk.DestroyCommandPool ) {
-		qvk.DestroyCommandPool( vk.device, vk.commandPool, NULL );
-	}
+	/* Every pool the renderer created, the frame pool included, dies in one
+	   place.  RE_Shutdown joined the render thread before this, so no buffer
+	   can still be recorded from a pool that is being destroyed. */
+	VK_Pool_ShutdownAll();
 	vk.commandPool = VK_NULL_HANDLE;
 
 	for ( i = 0; i < frames; i++ ) {

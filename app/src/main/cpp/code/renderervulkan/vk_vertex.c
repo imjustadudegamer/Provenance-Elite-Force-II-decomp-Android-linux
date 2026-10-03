@@ -175,13 +175,13 @@ static qboolean VK_DemoBuffer_Init( void )
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = vk.uploadPool;
+	allocInfo.commandPool = VK_Upload_Pool();
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
 	VK_Upload_Begin();
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( vk.device, &allocInfo, &vk.uploadCmd ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( VK_Upload_Pool(), &allocInfo, &vk.uploadCmd ),
 						   "vkAllocateCommandBuffers(upload)" ) ) {
 		goto done;
 	}
@@ -239,7 +239,7 @@ done:
 		qvk.FreeMemory( vk.device, stagingMemory, NULL );
 	}
 	if ( vk.uploadCmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
-		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &vk.uploadCmd );
+		VK_Pool_FreeBuffers( VK_Upload_Pool(), 1, &vk.uploadCmd );
 	}
 	vk.uploadCmd = VK_NULL_HANDLE;
 
@@ -339,7 +339,7 @@ void VK_VertexRing_Shutdown( void )
 	/* The demo triangle's buffer: M1's first-light proof, still owned here. */
 	if ( vk.uploadCmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
 		VK_Upload_Begin();
-		VK_Pool_FreeBuffers( vk.device, vk.uploadPool, 1, &vk.uploadCmd );
+		VK_Pool_FreeBuffers( VK_Upload_Pool(), 1, &vk.uploadCmd );
 		VK_Upload_End();
 	}
 	vk.uploadCmd = VK_NULL_HANDLE;

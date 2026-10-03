@@ -187,10 +187,12 @@ typedef struct {
 	VkDeviceMemory vertexMemory;
 	VkCommandBuffer uploadCmd;
 	VkCommandPool commandPool;
-	/* Transient upload/readback buffers.  The pool a command buffer comes from
-	   must be externally synchronised, so the walk's frame buffers and the main
-	   thread's uploads cannot share one: under r_smp 1 they run at once. */
-	VkCommandPool uploadPool;
+	/* The walk's frame buffers come from commandPool.  Every transient upload,
+	   readback and arena bake comes from the CALLING THREAD's own one-shot pool
+	   (VK_Upload_Pool): a pool is host-synchronised for its whole lifetime
+	   including recording (Vulkan 1.4 s6.2, vkspec.txt:14741), and the arena
+	   bake records across a frame, so no transaction lock can cover a pool both
+	   threads share. */
 	VkCommandBuffer commandBuffers[VK_FRAMES_IN_FLIGHT];
 	VkFence fences[VK_FRAMES_IN_FLIGHT];
 	/* A wait is only owed to a submission this engine made and has not retired:
@@ -406,28 +408,39 @@ void VKimp_ShutdownRenderThread( void );
 int VKimp_HandshakeViolations( void );
 /* Every queue touch the port makes, under one lock.  VkQueue is host
    synchronised and r_smp reaches it from two threads.  The queue lock and the
-   upload section's lock are both created by VK_Sync_Init, once, on the main
-   thread from VK_Frame_Init, before either thread can reach a pool or a
-   queue. */
+   pool table are both created by VK_Sync_Init, once, on the main thread from
+   VK_Frame_Init, before either thread can reach a pool or a queue. */
 void VK_Sync_Init( void );
 VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
 						  const VkSubmitInfo *submits, VkFence fence );
 VkResult VK_Queue_Present( VkQueue queue, const VkPresentInfoKHR *present );
 VkResult VK_Queue_WaitIdle( VkQueue queue );
-/* The upload command pool is reached from both threads, so its buffer
-   allocate and free are guarded with the queue. */
-VkResult VK_Pool_AllocBuffers( VkDevice device, const VkCommandBufferAllocateInfo *info,
+/* One pool per producer, one lock per pool: the pool is the unit of host
+   synchronization (Vulkan 1.4 s6.2), so the lock is looked up from the pool
+   handle, never from the queue.  owner 0 marks the walk's frame pool, which
+   only ever has one recording thread. */
+qboolean VK_Pool_Register( VkCommandPool pool, unsigned long owner );
+VkCommandPool VK_Upload_Pool( void );
+qboolean VK_Upload_Ready( void );
+int VK_Pool_Count( void );
+void VK_Pool_ShutdownAll( void );
+VkResult VK_Pool_AllocBuffers( VkCommandPool pool, const VkCommandBufferAllocateInfo *info,
 							   VkCommandBuffer *buffers );
-void VK_Pool_FreeBuffers( VkDevice device, VkCommandPool pool, uint32_t count,
+void VK_Pool_FreeBuffers( VkCommandPool pool, uint32_t count,
 						  const VkCommandBuffer *buffers );
-/* ...and because the pool is host synchronised while its buffers RECORD too,
-   a whole one-shot upload transaction holds this section lock. */
+/* A one-shot transfer transaction allocates, records, submits, waits and frees
+   entirely under its own pool's lock. */
 void VK_Upload_Init( void );
 void VK_Upload_Begin( void );
 void VK_Upload_End( void );
 /* Park the walk thread and drain its frame before re-laying out an image it
    may still sample. */
 void VK_Upload_Quiesce( void );
+
+/* The master instrument gate (qa_probe, default 0): every row this lane emits
+   beyond the startup banner answers to it.  Declared here because the pool
+   ownership rows live in vk_renderthread.c, which does not pull tr_local.h. */
+qboolean R_ProbeStatsOn( void );
 
 /* The vertex-input builder declares only what the stage consumes: the locations
    its SPIR-V reads, and the trim of the description array to match. */
