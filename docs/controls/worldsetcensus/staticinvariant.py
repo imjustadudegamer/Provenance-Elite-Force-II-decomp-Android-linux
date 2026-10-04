@@ -13,7 +13,12 @@ source text, so they are checked here without a run:
      pass accounting (VK_DrawStage or VK_Shade_NoteSubmitted), directly or
      through the functions it calls;
   4. a disagreement branch precedes the sampling branch in BatchEnd;
-  5. every census row goes through VK_Guard_Row.
+  5. every census row goes through VK_Guard_Row;
+  6. the alpha test the fragment stage discards on is derived from the STAGE
+     whose uniforms are being set, never from the latch the last state block
+     left: an iterator that publishes a state word of its own (the
+     lightmapped-multitexture pass forces depth on and carries no atest bits)
+     otherwise draws an alpha-cut surface with alphaFunc GT0 switched off.
 
   usage: staticinvariant.py <code-dir> [--mutate N]
 """
@@ -38,6 +43,10 @@ MUTANTS = {
     # 4: the census is gated on the stale entity again
     4: ("vk_shade", "R_ProbeStatsOn() && !backEnd.in2D && shader",
         "R_ProbeStatsOn() && backEnd.currentEntity == &tr.worldEntity && shader"),
+    # 5: the alpha test goes back to the latch, so the lightmapped-multitexture
+    #    pass draws alpha-cut art with its alphaFunc switched off
+    5: ("vk_shade", "VK_AlphaTestForState( (unsigned long)pStage->stateBits ) );",
+        "VK_CurrentAlphaTest() );"),
 }
 
 DEF = re.compile(r'^([A-Za-z_][\w \t\*]*?)\b([A-Za-z_]\w*)\s*\(([^;{}]*)\)\s*(\{)?[ \t]*$', re.M)
@@ -161,6 +170,18 @@ def main():
     stages = bodies.get("VK_Shade_ExpectedStages") or ""
     check("%d/%d:0x%x:tc%d,%d" in stages and "%s','%s'%s" in stages,
           "the expected set names rgbGen/alphaGen/stateBits/tcGen and both bundles")
+
+    setup = bodies.get("VK_SetupStageUniforms") or ""
+    check("VK_AlphaTestForState( (unsigned long)pStage->stateBits )" in setup,
+          "the stage uniform publishes the STAGE's own alpha test")
+    check("VK_CurrentAlphaTest" not in setup,
+          "the stage uniform does not publish the latched alpha test")
+    sel = bodies.get("VK_AlphaTestForState") or ""
+    check(sel.count("VKS_ATEST_GT_0") == 1 and sel.count("return 1;") == 1
+          and sel.count("return 2;") == 1 and sel.count("return 4;") == 1,
+          "the selector is one mapping (GT0=1, LT80=2, GE80=4, off=0)")
+    check(text["vk_shade"].count("VK_CurrentAlphaTest()") <= 1,
+          "the latch has no publisher left")
 
     assigned = set(re.findall(r"optimalStageIteratorFunc = (RB_[A-Za-z0-9_]+)",
                               text["tr_shader"]))
