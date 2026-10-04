@@ -3761,6 +3761,14 @@ void R_SetupShaders(void)
 
     ri.Printf(0, "Setting up Shaders\n");
     currentShader = NULL;
+
+    /* The arena every shader_t lived in was freed at the map-change boundary,
+       so the table must not carry a pointer past the entries this rebuild
+       re-creates. */
+    tr.numShaders = 0;
+    Com_Memset( tr.shaders, 0, sizeof( tr.shaders ) );
+    Com_Memset( tr.sortedShaders, 0, sizeof( tr.sortedShaders ) );
+
     for (hash = 0; hash < FILE_HASH_SIZE; ++hash)
     {
 		for (shaderText = hashTable[hash]; shaderText; shaderText = shaderText->next) {

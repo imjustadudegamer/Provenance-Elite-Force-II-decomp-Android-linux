@@ -538,6 +538,15 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 	   deferring the frees; retire the frames first. */
 	VK_Frame_WaitIdle();
 
+	/* Neither park above stops the walk thread: FrontEndSleep returns once the
+	   frame has been CLAIMED, and the fence wait covers the GPU, not the walk.
+	   This function is about to free the arena the walk is reading -- its
+	   command list, every shader_t, the world -- so wait for the walk to finish
+	   and hold nothing.  VKimp_FrontEndWaitIdle is the port's own full park,
+	   the state in which no recorded command can still be pending (Vulkan 1.4
+	   s7.9: a resource in use by a pending submission must not be written). */
+	VKimp_FrontEndWaitIdle();
+
 	/* Frees the surface pointers the static arena's residency keys on. */
 	RB_VboStaticForget();
 
@@ -577,6 +586,12 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 	if ( ri.Hunk_Clear ) {
 		ri.Hunk_Clear();
 	}
+
+	/* The arena that held every skin_t is gone.  The skin table is lazy
+	   (RE_RegisterSkin), so dropping it is the whole rebuild; leaving
+	   tr.numSkins set would make the next registration walk freed blocks. */
+	tr.numSkins = 0;
+	Com_Memset( tr.skins, 0, sizeof( tr.skins ) );
 
 	R_ClearWorld();
 
