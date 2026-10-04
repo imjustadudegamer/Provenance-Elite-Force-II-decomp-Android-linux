@@ -689,9 +689,6 @@ extern	cvar_t	*com_homepath;
 
 extern	cvar_t	*sv_paused;
 
-extern	cvar_t* com_updatecheck_enabled;
-extern	cvar_t* com_updatecheck_interval;
-
 extern	int		time_game;
 extern	int		time_frontend;
 extern	int		time_backend;		

@@ -1101,9 +1101,12 @@ void	QDECL Com_DebugPrintf( const char *msg, ... ) Q_PRINTF_FUNC(1, 2);
 
 #define CVAR_VM_CREATED		0x8000	
 #define CVAR_PROTECTED		0x10000	
-#define CVAR_RESETSTRING	0x20000	
-#define CVAR_MODIFIED		0x40000000	
-#define CVAR_NONEXISTENT	0x80000000	
+#define CVAR_RESETSTRING	0x20000
+/* set by `setx'; Cvar_WriteVariables skips it, so a per-boot forced value
+   never reaches config.cfg.  Process-local: a config stores values, not flags. */
+#define CVAR_NOARCHIVE		0x40000
+#define CVAR_MODIFIED		0x40000000
+#define CVAR_NONEXISTENT	0x80000000
 
 typedef struct cvar_s cvar_t;
 

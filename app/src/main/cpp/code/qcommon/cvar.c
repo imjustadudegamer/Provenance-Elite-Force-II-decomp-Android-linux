@@ -936,6 +936,23 @@ void Cvar_SetA_f( void ) {
 	v->flags |= CVAR_ARCHIVE;
 }
 
+/* `set' plus CVAR_NOARCHIVE: the value holds for this process only and is not
+   folded into the archive at shutdown. */
+void Cvar_SetX_f( void ) {
+	cvar_t	*v;
+
+	if ( Cmd_Argc() != 3 ) {
+		Com_Printf ("usage: setx <variable> <value>\n");
+		return;
+	}
+	Cvar_Set_f();
+	v = Cvar_FindVar( Cmd_Argv( 1 ) );
+	if ( !v ) {
+		return;
+	}
+	v->flags |= CVAR_NOARCHIVE;
+}
+
 void Cvar_WriteVariables(fileHandle_t f)
 {
 	cvar_t	*var;
@@ -944,6 +961,10 @@ void Cvar_WriteVariables(fileHandle_t f)
 	for (var = cvar_vars; var; var = var->next)
 	{
 		if(!var->name || Q_stricmp( var->name, "cl_cdkey" ) == 0)
+			continue;
+
+		/* a `setx' value belongs to this boot, not to the player's config */
+		if( var->flags & CVAR_NOARCHIVE )
 			continue;
 
 		if( var->flags & CVAR_ARCHIVE ) {
@@ -1265,6 +1286,7 @@ void Cvar_Init (void)
 	Cmd_AddCommand ("sets", Cvar_SetS_f);
 	Cmd_AddCommand ("setu", Cvar_SetU_f);
 	Cmd_AddCommand ("seta", Cvar_SetA_f);
+	Cmd_AddCommand ("setx", Cvar_SetX_f);
 	Cmd_AddCommand ("seth", Cvar_SetH_f);
 	Cmd_AddCommand ("setl", Cvar_SetL_f);
 	Cmd_AddCommand ("reset", Cvar_Reset_f);

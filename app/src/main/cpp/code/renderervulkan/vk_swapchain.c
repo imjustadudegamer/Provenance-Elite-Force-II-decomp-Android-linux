@@ -77,13 +77,19 @@ static void VK_PickSurfaceFormat( vkSwapchainPlan_t *plan, VkSurfaceFormatKHR *f
 
 static void VK_PickPresentMode( vkSwapchainPlan_t *plan, VkPresentModeKHR *modes, uint32_t count )
 {
+	extern cvar_t *r_swapInterval;	/* vk_platform.c */
 	uint32_t i;
+	qboolean vsync;
+	VkPresentModeKHR want;
 
+	vsync = ( r_swapInterval == NULL ) || ( r_swapInterval->integer != 0 );
+	/* fifo is the only mode every surface must report */
+	want = vsync ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
 	plan->presentMode = VK_PRESENT_MODE_FIFO_KHR;
 
 	for ( i = 0; i < count; i++ ) {
-		if ( modes[i] == VK_PRESENT_MODE_MAILBOX_KHR ) {
-			plan->presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+		if ( modes[i] == want ) {
+			plan->presentMode = want;
 			return;
 		}
 	}
