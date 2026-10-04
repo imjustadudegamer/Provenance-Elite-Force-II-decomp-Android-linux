@@ -450,8 +450,68 @@ void R_Init( void )
 	(void)err;
 }
 
+/* The registration generation every object created from here on belongs to.
+   Retail's own counter, read back at each census so a lifetime that crosses a
+   map change is visible as a generation that did not move. */
+int vk_lifeGen;
+
+/* Objects made and unmade since bring-up, per kind.  A kind whose live count at
+   the start of a registration is not zero is state the previous map left. */
+static int s_lifeMade[VK_LIFE_KINDS];
+static int s_lifeGone[VK_LIFE_KINDS];
+static const char *const s_lifeName[VK_LIFE_KINDS] = {
+	"image", "pass", "framebuffer", "view", "pipeline", "set", "buffer"
+};
+
+void VK_Life_NoteCreate( int kind )
+{
+	if ( kind >= 0 && kind < VK_LIFE_KINDS ) {
+		s_lifeMade[kind]++;
+	}
+}
+
+void VK_Life_NoteDestroy( int kind )
+{
+	if ( kind >= 0 && kind < VK_LIFE_KINDS ) {
+		s_lifeGone[kind]++;
+	}
+}
+
+/* The lifetime census: one row per class of object the renderer owns, printed
+   at both ends of a registration.  A handle that survives a map change shows
+   up as a non-zero live count at the START of the next registration, which is
+   exactly the state the class of bug names.  Behind the master gate. */
+void VK_Life_Census( const char *site )
+{
+	int i;
+
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
+
+	VK_Guard_Row( "VK:life",
+				  "site=%s gen=%d f=%d world=%d worldMapLoaded=%d viewCluster=%d "
+				  "images=%d numModels=%d swImages=%d fb=%d "
+				  "pass=%d offscreenPass=%d depth=0x%x clear=%.3f,%.3f,%.3f",
+				  site, r_sequencenumber, RB_FrameCount(),
+				  tr.world ? 1 : 0, tr.worldMapLoaded ? 1 : 0, tr.viewCluster,
+				  tr.numImages, tr.numModels,
+				  (int)vk.swapchainImageCount, (int)vk.framebufferCount,
+				  vk.renderPass != VK_NULL_HANDLE, vk.offscreenPass != VK_NULL_HANDLE,
+				  (unsigned)vk.depthFormat,
+				  vk.clearColor[0], vk.clearColor[1], vk.clearColor[2] );
+
+	for ( i = 0; i < VK_LIFE_KINDS; i++ ) {
+		VK_Guard_Row( "VK:life", "kind=%s gen=%d made=%d gone=%d live=%d",
+					  s_lifeName[i], r_sequencenumber,
+					  s_lifeMade[i], s_lifeGone[i], s_lifeMade[i] - s_lifeGone[i] );
+	}
+}
+
 void RE_Shutdown( qboolean destroyWindow )
 {
+	VK_Life_Census( "shutdown" );
+
 	R_ShutdownCommandBuffers();
 	VK_BringDown();
 	VKimp_Shutdown();
@@ -494,6 +554,45 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 	Com_sprintf( value, sizeof( value ), "%d", r_sequencenumber );
 	ri.Cvar_Set( "r_renderergeneration", value );
+
+	vk_lifeGen = r_sequencenumber;
+
+	/* What a registration DESTROYS, which this lane used to leave standing.
+	   Retail's R_BeginRegistration @0x00028D50 resets tr.viewCluster to -1
+	   right after the generation bump (the decompile's `v2[1039] = -1`), and
+	   the GLES3 twin -- the same function, cited to that address -- additionally
+	   calls RE_ClearScene(), R_FreeNonTikiModels(), ri.Hunk_Clear() and
+	   R_ClearWorld().  This lane did none of it, so every handle the map change
+	   is supposed to drop stayed live: tr.world (and with it tr.world->fogs,
+	   ->models, ->lightmaps and the sky portal), tr.worldMapLoaded, the PVS
+	   cluster lock tr.viewCluster, and the model table.  A menu frame is then
+	   rendered against the previous mission's world instead of a cleared one.
+	   Kept in the twin's order, before any scene is registered. */
+	tr.viewCluster = -1;
+
+	RE_ClearScene();
+
+	R_FreeNonTikiModels();
+
+	if ( ri.Hunk_Clear ) {
+		ri.Hunk_Clear();
+	}
+
+	R_ClearWorld();
+
+	/* The frame's colour clear is a view value that only a world view writes
+	   (RB_BeginDrawingView's fog arm), so a registration must not carry the
+	   last map's clear into the next map's first frame. */
+	vk.clearColor[0] = 0.0f;
+	vk.clearColor[1] = 0.0f;
+	vk.clearColor[2] = 0.0f;
+	vk.clearColor[3] = 0.0f;
+	vkState.fFogColor[0] = 0.0f;
+	vkState.fFogColor[1] = 0.0f;
+	vkState.fFogColor[2] = 0.0f;
+	vkState.fFogColor[3] = 1.0f;
+
+	VK_Life_Census( "begin-registration" );
 
 	tr.registrating = qtrue;
 

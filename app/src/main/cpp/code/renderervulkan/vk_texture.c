@@ -957,6 +957,34 @@ done:
 	VK_Upload_End();
 }
 
+/* The created image's own level count and layout: the source chain the loaders
+   report (`image->numMipmaps`) and the levels the image actually has are two
+   different numbers, and the sampler can only reach the second.  The census
+   reads both beside each other. */
+int VK_Texture_MipLevels( int handle )
+{
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES || !vk_textures[handle].inUse ) {
+		return 0;
+	}
+
+	return vk_textures[handle].mipLevels;
+}
+
+const char *VK_Texture_LayoutName( int handle )
+{
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES || !vk_textures[handle].inUse ) {
+		return "none";
+	}
+
+	switch ( vk_textures[handle].layout ) {
+	case VK_IMAGE_LAYOUT_UNDEFINED:					return "undefined";
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:		return "transfer-dst";
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:	return "shader-read";
+	case VK_IMAGE_LAYOUT_GENERAL:					return "general";
+	default:										return "other";
+	}
+}
+
 VkImageView VK_Texture_View( int handle )
 {
 	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {

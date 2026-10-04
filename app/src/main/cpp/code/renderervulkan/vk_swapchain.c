@@ -239,6 +239,7 @@ qboolean VK_Swapchain_CreateViews( void )
 							   "vkCreateImageView(swapchain)" ) ) {
 			return qfalse;
 		}
+		VK_Life_NoteCreate( VK_LIFE_VIEW );
 	}
 
 	return qtrue;
@@ -321,6 +322,7 @@ void VK_Swapchain_Destroy( void )
 		for ( i = 0; i < vk.swapchainImageCount; i++ ) {
 			if ( vk.swapchainViews[i] != VK_NULL_HANDLE ) {
 				qvk.DestroyImageView( vk.device, vk.swapchainViews[i], NULL );
+				VK_Life_NoteDestroy( VK_LIFE_VIEW );
 			}
 		}
 	}

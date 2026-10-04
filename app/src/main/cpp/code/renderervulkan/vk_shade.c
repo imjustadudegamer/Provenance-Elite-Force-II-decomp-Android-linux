@@ -58,6 +58,12 @@ root, for more details.
 #include <string.h>
 #include <math.h>
 
+/* vk_texture.c's own record of the created image: the source chain the loaders
+   report and the number of levels the image was actually created with are two
+   different numbers, and only the second one the sampler can reach. */
+int VK_Texture_MipLevels( int handle );
+const char *VK_Texture_LayoutName( int handle );
+
 static const short vk_uboMap[VK_U_COUNT] = {
 	VK_UBO_OFF_U_MVP,
 	-1,                    /* u_ModelView: not in the block */
@@ -961,6 +967,10 @@ typedef struct {
 	VkSampler		texSampler[2];
 	VkSampler		waveSampler;
 	int				texBound[2];
+	/* the image_t each unit's view came from: the census compares what a stage
+	   asked for with what was bound, and a view handle alone cannot say which
+	   art it is */
+	image_t			*texImage[2];
 	int				currentTmu;
 	qboolean		scissor;
 	VkRect2D		scissorRect;
@@ -1194,10 +1204,14 @@ static void VK_Shade_TexelProbe( image_t *image )
 	   block's first four bytes, and the row says so rather than letting them
 	   read as an RGBA texel. */
 	VK_Guard_Row( "VK:texel",
-				  "name=%s w=%d h=%d upto=%dx%d mips=%d fmt=0x%x wrap=%d,%d %s=%u,%u,%u,%u",
+				  "name=%s w=%d h=%d upto=%dx%d srcmips=%d levels=%d layout=%s "
+				  "fmt=0x%x wrap=%d,%d mipfilter=%d %s=%u,%u,%u,%u",
 				  name, image->width, image->height, image->uploadWidth, image->uploadHeight,
-				  image->numMipmaps, (unsigned)image->internalFormat,
+				  image->numMipmaps, VK_Texture_MipLevels( handle ),
+				  VK_Texture_LayoutName( handle ),
+				  (unsigned)image->internalFormat,
 				  (int)image->wrapClampModeX, (int)image->wrapClampModeY,
+				  ( image->numMipmaps > 1 ) ? 1 : 0,
 				  blocked ? "blk_mid" : "texel_mid",
 				  (unsigned)px[0], (unsigned)px[1], (unsigned)px[2], (unsigned)px[3] );
 }
@@ -1207,8 +1221,10 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 	VkImageView view = VK_NULL_HANDLE;
 	VkSampler sampler = VK_NULL_HANDLE;
 
-	if ( !image || image->texnum < 0 ) {		s_shade.texView[tmu] = VK_NULL_HANDLE;
+	if ( !image || image->texnum < 0 ) {
+		s_shade.texView[tmu] = VK_NULL_HANDLE;
 		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
+		s_shade.texImage[tmu] = image;
 		s_shade.texBound[tmu] = 0;
 		return;
 	}
@@ -1222,6 +1238,7 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 						  || image->wrapClampModeY != VK_TWRAP_REPEAT ), qfalse, qtrue, &sampler );
 	s_shade.texView[tmu] = view;
 	s_shade.texSampler[tmu] = sampler;
+	s_shade.texImage[tmu] = image;
 	s_shade.texBound[tmu] = 1;
 
 	VK_Shade_TexelProbe( image );
@@ -3813,10 +3830,266 @@ vkProgram_t *VK_StageProgram( const shaderStage_t *pStage, const shader_t *shade
 	return VK_GetProgram( d | VK_TexEnvForStage( pStage, shader ) | extraDefines );
 }
 
+/* ---- the world stage-set census ------------------------------------------ */
+
+/* The loss this lane hunts is silent by construction.  A stage the shader
+   defines that the walk never submits, and a stage submitted with a texture
+   other than the one it resolved to, both end in a valid draw: no refused bind,
+   no dropped table, no guard.  So the census records the EXPECTED set -- the
+   pass list in force and, per stage, its generators, its state word, both
+   bundles' tcGen and the image each bundle resolves to -- beside the
+   SUBMITTED one: one draw per stage actually taken, and the image_t each unit
+   really bound.  The difference is a row.  Gate: qa_probe (R_ProbeStatsOn). */
+static int				s_batchStagesDrawn;
+static const shader_t	*s_batchShader;
+static int				s_batchBindMiss;
+static qboolean			s_batchCensus;
+
+/* the geometry the arena arm actually submitted for this batch */
+void RB_VboStaticLastRun( int *modeOut, int *numIdxOut );
+
+void VK_Shade_BatchBegin( const shader_t *shader )
+{
+	s_batchStagesDrawn = 0;
+	s_batchBindMiss    = 0;
+	s_batchShader      = shader;
+	/* decided once per batch, so a gate-off boot pays one cvar read here and
+	   one branch per stage, not a memset and a walk per batch */
+	s_batchCensus      = ( R_ProbeStatsOn() && !backEnd.in2D && shader
+						   && backEnd.currentEntity == &tr.worldEntity ) ? qtrue : qfalse;
+}
+
+/* The two fast iterators draw their one pass themselves instead of through
+   VK_DrawStage, so the census has to be told the pass was submitted: without
+   this every lightmapped-multitexture batch -- the world's commonest -- would
+   read as a batch that submitted nothing. */
+void VK_Shade_NoteSubmitted( int stages )
+{
+	if ( s_batchCensus ) {
+		s_batchStagesDrawn += stages;
+	}
+}
+
+/* The engine's own images a stage may legitimately bind in place of the one it
+   resolved: the white substitutions RDF_FULLBRIGHT and r_lightmap ask for, a
+   video map's scratch, and the lightmap arrays a BSP's shaders point into. */
+static qboolean VK_StageBindKnown( const image_t *image )
+{
+	int i;
+
+	if ( !image ) {
+		return qfalse;
+	}
+	if ( image == tr.whiteImage || image == tr.defaultImage || image == tr.scratchImage
+		 || image == tr.identityLightImage || image == tr.fogImage ) {
+		return qtrue;
+	}
+	for ( i = 0; i < MAX_LIGHTMAPS; i++ ) {
+		if ( image == tr.lightmaps[i] || image == tr.baseLightmaps[i] ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+/* Is this image one the bundle itself resolved?  A bundle with an animMap
+   holds several, and the frame's clock picks which one, so membership is the
+   right test for "the stage's own art", not identity with image[0]. */
+static qboolean VK_StageBundleOwns( const textureBundle_t *bundle, const image_t *image )
+{
+	int k;
+
+	if ( !image || !bundle ) {
+		return qfalse;
+	}
+
+	for ( k = 0; k < bundle->numImageAnimations && k < MAX_IMAGE_ANIMATIONS; k++ ) {
+		if ( bundle->image[k] == image ) {
+			return qtrue;
+		}
+	}
+
+	return qfalse;
+}
+
+/* One unit's bind, named if it is not the one the stage asked for. */
+static void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean substituted )
+{
+	const textureBundle_t	*bundle = &pStage->bundle[unit];
+	image_t					*bound  = s_shade.texImage[unit];
+	qboolean				 known  = qfalse;
+
+	if ( !s_batchCensus || !pStage ) {
+		return;
+	}
+
+	if ( substituted ) {
+		return;			/* the fullbright / r_lightmap white arm, by design */
+	}
+
+	if ( !bound ) {
+		s_batchBindMiss++;
+		VK_Guard_Row( "VK:worldset",
+					  "MISS why=no-image shader='%s' unit=%d expected='%s'",
+					  s_batchShader ? s_batchShader->name : "?",
+					  unit,
+					  ( bundle->image[0] && bundle->image[0]->imgName[0] )
+						  ? bundle->image[0]->imgName : "" );
+		return;
+	}
+
+	if ( bound->texnum <= 0 ) {
+		s_batchBindMiss++;
+		VK_Guard_Row( "VK:worldset",
+					  "MISS why=no-handle shader='%s' unit=%d img='%s' tex=%d",
+					  s_batchShader ? s_batchShader->name : "?",
+					  unit, bound->imgName, (int)bound->texnum );
+		return;
+	}
+
+	if ( VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE ) {
+		s_batchBindMiss++;
+		VK_Guard_Row( "VK:worldset",
+					  "MISS why=no-view shader='%s' unit=%d img='%s' tex=%d",
+					  s_batchShader ? s_batchShader->name : "?",
+					  unit, bound->imgName, (int)bound->texnum );
+		return;
+	}
+
+	known = VK_StageBundleOwns( bundle, bound );
+	if ( !known && !VK_StageBindKnown( bound ) ) {
+		s_batchBindMiss++;
+		VK_Guard_Row( "VK:worldset",
+					  "MISS why=foreign-image shader='%s' unit=%d wanted='%s' bound='%s' tex=%d",
+					  s_batchShader ? s_batchShader->name : "?",
+					  unit,
+					  ( bundle->image[0] && bundle->image[0]->imgName[0] )
+						  ? bundle->image[0]->imgName : "",
+					  bound->imgName, (int)bound->texnum );
+	}
+}
+
+/* The expected pass list: what the iterator in force would take, by its own
+   rules.  The detail names each stage, so a census that disagrees names which
+   stage it lost rather than only how many. */
+static int VK_Shade_ExpectedStages( char *detail, int detailBytes )
+{
+	int stage, n = 0, written = 0;
+
+	if ( detail && detailBytes > 0 ) {
+		detail[0] = 0;
+	}
+
+	for ( stage = 0; stage < MAX_SHADER_STAGES; stage++ ) {
+		const shaderStage_t	*pStage = tess.xstages[stage];
+
+		if ( !pStage ) {
+			break;
+		}
+		if ( pStage->alphaGen == AGEN_SKYALPHA && tr.refdef.sky_alpha < 0.01 ) {
+			continue;
+		}
+		if ( pStage->alphaGen == AGEN_ONE_MINUS_SKYALPHA && tr.refdef.sky_alpha > 0.99 ) {
+			continue;
+		}
+		n++;
+
+		if ( detail && written < detailBytes ) {
+			char	entry[192];
+			int		len;
+
+			Com_sprintf( entry, sizeof( entry ),
+						 "%s%d:%d/%d:0x%x:tc%d,%d:'%s','%s'%s",
+						 written ? " " : "", n - 1,
+						 (int)pStage->rgbGen, (int)pStage->alphaGen,
+						 (unsigned)pStage->stateBits,
+						 (int)pStage->bundle[0].tcGen, (int)pStage->bundle[1].tcGen,
+						 ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
+							 ? pStage->bundle[0].image[0]->imgName : "",
+						 ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
+							 ? pStage->bundle[1].image[0]->imgName : "",
+						 ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap )
+							 ? ":lm" : "" );
+			len = (int)strlen( entry );
+			if ( written + len + 1 > detailBytes ) {
+				break;
+			}
+			memcpy( detail + written, entry, (size_t)len + 1 );
+			written += len;
+		}
+
+		if ( r_lightmap->integer
+			 && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap
+				  || pStage->bundle[0].vertexLightmap ) ) {
+			break;
+		}
+	}
+
+	return n;
+}
+
+/* The batch is closed: expected against drawn, plus the residency of every
+   image either set names.  A census emits on the streaming cadence; a
+   disagreement always emits. */
+void VK_Shade_BatchEnd( void )
+{
+	static int	s_rows;
+	char		detail[768];
+	int			expected;
+
+	/* nothing is computed when the gate is off: this runs once per world batch.
+	   A sky pass is excluded because its iterator may draw nothing at all
+	   (r_fastsky) or draw the box outside the stage walk, neither of which is
+	   the stage loss this census is for. */
+	if ( !s_batchCensus || backEnd.in2D || !s_batchShader
+		 || s_batchShader->isSky || s_batchShader->isPortalSky
+		 || s_batchShader == tr.shadowShader ) {
+		return;
+	}
+
+	expected = VK_Shade_ExpectedStages( detail, (int)sizeof( detail ) );
+
+	{
+		int srcMode = 0, srcIdx = 0;
+
+		RB_VboStaticLastRun( &srcMode, &srcIdx );
+
+		s_rows++;
+		if ( s_batchStagesDrawn != expected ) {
+			VK_Guard_Row( "VK:worldset",
+						  "MISS why=stage-count shader='%s' expected=%d drawn=%d bindmiss=%d "
+						  "lm=%d src=%d srcidx=%d stages=%s",
+						  s_batchShader ? s_batchShader->name : "?",
+						  expected, s_batchStagesDrawn, s_batchBindMiss,
+						  r_lightmap->integer, srcMode, srcIdx, detail );
+		} else if ( s_batchBindMiss ) {
+			VK_Guard_Row( "VK:worldset",
+						  "shader='%s' expected=%d drawn=%d bindmiss=%d lm=%d src=%d srcidx=%d stages=%s",
+						  s_batchShader ? s_batchShader->name : "?",
+						  expected, s_batchStagesDrawn, s_batchBindMiss,
+						  r_lightmap->integer, srcMode, srcIdx, detail );
+		} else if ( s_rows <= 24 || ( s_rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:worldset",
+						  "shader='%s' lm=%d expected=%d drawn=%d bindmiss=0 src=%d srcidx=%d stages=%s",
+						  s_batchShader ? s_batchShader->name : "?",
+						  (int)( s_batchShader ? s_batchShader->lightmapIndex : -1 ),
+						  expected, s_batchStagesDrawn, srcMode, srcIdx, detail );
+		}
+	}
+}
+
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
 {
+	qboolean	sub0, sub1;
+
+	if ( s_batchCensus ) {
+		s_batchStagesDrawn++;
+		s_batchShader = shader ? shader : s_batchShader;
+	}
+	sub0 = qfalse;
+	sub1 = qfalse;
 	vkProgram_t	*prog;
 	const float		*tc0, *tc1;
 	const unsigned char *colors;
@@ -3846,11 +4119,13 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	{
 		VK_SelectTexture( 0 );
 		VK_Bind( tr.whiteImage );
+		sub0 = qtrue;
 	}
 	else if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[0].isLightmap )
 	{
 		VK_SelectTexture( 0 );
 		VK_Bind( tr.whiteImage );
+		sub0 = qtrue;
 	}
 	else
 	{
@@ -3863,12 +4138,16 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 		{
 			VK_SelectTexture( 1 );
 			VK_Bind( tr.whiteImage );
+			sub1 = qtrue;
 		}
 		else
 		{
 			VK_BindAnimatedImage( &pStage->bundle[1], 1 );
 		}
 	}
+
+	VK_Shade_BindWitness( pStage, 0, sub0 );
+	VK_Shade_BindWitness( pStage, 1, sub1 );
 
 	if ( cpuTexCoords )
 	{
@@ -3926,7 +4205,38 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 		 ? pStage->bundle[1].image[0]->imgName : "";
 	t1 = pStage->bundle[1].image[0] ? (unsigned)pStage->bundle[1].image[0]->texnum : 0u;
 
-	s_rows++;
+	/* the other half of the row: what the two units actually hold.  A stage
+	   whose unit holds an image the stage never resolved to is the silent
+	   substitution class, so that always emits; an agreeing pair rides the same
+	   cadence as the row above rather than printing once per stage per surface. */
+	{
+		const image_t	*b0 = s_shade.texImage[0];
+		const image_t	*b1 = s_shade.texImage[1];
+		qboolean		 disagree;
+
+		disagree =
+			( pStage->bundle[0].image[0]
+			  && !VK_StageBundleOwns( &pStage->bundle[0], b0 )
+			  && !VK_StageBindKnown( b0 ) )
+			|| ( pStage->bundle[1].image[0]
+				 && !VK_StageBundleOwns( &pStage->bundle[1], b1 )
+				 && !VK_StageBindKnown( b1 ) );
+
+		s_rows++;
+		if ( R_ProbeStatsOn() && ( disagree || s_rows <= 48 || ( s_rows % 257 ) == 0 ) ) {
+			VK_Guard_Row( "VK:stagebound",
+						  "%sshader='%s' want0='%s' tex0=%u got0='%s' gottex0=%d "
+						  "want1='%s' tex1=%u got1='%s' gottex1=%d",
+						  disagree ? "MISS " : "",
+						  shader->name, n0, t0,
+						  ( b0 && b0->imgName[0] ) ? b0->imgName : "",
+						  b0 ? (int)b0->texnum : -1,
+						  n1, t1,
+						  ( b1 && b1->imgName[0] ) ? b1->imgName : "",
+						  b1 ? (int)b1->texnum : -1 );
+		}
+	}
+
 	if ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) {
 		VK_Guard_Row( "VK:stagebind",
 					  "n=%d d=%d shader='%s' stage=%d prog=0x%06x sb=0x%x mt=%d "

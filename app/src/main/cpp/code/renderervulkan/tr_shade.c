@@ -50,6 +50,12 @@ shaderCommands_t	tess;
 
 static float	s_debugColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 
+/* vk_shade.c's world stage-set census: its only caller is the batch boundary
+   in this file, so the pair is declared here rather than in a shared header. */
+void VK_Shade_BatchBegin( const shader_t *shader );
+void VK_Shade_BatchEnd( void );
+void VK_Shade_NoteSubmitted( int stages );
+
 static void vkWireColor3f( float r, float g, float b ) {
 	s_debugColor[0] = r; s_debugColor[1] = g; s_debugColor[2] = b; s_debugColor[3] = 1.0f;
 }
@@ -203,6 +209,9 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 		fogNum = 0;
 	}
 	tess.fogNum = fogNum;					 
+	/* the census window opens with the batch, so a stage this batch never
+	   submits cannot be counted from a previous one */
+	VK_Shade_BatchBegin( state );
 
 	if ( fogNum == 9999
 		&& state->usesGlobalFogIterator		 
@@ -1364,6 +1373,7 @@ void RB_StageIteratorVertexLitTextureUnfogged( void )
 		unsigned	stateBits = RF_ForceAlphaStateBits( tess.xstages[0]->stateBits );
 
 		VK_ApplyStateBits( stateBits );
+		VK_Shade_NoteSubmitted( 1 );
 		VK_DrawStage( input, tess.xstages[0], tess.shader, stateBits, -1.0f, qfalse );  
 	}
 
@@ -1432,6 +1442,7 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 			unsigned	w1 = tess.xstages[0]->bundle[1].image[0]
 						   ? (unsigned)tess.xstages[0]->bundle[1].image[0]->texnum : 0u;
 
+			VK_Shade_NoteSubmitted( 1 );
 			VK_StageBindCensus( tess.shader, tess.xstages[0], 0, qfalse, w0, w1, u0, u1 );
 		}
 
@@ -1497,6 +1508,9 @@ void RB_EndSurface( void ) {
 		tess.currentStageIteratorFunc = RB_StageIteratorGeneric;
 	}
 	BE_SUB( BE_FAM_DS, BE_DSZ_sub_stage, tess.currentStageIteratorFunc() );
+	/* the batch is submitted: the expected stage set against the drawn one, and
+	   the residency of every image either side names */
+	VK_Shade_BatchEnd();
 
 	if (!(tr.refdef.rdflags & RDF_NOWORLDMODEL) && !backEnd.in2D)
 	{
