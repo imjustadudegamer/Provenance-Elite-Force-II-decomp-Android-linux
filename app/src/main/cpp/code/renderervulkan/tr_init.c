@@ -99,6 +99,7 @@ cvar_t	*r_showlod;
 cvar_t	*r_shownormals;
 cvar_t	*r_showsky;
 cvar_t	*r_showtris;
+cvar_t	*r_worldFlat;
 cvar_t	*r_singleShader;
 cvar_t	*r_subdivisions;
 cvar_t	*r_terrain_global;
@@ -221,6 +222,7 @@ void R_RegisterCvars( void )
 	r_logFile = ri.Cvar_Get( "r_logFile", "0", CVAR_CHEAT  );
 	r_debugSurface = ri.Cvar_Get( "r_debugSurface", "0", CVAR_CHEAT );
 	r_showtris = ri.Cvar_Get( "r_showtris", "0", CVAR_CHEAT );
+	r_worldFlat = ri.Cvar_Get( "r_worldFlat", "0", CVAR_CHEAT );
 	r_showsky = ri.Cvar_Get( "r_showsky", "0", CVAR_CHEAT );
 	r_drawsky = ri.Cvar_Get( "r_drawsky", "1", 0 );
 	r_shownormals = ri.Cvar_Get( "r_shownormals", "0", CVAR_CHEAT );
@@ -408,6 +410,8 @@ void R_Init( void )
 	R_Sky_Init();
 
 	R_RegisterCvars();
+
+	R_Register();
 
 	/* The demo triangle is scaffolding, off by default and not persisted: an
 	   archived "1" drew it over a later session's frames. */
@@ -775,6 +779,7 @@ void VK_PerfFpsRow( void )
 	long long		 be;
 	long long		 phase[VK_WP_PHASES];
 	long long		 shadePart[VK_WS_PARTS];
+	long long		 present[VK_WSUB_SLOTS];
 	long long		 elide[VK_ELIDE_HITS];
 	long long		 gpu[VK_GPU_BUCKETS];
 	long long		 gpuMarks = 0, gpuCap = 0;
@@ -810,6 +815,7 @@ void VK_PerfFpsRow( void )
 	walkUsec = RB_WalkUsec64();
 	VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
 	VK_WalkStat_TakeShade( shadePart );
+	VK_WalkStat_TakePresent( present );
 	VK_WalkStat_TakeElisions( elide );
 	VK_PerfGpu_Take( gpu, &gpuMarks, &gpuCap );
 
@@ -856,7 +862,7 @@ void VK_PerfFpsRow( void )
 		ri.Printf( PRINT_ALL,
 				   "[PERF:walk] win=%dms frames=%lld verts/frame=%.0f surf/frame=%.1f "
 				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms shade=%.2fms fence=%.2fms acq=%.2fms "
-				   "open=%.2fms ui=%.2fms out=%.2fms pix=%.2fms rest=%.2fms "
+				   "open=%.2fms ui=%.2fms out=%.2fms recend=%.2fms submit=%.2fms present=%.2fms pix=%.2fms rest=%.2fms "
 				   "cpu=%.2fms dev=%.2fms walk=%.2fms elide_idx=%.1f/f elide_ubo=%.1f/f "
 				   "gpu_clear=%.2fms gpu_world=%.2fms gpu_sprite=%.2fms gpu_ui=%.2fms "
 				   "gpu=%.2fms gmarks=%.1f/f gcap=%lld\n",
@@ -871,6 +877,9 @@ void VK_PerfFpsRow( void )
 				   (double)phase[VK_WP_OPEN] / nf / 1000.0,
 				   (double)phase[VK_WP_UI] / nf / 1000.0,
 				   (double)phase[VK_WP_OUT] / nf / 1000.0,
+				   (double)present[VK_WSUB_RECEND] / nf / 1000.0,
+				   (double)present[VK_WSUB_SUBMIT] / nf / 1000.0,
+				   (double)present[VK_WSUB_PRESENT] / nf / 1000.0,
 				   (double)phase[VK_WP_PIX] / nf / 1000.0,
 				   ( (double)walkUsec - (double)sum ) / nf / 1000.0,
 				   ( (double)sum - (double)dev ) / nf / 1000.0,
@@ -1118,6 +1127,7 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp )
 	re.SetColor = Draw_SetColor;
 	re.Set2DWindow = Set2DWindow;
 	re.Set2DOrigin = Set2DOrigin;
+	re.ScreenshotPending = R_Screenshot_Pending;
 	re.DrawStretchPic = Draw_StretchPic;
 	re.DrawTilePic = Draw_TilePic;
 	re.DrawTilePicOffset = Draw_TilePicOffset;

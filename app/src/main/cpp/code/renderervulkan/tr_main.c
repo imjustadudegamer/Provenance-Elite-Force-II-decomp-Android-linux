@@ -1650,8 +1650,6 @@ void R_RenderView (viewParms_t *parms) {
 	firstDrawSurf = tr.refdef.numDrawSurfs;
 	firstSpriteSurf = tr.refdef.numSpriteSurfs;
 
-	tr.viewCount++;
-
 	BE_Bump( BE_FAM_FE, BE_FEC_views, 1 );
 	BE_Bump( BE_FAM_FE, BE_FEC_portals, parms->isPortal ? 1 : 0 );
 

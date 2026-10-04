@@ -1351,6 +1351,9 @@ void UIWidget::PropogateCoordinateSystem(void)
         m_screenorigin.x    = m_screenframe.pos.x - m_origin.x;
         m_screenorigin.y    = m_screenframe.pos.y - m_origin.y;
         m_clippedframe      = m_screenframe;
+        /* Retail's own signs (PropogateCoordinateSystem @0x000A3B80): +m_origin
+           with no parent, -m_origin with one; the placement subtracts this, so
+           a child lands at screenframe.pos + m_origin. */
         m_clippedorigin.x   = -m_origin.x;
         m_clippedorigin.y   = -m_origin.y;
     }

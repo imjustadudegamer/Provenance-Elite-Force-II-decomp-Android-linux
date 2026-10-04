@@ -520,6 +520,11 @@ void		Com_LocalizeFilePath( const char *path, char *localizedPath );
 
 void	FS_ForceFlush( fileHandle_t f );
 
+/* qtrue when the handle is a live non-zip FILE, without raising.  The print
+ * path asks this instead of letting FS_Write reach FS_FileForHandle, which
+ * raises ERR_DROP on a dead handle -- and Com_RealPrintf must never raise. */
+qboolean	FS_WriteHandleLive( fileHandle_t h );
+
 void	FS_FreeFile( void *buffer );
 
 

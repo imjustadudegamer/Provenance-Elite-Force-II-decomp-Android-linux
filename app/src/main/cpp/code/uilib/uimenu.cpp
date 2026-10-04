@@ -1342,11 +1342,15 @@ static adaptRow_s s_adaptRowsAndroid[] = {
 };
 #endif
 
-static const char *s_adaptBindWidgets[] = {   // the controls page's keyboard apparatus
+/* The controls page's keyboard apparatus: the touch build replaces it with the
+   touch section, and Linux carries retail's page unmodified. */
+#ifdef __ANDROID__
+static const char *s_adaptBindWidgets[] = {
     "WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList",
     "WeaponBind",     "AttackLookBind",     "MovementBind",     "GameplayBind",
     "PressKey",
 };
+#endif /* __ANDROID__ */
 
 static void AdaptHideRow(UIWidget *container, const adaptRow_s *row)
 {
@@ -1372,6 +1376,7 @@ static void AdaptHideRow(UIWidget *container, const adaptRow_s *row)
     }
 }
 
+#ifdef __ANDROID__
 static void AdaptHideNamed(UIWidget *container, const char *const *names, int count)
 {
     Container<UIWidget *>& children = container->getChildren();
@@ -1389,6 +1394,7 @@ static void AdaptHideNamed(UIWidget *container, const char *const *names, int co
         }
     }
 }
+#endif /* __ANDROID__ */
 
 /* Widget builders the touch section owns.  Its gate used to be the presence of
    `cl_touchLook', and that cvar reached Linux because the launcher staged the
@@ -1582,8 +1588,7 @@ static void AdaptRepointCommand(UIWidget *container, const char *from, const cha
 
 void UI_AdaptSettingsMenus(void)
 {
-    const int rowCount  = (int)(sizeof(s_adaptRows) / sizeof(s_adaptRows[0]));
-    const int bindCount = (int)(sizeof(s_adaptBindWidgets) / sizeof(s_adaptBindWidgets[0]));
+    const int rowCount = (int)(sizeof(s_adaptRows) / sizeof(s_adaptRows[0]));
     int       i;
 
     for (i = 1; i <= uWinMan.GetChildCount(); i++) {
@@ -1616,11 +1621,12 @@ void UI_AdaptSettingsMenus(void)
         }
 #endif
 
-        if (!stricmp(container->getName(), "controls")) {
-            AdaptHideNamed(container, s_adaptBindWidgets, bindCount);
 #ifdef __ANDROID__
+        if (!stricmp(container->getName(), "controls")) {
+            AdaptHideNamed(container, s_adaptBindWidgets,
+                           (int)(sizeof(s_adaptBindWidgets) / sizeof(s_adaptBindWidgets[0])));
             AdaptTouchSection(container);
-#endif
         }
+#endif
     }
 }

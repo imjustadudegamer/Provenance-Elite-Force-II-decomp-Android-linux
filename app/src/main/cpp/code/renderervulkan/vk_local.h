@@ -400,6 +400,9 @@ void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfs
 #define VK_WALK_T0()        ( VK_WalkStatOn() ? BE_Microseconds64() : -1LL )
 #define VK_WALK_ADD(t0, ph) do { if ( (t0) >= 0 ) { VK_WalkStat_Add( (ph), BE_Microseconds64() - (t0) ); } } while ( 0 )
 
+/* A present-seam child: same shape as VK_WALK_ADD, its own drain. */
+#define VK_WALK_ADD_SUB(t0, which) do { if ( (t0) >= 0 ) { VK_WalkStat_PresentAdd( (which), BE_Microseconds64() - (t0) ); } } while ( 0 )
+
 /* An outer wrap that contains an inner bucket charges only what the inner
    buckets did not: GEN and UI reach the stage iterator, whose bind/record/pack
    are charged at their own sites.  A leaf wrap keeps the plain form. */
@@ -416,6 +419,12 @@ enum {
 };
 void VK_WalkStat_ShadeAdd( int part, long long usec );
 void VK_WalkStat_TakeShade( long long *usecOut );
+
+/* OUT's children, charged at the record-end/submit/present seams; they sum to
+   out= and stay out of rest='s subtraction. */
+enum { VK_WSUB_RECEND = 0, VK_WSUB_SUBMIT, VK_WSUB_PRESENT, VK_WSUB_SLOTS };
+void VK_WalkStat_PresentAdd( int which, long long usec );
+void VK_WalkStat_TakePresent( long long *usecOut );
 
 void VK_PerfGpu_FrameBegin( int slot );
 void VK_PerfGpu_Mark( int slot, int bucket );

@@ -78,6 +78,7 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/vk_firstlight.c
     ${SOURCE_DIR}/renderervulkan/vk_renderthread.c
     ${SOURCE_DIR}/renderervulkan/vk_platform.c
+    ${SOURCE_DIR}/renderervulkan/vk_screenshot.c
 )
 
 set(RENDERER_VULKAN_BASENAME renderer_vulkan)

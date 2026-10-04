@@ -135,4 +135,99 @@ else
 	echo "  ok    source fault 14 detected"
 fi
 
+# 22: the draw site stops asserting the ring slice it reads
+sed 's/v0->xyz\[0\] != x0\[0\]//' "$src/tr_backend.c" > "$mut/tr_backend.c"
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$mut/tr_backend.c" "$src/tr_draw.c" \
+	"$src/tr_shade.c" "$src/tr_font.cpp" "$src/tr_util.cpp" 22 >/dev/null 2>&1; then
+	echo "  FAIL  source fault 22 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 22 detected"
+fi
+
+# 23..27: a one-shot 2D writer (the glyph run, a box run, a line loop, a
+# triangle, a raw frame) draws at its own record, and the batch an earlier
+# widget left open is usually still open there.  Closing that batch replays its
+# spans, and a span re-applies the BATCH's scissor, so the writer has to take
+# the state its record was queued under before the flush and apply it after.
+# These are the confirmation dialog's missing text.
+font_mut="$mut/tr_font.cpp"
+
+cp "$src/tr_font.cpp" "$font_mut"
+# 23: the run applies its clip before its surface opens, so the pending batch's
+#     spans replay over it
+python3 - "$font_mut" <<'PYEOF'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+i = s.find("\tRB_BeginSurface( cmd->shader, 0 );")
+b = s.find("\tif ( cmd->scissorValid && !VK_Draw_2DIssuedScissor( cmd->scissor ) ) {")
+j = s.find("\t}\n", b)
+block = s[b:j + 3]
+s = s[:i] + block + "\n" + s[i:b] + s[j + 3:]
+open(p, "w").write(s)
+PYEOF
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$src/tr_draw.c" \
+	"$src/tr_shade.c" "$font_mut" "$src/tr_util.cpp" >/dev/null 2>&1; then
+	echo "  FAIL  source fault 23 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 23 detected"
+fi
+
+cp "$src/tr_font.cpp" "$font_mut"
+# 24: the skip test reads the record mirror, which a span replay leaves still
+sed 's/VK_Draw_2DIssuedScissor( cmd->scissor )/cmd->scissor\[0\] == vk_2dScissor\[0\]/' \
+	"$src/tr_font.cpp" > "$font_mut"
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$src/tr_draw.c" \
+	"$src/tr_shade.c" "$font_mut" "$src/tr_util.cpp" >/dev/null 2>&1; then
+	echo "  FAIL  source fault 24 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 24 detected"
+fi
+
+cp "$src/tr_draw.c" "$mut/tr_draw.c"
+# 25: the one-shot writers stop taking the state their record was queued under
+sed 's/RB_2D_OwnStateTake();//' "$src/tr_draw.c" > "$mut/tr_draw.c"
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$mut/tr_draw.c" \
+	"$src/tr_shade.c" "$src/tr_font.cpp" "$src/tr_util.cpp" >/dev/null 2>&1; then
+	echo "  FAIL  source fault 25 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 25 detected"
+fi
+
+cp "$src/tr_draw.c" "$mut/tr_draw.c"
+# 26: they take it and never apply it, so the batch's own replay decides
+sed 's/RB_2D_OwnStateApply();//' "$src/tr_draw.c" > "$mut/tr_draw.c"
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$mut/tr_draw.c" \
+	"$src/tr_shade.c" "$src/tr_font.cpp" "$src/tr_util.cpp" >/dev/null 2>&1; then
+	echo "  FAIL  source fault 26 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 26 detected"
+fi
+
+cp "$src/vk_draw.c" "$mut/vk_draw.c"
+# 27: the buffer-state test reports the record mirror instead
+python3 - "$mut/vk_draw.c" <<'PYEOF'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+h = "qboolean VK_Draw_2DIssuedScissor( const int *scn )"
+i = s.find(h)
+j = s.find("\n}\n", i)
+s = s[:i] + s[i:j].replace("s_2dIssuedScn[slot]", "vk_2dScissor") + s[j:]
+open(p, "w").write(s)
+PYEOF
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$src/tr_draw.c" \
+	"$src/tr_shade.c" "$src/tr_font.cpp" "$src/tr_util.cpp" "" "$mut/vk_draw.c" \
+	>/dev/null 2>&1; then
+	echo "  FAIL  source fault 27 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 27 detected"
+fi
+
 exit $rc

@@ -284,7 +284,8 @@ extern const int				vkNumProgramDefs;
 	X( FOGMODE,           "u_FogMode" )           \
 	X( FOGSTART,          "u_FogStart" )          \
 	X( FOGEND,            "u_FogEnd" )            \
-	X( FOGFIXCOLOR,       "u_FogFixColor" )
+	X( FOGFIXCOLOR,       "u_FogFixColor" )       \
+	X( FLATMODE,          "u_FlatMode" )
 
 typedef enum {
 #define X( e, n ) VK_U_##e,
@@ -359,6 +360,9 @@ void		VK_RefreshClipPlane( void );
 vkProgram_t	*VK_BeginFamily( unsigned family, int texEnv );
 void		VK_PixelProbe( const char *src, int x, int y, int w, int h );
 qboolean	VK_ModelPixelAtSwap( int x, int y, byte out[4] );
+int			VK_ModelSwapFrame( void );
+qboolean	RB_2DCover_ReadbackArmed( void );
+int			RB_2DCover_ReadbackFrame( void );
 void		VK_GlErrAt( const char *what );
 void		VK_Begin2D( void );
 void		VK_BeginWire( void );		

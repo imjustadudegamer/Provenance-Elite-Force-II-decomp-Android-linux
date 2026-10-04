@@ -36,6 +36,8 @@ DEFAULT_FILES = {
     "local": os.path.join(VK, "vk_local.h"),
     "cmds": os.path.join(VK, "tr_cmds.c"),
     "backend": os.path.join(VK, "tr_backend.c"),
+    "init": os.path.join(VK, "tr_init.c"),
+    "common": os.path.join(WT, "app", "src", "main", "cpp", "code", "qcommon", "common.c"),
 }
 
 failures = 0
@@ -81,15 +83,19 @@ def main():
     mutant = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
     files = dict(DEFAULT_FILES)
-    for i, key in enumerate(["local", "cmds", "backend"]):
+    for i, key in enumerate(["local", "cmds", "backend", "init", "common"]):
         if len(sys.argv) > 2 + i:
             files[key] = sys.argv[2 + i]
 
     local = read(files["local"])
     cmds = read(files["cmds"])
     backend = read(files["backend"])
+    init = read(files["init"])
+    common = read(files["common"])
 
     nested_shipping = True
+    present_shipping = True
+    frame_shipping = True
 
     if mutant == 1:
         # the macro goes back to the raw subtraction
@@ -103,6 +109,14 @@ def main():
         # the rule stops handling the drain
         cmds = cmds.replace("return ( n < n0 ) ? n : ( n - n0 );", "return n - n0;")
         nested_shipping = False
+    elif mutant == 4:
+        # the present seam stops charging its children
+        cmds = cmds.replace("VK_WALK_ADD_SUB( seamT0, VK_WSUB_RECEND )", "")
+        present_shipping = False
+    elif mutant == 5:
+        # the frame row stops splitting its after-server residual
+        common = common.replace("s_splitEv += s_splitEvT0 - s_splitRestT0;", "")
+        frame_shipping = False
 
     # --- 1. the rule -------------------------------------------------------
     fn = cmds[cmds.find("long long VK_WalkStat_NestedSince"):]
@@ -137,6 +151,22 @@ def main():
     check(ship_drain == true_drain,
           "a window with a drain inside inflates (charged %d, owed %d)"
           % (ship_drain, true_drain))
+
+    # --- 4. the present seam and the frame row -----------------------------
+    if present_shipping:
+        for which in ("VK_WSUB_RECEND", "VK_WSUB_SUBMIT", "VK_WSUB_PRESENT"):
+            check("VK_WALK_ADD_SUB( seamT0, %s )" % which in cmds,
+                  "%s is no longer charged at its seam" % which)
+    check("VK_WalkStat_TakePresent( present )" in init,
+          "the present seam's children are no longer drained")
+    for field in ("recend=", "submit=", "present="):
+        check(field in init, "the walk row no longer prints %s" % field)
+    if frame_shipping:
+        check("s_splitEv += s_splitEvT0 - s_splitRestT0;" in common,
+              "the frame row no longer accumulates ev=")
+    check("ev=%dms cl=%dms" in common, "the frame row no longer prints ev=/cl=")
+    for acc in ("s_splitEv = 0", "s_splitCl = 0"):
+        check(acc in common, "the frame row no longer drains %s" % acc)
 
     print("walkaccount control: %d checks, %d failures" % (checks, failures))
     sys.exit(1 if failures else 0)

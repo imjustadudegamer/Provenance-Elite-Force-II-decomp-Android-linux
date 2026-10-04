@@ -244,6 +244,7 @@ typedef struct {
 	qboolean		vid_restart;
 	qboolean		cddialog;			
 	qboolean		no_menus;
+	int				saveShotFrames;		/* frames since the save shot was asked for */
 
 	qboolean	rendererRegistered;
 	qboolean	cgameStarted;

@@ -83,6 +83,10 @@ static int				s_setIndex[VK_DRAW_SET_HASH];
 /* the ring's index buffer, per frame slot: it is bound once per command buffer */
 static VkBuffer			s_indexBound[VK_FRAMES_IN_FLIGHT];
 static int				s_indexBoundFrame[VK_FRAMES_IN_FLIGHT];
+/* the ring's vertex binding, same key: the 2D path repeats (buffer, 0) */
+static VkBuffer			s_vertexBound[VK_FRAMES_IN_FLIGHT];
+static int				s_vertexBoundFrame[VK_FRAMES_IN_FLIGHT];
+static VkDeviceSize		s_vertexBoundOffset[VK_FRAMES_IN_FLIGHT];
 
 /* The pipeline and the set bound at set 0 are command-buffer state, so binding
    values that are already in force is a no-op the driver still charges for: the
@@ -184,6 +188,61 @@ static int	s_2dAppliedWin[4];
 static int	s_2dAppliedScn[4];
 static qboolean s_2dAppliedValid;
 static int	s_2dLastSetIndex = -1;
+
+/* The 2D state the command buffer is known to hold, so a span replay can skip
+   what matches.  Keyed on the frame; a 3D view overwrites the viewport and
+   scissor and invalidates it. */
+static float	s_2dIssuedOrtho[VK_FRAMES_IN_FLIGHT][16];
+static int		s_2dIssuedWin[VK_FRAMES_IN_FLIGHT][4];
+static int		s_2dIssuedScn[VK_FRAMES_IN_FLIGHT][4];
+static int		s_2dIssuedFrame[VK_FRAMES_IN_FLIGHT];
+static qboolean	s_2dIssuedValid[VK_FRAMES_IN_FLIGHT];
+static cvar_t  *s_2dStateElide;
+
+static qboolean VK_Draw_2DElideOn( void )
+{
+	if ( !s_2dStateElide ) {
+		s_2dStateElide = ri.Cvar_Get( "vk_2dStateElide", "1", CVAR_ARCHIVE );
+	}
+	return ( s_2dStateElide && s_2dStateElide->integer ) ? qtrue : qfalse;
+}
+
+static int VK_Draw_IssuedSlot( int *frameOut )
+{
+	int	slot = RB_FrameSmpFrame();
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		slot = 0;
+	}
+	*frameOut = RB_FrameCount();
+
+	return slot;
+}
+
+static void VK_Draw_IssueRecord( int slot, int frame, const float *ortho, const int *win, const int *scn )
+{
+	s_2dIssuedFrame[slot] = frame;
+	s_2dIssuedValid[slot] = qtrue;
+	if ( ortho ) {
+		memcpy( s_2dIssuedOrtho[slot], ortho, 16 * sizeof( float ) );
+	}
+	if ( win ) {
+		memcpy( s_2dIssuedWin[slot], win, sizeof( s_2dIssuedWin[slot] ) );
+	}
+	if ( scn ) {
+		memcpy( s_2dIssuedScn[slot], scn, sizeof( s_2dIssuedScn[slot] ) );
+	}
+}
+
+static void VK_Draw_IssueInvalidate( void )
+{
+	int	slot, frame;
+
+	slot = VK_Draw_IssuedSlot( &frame );
+	if ( s_2dIssuedFrame[slot] == frame ) {
+		s_2dIssuedValid[slot] = qfalse;
+	}
+}
 
 static unsigned VK_Draw_PipelineHash( const vkPipelineKey_t *key )
 {
@@ -723,6 +782,14 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 int	vk_2dWindow[4]   = { 0, 0, 0, 0 };
 int	vk_2dScissor[4]  = { 0, 0, 0, 0 };
 
+/* the alpha-test selector the last VK_Draw_SetAlphaTest published */
+static int s_2dLastAlphaTest;
+
+int VK_Draw_LastAlphaTest( void )
+{
+	return s_2dLastAlphaTest;
+}
+
 /* The widget's placement in the 2D window: the window defines the pass's whole
    space (retail's constant glViewport/glOrtho), so setting one drops the
    placement, and the widget records its own right after. */
@@ -813,6 +880,16 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	   Both go through the reference's clamp, because the window is the client's
 	   and may hang off the screen it sits on. */
 	VK_Draw_Window2D( cmd, x, y, w, h );
+
+	{
+		int	frame;
+		int	slot = VK_Draw_IssuedSlot( &frame );
+		int	win[4], scn[4];
+
+		win[0] = x; win[1] = y; win[2] = w; win[3] = h;
+		memcpy( scn, win, sizeof( scn ) );
+		VK_Draw_IssueRecord( slot, frame, m, win, scn );
+	}
 }
 
 /* The alpha test rides the stage's push constants; the value is the reference
@@ -838,6 +915,10 @@ void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 	default:				values[0] = 0.0f;			break;
 	}
 
+	/* the selector this push leaves in the buffer: a draw that pushes none of
+	   its own runs under it, so the row names what was actually tested */
+	s_2dLastAlphaTest = (int)values[0];
+
 	qvk.CmdPushConstants( cmd, vk_draw.layout,
 						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 						  offsetof( vkPushConstants_t, alphaTest ), sizeof( values ), values );
@@ -852,6 +933,15 @@ void VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int heigh
 	/* RE_Scissor's box is bottom-left; Vulkan's is the top-left, and the box is
 	   cut to the render area the way GL cut it for free. */
 	VK_Draw_ScissorRect( cmd, x, VK_Draw_TopY( y, height ), width, height );
+
+	{
+		int		frame;
+		int		slot = VK_Draw_IssuedSlot( &frame );
+		int		scn[4];
+
+		scn[0] = x; scn[1] = y; scn[2] = width; scn[3] = height;
+		VK_Draw_IssueRecord( slot, frame, NULL, NULL, scn );
+	}
 }
 
 void VK_Draw_DisableScissor( VkCommandBuffer cmd )
@@ -889,27 +979,80 @@ qboolean VK_Draw_2DStateGet( float *ortho, int *win, int *scn )
 	return qtrue;
 }
 
+/* Whether the command buffer already holds scn as its scissor.  The record
+   mirror vk_2dScissor is NOT this: a span replay writes the buffer while the
+   replay guard holds the mirror still, so a writer that skips on the mirror
+   draws under the replayed span's clip. */
+qboolean VK_Draw_2DIssuedScissor( const int *scn )
+{
+	int	frame;
+	int	slot = VK_Draw_IssuedSlot( &frame );
+
+	if ( !VK_Draw_2DElideOn() || !s_2dIssuedValid[slot] || s_2dIssuedFrame[slot] != frame ) {
+		return qfalse;
+	}
+
+	return memcmp( scn, s_2dIssuedScn[slot], sizeof( s_2dIssuedScn[slot] ) ) == 0 ? qtrue : qfalse;
+}
+
 void VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *win, const int *scn )
 {
+	int			frame;
+	int			slot = VK_Draw_IssuedSlot( &frame );
+	qboolean	known = VK_Draw_2DElideOn() && s_2dIssuedValid[slot] && s_2dIssuedFrame[slot] == frame;
+	qboolean	orthoSame, winSame, scnSame;
+
+	orthoSame = known && !memcmp( ortho, s_2dIssuedOrtho[slot], 16 * sizeof( float ) );
+	winSame   = known && !memcmp( win, s_2dIssuedWin[slot], sizeof( s_2dIssuedWin[slot] ) );
+	scnSame   = known && !memcmp( scn, s_2dIssuedScn[slot], sizeof( s_2dIssuedScn[slot] ) );
+
 	/* The ortho alone: this runs after the stage pass set the alpha test, and
 	   the window's own push zeroes that field.  The push range covers the whole
 	   constant block, and ortho is its first member. */
-	qvk.CmdPushConstants( cmd, vk_draw.layout,
-						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-						  offsetof( vkPushConstants_t, ortho ), 16 * sizeof( float ), ortho );
+	if ( !orthoSame ) {
+		qvk.CmdPushConstants( cmd, vk_draw.layout,
+							  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+							  offsetof( vkPushConstants_t, ortho ), 16 * sizeof( float ), ortho );
+	}
 
 	/* A replay restores a state the run already had, so it must not become the
 	   state the next snapshot reads back: the mirrors stay those of the widget
 	   the run is inside. */
 	vk_2dReplaying = qtrue;
 
-	VK_Draw_Window2D( cmd, win[0], win[1], win[2], win[3] );
+	if ( !winSame ) {
+		VK_Draw_Window2D( cmd, win[0], win[1], win[2], win[3] );
+	}
 
+	/* scn == win does NOT mean the scissor is already in force.  The buffer's
+	   scissor is the last one anybody issued, and a raw RE_Scissor from another
+	   pass -- the tricorder's own 256x64 screen, which is why the structural
+	   overlay landed in a strip at the bottom left -- updates the issued-scn
+	   mirror while leaving the issued-window mirror at the screen window.  With
+	   the window judged unchanged and the scissor branch skipped, the overlay
+	   drew under the other pass's clip.  The converse holds too: a window that
+	   IS re-issued sets the scissor to the window, so a differing scn after it
+	   must be issued whatever the scn mirror says. */
 	if ( scn[0] != win[0] || scn[1] != win[1] || scn[2] != win[2] || scn[3] != win[3] ) {
-		VK_Draw_SetScissor( cmd, scn[0], scn[1], scn[2], scn[3] );
+		if ( !winSame || !scnSame ) {
+			VK_Draw_SetScissor( cmd, scn[0], scn[1], scn[2], scn[3] );
+		}
+	} else if ( winSame && !scnSame ) {
+		VK_Draw_SetScissor( cmd, win[0], win[1], win[2], win[3] );
 	}
 
 	vk_2dReplaying = qfalse;
+
+	{
+		int	scnIssued[4];
+
+		if ( scn[0] != win[0] || scn[1] != win[1] || scn[2] != win[2] || scn[3] != win[3] ) {
+			memcpy( scnIssued, scn, sizeof( scnIssued ) );
+		} else {
+			memcpy( scnIssued, win, sizeof( scnIssued ) );
+		}
+		VK_Draw_IssueRecord( slot, frame, ortho, win, scnIssued );
+	}
 
 	/* The state this draw will run under, kept for the census. */
 	memcpy( s_2dAppliedWin, win, sizeof( s_2dAppliedWin ) );
@@ -1069,6 +1212,9 @@ void VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h )
 
 	VK_Draw_ViewportRect( cmd, x, top, w, h, 0.0f, 1.0f );
 	VK_Draw_ScissorRect( cmd, x, top, w, h );
+
+	/* the 3D viewport and scissor overwrite whatever 2D rect the buffer held */
+	VK_Draw_IssueInvalidate();
 }
 
 void VK_Draw_BindRing( VkCommandBuffer cmd )
@@ -1090,7 +1236,23 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 	buffers[0] = VK_VertexRing_Buffer();
 	buffers[1] = VK_VertexRing_IndexBuffer();
 
-	qvk.CmdBindVertexBuffers( cmd, 0, 1, &buffers[0], &offsets[0] );
+	/* The vertex bind repeats for every surface that packs at the same offset --
+	   the 2D path always binds offset 0.  The same frame's fresh command buffer
+	   holds no binding, so the cache is keyed on the frame like the index's. */
+	{
+		int bslot = ( slot >= 0 && slot < VK_FRAMES_IN_FLIGHT ) ? slot : 0;
+
+		if ( buffers[0] != VK_NULL_HANDLE
+			 && ( s_vertexBound[bslot] != buffers[0] || s_vertexBoundFrame[bslot] != frame
+				  || s_vertexBoundOffset[bslot] != vertexOffset ) ) {
+			qvk.CmdBindVertexBuffers( cmd, 0, 1, &buffers[0], &offsets[0] );
+			s_vertexBound[bslot]       = buffers[0];
+			s_vertexBoundFrame[bslot]  = frame;
+			s_vertexBoundOffset[bslot] = vertexOffset;
+		} else if ( buffers[0] != VK_NULL_HANDLE ) {
+			VK_WalkStat_Count( VK_ELIDE_INDEX );
+		}
+	}
 
 	/* The index buffer never moves: it is the ring's own, always at offset 0, and
 	   this is the only CmdBindIndexBuffer in the renderer.  Binding it once per
@@ -1111,8 +1273,30 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 	}
 }
 
+/* every indexed draw this walk recorded, and the indexes they carried: the
+   frame's own count against the front end's draw list, so a coverage hole can
+   be split into "the draw never existed" and "the draw existed and covered
+   nothing" against the capture's event count */
+static int s_frameDrawIndexed;
+static int s_frameDrawIndexedIdx;
+
+void VK_Draw_RecordedDraws( int *draws, int *indexes )
+{
+	*draws   = s_frameDrawIndexed;
+	*indexes = s_frameDrawIndexedIdx;
+}
+
+void VK_Draw_ResetRecordedDraws( void )
+{
+	s_frameDrawIndexed   = 0;
+	s_frameDrawIndexedIdx = 0;
+}
+
 void VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase )
 {
+	s_frameDrawIndexed++;
+	s_frameDrawIndexedIdx += indexCount;
+
 	qvk.CmdDrawIndexed( cmd, (uint32_t)indexCount, 1, (uint32_t)firstIndex, (int32_t)vertexBase, 0 );
 }
 

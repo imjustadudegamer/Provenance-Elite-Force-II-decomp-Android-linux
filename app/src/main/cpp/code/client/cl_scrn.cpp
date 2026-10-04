@@ -609,6 +609,19 @@ void SCR_UpdateScreen( void ) {
 	CL_StartHunkUsers(qfalse);
 	SCR_SimpleUpdateScreen();
 
+	/* The save shot must come from a frame the pause menu did not composite
+	   over, so the UI stays suppressed until the renderer reports the shot was
+	   taken; a frame cap bounds the wait so the menu can never be lost. */
+	if ( cls.no_menus ) {
+		if ( re.ScreenshotPending && !re.ScreenshotPending() ) {
+			cls.no_menus = qfalse;
+			cls.saveShotFrames = 0;
+		} else if ( ++cls.saveShotFrames > 8 ) {
+			cls.no_menus = qfalse;
+			cls.saveShotFrames = 0;
+		}
+	}
+
 	if( fps->integer && cls.state == CA_ACTIVE ) {
 		static int belowlastplaytime = 0;
 		static qboolean belowframerate = qfalse;

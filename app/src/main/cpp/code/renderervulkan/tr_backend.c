@@ -126,6 +126,7 @@ void	 VK_Draw_LastScissorRect( int out[4] );
 qboolean VK_Draw_LastScissorValid( void );
 qboolean VK_Draw_2DAppliedGet( int *win, int *scn );
 int		 VK_Draw_LastSetIndex( void );
+int		 VK_Draw_LastAlphaTest( void );
 qboolean VK_ModelPixelAtSwap( int x, int y, byte out[4] );
 
 #define RB_2DCOV_SPAN_MAX	1024
@@ -172,6 +173,18 @@ static int RB_2DCoverLevel( void )
 		return 0;
 	}
 	return s_2dCovCvar ? s_2dCovCvar->integer : 1;
+}
+
+/* The readback has to be the frame the verdict names, so it is taken every frame
+   this frame left spans behind, and the copy carries the frame it belongs to. */
+qboolean RB_2DCover_ReadbackArmed( void )
+{
+	return ( RB_2DCoverLevel() >= 2 && s_2dCovCount > 0 ) ? qtrue : qfalse;
+}
+
+int RB_2DCover_ReadbackFrame( void )
+{
+	return RB_FrameCount();
 }
 
 /* The quad's own screen rect over the vertex range the span's indexes name: a
@@ -233,47 +246,100 @@ static long long RB_2DCoverArea( const int quad[4], const int scn[4], int out[4]
 	return (long long)( x1 - x0 ) * (long long)( y1 - y0 );
 }
 
-/* The readback cross-check, over the host copy the frame census takes: content
-   where geometry and clip both allow pixels, read back as the clear colour only,
-   is a draw that reached the command buffer and painted nothing. */
-static void RB_2DCoverReadback( const int clip[4], unsigned *distinct,
-								unsigned *nonclear, unsigned *centre,
-								unsigned mean[3], unsigned *black )
+/* The readback measures the element's own footprint, not its widget's clip: a
+   text run's clip is mostly background, so a verdict keyed on it said nothing
+   about the run.  Content is any sample that is not the clear colour; the run's
+   own ink is counted at two fifths of its brightness, so a wrong colour names. */
+#define RB_2DCOV_INK_FLOOR_NUM	2
+#define RB_2DCOV_INK_FLOOR_DEN	5
+
+static void RB_2DCoverReadback( rb2dCov_t *c, unsigned *distinct, unsigned *nbg,
+								unsigned *nink, unsigned *ndark, unsigned *centre,
+								unsigned mean[3], unsigned *samples, qboolean *ambiguous )
 {
 	static byte	seen[24][4];
 	const float	*clear = vk.clearColor;
+	byte		clr[4], ink[4];
+	int			rect[4];
 	unsigned	sum[3] = { 0, 0, 0 };
-	unsigned	ns = 0, nc = 0;
+	unsigned	ns = 0, nb = 0, ni = 0, nd = 0, tot = 0;
+	unsigned	nx, ny;
 	int			sx, sy;
 
 	*distinct = 0;
-	*nonclear = 0;
+	*nbg      = 0;
+	*nink     = 0;
+	*ndark    = 0;
 	*centre   = 0;
-	*black    = 0;
+	*samples  = 0;
 	mean[0] = mean[1] = mean[2] = 0;
 
-	if ( clip[2] <= 0 || clip[3] <= 0 ) {
+	/* the element's own footprint: its geometry, clipped by the rect in force */
+	if ( c->quad[2] > c->quad[0] && c->quad[3] > c->quad[1] ) {
+		rect[0] = c->quad[0] > c->clip[0] ? c->quad[0] : c->clip[0];
+		rect[1] = c->quad[1] > c->clip[1] ? c->quad[1] : c->clip[1];
+		rect[2] = ( c->quad[2] < c->clip[0] + c->clip[2] ? c->quad[2] : c->clip[0] + c->clip[2] ) - rect[0];
+		rect[3] = ( c->quad[3] < c->clip[1] + c->clip[3] ? c->quad[3] : c->clip[1] + c->clip[3] ) - rect[1];
+	} else {
+		memcpy( rect, c->clip, sizeof( rect ) );
+	}
+	if ( rect[2] <= 0 || rect[3] <= 0 ) {
 		return;
 	}
 
-	for ( sy = 0; sy < 4; sy++ ) {
-		for ( sx = 0; sx < 8; sx++ ) {
-			int		x = clip[0] + clip[2] * ( 2 * sx + 1 ) / 16;
-			int		y = clip[1] + clip[3] * ( 2 * sy + 1 ) / 8;
+	clr[0] = (byte)( clear[0] * 255.0f );
+	clr[1] = (byte)( clear[1] * 255.0f );
+	clr[2] = (byte)( clear[2] * 255.0f );
+	clr[3] = 255;
+
+	memcpy( ink, c->vcol, sizeof( ink ) );
+
+	/* A run whose colour the clear colour already satisfies is a run this
+	   readback can never convict: the clear background is a valid answer. */
+	*ambiguous = qtrue;
+	for ( sx = 0; sx < 3; sx++ ) {
+		if ( clr[sx] * RB_2DCOV_INK_FLOOR_DEN < ink[sx] * RB_2DCOV_INK_FLOOR_NUM ) {
+			*ambiguous = qfalse;
+			break;
+		}
+	}
+
+	/* up to 16x8 samples, dense on a small rect: a 20px label box is read
+	   pixel for pixel, a full-screen wash is read on a grid */
+	nx = rect[2] < 16 ? rect[2] : 16;
+	ny = rect[3] < 8 ? rect[3] : 8;
+	for ( sy = 0; sy < ny; sy++ ) {
+		int	y = rect[1] + ( rect[3] * ( 2 * sy + 1 ) ) / ( 2 * ny );
+
+		for ( sx = 0; sx < nx; sx++ ) {
+			int		x = rect[0] + ( rect[2] * ( 2 * sx + 1 ) ) / ( 2 * nx );
 			byte	px[4];
 			unsigned i;
+			qboolean	isInk, isClr;
 
 			if ( !VK_ModelPixelAtSwap( x, y, px ) ) {
 				return;				/* no host copy for this frame */
 			}
-			if ( px[0] != (byte)( clear[0] * 255.0f ) || px[1] != (byte)( clear[1] * 255.0f )
-				 || px[2] != (byte)( clear[2] * 255.0f ) ) {
-				nc++;
+			tot++;
+
+			isClr = ( px[0] == clr[0] && px[1] == clr[1] && px[2] == clr[2] );
+			isInk = !ambiguous;
+			for ( i = 0; isInk && i < 3; i++ ) {
+				if ( px[i] * RB_2DCOV_INK_FLOOR_DEN < ink[i] * RB_2DCOV_INK_FLOOR_NUM ) {
+					isInk = qfalse;
+				}
+			}
+			if ( isInk ) {
+				ni++;
+			}
+			if ( isClr ) {
+				nb++;
+			} else {
 				sum[0] += px[0]; sum[1] += px[1]; sum[2] += px[2];
-				/* an opaque sample with no colour at all is what "drew black"
-				   means; a transparent one is a different fault */
+				/* opaque and colourless is a finding about what the footprint
+				   holds, not about which draw put it there */
 				if ( px[0] < 8 && px[1] < 8 && px[2] < 8 && px[3] > 200 ) {
-					(*black)++;
+					nd++;
 				}
 			}
 			for ( i = 0; i < ns; i++ ) {
@@ -290,12 +356,15 @@ static void RB_2DCoverReadback( const int clip[4], unsigned *distinct,
 	}
 
 	*distinct = ns;
-	*nonclear = nc;
-	mean[0] = nc ? sum[0] / nc : 0;
-	mean[1] = nc ? sum[1] / nc : 0;
-	mean[2] = nc ? sum[2] / nc : 0;
+	*nbg      = nb;
+	*nink     = ni;
+	*ndark    = nd;
+	*samples  = tot;
+	mean[0] = ( tot - nb ) ? sum[0] / ( tot - nb ) : 0;
+	mean[1] = ( tot - nb ) ? sum[1] / ( tot - nb ) : 0;
+	mean[2] = ( tot - nb ) ? sum[2] / ( tot - nb ) : 0;
 
-	if ( VK_ModelPixelAtSwap( clip[0] + clip[2] / 2, clip[1] + clip[3] / 2, s_2dCovReadPx ) ) {
+	if ( VK_ModelPixelAtSwap( rect[0] + rect[2] / 2, rect[1] + rect[3] / 2, s_2dCovReadPx ) ) {
 		*centre = ( (unsigned)s_2dCovReadPx[0] << 24 ) | ( (unsigned)s_2dCovReadPx[1] << 16 )
 				  | ( (unsigned)s_2dCovReadPx[2] << 8 ) | (unsigned)s_2dCovReadPx[3];
 	}
@@ -495,40 +564,47 @@ static void RB_2DCoverFrame( void )
 						  covered ? "" : "VERDICT=ISSUED_NOT_RASTERISED" );
 		}
 
-		/* The readback cross-check: level 2, over the presented frame's copy. */
+		/* The readback cross-check: level 2, over the presented frame's own copy. */
 		if ( level >= 2 ) {
 			for ( i = 0; i < s_2dCovCount; i++ ) {
-				unsigned distinct, nonclear, centre, mean[3], black;
-				const char *verdict = "";
+				unsigned distinct, nbg, nink, ndark, centre, mean[3], samples;
+				qboolean	ambiguous;
+				const char *verdict = "", *inkNote = "";
 
-				RB_2DCoverReadback( s_2dCov[i].clip, &distinct, &nonclear, &centre, mean, &black );
+				RB_2DCoverReadback( &s_2dCov[i], &distinct, &nbg, &nink, &ndark,
+									&centre, mean, &samples, &ambiguous );
 
-				/* The colour verdict.  px>0 is geometry and clip; the readback is
-				   what the element produced.  A rect that rasterised but holds one
-				   colour where the art or the glyphs vary is content that never
-				   arrived; a rect whose every lit sample is opaque black is the
-				   element drawn black. */
-				if ( s_2dCov[i].px > 0 && nonclear == 0 ) {
-					verdict = "VERDICT=CLIP_OK_NO_CONTENT";
-				} else if ( s_2dCov[i].px > 0 && black > 0 && black == nonclear ) {
-					verdict = "VERDICT=DREW_BLACK";
-				} else if ( s_2dCov[i].px > 0 && distinct <= 1 && nonclear > 0 ) {
-					verdict = "VERDICT=NO_CONTENT";
+				/* Content is any sample that is not the clear colour; the run's
+				   own ink is reported so a wrong colour names.  Where the clear
+				   colour would also satisfy the ink test, no verdict. */
+				if ( s_2dCov[i].px > 0 ) {
+					if ( samples > nbg ) {
+						verdict = "";
+					} else if ( !ambiguous ) {
+						verdict = "VERDICT=NO_INK";
+					} else {
+						inkNote = "INK=AMBIGUOUS ";
+					}
 				}
 
 				VK_Guard_Row( "VK:2dcov",
-							  "frame=%d rb shader='%s' clip=(%d,%d %dx%d) distinct=%u nonclear=%u "
-							  "centre=0x%08x mean=%u,%u,%u black=%u vcol=%d,%d,%d,%d rgbGen=%d "
-							  "alphaGen=%d imgdesc=%s %s",
-							  s_2dCovFrame, s_2dCov[i].shader,
+							  "frame=%d src=%d rb shader='%s' clip=(%d,%d %dx%d) quad=(%d,%d %dx%d) "
+							  "samples=%u distinct=%u bg=%u ink=%u dark=%u "
+							  "centre=0x%08x mean=%u,%u,%u vcol=%d,%d,%d,%d rgbGen=%d "
+							  "alphaGen=%d imgdesc=%s %s%s",
+							  s_2dCovFrame, VK_ModelSwapFrame(), s_2dCov[i].shader,
 							  s_2dCov[i].clip[0], s_2dCov[i].clip[1],
 							  s_2dCov[i].clip[2], s_2dCov[i].clip[3],
-							  distinct, nonclear, centre, mean[0], mean[1], mean[2], black,
+							  s_2dCov[i].quad[0], s_2dCov[i].quad[1],
+							  s_2dCov[i].quad[2] - s_2dCov[i].quad[0],
+							  s_2dCov[i].quad[3] - s_2dCov[i].quad[1],
+							  samples, distinct, nbg, nink, ndark,
+							  centre, mean[0], mean[1], mean[2],
 							  s_2dCov[i].vcol[0], s_2dCov[i].vcol[1],
 							  s_2dCov[i].vcol[2], s_2dCov[i].vcol[3],
 							  s_2dCov[i].rgbGen, s_2dCov[i].alphaGen,
 							  s_2dCov[i].imgDesc[0] ? s_2dCov[i].imgDesc : "(none)",
-							  verdict );
+							  inkNote, verdict );
 			}
 		}
 	}
@@ -548,6 +624,34 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 	int	spans = RB_2D_SpanCount();
 	int	level = backEnd.in2D ? RB_2DCoverLevel() : 0;
 	int	i;
+
+	/* The draw reads vertexBase[0..numVertexes); if the ring there is not the
+	   tess the row predicted, the quads land wherever the stale slice says. */
+	if ( backEnd.in2D && PROBE_On() && tess.numVertexes > 0 ) {
+		const vkTessVertex_t *v0 = ( const vkTessVertex_t * )VK_VertexRing_Mapped() + vertexBase;
+		const vkTessVertex_t *vn = v0 + tess.numVertexes - 1;
+		const float			*x0 = tess.xyz[0];
+		const float			*xn = tess.xyz[tess.numVertexes - 1];
+
+		if ( v0->xyz[0] != x0[0] || v0->xyz[1] != x0[1]
+			 || vn->xyz[0] != xn[0] || vn->xyz[1] != xn[1] ) {
+			static int s_rows;
+
+			s_rows++;
+			if ( s_rows <= 16 || ( s_rows % 256 ) == 0 ) {
+				VK_Guard_Row( "VK:2dring",
+							  "f=%d shader='%s' vbase=%d verts=%d "
+							  "ring0=(%.1f,%.1f) tess0=(%.1f,%.1f) "
+							  "ringN=(%.1f,%.1f) tessN=(%.1f,%.1f)",
+							  RB_FrameCount(), tess.shader ? tess.shader->name : "?",
+							  vertexBase, tess.numVertexes,
+							  (double)v0->xyz[0], (double)v0->xyz[1],
+							  (double)x0[0], (double)x0[1],
+							  (double)vn->xyz[0], (double)vn->xyz[1],
+							  (double)xn[0], (double)xn[1] );
+			}
+		}
+	}
 
 	if ( spans < 2 ) {
 		/* One draw for the whole batch, under whatever state the command buffer
@@ -589,12 +693,13 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 
 			VK_Guard_Row( "VK:2dcov",
 						  "f=%d span=WHOLE shader='%s' img='%s' spans=%d idx=[0,%d) verts=%d "
-						  "scissor=(%d,%d %dx%d) quad=(%d,%d)-(%d,%d) clip=(%d,%d %dx%d) "
+						  "slice=v%d/i%d scissor=(%d,%d %dx%d) quad=(%d,%d)-(%d,%d) clip=(%d,%d %dx%d) "
 						  "px=%lld vcol=%d,%d,%d,%d nvcol=%d rgbGen=%d const=%d,%d,%d,%d "
-						  "alphaGen=%d imgdesc=%s state=CMDBUF%s",
+						  "alphaGen=%d pubatest=%d imgdesc=%s state=CMDBUF%s",
 						  RB_FrameCount(), tess.shader ? tess.shader->name : "?",
 						  image ? image->imgName : "(none)", spans,
 						  numIndexes, tess.numVertexes,
+						  vertexBase, indexBase,
 						  clip[0], clip[1], clip[2], clip[3],
 						  quad[0], quad[1], quad[2], quad[3],
 						  area[0], area[1], area[2], area[3], px,
@@ -603,6 +708,7 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 						  stage ? stage->colorConst[0] : 0, stage ? stage->colorConst[1] : 0,
 						  stage ? stage->colorConst[2] : 0, stage ? stage->colorConst[3] : 0,
 						  stage ? (int)stage->alphaGen : 0,
+						  VK_Draw_LastAlphaTest(),
 						  imgDesc[0] ? imgDesc : "(none)",
 						  backEnd.in2D ? "" : " (3D)" );
 
@@ -811,6 +917,21 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		key.depthTest = qfalse;
 	}
 	key.depthWrite = ( stage->stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+
+	/* A 2D batch that loses its two-sided or depth-off state culls or z-fails
+	   every fragment and reads as text that never rasterised. */
+	if ( backEnd.in2D && PROBE_On() && ( key.cull != CT_TWO_SIDED || key.depthTest ) ) {
+		static int	s_rows;
+
+		s_rows++;
+		if ( s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
+			VK_Guard_Row( "VK:2dstate",
+						  "cull=%d depth=%d in2d=%d shader='%s' pubatest=%d f=%d",
+						  (int)key.cull, key.depthTest ? 1 : 0, backEnd.in2D,
+						  tess.shader ? tess.shader->name : "?",
+						  VK_Draw_LastAlphaTest(), RB_FrameCount() );
+		}
+	}
 
 	pipeline = VK_Draw_Pipeline( &key );
 	if ( pipeline == VK_NULL_HANDLE ) {
@@ -1599,6 +1720,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 			/* the static arena's arm: a resident world surface advances the
 			   counters its generator would have, without generating */
+			VK_Shade_NoteBatchSurf();
 			if ( !RB_VboStaticTrySurface( drawSurf->surface, *drawSurf->surface ) ) {
 				rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
 			}
@@ -1741,6 +1863,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			long long walkT0 = VK_WALK_T0();
 			long long walkNest0 = VK_WALK_NEST0();
 
+			VK_Shade_NoteBatchSurf();
 			if ( !RB_VboStaticTrySurface( drawSurf->surface, *drawSurf->surface ) ) {
 				rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
 			}

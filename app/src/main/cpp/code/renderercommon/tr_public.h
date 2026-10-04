@@ -162,6 +162,12 @@ typedef struct {
 	   and the per-widget ortho that could degenerate is gone.  A port-only slot,
 	   after the retail 62, so the export table's layout is untouched. */
 	void	(*Set2DOrigin)(float x, float y);
+
+	/* Port-only slot, after the retail 62, so the export table's layout is
+	   untouched.  The save-game thumbnail must be taken from a frame the menu
+	   did not composite over: the client holds the UI off while the request is
+	   outstanding and releases it when this says the shot was taken. */
+	qboolean	(*ScreenshotPending)(void);
 } refexport_t;
 
 #define REFEXPORT_RETAIL_SLOTS	62

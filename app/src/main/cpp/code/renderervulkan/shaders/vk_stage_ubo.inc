@@ -86,4 +86,5 @@ layout(std140, set = 0, binding = 0) uniform VKStageBlock {
 	float u_ForceAlpha;
 	vec2 u_SkyScroll;
 	int  u_SkyAlphaMode;
+	int  u_FlatMode;
 };

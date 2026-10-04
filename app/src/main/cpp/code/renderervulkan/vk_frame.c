@@ -706,10 +706,8 @@ qboolean VK_Frame_Submit( int slot )
 		return qfalse;
 	}
 
-	/* The arena bake's copies, when the walk made any, are a command buffer of
-	   their own (a copy may not be recorded inside a render pass) and they come
-	   FIRST: every draw of this frame that reads the arena is in the buffer that
-	   follows, so queue order is the order the copies were recorded in. */
+	/* The arena bake's copies come first; the barrier that closes their buffer
+	   is what orders the frame's draws behind them, not the submit order. */
 	xfer = VK_VboStaticXferClose( slot );
 	if ( xfer != VK_NULL_HANDLE ) {
 		buffers[count++] = xfer;

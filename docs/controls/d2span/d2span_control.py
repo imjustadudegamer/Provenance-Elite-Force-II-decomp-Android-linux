@@ -565,6 +565,211 @@ def retail_draws(old):
     return draws
 
 
+# ---- THE ONE-SHOT WRITERS: the state a draw emitted at its own record carries
+#
+# A glyph run, a box run, a line loop, a triangle or a raw frame draws at its own
+# record, and the 2D batch an earlier widget left open is usually still open
+# there.  Closing that batch replays its spans, and a span re-applies the BATCH's
+# ortho, window and scissor -- so a writer that applies its own clip BEFORE the
+# surface opens draws under the batch's clip instead of its own.
+#
+# The rects are the operator's own frame (run-20261019-082717, 800x600, frame
+# 843, read out of the [VK:2dcov] rows): the credits button's tile is the batch
+# still open when the confirmation dialog's label run arrives, and the run's
+# text lands at (265,216)-(536,236), 140 px above the credits' clip.  The
+# pre-fix shape is the log's own row: `scissor=(258,356 320x40)
+# quad=(265,216)-(536,236) clip=(265,356 271x0) px=0'.
+OP_W, OP_H = 800, 600
+
+# client-space clip rects, bottom-left, exactly the log's `appliedscn` values
+ONE_SHOT_BATCH_SCN = (258, 204, 320, 40)     # the credits button: the open batch
+ONE_SHOT_RUN_SCN = (200, 130, 320, 320)      # the dialog's own label widget
+# the run's own footprint, in the census's screen space (the log's `quad`)
+ONE_SHOT_TEXT_QUAD = (265, 216, 271, 20)
+
+ONE_SHOT_STREAM = [
+    # the reported defect, exactly as the log carries it: the credits button's
+    # tile opens the batch, the dialog's set2D does not close it, and the
+    # dialog's own label run arrives while it is still open
+    ("win", (0, 0, OP_W, OP_H)),
+    ("scn", ONE_SHOT_BATCH_SCN),
+    ("quad", 6),                          # the credits tile: the batch opens
+    ("win", (0, 0, OP_W, OP_H)),          # the dialog's own set2D
+    ("scn", ONE_SHOT_RUN_SCN),
+    ("font", ONE_SHOT_TEXT_QUAD),         # its label run: a one-shot surface
+]
+
+ONE_SHOT_CLASS_STREAM = [
+    # the same shape for the rest of the class: a widget's own fill, border and
+    # triangle arrive with an earlier widget's batch still open
+    ("win", (0, 0, OP_W, OP_H)),
+    ("scn", ONE_SHOT_BATCH_SCN),
+    ("quad", 6),                          # an earlier widget's tile
+    ("win", (0, 0, OP_W, OP_H)),
+    ("scn", ONE_SHOT_RUN_SCN),
+    ("loop", ONE_SHOT_TEXT_QUAD),         # its border: commits at its own record
+    ("box", ONE_SHOT_TEXT_QUAD),          # its fill
+    ("tri", ONE_SHOT_TEXT_QUAD),          # a triangle pic
+]
+
+
+def oneshot_draws(stream, old):
+    """Per one-shot record, the scissor the command buffer holds when it draws,
+    and where that record sits relative to the batch's own draws.
+
+    `old` is the pre-fix shape: the glyph run applied its own clip and THEN
+    opened its surface, so closing the batch replayed the batch's spans over it;
+    the box run and the triangle closed the batch and applied nothing; the line
+    loop neither closed it nor applied anything, so it drew before the batch it
+    belongs behind.
+    """
+    screen = (0, 0, OP_W, OP_H)
+    queued = (screen, screen)             # (window, scissor) the records queued
+    buf = (screen, screen)                # what the command buffer holds
+    spans = []                            # the open batch's (first, (win, scn))
+    quads = 0
+    out = []                              # (kind, scn, rect)
+    seq = []                              # (kind, index) in draw order
+
+    def close_batch():
+        nonlocal spans, quads, buf
+        if quads:
+            for _fi, st in spans:         # RB_StageDrawSpan: one apply per span
+                buf = st
+                out.append(("batch", st[1], None))
+                seq.append(("batch", len(seq)))
+        spans, quads = [], 0
+
+    for kind, arg in stream:
+        if kind == "win":
+            queued = (arg, arg)
+            buf = queued
+        elif kind == "scn":
+            queued = (queued[0], arg)
+            buf = queued
+        elif kind == "quad":
+            if not spans or spans[-1][1] != queued:
+                spans.append((quads, queued))
+            quads += arg
+        else:
+            own = ONE_SHOT_RUN_SCN if kind == "font" else queued[1]
+            if old:
+                if kind == "font":
+                    buf = (buf[0], own)   # the run applied its own clip first
+                    close_batch()         # then its surface closed the batch
+                elif kind in ("box", "tri"):
+                    close_batch()         # closed the batch, applied nothing
+                else:
+                    pass                  # neither closed the batch nor applied
+                scn = buf[1]
+            else:
+                close_batch()             # the surface opens first
+                buf = (buf[0], own)       # then the writer applies its own
+                scn = own
+            out.append((kind, scn, arg))
+            seq.append((kind, len(seq)))
+    return out, seq
+
+
+def cover_area(quad, scn):
+    """RB_2DCoverArea's own arithmetic, on corners: the intersection's start and
+    its x extent even when the y extent is empty, which is why the log's row
+    reads `clip=(265,356 271x0)' and not `271x20'."""
+    x0 = quad[0] if quad[0] > scn[0] else scn[0]
+    y0 = quad[1] if quad[1] > scn[1] else scn[1]
+    x1 = quad[2] if quad[2] < scn[0] + scn[2] else scn[0] + scn[2]
+    y1 = quad[3] if quad[3] < scn[1] + scn[3] else scn[1] + scn[3]
+    if x1 < x0:
+        x1 = x0
+    if y1 < y0:
+        y1 = y0
+    return (x0, y0, x1 - x0, y1 - y0)
+
+
+def oneshot_check(verbose):
+    run_scn = vk_scissor(ONE_SHOT_RUN_SCN, OP_W, OP_H)
+    batch_scn = vk_scissor(ONE_SHOT_BATCH_SCN, OP_W, OP_H)
+
+    def px_of(scn, quad):
+        ov = overlap(quad, scn)
+        return ov[2] * ov[3]
+
+    # ---- the reported defect, on the log's own frame -----------------------
+    good, _gs = oneshot_draws(ONE_SHOT_STREAM, old=False)
+    bad, _bs = oneshot_draws(ONE_SHOT_STREAM, old=True)
+
+    if verbose:
+        for tag, rows in (("FIXED", good), ("pre-fix", bad)):
+            print("    --- one-shot %s ---" % tag)
+            for kind, scn, rect in rows:
+                if rect is None:
+                    continue
+                print("      %-5s scn=(%d,%d %dx%d) quad=(%d,%d %dx%d) px=%d"
+                      % (kind, scn[0], scn[1], scn[2], scn[3],
+                         rect[0], rect[1], rect[2], rect[3],
+                         px_of(vk_scissor(scn, OP_W, OP_H), rect)))
+
+    # 1. the dialog's label run draws under its OWN clip and rasterises, which
+    #    is the operator's empty confirmation dialog
+    font = [r for r in good if r[0] == "font"]
+    check(len(font) == 1 and font[0][1] == ONE_SHOT_RUN_SCN,
+          "shipping: the glyph run draws under %r, not its own clip %r"
+          % (font[0][1] if font else None, ONE_SHOT_RUN_SCN))
+    check(px_of(run_scn, ONE_SHOT_TEXT_QUAD) > 0,
+          "shipping: the model's own dialog rect does not overlap its clip, so "
+          "this stream is not the operator's frame")
+
+    # 2. and the pre-fix shape is the log's row, byte for byte: the batch's clip,
+    #    zero pixels
+    font_bad = [r for r in bad if r[0] == "font"]
+    check(len(font_bad) == 1 and font_bad[0][1] == ONE_SHOT_BATCH_SCN,
+          "the pre-fix shape must leave the glyph run under the open batch's "
+          "clip, not %r" % (font_bad[0][1] if font_bad else None,))
+    check(font_bad and px_of(batch_scn, ONE_SHOT_TEXT_QUAD) == 0,
+          "the pre-fix shape's dialog text is not the log's px=0")
+    # the row in the operator's own log, through the census's own arithmetic:
+    # quad (265,216)-(536,236) against the scissor (258,356)-(578,396)
+    log_clip = cover_area((265, 216, 536, 236), batch_scn)
+    check(font_bad and log_clip == (265, 356, 271, 0),
+          "the pre-fix shape's intersection is %r, not the log's "
+          "clip=(265,356 271x0)" % (log_clip,))
+
+    # ---- the rest of the class --------------------------------------------
+    cgood, cgood_seq = oneshot_draws(ONE_SHOT_CLASS_STREAM, old=False)
+    cbad, cbad_seq = oneshot_draws(ONE_SHOT_CLASS_STREAM, old=True)
+
+    # 3. the box run and the triangle closed the batch and applied nothing, so
+    #    they drew under the batch's clip too
+    for kind in ("box", "tri"):
+        b_bad = [r for r in cbad if r[0] == kind]
+        b_good = [r for r in cgood if r[0] == kind]
+        check(b_bad and b_bad[0][1] == ONE_SHOT_BATCH_SCN,
+              "the pre-fix shape must leave the %s under the batch's clip" % kind)
+        check(b_good and b_good[0][1] == ONE_SHOT_RUN_SCN,
+              "shipping: the %s draws under %r, not its own clip"
+              % (kind, b_good[0][1] if b_good else None,))
+
+    # 4. the line loop committed at its own record, so it drew BEFORE the batch
+    #    it belongs behind -- the same class on the order axis
+    i_loop_good = next(i for i, (k, _j) in enumerate(cgood_seq) if k == "loop")
+    i_loop_bad = next(i for i, (k, _j) in enumerate(cbad_seq) if k == "loop")
+    last_batch_good = max(j for j, (k, _j) in enumerate(cgood_seq) if k == "batch")
+    last_batch_bad = max(j for j, (k, _j) in enumerate(cbad_seq) if k == "batch")
+    check(i_loop_good > last_batch_good,
+          "shipping: the line loop still draws before the batch it belongs behind")
+    check(i_loop_bad < last_batch_bad,
+          "the pre-fix shape did not let the line loop overtake the batch, so "
+          "this stream is not the one that was broken")
+    loop_good = [r for r in cgood if r[0] == "loop"]
+    check(loop_good and loop_good[0][1] == ONE_SHOT_RUN_SCN,
+          "shipping: the line loop draws under %r, not its own clip"
+          % (loop_good[0][1] if loop_good else None,))
+    loop_bad = [r for r in cbad if r[0] == "loop"]
+    check(loop_bad and loop_bad[0][1] == ONE_SHOT_RUN_SCN,
+          "the pre-fix line loop's clip was not its own, so its defect is not "
+          "the order this control names")
+
+
 def census(draws, scale=1.0):
     """The coverage census: per draw, the scissor it ran under, the quad's rect,
     their overlap and its pixel count.  Returns (rows, per-shader totals)."""
@@ -916,12 +1121,18 @@ def main():
         span_body = span_body.replace("VK_Draw_2DStateApply( cmd, ortho, win, scn );", "")
     if mutant == 20:
         span_body = span_body.replace("VK_Draw_LastScissorRect( clip );", "memcpy( clip, scn, sizeof( clip ) );")
+    if mutant == 22:
+        span_body = span_body.replace("v0->xyz[0] != x0[0]", "")
     check("VK_Draw_2DStateApply( cmd, ortho, win, scn );" in span_body,
           "RB_StageDrawSpan does not re-apply the span's own state before the "
           "span's draw, so the batch draws under whatever state was left")
     check("VK_Draw_LastScissorRect( clip );" in span_body,
           "the draw site does not read the scissor rect Vulkan was actually "
           "given, so its coverage verdict is a second opinion and not a proof")
+    check("v0->xyz[0] != x0[0]" in span_body
+          and 'VK_Guard_Row( "VK:2dring"' in span_body,
+          "the draw site does not assert the ring slice it reads holds this "
+          "batch's own vertices")
     i_state = span_body.find("VK_Draw_2DStateApply( cmd, ortho, win, scn );")
     i_cov = span_body.find("RB_2DCoverSpan(")
     i_draw = span_body.find("VK_Draw_DrawIndexed( cmd, count,")
@@ -1003,8 +1214,83 @@ def main():
           "VK_Draw_SetScissor writes the live 2D mirror during a replay, so the "
           "next quad's span snapshot reads a replayed span's scissor")
 
+    # --- a one-shot writer draws under its OWN record's state --------------
+    #
+    # A glyph run, a box run, a line loop, a triangle or a raw frame draws at its
+    # own record, and the 2D batch an earlier widget left open is usually still
+    # open there: closing it replays the batch's spans, and a span re-applies the
+    # BATCH's ortho, window and scissor.  The writer therefore takes the state
+    # its record was queued under BEFORE that flush and applies it after -- and
+    # the glyph run's skip test asks the command buffer, not the record mirror a
+    # replay leaves still.
+    if mutant == 23:
+        font = font.replace("RB_BeginSurface( cmd->shader, 0 );", "", 1)
+    if mutant == 24:
+        font = font.replace("VK_Draw_2DIssuedScissor( cmd->scissor )", "1")
+    if mutant == 25:
+        batch = batch.replace("RB_2D_OwnStateTake();", "")
+    if mutant == 26:
+        batch = batch.replace("RB_2D_OwnStateApply();", "")
+    if mutant == 27:
+        vk = vk.replace("s_2dIssuedScn[slot]", "vk_2dScissor", 1)
+
+    i_begin = font.find("RB_BeginSurface( cmd->shader, 0 );")
+    i_origin = font.find("VK_Draw_Set2DOrigin( cmd->originX")
+    i_skip = font.find("VK_Draw_2DIssuedScissor( cmd->scissor )")
+    i_glyphs = font.find("for ( i = 0; i < cmd->numGlyphs; i++ )")
+    check(i_begin >= 0 and i_origin > i_begin and i_skip > i_begin
+          and i_glyphs > i_origin and i_glyphs > i_skip,
+          "the glyph run does not open its surface before it applies its own "
+          "placement and clip (begin=%d origin=%d skip=%d glyphs=%d), so the "
+          "batch an earlier widget left open replays its spans over the run's "
+          "clip -- the confirmation dialog whose panel drew and whose text "
+          "rasterised nothing" % (i_begin, i_origin, i_skip, i_glyphs))
+    check("VK_Draw_SetScissor( cb, cmd->scissor[0]" in font
+          and "vk_2dScissor[0] != cmd->scissor[0]" not in font,
+          "the glyph run's scissor skip test reads the record mirror, which a "
+          "span replay leaves still, so a run whose clip the mirror already "
+          "describes skips the issue and draws under the replayed span's clip")
+
+    # the one-shot writers all go through the same take/apply pair, and the line
+    # loop closes the batch it would otherwise overtake
+    for header in ("void RB_2D_Box(", "void RB_2D_LineLoop(",
+                   "void RB_2D_TrianglePic(", "void RB_StretchRawDraw("):
+        b = body(batch, header)
+        i_take = b.find("RB_2D_OwnStateTake();")
+        i_flush = b.find("RB_2D_Flush();")
+        i_apply = b.find("RB_2D_OwnStateApply();")
+        check(i_take >= 0 and i_flush > i_take and i_apply > i_flush,
+              "%s does not take its own state before the flush and apply it "
+              "after (take=%d flush=%d apply=%d), so the batch an earlier widget "
+              "left open decides the clip it draws under"
+              % (header, i_take, i_flush, i_apply))
+    check("RB_2D_Flush();" in body(batch, "void RB_2D_LineLoop("),
+          "the line loop commits at its own record without closing the pending "
+          "batch, so it draws before the batch it belongs behind")
+    check(body(batch, "static void RB_2D_OwnStateTake(").count("VK_Draw_2DStateGet(") == 1
+          and "VK_Draw_2DStateApply( VK_Shade_CommandBuffer()" in body(batch, "static void RB_2D_OwnStateApply("),
+          "the one-shot state pair no longer reads the walk's 2D state and "
+          "re-applies it into the walk's command buffer")
+    check("qboolean VK_Draw_2DIssuedScissor(" in vk
+          and "s_2dIssuedScn[slot]" in body(vk, "qboolean VK_Draw_2DIssuedScissor(")
+          and "s_2dIssuedFrame[slot] != frame" in body(vk, "qboolean VK_Draw_2DIssuedScissor("),
+          "vk_draw.c does not answer what scissor the command buffer holds, so "
+          "a writer cannot tell a replayed span's clip from its own")
+
+    # the intersection this control compares the log's row against is the
+    # census's own, not a second opinion
+    area = body(draw, "static long long RB_2DCoverArea(")
+    for frag in ("int out[4]", "out[2] = x1 - x0; out[3] = y1 - y0;",
+                 "if ( x1 < x0 ) x1 = x0;", "if ( y1 < y0 ) y1 = y0;"):
+        check(frag in area,
+              "RB_2DCoverArea no longer has %r, so the log row this control "
+              "compares against is not the census's own arithmetic" % frag)
+
     # --- the model --------------------------------------------------------
     run_model(mutant)
+
+    # --- the one-shot writers, on the operator's own frame ----------------
+    oneshot_check(verbose=(mutant == 0))
 
     # --- the coverage census: which quads produced pixels, on retail's stream --
     retail_census_check(verbose=(mutant == 0))

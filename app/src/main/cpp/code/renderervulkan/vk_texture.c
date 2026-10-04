@@ -636,6 +636,15 @@ done:
    the block's own and not an RGBA texel. */
 qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked )
 {
+	return VK_Texture_ReadBlock( handle, x, y, out, NULL, blocked );
+}
+
+/* Same read, and the whole block when the format is block-compressed: the first
+   four bytes of a BC2/BC3 block are its alpha plane, so a caller that wants the
+   colour needs all sixteen. */
+qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],
+							   unsigned char blockOut[16], int *blocked )
+{
 	vkTexture_t *tex;
 	VkCommandBufferAllocateInfo allocInfo;
 	VkCommandBufferBeginInfo beginInfo;
@@ -804,6 +813,9 @@ qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], i
 
 	if ( mapped ) {
 		if ( blocked && *blocked ) {
+			if ( blockOut ) {
+				memcpy( blockOut, mapped, 16 );
+			}
 			memcpy( out, mapped, 4 );		/* the block's first four bytes */
 		} else {
 			memcpy( out, (const byte *)mapped + texelOffset, 4 );

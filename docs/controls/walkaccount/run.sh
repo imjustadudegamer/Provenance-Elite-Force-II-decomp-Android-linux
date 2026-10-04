@@ -6,6 +6,7 @@ set -e
 
 here=$( cd "$( dirname "$0" )" && pwd )
 src="$here/../../../app/src/main/cpp/code/renderervulkan"
+qc="$here/../../../app/src/main/cpp/code/qcommon"
 
 cd "$here"
 
@@ -56,5 +57,19 @@ sed 's/return ( n < n0 ) ? n : ( n - n0 );/return n - n0;/' \
 	"$src/tr_cmds.c" > "$mut/tr_cmds.c"
 name="6 the rule no longer handles a mid-window drain"
 src_fault "$name" "$src/vk_local.h" "$mut/tr_cmds.c" "$src/tr_backend.c"
+
+# 7: the present seam stops charging its children
+sed 's/VK_WALK_ADD_SUB( seamT0, VK_WSUB_RECEND );//' \
+	"$src/tr_cmds.c" > "$mut/tr_cmds.c"
+name="7 the present seam stops charging recend"
+src_fault "$name" "$src/vk_local.h" "$mut/tr_cmds.c" "$src/tr_backend.c" \
+	"$src/tr_init.c" "$qc/common.c"
+
+# 8: the frame row stops splitting its after-server residual
+sed 's/s_splitEv += s_splitEvT0 - s_splitRestT0;//' \
+	"$qc/common.c" > "$mut/common.c"
+name="8 the frame row stops accumulating ev"
+src_fault "$name" "$src/vk_local.h" "$src/tr_cmds.c" "$src/tr_backend.c" \
+	"$src/tr_init.c" "$mut/common.c"
 
 exit $rc

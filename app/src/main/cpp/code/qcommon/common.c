@@ -147,6 +147,95 @@ static char	*rd_buffer;
 static int	rd_buffersize;
 static void	(*rd_flush)( char *buffer );
 
+/* --- print-path liveness --------------------------------------------------
+ * `Com_RealPrintf' holds a recursion guard across its whole body, and every
+ * sink it calls sits inside that window: `Sys_Print' reaches the console
+ * Containers, and the qconsole branch reaches `FS_Write', which reaches
+ * `FS_FileForHandle' -- and that raises ERR_DROP on a dead handle.  A longjmp
+ * out of the window used to leave the guard set, and from then on EVERY
+ * Com_Printf in the process returned at the guard: both sinks silent, the
+ * frame loop alive, and the error's own text eaten, because Com_Error's
+ * ERR_DROP banner is itself a Com_Printf.  That is the menu-to-world silence
+ * of 2026-10-19: the guard wedged at the frame the load was clicked and no
+ * row reached game.log or qconsole.log again.
+ *
+ * The guard is therefore per-thread (the main thread and the render thread
+ * print concurrently, and a shared counter let one thread consume another's
+ * reservation, dropping unrelated rows), and `Com_PrintRecover' clears it
+ * from `Com_Error' and once per `Com_Frame', so a wedge can never outlive a
+ * frame.  `Com_PrintRecover' also abandons a redirect whose buffer is still
+ * installed: `SVC_RemoteCommand' points `rd_buffer' at a 78 KiB stack frame
+ * and `Com_EndRedirect' is the only thing that clears it, so a Com_Error
+ * raised by the command it executed used to leave every later print writing
+ * into a dead frame. */
+static _Thread_local int	t_printRecursion = 0;
+static _Thread_local int	t_printOpeningLog = 0;
+static int					com_printRecovers = 0;
+static qboolean				qconsoleEverOpened = qfalse;
+
+static void Com_PrintRecover( void ) {
+	if ( t_printRecursion || t_printOpeningLog ) {
+		com_printRecovers++;
+		/* One loud row, capped, instead of a silent wedge forever. */
+		if ( com_printRecovers <= 4 ) {
+			Com_Printf( "[CORE:print] recovered a wedged print guard "
+						"(recursion=%d opening=%d recoveries=%d)\n",
+						t_printRecursion, t_printOpeningLog, com_printRecovers );
+		}
+		t_printRecursion = 0;
+		t_printOpeningLog = 0;
+	}
+
+	if ( rd_buffer ) {
+		/* Abandon without flushing: the flush target may be the frame that
+		 * just unwound. */
+		rd_buffer = NULL;
+		rd_buffersize = 0;
+		rd_flush = NULL;
+		if ( com_printRecovers <= 4 ) {
+			Com_Printf( "[CORE:print] abandoned an un-closed print redirect\n" );
+		}
+	}
+}
+
+qboolean Com_PrintAlive( void ) {
+	return ( t_printRecursion == 0 && rd_buffer == NULL ) ? qtrue : qfalse;
+}
+
+/* Gated heartbeat: one row every `sec' seconds from the frame loop, so a boot
+ * that goes quiet PROVES it instead of leaving a hole that looks like a load
+ * that never happened.  Silent by default; `qa_probe' is the master switch. */
+static void Com_PrintHeartbeat( void ) {
+	static cvar_t	*heartbeatSecs;
+	static int		lastBeat;
+	int				now;
+	int				beat;
+
+	if ( !PROBE_On() ) {
+		lastBeat = 0;
+		return;
+	}
+
+	if ( !heartbeatSecs ) {
+		heartbeatSecs = Cvar_Get( "qa_printHeartbeat", "5", CVAR_TEMP );
+	}
+
+	beat = heartbeatSecs->integer;
+	if ( beat < 1 ) {
+		beat = 1;
+	}
+
+	now = Sys_Milliseconds() / 1000;
+	if ( lastBeat && ( now - lastBeat ) < beat ) {
+		return;
+	}
+	lastBeat = now;
+
+	Com_Printf( "[CORE:print] alive frames=%d logfile=%d recoveries=%d "
+				"sinks=stderr+qconsole\n",
+				com_frameNumber, logfile, com_printRecovers );
+}
+
 #define MAX_FPS_TIMES 16
 
 #ifdef __cplusplus
@@ -203,16 +292,13 @@ void QDECL Com_Printf( const char *fmt, ... ) {
 }
 
 static void Com_RealPrintf( int level, const char *msg ) {
-	static qboolean opening_qconsole = qfalse;
-	static qboolean recursive_count = qfalse;
-
-	if (recursive_count) {
+	if (t_printRecursion) {
 		return;
 	}
-	recursive_count = qtrue;
+	t_printRecursion++;
 
 	if ( com_printwarnings && !com_printwarnings->integer && level ) {
-		recursive_count--;
+		t_printRecursion--;
 		return;
 	}
 
@@ -222,7 +308,7 @@ static void Com_RealPrintf( int level, const char *msg ) {
 			*rd_buffer = 0;
 		}
 		Q_strcat(rd_buffer, rd_buffersize, msg);
-		recursive_count--;
+		t_printRecursion--;
 		return;
 	}
 
@@ -246,20 +332,29 @@ static void Com_RealPrintf( int level, const char *msg ) {
 		( com_logfile->integer == 1 ||
 		  ( com_logfile->integer == 2 && level ) ||
 		  com_logfile->integer == 3 ) ) {
-		if ( !logfile && FS_Initialized() && !opening_qconsole) {
+		if ( !logfile && FS_Initialized() && !t_printOpeningLog) {
 			struct tm *newtime;
 			time_t aclock;
 
-      opening_qconsole = qtrue;
+      t_printOpeningLog = 1;
 
 			time( &aclock );
 			newtime = localtime( &aclock );
 
-			logfile = FS_FOpenFileWrite_HomeData( "qconsole.log" );
+			/* The first open of a boot truncates, as retail does.  Any later
+			 * open is a heal after a filesystem rebuild tore the handle down,
+			 * and that one appends so the rows already in the file survive as
+			 * evidence. */
+			if ( qconsoleEverOpened ) {
+				logfile = FS_FOpenFileAppend_HomeData( "qconsole.log" );
+			} else {
+				logfile = FS_FOpenFileWrite_HomeData( "qconsole.log" );
+			}
 
-            recursive_count--;
 			if(logfile)
 			{
+				qconsoleEverOpened = qtrue;
+
 				Com_Printf( "logfile opened on %s\n", asctime( newtime ) );
 
 				if ( com_logfile->integer > 2 )
@@ -267,25 +362,36 @@ static void Com_RealPrintf( int level, const char *msg ) {
 					FS_ForceFlush(logfile);
 				}
 			}
-			else
+
+			if (!logfile)
 			{
 				Com_Printf("Opening qconsole.log failed!\n");
 				Cvar_SetValue("logfile", 0);
 			}
-            recursive_count++;
 
-      opening_qconsole = qfalse;
+      t_printOpeningLog = 0;
 		}
 		if (logfile && FS_Initialized()) {
 			size_t msgLen = strlen(msg);
 
-			if (msgLen > 0) {
+			if ( !FS_WriteHandleLive( logfile ) ) {
+				/* A filesystem rebuild (FS_Restart on a map load) tears down
+				 * every handle; the stale one used to raise ERR_DROP out of
+				 * this very function and wedge the guard above.  Drop it, say
+				 * so with the guard released (the same idiom the open block
+				 * above uses), and let the next print reopen qconsole.log. */
+				logfile = 0;
+				t_printRecursion--;
+				Com_Printf( "[CORE:print] qconsole.log handle went stale "
+							"at frames=%d; reopening\n", com_frameNumber );
+				t_printRecursion++;
+			} else if (msgLen > 0) {
 				FS_Write(msg, msgLen, logfile);
 			}
 		}
     }
 
-    recursive_count--;
+    t_printRecursion--;
 }
 
 
@@ -453,6 +559,12 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 		Sys_Error( "$$RecursiveErrorAfter$$ %s", com_errorMessage );
 	}
 	com_errorEntered = qtrue;
+
+	/* Every arm below longjmps or exits.  Drop the print-path state first:
+	 * an error raised from inside Com_RealPrintf leaves its recursion guard
+	 * set, and the ERR_DROP banner above is itself a Com_Printf, so the
+	 * banner never reached either sink while the guard was wedged. */
+	Com_PrintRecover();
 
 	switch (code) {
 	case ERR_DISCONNECT:
@@ -2645,8 +2757,8 @@ void Com_Frame( void ) {
 
 	int		smpFrameStart, smpSpinStart, smpAfterSpin, smpBeforeServer, smpAfterServer, smpClientStart, smpFrameEnd;
 	/* the main-thread frame split: server against everything after it */
-	static int s_splitT0, s_splitFrames, s_splitSv, s_splitRest;
-	int        s_splitRestT0, s_splitNow;
+	static int s_splitT0, s_splitFrames, s_splitSv, s_splitRest, s_splitEv, s_splitCl;
+	int        s_splitRestT0, s_splitNow, s_splitEvT0 = 0;
 
 	int		ui_cfgUsec = 0, ui_vlogUsec = 0, ui_fnumUsec = 0;
 	int		ui_evUsec = 0, ui_spinIters = 0;
@@ -2655,8 +2767,15 @@ void Com_Frame( void ) {
 	int		ui_waitUsec = 0, ui_spinUsec = 0, ui_periodUsec = 0;
 
 	if ( setjmp (abortframe) ) {
-		return;			
+		/* A longjmp landed here.  Whatever the frame was holding, including
+		 * the print recursion guard, is stale; clear it before the next row
+		 * goes out so a wedge cannot outlive the frame that raised it. */
+		Com_PrintRecover();
+		return;
 	}
+
+	Com_PrintRecover();
+	Com_PrintHeartbeat();
 
 	UI_ROOT_BEGIN( UI_FAM_SPIN );
 
@@ -2826,6 +2945,7 @@ void Com_Frame( void ) {
 	s_splitSv += smpAfterServer - smpBeforeServer;
 
 	s_splitRestT0 = Sys_Milliseconds();
+	s_splitEvT0 = s_splitRestT0;
 
 	if ( com_dedicated->modified ) {
 		Cvar_Get( "dedicated", "0", 0 );
@@ -2848,6 +2968,10 @@ void Com_Frame( void ) {
 	Com_EventLoop();
 	Cbuf_Execute(msec);
 
+	/* ev= is the event loop plus the command buffer, cl= is CL_Frame; rest=
+	   keeps naming the whole after-server time. */
+	s_splitEvT0 = Sys_Milliseconds();
+	s_splitEv += s_splitEvT0 - s_splitRestT0;
 
 	if ( com_speeds->integer ) {
 		timeBeforeClient = Sys_Milliseconds ();
@@ -2885,14 +3009,18 @@ void Com_Frame( void ) {
 	   named instead of inferred. */
 	s_splitNow = Sys_Milliseconds();
 	s_splitRest += s_splitNow - s_splitRestT0;
+	s_splitCl += smpFrameEnd - s_splitEvT0;
 	if ( !s_splitT0 ) {
 		s_splitT0 = s_splitNow;
 	} else if ( s_splitNow - s_splitT0 >= 1000 ) {
 		Com_Printf(
-			"[PERF:frame] win=%dms frames=%d sv=%dms rest=%dms\n",
-			s_splitNow - s_splitT0, s_splitFrames, s_splitSv, s_splitRest );
+			"[PERF:frame] win=%dms frames=%d sv=%dms ev=%dms cl=%dms rest=%dms\n",
+			s_splitNow - s_splitT0, s_splitFrames, s_splitSv, s_splitEv, s_splitCl,
+			s_splitRest );
 		s_splitSv = 0;
 		s_splitRest = 0;
+		s_splitEv = 0;
+		s_splitCl = 0;
 		s_splitFrames = 0;
 		s_splitT0 = s_splitNow;
 	}

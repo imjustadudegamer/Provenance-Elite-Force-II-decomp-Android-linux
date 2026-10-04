@@ -45,6 +45,16 @@ static int ttycon_show_overdue = 0;
 static int TTY_erase;
 static int TTY_eof;
 
+/* SIGCONT asks for the tty to be set up again.  The old handler called
+ * CON_Init() straight from the signal: CON_Init prints, and a print that
+ * lands while the interrupted thread already holds the stderr stream's own
+ * lock blocks that thread on its own lock forever.  From then on every
+ * fputs(stderr) in the process blocks -- which is a stderr sink that goes
+ * silent while the engine and the qconsole.log sink keep running.  The
+ * handler now only raises a flag and the main loop does the work. */
+static volatile sig_atomic_t	ttycon_reinit = 0;
+static qboolean					ttycon_notice_done = qfalse;
+
 static struct termios TTY_tc;
 
 static field_t TTY_con;
@@ -189,7 +199,8 @@ field_t *Hist_Next( void )
 
 void CON_SigCont(int signum)
 {
-	CON_Init();
+	(void)signum;
+	ttycon_reinit = 1;
 }
 
 void CON_Init( void )
@@ -205,7 +216,12 @@ void CON_Init( void )
 
 	if (!stdinIsATTY)
 	{
-		Com_Printf("tty console mode disabled\n");
+		/* Once.  This runs again on every SIGCONT, and a repeat would put a
+		 * copy of the notice into the log for each one. */
+		if (!ttycon_notice_done) {
+			ttycon_notice_done = qtrue;
+			Com_Printf("tty console mode disabled\n");
+		}
 		ttycon_on = qfalse;
 		stdin_active = qtrue;
 		return;
@@ -235,6 +251,13 @@ char *CON_Input( void )
 	char key;
 	field_t *history;
 	size_t Q_UNUSED_VAR size;
+
+	/* Deferred from the SIGCONT handler: see ttycon_reinit above.  This runs
+	 * on the main thread, once per frame, where printing is safe. */
+	if (ttycon_reinit) {
+		ttycon_reinit = 0;
+		CON_Init();
+	}
 
 	if(ttycon_on)
 	{

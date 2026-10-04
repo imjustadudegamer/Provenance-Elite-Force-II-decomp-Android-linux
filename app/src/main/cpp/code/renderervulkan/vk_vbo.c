@@ -122,17 +122,17 @@ static int				s_fastSurfaces;
 static int				s_bakedSurfaces;
 static int				s_arenaBatches;
 static int				s_streamBatches;
+/* bakes the rebase-span and position checks refused: surfaces that stayed
+   streamed instead of entering the arena, and the size of what it declined */
+static int				s_bakeRefused;
 
 /* ---- the bake's transfers ------------------------------------------------- */
 
-/* The bake copies the ring's packed bytes into the device-local arena, and
-   vkCmdCopyBuffer may not be recorded inside a render pass -- the walk is
-   inside one for the whole frame, and the validation layer named it
-   (VUID-vkCmdCopyBuffer-renderpass, once per baked surface).  The copies go
-   into a second command buffer for the same frame, submitted ahead of the
-   frame's own buffer, so queue order still puts them before every draw of the
-   frame that reads the arena: the order recording them inline gave, without the
-   invalid call site. */
+/* The bake's copies cannot record inside the frame's render pass
+   (VUID-vkCmdCopyBuffer-renderpass), so they take their own buffer, submitted
+   first in the frame's submission.  Submission order defines no dependency
+   (vkspec.txt:21527) -- the barrier in VK_VboStaticXferClose does
+   (vkspec.txt:26884, scopes by submission order, :17333). */
 static VkCommandBuffer	s_xferCmd[VK_FRAMES_IN_FLIGHT];
 static qboolean			s_xferReady[VK_FRAMES_IN_FLIGHT];
 static qboolean			s_xferOpen[VK_FRAMES_IN_FLIGHT];
@@ -251,7 +251,10 @@ static vkStaticRegion_t *VK_StaticFind( const void *surf )
 static qboolean VK_StaticEnabled( void )
 {
 	if ( !s_cvar ) {
-		s_cvar = ri.Cvar_Get( "r_vboStatic", "1", 0 );
+		/* off until it accounts for itself: an arena batch draws no tess arrays,
+		   so a wrong bake is invisible -- geometry that covers nothing and no
+		   row saying why */
+		s_cvar = ri.Cvar_Get( "r_vboStatic", "0", 0 );
 	}
 	return s_cvar->integer != 0;
 }
@@ -521,10 +524,58 @@ static qboolean VK_StaticBake( const vkStaticRec_t *r, const vkIndex_t *indexes,
 				+ (size_t)r->vertStart * VK_STREAM_STRIDE,
 			(size_t)r->numVerts * VK_STREAM_STRIDE );
 
-	/* the rebase the streaming pack would have made, written once */
+	/* the rebase the streaming pack would have made, written once.  Every
+	   rebased index must land inside this region's own vertex span: one outside
+	   it is a surface drawn from another surface's geometry, which is the
+	   silent class -- the batch draws, covers nothing, and no row says why.  A
+	   bad rebase refuses the bake and the surface keeps streaming. */
+
+	/* the positions are what the arena draws with for the rest of the session,
+	   and a non-finite one covers nothing while every index stays valid -- the
+	   one class a rebase check cannot see, since it reads only index
+	   arithmetic.  Walk them all: a bake is once per surface. */
+	{
+		const float	*p = (const float *)( s_stageVboMap
+										 + (size_t)e->first * VK_STREAM_STRIDE );
+		int			v, k, bad = -1;
+
+		for ( v = 0; v < r->numVerts && bad < 0; v++ ) {
+			const float	*xyz = p + v * ( VK_STREAM_STRIDE / (int)sizeof( float ) );
+
+			for ( k = 0; k < 3; k++ ) {
+				if ( !( xyz[k] > -1e19f && xyz[k] < 1e19f ) ) {
+					bad = v;
+					break;
+				}
+			}
+		}
+		if ( bad >= 0 ) {
+			e->surf = NULL;
+			s_bakeRefused++;
+			if ( R_ProbeStatsOn() ) {
+				VK_Guard_Row( "VK:vbo", "bake refused shader='%s' vert=%d of %d "
+										  "base=%d ringbase=%d reason=non-finite-position",
+							  tess.shader ? tess.shader->name : "?", bad, r->numVerts,
+							  e->first, ringByteBase );
+			}
+			return qfalse;
+		}
+	}
+
 	for ( j = 0; j < r->numIdx; j++ ) {
-		s_stageIboMap[e->idxFirst + j] =
-			(vkIndex_t)( e->first + ( indexes[r->idxStart + j] - r->vertStart ) );
+		int rel = indexes[r->idxStart + j] - r->vertStart;
+
+		if ( rel < 0 || rel >= r->numVerts ) {
+			e->surf = NULL;
+			s_bakeRefused++;
+			if ( R_ProbeStatsOn() ) {
+				VK_Guard_Row( "VK:vbo", "bake refused shader='%s' idx=%d rel=%d verts=%d region=%d",
+						  tess.shader ? tess.shader->name : "?", j, rel,
+						  r->numVerts, (int)( e - s_hash ) );
+			}
+			return qfalse;
+		}
+		s_stageIboMap[e->idxFirst + j] = (vkIndex_t)( e->first + rel );
 	}
 
 	/* not VK_Shade_CommandBuffer(): the frame buffer is inside its render pass
@@ -615,6 +666,24 @@ int RB_VboStaticBatchItems( vkStaticItemView_t *out, int max )
 const float *RB_VboStaticStageFloats( void )
 {
 	return (const float *)s_stageVboMap;
+}
+
+/* The batch's own rebased index block.  An arena batch never writes tess.indexes,
+   so anything that reads it reads the previous batch's geometry; the draw itself
+   reads this block, and the census has to read the same one.  NULL when the
+   current batch is not an arena batch. */
+const vkIndex_t *RB_VboStaticBatchIndexes( int *firstOut )
+{
+	if ( !s_ready || s_batchMode != VK_SB_ARENA || s_recCount <= 0 || s_recOverflow ) {
+		return NULL;
+	}
+	if ( s_rec[0].region < 0 ) {
+		return NULL;
+	}
+	if ( firstOut ) {
+		*firstOut = s_rec[0].idxStart;
+	}
+	return s_stageIboMap + s_hash[s_rec[0].region].idxFirst;
 }
 
 qboolean RB_VboStaticArenaBatch( void )
@@ -761,10 +830,10 @@ void RB_VboStaticRow( void )
 	if ( rows == 1 || ( rows % 600 ) == 0 || fast != lastFast ) {
 		VK_Guard_Row( "VK:vbo",
 					  "fast=%d baked=%d arena=%d/%d verts (%d) idxes (%d) full=%d "
-					  "batches arena=%d stream=%d compose=%d devrun=%d f=%d",
+					  "refused=%d batches arena=%d stream=%d compose=%d devrun=%d f=%d",
 					  fast, baked, s_arenaVerts, (int)VK_STATIC_ARENA_VERTS,
 					  s_arenaIdxes, (int)VK_STATIC_ARENA_INDEXES,
-					  s_arenaFull ? 1 : 0, s_arenaBatches, s_streamBatches,
+					  s_arenaFull ? 1 : 0, s_bakeRefused, s_arenaBatches, s_streamBatches,
 					  s_composeDraws, s_devRunDraws, RB_FrameCount() );
 	}
 	lastFast = fast;

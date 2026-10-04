@@ -504,6 +504,13 @@ void RB_TakeScreenshot( int x, int y, int width, int height, char *fileName ) {
 	ri.Hunk_FreeTempMemory(allbuf);
 }
 
+/* The GLES3 lane consumes the screenshot request inside its own render list,
+   so it never reports one pending. */
+qboolean R_ScreenShotPendingStub( void )
+{
+	return qfalse;
+}
+
 const void *RB_TakeScreenshotCmd( const void *data ) {
 	const screenshotCommand_t	*cmd;
 	
@@ -1677,6 +1684,9 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.SetColor = Draw_SetColor;
 	re.Set2DWindow = Set2DWindow;
 	re.Set2DOrigin = Set2DOrigin;
+	/* this lane takes its screenshot inside the render list, so it holds no
+	   deferred request for the client to release */
+	re.ScreenshotPending = R_ScreenShotPendingStub;
 	re.DrawStretchPic = Draw_StretchPic;
 	re.DrawTilePic = Draw_TilePic;
 	re.DrawTilePicOffset = Draw_TilePicOffset;
