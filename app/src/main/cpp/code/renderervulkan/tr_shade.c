@@ -55,6 +55,7 @@ static float	s_debugColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 void VK_Shade_BatchBegin( const shader_t *shader );
 void VK_Shade_BatchEnd( void );
 void VK_Shade_NoteSubmitted( int stages );
+void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean substituted );
 
 static void vkWireColor3f( float r, float g, float b ) {
 	s_debugColor[0] = r; s_debugColor[1] = g; s_debugColor[2] = b; s_debugColor[3] = 1.0f;
@@ -1373,7 +1374,9 @@ void RB_StageIteratorVertexLitTextureUnfogged( void )
 		unsigned	stateBits = RF_ForceAlphaStateBits( tess.xstages[0]->stateBits );
 
 		VK_ApplyStateBits( stateBits );
-		VK_Shade_NoteSubmitted( 1 );
+		/* VK_DrawStage counts the pass it submits; noting it here as well made
+		   this one-pass iterator read as two drawn stages against one expected,
+		   which is the whole of the `expected=1 drawn=2` row class. */
 		VK_DrawStage( input, tess.xstages[0], tess.shader, stateBits, -1.0f, qfalse );  
 	}
 
@@ -1396,6 +1399,7 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 
 	{
 		vkProgram_t	*lmprog;
+		qboolean	sub0 = qfalse, sub1 = qfalse;
 
 		VK_ApplyStateBits( VKS_DEPTHMASK_TRUE );
 
@@ -1417,6 +1421,7 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 		{
 			VK_SelectTexture( 0 );
 			VK_Bind( tr.whiteImage );
+			sub0 = qtrue;
 		}
 		else
 		{
@@ -1428,6 +1433,7 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 		{
 			VK_SelectTexture( 1 );
 			VK_Bind( tr.whiteImage );
+			sub1 = qtrue;
 		}
 		else
 		{
@@ -1445,6 +1451,12 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 			VK_Shade_NoteSubmitted( 1 );
 			VK_StageBindCensus( tess.shader, tess.xstages[0], 0, qfalse, w0, w1, u0, u1 );
 		}
+
+		/* this iterator binds both units itself, so it owes the census the same
+		   bind witness VK_DrawStage gives the generic walk: without it the
+		   world's commonest iterator reported no bound image at all. */
+		VK_Shade_BindWitness( tess.xstages[0], 0, sub0 );
+		VK_Shade_BindWitness( tess.xstages[0], 1, sub1 );
 
 		/* single-stage iterator: there is no later stage to share a slice with */
 		RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,

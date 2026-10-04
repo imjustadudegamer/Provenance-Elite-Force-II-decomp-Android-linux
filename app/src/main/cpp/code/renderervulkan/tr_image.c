@@ -649,7 +649,7 @@ static void SMP_RecordUploadLevel( int level, int w, int h )
    paths themselves call them, so the image the create makes is the image the
    upload fills by construction. */
 
-static void Upload32Dims( int width, int height, qboolean picmip,
+static void Upload32Dims( int width, int height, int picmip,
 						  int *outW, int *outH )
 {
 	int sw, sh;
@@ -685,7 +685,7 @@ static void Upload32Dims( int width, int height, qboolean picmip,
 }
 
 static void UploadCompressedDims( int width, int height, int iMipmapsAvailable,
-								  qboolean picmip, int *startLevelOut,
+								  int picmip, int *startLevelOut,
 								  int *outW, int *outH )
 {
 	int iStartImage = 0;
@@ -736,7 +736,7 @@ static void UploadCompressedDims( int width, int height, int iMipmapsAvailable,
 }
 
 static void UploadTranscodedDims( int width, int height, int iMipmapsAvailable,
-								  qboolean picmip, int *baseOut, int *outW, int *outH )
+								  int picmip, int *baseOut, int *outW, int *outH )
 {
 	int base = ( picmip > 0 ) ? (int)picmip : 0;
 	int upW, upH;
@@ -774,7 +774,7 @@ static void Upload32(
 	int width,
 	int height,
 	int numMipmaps,
-	qboolean picmip, 
+	int picmip, 
 	qboolean dynamicallyUpdated,
 	qboolean force32bit,
 	qboolean hasAlpha,
@@ -1019,7 +1019,7 @@ static void UploadCompressed(
 	int height,
 	int numMipmaps,
 	int iMipmapsAvailable,
-	qboolean picmip,
+	int picmip,
 	int vkCompressMode,
 	int* format,
 	int* pUploadWidth,
@@ -1122,7 +1122,7 @@ static void UploadDecoded(
 	int height,
 	int numMipmaps,
 	int iMipmapsAvailable,
-	qboolean picmip,
+	int picmip,
 	int vkCompressMode,
 	int* format,
 	int* pUploadWidth,
@@ -1294,7 +1294,7 @@ static void UploadTranscoded(
 	int height,
 	int numMipmaps,
 	int iMipmapsAvailable,
-	qboolean picmip,
+	int picmip,
 	int srcDxt,
 	int target,
 	int* format,
@@ -1429,6 +1429,14 @@ image_t* R_CreateImageOld(
 	qboolean	dynamicallyUpdated = qfalse;
 	int i;
 	long		hash;
+	/* `allowPicmip` is the flag that permits scaling, not the number of levels
+	   to drop: retail takes the count from r_picmip->integer under that flag
+	   (Upload32 @0x00013000: `if (a8) v28 = r_picmip`, and the uncompressed
+	   arm's `>> a5`).  Passing the flag itself as the count shifted every
+	   allowPicmip image by one level with r_picmip=0 -- the whole world
+	   corpus uploaded at half extent while the UI, loaded with the flag off,
+	   stayed full size. */
+	int			picmip = allowPicmip ? r_picmip->integer : 0;
 
 	if (strlen(name) >= MAX_QPATH ) {
 		ri.Error (ERR_DROP, "R_CreateImage: \"%s\" is too long\n", name);
@@ -1486,11 +1494,11 @@ image_t* R_CreateImageOld(
 		if ( vkCompressMode && supported ) {
 			if ( vkConfig.textureCompression != TC_NONE ) {
 				UploadCompressedDims( width, height, iMipmapsAvailable,
-									  allowPicmip, NULL, &upW, &upH );
+									  picmip, NULL, &upW, &upH );
 				compressed = qtrue;
 			} else if ( smp_texTranscode != SMP_TEXC_NONE ) {
 				UploadTranscodedDims( width, height, iMipmapsAvailable,
-									  allowPicmip, NULL, &upW, &upH );
+									  picmip, NULL, &upW, &upH );
 				compressed = qtrue;
 			}
 		}
@@ -1501,12 +1509,12 @@ image_t* R_CreateImageOld(
 			/* the device has no format for the source: the image is RGBA8 and
 			   the upload decodes the chain into it */
 			UploadCompressedDims( width, height, iMipmapsAvailable,
-								  allowPicmip, NULL, &upW, &upH );
+								  picmip, NULL, &upW, &upH );
 			format = VK_FORMAT_R8G8B8A8_UNORM;
 			s_vkUploadDecoded = qtrue;
 			mipLevels = SMP_MipLevelCount( upW, upH );
 		} else {
-			Upload32Dims( width, height, allowPicmip, &upW, &upH );
+			Upload32Dims( width, height, picmip, &upW, &upH );
 			mipLevels = numMipmaps ? SMP_MipLevelCount( upW, upH ) : 1;
 		}
 		if ( mipLevels < 1 ) {
@@ -1576,7 +1584,7 @@ image_t* R_CreateImageOld(
 				image->height,
 				image->numMipmaps,
 				iMipmapsAvailable,
-				allowPicmip,
+				picmip,
 				vkCompressMode,
 				&image->internalFormat,
 				&image->uploadWidth,
@@ -1595,7 +1603,7 @@ image_t* R_CreateImageOld(
 				image->height,
 				image->numMipmaps,
 				iMipmapsAvailable,
-				allowPicmip,
+				picmip,
 				vkCompressMode,
 				&image->internalFormat,
 				&image->uploadWidth,
@@ -1619,7 +1627,7 @@ image_t* R_CreateImageOld(
 				image->height,
 				image->numMipmaps,
 				iMipmapsAvailable,
-				allowPicmip,
+				picmip,
 				s_gles3PathSrcDxt,
 				smp_texTranscode,
 				&image->internalFormat,
@@ -1640,7 +1648,7 @@ image_t* R_CreateImageOld(
 			image->width,
 			image->height,
 			image->numMipmaps,
-			allowPicmip,
+			picmip,
 			image->dynamicallyUpdated,
 			force32bit,
 			hasAlpha,

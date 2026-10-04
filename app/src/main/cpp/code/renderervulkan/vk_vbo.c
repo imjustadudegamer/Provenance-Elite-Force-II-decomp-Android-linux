@@ -434,6 +434,11 @@ void RB_VboStaticReset( void )
 	s_recCount = 0;
 	s_recOverflow = qfalse;
 	s_batchMode = VK_SB_UNKNOWN;
+	/* the census reads these as THIS batch's geometry; a streamed batch never
+	   calls RB_VboStaticDrawRuns, so without the reset it would report the
+	   previous arena batch's run and a streamed miss would read as composed */
+	s_lastRunMode = 0;
+	s_lastRunIdx = 0;
 }
 
 void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxStart, int numIdx )

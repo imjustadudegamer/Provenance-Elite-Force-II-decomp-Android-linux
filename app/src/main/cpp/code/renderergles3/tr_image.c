@@ -629,7 +629,7 @@ static void Upload32(
 	int width,
 	int height,
 	int numMipmaps,
-	qboolean picmip, 
+	int picmip, 
 	qboolean dynamicallyUpdated,
 	qboolean force32bit,
 	qboolean hasAlpha,
@@ -907,7 +907,7 @@ static void UploadCompressed(
 	int height,
 	int numMipmaps,
 	int iMipmapsAvailable,
-	qboolean picmip,
+	int picmip,
 	int glCompressMode,
 	int* format,
 	int* pUploadWidth,
@@ -1093,7 +1093,7 @@ static void UploadTranscoded(
 	int height,
 	int numMipmaps,
 	int iMipmapsAvailable,
-	qboolean picmip,
+	int picmip,
 	int srcDxt,
 	int target,
 	int* format,
@@ -1241,7 +1241,7 @@ image_t* R_CreateImageOld(
 	int height,
 	int numMipmaps,
 	int iMipmapsAvailable,
-	qboolean allowPicmip,
+	int allowPicmip,
 	qboolean force32bit,
 	qboolean hasAlpha,
 	int glCompressMode,
@@ -1252,6 +1252,10 @@ image_t* R_CreateImageOld(
 	qboolean	dynamicallyUpdated = qfalse;
 	int i;
 	long		hash;
+	/* `allowPicmip` permits scaling; the number of levels to drop is
+	   r_picmip->integer under that flag.  Using the flag as the count shifted
+	   every shader image by one level at r_picmip=0. */
+	int			picmip = allowPicmip ? r_picmip->integer : 0;
 
 	if (strlen(name) >= MAX_QPATH ) {
 		ri.Error (ERR_DROP, "R_CreateImage: \"%s\" is too long\n", name);
@@ -1335,7 +1339,7 @@ image_t* R_CreateImageOld(
 				image->height,
 				image->numMipmaps,
 				iMipmapsAvailable,
-				allowPicmip,
+				picmip,
 				glCompressMode,
 				&image->internalFormat,
 				&image->uploadWidth,
@@ -1357,7 +1361,7 @@ image_t* R_CreateImageOld(
 				image->height,
 				image->numMipmaps,
 				iMipmapsAvailable,
-				allowPicmip,
+				picmip,
 				s_gles3PathSrcDxt,
 				smp_texTranscode,
 				&image->internalFormat,
@@ -1378,7 +1382,7 @@ image_t* R_CreateImageOld(
 			image->width,
 			image->height,
 			image->numMipmaps,
-			allowPicmip,
+			picmip,
 			image->dynamicallyUpdated,
 			force32bit,
 			hasAlpha,
