@@ -312,6 +312,29 @@ int VKimp_ParkMsec( void );
 int VK_Platform_Validation( void );
 int RB_FrameSmpFrame( void );
 int RB_FrameCount( void );
+
+/* ---- the object lifetime census (master gate) ----------------------------
+   Every object class the renderer owns is counted made/gone and reported with
+   the registration generation it belongs to, so a handle whose lifetime
+   crosses a map change is visible as a live count that never returns to zero.
+   The creation sites in the other lanes' files call VK_Life_NoteCreate/Destroy
+   with the kind that names them. */
+enum {
+	VK_LIFE_IMAGE = 0,
+	VK_LIFE_PASS,
+	VK_LIFE_FRAMEBUFFER,
+	VK_LIFE_VIEW,
+	VK_LIFE_PIPELINE,
+	VK_LIFE_SET,
+	VK_LIFE_BUFFER,
+	VK_LIFE_KINDS
+};
+
+extern int vk_lifeGen;
+
+void VK_Life_NoteCreate( int kind );
+void VK_Life_NoteDestroy( int kind );
+void VK_Life_Census( const char *site );
 int RB_FrameBoneArena( void );
 
 extern volatile qboolean	vkRenderThreadActive;

@@ -114,6 +114,8 @@ static cvar_t			*s_cvar;
    geometry beside the expected stage set.  0 none, 1 device runs, 2 the compose */
 static int				s_lastRunMode;
 static int				s_lastRunIdx;
+static int				s_composeDraws;
+static int				s_devRunDraws;
 
 /* what the row reports */
 static int				s_fastSurfaces;
@@ -703,6 +705,7 @@ void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
 			VK_Draw_DrawIndexed( cmd, runTotal, items[i].idxFirst, 0 );
 			s_lastRunMode = 1;
 			s_lastRunIdx += runTotal;
+			s_devRunDraws++;
 		} else {
 			int	k;
 
@@ -718,6 +721,7 @@ void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
 				softPending += items[k].numIdx;
 				s_lastRunMode = 2;
 				s_lastRunIdx += items[k].numIdx;
+				s_composeDraws++;
 			}
 		}
 
@@ -751,11 +755,12 @@ void RB_VboStaticRow( void )
 	rows++;
 	if ( rows == 1 || ( rows % 600 ) == 0 || fast != lastFast ) {
 		VK_Guard_Row( "VK:vbo",
-					  "fast=%d baked=%d arena=%d/%d verts (%d) idxes (%d) full=%d batches arena=%d stream=%d f=%d",
+					  "fast=%d baked=%d arena=%d/%d verts (%d) idxes (%d) full=%d "
+					  "batches arena=%d stream=%d compose=%d devrun=%d f=%d",
 					  fast, baked, s_arenaVerts, (int)VK_STATIC_ARENA_VERTS,
 					  s_arenaIdxes, (int)VK_STATIC_ARENA_INDEXES,
 					  s_arenaFull ? 1 : 0, s_arenaBatches, s_streamBatches,
-					  RB_FrameCount() );
+					  s_composeDraws, s_devRunDraws, RB_FrameCount() );
 	}
 	lastFast = fast;
 }

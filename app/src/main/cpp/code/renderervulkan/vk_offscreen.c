@@ -65,12 +65,15 @@ static void VK_Offscreen_Destroy( vkOffscreen_t *target )
 	}
 	if ( target->framebuffer != VK_NULL_HANDLE && qvk.DestroyFramebuffer ) {
 		qvk.DestroyFramebuffer( vk.device, target->framebuffer, NULL );
+		VK_Life_NoteDestroy( VK_LIFE_FRAMEBUFFER );
 	}
 	if ( target->view != VK_NULL_HANDLE && qvk.DestroyImageView ) {
 		qvk.DestroyImageView( vk.device, target->view, NULL );
+		VK_Life_NoteDestroy( VK_LIFE_VIEW );
 	}
 	if ( target->image != VK_NULL_HANDLE && qvk.DestroyImage ) {
 		qvk.DestroyImage( vk.device, target->image, NULL );
+		VK_Life_NoteDestroy( VK_LIFE_IMAGE );
 	}
 	if ( target->memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
 		qvk.FreeMemory( vk.device, target->memory, NULL );
@@ -159,6 +162,7 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 						   "offscreen vkCreateImage" ) ) {
 		goto done;
 	}
+	VK_Life_NoteCreate( VK_LIFE_IMAGE );
 
 	if ( !VK_Memory_AllocImage( target.image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &target.memory ) ) {
 		goto done;
@@ -177,6 +181,7 @@ qboolean VK_Offscreen_ClearAndRead( int width, int height, const float rgba[4],
 						   "offscreen vkCreateImageView" ) ) {
 		goto done;
 	}
+	VK_Life_NoteCreate( VK_LIFE_VIEW );
 
 	memset( &framebufferInfo, 0, sizeof( framebufferInfo ) );
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
