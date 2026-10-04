@@ -1057,12 +1057,10 @@ static void UploadCompressed(
 		int w, h;
 
 		w = (scaled_width + 3) / 4;
-		if (w > 1) {
-			h = (scaled_height + 3) / 4;
-			if (h > 1) {
-				offset += blockSize * w * h;
-			}
-		}
+		h = (scaled_height + 3) / 4;
+		/* the source pointer moves for every level the chain stores, exactly as
+		   Upload32's compressed arm does; a sub-4 dim still occupies its block */
+		offset += blockSize * w * h;
 
 		scaled_width >>= 1;
 		scaled_height >>= 1;
@@ -1094,7 +1092,7 @@ static void UploadCompressed(
 							   offset, (size_t)size );
 		}
 
-		if (i < iMipmapsAvailable && w > 1 && h > 1) {
+		if (i < iMipmapsAvailable) {
 			offset += size;
 		}
 
@@ -1155,9 +1153,7 @@ static void UploadDecoded(
 		int bw = ( w + 3 ) / 4;
 		int bh = ( h + 3 ) / 4;
 
-		if ( bw > 1 && bh > 1 ) {
-			offset += blockSize * bw * bh;
-		}
+		offset += blockSize * bw * bh;
 		w >>= 1;
 		h >>= 1;
 		if ( !w ) w = 1;
@@ -1206,7 +1202,7 @@ static void UploadDecoded(
 		*pBytesUsed += w * h * 4;
 
 		/* only a level the source actually carries may advance the read */
-		if ( i < iMipmapsAvailable && bw > 1 && bh > 1 ) {
+		if ( i < iMipmapsAvailable ) {
 			offset += size;
 		}
 

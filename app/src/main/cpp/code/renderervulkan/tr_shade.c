@@ -402,7 +402,7 @@ void ProjectDlightTexture( void ) {
 			VK_Bind( tr.dlightImage );
 
 			if ( dl->type & additive) {
-				VK_ApplyStateBits( VKS_SRCBLEND_ONE | VKS_DSTBLEND_ONE | VKS_DEPTHFUNC_EQUAL );
+				VK_ApplyStateBits( VKS_SRCBLEND_ONE_MINUS_DST_COLOR | VKS_DSTBLEND_ONE | VKS_DEPTHFUNC_EQUAL );
 			}
 			else {
 				VK_ApplyStateBits( VKS_SRCBLEND_DST_COLOR | VKS_DSTBLEND_ONE | VKS_DEPTHFUNC_EQUAL );

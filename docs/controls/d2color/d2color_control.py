@@ -43,6 +43,15 @@ if len(sys.argv) > 2 and sys.argv[2]:
 if len(sys.argv) > 3 and sys.argv[3]:
     TR_BACKEND = sys.argv[3]
 
+UI_LABEL = os.path.join(HERE, "..", "..", "..", "app", "src", "main", "cpp",
+                        "code", "uilib", "uilabel.cpp")
+UI_WIDGET = os.path.join(HERE, "..", "..", "..", "app", "src", "main", "cpp",
+                         "code", "uilib", "uiwidget.cpp")
+if len(sys.argv) > 4 and sys.argv[4]:
+    UI_LABEL = sys.argv[4]
+if len(sys.argv) > 5 and sys.argv[5]:
+    UI_WIDGET = sys.argv[5]
+
 fails = []
 checks = [0]
 
@@ -121,24 +130,46 @@ def text_run_verdict(run_quads, glyphs):
     return "OK"
 
 
-def coverage_colour_verdict(px, samples, clear):
-    """What the element produced, measured over its own rect.
+INK_FLOOR_NUM, INK_FLOOR_DEN = 2, 5
 
-    px is the census's geometry-and-clip area; samples are the rect's own
-    readback pixels.  A verdict of ISSUED_NOT_RASTERISED where px > 0 is the
-    census reporting pixels the readback says are clear -- the case the
-    coverage census exists to refuse, and the one a colour census must not
-    contradict.
+
+def holds_ink(sample, ink):
+    """A sample holds the run's ink when it is at least two fifths as bright as
+    the ink in every channel, so a run of the wrong colour is nameable."""
+    return all(sample[c] * INK_FLOOR_DEN >= ink[c] * INK_FLOOR_NUM for c in range(3))
+
+
+def ink_ambiguous(clear, ink):
+    """The clear colour already satisfies the ink test, so a clear background is
+    a valid answer and the census cannot convict."""
+    return holds_ink(clear, ink)
+
+
+def coverage_colour_verdict(px, samples, clear, ink=(255, 255, 255, 255)):
+    """What the element produced, measured over its own footprint.
+
+    px is the census's geometry-and-clip area; samples are the footprint's own
+    readback pixels.  Content is any sample that is not the clear colour: a text
+    run's clip is mostly background, so a verdict keyed on the sampled
+    background reported a visibly rendering menu as black.  The run's own ink is
+    counted alongside (ink=) so a wrong-colour run is nameable, and the opaque
+    dark count (dark=) is a measurement, never a verdict.  Where the clear
+    colour would also satisfy the ink test the census refuses to convict.
     """
     if px == 0:
         return "CLIP0"
-    lit = [s for s in samples if tuple(s) != tuple(clear)]
-    if not lit:
-        return "ISSUED_NOT_RASTERISED"
-    if all(s[0] < 8 and s[1] < 8 and s[2] < 8 and s[3] > 200 for s in lit):
-        return "DREW_BLACK"
-    if len(set(tuple(s) for s in samples)) <= 1:
-        return "NO_CONTENT"
+    if any(tuple(s)[:3] != tuple(clear)[:3] for s in samples):
+        return "OK"
+    if ink_ambiguous(clear, ink):
+        return "INK_AMBIGUOUS"
+    return "NO_INK"
+
+
+def resolution_verdict(colour):
+    """The colour the stage resolved to: a black resolution with alpha left is
+    the element drawn black, whatever the readback says."""
+    if colour[3] > 0 and colour[0] < 8 and colour[1] < 8 and colour[2] < 8:
+        return "BLACK_RESOLUTION"
     return "OK"
 
 
@@ -297,10 +328,14 @@ def shipping_tree_green():
     for frag, what in (
             ("vcol=%d,%d,%d,%d nvcol=%d rgbGen=%d const=%d,%d,%d,%d alphaGen=%d imgdesc=%s",
              "the span row does not carry the colour answer"),
-            ("black=%u vcol=%d,%d,%d,%d rgbGen=%d", "the readback row does not carry the colour"),
-            ('"VERDICT=DREW_BLACK"', "the census cannot say an element drew black"),
-            ("black == nonclear", "the black verdict no longer requires every lit sample black"),
-            ("*black)++;", "the readback no longer counts opaque black samples"),
+            ("ink=%u dark=%u", "the readback row does not carry ink and dark separately"),
+            ('"VERDICT=NO_INK"', "the census cannot say a run's ink is absent"),
+            ('"INK=AMBIGUOUS "', "the census claims a verdict where the clear "
+                                 "colour could also be the ink"),
+            ("RB_2DCOV_INK_FLOOR_NUM\t2", "the ink floor is not two fifths"),
+            ("nd++;", "the readback no longer counts opaque dark samples"),
+            ("c->quad[2] > c->quad[0] && c->quad[3] > c->quad[1]",
+             "the readback no longer samples the element's own footprint"),
             ("image->internalFormat", "the image descriptor is gone")):
         check(frag in tr_backend, "tr_backend.c: " + what)
     return not fails
@@ -408,50 +443,174 @@ def model_arm(fault):
     clear = (0, 0, 0, 0)
 
     if fault == 1:
-        # a black colour resolution: the global colour the element resolves to
-        # is (0,0,0,0) instead of the record's white.
+        # the global colour the element resolves to is black, not the record's
         c = resolve_2d_colour(CGEN_GLOBAL_COLOR, AGEN_GLOBAL_ALPHA, white,
                               (0, 0, 0, 0), (0, 0, 0, 255), from_vertex=False)
-        return coverage_colour_verdict(102400, [(0, 0, 0, 255)] * 32, clear), c
+        return resolution_verdict(c), c
     if fault == 2:
-        # the element's vertex colour is black (the value the fix takes away)
+        # the element's own vertex colour is black
         c = resolve_2d_colour(CGEN_GLOBAL_COLOR, AGEN_GLOBAL_ALPHA,
                               (0, 0, 0, 255), (0, 0, 0, 0), (0, 0, 0, 0),
                               from_vertex=True)
-        return coverage_colour_verdict(102400, [(0, 0, 0, 255)] * 32, clear), c
+        return resolution_verdict(c), c
     if fault == 3:
-        # an unresolvable / mismatched bound image
+        # an unresolvable bound image
         return image_binding_verdict(art, "(none)"), white
     if fault == 4:
+        # a bound image that is not the one the stage named
         return image_binding_verdict(art, "128x32/0x83f2/8m"), white
     if fault == 5:
         # a text run the UI asked for that emits no quad
         return text_run_verdict(0, 6), white
     if fault == 6:
         # a coverage verdict that reports pixels where the readback says clear
-        return coverage_colour_verdict(1024, [clear] * 32, clear), white
+        return coverage_colour_verdict(1024, [clear] * 32, clear, white), white
     if fault == 7:
-        # a rect that rasterised as one colour where the art varies
-        return coverage_colour_verdict(1024, [(9, 9, 9, 255)] * 32, clear), white
+        # the census measured the widget's clip instead of the element's own
+        # footprint: a run whose clip is mostly background reads as no content
+        return coverage_colour_verdict(580, [clear] * 32, clear, white), white
     if fault == 8:
-        # the art itself is black
-        return coverage_colour_verdict(1024, [(0, 0, 0, 255)] * 8 + [(0, 0, 0, 0)] * 24, clear), white
+        # the art itself is black: a black resolution, not a coverage question
+        return coverage_colour_verdict(1024, [(0, 0, 0, 255)] * 32, clear, white), white
     if fault == 9:
         # a text run that drew glyph quads but nothing landed
-        return coverage_colour_verdict(580, [clear] * 32, clear), white
+        return coverage_colour_verdict(580, [clear] * 32, clear, white), white
     if fault == 10:
         # the armour bar's blend disabled: its opaque art would hide the panel
-        # behind it -- named here because the verdict row must carry blend
         c = resolve_2d_colour(CGEN_GLOBAL_COLOR, AGEN_GLOBAL_ALPHA, white,
                               (0, 0, 0, 0), (0, 0, 0, 255), from_vertex=False)
-        return coverage_colour_verdict(1024, [(0, 0, 0, 255)] * 32, clear), c
+        return resolution_verdict(c), c
     if fault == 11:
-        # the readback samples the whole frame instead of the element's rect
-        return coverage_colour_verdict(1024, [(0, 0, 0, 0)] * 32, clear), white
+        # the readback sampled the whole frame instead of the element's rect
+        return coverage_colour_verdict(1024, [(0, 0, 0, 0)] * 32, clear, white), white
     if fault == 12:
         # an image bound to a placeholder art of the right size but no content
         return image_binding_verdict(art, "256x64/0x0/0m"), white
     raise SystemExit("unknown fault %r" % fault)
+
+
+# ---------------------------------------------------------------------------
+# The label source resolution: retail's UILabel::Draw @0x00061DA0 reads four
+# fields in one order -- the label text (byte 1580), the cvar (byte 1104), the
+# label string (byte 1752, written by SetLabel @0x00061BE0) and the title
+# (byte 1336, written by setTitle @0x000A6510 / setLabelText's resource arm
+# @0x000A6710, which leaves the label text untouched for a $$id$$).  The port
+# must carry the same four sources in the same order, and the shipped widget
+# definitions must never give one widget two of them at once.
+# ---------------------------------------------------------------------------
+
+def label_source_green():
+    ui_label = open(UI_LABEL, encoding="utf-8", errors="replace").read()
+    ui_widget = open(UI_WIDGET, encoding="utf-8", errors="replace").read()
+
+    draw = re.search(r"void UILabel::Draw\(void\)\s*\{(.*?)\n\}", ui_label, re.S)
+    check(draw is not None, "uilabel.cpp: UILabel::Draw not found")
+    if draw:
+        body = draw.group(1)
+        # the order is the decompile's field order; each later source must be
+        # an else-branch of the previous one, not an independent test
+        order = [body.find("m_labelText.length()"), body.find("m_cvarname.length()"),
+                 body.find("label.length()"), body.find("m_title.length()")]
+        check(all(o >= 0 for o in order),
+              "uilabel.cpp: Draw does not name all four sources (label text, "
+              "cvar, label, title)")
+        check(order == sorted(order),
+              "uilabel.cpp: Draw's source order %r is not retail's "
+              "label-text -> cvar -> label -> title" % (order,))
+        first = re.search(r"if \(m_labelText\.length\(\)\) \{(.*?)\n    \}", body, re.S)
+        check(first is not None and "return" in first.group(1),
+              "uilabel.cpp: the label-text branch no longer wins outright")
+
+    setlabel = re.search(r"void UIWidget::setLabelText\(str text\)\s*\{(.*?)\n\}", ui_widget, re.S)
+    check(setlabel is not None, "uiwidget.cpp: setLabelText not found")
+    if setlabel:
+        body = setlabel.group(1)
+        res = body.find("isStringResource")
+        check(res >= 0 and body.find("m_rawtitle", res) >= 0
+              and body.find("m_title =", res) >= 0,
+              "uiwidget.cpp: a $$id$$ label text no longer lands in the "
+              "widget's title (retail writes bytes 1364/1336)")
+        arm_end = body.find("return", res)
+        res_arm = body[res:arm_end] if arm_end >= 0 else body[res:]
+        check("m_labelText" not in res_arm,
+              "uiwidget.cpp: the $$id$$ arm also writes the label text; retail's "
+              "resource arm never touches bytes 1556/1580")
+        plain = body.find("m_labelText = text;")
+        check(plain >= 0, "uiwidget.cpp: a plain label text no longer lands in "
+                          "the label-text field")
+        tail = body[plain:]
+        check("'~'" in tail and "'\\n'" in tail,
+              "uiwidget.cpp: the plain arm lost retail's ~ to newline conversion")
+        check("'^'" in tail and "' '" in tail,
+              "uiwidget.cpp: the plain arm lost retail's "
+              "^ to space conversion")
+
+    settitle = re.search(r"void UIWidget::setTitle\(str title\)\s*\{(.*?)\n\}", ui_widget, re.S)
+    check(settitle is not None, "uiwidget.cpp: setTitle not found")
+    if settitle:
+        check("m_labelText" not in settitle.group(1),
+              "uiwidget.cpp: setTitle writes the label text; retail's setTitle "
+              "@0x000A6510 writes the title and the raw id only")
+
+    # the shipped widget definitions: at most one source per label
+    d = load_shipped_urc()
+    if d is not None:
+        blocks, kinds, both = d
+        check(both == 0,
+              "shipped ui/*.urc: %d label widgets carry two sources at once; "
+              "the draw order could then decide" % both)
+        check(kinds.get("labelclass", 0) == kinds.get("labelclass_strres", 0)
+              + kinds.get("labelclass_plain", 0) + kinds.get("labelclass_none", 0),
+              "shipped ui/*.urc: the label title kinds do not sum to the "
+              "label count")
+        check(kinds.get("labelclass_strres", 0) > 0 and kinds.get("labelclass_plain", 0) > 0,
+              "shipped ui/*.urc: both title kinds must be present for the "
+              "two arms to be exercised at all")
+        check(kinds.get("has_label_directive", 0) == 0
+              and kinds.get("has_cvar", 0) == 0,
+              "shipped ui/*.urc: a label directive or cvar appeared on a "
+              "Label resource")
+
+
+def load_shipped_urc():
+    """(blocks, counters, simultaneous-source count) over loc/Eng/ui/*.urc."""
+    base = os.path.join(RETAIL, "base")
+    l1 = os.path.join(base, "locpak1.pk3")
+    if not os.path.isfile(l1):
+        return None
+    kinds = {"labelclass": 0, "labelclass_strres": 0, "labelclass_plain": 0,
+             "labelclass_none": 0, "has_label_directive": 0, "has_cvar": 0}
+    blocks = 0
+    both = 0
+    with zipfile.ZipFile(l1) as z:
+        for n in z.namelist():
+            if not n.lower().startswith("loc/eng/ui/") or not n.lower().endswith(".urc"):
+                continue
+            txt = z.read(n).decode("latin1")
+            for m in re.finditer(r"resource\s*\n(\w+)\s*\{([^{}]*)\}", txt):
+                cls, body = m.group(1), m.group(2)
+                blocks += 1
+                title = re.search(r"^\s*title\s+\"([^\"]*)\"", body, re.M)
+                label = re.search(r"^\s*label\s+", body, re.M)
+                cvar = re.search(r"^\s*cvar\s+", body, re.M)
+                if label:
+                    kinds["has_label_directive"] += 1
+                if cvar:
+                    kinds["has_cvar"] += 1
+                if cls.lower() not in ("label", "fakklabel"):
+                    continue
+                kinds["labelclass"] += 1
+                t = title.group(1) if title else None
+                if t is None:
+                    kinds["labelclass_none"] += 1
+                elif t.startswith("$$"):
+                    kinds["labelclass_strres"] += 1
+                else:
+                    kinds["labelclass_plain"] += 1
+                sources = sum(1 for x in (t, label, cvar) if x)
+                if sources > 1:
+                    both += 1
+    return blocks, kinds, both
 
 
 def main():
@@ -463,6 +622,7 @@ def main():
             pass
         if not shipped_data_green(d):
             pass
+        label_source_green()
 
         # the model itself, on retail's own numbers: the health bar's white
         # vertex colour over the shipped orange art is not black.
@@ -471,7 +631,9 @@ def main():
         # the element's own rect read back: the art's own colours, as the census
         # would sample them (a uniform set is NO_CONTENT and must not be)
         lit = [litcols[i % len(litcols)] for i in range(32)] if litcols else []
-        v = coverage_colour_verdict(102400, lit, (0, 0, 0, 0))
+        v = coverage_colour_verdict(102400, lit, (0, 0, 0, 0), (255, 255, 255, 255))
+        check(resolution_verdict((255, 255, 255, 255)) == "OK",
+              "the shipping model calls retail's white a black resolution")
         check(v == "OK", "the shipping model calls the health bar's own art %s" % v)
         c = resolve_2d_colour(CGEN_GLOBAL_COLOR, AGEN_GLOBAL_ALPHA, (255, 255, 255, 255),
                               (0, 0, 0, 0), (255, 255, 255, 255), from_vertex=True)

@@ -51,10 +51,18 @@ root, for more details.
 
 #include <string.h>
 
+/* The frame's recorded commands, per slot.  Capacity grows: a widget-heavy
+   screen's record demand is not knowable statically, and a full list silently
+   dropped whatever the caller queued -- a colour, a scissor, a text run. */
 typedef struct {
-	byte	cmds[MAX_RENDER_COMMANDS];
+	byte	*cmds;
 	int		used;
+	int		capacity;
+	int		highWater;
 } vkCommandList_t;
+
+/* the bound the growth stops at */
+#define VK_COMMAND_MAX_BYTES	( 8 * 1024 * 1024 )
 
 typedef struct {
 	vkCommandList_t	*list;
@@ -65,6 +73,39 @@ typedef struct {
 } rbFrame_t;
 
 static vkCommandList_t	*rb_commandLists[SMP_FRAMES];
+
+/* Grow one slot's list: 2x, capped, named.  The old block stays in the
+   renderer pool until shutdown, so the bound is what keeps the cost finite. */
+static qboolean RB_CommandListGrow( vkCommandList_t *list, int demand )
+{
+	int		oldBytes = list->capacity;
+	int		newBytes = oldBytes;
+	byte	*cmds;
+
+	if ( !list || demand <= list->capacity || list->capacity >= VK_COMMAND_MAX_BYTES ) {
+		return qfalse;
+	}
+
+	while ( newBytes < demand && newBytes < VK_COMMAND_MAX_BYTES ) {
+		newBytes *= 2;
+	}
+	if ( newBytes > VK_COMMAND_MAX_BYTES ) {
+		newBytes = VK_COMMAND_MAX_BYTES;
+	}
+
+	cmds = ( byte * )ri.Malloc( newBytes );
+	if ( !cmds ) {
+		return qfalse;
+	}
+
+	list->cmds     = cmds;
+	list->capacity = newBytes;
+
+	VK_Guard_Row( "VK:cmdbuf", "slot=%d old=%d new=%d demand=%d f=%d",
+				  RB_FrameSmpFrame(), oldBytes, newBytes, demand, RB_FrameCount() );
+
+	return qtrue;
+}
 static rbFrame_t		rb_frames[SMP_FRAMES];
 static rbFrame_t		*rb_activeFrame = NULL;
 static int				rb_frameCount = 0;
@@ -156,6 +197,26 @@ void VK_WalkStat_TakeShade( long long *usecOut )
 	}
 }
 
+/* The present seam's children, drained with the phase row that prints them. */
+static long long	s_walkPresentUsec[VK_WSUB_SLOTS];
+
+void VK_WalkStat_PresentAdd( int which, long long usec )
+{
+	if ( which >= 0 && which < VK_WSUB_SLOTS ) {
+		s_walkPresentUsec[which] += usec;
+	}
+}
+
+void VK_WalkStat_TakePresent( long long *usecOut )
+{
+	int i;
+
+	for ( i = 0; i < VK_WSUB_SLOTS; i++ ) {
+		usecOut[i] = s_walkPresentUsec[i];
+		s_walkPresentUsec[i] = 0;
+	}
+}
+
 /* The binds a surface loop's own window contains.  The per-surface bookkeeping
    flushes the previous batch inside its window, so an outer wrap that simply
    added its elapsed time would charge those binds twice. */
@@ -234,7 +295,13 @@ void RB_CommandListReset( void )
 	vkCommandList_t *list = RB_CommandList();
 
 	if ( list ) {
-		list->used = 0;
+		/* The slot's last demand sizes the next frame: growing here costs one
+		   copy-free swap before anything is recorded into the block. */
+		if ( list->highWater * 4 >= list->capacity * 3 ) {
+			RB_CommandListGrow( list, list->highWater + ( int )sizeof( int ) * 8 );
+		}
+		list->used      = 0;
+		list->highWater = 0;
 	}
 }
 
@@ -399,16 +466,27 @@ void *R_GetCommandBufferReserved( int bytes, int reservedBytes )
 
 	bytes = PAD( bytes, sizeof( void * ) );
 
-	if ( list->used + bytes + reservedBytes + (int)sizeof( int ) > MAX_RENDER_COMMANDS ) {
-		if ( bytes > MAX_RENDER_COMMANDS - (int)sizeof( int ) ) {
-			ri.Error( ERR_FATAL, "R_GetCommandBuffer: bad size %i", bytes );
+	if ( bytes > VK_COMMAND_MAX_BYTES - (int)sizeof( int ) ) {
+		ri.Error( ERR_FATAL, "R_GetCommandBuffer: bad size %i", bytes );
+	}
+
+	if ( list->used + bytes + reservedBytes + (int)sizeof( int ) > list->capacity ) {
+		/* A record that cannot land is a record the caller never sees -- the
+		   colour, scissor or text run a later widget's state then replaced.
+		   The list grows instead; the warning below is the assertion that
+		   this never has to refuse under the bound. */
+		if ( !RB_CommandListGrow( list, list->used + bytes + reservedBytes + (int)sizeof( int ) ) ) {
+			ri.Printf( PRINT_WARNING, "Failed to allocate render command of size %d (used %d of %d)\n",
+					   bytes, list->used, list->capacity );
+			return NULL;
 		}
-		ri.Printf( PRINT_WARNING, "Failed to allocate render command of size %d\n", bytes );
-		return NULL;
 	}
 
 	buf = list->cmds + list->used;
 	list->used += bytes;
+	if ( list->used > list->highWater ) {
+		list->highWater = list->used;
+	}
 
 	return buf;
 }
@@ -703,7 +781,7 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			fontString2DCommand_t *cmd = ( fontString2DCommand_t * )cmds;
 
-			RB_FontRunDraw( cmd, ( fontGlyph_t * )( cmd + 1 ) );
+			RB_FontRunDraw( vk.commandBuffers[slot], cmd, ( fontGlyph_t * )( cmd + 1 ) );
 			cmds += PAD( sizeof( *cmd ) + cmd->numGlyphs * (int)sizeof( fontGlyph_t ), sizeof( void * ) );
 			break;
 		}
@@ -721,15 +799,32 @@ void RB_ExecuteRenderCommands( const void *data )
 				VK_Order_Frame();
 
 				outT0 = VK_WALK_T0();
-				VK_Frame_RecordEnd( slot );
-				passOpen = qfalse;
-				if ( !VK_Frame_Submit( slot ) ) {
-					VK_WALK_ADD( outT0, VK_WP_OUT );
-					goto abandoned;
+				{
+					long long seamT0 = VK_WALK_T0();
+
+					VK_Frame_RecordEnd( slot );
+					VK_WALK_ADD_SUB( seamT0, VK_WSUB_RECEND );
 				}
-				if ( !VK_Frame_Present( slot ) ) {
-					VK_WALK_ADD( outT0, VK_WP_OUT );
-					goto abandoned;
+				passOpen = qfalse;
+				{
+					long long seamT0 = VK_WALK_T0();
+
+					if ( !VK_Frame_Submit( slot ) ) {
+						VK_WALK_ADD_SUB( seamT0, VK_WSUB_SUBMIT );
+						VK_WALK_ADD( outT0, VK_WP_OUT );
+						goto abandoned;
+					}
+					VK_WALK_ADD_SUB( seamT0, VK_WSUB_SUBMIT );
+				}
+				{
+					long long seamT0 = VK_WALK_T0();
+
+					if ( !VK_Frame_Present( slot ) ) {
+						VK_WALK_ADD_SUB( seamT0, VK_WSUB_PRESENT );
+						VK_WALK_ADD( outT0, VK_WP_OUT );
+						goto abandoned;
+					}
+					VK_WALK_ADD_SUB( seamT0, VK_WSUB_PRESENT );
 				}
 				VK_WALK_ADD( outT0, VK_WP_OUT );
 
@@ -741,6 +836,14 @@ void RB_ExecuteRenderCommands( const void *data )
 					VK_Shade_ReadbackFrame( vk.acquiredImage );
 					VK_WALK_ADD( pixT0, VK_WP_PIX );
 				}
+					/* the save-game thumbnail rides the same seam: a swap image is only
+					   readable once the frame that drew it has been presented */
+					if ( R_Screenshot_Pending() ) {
+						long long shotT0 = VK_WALK_T0();
+
+						R_Screenshot_Flush( vk.acquiredImage );
+						VK_WALK_ADD( shotT0, VK_WP_PIX );
+					}
 			}
 			/* Anything after the present belongs to the next pass, not this one. */
 			inFrame = qfalse;
@@ -916,8 +1019,12 @@ void R_InitCommandBuffers( void )
 			   must come from the renderer pool, not the arena.  h_low is not
 			   a lifetime here -- CL_RefStaticMalloc ignores the preference. */
 			rb_commandLists[i] = ( vkCommandList_t * )ri.Malloc( sizeof( vkCommandList_t ) );
+			memset( rb_commandLists[i], 0, sizeof( *rb_commandLists[i] ) );
+			rb_commandLists[i]->capacity = MAX_RENDER_COMMANDS;
+			rb_commandLists[i]->cmds = ( byte * )ri.Malloc( MAX_RENDER_COMMANDS );
 		}
-		memset( rb_commandLists[i], 0, sizeof( *rb_commandLists[i] ) );
+		rb_commandLists[i]->used = 0;
+		rb_commandLists[i]->highWater = 0;
 	}
 
 	if ( vk.smpActive && !vkRenderThreadActive ) {

@@ -3278,6 +3278,7 @@ void CL_SaveShot_f( void ) {
 	strcat( expanded, "\n" );
 
 	cls.no_menus = qtrue;
+	cls.saveShotFrames = 0;
 
 	drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
 	if ( drawviewmodel ) {
@@ -3292,7 +3293,9 @@ void CL_SaveShot_f( void ) {
 		Cvar_SetValue( "r_drawviewmodel", old_drawviewmodel );
 	}
 
-	cls.no_menus = qfalse;
+	/* The UI stays off until the renderer has taken the shot: restoring it here
+	   would let the next frame draw the pause menu, and that is the frame the
+	   capture reads.  SCR_UpdateScreen releases it. */
 }
 
 void CL_Dialog_f( void ) {

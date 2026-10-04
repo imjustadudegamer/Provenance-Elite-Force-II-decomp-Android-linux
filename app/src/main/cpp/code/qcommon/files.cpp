@@ -284,8 +284,27 @@ static FILE	*FS_FileForHandle( fileHandle_t f ) {
 	if ( ! fsh[f].handleFiles.file.o ) {
 		Com_Error( ERR_DROP, "FS_FileForHandle: NULL" );
 	}
-	
+
 	return fsh[f].handleFiles.file.o;
+}
+
+/* qtrue when `h' is a live non-zip FILE handle, without raising.  This is the
+ * question `Com_RealPrintf' has to ask before it hands the qconsole.log
+ * handle to `FS_Write', because `FS_FileForHandle' raises ERR_DROP on a dead
+ * handle and Com_RealPrintf is the one caller in the engine that must never
+ * raise: a longjmp out of it wedges its recursion guard and silences every
+ * print in the process. */
+qboolean FS_WriteHandleLive( fileHandle_t h ) {
+	if ( !fs_searchpaths ) {
+		return qfalse;
+	}
+	if ( h < 1 || h >= MAX_FILE_HANDLES ) {
+		return qfalse;
+	}
+	if ( fsh[h].zipFile == qtrue ) {
+		return qfalse;
+	}
+	return ( fsh[h].handleFiles.file.o != NULL ) ? qtrue : qfalse;
 }
 
 void	FS_ForceFlush( fileHandle_t f ) {

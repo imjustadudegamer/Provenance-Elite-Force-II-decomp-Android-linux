@@ -43,7 +43,15 @@ void main()
 	} else if (u_AlphaTest == 2) {
 		if (!(c.a < 0.5)) discard;			
 	} else if (u_AlphaTest == 4) {
-		if (!(c.a >= 0.5)) discard;			
+		if (!(c.a >= 0.5)) discard;
+	}
+
+	// flat-world diagnostic: 1 forces red, 2 shows the batch's vertex colour; the
+	// alpha the test above ran on is untouched, so the alpha axis stays readable
+	if (u_FlatMode == 1) {
+		c.rgb = vec3(1.0, 0.0, 0.0);
+	} else if (u_FlatMode == 2) {
+		c.rgb = v_Color.rgb;
 	}
 
 	if (u_FogMode == 2) {

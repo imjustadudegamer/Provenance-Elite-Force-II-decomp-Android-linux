@@ -135,9 +135,10 @@ static const short vk_uboMap[VK_U_COUNT] = {
 	VK_UBO_OFF_U_FOGSTART,
 	VK_UBO_OFF_U_FOGEND,
 	VK_UBO_OFF_U_FOGFIXCOLOR,
+	VK_UBO_OFF_U_FLATMODE,
 };
 static const int vk_uboSize[VK_U_COUNT] = {
-	64, 0, 64, 4, 4, 4, 4, 48, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 64, 64, 4, 4, 4, 4, 0, 0, 4, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+	64, 0, 64, 4, 4, 4, 4, 48, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 64, 64, 4, 4, 4, 4, 0, 0, 4, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
 };
 
 #define VK_UBO_SIZE_PAD	2048		/* the std140 block, rounded up for the bind range */
@@ -967,6 +968,11 @@ typedef struct {
 	VkSampler		texSampler[2];
 	VkSampler		waveSampler;
 	int				texBound[2];
+	/* the slot handle each view was resolved from.  A level load frees world
+	   images -- R_FreeImage destroys the view and zeroes the slot -- and the
+	   latch then names a view that is no longer the slot's own, so the handle
+	   is what a bind re-validates against. */
+	int				texNum[2];
 	/* the image_t each unit's view came from: the census compares what a stage
 	   asked for with what was bound, and a view handle alone cannot say which
 	   art it is */
@@ -1187,6 +1193,7 @@ static void VK_Shade_TexelProbe( image_t *image )
 {
 	static cvar_t *cv;
 	unsigned char  px[4];
+	unsigned char  blk[16];
 	int            handle;
 	int            blocked = 0;
 	const char     *name;
@@ -1205,25 +1212,43 @@ static void VK_Shade_TexelProbe( image_t *image )
 	s_texelProbed[handle] = 1;
 
 	name = image->imgName[0] ? image->imgName : "(unnamed)";
-	if ( !VK_Texture_ReadTexel( handle, image->uploadWidth / 2, image->uploadHeight / 2, px, &blocked ) ) {
+	if ( !VK_Texture_ReadBlock( handle, image->uploadWidth / 2, image->uploadHeight / 2,
+								px, blk, &blocked ) ) {
 		VK_Guard_Row( "VK:texel", "name=%s w=%d h=%d read=fail", name,
 					  image->uploadWidth, image->uploadHeight );
 		return;
 	}
 
-	/* A block-compressed image has no texel to report: the four numbers are the
-	   block's first four bytes, and the row says so rather than letting them
-	   read as an RGBA texel. */
+	if ( blocked ) {
+		/* The block is the sampler's own bytes for the texel the row names, so
+		   decode it with the lane's own decoder and report that texel's RGBA.
+		   The raw first four bytes of a BC2/BC3 block are its alpha plane, which
+		   is why this row could not answer a colour question about the art it
+		   was built for. */
+		int           flavour = ( image->internalFormat == VK_TF_DXT1 ) ? SMP_DXT1
+				          : ( image->internalFormat == VK_TF_DXT5 ) ? SMP_DXT5 : SMP_DXT3;
+		unsigned char rgba[64];
+		int           inBlkX = ( image->uploadWidth / 2 ) & 3;
+		int           inBlkY = ( image->uploadHeight / 2 ) & 3;
+
+		SMP_DXTDecodeBlock( flavour, blk, rgba );
+		px[0] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 0];
+		px[1] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 1];
+		px[2] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 2];
+		px[3] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 3];
+	}
+
+	/* Both arms report the RGBA the sampler serves for the image's centre texel:
+	   the blocked one decodes the block this read copied. */
 	VK_Guard_Row( "VK:texel",
 				  "name=%s w=%d h=%d upto=%dx%d srcmips=%d levels=%d layout=%s "
-				  "fmt=0x%x wrap=%d,%d mipfilter=%d %s=%u,%u,%u,%u",
+				  "fmt=0x%x wrap=%d,%d mipfilter=%d texel_mid=%u,%u,%u,%u",
 				  name, image->width, image->height, image->uploadWidth, image->uploadHeight,
 				  image->numMipmaps, VK_Texture_MipLevels( handle ),
 				  VK_Texture_LayoutName( handle ),
 				  (unsigned)image->internalFormat,
 				  (int)image->wrapClampModeX, (int)image->wrapClampModeY,
 				  ( image->numMipmaps > 1 ) ? 1 : 0,
-				  blocked ? "blk_mid" : "texel_mid",
 				  (unsigned)px[0], (unsigned)px[1], (unsigned)px[2], (unsigned)px[3] );
 }
 
@@ -1241,7 +1266,13 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 	}
 	view = VK_Texture_View( image->texnum );
 	if ( view == VK_NULL_HANDLE ) {
+		/* the slot is empty: binding would leave the previous unit's view armed
+		   for a stage that never binds this one, and that view may be the one a
+		   level load just destroyed */
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "bind: texture has no view", VK_INCOMPLETE );
+		s_shade.texView[tmu] = VK_NULL_HANDLE;
+		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
+		s_shade.texBound[tmu] = 0;
 		return;
 	}
 	/* wrapClampModeX/Y hold the legacy wrap enum: REPEAT is 10497, not 0 */
@@ -1249,10 +1280,44 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 						  || image->wrapClampModeY != VK_TWRAP_REPEAT ), qfalse, qtrue, &sampler );
 	s_shade.texView[tmu] = view;
 	s_shade.texSampler[tmu] = sampler;
+	s_shade.texNum[tmu] = image->texnum;
 	s_shade.texImage[tmu] = image;
 	s_shade.texBound[tmu] = 1;
 
 	VK_Shade_TexelProbe( image );
+}
+
+/* The view a latched unit may still write into a descriptor.  A level load
+   destroys world images out from under the latch, and a later stage that binds
+   only unit 0 never refreshes unit 1, so the latch is re-validated against the
+   slot's own view before it can reach vkUpdateDescriptorSets.  A destroyed slot
+   reads VK_NULL_HANDLE and a reused slot reads a different view; both disarm.
+   Reads no image_t field, so a freed image cannot be dereferenced here. */
+static VkImageView VK_Shade_LiveView( int tmu )
+{
+	VkImageView live;
+
+	if ( !s_shade.texBound[tmu] ) {
+		return VK_NULL_HANDLE;
+	}
+	live = VK_Texture_View( s_shade.texNum[tmu] );
+	if ( live == VK_NULL_HANDLE || live != s_shade.texView[tmu] ) {
+		/* the unit falls back to the white image, which changes what a stage
+		   that did expect this texture would draw: name it */
+		static int s_disarmRows;
+
+		if ( R_ProbeStatsOn() && s_disarmRows < 16 ) {
+			VK_Guard_Row( "VK:shade", "unit disarmed tmu=%d handle=%d reason=%s", tmu,
+						  s_shade.texNum[tmu],
+						  live == VK_NULL_HANDLE ? "slot-destroyed" : "slot-reused" );
+			s_disarmRows++;
+		}
+		s_shade.texBound[tmu] = 0;
+		s_shade.texView[tmu] = VK_NULL_HANDLE;
+		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
+		return VK_NULL_HANDLE;
+	}
+	return live;
 }
 
 void VK_Bind( image_t *image )
@@ -1388,12 +1453,54 @@ void VK_SetUniform4fvN( vkProgram_t *p, vkUniform_t u, const float *v, int n )
 	s_uboDirty = qtrue;
 }
 
+/* the flat-world diagnostic: 0 off, 1 red, 2 the batch's own vertex colour.
+   World batches only, so entities and the UI stay reference. */
+/* the gate's four inputs, sampled at the last stage draw that asked: a boot
+   whose worldflat row is silent has to name which input refused it */
+static int s_worldFlatSeen;   /* a stage draw asked at all */
+static int s_worldFlatCvar;   /* the cvar pointer is non-NULL */
+static int s_worldFlatValue;  /* ->integer, -1 without the cvar */
+static int s_worldFlatIn2D;
+static int s_worldFlatEntity; /* 'w', 'e', 's' or '?' */
+/* Calls by entity class, boot-cumulative: the row's four fields are the LAST
+   caller's state, which on a frame with no world geometry says nothing. */
+static int s_worldFlatCalls[4];
+/* Batches opened by entity class, this frame: what the walk handed the draws. */
+static int s_worldFlatBatches[4];
+
+static int VK_WorldFlatClass( void )
+{
+	return backEnd.currentEntity == &tr.worldEntity ? 0
+		 : ( backEnd.currentEntity ? 1
+		   : ( backEnd.currentStaticModel ? 2 : 3 ) );
+}
+
+int VK_WorldFlatMode( void )
+{
+	int mode;
+
+	s_worldFlatSeen  = 1;
+	s_worldFlatCvar  = ( r_worldFlat != NULL );
+	s_worldFlatValue = r_worldFlat ? r_worldFlat->integer : -1;
+	s_worldFlatIn2D  = backEnd.in2D ? 1 : 0;
+	s_worldFlatEntity = "wes?"[VK_WorldFlatClass()];
+	s_worldFlatCalls[VK_WorldFlatClass()]++;
+
+	if ( !r_worldFlat || r_worldFlat->integer <= 0 || backEnd.in2D
+		 || backEnd.currentEntity != &tr.worldEntity ) {
+		return 0;
+	}
+	mode = r_worldFlat->integer;
+	return ( mode > 2 ) ? 2 : mode;
+}
+
 void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const shader_t *shader )
 {
 	float	baseColor[4];
 	qboolean	cpuColor;
 	qboolean	cpuTexCoords;
 	int		b;
+	int		flat;
 
 	VK_SetupViewUniforms( p );
 
@@ -1630,6 +1737,14 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 					 VK_AlphaTestForState( (unsigned long)pStage->stateBits ) );
 	VK_SetUniform4f( p, VK_U_TEX1COLOR, 1.0f, 1.0f, 1.0f, 1.0f );
 
+	/* published by every stage draw so a non-world draw can never inherit a
+	   world draw's mode through a shared ring slice */
+	flat = VK_WorldFlatMode();
+	if ( flat ) {
+		VK_Shade_NoteFlat( shader );
+	}
+	VK_SetUniform1i( p, VK_U_FLATMODE, flat );
+
 	VK_SetUniform1i( p, VK_U_ACFF, cpuColor ? 0 : (int)pStage->acff );
 }
 
@@ -1849,6 +1964,32 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 static const float			*s_fpStageFloats;
 static const vkStaticItemView_t	*s_fpItems;
 static int					s_fpItemCount;
+/* the arena batch's own index block, and its first position in the batch; the
+   tess index array is not written on the arena arm, so reading it would price
+   the previous batch's geometry and call every arena draw out-of-range */
+static const vkIndex_t		*s_fpArenaIdx;
+static int					s_fpArenaFirst;
+
+/* The batch-relative vertex index the draw reads at footprint position i.  Off
+   the arena arm the caller's array is already batch-relative; on it, the block
+   holds arena-relative values, so each maps back through the item that owns its
+   position.  Positions are item-ordered, so one forward walk prices the batch. */
+static int VK_Shade_FootprintIndex( int i )
+{
+	int	k, pos = 0;
+
+	if ( !s_fpArenaIdx ) {
+		return i;
+	}
+	for ( k = 0; k < s_fpItemCount; k++ ) {
+		if ( i < pos + s_fpItems[k].numIdx ) {
+			return s_fpItems[k].vertStart
+				   + ( s_fpArenaIdx[s_fpArenaFirst + i] - s_fpItems[k].first );
+		}
+		pos += s_fpItems[k].numIdx;
+	}
+	return -1;
+}
 
 static void VK_Stream_Pack( vkStreamVertex_t *out, const shaderCommands_t *input, int v,
 							const float *tc0, const float *tc1, int tcStrideFloats,
@@ -1968,10 +2109,12 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 	s_fpStageFloats = RB_VboStaticStageFloats();
 	s_fpItems = items;
 	s_fpItemCount = numItems;
+	s_fpArenaIdx = RB_VboStaticBatchIndexes( &s_fpArenaFirst );
 	VK_Shade_FootprintRow( input, stage, input->indexes, input->numIndexes );
 	s_fpStageFloats = NULL;
 	s_fpItems = NULL;
 	s_fpItemCount = 0;
+	s_fpArenaIdx = NULL;
 
 	{
 		/* The arena arm's bind and record are charged where the streaming arm
@@ -2737,9 +2880,16 @@ static qboolean VK_Shade_DefaultImage( VkImageView *view, VkSampler *sampler )
 	static VkSampler s_sampler;
 
 	if ( s_view != VK_NULL_HANDLE && s_sampler != VK_NULL_HANDLE ) {
-		*view = s_view;
-		*sampler = s_sampler;
-		return qtrue;
+		/* the cache is only as live as the slot it came from: the texture
+		   shutdown destroys every view including this one, so a cached handle is
+		   re-checked against the slot before it may reach a descriptor */
+		if ( tr.whiteImage && VK_Texture_View( (int)tr.whiteImage->texnum ) == s_view ) {
+			*view = s_view;
+			*sampler = s_sampler;
+			return qtrue;
+		}
+		s_view = VK_NULL_HANDLE;
+		s_sampler = VK_NULL_HANDLE;
 	}
 
 	if ( !tr.whiteImage ) {
@@ -3045,6 +3195,74 @@ void VK_Shade_NoteStage( const shader_t *shader )
 	}
 }
 
+static int         s_worldFlatStages;
+static const char *s_worldFlatNames[VK_STAGE_CENSUS_MAX];
+static int         s_worldFlatCount;
+
+void VK_Shade_NoteFlat( const shader_t *shader )
+{
+	int i;
+
+	s_worldFlatStages++;
+	for ( i = 0; i < s_worldFlatCount; i++ ) {
+		if ( s_worldFlatNames[i] == shader->name ) {
+			return;
+		}
+	}
+	if ( s_worldFlatCount < VK_STAGE_CENSUS_MAX ) {
+		s_worldFlatNames[s_worldFlatCount++] = shader->name;
+	}
+}
+
+/* one row per flat frame: the mode, the stage count and the shaders it covered,
+   so a flat boot names what it touched instead of a blind colour swap */
+static void VK_Shade_FlatWorldRow( void )
+{
+	static char last[VK_STAGE_ROW_BYTES];
+	static int  refusalRows;
+	char        now[VK_STAGE_ROW_BYTES];
+	int         i, written;
+
+	/* a frame that opened world batches and flatted none names why: the gate
+	   inputs at the last stage draw that asked, the batches the walk opened by
+	   class and the calls the gate saw by class */
+	if ( R_ProbeStatsOn() && !s_worldFlatStages && s_worldFlatSeen
+		 && s_worldFlatBatches[0] > 0 && refusalRows < 4 ) {
+		refusalRows++;
+		VK_Guard_Row( "VK:worldflat",
+					  "refused cvar=%d value=%d in2d=%d lastentity=%c stages=0 "
+					  "batches=w:%d e:%d s:%d q:%d calls=w:%d e:%d s:%d q:%d",
+					  s_worldFlatCvar, s_worldFlatValue, s_worldFlatIn2D,
+					  s_worldFlatEntity,
+					  s_worldFlatBatches[0], s_worldFlatBatches[1],
+					  s_worldFlatBatches[2], s_worldFlatBatches[3],
+					  s_worldFlatCalls[0], s_worldFlatCalls[1],
+					  s_worldFlatCalls[2], s_worldFlatCalls[3] );
+	}
+
+	if ( !R_ProbeStatsOn() || !s_worldFlatStages ) {
+		return;
+	}
+
+	Q_strncpyz( now, va( "frame=%d mode=%d stages=%d names=", RB_FrameCount(),
+						 r_worldFlat ? r_worldFlat->integer : 0, s_worldFlatStages ),
+				sizeof( now ) );
+	written = (int)strlen( now );
+	for ( i = 0; i < s_worldFlatCount && written < (int)sizeof( now ) - 2; i++ ) {
+		int len = Com_sprintf( now + written, sizeof( now ) - written, "%s%s",
+							   i ? " " : "", s_worldFlatNames[i] ? s_worldFlatNames[i] : "?" );
+		if ( len < 0 ) {
+			break;
+		}
+		written += len;
+	}
+
+	if ( Q_stricmp( now, last ) ) {
+		VK_Guard_Row( "VK:worldflat", "%s", now );
+		Q_strncpyz( last, now, sizeof( last ) );
+	}
+}
+
 /* One row per shader the frame drew stages for, only while the set holds still.
    An in-game frame draws far more than eight distinct shaders once the HUD and a
    menu join the world, and a census that holds eight names the world and drops
@@ -3162,10 +3380,24 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 		return qfalse;
 	}
 	if ( s_shade.texBound[0] ) {
-		v0 = s_shade.texView[0];
+		v0 = VK_Shade_LiveView( 0 );
 	}
 	if ( s_shade.texBound[1] ) {
-		v1 = s_shade.texView[1];
+		v1 = VK_Shade_LiveView( 1 );
+	}
+	/* A unit the stage's own bundles never name must not serve the previous
+	   stage's art.  The latch survives the stage boundary by design, and
+	   LiveView only disarms a dead or retargeted slot, so a live foreign view
+	   rode every following single-bundle stage's descriptor: the 14:54
+	   [VK:stagebound] rows show unit 1 still holding the rifle viewmodel's
+	   screen and later a world lightmap across a whole session of hud/radar and
+	   textures/lights stages, none of which resolves a second bundle.  Retail's
+	   single-texture stage never reads TMU1; this lane's layout declares the
+	   binding, so the neutral value is the default image, which is what an
+	   unbound slot already gets.  A program without VKP_LIGHTMAP does not
+	   declare u_Tex1 at all. */
+	if ( !( s_shade.prog->defines & VKP_LIGHTMAP ) ) {
+		v1 = VK_NULL_HANDLE;
 	}
 	/* created with the first draw that reads it; the shaders fetch single texels, so the sampler is nearest */
 	VK_CreateWaveTable();
@@ -3558,7 +3790,8 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 
 		for ( i = 0; i + 2 < numIndexes; i += 3 ) {
 			for ( v = 0; v < 3; v++ ) {
-				int			vi = indexes[i + v];
+				int			vi = s_fpItems ? VK_Shade_FootprintIndex( i + v )
+											   : indexes[i + v];
 				const float	*p;
 				float		cw, nx, ny;
 
@@ -3608,7 +3841,8 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		int			 n, k, inside = 0;
 
 		for ( v = 0; v < 3; v++ ) {
-			int vi = indexes[i + v];
+			int vi = s_fpItems ? VK_Shade_FootprintIndex( i + v )
+							   : indexes[i + v];
 
 			if ( vi < 0 || vi >= input->numVertexes ) {
 				/* an index past the vertices this surface wrote is the
@@ -3941,6 +4175,7 @@ static const shader_t	*s_batchShader;
 static int				s_batchBindMiss;
 static qboolean			s_batchCensus;
 static int				s_batchEntity;		/* 'w' world, 'e' entity, 's' static model */
+static int				s_batchSurfs;		/* draw surfs this batch covered */
 /* the bind evidence: per submitted pass, the image each witnessed unit really
    holds, capped so a row stays a row */
 static char				s_batchBinds[200];
@@ -3965,14 +4200,29 @@ static int VK_Shade_BatchEntityClass( void )
 /* the geometry the arena arm actually submitted for this batch */
 void RB_VboStaticLastRun( int *modeOut, int *numIdxOut );
 
+/* One draw surf charged to the batch now open: an indexed draw can cover many
+   same-shader surfs, so the draw count alone does not say whether the walk's
+   surfaces reached the stream. */
+void VK_Shade_NoteBatchSurf( void )
+{
+	s_batchSurfs++;
+}
+
 void VK_Shade_BatchBegin( const shader_t *shader )
 {
 	s_batchStagesDrawn = 0;
 	s_batchBindMiss    = 0;
 	s_batchBindsLen    = 0;
 	s_batchBinds[0]    = 0;
+	s_batchSurfs       = 0;
 	s_batchShader      = shader;
 	s_batchEntity      = VK_Shade_BatchEntityClass();
+	switch ( s_batchEntity ) {
+	case 'w': s_worldFlatBatches[0]++; break;
+	case 'e': s_worldFlatBatches[1]++; break;
+	case 's': s_worldFlatBatches[2]++; break;
+	default:  s_worldFlatBatches[3]++; break;
+	}
 	/* Every 3D batch is censused, whichever entity last passed through.  Gating
 	   on `backEnd.currentEntity == &tr.worldEntity` here read the entity of the
 	   PREVIOUS surface, so every batch that opened on an entity->world
@@ -4065,13 +4315,12 @@ void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean subst
 		return;
 	}
 
-	if ( bound->texnum <= 0 ) {
-		s_batchBindMiss++;
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=no-handle shader='%s' ent=%c lmidx=%d unit=%d img='%s' tex=%d",
-					  s_batchShader ? s_batchShader->name : "?", s_batchEntity,
-					  s_batchShader ? (int)s_batchShader->lightmapIndex : -1,
-					  unit, bound->imgName, (int)bound->texnum );
+	/* A bind the engine resolves to one of its own images is never a miss, and
+	   that test has to come before the handle test: `*default` is the first
+	   texture created, so its handle IS 0, and a test that reads 0 as absent
+	   reported 420 batches a frame as sampling nothing when they were sampling
+	   the engine's own missing-texture image.  What convicts is a null view. */
+	if ( VK_StageBindKnown( bound ) ) {
 		return;
 	}
 
@@ -4085,7 +4334,7 @@ void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean subst
 		return;
 	}
 
-	if ( !VK_StageImageOwned( bundle, bound ) && !VK_StageBindKnown( bound ) ) {
+	if ( !VK_StageImageOwned( bundle, bound ) ) {
 		s_batchBindMiss++;
 		VK_Guard_Row( "VK:worldset",
 					  "MISS why=foreign-image shader='%s' ent=%c lmidx=%d unit=%d wanted='%s' bound='%s' tex=%d",
@@ -4184,26 +4433,26 @@ void VK_Shade_BatchEnd( void )
 	s_rows++;
 	if ( s_batchStagesDrawn != expected ) {
 		VK_Guard_Row( "VK:worldset",
-					  "MISS why=stage-count shader='%s' ent=%c lmidx=%d expected=%d drawn=%d "
+					  "MISS why=stage-count shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
 					  "bindmiss=%d lm=%d src=%d srcidx=%d binds=[%s] stages=%s",
-					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex,
+					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
 					  expected, s_batchStagesDrawn, s_batchBindMiss,
 					  r_lightmap->integer, srcMode, srcIdx,
 					  s_batchBindsLen ? s_batchBinds : "none", detail );
 	} else if ( s_batchBindMiss ) {
 		VK_Guard_Row( "VK:worldset",
-					  "MISS why=bind-image shader='%s' ent=%c lmidx=%d expected=%d drawn=%d "
+					  "MISS why=bind-image shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
 					  "bindmiss=%d lm=%d src=%d srcidx=%d binds=[%s] stages=%s",
-					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex,
+					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
 					  expected, s_batchStagesDrawn, s_batchBindMiss,
 					  r_lightmap->integer, srcMode, srcIdx,
 					  s_batchBindsLen ? s_batchBinds : "none", detail );
 	} else if ( VK_WorldsetSampleDue( s_rows, frame, s_sampleFrame ) ) {
 		s_sampleFrame = frame;
 		VK_Guard_Row( "VK:worldset",
-					  "shader='%s' ent=%c lmidx=%d lm=%d expected=%d drawn=%d bindmiss=0 "
+					  "shader='%s' ent=%c lmidx=%d surfs=%d lm=%d expected=%d drawn=%d bindmiss=0 "
 					  "src=%d srcidx=%d binds=[%s] stages=%s",
-					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex,
+					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
 					  r_lightmap->integer,
 					  expected, s_batchStagesDrawn, srcMode, srcIdx,
 					  s_batchBindsLen ? s_batchBinds : "none", detail );
@@ -4352,6 +4601,17 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 			  && !VK_StageBindKnown( b0 ) )
 			|| ( pStage->bundle[1].image[0]
 				 && !VK_StageImageOwned( &pStage->bundle[1], b1 )
+				 && !VK_StageBindKnown( b1 ) )
+			/* a stage whose second bundle is empty must not find a live foreign
+			   image on the unit: the bind is retail's own state, the descriptor
+			   write is not.  Only a program that declares u_Tex1 can read it --
+			   the shade layout declares binding 1 for every program, so for the
+			   rest the disarmed unit is the white image and this test is noise. */
+			|| ( !pStage->bundle[1].image[0]
+				 && s_shade.prog
+				 && ( s_shade.prog->defines & VKP_LIGHTMAP )
+				 && s_shade.texBound[1]
+				 && b1
 				 && !VK_StageBindKnown( b1 ) );
 
 		s_rows++;
@@ -4398,6 +4658,9 @@ void VK_DrawCensusKey( const void *key, qboolean in2D )
    the composited result, not a stage's own target. */
 static unsigned char	*s_swapPixels;
 static int				 s_swapW, s_swapH, s_swapValid;
+/* The walk frame the copy belongs to, so a verdict can be checked against the
+   frame it claims to describe rather than assumed to describe it. */
+static int				 s_swapFrame = -1;
 
 qboolean VK_ModelPixelAtSwap( int x, int y, byte out[4] )
 {
@@ -4410,15 +4673,24 @@ qboolean VK_ModelPixelAtSwap( int x, int y, byte out[4] )
 		return qfalse;
 	}
 
-	/* the swapchain rows run bottom-up, the client's run top-down */
+	/* The copy preserves image row order and the framebuffer origin is the upper
+	   left (vkspec.txt:196524-196527, :197120-197124), and the 2D ortho puts
+	   client y = 0 on that same row, so the client coordinate indexes it as is. */
 	ox = x;
-	oy = s_swapH - 1 - y;
+	oy = y;
 
 	out[0] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 0];
 	out[1] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 1];
 	out[2] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 2];
 	out[3] = s_swapPixels[( oy * s_swapW + ox ) * 4 + 3];
 	return qtrue;
+}
+
+/* The walk frame the copy belongs to, -1 when there is no copy: a readback
+   verdict names a frame, so the row carries which frame it actually sampled. */
+int VK_ModelSwapFrame( void )
+{
+	return s_swapValid ? s_swapFrame : -1;
 }
 
 static void VK_Shade_FreeSwapPixels( void )
@@ -4428,6 +4700,7 @@ static void VK_Shade_FreeSwapPixels( void )
 		s_swapPixels = NULL;
 	}
 	s_swapW = s_swapH = s_swapValid = 0;
+	s_swapFrame = -1;
 }
 
 /* ---- the presented frame's own map --------------------------------------- */
@@ -4789,26 +5062,38 @@ void VK_Shade_ReadbackFrame( uint32_t imageIndex )
 	};
 
 	s_frames++;
-	if ( !R_ProbeStatsOn() || ( s_frames % 60 ) != 0 ) {
-		return;
-	}
-	if ( vk.swapchain == VK_NULL_HANDLE || !vk.swapchainExtent.width || !vk.swapchainExtent.height ) {
-		return;
+	{
+		/* A whole-frame histogram is only worth a submit every so often, but the
+		   2D readback's verdict names a frame, so its copy is taken every frame
+		   it is armed; only the derived rows keep the cadence. */
+		qboolean	need2d = RB_2DCover_ReadbackArmed();
+
+		if ( !R_ProbeStatsOn() || ( !need2d && ( s_frames % 60 ) != 0 ) ) {
+			return;
+		}
+		if ( vk.swapchain == VK_NULL_HANDLE || !vk.swapchainExtent.width || !vk.swapchainExtent.height ) {
+			return;
+		}
+
+		if ( (int)vk.swapchainExtent.width != s_swapW || (int)vk.swapchainExtent.height != s_swapH ) {
+			VK_Shade_FreeSwapPixels();
+			s_swapW = (int)vk.swapchainExtent.width;
+			s_swapH = (int)vk.swapchainExtent.height;
+			s_swapPixels = ri.Malloc( (size_t)s_swapW * (size_t)s_swapH * 4 );
+		}
+
+		if ( !VK_Swapchain_ReadPixels( imageIndex, s_swapPixels, (size_t)s_swapW * (size_t)s_swapH * 4 ) ) {
+			s_swapValid = 0;
+			VK_Guard_Row( "VK:readback", "frame=%d w=%d h=%d status=failed", s_frames, s_swapW, s_swapH );
+			return;
+		}
+		s_swapValid = 1;
+		s_swapFrame = RB_2DCover_ReadbackFrame();
 	}
 
-	if ( (int)vk.swapchainExtent.width != s_swapW || (int)vk.swapchainExtent.height != s_swapH ) {
-		VK_Shade_FreeSwapPixels();
-		s_swapW = (int)vk.swapchainExtent.width;
-		s_swapH = (int)vk.swapchainExtent.height;
-		s_swapPixels = ri.Malloc( (size_t)s_swapW * (size_t)s_swapH * 4 );
+	if ( ( s_frames % 60 ) != 0 ) {
+		return;			/* the coarse censuses keep their own cadence */
 	}
-
-	if ( !VK_Swapchain_ReadPixels( imageIndex, s_swapPixels, (size_t)s_swapW * (size_t)s_swapH * 4 ) ) {
-		s_swapValid = 0;
-		VK_Guard_Row( "VK:readback", "frame=%d w=%d h=%d status=failed", s_frames, s_swapW, s_swapH );
-		return;
-	}
-	s_swapValid = 1;
 
 	{
 		/* the presented frame's own map: the coarse grid and the flat boxes.
@@ -4949,16 +5234,29 @@ void VK_Shade_NewFrame( void )
 	if ( s_frameShadeDraws || s_frameShadeDrops ) {
 		static int rows;
 		static int lastBatches = -1;
+		static int lastRecorded = -1;
+		static int lastRecordedIdx = -1;
+		int recorded = 0, recordedIdx = 0;
 
 		VK_Shade_StageRows();
+		VK_Shade_FlatWorldRow();
 
-		/* a count that moves between frames is the vanish signature, so a transition is always named */
-		if ( rows < 8 || s_frameShadeDraws != lastBatches || ( rows % 600 ) == 0 ) {
-			VK_Guard_Row( "VK:draw3d", "frame batches=%d refusals=%d imm=%d surf-cmds=%d draw-surfs=%d perm-req=%d perm-miss=%d",
+		VK_Draw_RecordedDraws( &recorded, &recordedIdx );
+
+		/* a count that moves between frames is the vanish signature, so a
+		   transition is always named: a recorded count that drops while the
+		   batch count holds still is draws vanishing between the walk and the
+		   stream, which the batch-only trigger would have swallowed */
+		if ( rows < 8 || s_frameShadeDraws != lastBatches || recorded != lastRecorded
+			 || recordedIdx != lastRecordedIdx || ( rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:draw3d", "frame batches=%d refusals=%d imm=%d surf-cmds=%d draw-surfs=%d perm-req=%d perm-miss=%d recorded=%d recorded-idx=%d",
 			  s_frameShadeDraws, s_frameShadeDrops, s_frameImmDraws,
-			  s_frameSurfCmds, s_frameDrawSurfs, s_framePermReq, s_framePermMiss );
+			  s_frameSurfCmds, s_frameDrawSurfs, s_framePermReq, s_framePermMiss,
+			  recorded, recordedIdx );
 		}
-		lastBatches = s_frameShadeDraws;
+		lastBatches     = s_frameShadeDraws;
+		lastRecorded    = recorded;
+		lastRecordedIdx = recordedIdx;
 		rows++;
 	}
 	s_frameShadeDraws    = 0;
@@ -4971,6 +5269,13 @@ void VK_Shade_NewFrame( void )
 	s_framePermMissRows  = 0;
 	s_frameStageCount    = 0;
 	s_frameStageDropped  = 0;
+	s_worldFlatStages    = 0;
+	s_worldFlatCount     = 0;
+	s_worldFlatBatches[0] = 0;
+	s_worldFlatBatches[1] = 0;
+	s_worldFlatBatches[2] = 0;
+	s_worldFlatBatches[3] = 0;
+	VK_Draw_ResetRecordedDraws();
 
 	/* the front end wrote this frame's uniforms; the first draw uploads them into a fresh ring */
 	s_uboDirty = qtrue;

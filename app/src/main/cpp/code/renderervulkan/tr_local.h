@@ -1481,8 +1481,9 @@ extern	cvar_t	*r_lightmap;
 extern	cvar_t	*r_vertexLight;					
 
 extern	cvar_t	*r_logFile;						
-extern	cvar_t	*r_showtris;					
-extern	cvar_t	*r_showsky;						
+extern	cvar_t	*r_showtris;
+extern	cvar_t	*r_worldFlat;
+extern	cvar_t	*r_showsky;
 extern	cvar_t	*r_drawsky;						
 extern	cvar_t	*r_shownormals;					
 extern	cvar_t	*r_clear;						
@@ -1711,6 +1712,7 @@ void R_Invalidate2DWindowCache( void );
    where the widget is and the renderer adds it to the 2D vertices, the way
    retail's screen-space glVertex2f stream already carries it. */
 void Set2DOrigin( float x, float y );
+void R_2DQueuePlacement( float *ox, float *oy, qboolean *scnValid, int *scn, byte *color );
 
 void RB_2D_Flush( void );
 /* The immediate (box and line) run alone, which a window change still closes. */
@@ -1783,6 +1785,11 @@ int		R_SumOfTextureMemory( int type, int usedOnly, int estimated );
 void	R_TotalTextureMemInfo_f( void );
 const void *RB_TakeScreenshotCmd( const void *data );
 void	R_ScreenShot_f( void );
+void	R_Register( void );
+void	R_Screenshot_Request( const char *name, int width, int height );
+qboolean	R_Screenshot_Pending( void );
+void	R_Screenshot_Flush( unsigned imageIndex );
+byte	*RB_ReadPixels( int x, int y, int width, int height, size_t *offset, int *padlen );
 
 void	R_InitImages( void );
 void	R_FreeImage(image_t* image);
@@ -2352,6 +2359,12 @@ typedef struct {
 	float		charHeight;
 	float		glyphScale;
 	float		widthScale, heightScale;
+	/* the placement and clip the string was QUEUED under: the run flushes after
+	   later widgets' state records, so the walk's live mirror is not its own */
+	float		originX, originY;
+	int			scissorValid;
+	int			scissor[4];
+	byte		color[4];
 } fontString2DCommand_t;
 
 typedef enum {
@@ -2695,7 +2708,7 @@ void RB_Color4bv( unsigned char *colors );
 void RB_StreamEnd( void );
 qboolean VKimp_GLMainOwnsContext( void );
 qboolean RB_RecordingFrame( void );
-void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs );
+void RB_FontRunDraw( VkCommandBuffer cb, fontString2DCommand_t *cmd, const fontGlyph_t *glyphs );
 void R_IssuePendingRenderCommands( void );
 void *R_GetCommandBufferReserved( int bytes, int reservedBytes );
 void RB_InitBackend( void );
@@ -2738,7 +2751,10 @@ void		VK_Shade_NewFrame( void );
 void		VK_2DOrder_Note( const char *shader );
 void		VK_Shade_NoteDraw( int shade );
 void		VK_Shade_NoteSurfCmds( int surfs );
+void		VK_Shade_NoteBatchSurf( void );
 void		VK_Shade_NoteStage( const struct shader_s *shader );
+void		VK_Shade_NoteFlat( const struct shader_s *shader );
+int			VK_WorldFlatMode( void );
 /* one row per animated shader per second: the shader clock's inputs */
 void		VK_Shade_NoteShaderTime( const char *kind );
 	void		VK_Shade_ReadbackFrame( unsigned imageIndex );
@@ -2902,9 +2918,12 @@ void     VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int h
    authored under (tr_draw.c RB_2D_Span*). */
 qboolean VK_Draw_2DStateGet( float *ortho, int *win, int *scn );
 void     VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *win, const int *scn );
+qboolean VK_Draw_2DIssuedScissor( const int *scn );
 void     VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits );
 void     VK_Draw_DisableScissor( VkCommandBuffer cmd );
 void     VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase );
+void     VK_Draw_RecordedDraws( int *draws, int *indexes );
+void     VK_Draw_ResetRecordedDraws( void );
 void     VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex );
 const float *VK_Draw_CurrentOrtho( void );
 void     VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h );
@@ -2945,6 +2964,8 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes );
 qboolean VK_Texture_Publish( int handle );
 qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked );
+qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],
+							   unsigned char blockOut[16], int *blocked );
 void     VK_Texture_MakeMips( int handle );
 void     VK_Texture_Destroy( int handle );
 VkImageView VK_Texture_View( int handle );

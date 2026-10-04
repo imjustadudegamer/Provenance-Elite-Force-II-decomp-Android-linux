@@ -425,10 +425,18 @@ static void HarnessStreamBatch( int base )
 	for ( i = 0; i < N_SURF * SURF_VERTS; i++ ) {
 		byte	*v = streamVerts + (size_t)i * VK_STREAM_STRIDE;
 		int		j;
+		float	xyz[3];
 
 		for ( j = 0; j < VK_STREAM_STRIDE; j++ ) {
 			v[j] = (byte)( ( i * 31 + j * 7 + 1 ) & 0xff );
 		}
+		/* the bake refuses a position that is not finite, so the fixture's
+		   vertex bytes have to be real ones: a distinct position per vertex,
+		   still enough for the copy checks to tell them apart */
+		xyz[0] = (float)( i + 1 );
+		xyz[1] = (float)( i + 2 );
+		xyz[2] = (float)( i + 3 );
+		memcpy( v, xyz, sizeof( xyz ) );
 	}
 	memcpy( harnessRing + base, streamVerts, sizeof( streamVerts ) );
 

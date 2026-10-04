@@ -140,6 +140,11 @@ void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
    reads them instead of the tess arrays the fast arm never wrote. */
 const float *RB_VboStaticStageFloats( void );
 
+/* The arena batch's own rebased index block, or NULL off the arena arm.  The
+   batch-relative index at position i is recovered by mapping the block's value
+   back through the item that owns that position. */
+const vkIndex_t *RB_VboStaticBatchIndexes( int *firstOut );
+
 /* Items the arena has baked, arena bytes in use, and the refusals that made a
    surface stream instead: one row a second on the boundary that ends it. */
 void RB_VboStaticRow( void );

@@ -72,8 +72,12 @@ def main():
     frame = read(frame_path)
 
     # --- the texel probe ---------------------------------------------------
-    fn = body(tex, "qboolean VK_Texture_ReadTexel(")
-    check(bool(fn), "VK_Texture_ReadTexel is gone")
+    # The copy site lives in VK_Texture_ReadBlock; VK_Texture_ReadTexel is the
+    # four-byte wrapper over it, and both have to exist for the probe's two arms.
+    fn = body(tex, "qboolean VK_Texture_ReadBlock(")
+    check(bool(fn), "VK_Texture_ReadBlock is gone")
+    check("qboolean VK_Texture_ReadTexel(" in tex,
+          "VK_Texture_ReadTexel is gone")
 
     if mutant == 1:
         fn = fn.replace("bx = ( x / bw ) * bw;", "bx = x;")

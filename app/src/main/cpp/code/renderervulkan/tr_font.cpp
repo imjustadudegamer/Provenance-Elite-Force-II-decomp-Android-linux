@@ -640,6 +640,11 @@ static shader_t	   *s_fontRunShader;
 static int			s_fontRunScaled;
 static float		s_fontRunZ, s_fontRunCharHeight, s_fontRunGlyphScale;
 static float		s_fontRunWidthScale, s_fontRunHeightScale;
+/* the placement and clip the run was queued under */
+static float		s_fontRunOrigin[2];
+static qboolean		s_fontRunScissorValid;
+static int			s_fontRunScissor[4];
+static byte			s_fontRunColor[4];
 
 static void R_FontRunWrite( void ) {
 	int		i;
@@ -721,14 +726,29 @@ static void R_FontRunWrite( void ) {
 }
 
 /* The recorded run draws through the same tess the immediate body writes. */
-void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs ) {
+void RB_FontRunDraw( VkCommandBuffer cb, fontString2DCommand_t *cmd, const fontGlyph_t *glyphs ) {
 	int i;
 
 	if ( !cmd || !cmd->numGlyphs || !cmd->shader ) {
 		return;
 	}
 
+	/* The surface opens first.  An earlier widget's 2D batch is usually still
+	   open at this record, and closing it replays the batch's spans -- each of
+	   which re-applies the BATCH's scissor.  Applying the run's own clip before
+	   that left the glyphs drawing under the previous widget's clip, which is
+	   the confirmation dialog whose panel drew and whose text rasterised
+	   nothing. */
 	RB_BeginSurface( cmd->shader, 0 );
+
+	/* The run's own placement and clip, applied where the run draws: the flush
+	   lands behind later widgets' state records, so the walk's mirror here is
+	   not this run's, and a span replay writes the command buffer without
+	   writing the mirror -- so the skip test asks the buffer, not the mirror. */
+	VK_Draw_Set2DOrigin( cmd->originX, cmd->originY );
+	if ( cmd->scissorValid && !VK_Draw_2DIssuedScissor( cmd->scissor ) ) {
+		VK_Draw_SetScissor( cb, cmd->scissor[0], cmd->scissor[1], cmd->scissor[2], cmd->scissor[3] );
+	}
 
 	for ( i = 0; i < cmd->numGlyphs; i++ ) {
 		const fontGlyph_t	*g = &glyphs[i];
@@ -781,15 +801,15 @@ void RB_FontRunDraw( fontString2DCommand_t *cmd, const fontGlyph_t *glyphs ) {
 		RB_2DPlaceRange( tess.numVertexes, 4 );
 
 		/* The font stage's colour is CGEN_GLOBAL_COLOR, which the reference
-		   remaps to the vertex colour in 2D; carry Draw_SetColor as the body. */
+		   remaps to the vertex colour in 2D; carry the QUEUED colour. */
 		{
 			int v;
 
 			for ( v = 0; v < 4; v++ ) {
-				tess.vertexColors[tess.numVertexes + v][0] = backEnd.color2D[0];
-				tess.vertexColors[tess.numVertexes + v][1] = backEnd.color2D[1];
-				tess.vertexColors[tess.numVertexes + v][2] = backEnd.color2D[2];
-				tess.vertexColors[tess.numVertexes + v][3] = backEnd.color2D[3];
+				tess.vertexColors[tess.numVertexes + v][0] = cmd->color[0];
+				tess.vertexColors[tess.numVertexes + v][1] = cmd->color[1];
+				tess.vertexColors[tess.numVertexes + v][2] = cmd->color[2];
+				tess.vertexColors[tess.numVertexes + v][3] = cmd->color[3];
 			}
 			tess.vertexColorValid = qtrue;
 		}
@@ -814,6 +834,17 @@ static void R_FontRunFlush( void ) {
 	cmd = (fontString2DCommand_t *)R_GetCommandBuffer( bytes );
 
 	if ( !cmd ) {
+		/* The list refused the run even after its growth: the run now draws
+		   on THIS thread against the walk's state, which is wrong by
+		   construction, so it names itself every time. */
+		static int	s_rows;
+
+		s_rows++;
+		if ( R_ProbeStatsOn() && ( s_rows <= 8 || ( s_rows % 64 ) == 0 ) ) {
+			VK_Guard_Row( "VK:fontdrop", "runs=%d shader='%s' f=%d",
+						  s_fontRunCount, s_fontRunShader ? s_fontRunShader->name : "?",
+						  RB_FrameCount() );
+		}
 		R_FlushRenderCommands();
 		R_FontRunWrite();
 		s_fontRunCount = 0;
@@ -830,6 +861,11 @@ static void R_FontRunFlush( void ) {
 	cmd->glyphScale = s_fontRunGlyphScale;
 	cmd->widthScale = s_fontRunWidthScale;
 	cmd->heightScale = s_fontRunHeightScale;
+	cmd->originX = s_fontRunOrigin[0];
+	cmd->originY = s_fontRunOrigin[1];
+	cmd->scissorValid = s_fontRunScissorValid ? 1 : 0;
+	memcpy( cmd->scissor, s_fontRunScissor, sizeof( cmd->scissor ) );
+	memcpy( cmd->color, s_fontRunColor, sizeof( cmd->color ) );
 	Com_Memcpy( cmd + 1, s_fontRun, s_fontRunCount * sizeof( fontGlyph_t ) );
 
 	s_fontRunCount = 0;
@@ -848,6 +884,10 @@ static void R_FontRunBegin( shader_t *shader, float z, float charHeight, float g
 	s_fontRunWidthScale = widthScale;
 	s_fontRunHeightScale = heightScale;
 	s_fontRunScaled = scaled;
+
+	/* the state in force where the string is QUEUED, not where it flushes */
+	R_2DQueuePlacement( &s_fontRunOrigin[0], &s_fontRunOrigin[1],
+						&s_fontRunScissorValid, s_fontRunScissor, s_fontRunColor );
 }
 
 void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y, int maxlen, const float *pvVirtualScreen) {

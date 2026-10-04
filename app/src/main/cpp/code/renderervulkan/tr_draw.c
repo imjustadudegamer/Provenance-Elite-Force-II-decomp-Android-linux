@@ -282,9 +282,33 @@ static void RB_2D_SpanQuad( void ) {
 	if ( s_2dSpanUnnamed ) {
 		return;
 	}
+	/* The mirrors are cheap to compare and the common case is unchanged state:
+	   the full fetch (24 values) runs only when a span would actually open.
+	   The first quad of a batch always takes the full path, so an unchanged
+	   mirror here is a state a previous quad already fetched valid. */
+	if ( s_2dSpanCount > 0 && s_2dSpanCount < RB_2D_SPAN_MAX
+		 && !memcmp( vk_2dWindow, s_2dSpanWin[s_2dSpanCount - 1], sizeof( win ) )
+		 && !memcmp( vk_2dScissor, s_2dSpanScn[s_2dSpanCount - 1], sizeof( scn ) ) ) {
+		return;
+	}
 	if ( !VK_Draw_2DStateGet( ortho, win, scn ) || s_2dSpanCount >= RB_2D_SPAN_MAX ) {
 		s_2dSpanCount = 0;
 		s_2dSpanUnnamed = qtrue;
+		/* the batch now draws under the command buffer's own scissor, which is
+		   some other widget's clip: a whole run can vanish and nothing would
+		   say why.  Name it, and say which of the two ways it was lost. */
+		{
+			static int	s_rows;
+
+			if ( R_ProbeStatsOn() && s_rows < 16 ) {
+				VK_Guard_Row( "VK:2dspan", "unnamed batch shader='%s' reason=%s states=%d f=%d",
+							  tess.shader ? tess.shader->name : "?",
+							  VK_Draw_2DStateGet( ortho, win, scn ) ? "span-table-full"
+																	: "no-2d-state",
+							  s_2dSpanCount, RB_FrameCount() );
+				s_rows++;
+			}
+		}
 		return;
 	}
 	if ( s_2dSpanCount > 0
@@ -345,6 +369,33 @@ void RB_2D_FlushImmediate( void ) {
 		RB_ImmFlush();
 		/* Same: the pipeline bind and the draw returned their own result. */
 	}
+}
+
+/* ---- the state a one-shot 2D writer draws under --------------------------- */
+
+/* A glyph run, a box run, a line loop, a triangle or a raw frame draws at its
+   own record, and the 2D batch an earlier widget left open is usually still
+   open there: closing it replays the batch's spans, and a span re-applies the
+   BATCH's ortho, window and scissor.  The writer therefore takes the state its
+   record was queued under before that flush and re-applies it after, which is
+   what a span already does for a queued quad.  The mirrors hold the queued
+   state here because the walk meets the records in the order the front end
+   queued them. */
+static qboolean s_2dOwnValid;
+static float	s_2dOwnOrtho[16];
+static int		s_2dOwnWin[4];
+static int		s_2dOwnScn[4];
+
+static void RB_2D_OwnStateTake( void ) {
+	s_2dOwnValid = VK_Draw_2DStateGet( s_2dOwnOrtho, s_2dOwnWin, s_2dOwnScn );
+}
+
+static void RB_2D_OwnStateApply( void ) {
+	if ( !s_2dOwnValid ) {
+		return;
+	}
+	s_2dOwnValid = qfalse;
+	VK_Draw_2DStateApply( VK_Shade_CommandBuffer(), s_2dOwnOrtho, s_2dOwnWin, s_2dOwnScn );
 }
 
 void RB_2D_Flush( void ) {
@@ -422,6 +473,10 @@ static void RB_2D_Batch( shader_t *shader ) {
 	s_2dBatchOpen   = qtrue;
 	s_2dBatchShader = shader;
 	s_2dBatchVerts  = 0;
+	/* the span table is this batch's: left running across batches, a menu's
+	   state count passes the table's end partway through the frame and every
+	   later batch then draws under whatever scissor the last state left */
+	RB_2D_SpanReset();
 }
 
 /* the reference renderer's tr_draw.c carries this note in full */
@@ -435,6 +490,7 @@ static void RB_2D_BatchQuad( shader_t *shader, const float (*xy)[2], const float
 		RB_BeginSurface( shader, 0 );
 		s_2dBatchOpen   = qtrue;
 		s_2dBatchShader = shader;
+		RB_2D_SpanReset();
 	}
 
 	/* The state in force is the state this quad is authored under, and it is
@@ -552,7 +608,9 @@ void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t 
 	/* color2D is bytes: RB_Color4f would scale it a second time. */
 	RB_Color4bv(backEnd.color2D);
 
+	RB_2D_OwnStateTake();
 	RB_2D_Flush();
+	RB_2D_OwnStateApply();
 	RB_BeginSurface(shader, 0);
 
 	for (i = 0; i < 3; i++) {
@@ -567,12 +625,14 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	int wantBlend = blend ? 1 : 0;
 
 	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) { /* state is the call's */
+		RB_2D_OwnStateTake();
 		RB_2D_Flush();
 
 		RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.whiteImage,
 			wantBlend ? ( VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_SRC_ALPHA
 						  | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA )
 					  : ( VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_ONE | VKS_DSTBLEND_ONE ) );
+		RB_2D_OwnStateApply();
 		s_2dTriOpen  = qtrue;
 		s_2dTriBlend = wantBlend;
 		s_2dTriVerts = 0;
@@ -639,6 +699,12 @@ static void RB_DrawStippledLine2D( float x0, float y0, float x1, float y1,
 
 void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int stipple_mask ) {
 	int		i;
+
+	/* A loop commits at its own record, so the batch an earlier widget left open
+	   closes first -- retail's order -- and the loop draws under its own clip. */
+	RB_2D_OwnStateTake();
+	RB_2D_Flush();
+	RB_2D_OwnStateApply();
 
 	RB_ImmColor4f( backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,
 				   backEnd.color2D[2] / 255.0f, backEnd.color2D[3] / 255.0f );
@@ -1081,7 +1147,9 @@ static void RB_StretchRaw2D( int x, int y, int w, int h, int cols, int rows )
 
 void RB_StretchRawDraw( const stretchRaw2DCommand_t *cmd )
 {
+	RB_2D_OwnStateTake();
 	RB_2D_Flush();
+	RB_2D_OwnStateApply();
 	RB_StretchRaw2D( cmd->x, cmd->y, cmd->w, cmd->h, cmd->cols, cmd->rows );
 }
 
@@ -1204,17 +1272,36 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
 	D2_End( D2P_lineloop, t0 );
 }
 
+/* The placement in force on THIS thread, where a string is queued: the run
+   flushes after later widgets' state records, so the walk's mirror at flush
+   time is not the run's.  Stamped into the run's own command. */
+float r_2dOrigin[2] = { 0.0f, 0.0f };
+
 /* The widget's placement inside the window the pass sets: retail carries it in
    the vertices (glVertex2f in screen space), so this records an offset the walk's
    2D vertex writers add, and the ortho stays the one constant screen ortho. */
 void Set2DOrigin(float x, float y) {
 	origin2DCommand_t *cmd = ( origin2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
+	r_2dOrigin[0] = x;
+	r_2dOrigin[1] = y;
+
 	if ( cmd ) {
 		cmd->commandId = RC_2D_ORIGIN;
 		cmd->x = x;
 		cmd->y = y;
 	}
+}
+
+/* The placement and clip a queue-time caller records under, for a command the
+   walk replays after later widgets' state records. */
+void R_2DQueuePlacement( float *ox, float *oy, qboolean *scnValid, int *scn, byte *color )
+{
+	*ox = r_2dOrigin[0];
+	*oy = r_2dOrigin[1];
+	*scnValid = r_scissor2DValid;
+	memcpy( scn, r_scissor2D, 4 * sizeof( int ) );
+	memcpy( color, r_color2D, 4 );
 }
 
 void Set2DWindow(int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f) {
