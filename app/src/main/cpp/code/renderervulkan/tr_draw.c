@@ -206,19 +206,25 @@ static int       s_2dTriBase;
 /* ---- the 2D batch's spans ------------------------------------------------ */
 
 /* A widget sets its own window (and often its own scissor) before it draws, so
-   a menu's 2D run is a window change every few quads.  Ending the surface at
-   each one re-did the stage pass for a handful of vertices: pipeline lookup,
-   texture and descriptor bind, uniform ring slice, index copy, draw.  None of
-   that is what changed -- only the ortho push constant and the viewport and
-   scissor, which are dynamic state -- so the batch now keeps one span per state
-   and the draw re-applies each span's copy before the span's own indexed draw.
-   The quads, their order and their clip rects are unchanged; what goes away is
-   the surface work per widget.
+   a menu's 2D run is a state change every few quads.  Ending the surface at each
+   one re-did the stage pass for a handful of vertices: pipeline lookup, texture
+   and descriptor bind, uniform ring slice, index copy, draw.  None of that is
+   what changed -- only the ortho push constant and the viewport and scissor,
+   which are dynamic state -- so the batch keeps one span per state and the draw
+   re-applies each span's copy before the span's own indexed draw.  The quads,
+   their order and their clip rects are unchanged; what goes away is the surface
+   work per widget.
 
-   Each span is (firstIndex, ortho, window rect, scissor rect).  Span i draws
-   the indexes [first[i], first[i+1]) of the batch's index range, and the last
-   span runs to the batch's end.  Under two spans the batch draws exactly as it
-   did before: one draw, with the state already in the command buffer. */
+   Each span is (firstIndex, ortho, window rect, scissor rect).  Span i draws the
+   indexes [first[i], first[i+1]) of the batch's index range, and the last span
+   runs to the batch's end.
+
+   The span a quad belongs to is the state the quad was AUTHORED under, so it is
+   recorded when the quad is written (RB_2D_SpanQuad).  The earlier shape guessed
+   it at the next state command by reading the renderer's live 2D mirror, which a
+   span replay can itself have written: the guess then handed the batch the
+   previously replayed span's scissor, and a whole LCARS tile drew under its
+   neighbour's clip.  A guess is not needed when the authoring site can say. */
 #define RB_2D_SPAN_MAX	256
 
 static float	s_2dSpanOrtho[RB_2D_SPAN_MAX][16];
@@ -226,13 +232,21 @@ static int		s_2dSpanWin[RB_2D_SPAN_MAX][4];
 static int		s_2dSpanScn[RB_2D_SPAN_MAX][4];
 static int		s_2dSpanFirst[RB_2D_SPAN_MAX];
 static int		s_2dSpanCount;
+static qboolean	s_2dSpanUnnamed;
 
 void RB_2D_SpanReset( void ) {
 	s_2dSpanCount = 0;
+	s_2dSpanUnnamed = qfalse;
 }
 
+/* The count the draw sees.  A batch of one state is reported as two spans, the
+   second empty, so the draw can never take the `no span state' short path and
+   rasterise the batch under whatever state the next widget left behind. */
 int RB_2D_SpanCount( void ) {
-	return s_2dSpanCount;
+	if ( s_2dSpanUnnamed ) {
+		return 0;
+	}
+	return s_2dSpanCount == 1 ? 2 : s_2dSpanCount;
 }
 
 /* A span's index range and the state its quads were authored under.  count is 0
@@ -253,49 +267,26 @@ void RB_2D_SpanGet( int i, int *firstIndex, int *count, float *ortho, int *win, 
 	memcpy( scn, s_2dSpanScn[i], sizeof( s_2dSpanScn[i] ) );
 }
 
-/* The walk is about to apply a new 2D state with the batch still open: the
-   quads already queued were authored under the state in force, which closes as
-   a span.  qfalse means the split cannot be represented -- no window has been
-   set, so the state those quads carry cannot be named, or the table is full --
-   and the caller flushes the batch instead, which is what every window change
-   did before. */
-qboolean RB_2D_SpanBreak( void ) {
-	if ( !s_2dBatchOpen || tess.numIndexes == 0 ) {
-		return qtrue;			/* nothing queued under the old state */
-	}
-	if ( s_2dSpanCount + 2 > RB_2D_SPAN_MAX ) {
-		return qfalse;
-	}
-	if ( s_2dSpanCount == 0 ) {
-		if ( !VK_Draw_2DStateGet( s_2dSpanOrtho[0], s_2dSpanWin[0], s_2dSpanScn[0] ) ) {
-			return qfalse;
-		}
-		s_2dSpanFirst[0] = 0;
-		s_2dSpanCount = 1;
-	}
-	return qtrue;
-}
-
-/* After the new state is applied: the quads that follow belong to it.  The
-   state is always nameable here -- VK_Draw_Set2D and VK_Draw_SetScissor both
-   set it -- and RB_2D_SpanBreak reserved the room, so this does not fail. */
-qboolean RB_2D_SpanNote( void ) {
+/* One 2D batch quad is about to be appended: the state in force is the state it
+   is authored under, and a change of state opens the next span.  A run whose
+   state cannot be named at all is marked unnameable, and the draw then falls
+   back to the batch-wide state the change itself leaves, as before. */
+static void RB_2D_SpanQuad( void ) {
 	float	ortho[16];
 	int		win[4], scn[4];
 
-	if ( !s_2dBatchOpen ) {
-		return qtrue;
+	if ( s_2dSpanUnnamed ) {
+		return;
 	}
-	if ( s_2dSpanCount >= RB_2D_SPAN_MAX
-		 || !VK_Draw_2DStateGet( ortho, win, scn ) ) {
-		VK_Guard_Row( "VK:span", "site=note detail=\"no room or no state\" n=%d idx=%d",
-					  s_2dSpanCount, tess.numIndexes );
+	if ( !VK_Draw_2DStateGet( ortho, win, scn ) || s_2dSpanCount >= RB_2D_SPAN_MAX ) {
 		s_2dSpanCount = 0;
-		return qfalse;
+		s_2dSpanUnnamed = qtrue;
+		return;
 	}
-
-	if ( s_2dSpanCount > 0 && s_2dSpanFirst[s_2dSpanCount - 1] == tess.numIndexes ) {
-		s_2dSpanCount--;		/* that segment got no quads: this replaces it */
+	if ( s_2dSpanCount > 0
+		 && !memcmp( win, s_2dSpanWin[s_2dSpanCount - 1], sizeof( win ) )
+		 && !memcmp( scn, s_2dSpanScn[s_2dSpanCount - 1], sizeof( scn ) ) ) {
+		return;					/* same state: the open span takes this quad */
 	}
 
 	s_2dSpanFirst[s_2dSpanCount] = tess.numIndexes;
@@ -303,6 +294,23 @@ qboolean RB_2D_SpanNote( void ) {
 	memcpy( s_2dSpanWin[s_2dSpanCount], win, sizeof( win ) );
 	memcpy( s_2dSpanScn[s_2dSpanCount], scn, sizeof( scn ) );
 	s_2dSpanCount++;
+}
+
+/* The walk is about to apply a new 2D state with the batch still open.  Every
+   queued quad already carries the state it was authored under, so the change
+   costs nothing and the batch stays open.  qfalse -- the flush that every
+   window change used to force -- is only for a run whose state could not be
+   named while it was authored, which is the case that cannot be spanned. */
+qboolean RB_2D_SpanBreak( void ) {
+	if ( !s_2dBatchOpen || tess.numIndexes == 0 ) {
+		return qtrue;			/* nothing queued under the old state */
+	}
+	return s_2dSpanUnnamed ? qfalse : qtrue;
+}
+
+/* After the new state is applied: nothing to record.  The next quad reads the
+   state in force and opens its own span (RB_2D_SpanQuad). */
+qboolean RB_2D_SpanNote( void ) {
 	return qtrue;
 }
 
@@ -362,8 +370,14 @@ void RB_2D_Flush( void ) {
 
 		RB_EndSurface();
 		/* The tess path reports its own VkResult at the call site; nothing polls here. */
-		RB_2D_SpanReset();
 	}
+
+	/* The span table is the OPEN SURFACE's, not the batch's: RB_BeginSurface
+	   reaches here too, so a surface that never names a span of its own (the
+	   font run, the triangle fan, a batch drawn under an unnameable state) starts
+	   from an empty table and can never draw its indexes under a previous
+	   surface's span. */
+	RB_2D_SpanReset();
 	RB_2D_FlushImmediate();
 }
 
@@ -396,6 +410,10 @@ static void RB_2D_BatchQuad( shader_t *shader, const float (*xy)[2], const float
 		s_2dBatchOpen   = qtrue;
 		s_2dBatchShader = shader;
 	}
+
+	/* The state in force is the state this quad is authored under, and it is
+	   recorded here, at the writer, before a single vertex exists. */
+	RB_2D_SpanQuad();
 
 	b = tess.numVertexes;
 

@@ -91,6 +91,21 @@ def body(text, header):
 # ("quad", 6) queues one quad; ("shader", name) changes the surface's shader,
 # which ends the batch in both sequencings.
 
+# The scissor rects retail's own 2D draw stream carries, read out of
+# personal/evidence/traces/retail-menu-solomatch-final.trace (the glScissor of
+# the main menu's widget pass, bottom-left client coords in retail's 640x480
+# space): the tooltip, the four top buttons, Exit, the credits widget and the
+# two version labels.  The model's states are these, not a shape the port
+# invented, so what it proves is that a span draws a quad under the rect THE
+# TRACE gives that widget.
+TRACE_SCN = [
+    (49, 51, 320, 26), (44, 393, 138, 32), (182, 393, 138, 32),
+    (320, 393, 138, 32), (458, 393, 138, 32), (435, 20, 96, 32),
+    (371, 49, 256, 32), (424, 53, 123, 26), (20, 9, 25, 16),
+    (40, 9, 40, 16),
+]
+
+
 def stream(menu_like=True):
     ev = []
     ev.append(("win", "A"))
@@ -110,10 +125,19 @@ def stream(menu_like=True):
         ev.append(("win", "C"))
         ev.append(("quad", 6))
         ev.append(("shader", "s2"))      # a different material ends the batch
-        ev.append(("origin", "D"))
+        ev.append(("win", "D"))          # the next widget sets its state first,
+        ev.append(("origin", "D"))       # and only then draws: the surface ends
+        ev.append(("quad", 6))           # at that draw, inside the new state
+        ev.append(("scn", "D/2"))
         ev.append(("quad", 6))
-        ev.append(("win", "D"))
-        ev.append(("quad", 6))
+        # the trace's own rects, one widget each, consecutive materials: the
+        # menu's six background tiles have exactly this shape, and every one of
+        # them must be drawn under the rect the trace carries for it.
+        for i, scn in enumerate(TRACE_SCN):
+            ev.append(("win", "T%d" % i))
+            ev.append(("scn", scn))
+            ev.append(("shader", "t%d" % i))
+            ev.append(("quad", 6))
     else:
         ev.append(("quad", 6))
         ev.append(("origin", "A2"))
@@ -148,7 +172,7 @@ def old_model(ev):
             if queue:
                 draws.append((state, queue))
                 queue = []
-            state = arg if kind == "win" else state + "|" + arg
+            state = arg if kind == "win" else (state, arg)
         elif kind == "shader":
             if queue:
                 draws.append((state, queue))
@@ -170,8 +194,17 @@ def old_model(ev):
 
 
 def new_model(ev, mutant=0):
-    """One surface per shader; a state change inside it is a span."""
-    state = None
+    """One surface per shader; a state change inside it is a span, and the span a
+    quad belongs to is the state the quad is AUTHORED under, recorded at the quad
+    (RB_2D_SpanQuad) from the walk's 2D mirror.
+
+    The mirror is the one VK_Draw_2DStateGet reads.  A span replay runs while the
+    run is inside a later widget, so the replay must NOT write that mirror (the
+    vk_2dReplaying guard, vk_draw.c): if it does, the next quad's snapshot reads
+    back the state of the span that was just replayed instead of the state in
+    force, and the quad draws under another widget's clip."""
+    state = None                  # the state in force
+    live = None                   # the mirror a snapshot reads
     spans = []                    # (firstIndex, state)
     queue = []                    # (quad id, first index in the batch)
     batch_indexes = 0
@@ -186,22 +219,46 @@ def new_model(ev, mutant=0):
     glyphs = []                   # the quads that are glyphs of a text run
     ends = 0
     qid = 0
+    surface_shader = None
+    pending_shader = None
+
+    # planted 1: the old shape, which guessed a quad's state at the NEXT state
+    # command instead of recording it at the quad.
+    state_at = []
+    running = None
+    for kind, arg in ev:
+        if kind == "win":
+            running = arg
+        elif kind == "scn":
+            running = arg if running is None else (running, arg)
+        state_at.append(running)
+    after = [None] * len(ev)
+    nxt = None
+    for i in range(len(ev) - 1, -1, -1):
+        after[i] = nxt
+        if ev[i][0] in ("win", "scn"):
+            nxt = state_at[i]
 
     def end_surface():
-        """RB_EndSurface: one draw per span, or one draw when under two."""
-        nonlocal spans, queue, batch_indexes, ends
+        """RB_EndSurface / RB_StageDrawSpan: one draw per span, or one draw when
+        under two, which is the short path that cannot name a state."""
+        nonlocal spans, queue, batch_indexes, ends, live
         if queue:
             ends += 1
         if not queue:
             spans, batch_indexes = [], 0
             return
-        if mutant == 6 or len(spans) < 2:
-            # planted 6: the whole batch as one draw, which is what the old
-            # sequencing did per window and so cannot carry two states
+        if mutant == 6 or len(spans) == 0:
+            # planted 6, or the unnameable case: the whole batch as one draw
+            # under whatever state is in force at the flush.  A batch of ONE span
+            # is NOT this case -- RB_2D_SpanCount reports it as two so the draw
+            # still applies the span's own state.
             drawn.append((state, [q for q, fi in queue]))
             for q, fi in queue:
                 drawnColor[q] = color if mutant == 7 else colorOf[q]
                 drawnOrigin[q] = origin if mutant == 12 else originOf[q]
+            if mutant == 16:
+                live = state
         else:
             for i, (first, st) in enumerate(spans):
                 end = spans[i + 1][0] if i + 1 < len(spans) else batch_indexes
@@ -213,30 +270,44 @@ def new_model(ev, mutant=0):
                     for q in part:
                         drawnColor[q] = color if mutant == 7 else colorOf[q]
                         drawnOrigin[q] = origin if mutant == 12 else originOf[q]
+                    if mutant == 16:
+                        live = st      # planted: the replay wrote the mirror
         spans, queue, batch_indexes = [], [], 0
 
-    for kind, arg in ev:
+    for idx, (kind, arg) in enumerate(ev):
         if kind == "color":
             color = arg                # RC_2D_COLOR, live during the walk
         elif kind == "origin":
             origin = arg               # RC_2D_ORIGIN, live during the walk
         elif kind in ("win", "scn"):
-            # RB_2D_SpanBreak(): the queued quads close under the state in force
-            if queue and batch_indexes > 0 and len(spans) == 0:
-                spans.append((0, "NEW" if mutant == 1 else state))
-            # the walk applies the new state here
-            state = arg if kind == "win" else state + "|" + arg
-            # RB_2D_SpanNote(): the quads that follow belong to the new state
-            if (queue or batch_indexes > 0) and mutant != 3:
-                if spans and spans[-1][0] == batch_indexes:
-                    spans.pop()    # that segment got no quads
-                spans.append((batch_indexes, state))
+            # VK_Draw_Set2D / VK_Draw_SetScissor apply the state and write the
+            # mirror; planted 3 is the mirror left behind by the change.
+            state = arg if kind == "win" else (state, arg)
+            if mutant != 3:
+                live = state
         elif kind == "shader":
-            end_surface()
+            # RB_2D_Batch only ends the surface when the NEXT quad arrives with a
+            # different material, which is why a state change can sit between the
+            # last quad of one surface and the first quad of the next.
+            pending_shader = arg
         elif kind in ("quad", "glyph"):
+            if pending_shader is not None and pending_shader != surface_shader:
+                end_surface()
+                surface_shader = pending_shader
+            pending_shader = None
+
             recorded[qid] = state
             colorOf[qid] = color
             originOf[qid] = origin
+
+            # RB_2D_SpanQuad: the state this quad is authored under, read here
+            # and not guessed at the next change.
+            snap = after[idx] if mutant == 1 and after[idx] is not None else live
+            if not spans:
+                spans.append((batch_indexes, snap))
+            elif spans[-1][1] != snap:
+                spans.append((batch_indexes, snap))
+
             queue.append((qid, batch_indexes))
             batch_indexes += arg
             if kind == "glyph":
@@ -314,6 +385,16 @@ def run_model(mutant):
                   "%s: glyph quad %d is drawn at placement %r, recorded at %r"
                   % (tag, q, new["drawnOrigin"].get(q), new["origin"].get(q)))
 
+        # the trace's own scissor rects: every widget is drawn under the rect the
+        # trace carries for it, and every rect the trace carries is drawn
+        if menu_like:
+            drawn_scn = [st[1] for st, quads in new["draws"] if quads
+                         and isinstance(st, tuple) and len(st) == 2
+                         and st[1] in TRACE_SCN]
+            check(sorted(drawn_scn) == sorted(TRACE_SCN),
+                  "%s: the spans drew %d of the trace's %d scissor rects (%r)"
+                  % (tag, len(drawn_scn), len(TRACE_SCN), sorted(set(drawn_scn))))
+
         # the placement is baked into the quad's own vertices at append, so a span
         # holding several widgets draws each where it was recorded
         for q in sorted(old["origin"]):
@@ -335,6 +416,7 @@ def main():
     font_path = sys.argv[6] if len(sys.argv) > 6 else os.path.join(VK, "tr_font.cp" + "p")
     util_path = sys.argv[7] if len(sys.argv) > 7 else os.path.join(VK, "tr_util.cpp")
     imm_path = sys.argv[8] if len(sys.argv) > 8 else None
+    vk_path = sys.argv[9] if len(sys.argv) > 9 else os.path.join(VK, "vk_draw.c")
 
     cmds = read(cmds_path)
     draw = read(draw_path)
@@ -469,6 +551,47 @@ def main():
     span_get = body(batch, "void RB_2D_SpanGet(")
     check("tess.numIndexes" in span_get,
           "RB_2D_SpanGet does not run the last span to the batch's end")
+
+    # --- the span is the state the quad is AUTHORED under ------------------
+    #
+    # RB_2D_SpanQuad records it at the writer, from the walk's 2D mirror, so the
+    # snapshot cannot be taken later, when a following widget's state (or a
+    # replayed span) has already changed what the mirror says.
+    bq = body(batch, "static void RB_2D_BatchQuad(")
+    if mutant == 18:
+        bq = bq.replace("RB_2D_SpanQuad();", "")
+    i_snap = bq.find("RB_2D_SpanQuad();")
+    i_verts = bq.find("b = tess.numVertexes;")
+    check(i_snap >= 0 and i_verts > i_snap,
+          "RB_2D_BatchQuad does not record the quad's own state before it writes "
+          "the vertices (snap=%d verts=%d), so the span is guessed from a state a "
+          "replay can already have written" % (i_snap, i_verts))
+
+    span_count = body(batch, "int RB_2D_SpanCount( void )")
+    check("s_2dSpanCount == 1" in span_count and "2 :" in span_count,
+          "RB_2D_SpanCount can report a single span, which sends the batch down "
+          "the draw path that uses whatever state is in force at the flush "
+          "instead of the state the span was authored under")
+
+    # --- the replay does not become the state it restores -------------------
+    #
+    # VK_Draw_2DStateApply re-issues a span's state while the run is inside a
+    # later widget.  The mirrors it writes are what VK_Draw_2DStateGet reads, so
+    # a replay that writes them makes the next quad's snapshot read the replayed
+    # span's scissor -- a widget drawn under another widget's clip.
+    vk = read(vk_path)
+    apply = body(vk, "void VK_Draw_2DStateApply(")
+    scissor = body(vk, "void VK_Draw_SetScissor(")
+    if mutant == 17:
+        apply = apply.replace("vk_2dReplaying = qtrue;", "")
+        apply = apply.replace("vk_2dReplaying = qfalse;", "")
+    check("vk_2dReplaying = qtrue;" in apply and "vk_2dReplaying = qfalse;" in apply,
+          "VK_Draw_2DStateApply does not bracket the state it restores with the "
+          "replay guard, so restoring a span becomes the state the next snapshot "
+          "reads back")
+    check("vk_2dReplaying" in scissor and "if ( !vk_2dReplaying )" in scissor,
+          "VK_Draw_SetScissor writes the live 2D mirror during a replay, so the "
+          "next quad's span snapshot reads a replayed span's scissor")
 
     # --- the model --------------------------------------------------------
     run_model(mutant)

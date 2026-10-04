@@ -18,7 +18,7 @@ if ! python3 ./d2span_control.py 0; then
 fi
 
 # model faults: the handshake the source pins describe, broken in the model
-for m in 1 2 3 6 12 13 15; do
+for m in 1 2 3 6 12 13 15 16; do
 	if python3 ./d2span_control.py "$m" >/dev/null 2>&1; then
 		echo "  FAIL  model fault $m was not detected"
 		rc=1
@@ -81,6 +81,28 @@ colour_fault() {
 
 colour_fault 10 "10 the 2D colour flag dropped"
 colour_fault 11 "11 the global-colour 2D branch"
+
+# 17: the replay guard is gone, so a restored span becomes the state the next
+# quad's snapshot reads back
+sed 's/vk_2dReplaying = qtrue;//; s/vk_2dReplaying = qfalse;//' \
+	"$src/vk_draw.c" > "$mut/vk_draw.c"
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$src/tr_draw.c" \
+	"$src/tr_shade.c" "$src/tr_font.cpp" "$src/tr_util.cpp" "" "$mut/vk_draw.c" >/dev/null 2>&1; then
+	echo "  FAIL  source fault 17 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 17 detected"
+fi
+
+# 18: the quad no longer records its own state, so the span is guessed later
+sed 's/RB_2D_SpanQuad();//' "$src/tr_draw.c" > "$mut/tr_draw.c"
+if python3 ./d2span_control.py 0 "$src/tr_cmds.c" "$src/tr_backend.c" "$mut/tr_draw.c" \
+	"$src/tr_shade.c" "$src/tr_font.cpp" "$src/tr_util.cpp" >/dev/null 2>&1; then
+	echo "  FAIL  source fault 18 was not detected"
+	rc=1
+else
+	echo "  ok    source fault 18 detected"
+fi
 
 # 14: the glyph run's placement is gone, so a text run's quads stay in
 # widget-local coordinates while the widget's scissor is its screen rect

@@ -712,8 +712,19 @@ int	vk_2dScissor[4]  = { 0, 0, 0, 0 };
    placement, and the widget records its own right after. */
 float	vk_2dOrigin[2]   = { 0.0f, 0.0f };
 
+/* A span replay re-issues state the run already had; it is not a state change.
+   The mirrors above are what a span snapshot reads, so a replay that wrote them
+   made the next snapshot read back the previously replayed span's scissor -- a
+   widget drawn under another widget's clip, which is a whole LCARS tile gone
+   while its neighbours drew. */
+static qboolean vk_2dReplaying;
+
 void VK_Draw_Set2DOrigin( float x, float y )
 {
+	if ( vk_2dReplaying ) {
+		return;
+	}
+
 	vk_2dOrigin[0] = x;
 	vk_2dOrigin[1] = y;
 }
@@ -724,12 +735,14 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	float m[16];
 	float rl, tb, fn;
 
-	vk_2dWindow[0] = x; vk_2dWindow[1] = y; vk_2dWindow[2] = w; vk_2dWindow[3] = h;
-	vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = w; vk_2dScissor[3] = h;
+	if ( !vk_2dReplaying ) {
+		vk_2dWindow[0] = x; vk_2dWindow[1] = y; vk_2dWindow[2] = w; vk_2dWindow[3] = h;
+		vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = w; vk_2dScissor[3] = h;
 
-	/* a window defines the space; the widget that asked for it places itself */
-	vk_2dOrigin[0] = 0.0f;
-	vk_2dOrigin[1] = 0.0f;
+		/* a window defines the space; the widget that asked for it places itself */
+		vk_2dOrigin[0] = 0.0f;
+		vk_2dOrigin[1] = 0.0f;
+	}
 
 	rl = right - left;
 	tb = top - bottom;
@@ -808,7 +821,9 @@ void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 
 void VK_Draw_SetScissor( VkCommandBuffer cmd, int x, int y, int width, int height )
 {
-	vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = width; vk_2dScissor[3] = height;
+	if ( !vk_2dReplaying ) {
+		vk_2dScissor[0] = x; vk_2dScissor[1] = y; vk_2dScissor[2] = width; vk_2dScissor[3] = height;
+	}
 
 	/* RE_Scissor's box is bottom-left; Vulkan's is the top-left, and the box is
 	   cut to the render area the way GL cut it for free. */
@@ -859,11 +874,18 @@ void VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *w
 						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 						  offsetof( vkPushConstants_t, ortho ), 16 * sizeof( float ), ortho );
 
+	/* A replay restores a state the run already had, so it must not become the
+	   state the next snapshot reads back: the mirrors stay those of the widget
+	   the run is inside. */
+	vk_2dReplaying = qtrue;
+
 	VK_Draw_Window2D( cmd, win[0], win[1], win[2], win[3] );
 
 	if ( scn[0] != win[0] || scn[1] != win[1] || scn[2] != win[2] || scn[3] != win[3] ) {
 		VK_Draw_SetScissor( cmd, scn[0], scn[1], scn[2], scn[3] );
 	}
+
+	vk_2dReplaying = qfalse;
 }
 
 /* ---- the rectangle the reference clamps and this lane has to ------------- */
