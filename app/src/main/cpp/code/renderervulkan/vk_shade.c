@@ -987,8 +987,24 @@ typedef struct {
 static vkShadeState_t	s_shade;
 int						r_spriteListOpen = 0;
 
-/* the alpha-test latch: the state word's atest bits, for the fragment */
+/* The alpha-test selector the fragment stage discards on.  It is a property of
+   the STAGE -- the state word's atest bits -- so it is derived from the state
+   bits at every use, never latched from "the last state block that ran".  An
+   iterator that publishes a state word of its own (the lightmapped-multitexture
+   pass forces depth on and carries no atest bits) therefore cannot leave a
+   surface whose shader asks for alphaFunc GT0 drawn with the test switched
+   off: the uniform is taken from the stage whose uniforms these are. */
 static int s_alphaTest;
+
+static int VK_AlphaTestForState( unsigned long stateBits )
+{
+	switch ( stateBits & VKS_ATEST_BITS ) {
+	case VKS_ATEST_GT_0:	return 1;
+	case VKS_ATEST_LT_80:	return 2;
+	case VKS_ATEST_GE_80:	return 4;
+	default:				return 0;
+	}
+}
 
 void VK_SetFogColor( const vec4_t fColor )
 {
@@ -1017,12 +1033,7 @@ void VK_ApplyStateBits( unsigned long stateBits )
 {
 		/* the alpha test reaches the fragment stage through the stage uniform block; a push on the 2D walk's layout is invalid usage */
 	VK_State( stateBits );
-	switch ( (unsigned long)stateBits & VKS_ATEST_BITS ) {
-	case VKS_ATEST_GT_0:	s_alphaTest = 1; break;
-	case VKS_ATEST_LT_80:	s_alphaTest = 2; break;
-	case VKS_ATEST_GE_80:	s_alphaTest = 4; break;
-	default:				s_alphaTest = 0; break;
-	}
+	s_alphaTest = VK_AlphaTestForState( (unsigned long)stateBits );
 }
 
 unsigned long vk_Shade_StateBits( void )
@@ -1610,7 +1621,13 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 		VK_SetUniform1i( p, VK_U_TEXENV1, 3 );
 	}
 
-	VK_SetUniform1i( p, VK_U_ALPHATEST, (int)VK_CurrentAlphaTest() );
+	/* The stage's own selector, not the last state block's: retail's GL_State is
+	   called with the stage's stateBits for every stage, including the
+	   lightmapped-multitexture pass, whose iterator publishes a state word of its
+	   own.  Taking the latch there switched alphaFunc GT0 off for exactly the
+	   alpha-cut world art that asks for it. */
+	VK_SetUniform1i( p, VK_U_ALPHATEST,
+					 VK_AlphaTestForState( (unsigned long)pStage->stateBits ) );
 	VK_SetUniform4f( p, VK_U_TEX1COLOR, 1.0f, 1.0f, 1.0f, 1.0f );
 
 	VK_SetUniform1i( p, VK_U_ACFF, cpuColor ? 0 : (int)pStage->acff );

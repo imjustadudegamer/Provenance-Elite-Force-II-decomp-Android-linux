@@ -55,7 +55,7 @@ else
 	rc=1
 fi
 
-for m in 1 2 3 4; do
+for m in 1 2 3 4 5; do
 	if python3 staticinvariant.py "$src" --mutate "$m" >/dev/null 2>&1; then
 		echo "  FAIL  planted invariant fault $m was not detected"
 		rc=1
