@@ -100,7 +100,8 @@ static cvar_t	*com_minimizedCvar;
 cvar_t	*com_sv_running;
 cvar_t	*com_cl_running;
 cvar_t	*com_viewlog;
-cvar_t	*com_logfile;		
+cvar_t	*com_logfile;
+cvar_t	*com_execAfterConfig;
 cvar_t	*com_showtrace;
 cvar_t	*com_shortversion;
 cvar_t	*com_version;
@@ -562,13 +563,18 @@ void Com_StartupVariable( const char *match ) {
 		}
 
 		s = Cmd_Argv(1);
-		
+
 		if(!match || !strcmp(s, match))
 		{
-			if(Cvar_Flags(s) == CVAR_NONEXISTENT)
-				Cvar_Get(s, Cmd_ArgsFrom(2), CVAR_USER_CREATED);
-			else
-				Cvar_Set2(s, Cmd_ArgsFrom(2), qfalse);
+			/* retail @0x000C87A0 sets through Cvar_Set, i.e. forced: the command
+			   line must beat ROM/INIT/CHEAT/LATCH.  CVAR_USER_CREATED stays on
+			   the create path only -- stamping an existing cvar would let
+			   Cvar_Restart unset it out of the table. */
+			if ( Cvar_Flags( s ) == CVAR_NONEXISTENT ) {
+				Cvar_Get( s, Cmd_ArgsFrom(2), CVAR_USER_CREATED );
+			} else {
+				Cvar_Set2( s, Cmd_ArgsFrom(2), qtrue );
+			}
 		}
 	}
 }
@@ -1556,6 +1562,20 @@ void Com_Init( char *commandLine ) {
 		Com_WriteConfigToFile( EF2_CONFIG_FILE );
 	}
 
+	/* The one exec slot after config.cfg and before the command line is
+	   re-applied: a file named here holds per-boot overrides that beat the
+	   config and lose only to an explicit +set.  LATCHed names bind here
+	   because no subsystem has registered them yet. */
+	{
+		const char *overrideCfg = Cvar_VariableString( "com_execAfterConfig" );
+
+		if ( overrideCfg && overrideCfg[ 0 ] && FS_FileExists_HomeData( overrideCfg ) ) {
+			Cbuf_AddText( va( "exec %s\n", overrideCfg ) );
+			Cbuf_Execute( 0 );
+			Com_Printf( "Exec: %s (launcher overrides)\n", overrideCfg );
+		}
+	}
+
 	{
 		fileHandle_t f;
 		char         fbuffer[64];
@@ -1625,6 +1645,8 @@ void Com_Init( char *commandLine ) {
 	com_canAutoSaveNow = Cvar_Get( "com_canAutoSaveNow", "0", CVAR_ROM );
 	fps = Cvar_Get( "fps", "0", CVAR_ARCHIVE );
 	com_logfile = Cvar_Get("logfile", "0", CVAR_TEMP);
+	/* the per-boot override file; CVAR_TEMP keeps it out of the archive */
+	com_execAfterConfig = Cvar_Get( "com_execAfterConfig", "", CVAR_TEMP );
 	com_timescale = Cvar_Get( "timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO );
 	com_fixedtime = Cvar_Get( "fixedtime", "0", CVAR_CHEAT );
 	com_showtrace = Cvar_Get( "com_showtrace", "0", CVAR_CHEAT );

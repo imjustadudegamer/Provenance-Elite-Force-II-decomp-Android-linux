@@ -344,19 +344,22 @@ void R_Init( void )
 	tr.identityLightByte = 255;
 	tr.overbrightBits = 0;
 	/* The compressed-source path is only taken when the device can hold the
-	   blocks and the last bring-up did not die taking them.  A prior marker or
-	   an explicit r_vkSafeMode 1 forces the decode-only path, which is the one
-	   that cannot fault on a device without BC. */
+	   blocks and the last bring-up did not die taking them.  An explicit
+	   r_vkSafeMode 1 outranks the crash marker, and the row names its cause. */
 	s_vkSafeMode = ri.Cvar_Get( "r_vkSafeMode", "0", CVAR_ARCHIVE );
 	if ( s_vkSafeMode->integer || VK_SafeModeMarkerPresent() ) {
 		vkConfig.textureCompression = TC_NONE;
 		VK_Guard_Row( "VK:guard",
-					  "site=safe-mode detail=\"decode-only texture path\" cause=prior-crash" );
+					  "site=safe-mode detail=\"decode-only texture path\" cause=%s",
+					  s_vkSafeMode->integer ? "explicit" : "prior-crash" );
 	} else {
 		vkConfig.textureCompression = TC_S3TC;
-		VK_SafeModeArm();
-		s_vkSafeModeArmed = qtrue;
 	}
+	/* armed in both arms: the first present clears the marker, so a crash costs
+	   one decode-only boot and the next one retries the compressed path -- an
+	   unarmed marker boot would hold safe mode for every boot after it */
+	VK_SafeModeArm();
+	s_vkSafeModeArmed = qtrue;
 
 	/* The .so is never unloaded, so one registration covers the process. */
 	if ( ri.Hunk_ClearNotify ) {

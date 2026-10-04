@@ -96,6 +96,7 @@ typedef struct vkPhysDevice_s {
 
 typedef struct {
 	VkSurfaceFormatKHR format;
+	/* r_swapInterval: the present mode is the only vsync this lane has */
 	VkPresentModeKHR presentMode;
 	VkExtent2D extent;
 	uint32_t imageCount;
