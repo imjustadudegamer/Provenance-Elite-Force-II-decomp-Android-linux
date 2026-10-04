@@ -139,6 +139,14 @@ typedef struct {
 	int			first, count;
 	int			vertices;
 	unsigned	stateBits;
+	/* The colour question: the per-vertex colour the span actually carries,
+	   the stage's gen resolution, and the art the draw samples.  "Black" is a
+	   claim about these, so the census has to carry them, not just px. */
+	byte		vcol[4];
+	int			nvcol;
+	int			rgbGen, alphaGen;
+	byte		constColor[4];
+	char		imgDesc[48];
 } rb2dCov_t;
 
 static rb2dCov_t	s_2dCov[RB_2DCOV_SPAN_MAX];
@@ -229,16 +237,20 @@ static long long RB_2DCoverArea( const int quad[4], const int scn[4], int out[4]
    where geometry and clip both allow pixels, read back as the clear colour only,
    is a draw that reached the command buffer and painted nothing. */
 static void RB_2DCoverReadback( const int clip[4], unsigned *distinct,
-								unsigned *nonclear, unsigned *centre )
+								unsigned *nonclear, unsigned *centre,
+								unsigned mean[3], unsigned *black )
 {
 	static byte	seen[24][4];
 	const float	*clear = vk.clearColor;
-	unsigned	ns = 0;
+	unsigned	sum[3] = { 0, 0, 0 };
+	unsigned	ns = 0, nc = 0;
 	int			sx, sy;
 
 	*distinct = 0;
 	*nonclear = 0;
 	*centre   = 0;
+	*black    = 0;
+	mean[0] = mean[1] = mean[2] = 0;
 
 	if ( clip[2] <= 0 || clip[3] <= 0 ) {
 		return;
@@ -256,7 +268,13 @@ static void RB_2DCoverReadback( const int clip[4], unsigned *distinct,
 			}
 			if ( px[0] != (byte)( clear[0] * 255.0f ) || px[1] != (byte)( clear[1] * 255.0f )
 				 || px[2] != (byte)( clear[2] * 255.0f ) ) {
-				(*nonclear)++;
+				nc++;
+				sum[0] += px[0]; sum[1] += px[1]; sum[2] += px[2];
+				/* an opaque sample with no colour at all is what "drew black"
+				   means; a transparent one is a different fault */
+				if ( px[0] < 8 && px[1] < 8 && px[2] < 8 && px[3] > 200 ) {
+					(*black)++;
+				}
 			}
 			for ( i = 0; i < ns; i++ ) {
 				if ( seen[i][0] == px[0] && seen[i][1] == px[1]
@@ -272,10 +290,55 @@ static void RB_2DCoverReadback( const int clip[4], unsigned *distinct,
 	}
 
 	*distinct = ns;
+	*nonclear = nc;
+	mean[0] = nc ? sum[0] / nc : 0;
+	mean[1] = nc ? sum[1] / nc : 0;
+	mean[2] = nc ? sum[2] / nc : 0;
+
 	if ( VK_ModelPixelAtSwap( clip[0] + clip[2] / 2, clip[1] + clip[3] / 2, s_2dCovReadPx ) ) {
 		*centre = ( (unsigned)s_2dCovReadPx[0] << 24 ) | ( (unsigned)s_2dCovReadPx[1] << 16 )
 				  | ( (unsigned)s_2dCovReadPx[2] << 8 ) | (unsigned)s_2dCovReadPx[3];
 	}
+}
+
+/* The colour the span actually carries.  A 2D batch packs one colour per
+   vertex, so the span's own vertex range is the answer, and the count of
+   distinct values says whether the run is uniform.  Offsets are taken over the
+   span's indexes so a multi-quad span reports its whole range. */
+static void RB_2DCoverVertexColour( int first, int count, byte out[4], int *distinct )
+{
+	int		i, n = 0, nd = 0;
+	byte	seen[8][4];
+
+	for ( i = 0; i < 4; i++ ) {
+		out[i] = 0;
+	}
+	*distinct = 0;
+
+	for ( i = 0; i < count; i++ ) {
+		int	idx = (int)tess.indexes[first + i];
+		int	j;
+
+		if ( idx < 0 || idx >= tess.numVertexes ) {
+			continue;
+		}
+		if ( !n ) {
+			memcpy( out, tess.vertexColors[idx], 4 );
+		}
+		n++;
+		for ( j = 0; j < nd; j++ ) {
+			if ( seen[j][0] == tess.vertexColors[idx][0] && seen[j][1] == tess.vertexColors[idx][1]
+				 && seen[j][2] == tess.vertexColors[idx][2] && seen[j][3] == tess.vertexColors[idx][3] ) {
+				break;
+			}
+		}
+		if ( j == nd && nd < 8 ) {
+			memcpy( seen[nd], tess.vertexColors[idx], 4 );
+			nd++;
+		}
+	}
+
+	*distinct = nd;
 }
 
 /* One row per span: the state the draw ran under and the pixels it could reach. */
@@ -319,6 +382,25 @@ static void RB_2DCoverSpan( int level, const float *ortho, const int *win, const
 		c->count     = count;
 		c->vertices  = tess.numVertexes;
 		c->stateBits = stage ? stage->stateBits : 0u;
+
+		RB_2DCoverVertexColour( first, count, c->vcol, &c->nvcol );
+		c->rgbGen   = stage ? (int)stage->rgbGen : 0;
+		c->alphaGen = stage ? (int)stage->alphaGen : 0;
+		if ( stage ) {
+			c->constColor[0] = stage->colorConst[0];
+			c->constColor[1] = stage->colorConst[1];
+			c->constColor[2] = stage->colorConst[2];
+			c->constColor[3] = stage->colorConst[3];
+		}
+		/* what the unit actually samples: the art's own size, format and levels,
+		   so a quad bound to a placeholder or an alias is nameable here */
+		if ( image ) {
+			Com_sprintf( c->imgDesc, sizeof( c->imgDesc ), "%dx%d/0x%x/%dm",
+						 image->width, image->height, (unsigned)image->internalFormat,
+						 image->numMipmaps );
+		} else {
+			Com_sprintf( c->imgDesc, sizeof( c->imgDesc ), "(no image)" );
+		}
 	}
 
 	if ( level >= 1 ) {
@@ -328,6 +410,7 @@ static void RB_2DCoverSpan( int level, const float *ortho, const int *win, const
 					  "win=(%d,%d,%d,%d) authoredscn=(%d,%d,%d,%d) appliedscn=(%d,%d,%d,%d) "
 					  "walkscn=(%d,%d,%d,%d) scissor=(%d,%d %dx%d) quad=(%d,%d)-(%d,%d) clip=(%d,%d %dx%d) "
 					  "px=%lld ort=(%.4f,%.4f,%.4f,%.4f) sb=0x%x atest=%d blend=%d/%d depth=%d/%d "
+					  "vcol=%d,%d,%d,%d nvcol=%d rgbGen=%d const=%d,%d,%d,%d alphaGen=%d imgdesc=%s "
 					  "state=%s%s",
 					  RB_FrameCount(), first, count, shaderName, imageName, tess.numVertexes,
 					  (unsigned long long)(uintptr_t)pipeline, VK_Draw_LastSetIndex(),
@@ -346,6 +429,13 @@ static void RB_2DCoverSpan( int level, const float *ortho, const int *win, const
 					  stage ? (int)( ( stage->stateBits & VKS_DSTBLEND_BITS ) >> 4 ) : 0,
 					  stage && ( stage->stateBits & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
 					  stage && ( stage->stateBits & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
+					  c ? c->vcol[0] : 0, c ? c->vcol[1] : 0, c ? c->vcol[2] : 0, c ? c->vcol[3] : 0,
+					  c ? c->nvcol : 0,
+					  stage ? (int)stage->rgbGen : 0,
+					  stage ? stage->colorConst[0] : 0, stage ? stage->colorConst[1] : 0,
+					  stage ? stage->colorConst[2] : 0, stage ? stage->colorConst[3] : 0,
+					  stage ? (int)stage->alphaGen : 0,
+					  c && c->imgDesc[0] ? c->imgDesc : "(none)",
 					  px > 0 ? "RASTER" : "CLIP0",
 					  haveQuad ? "" : " QUAD=EMPTY" );
 	}
@@ -408,18 +498,37 @@ static void RB_2DCoverFrame( void )
 		/* The readback cross-check: level 2, over the presented frame's copy. */
 		if ( level >= 2 ) {
 			for ( i = 0; i < s_2dCovCount; i++ ) {
-				unsigned distinct, nonclear, centre;
+				unsigned distinct, nonclear, centre, mean[3], black;
+				const char *verdict = "";
 
-				RB_2DCoverReadback( s_2dCov[i].clip, &distinct, &nonclear, &centre );
+				RB_2DCoverReadback( s_2dCov[i].clip, &distinct, &nonclear, &centre, mean, &black );
+
+				/* The colour verdict.  px>0 is geometry and clip; the readback is
+				   what the element produced.  A rect that rasterised but holds one
+				   colour where the art or the glyphs vary is content that never
+				   arrived; a rect whose every lit sample is opaque black is the
+				   element drawn black. */
+				if ( s_2dCov[i].px > 0 && nonclear == 0 ) {
+					verdict = "VERDICT=CLIP_OK_NO_CONTENT";
+				} else if ( s_2dCov[i].px > 0 && black > 0 && black == nonclear ) {
+					verdict = "VERDICT=DREW_BLACK";
+				} else if ( s_2dCov[i].px > 0 && distinct <= 1 && nonclear > 0 ) {
+					verdict = "VERDICT=NO_CONTENT";
+				}
+
 				VK_Guard_Row( "VK:2dcov",
 							  "frame=%d rb shader='%s' clip=(%d,%d %dx%d) distinct=%u nonclear=%u "
-							  "centre=0x%08x %s",
+							  "centre=0x%08x mean=%u,%u,%u black=%u vcol=%d,%d,%d,%d rgbGen=%d "
+							  "alphaGen=%d imgdesc=%s %s",
 							  s_2dCovFrame, s_2dCov[i].shader,
 							  s_2dCov[i].clip[0], s_2dCov[i].clip[1],
 							  s_2dCov[i].clip[2], s_2dCov[i].clip[3],
-							  distinct, nonclear, centre,
-							  ( s_2dCov[i].px > 0 && nonclear == 0 )
-							  ? "VERDICT=CLIP_OK_NO_CONTENT" : "" );
+							  distinct, nonclear, centre, mean[0], mean[1], mean[2], black,
+							  s_2dCov[i].vcol[0], s_2dCov[i].vcol[1],
+							  s_2dCov[i].vcol[2], s_2dCov[i].vcol[3],
+							  s_2dCov[i].rgbGen, s_2dCov[i].alphaGen,
+							  s_2dCov[i].imgDesc[0] ? s_2dCov[i].imgDesc : "(none)",
+							  verdict );
 			}
 		}
 	}
@@ -463,16 +572,38 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 			RB_2DCoverQuadRect( 0, numIndexes, quad );
 			px = RB_2DCoverArea( quad, clip, area );
 
+			{
+			byte	vcol[4];
+			char	imgDesc[48];
+			int		nvcol = 0;
+
+			imgDesc[0] = 0;
+			if ( image ) {
+				Com_sprintf( imgDesc, sizeof( imgDesc ), "%dx%d/0x%x/%dm",
+							 image->width, image->height, (unsigned)image->internalFormat,
+							 image->numMipmaps );
+			}
+			if ( backEnd.in2D ) {
+				RB_2DCoverVertexColour( 0, numIndexes, vcol, &nvcol );
+			}
+
 			VK_Guard_Row( "VK:2dcov",
 						  "f=%d span=WHOLE shader='%s' img='%s' spans=%d idx=[0,%d) verts=%d "
 						  "scissor=(%d,%d %dx%d) quad=(%d,%d)-(%d,%d) clip=(%d,%d %dx%d) "
-						  "px=%lld state=CMDBUF%s",
+						  "px=%lld vcol=%d,%d,%d,%d nvcol=%d rgbGen=%d const=%d,%d,%d,%d "
+						  "alphaGen=%d imgdesc=%s state=CMDBUF%s",
 						  RB_FrameCount(), tess.shader ? tess.shader->name : "?",
 						  image ? image->imgName : "(none)", spans,
 						  numIndexes, tess.numVertexes,
 						  clip[0], clip[1], clip[2], clip[3],
 						  quad[0], quad[1], quad[2], quad[3],
 						  area[0], area[1], area[2], area[3], px,
+						  vcol[0], vcol[1], vcol[2], vcol[3], nvcol,
+						  stage ? (int)stage->rgbGen : 0,
+						  stage ? stage->colorConst[0] : 0, stage ? stage->colorConst[1] : 0,
+						  stage ? stage->colorConst[2] : 0, stage ? stage->colorConst[3] : 0,
+						  stage ? (int)stage->alphaGen : 0,
+						  imgDesc[0] ? imgDesc : "(none)",
 						  backEnd.in2D ? "" : " (3D)" );
 
 			if ( backEnd.in2D && s_2dCovCount < RB_2DCOV_SPAN_MAX ) {
@@ -489,6 +620,24 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 				c->count    = numIndexes;
 				c->stateBits = stage ? stage->stateBits : 0u;
 				c->px       = px;
+				memcpy( c->vcol, vcol, sizeof( vcol ) );
+				c->nvcol    = nvcol;
+				c->rgbGen   = stage ? (int)stage->rgbGen : 0;
+				c->alphaGen = stage ? (int)stage->alphaGen : 0;
+				if ( stage ) {
+					c->constColor[0] = stage->colorConst[0];
+					c->constColor[1] = stage->colorConst[1];
+					c->constColor[2] = stage->colorConst[2];
+					c->constColor[3] = stage->colorConst[3];
+				}
+				if ( image ) {
+					Com_sprintf( c->imgDesc, sizeof( c->imgDesc ), "%dx%d/0x%x/%dm",
+								 image->width, image->height, (unsigned)image->internalFormat,
+								 image->numMipmaps );
+				} else {
+					Com_sprintf( c->imgDesc, sizeof( c->imgDesc ), "(no image)" );
+				}
+			}
 			}
 		}
 		VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, vertexBase );

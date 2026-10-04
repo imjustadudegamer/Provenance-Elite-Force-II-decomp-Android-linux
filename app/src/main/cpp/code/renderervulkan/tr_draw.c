@@ -46,9 +46,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 vec4_t r_colorWhite = { 1.0, 1.0, 1.0, 1.0 };
 
-/* Front-end copy of backEnd.color2D, so an entry point reads the colour it
- * recorded without touching render-thread state. */
-static byte r_color2D[4];
+/* The 2D colour as RECORDED, in this (the front end's) thread.  The walk's copy
+ * is backEnd.color2D, which only RB_2D_SetColor -- reached from the RC_2D_COLOR
+ * record -- may write: it is the walk's 2D batch state, and a front-end write
+ * raced every read the walk makes of it (the span's per-quad colour, a box, a
+ * line, a glyph run), so the colour an element drew with was whichever thread
+ * wrote last.  White is RB_InitBackend's initial value. */
+static byte r_color2D[4] = { 255, 255, 255, 255 };
 
 /* the reference renderer's tr_draw.c carries this note in full */
 static qboolean r_window2DValid;
@@ -696,7 +700,8 @@ void Draw_SetColor(const vec4_t rgba) {
 	r_color2D[2] = (byte)(rgba[2] * tr.identityLightByte);
 	r_color2D[3] = (byte)(rgba[3] * 255.0);
 
-	/* Colour is per vertex in the ring: the next quad the walk writes picks it up. */
+	/* Colour is per vertex in the ring: the record carries it to the walk,
+	   which applies it where its own state lives.  Nothing is written here. */
 	{
 		color2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -705,11 +710,6 @@ void Draw_SetColor(const vec4_t rgba) {
 			Com_Memcpy( cmd->color, r_color2D, sizeof( r_color2D ) );
 		}
 	}
-
-	backEnd.color2D[0] = r_color2D[0];
-	backEnd.color2D[1] = r_color2D[1];
-	backEnd.color2D[2] = r_color2D[2];
-	backEnd.color2D[3] = r_color2D[3];
 
 	D2_End( D2P_setcolor, t0 );
 }
@@ -724,7 +724,7 @@ void R_ChangeTextColor(int index) {
 	color[0] = g_color_table[index][0];
 	color[1] = g_color_table[index][1];
 	color[2] = g_color_table[index][2];
-	color[3] = backEnd.color2D[3] / 255.0;
+	color[3] = r_color2D[3] / 255.0;
 	Draw_SetColor(color);
 }
 
