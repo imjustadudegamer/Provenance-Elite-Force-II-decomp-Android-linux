@@ -79,6 +79,23 @@ else
 	echo "  ok    planted picmip fault detected"
 fi
 
+# 4. the lightmap-atlas census: no shipped surface may be assigned a lightmap
+#    slot the build never fills.  The planted fault reads the field 4 bytes off,
+#    which is what a wrong dsurface_t offset would do.
+if python3 lightmapcensus.py; then
+	echo "  ok    the lightmap-atlas census"
+else
+	echo "  FAIL  the lightmap-atlas census"
+	rc=1
+fi
+
+if python3 lightmapcensus.py --mutate 1 >/dev/null 2>&1; then
+	echo "  FAIL  planted lightmap fault was not detected"
+	rc=1
+else
+	echo "  ok    planted lightmap fault detected"
+fi
+
 rm -f worldset_census_region.inc ./worldsetcensus_oracle ./worldsetcensus_oracle_m1 \
 	./worldsetcensus_oracle_m2 ./worldsetcensus_oracle_m3 ./worldsetcensus_oracle_m4 \
 	./worldsetcensus_oracle_m5
