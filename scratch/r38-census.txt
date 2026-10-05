@@ -1,0 +1,82 @@
+r38 evidence census -- all raw command output, no prose
+branch r38-perf-continue, base master 57fdd45a, worktree docs/wt/r38
+
+== 1. the uniform path is 0.18 us/draw (kills the r35 "split the block" target) ==
+cmd: gcc -O2 -o scratch/ubo_micro scratch/ubo_micro.c && scratch/ubo_micro
+  (66 setter calls per draw, the real VK_UBO_OFF_*/VK_UBO_SIZE_* spans, the
+   2048-byte publish memcmp+copy against the three-block split shape)
+today  0.181 us/draw  (66 writes, 2048-byte publish memcmp+copy)
+split  0.192 us/draw  (66 writes, 128+240+768-byte compares)
+delta  -0.011 us/draw  -> at 390 draws/frame = -0.004 ms/frame
+=> the whole per-draw uniform path is 0.07 ms/frame; the split's ceiling is
+   smaller than the measurement's own noise.  Not landed.
+
+== 2. the quiet boot already exists: run-20261020-125541 (12:55, after r35) ==
+cmd: grep -m3 'VK:instance' <log>
+[VK:instance] api=1.3.0 loader=1.3.275 extensions=2 layers=0     <- layers=0, QUIET
+cmd: grep 'PERF:frame' <log> | tail -6
+[PERF:frame] win=1000ms frames=685 sv=0ms ev=3ms cl=985ms rest=988ms
+[PERF:frame] win=1000ms frames=707 sv=1ms ev=2ms cl=992ms rest=994ms
+[PERF:frame] win=1000ms frames=679 sv=0ms ev=2ms cl=996ms rest=998ms
+[PERF:frame] win=1000ms frames=680 sv=1ms ev=4ms cl=988ms rest=992ms
+[PERF:frame] win=1000ms frames=660 sv=1ms ev=2ms cl=987ms rest=989ms
+[PERF:frame] win=1000ms frames=887 sv=0ms ev=0ms cl=465ms rest=465ms
+=> first true baseline: a menu frame is 1.0-1.5 ms of client work, 660-1000 fps.
+   No [PERF:walk] rows: the world was never entered in that boot.
+
+== 3. the quiet profile's engine symbols are all sub-microsecond ==
+cmd: perf report -i perf.data --no-children -g none -s symbol --dsos=renderer_vulkan.so
+  (CAVEAT carried from r35: event is cpu_atom/cycles/P -- the E-cores only)
+ 0.93% R_GetCommandBufferReserved   0.66% R_DrawString_sgl   0.63% R_Radix
+ 0.60% Draw_SetColor                0.50% R_AddSkelSurfaces  0.27% DrawBox
+ 0.26% D2_On                        0.15% VK_Shade_Note3DRect
+event count 4.2e9 cycles over the boot => 0.93% is ~13 ms of CPU across a
+~60 s boot, i.e. ~0.2 us/frame.  The P-cores, where the client and walk
+threads run, were not sampled.  This profile cannot locate a render hot spot.
+
+== 4. the 2D record path is already cheap ==
+cmd: grep '2D:sum' run-20261020-123113/game.log | tail -2
+[2D:sum] window=1004ms frames=101 calls=12423 draws=1616 vasked=24644 ... sum=636us
+[2D:sum] window=1009ms frames=113 calls=13899 draws=1808 vasked=27572 ... sum=725us
+=> 123 2D calls/frame, 6.3-7.2 us/frame for the whole 2D front-end record path.
+
+== 5. r35's measured boot had BOTH instruments armed ==
+cmd: grep -m3 'VK:valid\|VK:instance' run-20261020-123113/game.log
+[VK:instance] api=1.3.0 loader=1.3.275 extensions=3 layers=1
+[VK:valid] messenger=armed layers=1
+cmd: grep -m1 'VK:2dcov' run-20261020-123113/game.log
+[VK:2dcov] frame=8246 ... (vk_2dCover>=2 => VK_Shade_ReadbackFrame copies the
+whole swapchain to the host EVERY frame; charged to pix=3.22ms = 29% of the
+measured frame.  Gate: qa_probe AND vk_2dCover, default 0.)
+=> every historical per-bucket number is a fully-instrumented build's.
+
+== 6. the menu-model batching premise, counted ==
+cmd: sed -n '60825,80559p' <r35 log> | grep -o "static='[^']*'" | sort | uniq -c
+      7 static='models/char/munro.tik'
+      7 static='/models/sky/sky_UI-stardome02.tik'
+cmd: same slice | grep -o 'seq=[0-9]*' | head -1 / tail -1
+seq=2 ... seq=3600  (PROBE_Throttle shares one counter: 240 calls per row)
+=> TWO model widgets per frame on the controls page (munro 529,154 154x300 and
+   the sky dome 0,0 800x600), one R_RenderView each.  Different rects, so one
+   scene cannot serve both without changing the viewport per entity, and the
+   +2.40 ms the r35 census charged to the page is the two models' own skeletor
+   animation and draw work, which a merged scene still has to do.
+   Not landed: no pixel-preserving form exists for two different rects.
+
+== 7. what the two landed increments remove ==
+cmd: gcc -O2 -o census_micro census_micro.c && ./census_micro
+stagebound scan  110.445 us/frame  (3 x 512 compares + 2 strcmps x 372 draws)
+shadertime scan  0.001 us/frame  (24-entry dedup x 136 surfaces)
+VK_StageBindCensus per stage draw, when qa_probe is 0:
+  2 x VK_StageImageOwned (up to MAX_IMAGE_ANIMATIONS name strcmps)
+  3 x VK_StageBindKnown  (512 lightmap/base-lightmap slot compares per call)
+VK_Shade_NoteShaderTime per surface, after its 600th row: a 24-entry scan+insert.
+Rows and cadences unchanged: s_rows advances outside the new gate.
+=> increment 731c9896 removes a measured 0.11 ms/frame of the quiet boot's
+   shade window (0.3 us of the 3.1 us a stage draw carries).  6af7b3ab is
+   hygiene, not speed: the dedup scan has no measurable cost.
+
+== 8. gate ==
+ninja clean rebuild: 0 warnings 0 errors; ldd -r 6/6 artifacts undefined=0
+license_lint GREEN; ship_text_lint GREEN; make_zpak --check "pak is current (11 entries)"
+controls 23/23 PASS; comment_budget RED pre-existing (master 5350 -> r38 5343)
