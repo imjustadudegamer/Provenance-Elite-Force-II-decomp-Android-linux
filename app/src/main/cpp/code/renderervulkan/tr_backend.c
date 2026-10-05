@@ -2021,6 +2021,11 @@ const void* RB_SpriteSurfs(const void* data) {
     backEnd.refdef = cmd->refdef;
     backEnd.viewParms = cmd->viewParms;
 
+	/* The sprite pass is a 3D view and in2D is the walk's flag: cleared here as
+	   RC_DRAW_SURFS clears it in RB_BeginDrawingView.  A sprite list reached with
+	   in2D still up takes RB_StageIterator2D at RB_BeginSurface. */
+    backEnd.in2D = qfalse;
+
 	RB_SetupFog();
     RB_RenderSpriteSurfList(cmd->drawSurfs, cmd->numDrawSurfs);
 

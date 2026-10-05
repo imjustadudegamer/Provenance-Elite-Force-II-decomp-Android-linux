@@ -468,6 +468,20 @@ static void RB_2D_Batch( shader_t *shader ) {
 		return;
 	}
 
+	/* The damage the front end's own in2D write used to leave: a UI batch opened
+	   while the walk believes it is not in 2D takes the 3D iterator at
+	   RB_BeginSurface and its vertices are not placed.  Silence under --diag is
+	   the pass condition. */
+	if ( R_ProbeStatsOn() && !backEnd.in2D ) {
+		static int	s_rows;
+
+		s_rows++;
+		if ( s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
+			VK_Guard_Row( "VK:2drace", "batch shader='%s' in2d=0 f=%d",
+						  shader ? shader->name : "?", RB_FrameCount() );
+		}
+	}
+
 	RB_2D_Flush();
 	RB_BeginSurface( shader, 0 );
 	s_2dBatchOpen   = qtrue;
