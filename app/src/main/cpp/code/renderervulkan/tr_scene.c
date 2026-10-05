@@ -354,7 +354,11 @@ void RE_RenderScene( const refdef_t *fd ) {
 		ri.Error (ERR_DROP, "R_RenderScene: NULL worldmodel");
 	}
 
-	backEnd.in2D = qfalse;
+	/* in2D is the walk's flag and is cleared by the walk's own 3D passes
+	   (RB_BeginDrawingView, RB_SpriteSurfs); the reference wrote it here because
+	   its RE_RenderScene ran on the render thread.  Under r_smp this front-end
+	   write raced the walk's 2D pass, and a batch begun in the window read in2D
+	   false and took the 3D iterator. */
 	tr.refdef.x = fd->x;
 	tr.refdef.y = fd->y;
 	tr.refdef.width = fd->width;
