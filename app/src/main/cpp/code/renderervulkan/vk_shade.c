@@ -2760,7 +2760,14 @@ static VkCullModeFlagBits VK_Shade_CullMode( cullType_t cull, qboolean mirrored 
 	}
 }
 
-static VkBlendFactor VK_Shade_BlendFactor( unsigned nibble, qboolean src )
+/* The nibble arrives as its ordinal (VKS_DSTBLEND_x is VKS_SRCBLEND_x << 4), so
+   the two families need their own switches; one table over both resolves
+   dst=GL_SRC_COLOR to its DST_COLOR twin.  Retail: GL_State @0x0df0 feeds
+   0x30->0x300 and 0x40->0x301 to glBlendFunc, NameToDstBlendMode @0x37580 maps
+   "GL_SRC_COLOR"/"GL_ONE_MINUS_SRC_COLOR" to those ordinals, and the recorded
+   retail trace calls glBlendFunc(...,GL_SRC_COLOR) 571x and
+   (...,GL_ONE_MINUS_SRC_COLOR) 718x.  vk_draw.c agrees. */
+static VkBlendFactor VK_Shade_SrcBlendFactor( unsigned nibble )
 {
 	switch ( nibble ) {
 	case VKS_SRCBLEND_ZERO:					return VK_BLEND_FACTOR_ZERO;
@@ -2773,7 +2780,23 @@ static VkBlendFactor VK_Shade_BlendFactor( unsigned nibble, qboolean src )
 	case VKS_SRCBLEND_ONE_MINUS_DST_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
 	case VKS_SRCBLEND_ALPHA_SATURATE:		return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
 	default:
-		return src ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ZERO;
+		return VK_BLEND_FACTOR_ONE;
+	}
+}
+
+static VkBlendFactor VK_Shade_DstBlendFactor( unsigned nibble )
+{
+	switch ( nibble ) {
+	case VKS_DSTBLEND_ZERO:					return VK_BLEND_FACTOR_ZERO;
+	case VKS_DSTBLEND_ONE:					return VK_BLEND_FACTOR_ONE;
+	case VKS_DSTBLEND_SRC_COLOR:			return VK_BLEND_FACTOR_SRC_COLOR;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_COLOR:	return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+	case VKS_DSTBLEND_SRC_ALPHA:			return VK_BLEND_FACTOR_SRC_ALPHA;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	case VKS_DSTBLEND_DST_ALPHA:			return VK_BLEND_FACTOR_DST_ALPHA;
+	case VKS_DSTBLEND_ONE_MINUS_DST_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+	default:
+		return VK_BLEND_FACTOR_ZERO;
 	}
 }
 
@@ -2928,11 +2951,11 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
 	memset( &attachment, 0, sizeof( attachment ) );
 	attachment.blendEnable = ( srcNibble != VKS_SRCBLEND_ONE || dstNibble != VKS_DSTBLEND_ZERO ) ? VK_TRUE : VK_FALSE;
-	attachment.srcColorBlendFactor = VK_Shade_BlendFactor( srcNibble, qtrue );
-	attachment.dstColorBlendFactor = VK_Shade_BlendFactor( dstNibble, qfalse );
+	attachment.srcColorBlendFactor = VK_Shade_SrcBlendFactor( srcNibble );
+	attachment.dstColorBlendFactor = VK_Shade_DstBlendFactor( dstNibble );
 	attachment.colorBlendOp = VK_BLEND_OP_ADD;
-	attachment.srcAlphaBlendFactor = VK_Shade_BlendFactor( srcNibble, qtrue );
-	attachment.dstAlphaBlendFactor = VK_Shade_BlendFactor( dstNibble, qfalse );
+	attachment.srcAlphaBlendFactor = VK_Shade_SrcBlendFactor( srcNibble );
+	attachment.dstAlphaBlendFactor = VK_Shade_DstBlendFactor( dstNibble );
 	attachment.alphaBlendOp = VK_BLEND_OP_ADD;
 	attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
 								| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -3225,6 +3248,14 @@ void VK_Shade_NoteShaderTime( const char *kind )
 	}
 
 	second = (int)( backEnd.refdef.time / 1000 );
+
+	/* Past the row cap the census prints nothing and the dedup scan below has no
+	   reader left, so the surface walk was paying a 24-entry search per surface
+	   for the rest of the boot.  The cap test leads instead; the first 600 rows
+	   are unchanged. */
+	if ( s_rows > 600 ) {
+		return;
+	}
 
 	for ( i = 0; i < s_seenCount; i++ ) {
 		if ( s_seenShader[i] == (const void *)sh && s_seenSecond[i] == second ) {
@@ -4747,7 +4778,13 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 	/* the other half of the row: what the two units actually hold.  A stage
 	   whose unit holds an image the stage never resolved to is the silent
 	   substitution class, so that always emits; an agreeing pair rides the same
-	   cadence as the row above rather than printing once per stage per surface. */
+	   cadence as the row above rather than printing once per stage per surface.
+	   The scan answers nothing when the master probe is off -- its only consumer
+	   is the row below -- and it is the draw path's dearest per-stage work:
+	   VK_StageBindKnown walks 512 lightmap slots per call and
+	   VK_StageImageOwned strcmps names, three and two times a stage. */
+	s_rows++;
+	if ( R_ProbeStatsOn() )
 	{
 		const image_t	*b0 = s_shade.texImage[0];
 		const image_t	*b1 = s_shade.texImage[1];
@@ -4772,8 +4809,7 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 				 && b1
 				 && !VK_StageBindKnown( b1 ) );
 
-		s_rows++;
-		if ( R_ProbeStatsOn() && ( disagree || s_rows <= 48 || ( s_rows % 257 ) == 0 ) ) {
+		if ( disagree || s_rows <= 48 || ( s_rows % 257 ) == 0 ) {
 			VK_Guard_Row( "VK:stagebound",
 						  "%sshader='%s' want0='%s' tex0=%u got0='%s' gottex0=%d "
 						  "want1='%s' tex1=%u got1='%s' gottex1=%d",
