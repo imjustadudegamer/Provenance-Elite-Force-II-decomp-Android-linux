@@ -4715,6 +4715,35 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 		 ? pStage->bundle[1].image[0]->imgName : "";
 	t1 = pStage->bundle[1].image[0] ? (unsigned)pStage->bundle[1].image[0]->texnum : 0u;
 
+	/* The COLOR-family dst factors are the two ordinals whose meaning was settled
+	   by retail's own GL_State, and they are rare enough that the sampled cadence
+	   below can miss them for a whole boot.  These rows never sample: every pass
+	   whose dst nibble is 3 or 4 names itself with the fragment's own inputs --
+	   the gens and the const -- so a boot with the retail factors landed carries
+	   the full population and there is no second boot needed to find who drew.
+	   The population is bounded by the shipped shader text (24 stages), so this
+	   cannot flood. */
+	if ( R_ProbeStatsOn() ) {
+		int dstNib = ( (unsigned)pStage->stateBits & VKS_DSTBLEND_BITS ) >> 4;
+
+		if ( dstNib == ( VKS_DSTBLEND_SRC_COLOR >> 4 )
+			 || dstNib == ( VKS_DSTBLEND_ONE_MINUS_SRC_COLOR >> 4 ) ) {
+			const image_t	*im = pStage->bundle[0].image[0];
+
+			VK_Guard_Row( "VK:coldst",
+						  "shader='%s' stage=%d d=%d sb=0x%x b0='%s' tex0=%u fmt=0x%x "
+						  "upto=%dx%d b1='%s' tex1=%u rg=%d ag=%d const=%u,%u,%u,%u",
+						  shader->name, stageIndex, in2D ? 1 : 0,
+						  (unsigned)pStage->stateBits, n0, t0,
+						  im ? (unsigned)im->internalFormat : 0u,
+						  im ? im->uploadWidth : 0, im ? im->uploadHeight : 0,
+						  n1, t1,
+						  (int)pStage->rgbGen, (int)pStage->alphaGen,
+						  (unsigned)pStage->colorConst[0], (unsigned)pStage->colorConst[1],
+						  (unsigned)pStage->colorConst[2], (unsigned)pStage->colorConst[3] );
+		}
+	}
+
 	/* the other half of the row: what the two units actually hold.  A stage
 	   whose unit holds an image the stage never resolved to is the silent
 	   substitution class, so that always emits; an agreeing pair rides the same
