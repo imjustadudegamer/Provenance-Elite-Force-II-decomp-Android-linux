@@ -23,6 +23,11 @@ protected:
     str        m_resolvedModel;
     qhandle_t  m_modelHandle;
 
+    /* Port-only tail (no retail offset): the sequence the memo was taken at.  A registration
+       keeps TIKI models, so the old handle still resolves while the tiki's surface hShader[]
+       point into the tr.shaders[] that registration threw away. */
+    int        m_modelSequence;
+
     vec3_t m_offset;       
     vec3_t m_rotateOffset; 
     vec3_t m_angles;       

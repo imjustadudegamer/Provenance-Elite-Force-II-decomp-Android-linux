@@ -317,6 +317,12 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
                 if (fresh != mod->d.tiki) {
                     mod->d.tiki = fresh;
                     R_RegisterShaders(mod);
+                } else if (mod->r_sequence != r_sequencenumber) {
+                    /* The cache hit left the pointer alone and the R_CacheModel above only ran
+                       inside the registration window, so the surface hShader[] are indices into
+                       the tr.shaders[] this sequence rebuilt from zero. */
+                    mod->r_sequence = r_sequencenumber;
+                    R_RegisterShaders(mod);
                 }
             }
             return hModel;
