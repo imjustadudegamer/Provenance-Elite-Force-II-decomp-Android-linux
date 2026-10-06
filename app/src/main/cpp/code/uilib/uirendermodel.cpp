@@ -248,7 +248,8 @@ UIRenderModel::UIRenderModel()
     m_fitScale = 1.0f;
     m_precache = false;
 
-    m_modelHandle = 0;
+    m_modelHandle   = 0;
+    m_modelSequence = -1;
 
     VectorClear(m_offset);
     VectorClear(m_rotateOffset);
@@ -394,10 +395,14 @@ void UIRenderModel::Draw(void)
 
     handle = m_modelHandle;
 
-    if (!handle || m_resolvedModel != modelName) {
+    /* The memo also dies with the registration that produced it: a registration keeps TIKI
+       models, so both tests above pass while the tiki's surface hShader[] are indices into the
+       tr.shaders[] R_SetupShaders just rebuilt from zero. */
+    if (!handle || m_resolvedModel != modelName || m_modelSequence != re.GetRegistrationSequence()) {
         m_resolvedModel = modelName;
         handle          = re.RegisterModel(modelName);
         m_modelHandle   = handle;
+        m_modelSequence = re.GetRegistrationSequence();
     }
 
     if (!handle) {
@@ -417,6 +422,7 @@ void UIRenderModel::Draw(void)
            so the next draw re-registers against the live table. */
         m_modelHandle   = 0;
         m_resolvedModel = str();
+        m_modelSequence = -1;
         {
             static int menu3dmvk_notiki;
             if (PROBE_Throttle(&menu3dmvk_notiki, 4, 300)) {
