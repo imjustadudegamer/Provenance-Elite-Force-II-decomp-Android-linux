@@ -2735,7 +2735,10 @@ static VkCullModeFlagBits VK_Shade_CullMode( cullType_t cull, qboolean mirrored 
 	}
 }
 
-static VkBlendFactor VK_Shade_BlendFactor( unsigned nibble, qboolean src )
+/* The nibble arrives as its ordinal (VKS_DSTBLEND_x is VKS_SRCBLEND_x << 4), so
+   the two families need their own switches; one table over both resolved
+   dst=GL_SRC_COLOR to its DST_COLOR twin.  See renderergles3/tr_backend.c. */
+static VkBlendFactor VK_Shade_SrcBlendFactor( unsigned nibble )
 {
 	switch ( nibble ) {
 	case VKS_SRCBLEND_ZERO:					return VK_BLEND_FACTOR_ZERO;
@@ -2748,7 +2751,23 @@ static VkBlendFactor VK_Shade_BlendFactor( unsigned nibble, qboolean src )
 	case VKS_SRCBLEND_ONE_MINUS_DST_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
 	case VKS_SRCBLEND_ALPHA_SATURATE:		return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
 	default:
-		return src ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ZERO;
+		return VK_BLEND_FACTOR_ONE;
+	}
+}
+
+static VkBlendFactor VK_Shade_DstBlendFactor( unsigned nibble )
+{
+	switch ( nibble ) {
+	case VKS_DSTBLEND_ZERO:					return VK_BLEND_FACTOR_ZERO;
+	case VKS_DSTBLEND_ONE:					return VK_BLEND_FACTOR_ONE;
+	case VKS_DSTBLEND_SRC_COLOR:			return VK_BLEND_FACTOR_SRC_COLOR;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_COLOR:	return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+	case VKS_DSTBLEND_SRC_ALPHA:			return VK_BLEND_FACTOR_SRC_ALPHA;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	case VKS_DSTBLEND_DST_ALPHA:			return VK_BLEND_FACTOR_DST_ALPHA;
+	case VKS_DSTBLEND_ONE_MINUS_DST_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+	default:
+		return VK_BLEND_FACTOR_ZERO;
 	}
 }
 
@@ -2903,11 +2922,11 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
 	memset( &attachment, 0, sizeof( attachment ) );
 	attachment.blendEnable = ( srcNibble != VKS_SRCBLEND_ONE || dstNibble != VKS_DSTBLEND_ZERO ) ? VK_TRUE : VK_FALSE;
-	attachment.srcColorBlendFactor = VK_Shade_BlendFactor( srcNibble, qtrue );
-	attachment.dstColorBlendFactor = VK_Shade_BlendFactor( dstNibble, qfalse );
+	attachment.srcColorBlendFactor = VK_Shade_SrcBlendFactor( srcNibble );
+	attachment.dstColorBlendFactor = VK_Shade_DstBlendFactor( dstNibble );
 	attachment.colorBlendOp = VK_BLEND_OP_ADD;
-	attachment.srcAlphaBlendFactor = VK_Shade_BlendFactor( srcNibble, qtrue );
-	attachment.dstAlphaBlendFactor = VK_Shade_BlendFactor( dstNibble, qfalse );
+	attachment.srcAlphaBlendFactor = VK_Shade_SrcBlendFactor( srcNibble );
+	attachment.dstAlphaBlendFactor = VK_Shade_DstBlendFactor( dstNibble );
 	attachment.alphaBlendOp = VK_BLEND_OP_ADD;
 	attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
 								| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;

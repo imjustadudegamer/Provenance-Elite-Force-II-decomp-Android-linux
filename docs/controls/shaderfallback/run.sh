@@ -15,6 +15,15 @@ src="$here/../../../"
 
 cd "$here"
 
+# The fault plants below are undone by `git checkout --` on the two files it
+# edits, which would also wipe any UNCOMMITTED work sitting in them.  Refuse
+# rather than reset: commit first, then run.
+if ! git -C "$src" diff --quiet -- app/src/main/cpp/code/renderervulkan/vk_vbo.c \
+		app/src/main/cpp/code/renderervulkan/vk_shade.c; then
+	echo "  FAIL  vk_vbo.c/vk_shade.c carry uncommitted work; commit before running this control (it resets them to HEAD)"
+	exit 1
+fi
+
 rc=0
 
 if ! python3 ./refusal_control.py 0 "$src"; then
