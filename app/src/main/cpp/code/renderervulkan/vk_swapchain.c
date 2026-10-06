@@ -357,9 +357,8 @@ void VK_Swapchain_Destroy( void )
 
 /* The readback's staging objects, kept across reads.  Every caller is the walk
    thread (the RC_VK_END census and the screenshot flush behind it), so one set
-   needs no lock; the 10-19 boot ran 5,852 of these reads at vk_2dCover 2 and
-   pix= carried the create/destroy of this block every time.  The command buffer
-   stays per-call: VK_Upload_Pool is the calling thread's own pool. */
+   needs no lock.  The command buffer stays per-call: VK_Upload_Pool is the
+   calling thread's own pool. */
 static VkBuffer		s_rbBuffer;
 static VkDeviceMemory	s_rbMemory;
 static void			*s_rbMapped;
