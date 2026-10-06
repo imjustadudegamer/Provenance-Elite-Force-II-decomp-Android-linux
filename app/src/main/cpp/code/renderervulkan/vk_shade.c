@@ -1034,6 +1034,29 @@ qboolean VK_StageNeedsCPUColor( const shaderStage_t *pStage )
 	return qfalse;
 }
 
+/* The gens whose u_ColorGen branch reads a_Color: the tess vertex array is
+   their operand, not a uniform.  VK_StageNeedsCPUColor deliberately excludes
+   them -- their svars bodies would re-apply identityLight the vertex stage
+   already applies -- so the pack has to be told separately to carry the array
+   instead of substituting white. */
+qboolean VK_StageReadsVertexColor( const shaderStage_t *pStage )
+{
+	if ( !pStage )
+	{
+		return qfalse;
+	}
+	switch ( pStage->rgbGen )
+	{
+	case CGEN_EXACT_VERTEX:
+	case CGEN_VERTEX:
+	case CGEN_ONE_MINUS_VERTEX:
+		return qtrue;
+	default:
+		break;
+	}
+	return qfalse;
+}
+
 qboolean VK_StageNeedsCPUTexCoords( const shaderStage_t *pStage )
 {
 	int b, tm;
@@ -4685,9 +4708,20 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	   u_BaseColor to 1 there expecting exactly that, so the array has to reach
 	   the pack: white here erased the pause menu's title and button labels while
 	   the same subtree's textured art stayed right.  In 3D a constant-colour
-	   stage never fills vertexColors, so the white pack is the one that is right. */
+	   stage never fills vertexColors, so the white pack is the one that is right.
+	   The three vertex gens are the exception: their u_ColorGen branches read
+	   a_Color (vk_stage.vert 278/281/284) and retail's own CPU bodies are exactly
+	   what those branches do -- 5 copies the array, 6 and 7 apply identityLight
+	   and the 1-x -- so the tess array reaches the pack raw and the shader does
+	   retail's transform.  Routing them through svars would apply identityLight
+	   twice, because ComputeColors only runs for VK_StageNeedsCPUColor stages.
+	   markShadow (rgbGen exactVertex, common.shader:239) drew every mark at
+	   full-strength white instead of its own alpha modulate and read as a black
+	   blob at three times retail's density. */
 	colors = cpuColor ? (const unsigned char *)input->svars.colors
-					  : ( backEnd.in2D ? (const unsigned char *)input->vertexColors : NULL );
+					  : ( backEnd.in2D || VK_StageReadsVertexColor( pStage ) )
+						? (const unsigned char *)input->vertexColors
+						: NULL;
 
 	(void)stateBits;
 	VK_StageBindCensus( shader, pStage, -1, backEnd.in2D ? qtrue : qfalse, 0, 0, 0, 0 );
