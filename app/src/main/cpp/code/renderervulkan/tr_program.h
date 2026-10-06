@@ -335,6 +335,7 @@ void		VK_ApplyStateBits( unsigned long stateBits );
 unsigned	VK_CurrentAlphaTest( void );
 
 qboolean	VK_StageNeedsCPUColor( const shaderStage_t *pStage );
+qboolean	VK_StageReadsVertexColor( const shaderStage_t *pStage );
 qboolean	VK_StageNeedsCPUTexCoords( const shaderStage_t *pStage );
 
 void		VK_SelectTexture( int unit );
