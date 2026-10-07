@@ -207,11 +207,14 @@ static char *Sys_AndroidHomePath( char *buf, size_t bufsize )
 		if( !announced )
 		{
 			announced = qtrue;
-			fprintf( stderr, "Sys_AndroidHomePath: write root = \"%s\" (%s)\n",
-				buf, reason );
-			fflush( stderr );
-			Sys_AndroidLog( ANDROID_LOG_INFO,
-				va( "Sys_AndroidHomePath: write root = \"%s\" (%s)\n", buf, reason ) );
+			if( Sys_AndroidDiagOn() )
+			{
+				fprintf( stderr, "Sys_AndroidHomePath: write root = \"%s\" (%s)\n",
+					buf, reason );
+				fflush( stderr );
+				Sys_AndroidLog( ANDROID_LOG_INFO,
+					va( "Sys_AndroidHomePath: write root = \"%s\" (%s)\n", buf, reason ) );
+			}
 		}
 	}
 

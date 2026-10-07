@@ -96,9 +96,45 @@ static void Sys_AndroidFaultMirror( const char *text )
 }
 #endif
 
+/*
+ * The shipped build is silent: no logcat row, no stdout.txt/stderr.txt capture,
+ * unless the operator asks for diagnostics.  The one arm is the standard
+ * Android per-tag property, set before launch and read once at the first
+ * routine row of the boot:
+ *
+ *     adb shell setprop log.tag.ProvenanceEF2 1
+ *
+ * The crash channel never consults this: Sys_Error, the signal handler and the
+ * fault mirror log unconditionally, so a crash still reaches logcat and the
+ * NDK tombstone exactly as before.
+ */
+qboolean Sys_AndroidDiagOn( void )
+{
+	static int cached = -1;
+
+	if( cached < 0 )
+	{
+		char val[ PROP_VALUE_MAX ];
+
+		cached = 0;
+		if( __system_property_get( "log.tag.ProvenanceEF2", val ) > 0 &&
+			val[ 0 ] != '\0' &&
+			Q_stricmp( val, "0" ) &&
+			Q_stricmp( val, "false" ) )
+		{
+			cached = 1;
+		}
+	}
+
+	return cached ? qtrue : qfalse;
+}
+
 void Sys_AndroidCaptureStdio( void )
 {
 	const char *files;
+
+	if( !Sys_AndroidDiagOn() )
+		return;
 
 	files = SDL_AndroidGetInternalStoragePath();
 	if( files == NULL || !*files )
@@ -272,9 +308,11 @@ qboolean Sys_OpenFolderInFileManager( const char *path, qboolean create )
 static Q_NO_RETURN void Sys_Exit( int exitCode )
 {
 #ifdef __ANDROID__
-	Sys_AndroidLog( exitCode >= 2 ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
-		va( "ENGINE EXIT code=%d state=%s\n", exitCode,
-			com_fullyInitialized ? "fully-initialised" : "DURING INIT" ) );
+	/* A clean exit stays silent; only a fatal exit (code >= 2) surfaces. */
+	if( exitCode >= 2 )
+		Sys_AndroidLog( ANDROID_LOG_ERROR,
+			va( "ENGINE EXIT code=%d state=%s\n", exitCode,
+				com_fullyInitialized ? "fully-initialised" : "DURING INIT" ) );
 #endif
 
     Sys_ShutdownEx();
@@ -845,13 +883,22 @@ int main( int argc, char **argv )
 	Sys_SetMaxFileLimit( );
 
 #ifdef __ANDROID__
-	Sys_AndroidLog( ANDROID_LOG_INFO, "ProvenanceEF2 native main entered\n" );
+	if( Sys_AndroidDiagOn() )
+		Sys_AndroidLog( ANDROID_LOG_INFO, "ProvenanceEF2 native main entered\n" );
 	Sys_AndroidCaptureStdio( );
 
 #ifndef DEDICATED
 	SDL_SetHint( SDL_HINT_ANDROID_BLOCK_ON_PAUSE, "1" );
 	SDL_SetHint( SDL_HINT_ANDROID_BLOCK_ON_PAUSE_PAUSEAUDIO, "1" );
 #endif
+
+	/* SDL's own APPLICATION-category rows default to INFO and go to logcat.
+	   They are vendor diagnostics, not ours: hold them at WARN so a silent
+	   boot stays silent, and let the operator's diag arm -- which reads the
+	   same property they do -- decide the level. */
+	SDL_LogSetAllPriority( Sys_AndroidDiagOn()
+		? SDL_LOG_PRIORITY_INFO
+		: SDL_LOG_PRIORITY_WARN );
 #endif
 
 	Sys_Milliseconds( );

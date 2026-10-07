@@ -144,7 +144,9 @@ public class EF2Activity extends SDLActivity {
 
         if (versionCode > 0 && marker.isFile()
                 && String.valueOf(versionCode).equals(readSmallFile(marker))) {
-            Log.i(TAG, "assets already extracted for versionCode " + versionCode);
+            if (Log.isLoggable(TAG, Log.INFO)) {
+                Log.i(TAG, "assets already extracted for versionCode " + versionCode);
+            }
             return;
         }
 
@@ -214,7 +216,9 @@ public class EF2Activity extends SDLActivity {
                 continue;
             }
             if (stale.delete()) {
-                Log.i(TAG, "migration: removed stale config " + stale);
+                if (Log.isLoggable(TAG, Log.INFO)) {
+                    Log.i(TAG, "migration: removed stale config " + stale);
+                }
             } else {
                 Log.w(TAG, "migration: could not remove stale config " + stale);
             }
@@ -245,6 +249,8 @@ public class EF2Activity extends SDLActivity {
             tmp.delete();
             throw new IOException("could not rename " + tmp + " -> " + dest);
         }
-        Log.i(TAG, "extracted " + assetPath + " -> " + dest);
+        if (Log.isLoggable(TAG, Log.INFO)) {
+            Log.i(TAG, "extracted " + assetPath + " -> " + dest);
+        }
     }
 }

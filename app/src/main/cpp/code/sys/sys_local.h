@@ -78,6 +78,12 @@ char *Sys_ParseProtocolUri( const char *uri );
 
 void Sys_AndroidLog( int priority, const char *msg );
 
+#ifdef __ANDROID__
+/* The routine-logging arm (see sys_main.c).  The crash channel never consults
+   it. */
+qboolean Sys_AndroidDiagOn( void );
+#endif
+
 void Sys_AndroidCaptureStdio( void );
 
 #ifdef USE_AUTOUPDATER
