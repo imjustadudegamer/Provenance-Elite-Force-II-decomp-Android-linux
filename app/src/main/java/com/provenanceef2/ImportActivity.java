@@ -335,6 +335,8 @@ public class ImportActivity extends Activity {
             tmp.delete();
             throw new java.io.IOException("could not rename " + tmp + " -> " + dest);
         }
-        Log.i(TAG, "imported " + dest + " (" + dest.length() + " bytes)");
+        if (Log.isLoggable(TAG, Log.INFO)) {
+            Log.i(TAG, "imported " + dest + " (" + dest.length() + " bytes)");
+        }
     }
 }

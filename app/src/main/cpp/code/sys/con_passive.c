@@ -46,9 +46,17 @@ char *CON_Input( void )
 
 void CON_Print( const char *msg )
 {
-	fputs( msg, stderr );
-
+	/* stderr is the diag capture's sink (stdout.txt/stderr.txt); the mirror to
+	   logcat is the routine channel and stays silent unless the operator armed
+	   it.  Crash and fatal rows reach logcat through Sys_AndroidLog directly,
+	   not through here. */
 #ifdef __ANDROID__
-	Sys_AndroidLog( ANDROID_LOG_INFO, msg );
+	if( Sys_AndroidDiagOn() )
+	{
+		fputs( msg, stderr );
+		Sys_AndroidLog( ANDROID_LOG_INFO, msg );
+	}
+#else
+	fputs( msg, stderr );
 #endif
 }

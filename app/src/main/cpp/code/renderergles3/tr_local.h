@@ -2394,7 +2394,9 @@ int		SMP_RLoadNow( void );
 void	SMP_RLoadAdd( int zone, int msec, int depth );
 
 static inline int SMP_RLoadArmed( void ) {
-	return smp_rloadStats ? smp_rloadStats->integer : 1;
+	/* every probe family answers to the master gate (qa_probe.h); this one was
+	   the only exception and printed [SMP:rload] rows with qa_probe still 0 */
+	return ( smp_rloadStats && smp_rloadStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
 }
 
 #define SMP_RLOAD_BEGIN(z) \

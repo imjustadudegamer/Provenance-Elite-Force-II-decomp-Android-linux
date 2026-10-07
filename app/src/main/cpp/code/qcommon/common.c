@@ -526,8 +526,12 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 		Com_ErrorNoText( code );
 	} else {
 #ifdef __ANDROID__
-		Sys_AndroidLog( code == ERR_DISCONNECT ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
-			va( "ENGINE ERROR code=%d: %s\n", code, com_errorMessage ) );
+		/* ERR_DISCONNECT is a normal gameplay event (leaving a server or the
+		   menu); only a real engine error reaches logcat. */
+		if ( code != ERR_DISCONNECT ) {
+			Sys_AndroidLog( ANDROID_LOG_ERROR,
+				va( "ENGINE ERROR code=%d: %s\n", code, com_errorMessage ) );
+		}
 #endif
 	}
 

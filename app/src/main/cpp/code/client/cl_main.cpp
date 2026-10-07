@@ -1855,7 +1855,10 @@ void CL_InitRef( void ) {
 	// SANCTIONED PLATFORM GLUE (STANDING_RULES §2.2): `cl_renderer` has NO retail
 	// The name/default/flags are ioq3's dynamic-loader convention, not retail's, so
 #ifndef EF2_DEFAULT_RENDERER
-	#define EF2_DEFAULT_RENDERER "gles3"
+	/* cmake/client.cmake always supplies this (vulkan, the operator's shipping
+	   renderer on every platform); the fallback only fires in a misconfigured
+	   build and must agree with that, not with the reference twin. */
+	#define EF2_DEFAULT_RENDERER "vulkan"
 #endif
 	cl_renderer = Cvar_Get("cl_renderer", EF2_DEFAULT_RENDERER, CVAR_ARCHIVE | CVAR_LATCH);
 
