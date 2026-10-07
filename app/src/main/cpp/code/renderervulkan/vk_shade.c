@@ -2496,6 +2496,11 @@ static int						vk_shadeUboSliceBytes = VK_UBO_SIZE_PAD;
 static int						vk_shadeUboNext[VK_FRAMES_IN_FLIGHT];
 static VkDeviceSize				vk_shadeUboLast[VK_FRAMES_IN_FLIGHT];
 static qboolean					vk_shadeUboLastValid[VK_FRAMES_IN_FLIGHT];
+/* The block as it was last published to this slot's ring: only the bytes
+   decide whether a draw may share the previous slice. */
+static unsigned char			vk_shadeUboShadow[VK_FRAMES_IN_FLIGHT][VK_UBO_SIZE_PAD];
+/* the ring's mapping came out host-cached: the descriptors-ready row names it */
+static qboolean					uboSawCached;
 
 /* What a cached set was written for: it carries the frame slot's UBO too. */
 typedef struct {
@@ -2578,6 +2583,7 @@ qboolean VK_Shade_Descriptors_Init( void )
 	}
 
 	memset( &bufferInfo, 0, sizeof( bufferInfo ) );
+	uboSawCached = qfalse;
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.size = ( VkDeviceSize )vk_shadeUboSliceBytes * VK_SHADE_UBO_SLICES;
 	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
@@ -2591,8 +2597,21 @@ qboolean VK_Shade_Descriptors_Init( void )
 		memset( &allocInfo, 0, sizeof( allocInfo ) );
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocInfo.allocationSize = reqs.size;
+		/* The ring is written per draw, so prefer the host-cached type and fall
+		   back to plain host-visible; HOST_COHERENT in either case keeps the
+		   device read correct without a flush. */
 		allocInfo.memoryTypeIndex = VK_Memory_FindType( reqs.memoryTypeBits,
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+				| VK_MEMORY_PROPERTY_HOST_CACHED_BIT );
+		if ( allocInfo.memoryTypeIndex < 0 ) {
+			allocInfo.memoryTypeIndex = VK_Memory_FindType( reqs.memoryTypeBits,
+					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+		}
+		if ( !i ) {
+			uboSawCached = ( allocInfo.memoryTypeIndex >= 0 )
+						   && ( ( vk.memProps.memoryTypes[allocInfo.memoryTypeIndex].propertyFlags
+								  & VK_MEMORY_PROPERTY_HOST_CACHED_BIT ) != 0 );
+		}
 		result = qvk.AllocateMemory( vk.device, &allocInfo, NULL, &vk_shadeUboMemory[i] );
 		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkAllocateMemory(ubo)" ) ) {
 			return qfalse;
@@ -2608,8 +2627,9 @@ qboolean VK_Shade_Descriptors_Init( void )
 		vk_shadeUboNext[i] = 0;
 	}
 
-	VK_Guard_Row( "VK:shade", "descriptors ready sets=%d ubo=%d slices=%d stride=%d",
-				  VK_SHADE_SETS, VK_UBO_SIZE_PAD, VK_SHADE_UBO_SLICES, vk_shadeUboSliceBytes );
+	VK_Guard_Row( "VK:shade", "descriptors ready sets=%d ubo=%d slices=%d stride=%d ubocache=%d",
+				  VK_SHADE_SETS, VK_UBO_SIZE_PAD, VK_SHADE_UBO_SLICES, vk_shadeUboSliceBytes,
+				  uboSawCached ? 1 : 0 );
 	return qtrue;
 }
 
@@ -2680,10 +2700,12 @@ VkCommandBuffer VK_Shade_CommandBuffer( void )
 }
 
 /* copy the staging block into the next ring slice; -1 when the ring is out.
-   A draw whose uniforms no setter touched since the last copy is byte-identical
-   to the slice the previous draw took, so it shares that slice instead of
-   spending a ring slot and a copy: the same bytes at the same dynamic offset,
-   which is also what lets the bind omit a repeated descriptor set. */
+   A draw whose staging block is byte-identical to the slice the previous draw
+   took shares that slice, which is also what lets the bind omit a repeated
+   descriptor set.  The test is the bytes and not the dirty flag: VK_DrawStage
+   rewrites the view and stage uniforms every draw whether or not they differ,
+   so `s_uboDirty' was always set here and the elision never fired
+   (elide_ubo=0.0/f with elide_set pinned at 2.0/f in the 2026-10-20 rows). */
 static VkDeviceSize VK_Shade_WriteUBO( void )
 {
 	int			slot = VK_Shade_CommandBufferSlot();
@@ -2694,7 +2716,9 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 		return ( VkDeviceSize )-1;
 	}
 
-	if ( !s_uboDirty && vk_shadeUboLastValid[slot] ) {
+	if ( vk_shadeUboLastValid[slot]
+		 && ( !s_uboDirty
+			  || memcmp( s_ubo, vk_shadeUboShadow[slot], (size_t)s_uboHighWater ) == 0 ) ) {
 		VK_WalkStat_Count( VK_ELIDE_UBO );
 		return vk_shadeUboLast[slot];
 	}
@@ -2713,6 +2737,7 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 
 	offset = ( VkDeviceSize )slice * vk_shadeUboSliceBytes;
 	memcpy( vk_shadeUboMapped[slot] + offset, s_ubo, s_uboHighWater );
+	memcpy( vk_shadeUboShadow[slot], s_ubo, s_uboHighWater );
 	s_uboDirty = qfalse;
 	s_uboHighWater = VK_UBO_HIGHWATER_FLOOR;
 	vk_shadeUboLast[slot] = offset;

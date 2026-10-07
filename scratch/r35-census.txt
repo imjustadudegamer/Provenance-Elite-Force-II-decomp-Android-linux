@@ -1,0 +1,73 @@
+r35 evidence census -- all raw command output, no prose
+log: /home/adam/.cache/ef2-android/logs/run-20261020-123113/game.log  (r33 merge, 10:33 build)
+commit: eccfa216  tree: /home/adam/Desktop/PORTS/EF2_Android_WIP/docs/wt/r35  branch r35-chars-perf
+
+== 1. walk rows, in-world, key columns (new elide_pipe/elide_set columns first seen this boot) ==
+cmd: grep 'PERF:walk' <log> | tail -22 (cols verts surf gen pack bind rec shade open pix rest cpu)
+v= 23843 s= 136.0 gen=0.21ms pack=0.46ms bind=1.89ms rec=1.91ms shade=1.46ms open=0.62ms pix=3.22ms rest=0.22ms cpu=11.22ms
+v= 22905 s= 146.2 gen=0.18ms pack=0.47ms bind=1.72ms rec=1.69ms shade=1.25ms open=0.55ms pix=3.10ms rest=0.20ms cpu=10.29ms
+v= 20453 s= 119.4 gen=0.14ms pack=0.47ms bind=1.43ms rec=1.42ms shade=0.97ms open=0.57ms pix=2.81ms rest=0.17ms cpu=9.15ms
+v= 17639 s= 120.8 gen=0.16ms pack=0.61ms bind=1.49ms rec=1.38ms shade=1.08ms open=0.54ms pix=2.81ms rest=0.15ms cpu=9.38ms
+v= 16840 s= 119.0 gen=0.19ms pack=0.43ms bind=1.63ms rec=1.51ms shade=1.14ms open=0.64ms pix=2.82ms rest=0.16ms cpu=9.75ms
+v= 16774 s= 119.5 gen=0.15ms pack=0.58ms bind=1.44ms rec=1.33ms shade=0.97ms open=0.54ms pix=2.74ms rest=0.12ms cpu=9.00ms
+
+== 2. elide columns across the whole boot ==
+cmd: grep PERF:walk | awk over elide_idx/elide_ubo/elide_pipe/elide_set
+elide_ubo  = 0.0/f   in all 61 rows  (never fired; predicate defect -- fixed by eccfa216)
+elide_set  = 2.0/f   in every in-world row (pinned constant; effectively never)
+elide_pipe = 60-90/f in-world, rising with surf/frame (pipeline reuse WORKS)
+elide_idx  = 400-700/f in-world (index-buffer reuse WORKS)
+
+== 3. draw census at the peak frame ==
+cmd: grep '[VK:draw3d]' | max draw-surfs
+line 666182 [PERF:walk] verts=23843 surf=136.0 bind=1.89 rec=1.91
+line 666173 [VK:draw3d] batches=214 refusals=0 imm=18 surf-cmds=2 draw-surfs=1152 perm-req=372 perm-miss=0 recorded=390 recorded-idx=27774
+line 672219 [PERF:walk] verts=22905 surf=146.2 bind=1.72 rec=1.69
+line 672211 [VK:draw3d] batches=254 draw-surfs=1169 perm-req=431 recorded=449
+per-recorded-draw: bind = 1890us/390 = 4.85us   rec = 1910us/390 = 4.90us
+boot peak draw-surfs = 1549 (coordinator's 885 was the 10-19 21:55 boot)
+
+== 4. shade parts: the srf part dominates ==
+cmd: grep PERF:shade | tail -4
+[PERF:shade] win=1004ms frames=113 surf/f=116.3 shade=1.04ms(9.0us/sf) dec=0.0 srf=8.3 rot=0.1 mv=0.0 sdl=0.0 sph=0.4 oth=0.2 (us/sf)
+srf = RB_EndSurface+RB_BeginSurface pair = 8.3us/surface = 92% of the shade bucket
+
+== 5. VALIDATION LAYER ARMED in the measured boot (headline confound) ==
+cmd: grep -m3 'VK:instance\|VK:valid\|VK:device' <log>
+[VK:instance] api=1.3.0 loader=1.3.275 extensions=3 layers=1
+[VK:valid] messenger=armed layers=1
+[VK:device] chosen name="Intel(R) Graphics (ADL GT2)" driver=Intel open-source Mesa driver/Mesa 25.2.8
+
+== 6. perf.data corroboration (CAVEAT: cpu_atom only, 19K samples over 30s, whole process) ==
+cmd: perf report -i perf.data --no-children -g none -s dso
+47.77% [kernel.kallsyms]   17.01% libc   11.17% renderer_vulkan.so
+ 7.17% libVkLayer_khronos_validation.so    <-- 2.8x the actual driver
+ 7.15% provenanceef2     2.53% libvulkan_intel.so   <-- the real driver
+top symbols: VK_Shade_FootprintRow.lto_priv.0 3.35% (LTO-blob attribution unreliable),
+  __memmove_avx_unaligned_erms 2.02%, __strlen_avx2 1.53%, __strcat_avx2 1.28%
+render thread: mean cpu 56.3%, max 77.7%, nivcsw 0 (no contention)
+
+== 7. charter class (d): scissor/viewport re-issue per draw -- NEGATIVE ==
+cmd: grep -n 'CmdSetViewport\|CmdSetScissor\|VK_Draw_SetScissor\|VK_Draw_DisableScissor' *.c
+3D sets viewport+scissor once per view (tr_backend.c:1468 VK_Draw_View3D) and per
+RC_SETSCISSOR (tr_cmds.c:650).  No per-draw re-issue on the 3D walk.  VK_Draw_SetAlphaTest
+(tr_backend.c:942) is the 2D stage pass only, not the 3D path.
+
+== 8. front 2: controls page, munro, per-menu walk means ==
+cmd: python3 over PERF:walk keyed on nearest preceding [UIVK:focus]
+menu                     n  verts   gen pack bind  rec shade open   ui   pix  walk
+main                     4  11573 0.03 0.32 0.17 0.10 0.44 0.37 0.52 2.48  4.64
+loadgame                 2  14007 0.04 0.32 0.08 0.11 0.48 0.53 0.91 2.55  5.26
+advancedvideo           17  15009 0.03 0.35 0.08 0.11 0.48 0.70 1.39 2.70  6.10
+controls                 7  17979 0.06 0.46 0.13 0.15 0.69 0.78 1.65 2.84  7.04
+munro.tik IS drawn on controls: [UIVK:menu3d] rm_draw widget=0x6031944e6e28 seq=1..8
+  vis=1 show=1 screen=529,154 154x300 static='models/char/munro.tik'
+  (uilayout.cpp:126's "never reaches Draw" note does not hold for this boot)
+controls paints munro via CL_Draw3DModel -> re.ClearScene/AddRefEntityToScene/RE_RenderScene
+  (client/cl_invrender.cpp:340-342) = one full R_RenderView per model widget per frame
+fps rows: 171 at line 60825 -> 118 at line 80559 across the controls window
+
+== 9. gate ==
+ninja 0 warnings 0 errors; ldd -r 6/6 artifacts undefined=0
+license_lint GREEN; ship_text_lint GREEN; make_zpak --check "pak is current (11 entries)"
+controls 23/23 PASS; comment_budget RED pre-existing (master 5315 -> r35 5323, +8)
