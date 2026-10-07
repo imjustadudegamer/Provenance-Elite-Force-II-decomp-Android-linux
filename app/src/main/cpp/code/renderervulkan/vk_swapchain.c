@@ -320,9 +320,15 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 	return qtrue;
 }
 
+static void VK_Swapchain_ReadbackRelease( void );
+
 void VK_Swapchain_Destroy( void )
 {
 	uint32_t i;
+
+	/* the staging block is sized from the extent, so a swapchain that goes away
+	   retires it rather than leaving a block the new extent cannot use */
+	VK_Swapchain_ReadbackRelease();
 
 	if ( vk.swapchainViews && qvk.DestroyImageView ) {
 		for ( i = 0; i < vk.swapchainImageCount; i++ ) {
@@ -349,19 +355,50 @@ void VK_Swapchain_Destroy( void )
 	vk.swapchainImageCount = 0;
 }
 
+/* The readback's staging objects, kept across reads.  Every caller is the walk
+   thread (the RC_VK_END census and the screenshot flush behind it), so one set
+   needs no lock; the 10-19 boot ran 5,852 of these reads at vk_2dCover 2 and
+   pix= carried the create/destroy of this block every time.  The command buffer
+   stays per-call: VK_Upload_Pool is the calling thread's own pool. */
+static VkBuffer		s_rbBuffer;
+static VkDeviceMemory	s_rbMemory;
+static void			*s_rbMapped;
+static VkDeviceSize	s_rbBytes;
+static VkFence		s_rbFence;
+
+static void VK_Swapchain_ReadbackRelease( void )
+{
+	if ( s_rbMapped ) {
+		qvk.UnmapMemory( vk.device, s_rbMemory );
+		s_rbMapped = NULL;
+	}
+	if ( s_rbFence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+		qvk.DestroyFence( vk.device, s_rbFence, NULL );
+		s_rbFence = VK_NULL_HANDLE;
+	}
+	if ( s_rbBuffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+		qvk.DestroyBuffer( vk.device, s_rbBuffer, NULL );
+		s_rbBuffer = VK_NULL_HANDLE;
+	}
+	if ( s_rbMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, s_rbMemory, NULL );
+		s_rbMemory = VK_NULL_HANDLE;
+	}
+	s_rbBytes = 0;
+}
+
 qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_t outBytes )
 {
 	VkBufferImageCopy copyRegion;
 	VkCommandBufferAllocateInfo allocInfo;
 	VkCommandBufferBeginInfo beginInfo;
 	VkSubmitInfo submitInfo;
-	VkFenceCreateInfo fenceInfo;
 	VkImageMemoryBarrier barrier;
-	VkFence fence = VK_NULL_HANDLE;
+	VkFence fence;
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
-	VkBuffer buffer = VK_NULL_HANDLE;
-	VkDeviceMemory memory = VK_NULL_HANDLE;
-	void *mapped = NULL;
+	VkBuffer buffer;
+	VkDeviceMemory memory;
+	void *mapped;
 	VkDeviceSize bytes;
 	VkResult result;
 	qboolean ok = qfalse;
@@ -378,17 +415,44 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 		return qfalse;
 	}
 
-	if ( !VK_Memory_CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-								 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-								 &buffer, &memory ) ) {
-		return qfalse;
+	if ( s_rbBuffer == VK_NULL_HANDLE || s_rbBytes < bytes ) {
+		VK_Swapchain_ReadbackRelease();
+		if ( !VK_Memory_CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+									 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+									 &s_rbBuffer, &s_rbMemory ) ) {
+			return qfalse;
+		}
+		s_rbBytes = bytes;
 	}
+	buffer = s_rbBuffer;
+	memory = s_rbMemory;
+	fence = s_rbFence;
 
 	VK_Upload_Begin();
 
-	result = qvk.MapMemory( vk.device, memory, 0, bytes, 0, &mapped );
-	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "readback vkMapMemory" ) ) {
-		goto done;
+	if ( !s_rbMapped ) {
+		result = qvk.MapMemory( vk.device, memory, 0, bytes, 0, &s_rbMapped );
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "readback vkMapMemory" ) ) {
+			s_rbMapped = NULL;
+			goto done;
+		}
+	}
+	mapped = s_rbMapped;
+
+	if ( fence == VK_NULL_HANDLE ) {
+		VkFenceCreateInfo fenceInfo;
+
+		memset( &fenceInfo, 0, sizeof( fenceInfo ) );
+		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &s_rbFence ),
+							   "readback vkCreateFence" ) ) {
+			goto done;
+		}
+		fence = s_rbFence;
+	} else if ( qvk.ResetFences ) {
+		/* a waited fence stays signalled, and a submit into a signalled fence
+		   completes instantly and reads back the previous frame */
+		qvk.ResetFences( vk.device, 1, &fence );
 	}
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
@@ -459,14 +523,6 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 		goto done;
 	}
 
-	memset( &fenceInfo, 0, sizeof( fenceInfo ) );
-	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-
-	if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &fence ),
-						   "readback vkCreateFence" ) ) {
-		goto done;
-	}
-
 	memset( &submitInfo, 0, sizeof( submitInfo ) );
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.commandBufferCount = 1;
@@ -486,20 +542,10 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 	ok = qtrue;
 
 done:
-	if ( mapped ) {
-		qvk.UnmapMemory( vk.device, memory );
-	}
-	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
-		qvk.DestroyFence( vk.device, fence, NULL );
-	}
+	/* the staging set is the next read's business; only the per-call command
+	   buffer goes back, and a failed fence wait leaves it to be reset above */
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
 		VK_Pool_FreeBuffers( VK_Upload_Pool(), 1, &cmd );
-	}
-	if ( buffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
-		qvk.DestroyBuffer( vk.device, buffer, NULL );
-	}
-	if ( memory != VK_NULL_HANDLE && qvk.FreeMemory ) {
-		qvk.FreeMemory( vk.device, memory, NULL );
 	}
 
 	VK_Upload_End();

@@ -864,6 +864,7 @@ void VK_PerfFpsRow( void )
 				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms shade=%.2fms fence=%.2fms acq=%.2fms "
 				   "open=%.2fms ui=%.2fms out=%.2fms recend=%.2fms submit=%.2fms present=%.2fms pix=%.2fms rest=%.2fms "
 				   "cpu=%.2fms dev=%.2fms walk=%.2fms elide_idx=%.1f/f elide_ubo=%.1f/f "
+				   "elide_pipe=%.1f/f elide_set=%.1f/f "
 				   "gpu_clear=%.2fms gpu_world=%.2fms gpu_sprite=%.2fms gpu_ui=%.2fms "
 				   "gpu=%.2fms gmarks=%.1f/f gcap=%lld\n",
 				   now - t0, wframes, (double)verts / nf, (double)surfs / nf,
@@ -887,6 +888,8 @@ void VK_PerfFpsRow( void )
 				   (double)walkUsec / nf / 1000.0,
 				   (double)elide[VK_ELIDE_INDEX] / nf,
 				   (double)elide[VK_ELIDE_UBO] / nf,
+				   (double)elide[VK_ELIDE_PIPE] / nf,
+				   (double)elide[VK_ELIDE_SET] / nf,
 				   (double)gpu[VK_GPU_CLEAR] / nf / 1000.0,
 				   (double)gpu[VK_GPU_WORLD] / nf / 1000.0,
 				   (double)gpu[VK_GPU_SPRITE] / nf / 1000.0,
