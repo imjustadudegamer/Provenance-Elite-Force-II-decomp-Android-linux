@@ -180,6 +180,11 @@ static void DrawNormals (shaderCommands_t *input, int pass) {
 void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	shader_t	*state;
 
+	/* the srf window's BEGIN sub-part runs to the end of the body; the three
+	   early exits below close it themselves so nothing spills into the next
+	   charge, and whatever they skip lands in the window's OTHER */
+	VK_SrfPart_Open();
+
 /* the reference renderer's tr_shade.c carries this note in full */
 	RB_2D_Flush();
 
@@ -219,7 +224,8 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 		&& r_useglfog->integer ) {			 
 		tess.xstages = state->unfoggedStages;							 
 		tess.numPasses = state->numUnfoggedPasses;						 
-		tess.currentStageIteratorFunc = RB_GLFogStageIteratorFunc;		 
+		tess.currentStageIteratorFunc = RB_GLFogStageIteratorFunc;
+		VK_SrfPart_Close( VK_WSS_BEGIN );
 		return;
 	}
 	if ( fogNum == 0 ) {
@@ -230,6 +236,7 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 									 : ( state->optimalStageIteratorFunc
 										 ? state->optimalStageIteratorFunc
 										 : RB_StageIteratorGeneric );
+		VK_SrfPart_Close( VK_WSS_BEGIN );
 		return;
 	}
 	if ( fogNum == 9999 ) {					 
@@ -241,6 +248,7 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	}
 	tess.currentStageIteratorFunc = ( state->isSky && state->optimalStageIteratorFunc )
 		? state->optimalStageIteratorFunc : RB_StageIteratorGeneric;
+	VK_SrfPart_Close( VK_WSS_BEGIN );
 }
 
 void RB_GLFogStageIteratorFunc( void ) {
@@ -1499,6 +1507,11 @@ void RB_EndSurface( void ) {
 		return;
 	}
 
+	/* the gauntlets above all return early, so opening here cannot leave a
+	   sub-part open across an exit; everything before this point is the srf
+	   window's OTHER */
+	VK_SrfPart_Open();
+
 	backEnd.pc.c_shaders++;
 	backEnd.pc.c_vertexes += tess.numVertexes;
 	backEnd.pc.c_indexes += tess.numIndexes;
@@ -1519,9 +1532,13 @@ void RB_EndSurface( void ) {
 		nulliter_rows++;
 		tess.currentStageIteratorFunc = RB_StageIteratorGeneric;
 	}
+	VK_SrfPart_Close( VK_WSS_ENDPRE );
+	VK_SrfPart_Open();
 	BE_SUB( BE_FAM_DS, BE_DSZ_sub_stage, tess.currentStageIteratorFunc() );
+	VK_SrfPart_Close( VK_WSS_STAGE );
 	/* the batch is submitted: the expected stage set against the drawn one, and
 	   the residency of every image either side names */
+	VK_SrfPart_Open();
 	VK_Shade_BatchEnd();
 
 	if (!(tr.refdef.rdflags & RDF_NOWORLDMODEL) && !backEnd.in2D)
@@ -1533,6 +1550,8 @@ void RB_EndSurface( void ) {
 			DrawNormals(input, r_shownormals->integer);
 		}
 	}
+
+	VK_SrfPart_Close( VK_WSS_BATCHE );
 
 	tess.numIndexes = 0;
 

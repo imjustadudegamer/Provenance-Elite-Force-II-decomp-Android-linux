@@ -32,7 +32,12 @@ int			cvar_modifiedFlags;
 cvar_t		cvar_indexes[MAX_CVARS];
 int			cvar_numIndexes;
 
-#define FILE_HASH_SIZE		256
+/* MAX_CVARS below caps the live population at 2048, so a 256-bucket table
+   held about eight per chain and Cvar_FindVar paid a Q_stricmp per entry on
+   every lookup -- and the UI resolves cvars per widget per frame.  result-
+   identical: same-named cvars hash to one bucket and keep insertion order
+   within it, so the first match cannot change. */
+#define FILE_HASH_SIZE		4096
 static	cvar_t	*hashTable[FILE_HASH_SIZE];
 
 qboolean cvar_global_force = qfalse;

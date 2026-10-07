@@ -154,6 +154,7 @@ long long RB_WalkUsec64( void )
    already carries. */
 static long long	s_walkPhaseUsec[VK_WP_PHASES];
 static long long	s_walkShadeUsec[VK_WS_PARTS];
+static long long	s_srfT0 = -1;
 static long long	s_walkVerts;
 static long long	s_walkSurfs;
 static long long	s_walkFrames;
@@ -195,6 +196,88 @@ void VK_WalkStat_TakeShade( long long *usecOut )
 		usecOut[i] = s_walkShadeUsec[i];
 		s_walkShadeUsec[i] = 0;
 	}
+}
+
+/* The srf window's split.  srf= names the RB_EndSurface/RB_BeginSurface pair
+   the shader-change branch issues, and it is the largest shade part at about
+   3us per stage draw; these sub-parts name where it goes, the same way dec/
+   rot/mv already do for their own window.  The charge sites live inside the
+   two functions, which the sprite and world walks also call, so the window
+   arms around the pair and every site is one predictable test when it is not
+   armed.  OTHER is the residual, so the parts sum to srf=. */
+static long long	s_walkSrfUsec[VK_WSS_PARTS];
+static long long	s_walkSrfTotal;
+static long long	s_srfArmT0;
+static long long	s_srfArmNested;
+static int			s_srfArmed;
+
+void VK_SrfPart_Arm( void )
+{
+	if ( VK_WalkStatOn() ) {
+		s_srfArmed = 1;
+		s_srfArmT0 = BE_Microseconds64();
+		s_srfArmNested = VK_WalkStat_Nested();
+	}
+}
+
+void VK_SrfPart_Disarm( void )
+{
+	/* the whole window, net of what its own flushes charged elsewhere; OTHER is
+	   the difference between this and the named sub-parts, so the split sums to
+	   srf= however much the two functions skip */
+	if ( s_srfArmed && s_srfArmT0 >= 0 ) {
+		long long usec = BE_Microseconds64() - s_srfArmT0
+						 - VK_WalkStat_NestedSince( s_srfArmNested );
+
+		s_walkSrfTotal += usec > 0 ? usec : 0;
+	}
+	s_srfArmed = 0;
+	s_srfArmT0 = -1;
+}
+
+void VK_SrfPart_Open( void )
+{
+	if ( s_srfArmed ) {
+		s_srfT0 = BE_Microseconds64();
+	}
+}
+
+void VK_SrfPart_Close( int part )
+{
+	long long usec;
+
+	if ( !s_srfArmed || s_srfT0 < 0 ) {
+		return;
+	}
+
+	usec = BE_Microseconds64() - s_srfT0;
+	s_srfT0 = -1;
+
+	if ( usec < 0 ) {
+		usec = 0;
+	}
+	if ( part >= 0 && part < VK_WSS_PARTS ) {
+		s_walkSrfUsec[part] += usec;
+	}
+}
+
+void VK_WalkStat_TakeSrf( long long *usecOut )
+{
+	int i;
+
+	for ( i = 0; i < VK_WSS_PARTS; i++ ) {
+		usecOut[i] = s_walkSrfUsec[i];
+		s_walkSrfUsec[i] = 0;
+	}
+	usecOut[VK_WSS_OTHER] = 0;
+}
+
+long long VK_WalkStat_TakeSrfTotal( void )
+{
+	long long t = s_walkSrfTotal;
+
+	s_walkSrfTotal = 0;
+	return t;
 }
 
 /* The present seam's children, drained with the phase row that prints them. */

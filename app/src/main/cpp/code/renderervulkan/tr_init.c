@@ -779,6 +779,8 @@ void VK_PerfFpsRow( void )
 	long long		 be;
 	long long		 phase[VK_WP_PHASES];
 	long long		 shadePart[VK_WS_PARTS];
+	long long		 srfPart[VK_WSS_PARTS];
+	long long		 srfTotal, srfNamed, srfOther;
 	long long		 present[VK_WSUB_SLOTS];
 	long long		 elide[VK_ELIDE_HITS];
 	long long		 gpu[VK_GPU_BUCKETS];
@@ -815,6 +817,14 @@ void VK_PerfFpsRow( void )
 	walkUsec = RB_WalkUsec64();
 	VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
 	VK_WalkStat_TakeShade( shadePart );
+	VK_WalkStat_TakeSrf( srfPart );
+	srfTotal = VK_WalkStat_TakeSrfTotal();
+	srfNamed = srfPart[VK_WSS_ENDPRE] + srfPart[VK_WSS_STAGE]
+			 + srfPart[VK_WSS_BATCHE] + srfPart[VK_WSS_BEGIN];
+	srfOther = srfTotal - srfNamed;
+	if ( srfOther < 0 ) {
+		srfOther = 0;
+	}
 	VK_WalkStat_TakePresent( present );
 	VK_WalkStat_TakeElisions( elide );
 	VK_PerfGpu_Take( gpu, &gpuMarks, &gpuCap );
@@ -913,6 +923,20 @@ void VK_PerfFpsRow( void )
 				   (double)shadePart[VK_WS_SPHERE] / perSurf,
 				   (double)shadePart[VK_WS_OTHER] / perSurf,
 				   (double)shadeSum / nf / 1000.0 );
+
+		/* The srf window's own split.  srf= above is the whole pair, tot= is the
+		   same window measured at its own seam, and the four named sub-parts
+		   plus oth= sum to it. */
+		ri.Printf( PRINT_ALL,
+				   "[PERF:srf] win=%dms frames=%lld surf/f=%.1f tot=%.2f endpre=%.2f "
+				   "stage=%.2f batche=%.2f begin=%.2f oth=%.2f (us/sf)\n",
+				   now - t0, wframes, (double)surfs / nf,
+				   (double)srfTotal / perSurf,
+				   (double)srfPart[VK_WSS_ENDPRE] / perSurf,
+				   (double)srfPart[VK_WSS_STAGE] / perSurf,
+				   (double)srfPart[VK_WSS_BATCHE] / perSurf,
+				   (double)srfPart[VK_WSS_BEGIN] / perSurf,
+				   (double)srfOther / perSurf );
 	}
 
 	frames = 0;
