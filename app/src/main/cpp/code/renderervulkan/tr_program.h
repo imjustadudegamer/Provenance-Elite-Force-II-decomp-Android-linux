@@ -354,6 +354,9 @@ void		VK_FullbrightNote( void );
 void		VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 								   int stageIndex, qboolean in2D,
 								   unsigned w0, unsigned w1, unsigned u0, unsigned u1 );
+void		VK_PassCensus( const shader_t *shader, const shaderStage_t *pStage,
+						   unsigned stateBits, const struct shaderCommands_s *input,
+						   const unsigned char *colors, qboolean in2D );
 
 void		VK_BindProgram( vkProgram_t *p );
 void		VK_RefreshClipPlane( void );

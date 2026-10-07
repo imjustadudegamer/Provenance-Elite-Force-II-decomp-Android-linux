@@ -1766,10 +1766,15 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			|| ( bStaticModel != oldbStaticModel && !shader->entityMergable )) {
 			partT0 = VK_WALK_T0();
 			partNested0 = VK_WalkStat_Nested();
+			/* the srf sub-parts are charged inside the pair, so the window arms
+			   only across it: the sprite and world walks reach the same two
+			   functions and must not add to this window's split */
+			VK_SrfPart_Arm();
 			if (oldShader != NULL) {
 				RB_EndSurface();
 			}
 			RB_BeginSurface( shader, fogNum );
+			VK_SrfPart_Disarm();
 			oldShader = shader;
 			oldFogNum = fogNum;
 			oldDlightMap = dlightMap;

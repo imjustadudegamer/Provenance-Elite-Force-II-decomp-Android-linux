@@ -2807,17 +2807,25 @@ static VkBlendFactor VK_Shade_SrcBlendFactor( unsigned nibble )
 	}
 }
 
+/* The nibble arrives as the ORDINAL (the call site shifts the stateBits down
+   by 4), so the cases are the VKS_DSTBLEND_* constants shifted to match.
+   Written unshifted -- as r33 first landed them -- every case missed and every
+   dst factor defaulted to ZERO, which made every blended stage REPLACE the
+   destination instead of blending: the black cone, the black hull, the black
+   vent gas and the black impact halos were this one switch.  Ordinals 3 and 4
+   are SRC_COLOR and ONE_MINUS_SRC_COLOR -- the retail factors the GL_State
+   decompile and the recorded retail trace both carry. */
 static VkBlendFactor VK_Shade_DstBlendFactor( unsigned nibble )
 {
 	switch ( nibble ) {
-	case VKS_DSTBLEND_ZERO:					return VK_BLEND_FACTOR_ZERO;
-	case VKS_DSTBLEND_ONE:					return VK_BLEND_FACTOR_ONE;
-	case VKS_DSTBLEND_SRC_COLOR:			return VK_BLEND_FACTOR_SRC_COLOR;
-	case VKS_DSTBLEND_ONE_MINUS_SRC_COLOR:	return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-	case VKS_DSTBLEND_SRC_ALPHA:			return VK_BLEND_FACTOR_SRC_ALPHA;
-	case VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-	case VKS_DSTBLEND_DST_ALPHA:			return VK_BLEND_FACTOR_DST_ALPHA;
-	case VKS_DSTBLEND_ONE_MINUS_DST_ALPHA:	return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+	case VKS_DSTBLEND_ZERO >> 4:					return VK_BLEND_FACTOR_ZERO;
+	case VKS_DSTBLEND_ONE >> 4:						return VK_BLEND_FACTOR_ONE;
+	case VKS_DSTBLEND_SRC_COLOR >> 4:				return VK_BLEND_FACTOR_SRC_COLOR;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_COLOR >> 4:		return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+	case VKS_DSTBLEND_SRC_ALPHA >> 4:				return VK_BLEND_FACTOR_SRC_ALPHA;
+	case VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA >> 4:		return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	case VKS_DSTBLEND_DST_ALPHA >> 4:				return VK_BLEND_FACTOR_DST_ALPHA;
+	case VKS_DSTBLEND_ONE_MINUS_DST_ALPHA >> 4:		return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
 	default:
 		return VK_BLEND_FACTOR_ZERO;
 	}
@@ -4760,6 +4768,7 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 
 	(void)stateBits;
 	VK_StageBindCensus( shader, pStage, -1, backEnd.in2D ? qtrue : qfalse, 0, 0, 0, 0 );
+	VK_PassCensus( shader, pStage, stateBits, input, colors, backEnd.in2D ? qtrue : qfalse );
 
 	RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
 						   tc0, tc1, tcStride, colors, input->normal[0], pStage );
@@ -4884,6 +4893,82 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 					  (unsigned)pStage->colorConst[0], (unsigned)pStage->colorConst[1],
 					  (unsigned)pStage->colorConst[2], (unsigned)pStage->colorConst[3] );
 	}
+}
+
+/* One row per DISTINCT pass signature: shader, stage, stateBits, the blend
+   factors the builder resolves for that sb, the colour array the pack got and
+   whether the surface wrote one.  First occurrence only, so a whole boot
+   prints a bounded row set; the operator's RenderDoc pixel history names an
+   EID and this row names the pass behind it.  Blend factors are the VkBlend-
+   Factor enums: 0=ZERO 1=ONE 2=SRC_COLOR 3=ONE_MINUS_SRC_COLOR 4=DST_COLOR
+   5=ONE_MINUS_DST_COLOR 6=SRC_ALPHA 7=ONE_MINUS_SRC_ALPHA 8=DST_ALPHA
+   9=ONE_MINUS_DST_ALPHA 10=SRC_ALPHA_SATURATE.  col: 0=white(NULL) 1=svars
+   2=vertex array. */
+void VK_PassCensus( const shader_t *shader, const shaderStage_t *pStage, unsigned stateBits,
+					const shaderCommands_t *input, const unsigned char *colors,
+					qboolean in2D )
+{
+	typedef struct {
+		const shader_t		*sh;
+		const shaderStage_t	*st;
+		unsigned			sb;
+		int					src;
+	} passKey_t;
+	static passKey_t	s_seen[4096];
+	static int			s_seenRows;
+	unsigned			srcNibble, dstNibble, srcF, dstF, blendEn;
+	int					colSrc;
+	const char			*n0, *n1;
+	int					i, slot;
+
+	if ( !shader || !pStage || !input || !R_ProbeStatsOn() ) {
+		return;
+	}
+
+	colSrc = colors == (const unsigned char *)input->svars.colors ? 1
+		   : colors == (const unsigned char *)input->vertexColors ? 2
+		   : 0;
+	for ( slot = -1, i = 0; i < 4096; i++ ) {
+		int			b = ( ( ( ( ( uintptr_t )shader >> 4 ) + ( ( uintptr_t )pStage >> 4 ) * 31
+							   + stateBits * 7 + colSrc ) & 4095 ) + i ) & 4095;
+		passKey_t	*k = &s_seen[b];
+		if ( !k->sh ) {
+			if ( slot < 0 ) {
+				slot = b;
+			}
+			break;
+		}
+		if ( k->sh == shader && k->st == pStage && k->sb == stateBits && k->src == colSrc ) {
+			return;
+		}
+	}
+	if ( slot < 0 || s_seenRows >= 4096 ) {
+		return;
+	}
+	s_seen[slot].sh = shader;
+	s_seen[slot].st = pStage;
+	s_seen[slot].sb = stateBits;
+	s_seen[slot].src = colSrc;
+	s_seenRows++;
+
+	srcNibble = stateBits & VKS_SRCBLEND_BITS;
+	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
+	blendEn = ( srcNibble != VKS_SRCBLEND_ONE || dstNibble != VKS_DSTBLEND_ZERO );
+	srcF = ( unsigned )VK_Shade_SrcBlendFactor( srcNibble );
+	dstF = ( unsigned )VK_Shade_DstBlendFactor( dstNibble );
+	n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
+		 ? pStage->bundle[0].image[0]->imgName : "";
+	n1 = ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
+		 ? pStage->bundle[1].image[0]->imgName : "";
+
+	VK_Guard_Row( "VK:pass",
+				  "shader='%s' stage=%d sb=0x%x d=%d blendEn=%u src=%u dst=%u dwrite=%d "
+				  "rg=%d ag=%d vc=%d col=%d b0='%s' b1='%s'",
+				  shader->name, -1, stateBits, in2D ? 1 : 0,
+				  blendEn, srcF, dstF,
+				  ( stateBits & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
+				  ( int )pStage->rgbGen, ( int )pStage->alphaGen,
+				  input->vertexColorValid ? 1 : 0, colSrc, n0, n1 );
 }
 
 void VK_DrawCensusKey( const void *key, qboolean in2D )

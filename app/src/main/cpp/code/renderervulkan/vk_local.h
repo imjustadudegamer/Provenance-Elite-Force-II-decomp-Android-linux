@@ -420,6 +420,18 @@ enum {
 void VK_WalkStat_ShadeAdd( int part, long long usec );
 void VK_WalkStat_TakeShade( long long *usecOut );
 
+/* The srf window's sub-parts; OTHER is the residual, so they sum to srf=. */
+enum {
+	VK_WSS_ENDPRE = 0, VK_WSS_STAGE, VK_WSS_BATCHE, VK_WSS_BEGIN,
+	VK_WSS_OTHER, VK_WSS_PARTS
+};
+void VK_SrfPart_Arm( void );
+void VK_SrfPart_Disarm( void );
+void VK_SrfPart_Open( void );
+void VK_SrfPart_Close( int part );
+void VK_WalkStat_TakeSrf( long long *usecOut );
+long long VK_WalkStat_TakeSrfTotal( void );
+
 /* OUT's children, charged at the record-end/submit/present seams; they sum to
    out= and stay out of rest='s subtraction. */
 enum { VK_WSUB_RECEND = 0, VK_WSUB_SUBMIT, VK_WSUB_PRESENT, VK_WSUB_SLOTS };
