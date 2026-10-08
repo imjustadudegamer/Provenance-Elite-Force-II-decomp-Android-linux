@@ -4715,11 +4715,23 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	   and the 1-x -- so the tess array reaches the pack raw and the shader does
 	   retail's transform.  Routing them through svars would apply identityLight
 	   twice, because ComputeColors only runs for VK_StageNeedsCPUColor stages.
-	   markShadow (rgbGen exactVertex, common.shader:239) drew every mark at
-	   full-strength white instead of its own alpha modulate and read as a black
-	   blob at three times retail's density. */
+	   But only when the surface actually wrote the array: tess.vertexColorValid
+	   is seeded false per surface (tr_shade.c:197) and raised only by the
+	   handlers that fill it -- Polychain, Triangles, Terrain, Face, Grid,
+	   Sprite, sky.  A static model fills nothing: the smColors copy at
+	   tr_model.cpp:1880 sits inside #if 0 and tr.world has no smColors to
+	   load it from, so its tess array still holds the previous surface's
+	   colours.  Carrying that array turned every static model with a vertex
+	   gen -- the Voyager hull, the borg panels, borg-light beside the volume
+	   cone -- into the previous surface's colour, which under the retail dst
+	   factors multiplies straight to black.  2D keeps the array
+	   unconditionally: the 2D quads write Draw_SetColor and never raise the
+	   flag.  markShadow drew every mark at full-strength white instead of its
+	   own alpha modulate and read as a black blob three times retail's
+	   density. */
 	colors = cpuColor ? (const unsigned char *)input->svars.colors
-					  : ( backEnd.in2D || VK_StageReadsVertexColor( pStage ) )
+					  : ( backEnd.in2D
+						  || ( VK_StageReadsVertexColor( pStage ) && input->vertexColorValid ) )
 						? (const unsigned char *)input->vertexColors
 						: NULL;
 
