@@ -286,6 +286,17 @@ void UIPulldownMenu::AddUIPopupDescribe(const char *title, uipopup_describe *d)
     pd->desc.AddObject(d);
 }
 
+void UIPulldownMenu::ClearUIPopupDescribe(void)
+{
+    int i;
+
+    /* the describes themselves are owned by the container widget that added
+       them; the lists here only hold borrowed pointers, so only they fold */
+    for (i = 1; i <= m_desc.NumObjects(); i++) {
+        m_desc.ObjectAt(i)->desc.FreeObjectList();
+    }
+}
+
 void UIPulldownMenu::setHighlightFGColor(UColor c)
 {
     m_highlightFGColor = c;

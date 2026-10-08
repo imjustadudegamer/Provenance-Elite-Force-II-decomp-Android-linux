@@ -60,5 +60,6 @@ protected:
 
 public:
     void AddPopup(Event *ev);
+    void ClearPopups(Event *ev);
     void reloadStrings(void) override;
 };

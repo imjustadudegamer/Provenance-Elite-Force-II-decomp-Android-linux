@@ -848,6 +848,87 @@ static void AUDIOAudioMenuFixup(Menu *menu)
 #endif
 
 
+/* The shipped video page carries only the 2003 4:3 rows: menu_video.urc bakes
+   six SwitchBox options and six reslist addpopups, all "set r_mode N".  The
+   operator asked for the standard 16:9 rows interleaved by width, and both
+   rows are rebuilt here from this table at menu open -- the shipped data in
+   the pak stays untouched and every label and command keeps its shape.  The
+   indices are the renderer's r_vidModes (renderervulkan/tr_init.c): 0-11 are
+   retail's, 12-14 are this port's widescreen additions; keep the two in
+   step. */
+typedef struct {
+    int         mode;
+    const char *label;
+} vidMenuRow_t;
+
+static const vidMenuRow_t s_videoModeRows[] = {
+    { 3,  "640 x 480" },
+    { 4,  "800 x 600" },
+    { 6,  "1024 x 768" },
+    { 7,  "1152 x 864" },
+    { 12, "1280 x 720 (wide)" },
+    { 8,  "1280 x 1024" },
+    { 13, "1600 x 900 (wide)" },
+    { 9,  "1600 x 1200" },
+    { 14, "1920 x 1080 (wide)" },
+    { 10, "2048 x 1536" },
+};
+
+static void MENU3DVideoMenuResolutionFixup(Menu *m)
+{
+    UIWidget *menu3dcont;
+    UIWidget *menu3dw;
+
+    if (!m || Q_stricmp(m->m_name.c_str(), "video")) {
+        return;
+    }
+
+    menu3dcont = m->GetContainerWidget();
+    if (!menu3dcont) {
+        return;
+    }
+
+    menu3dw = menu3dcont->getFirstChild();
+
+    while (menu3dw) {
+        const char *menu3dcvar  = menu3dw->getCvarName();
+        const char *menu3dtitle = menu3dw->getTitle();
+        const char *menu3dname  = menu3dw->getName();
+        int         i;
+
+        /* the page also carries a hidden r_mode label; only the display and
+           the pulldown take rows */
+        if (menu3dcvar && menu3dcvar[0] && !Q_stricmp(menu3dcvar, "r_mode")
+            && (!menu3dtitle || strcmp(menu3dtitle, "$$Hidden$$"))) {
+            menu3dw->ProcessEvent(new Event("clearoptions"));
+
+            for (i = 0; i < ( int )( sizeof( s_videoModeRows ) / sizeof( s_videoModeRows[0] ) ); i++) {
+                Event *option = new Event("option");
+
+                option->AddString(s_videoModeRows[i].label);
+                option->AddString(va("set r_mode %d", s_videoModeRows[i].mode));
+                option->AddString(va("%d", s_videoModeRows[i].mode));
+                menu3dw->ProcessEvent(option);
+            }
+        } else if (menu3dname && !Q_stricmp(menu3dname, "reslist")) {
+            menu3dw->ProcessEvent(new Event("clearpopups"));
+
+            for (i = 0; i < ( int )( sizeof( s_videoModeRows ) / sizeof( s_videoModeRows[0] ) ); i++) {
+                Event *popup = new Event("addpopup");
+
+                popup->AddString("MENU");
+                popup->AddString(s_videoModeRows[i].label);
+                popup->AddString("command");
+                popup->AddString(va("set r_mode %d", s_videoModeRows[i].mode));
+                menu3dw->ProcessEvent(popup);
+            }
+        }
+
+        menu3dw = menu3dw->getNextSibling();
+    }
+}
+
+
 bool MenuManager::PushMenu(str name)
 {
     Menu *m;
@@ -869,6 +950,8 @@ bool MenuManager::PushMenu(str name)
     if (head == m) {
         return false;
     }
+
+    MENU3DVideoMenuResolutionFixup(m);
 
 #ifdef __ANDROID__
     AUDIOAudioMenuFixup(m);
@@ -929,6 +1012,8 @@ bool MenuManager::TransitionMenu(str name)
         head->ProcessEvent(Event("hidemenu"));
     }
 
+    MENU3DVideoMenuResolutionFixup(m);
+
 #ifdef __ANDROID__
     AUDIOAudioMenuFixup(m);
     MENU3DAndroidVideoMenuFixup(m);
@@ -972,6 +1057,8 @@ bool MenuManager::ShowMenu(str name)
         PAINT_PROBE("menu:show", "MISS name='%s'", name.c_str());
         return false;
     }
+
+    MENU3DVideoMenuResolutionFixup(m);
 
 #ifdef __ANDROID__
     AUDIOAudioMenuFixup(m);

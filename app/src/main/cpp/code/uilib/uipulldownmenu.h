@@ -90,6 +90,7 @@ public:
     void removeSubMenu(void);
     void ChildKilled(Event *ev);
     void AddUIPopupDescribe(const char *title, uipopup_describe *d);
+    void ClearUIPopupDescribe(void);
     void setHighlightFGColor(UColor c);
     void setHighlightBGColor(UColor c);
     void setPopupWidth(const str& menu, float width);

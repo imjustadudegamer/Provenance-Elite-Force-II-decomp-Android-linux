@@ -33,6 +33,15 @@ Event EV_UIPulldownMenuContainer_AddPopup
     "Adds a popup to the list box.\nmenuname - the name of the menu to add this to\ntitle - the string to display\ntype - type of item this is (command,cvar,event_name)\nstring - the data that corresponds to the correct type\n"
 );
 
+Event EV_UIPulldownMenuContainer_ClearPopups
+(
+    "clearpopups",
+    EV_DEFAULT,
+    NULL,
+    NULL,
+    "Clears every popup this container added."
+);
+
 Event EV_UIPulldownMenuContainer_MenuShader
 (
     "menushader",
@@ -116,6 +125,7 @@ Event EV_UIPulldownMenuContainer_PopupWidth
 
 CLASS_DECLARATION(UIWidget, UIPulldownMenuContainer, NULL) {
     {&EV_UIPulldownMenuContainer_AddPopup,              &UIPulldownMenuContainer::AddPopup                },
+    {&EV_UIPulldownMenuContainer_ClearPopups,           &UIPulldownMenuContainer::ClearPopups             },
     {&EV_UIPulldownMenuContainer_PopupWidth,            &UIPulldownMenuContainer::SetPopupWidth           },
     {&EV_UIPulldownMenuContainer_MenuShader,            &UIPulldownMenuContainer::SetMenuShader           },
     {&EV_UIPulldownMenuContainer_SelectedMenuShader,    &UIPulldownMenuContainer::SetSelectedMenuShader   },
@@ -346,6 +356,24 @@ void UIPulldownMenuContainer::AddPopup(Event *ev)
 
     m_popups.AddObject(uipd);
     m_menu->AddUIPopupDescribe(menu, uipd);
+}
+
+void UIPulldownMenuContainer::ClearPopups(Event *ev)
+{
+    int i;
+
+    /* the exact inverse of this container's own AddPopup history: the
+       describes die here (the container owns them), and the pulldown menu's
+       borrowed lists fold with them */
+    for (i = m_popups.NumObjects(); i > 0; i--) {
+        uipopup_describe *uipd = m_popups.ObjectAt(i);
+        m_popups.RemoveObjectAt(i);
+        delete uipd;
+    }
+
+    if (m_menu) {
+        m_menu->ClearUIPopupDescribe();
+    }
 }
 
 void UIPulldownMenuContainer::reloadStrings(void)
