@@ -92,11 +92,90 @@ Container<int>    *Event::sortedList = NULL;
 Container<Event *> *Event::eventDefList = NULL;
 qboolean          Event::dirtylist = false;
 
+int              *Event::hashNext = NULL;
+qboolean          Event::hashdirty = true;
+
 int Event::numfinds;
 int Event::numfirstsearch;
 int Event::numcompares;
 int Event::lastevent;
 bool Event::EventSystemStarted;
+
+/* The command list holds one entry per distinct event name (registration goes
+   through FindEvent, so a name already present is never added twice), and
+   FindEvent answers every lookup with it.  A sorted binary search paid a
+   stricmp per level for that; this is the same index the cvar table uses: one
+   bucket per case-folded name, chain order = registration order. */
+#define EVENT_HASH_SIZE		4096
+static int eventHashHead[ EVENT_HASH_SIZE ];
+
+long Event::generateHashValue( const char *name )
+{
+	long hash;
+	char letter;
+	int i;
+
+	hash = 0;
+	i = 0;
+	while ( name[ i ] != '\0' )
+	{
+		letter = tolower( name[ i ] );
+		hash += ( long )( letter ) * ( i + 119 );
+		i++;
+	}
+
+	hash &= ( EVENT_HASH_SIZE - 1 );
+	return hash;
+}
+
+void Event::ResetEventHash( void )
+{
+	int i;
+
+	delete[] hashNext;
+	hashNext = NULL;
+
+	for ( i = 0; i < EVENT_HASH_SIZE; i++ )
+	{
+		eventHashHead[ i ] = 0;
+	}
+
+	hashdirty = true;
+}
+
+void Event::BuildEventHash( void )
+{
+	int num;
+	int eventnum;
+	int i;
+
+	num = commandList->NumObjects();
+
+	/* the heads survive a rebuild, so they start from empty here: a stale head
+	   would hand the chain an eventnum this pass has not reached yet */
+	for ( i = 0; i < EVENT_HASH_SIZE; i++ )
+	{
+		eventHashHead[ i ] = 0;
+	}
+
+	hashNext = new int[ num + 1 ];
+	for ( i = 0; i <= num; i++ )
+	{
+		hashNext[ i ] = 0;
+	}
+
+	/* walking the list backwards puts each bucket in ascending eventnum order,
+	   which is registration order -- the answer a duplicate name would have
+	   sorted to first. */
+	for ( i = num; i > 0; i-- )
+	{
+		eventnum = generateHashValue( commandList->ObjectAt( i )->c_str() );
+		hashNext[ i ] = eventHashHead[ eventnum ];
+		eventHashHead[ eventnum ] = i;
+	}
+
+	hashdirty = false;
+}
 
 int Event_totalmemallocated;
 
@@ -1085,27 +1164,24 @@ void Event::SortEventList( void )
 int Event::FindEvent( const char *name )
 {
 	int eventnum;
-	int index;
-	int l;
-	int r;
-	int diff;
-	
+	long hash;
+
 	assert( name );
 	if ( !name )
 	{
 		return 0;
 	}
-	
+
 	if ( !commandList )
 	{
 		return 0;
 	}
-	
+
 	if ( dirtylist )
 	{
 		SortEventList();
 	}
-	
+
 	numfinds++;
 	numcompares++;
 	if ( lastevent && !stricmp( name, commandList->ObjectAt( lastevent )->c_str() ) )
@@ -1113,30 +1189,23 @@ int Event::FindEvent( const char *name )
 		numfirstsearch++;
 		return lastevent;
 	}
-	
-	l = 1;
-	r = sortedList->NumObjects();
-	while( r >= l )
+
+	if ( hashdirty )
 	{
-		index = ( l + r ) >> 1;
-		eventnum = sortedList->ObjectAt( index );
-		diff = stricmp( name, commandList->ObjectAt( eventnum )->c_str() );
+		BuildEventHash();
+	}
+
+	hash = generateHashValue( name );
+	for ( eventnum = eventHashHead[ hash ]; eventnum != 0; eventnum = hashNext[ eventnum ] )
+	{
 		numcompares++;
-		if ( diff < 0 )
-		{
-			r = index - 1;
-		}
-		else if ( diff > 0 )
-		{
-			l = index + 1;
-		}
-		else
+		if ( !stricmp( name, commandList->ObjectAt( eventnum )->c_str() ) )
 		{
 			lastevent = eventnum;
 			return eventnum;
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -1609,11 +1678,13 @@ void Event::initCommandList( void )
 	
 	sortedList = new Container<int>;
 	sortedList->AddObject( NullEvent.eventnum );
-	
+
 	eventDefList = new Container<Event *>;
-	
+
 	dirtylist = false;
-	
+
+	ResetEventHash();
+
 	NullEvent.data = NULL;
 	NullEvent.info.inuse = 0;
 	NullEvent.info.source = EV_FROM_CODE;
@@ -1761,6 +1832,7 @@ Event::Event( const char *command, int flags_shadow2, const char *theFormatspec,
 		flagList->AddObject( ( int )flags_shadow2 );
 		sortedList->AddObject( eventnum );
 		dirtylist = true;
+		hashdirty = true;
 	}
 	
 	name = commandList->ObjectAt( eventnum )->c_str();
@@ -3229,6 +3301,8 @@ void L_ShutdownEvents( void )
 		delete Event::sortedList;
 		Event::sortedList = NULL;
 	}
-	
+
+	Event::ResetEventHash();
+
 	Event::EventSystemStarted = false;
 }
