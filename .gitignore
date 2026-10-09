@@ -29,3 +29,5 @@ personal/
 /docs/wt/
 /docs/scripts/
 /docs/tools/
+.claude/
+scratch/
