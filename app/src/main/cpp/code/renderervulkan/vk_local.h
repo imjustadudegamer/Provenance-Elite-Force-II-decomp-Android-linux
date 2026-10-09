@@ -390,11 +390,8 @@ void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfs
 /* -1 is "not timed", so a real reading of 0 is still a reading.  The reading
    has to be 64-bit: BE_Microseconds truncates to int, so it goes negative once
    the machine has been up 2^31 us -- 35.8 minutes -- and a sentinel compared
-   against a negative clock value discards every reading.  That is exactly what
-   happened: the walk's buckets read 0.00 and the whole cost landed in the
-   accounting error on the first boot after the uptime crossed 35.8 minutes,
-   while the fence bucket (which subtracts two readings and never tests a sign)
-   kept working.  The differences stay int-sized, so the engine's own
+   against a negative clock value discards every reading.  The differences stay
+   int-sized, so the engine's own
    `BE_Microseconds() - t0` idiom is untouched; only the sentinel moves to a
    clock that cannot collide with it. */
 #define VK_WALK_T0()        ( VK_WalkStatOn() ? BE_Microseconds64() : -1LL )

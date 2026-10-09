@@ -139,13 +139,7 @@ static const short vk_uboMap[VK_U_COUNT] = {
 };
 /* the same positional index as vk_uboMap, but for each member's writable span
    in bytes.  These come out of the generated header next to the offsets, so
-   the packer's clamp cannot drift from the compiler's own layout.
-   The hand-written table this replaced gave every vec2, vec3 and vec4 a span
-   of 4: VK_Ubo_Set clamped against it, so u_BaseColor published only its red
-   channel and every rgbGen const / rgbGen global stage multiplied the texel by
-   (1,0,0) -- the volume lights drew red and the radar fov cone lost its green.
-   u_WaveRGB, u_EntityColor, u_ClipPlane, u_FogColor, u_FogSVector, u_FogTVector
-   and u_TexMod0/1 past their first tcMod were truncated the same way. */
+   the packer's clamp cannot drift from the compiler's own layout. */
 static const int vk_uboSize[VK_U_COUNT] = {
 	VK_UBO_SIZE_U_MVP,
 	0,                     /* u_ModelView: not in the block */
@@ -422,9 +416,7 @@ void RB_OrthoProjection( float left, float right, float bottom, float top, float
 	p[5] = 2.0f / ( top - bottom );
 	/* the same zero-to-one z rows Set2DWindow's ortho already carries
 	   (vk_draw.c: -1/fn and 0.5 - (f+n)/2fn, which is -n/fn): the OpenGL ortho
-	   rows put the near plane on -1, outside Vulkan's clip volume.  This is the
-	   ortho the sun flare's (-99999, 99999) window builds, and its own quad sat
-	   on the volume's boundary face under the old rows. */
+	   rows put the near plane on -1, outside Vulkan's clip volume. */
 	p[10] = -1.0f / ( zFar - zNear );
 	p[12] = -( right + left ) / ( right - left );
 	p[13] = -( top + bottom ) / ( top - bottom );
@@ -605,9 +597,7 @@ static unsigned VK_ProgramHash( unsigned defines )
 
 /* The module table is 682 entries and the permutation path asks for one
    (family, defines, stage) triple per stage request -- 367 a frame in the
-   15:34 boot.  Both the old finder and the module loop that followed it walked
-   the whole table on every request, and the loop had no early exit, so a cache
-   hit on an already-built pipeline still paid about 2700 iterations.  One open
+   15:34 boot.  One open
    addressed index, built once from the same table, answers in a probe or two.
    The def's key is (family, defines-without-the-family-byte, isFragment), which
    is exactly what the callers pass. */
@@ -804,10 +794,7 @@ vkProgram_t *VK_GetProgram( unsigned defines )
 		   through the guard and hand back a failure the draw path already
 		   refuses -- VK_Shade_Pipeline returns VK_NULL_HANDLE, VK_Shade_Set
 		   returns VK_NULL_HANDLE, the UBO ring and the vertex ring return their
-		   own failure.  This table used to hand back vk_programs[0] instead,
-		   which is a live program for a DIFFERENT defines mask: the caller then
-		   packs the requested stage's uniforms into it and binds it, and the
-		   surface renders with the wrong permutation and no row names why.
+		   own failure.
 		   NULL is safe end to end -- the uniform setters only fill the s_ubo
 		   staging block, and VK_Shade_Bind refuses on a NULL prog before it
 		   takes a UBO slice -- so the surface is dropped and refusals counts

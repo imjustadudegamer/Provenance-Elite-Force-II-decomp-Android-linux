@@ -1420,9 +1420,7 @@ void UIWidget::set2D(void)
        The widget's own window is exactly the widget's rect, which is what this
        port reproduces with the constant screen window plus the placement it bakes
        into the vertices, so both of retail's shapes land on the same screen rect.
-       The port used to fold the placement into a per-widget ortho and viewport,
-       which is why an ortho whose left equalled its right needed a degenerate
-       branch: the transform stopped meaning anything.  Placement rides on the
+       Placement rides on the
        vertices now (Rend_Set2DOrigin, added by the renderer's 2D vertex writers),
        so the ortho is constant and can never degenerate, and a widget with a
        zero-extent frame is merely clipped to nothing by its scissor, as it is in

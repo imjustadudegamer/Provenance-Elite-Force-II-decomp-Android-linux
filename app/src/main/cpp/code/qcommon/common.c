@@ -1657,12 +1657,8 @@ void Com_Init( char *commandLine ) {
 	   (zpak-android.pk3) and is platform-neutral where those two are not (its
 	   cl_renderer is the compiled renderer default, not the zpak's stale gles3).
 
-	   The gate is a cvar only THIS code writes.  It used to read the Android
-	   install's own `in_androidDefaults', and that is not a safe gate: any build
-	   that ever ran against the shared write root owns that value, and the
-	   operator's root carries `seta in_androidDefaults "14"' while this constant
-	   is 10 -- so the seed silently never ran and the defaults were not folded in
-	   at all.  `port_defaultsSeed' starts at 0 on every install, is bumped only
+	   The gate is a cvar only THIS code writes.  `port_defaultsSeed' starts at 0
+	   on every install, is bumped only
 	   here, and cannot be outrun by a stray value.  `in_androidDefaults' is still
 	   written so an Android install keeps one continuous history of the seed. */
 #define PORT_DEFAULTS_SEED 1

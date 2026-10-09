@@ -738,9 +738,6 @@ void RB_ExecuteRenderCommands( const void *data )
 
 			VK_Draw_SetScissor( vk.commandBuffers[slot], cmd->x, cmd->y, cmd->width, cmd->height );
 
-			/* The state just applied is the one the next quads belong to.  A qfalse
-			   cannot happen here -- RB_2D_SpanBreak reserved the room and the state
-			   was just named -- and closes the batch if it ever does. */
 			if ( !RB_2D_SpanNote() ) {
 				RB_2D_Flush();
 			}

@@ -619,10 +619,7 @@ void VK_Frame_RecordEnd( int slot )
 
 /* A walk that opened the pass and then left without PRESENT used to leave the
    fence reset and the command buffer recording: the next Begin on that slot was
-   the wait that never returned.  Worse, it kept the acquired image.  The
-   20261014 boot held 2 images from the menu onward and climbed to all 4 by
-   shutdown, each one an abandoned walk that never handed its image back, and the
-   last acquire then had nothing left to take.
+   the wait that never returned.  Worse, it kept the acquired image.
 
    The pass and the image are the back end's, so closing them is the back end's
    job on every exit.  Retire ends the pass -- finalLayout is PRESENT_SRC, so the
