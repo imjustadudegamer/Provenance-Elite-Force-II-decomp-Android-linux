@@ -1,0 +1,70 @@
+--- /tmp/play_ef2_decomp.sh.orig	2026-10-20 16:42:55.343004768 -0400
++++ /home/adam/Desktop/PORTS/EF2_Android_WIP/personal/scripts/play_ef2_decomp.sh	2026-10-20 16:40:54.105803247 -0400
+@@ -252,6 +252,21 @@
+     fi
+ }
+ 
++# the host monitors write threads/cores/gpu tsv's, perf.data and intel_gpu_top.json
++# into the run dir, so they are diagnostic artifacts: a QUIET boot's run dir holds
++# the stdout redirect (the crash channel) and nothing else.  --diag arms them;
++# EF2_MONITORS=1 is the perf round's escape; EF2_NO_MONITOR=1 still wins.
++MON_WANT=0
++if [ "$DIAG" -eq 1 ]; then
++    MON_WANT=1
++fi
++if [ "${EF2_MONITORS:-0}" = "1" ]; then
++    MON_WANT=1
++fi
++if [ "${EF2_NO_MONITOR:-0}" = "1" ]; then
++    MON_WANT=0
++fi
++
+ cd "$REL" || exit 1
+ LAUNCHER_OVERRIDES=(
+     "cl_renderer=$RENDERER_CVAR"
+@@ -266,12 +281,15 @@
+ if [ "$DIAG" -eq 1 ]; then
+     LAUNCHER_OVERRIDES+=( "qa_probe=1" "r_footprintProbe=1" "r_vkValidate=1"
+                           "ui_statsOn=1" "d2_stallStats=1" "r_perfFps=1"
++                          "smp_loadStats=1"
+                           "logfile=3" )
+-    echo "mode: DIAGNOSTIC (--diag) -- validation + all probe families + engine log ON" >&2
++    echo "mode: DIAGNOSTIC (--diag) -- validation + all probe families + engine log + host monitors ON" >&2
+ else
+     LAUNCHER_OVERRIDES+=( "qa_probe=0" "r_vkValidate=0" "r_footprintProbe=0"
+-                          "ui_statsOn=0" "d2_stallStats=0" "r_perfFps=0" )
+-    echo "mode: QUIET -- validation and probes and engine log OFF; --diag arms them" >&2
++                          "ui_statsOn=0" "d2_stallStats=0" "r_perfFps=0"
++                          "smp_loadStats=0" )
++    echo "mode: QUIET -- validation, probes, engine log and host monitors OFF; --diag arms them" >&2
++    echo "        a QUIET run dir holds game.log (the crash channel) and nothing else" >&2
+ fi
+ 
+ OVERRIDE_FILE="$BASE/ef2-launcher.cfg"
+@@ -297,7 +315,7 @@
+ fi
+ 
+ ENGINE=""
+-if [ "${EF2_NO_MONITOR:-0}" != "1" ]; then
++if [ "$MON_WANT" -eq 1 ]; then
+     for _ in $(seq 1 80); do
+         ENGINE="$(pgrep -n -x provenanceef2 || true)"
+         [ -n "$ENGINE" ] && break
+@@ -319,9 +337,14 @@
+ echo
+ echo "=== run summary ==="
+ echo "  run dir : $RUNDIR"
+-echo "  device  : $(grep -m1 'VK:device] chosen' "$LOGFILE" 2>/dev/null | sed 's/.*chosen //' || echo '(no device row)')"
+-grep -m1 "VK:firstlight" "$LOGFILE" 2>/dev/null | sed 's/^/  firstlight: /'
+-echo "  fps     : $(grep 'PERF:fps' "$LOGFILE" 2>/dev/null | tail -1 | sed 's/.*fps=/fps=/' || echo '(none)')"
++# the device/firstlight/fps rows are probe rows, so a QUIET log carries none of
++# them by design; say so instead of an empty field
++DEVICE_ROW="$(grep -m1 'VK:device] chosen' "$LOGFILE" 2>/dev/null | sed 's/.*chosen //')"
++echo "  device  : ${DEVICE_ROW:-(none: the device rows are probe rows, --diag arms them)}"
++FIRSTLIGHT_ROW="$(grep -m1 "VK:firstlight" "$LOGFILE" 2>/dev/null)"
++[ -n "$FIRSTLIGHT_ROW" ] && echo "  firstlight: $FIRSTLIGHT_ROW"
++FPS_ROW="$(grep 'PERF:fps' "$LOGFILE" 2>/dev/null | tail -1 | sed 's/.*fps=/fps=/')"
++echo "  fps     : ${FPS_ROW:-(none: the fps row is a probe row, --diag arms it)}"
+ echo "  files   : $(ls "$RUNDIR" 2>/dev/null | tr '\n' ' ')"
+ for qc in "$FS/base/qconsole.log" "$FS/qconsole.log"; do
+     [ -f "$qc" ] && echo "  engine  : $qc ($(wc -l < "$qc") lines, written by the engine itself)"

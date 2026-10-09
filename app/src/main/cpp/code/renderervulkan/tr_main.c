@@ -507,7 +507,7 @@ void R_SetupProjection( void ) {
 	{
 		static int s_projRows;
 
-		if ( s_projRows < 4 || ( s_projRows % 2000 ) == 0 )
+		if ( R_ProbeStatsOn() && ( s_projRows < 4 || ( s_projRows % 2000 ) == 0 ) )
 		{
 			float nzc = tr.viewParms.projectionMatrix[10] * ( -zNear ) + tr.viewParms.projectionMatrix[14];
 			float fzc = tr.viewParms.projectionMatrix[10] * ( -zFar ) + tr.viewParms.projectionMatrix[14];
@@ -1068,6 +1068,11 @@ void R_FrontEnd_NoteAdd( void )
 const char *R_FrontEnd_ViewRow( int recorded, int entities )
 {
 	static char	row[160];
+
+	/* NULL is the caller's own no-row answer, and a quiet boot wants none of it */
+	if ( !R_ProbeStatsOn() ) {
+		return NULL;
+	}
 
 	Com_sprintf( row, sizeof( row ), "view adds=%d rec=%d ents=%d f=%d",
 				 s_feViewAdds, recorded, entities, RB_FrameCount() );

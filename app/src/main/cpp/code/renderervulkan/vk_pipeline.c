@@ -282,8 +282,10 @@ qboolean VK_Pipeline_Init( void )
 		return qfalse;
 	}
 
-	VK_Guard_Row( "VK:pipeline", "demo ready topology=tri-list depth=leq blend=off pass=swapchain handle=%p",
-				  (void *)(size_t)vk_pipeline.demoPipeline );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:pipeline", "demo ready topology=tri-list depth=leq blend=off pass=swapchain handle=%p",
+					  (void *)(size_t)vk_pipeline.demoPipeline );
+	}
 
 	return qtrue;
 }

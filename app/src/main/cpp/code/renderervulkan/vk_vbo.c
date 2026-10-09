@@ -827,7 +827,7 @@ void RB_VboStaticRow( void )
 	int			baked = s_bakedSurfaces;
 
 	rows++;
-	if ( rows == 1 || ( rows % 600 ) == 0 || fast != lastFast ) {
+	if ( R_ProbeStatsOn() && ( rows == 1 || ( rows % 600 ) == 0 || fast != lastFast ) ) {
 		VK_Guard_Row( "VK:vbo",
 					  "fast=%d baked=%d arena=%d/%d verts (%d) idxes (%d) full=%d "
 					  "refused=%d batches arena=%d stream=%d compose=%d devrun=%d f=%d",
@@ -923,12 +923,14 @@ qboolean RB_VBO_Init( void )
 
 	s_ready = qtrue;
 
-	VK_Guard_Row( "VK:vbo", "arena vertexes=%u (%.1f MiB) indexes=%u (%.1f MiB) soft=%d x %d run=%d",
-				  VK_STATIC_ARENA_VERTS,
-				  (double)VK_STATIC_ARENA_VERTS * VK_STREAM_STRIDE / ( 1024.0 * 1024.0 ),
-				  VK_STATIC_ARENA_INDEXES,
-				  (double)VK_STATIC_ARENA_INDEXES * sizeof( vkIndex_t ) / ( 1024.0 * 1024.0 ),
-				  VK_STATIC_SOFT_INDEXES, VK_FRAMES_IN_FLIGHT, VK_STATIC_MIN_IBO_RUN );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:vbo", "arena vertexes=%u (%.1f MiB) indexes=%u (%.1f MiB) soft=%d x %d run=%d",
+					  VK_STATIC_ARENA_VERTS,
+					  (double)VK_STATIC_ARENA_VERTS * VK_STREAM_STRIDE / ( 1024.0 * 1024.0 ),
+					  VK_STATIC_ARENA_INDEXES,
+					  (double)VK_STATIC_ARENA_INDEXES * sizeof( vkIndex_t ) / ( 1024.0 * 1024.0 ),
+					  VK_STATIC_SOFT_INDEXES, VK_FRAMES_IN_FLIGHT, VK_STATIC_MIN_IBO_RUN );
+	}
 
 	VK_SoftAliasCheck();
 

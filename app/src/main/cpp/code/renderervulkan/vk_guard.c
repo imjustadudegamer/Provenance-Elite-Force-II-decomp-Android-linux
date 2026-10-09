@@ -219,7 +219,12 @@ void VK_Sentinel_Arm( void )
 	}
 
 	if ( vk_sentinelWrite( VK_SENTINEL_FILE, marker, (int)sizeof( marker ) - 1 ) ) {
-		VK_Guard_Row( "VK:sentinel", "phase=arm path=%s", VK_SENTINEL_FILE );
+		/* a written marker is the boot's own bookkeeping, not a fault: the failed
+		   write below is the loud arm, and qa_probe rides the guard's own trace
+		   provider so this module stays decoupled from the renderer */
+		if ( VK_TraceOn( "qa_probe", 0 ) ) {
+			VK_Guard_Row( "VK:sentinel", "phase=arm path=%s", VK_SENTINEL_FILE );
+		}
 	} else {
 		VK_Guard_Hit( VK_GSITE_SENTINEL, "arm write failed", VK_ERROR_INITIALIZATION_FAILED );
 	}
@@ -232,8 +237,12 @@ void VK_Sentinel_Clear( void )
 	}
 
 	if ( vk_sentinelRemove( VK_SENTINEL_FILE ) ) {
-		VK_Guard_Row( "VK:sentinel", "phase=clear path=%s", VK_SENTINEL_FILE );
-	} else {
+		/* clearing the marker this boot armed is bookkeeping; a stale marker from
+		   a crashed boot was already named at bring-up (vk_firstlight.c) */
+		if ( VK_TraceOn( "qa_probe", 0 ) ) {
+			VK_Guard_Row( "VK:sentinel", "phase=clear path=%s", VK_SENTINEL_FILE );
+		}
+	} else if ( VK_TraceOn( "qa_probe", 0 ) ) {
 		VK_Guard_Row( "VK:sentinel", "phase=clear-absent path=%s", VK_SENTINEL_FILE );
 	}
 }

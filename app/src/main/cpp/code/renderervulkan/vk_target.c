@@ -284,9 +284,11 @@ qboolean VK_Target_Init( void )
 
 	vk.targetReady = qtrue;
 
-	VK_Guard_Row( "VK:target", "ready depth=%d framebuffers=%u %ux%u",
-				  (int)vk.depthFormat, vk.framebufferCount,
-				  vk.swapchainExtent.width, vk.swapchainExtent.height );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:target", "ready depth=%d framebuffers=%u %ux%u",
+					  (int)vk.depthFormat, vk.framebufferCount,
+					  vk.swapchainExtent.width, vk.swapchainExtent.height );
+	}
 
 	return qtrue;
 }

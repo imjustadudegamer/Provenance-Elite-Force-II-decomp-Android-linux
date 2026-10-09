@@ -452,7 +452,10 @@ void R_Init( void )
 	VKimp_AdapterInit();
 	R_InitCommandBuffers();
 
-	VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M3 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+	/* a quiet boot logs nothing that is not a fault, and this banner is not one */
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M3 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+	}
 
 	(void)err;
 }
@@ -523,7 +526,10 @@ void RE_Shutdown( qboolean destroyWindow )
 	VK_BringDown();
 	VKimp_Shutdown();
 
-	VK_Guard_Row( "VK:init", "shutdown destroyWindow=%d", destroyWindow ? 1 : 0 );
+	/* a clean exit is not a fault row; a crash never reaches this line at all */
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:init", "shutdown destroyWindow=%d", destroyWindow ? 1 : 0 );
+	}
 }
 
 void RE_BeginRegistration( glconfig_t *glconfig )

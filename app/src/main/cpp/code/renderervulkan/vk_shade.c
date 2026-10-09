@@ -743,8 +743,12 @@ qboolean VK_Shade_Init( void )
 				resolved++;
 			}
 		}
-		VK_Guard_Row( "VK:shade", "modules=%d permutations=%d families=%d resolved=%d",
-					  VK_SHADER_MODULE_COUNT, VK_SHADER_MODULE_COUNT / 2, total, resolved );
+		/* the summary rides the probe; a family that did not resolve is the
+		   defect the census exists for and names itself whatever the probe says */
+		if ( resolved < total || R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:shade", "modules=%d permutations=%d families=%d resolved=%d",
+						  VK_SHADER_MODULE_COUNT, VK_SHADER_MODULE_COUNT / 2, total, resolved );
+		}
 	}
 	return qtrue;
 }
@@ -2650,9 +2654,11 @@ qboolean VK_Shade_Descriptors_Init( void )
 		vk_shadeUboNext[i] = 0;
 	}
 
-	VK_Guard_Row( "VK:shade", "descriptors ready sets=%d ubo=%d slices=%d stride=%d ubocache=%d",
-				  VK_SHADE_SETS, VK_UBO_SIZE_PAD, VK_SHADE_UBO_SLICES, vk_shadeUboSliceBytes,
-				  uboSawCached ? 1 : 0 );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:shade", "descriptors ready sets=%d ubo=%d slices=%d stride=%d ubocache=%d",
+					  VK_SHADE_SETS, VK_UBO_SIZE_PAD, VK_SHADE_UBO_SLICES, vk_shadeUboSliceBytes,
+					  uboSawCached ? 1 : 0 );
+	}
 	return qtrue;
 }
 
@@ -2981,7 +2987,12 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	srcNibble = ( stateBits & VKS_SRCBLEND_BITS ) >> 0;
 	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
 	memset( &attachment, 0, sizeof( attachment ) );
-	attachment.blendEnable = ( srcNibble != VKS_SRCBLEND_ONE || dstNibble != VKS_DSTBLEND_ZERO ) ? VK_TRUE : VK_FALSE;
+	/* blending arms when either nibble carries an ordinal -- retail arms on
+	   (stateBits & 0xFF).  The compare must not read the blend constants: the
+	   dst ordinal arrives shifted, so any constant compare is always true and
+	   the flag never fell.  With both clear the factors resolve to ONE/ZERO,
+	   the off state's own arithmetic, so shipped pixels did not move. */
+	attachment.blendEnable = ( srcNibble || dstNibble ) ? VK_TRUE : VK_FALSE;
 	attachment.srcColorBlendFactor = VK_Shade_SrcBlendFactor( srcNibble );
 	attachment.dstColorBlendFactor = VK_Shade_DstBlendFactor( dstNibble );
 	attachment.colorBlendOp = VK_BLEND_OP_ADD;
@@ -3049,7 +3060,7 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 		}
 	}
 	vk_numShadePipelines++;
-	if ( ( vk_numShadePipelines & 15 ) == 1 ) {
+	if ( R_ProbeStatsOn() && ( vk_numShadePipelines & 15 ) == 1 ) {
 		VK_Guard_Row( "VK:shade", "pipelines=%d of %d sets=%d of %d",
 					  vk_numShadePipelines, VK_SHADE_PIPELINES, vk_numShadeSets, VK_SHADE_SETS );
 	}
@@ -3235,7 +3246,8 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 		static int s_rows;
 
 		s_rows++;
-		if ( s_rows < 4 || ( vk_numShadeSets & 255 ) == 0 || vk_numShadeSets == VK_SHADE_SETS ) {
+		if ( R_ProbeStatsOn()
+			 && ( s_rows < 4 || ( vk_numShadeSets & 255 ) == 0 || vk_numShadeSets == VK_SHADE_SETS ) ) {
 			VK_Guard_Row( "VK:shade", "sets=%d of %d", vk_numShadeSets, VK_SHADE_SETS );
 		}
 	}
@@ -3275,6 +3287,12 @@ void VK_Shade_NoteShaderTime( const char *kind )
 	int					i;
 
 	if ( !sh ) {
+		return;
+	}
+
+	/* a quiet boot pays neither the dedup scan nor the row; past the cap the scan
+	   has no reader left anyway */
+	if ( !R_ProbeStatsOn() ) {
 		return;
 	}
 
@@ -3464,7 +3482,7 @@ static void VK_Shade_StageRows( void )
 	char        now[VK_STAGE_ROW_BYTES];
 	int         i, written, omitted = 0;
 
-	if ( !s_frameStageCount ) {
+	if ( !s_frameStageCount || !R_ProbeStatsOn() ) {
 		return;
 	}
 
@@ -4234,8 +4252,10 @@ void VK_CreateWaveTable( void )
 	}
 
 	s_waveTableHandle = handle;
-	VK_Guard_Row( "VK:wave", "status=created handle=%d w=%d h=5 bytes=%d",
-				  handle, (int)FUNCTABLE_SIZE, (int)sizeof( lut ) );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:wave", "status=created handle=%d w=%d h=5 bytes=%d",
+					  handle, (int)FUNCTABLE_SIZE, (int)sizeof( lut ) );
+	}
 }
 
 void VK_DestroyWaveTable( void )
@@ -4878,7 +4898,10 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 		}
 	}
 
-	if ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) {
+	/* the bind row is pure telemetry: without this gate the cadence test above
+	   reads s_rows==0 forever in a quiet boot and the row prints on EVERY bind
+	   (the r38 round kept the scan gated but left the print unconditional) */
+	if ( R_ProbeStatsOn() && ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) ) {
 		VK_Guard_Row( "VK:stagebind",
 					  "n=%d d=%d shader='%s' stage=%d prog=0x%06x sb=0x%x mt=%d "
 					  "b0='%s' tex0=%u b1='%s' tex1=%u rg=%d ag=%d const=%u,%u,%u,%u",
@@ -4953,7 +4976,7 @@ void VK_PassCensus( const shader_t *shader, const shaderStage_t *pStage, unsigne
 
 	srcNibble = stateBits & VKS_SRCBLEND_BITS;
 	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
-	blendEn = ( srcNibble != VKS_SRCBLEND_ONE || dstNibble != VKS_DSTBLEND_ZERO );
+	blendEn = ( srcNibble || dstNibble );
 	srcF = ( unsigned )VK_Shade_SrcBlendFactor( srcNibble );
 	dstF = ( unsigned )VK_Shade_DstBlendFactor( dstNibble );
 	n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
@@ -5571,9 +5594,12 @@ void VK_Shade_NewFrame( void )
 		/* a count that moves between frames is the vanish signature, so a
 		   transition is always named: a recorded count that drops while the
 		   batch count holds still is draws vanishing between the walk and the
-		   stream, which the batch-only trigger would have swallowed */
-		if ( rows < 8 || s_frameShadeDraws != lastBatches || recorded != lastRecorded
-			 || recordedIdx != lastRecordedIdx || ( rows % 600 ) == 0 ) {
+		   stream, which the batch-only trigger would have swallowed.  A refusal
+		   keeps its own loud row (VK_Shade_DropRow), so the census is the gated
+		   part. */
+		if ( R_ProbeStatsOn()
+			 && ( rows < 8 || s_frameShadeDraws != lastBatches || recorded != lastRecorded
+			 || recordedIdx != lastRecordedIdx || ( rows % 600 ) == 0 ) ) {
 			VK_Guard_Row( "VK:draw3d", "frame batches=%d refusals=%d imm=%d surf-cmds=%d draw-surfs=%d perm-req=%d perm-miss=%d recorded=%d recorded-idx=%d",
 			  s_frameShadeDraws, s_frameShadeDrops, s_frameImmDraws,
 			  s_frameSurfCmds, s_frameDrawSurfs, s_framePermReq, s_framePermMiss,

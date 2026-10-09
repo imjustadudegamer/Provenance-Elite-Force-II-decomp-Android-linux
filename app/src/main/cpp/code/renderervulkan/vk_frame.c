@@ -293,7 +293,9 @@ qboolean VK_Frame_Init( void )
 		}
 	}
 
-	VK_Guard_Row( "VK:frame", "ready slots=%d images=%u", frames, vk.swapchainImageCount );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:frame", "ready slots=%d images=%u", frames, vk.swapchainImageCount );
+	}
 
 	return qtrue;
 }

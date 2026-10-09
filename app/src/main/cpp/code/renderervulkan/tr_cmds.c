@@ -101,8 +101,12 @@ static qboolean RB_CommandListGrow( vkCommandList_t *list, int demand )
 	list->cmds     = cmds;
 	list->capacity = newBytes;
 
-	VK_Guard_Row( "VK:cmdbuf", "slot=%d old=%d new=%d demand=%d f=%d",
-				  RB_FrameSmpFrame(), oldBytes, newBytes, demand, RB_FrameCount() );
+	/* a grow is the expected capacity event, not a failure; the refused grow has
+	   its own PRINT_WARNING at the caller */
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:cmdbuf", "slot=%d old=%d new=%d demand=%d f=%d",
+					  RB_FrameSmpFrame(), oldBytes, newBytes, demand, RB_FrameCount() );
+	}
 
 	return qtrue;
 }
@@ -517,7 +521,9 @@ static void VK_Order_Frame( void )
 	}
 
 	s_orderFrames++;
-	if ( !s_orderHave || s_orderHash != s_orderLast || ( s_orderFrames % 600 ) == 0 ) {
+	/* the transcript is an instrument: a quiet boot resets it and prints none */
+	if ( R_ProbeStatsOn()
+		 && ( !s_orderHave || s_orderHash != s_orderLast || ( s_orderFrames % 600 ) == 0 ) ) {
 		VK_Guard_Row( "VK:order", "%s", full );
 		s_orderLast = s_orderHash;
 		s_orderHave = qtrue;
@@ -974,7 +980,8 @@ void RB_RenderThread( void )
 		/* The walk thread's own milestones.  A boot that stops with the front end
 		   parked on the handoff and no rows here says the thread never walked;
 		   these say how far it got before it stopped. */
-		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
+		if ( R_ProbeStatsOn()
+			 && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
 			VK_Guard_Row( "VK:smp", "walk-start f=%d slot=%d", rb_frameCount + 1, frame->smpFrame );
 		}
 
@@ -1004,7 +1011,8 @@ void RB_RenderThread( void )
 		rb_activeFrame = NULL;
 		VKimp_WalkEnd( frame->smpFrame );
 
-		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
+		if ( R_ProbeStatsOn()
+			 && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
 			VK_Guard_Row( "VK:smp", "walk-done f=%d slot=%d", rb_frameCount, frame->smpFrame );
 		}
 
@@ -1077,7 +1085,8 @@ void R_IssueRenderCommands( void )
 	}
 	rb_activeFrame = NULL;
 
-	if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
+	if ( R_ProbeStatsOn()
+		 && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
 		VK_Guard_Row( "VK:smp", "side=inline slot=%d frames=%d", frame->smpFrame, rb_frameCount );
 		rb_issueRows++;
 	}
@@ -1117,7 +1126,9 @@ void R_InitCommandBuffers( void )
 		}
 	}
 
-	VK_Guard_Row( "VK:smp", "active=%d frames-in-flight=%d", vk.smpActive ? 1 : 0, VK_FRAMES_IN_FLIGHT );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:smp", "active=%d frames-in-flight=%d", vk.smpActive ? 1 : 0, VK_FRAMES_IN_FLIGHT );
+	}
 }
 
 void R_ShutdownCommandBuffers( void )
