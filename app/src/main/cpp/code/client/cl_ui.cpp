@@ -903,6 +903,33 @@ void UI_ShowMissionFailed(bool bFailed)
     }
 }
 
+/* Retail arms the hide only from the stat-cleared side (UI_Update @0x00191DF0:
+   `if (stat <= 0) { if visible HideMenu } else if (!visible) ShowMenu`), so a
+   live stat HUD slides in once and dwells.  Hiding a live HUD reverses the
+   intro slide and re-arms the show next frame. */
+static void UI_StatHudUpdate(Menu *hud, int stat)
+{
+    if (!hud) {
+        return;
+    }
+
+    if (stat > 0) {
+        if (hud->isVisible()) {
+            return;
+        }
+
+        PROBE("statmenu", "menu='%s' stat=%d vis=0 arm=show\n", hud->m_name.c_str(), stat);
+
+        Event *event = new Event(EV_ShowMenu);
+        event->AddInteger(false);
+        hud->ProcessEvent(event);
+    } else if (hud->isVisible()) {
+        PROBE("statmenu", "menu='%s' stat=%d vis=1 arm=hide\n", hud->m_name.c_str(), stat);
+
+        hud->ProcessEvent(EV_HideMenu);
+    }
+}
+
 void CL_ServerRefresh(void);
 
 static void UI_Update_Impl(void);
@@ -1323,36 +1350,13 @@ static void UI_Update_Impl(void)
             }
         }
 
-        if (hud_boss) {
-            if (cl.snap.ps.stats[STAT_BOSSHEALTH] > 0 && !hud_boss->isVisible()) {
-                Event *event = new Event(EV_ShowMenu);
-                event->AddInteger(false);
-                hud_boss->ProcessEvent(event);
-            } else if (hud_boss->isVisible()) {
-                hud_boss->ProcessEvent(EV_HideMenu);
-            }
-        }
+        UI_StatHudUpdate(hud_boss, cl.snap.ps.stats[STAT_BOSSHEALTH]);
 
-        if (itemTextHud) {
-            if (cl.snap.ps.stats[STAT_ITEMTEXT] > 0 && !itemTextHud->isVisible()) {
-                Event *event = new Event(EV_ShowMenu);
-                event->AddInteger(false);
-                itemTextHud->ProcessEvent(event);
-            } else if (itemTextHud->isVisible()) {
-                itemTextHud->ProcessEvent(EV_HideMenu);
-            }
-        }
+        UI_StatHudUpdate(itemTextHud, cl.snap.ps.stats[STAT_ITEMTEXT]);
 
-        // which does not exist in the shipped .urc set, so retail's arm is
-        if (specialmovetimer) {
-            if (cl.snap.ps.stats[STAT_SPECIALMOVETIMER] > 0 && !specialmovetimer->isVisible()) {
-                Event *event = new Event(EV_ShowMenu);
-                event->AddInteger(false);
-                specialmovetimer->ProcessEvent(event);
-            } else if (specialmovetimer->isVisible()) {
-                specialmovetimer->ProcessEvent(EV_HideMenu);
-            }
-        }
+        // specialmovetimer ships no .urc, so FindMenu leaves it NULL; retail
+        // keeps the same NULL-tested arm (off_22BDA8)
+        UI_StatHudUpdate(specialmovetimer, cl.snap.ps.stats[STAT_SPECIALMOVETIMER]);
 
         if (pointshud) {                                  
             pointshud->ForceShow();
