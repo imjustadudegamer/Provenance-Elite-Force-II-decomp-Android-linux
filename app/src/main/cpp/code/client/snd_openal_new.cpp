@@ -23,10 +23,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "snd_local.h"
 #include "snd_openal_new.h"
+#include "snd_mixer.h"
 #include "client.h"
 #include "../server/server.h"
 #include "snd_codec.h"
-#include "../qcommon/cm_public.h" 
+#include "../qcommon/cm_public.h"
 
 typedef struct {
     const char *funcname;
@@ -108,18 +109,17 @@ static float      s_fFadeStartTime;
 static float      s_fFadeStopTime;
 static char       current_soundtrack[128];
 
-static float s_fDuckVolume    = 1.f;
-static qboolean s_bDucking    = qfalse;
-static float s_fDuckStartTime = 0.f;
-static int   s_music_ducking_state = 0;
-static qboolean s_bRetailDuckDriver = qfalse;
+/* The pre-r52 duck state is gone: `s_bRetailDuckDriver' was initialised false
+   and never written again, so `s_bDucking' could never become true and
+   `s_fDuckVolume' never moved off 1.0 -- the whole block in S_OPENAL_Update was
+   unreachable.  Ducking now lives in snd_mixer.cpp behind `s_duckEnable'. */
 
 static void S_OPENAL_PlayMP3();
 static void S_OPENAL_StopMP3();
 static int
 S_OPENAL_SpatializeStereoSound(const vec3_t listener_origin, const vec3_t listener_left, const vec3_t origin);
 static void   S_OPENAL_reverb(int iChannel, int iReverbType, float fReverbLevel);
-static bool   S_OPENAL_LoadMP3_Codec(const char *_path, sfx_t *pSfx);
+static bool   S_OPENAL_LoadMP3_Codec(const char *_path, sfx_t *pSfx, byte **ppPcm, snd_info_t *pInfo);
 static ALuint S_OPENAL_Format(float width, int channels);
 
 #define alDieIfError() __alDieIfError(__FILE__, __LINE__)
@@ -384,8 +384,14 @@ static bool S_OPENAL_InitContext()
 #endif
 
 #ifdef ALC_SOFT_output_limiter
-    attrlist[8] = ALC_OUTPUT_LIMITER_SOFT;
-    attrlist[9] = ALC_FALSE;
+    /* `s_limiter 1' turns on the device brickwall the old code asked for and
+       then refused (Ratio=inf, AutoPostGain, AutoDeclip, 1 ms look-ahead;
+       alc/alc.cpp CreateDeviceLimiter).  Its ceiling is the output format's full
+       scale less the dither headroom, not a tuned -1 dBTP: that would need
+       master pre-gain, which moves the balance.  This stops clipping; the mixer
+       does the shaping. */
+    attrlist[8]  = ALC_OUTPUT_LIMITER_SOFT;
+    attrlist[9]  = (SndMix_LimiterWanted() && SndMix_Enabled()) ? ALC_TRUE : ALC_FALSE;
 #endif
     attrlist[10] = 0;
     attrlist[11] = 0;
@@ -664,6 +670,8 @@ qboolean S_OPENAL_Init()
     openal.chan_trig_music.set_no_virtualization();
     openal.chan_movie.set_no_virtualization();
 
+    SndMix_BindPool(&openal);
+
     Cmd_AddCommand("playmp3", S_OPENAL_PlayMP3);
     Cmd_AddCommand("stopmp3", S_OPENAL_StopMP3);
     Cmd_AddCommand("loadsoundtrack", S_loadsoundtrack);
@@ -720,32 +728,39 @@ float S_GetBaseVolume()
     return s_volume->value;
 }
 
+/* The one place the mixer's gains land, in the pre-mixer order: master x
+   category x fade x what the mixer adds.  With `s_duckEnable 0' and
+   `s_loudnessAnchor 0' SndMix_BusGain is exactly 1.0, so this builds
+   `((s_volume x category) x fade) x 1.0' -- today's product, bit for bit.
+   CHAN_MENU still returns the master alone, with no fade and no category. */
 float S_EF2_ChannelVolume(int iEntChannel)
 {
-    float fVolume = s_volume->value;
+    int   bus;
+    float fVolume;
 
     if (iEntChannel == CHAN_MENU || iEntChannel == CHAN_MENU2) {
-        return fVolume;
+        return s_volume->value;
     }
 
-    if (iEntChannel == CHAN_MUSIC) {
-        fVolume *= s_musicVolume->value;
-    } else if (iEntChannel == CHAN_DIALOG || iEntChannel == CHAN_DIALOG_SECONDARY
-               || iEntChannel == CHAN_CINEMATIC) {
-        fVolume *= s_dialogVolume->value;
-    } else if (iEntChannel >= CHAN_COMBAT1 && iEntChannel <= CHAN_COMBAT4 && s_combatVolume) {
-        fVolume *= s_combatVolume->value;
-    } else {
-        fVolume *= s_sfxVolume->value;
-    }
+    bus = SndMix_BusForChannel(iEntChannel, qfalse);
 
+    fVolume = s_volume->value * SndMix_CategoryGain(bus);
     fVolume *= s_fFadeVolume;
+    fVolume *= SndMix_BusGain(bus);
 
-    if (iEntChannel != CHAN_DIALOG && iEntChannel != CHAN_DIALOG_SECONDARY && iEntChannel != CHAN_CINEMATIC) {
-        if (iEntChannel != CHAN_MUSIC || s_music_ducking_state) {
-            fVolume *= s_fDuckVolume;
-        }
-    }
+    return fVolume;
+}
+
+/* The S_AddLoopingSound pool rides the same product on the AMBIENT bus: the
+   s_sfxvolume trim it had as CHAN_AUTO, and the SFX duck depth. */
+float S_EF2_LoopChannelVolume()
+{
+    const int bus = SNDBUS_AMBIENT;
+    float     fVolume;
+
+    fVolume = s_volume->value * SndMix_CategoryGain(bus);
+    fVolume *= s_fFadeVolume;
+    fVolume *= SndMix_BusGain(bus);
 
     return fVolume;
 }
@@ -1012,7 +1027,10 @@ static qboolean S_OPENAL_ShouldPlay(sfx_t *pSfx)
 
     iNumberPlaying = 0;
 
-    // retail's ShouldPlay never counted, so counting them here inflated max_number_playing
+    /* Retail counts too: S_MILES_ShouldPlay @0x001F4250 walks the 3D pool,
+       increments on `strcmp(name) && (status==4 || pending)' and returns
+       `count < max_number_playing'.  The note that stood here said the opposite;
+       the decompile refutes it.  Phase 3's steal policy is what would change it. */
     for (i = 0; i < s_iNumChannels3D; i++) {
         openal_channel *pChannel = openal.channel[i];
         if (!pChannel || !pChannel->pSfx) {
@@ -1202,13 +1220,47 @@ static void S_OPENAL_Start2DSound(
         }
     }
 
+    if (iFreeChannel < 0 && SndMix_Enabled()) {
+        /* Dialog never drops: steal the oldest slot, never a menu one -- the
+           CHAN_MENU block above keeps at most one menu sample live, so a victim
+           always exists.  Retail drops here (S_MILES_Start2DSound @0x001F1470
+           warns and returns); that is the divergence this removes. */
+        int iVictim = -1;
+        int iOldest = 0;
+
+        for (i = 0; i < MAX_SOUNDSYSTEM_CHANNELS_2D; i++) {
+            openal_channel *pSlot = &openal.chan_2D[i];
+
+            if (pSlot->iEntChannel == CHAN_MENU) {
+                continue;
+            }
+            if (!pSlot->is_playing() && !pSlot->bPendingStart) {
+                continue;
+            }
+            if (iVictim < 0 || pSlot->iStartTime < iOldest) {
+                iVictim = i;
+                iOldest = pSlot->iStartTime;
+            }
+        }
+
+        if (iVictim >= 0) {
+            iFreeChannel = MAX_SOUNDSYSTEM_CHANNELS_3D + iVictim;
+            SndMix_NoteDialogSteal();
+        }
+    }
+
     if (iFreeChannel < 0) {
         Com_DPrintf("Could not find a free dialog channel\n");
+        SndMix_NoteDialogDrop();
         return;
     }
 
     pChannel = openal.channel[iFreeChannel];
 
+    /* The category gain reads the slot's PREVIOUS channel, not the one about to
+       be stored -- retail does the same (S_MILES_Start2DSound @0x001F1470 reads
+       slot[42], the old channel, into S_GetChanVolume before storing the new
+       one).  One frame per recycled slot, and retail's: do not "fix" it. */
     iOldEntChannel = pChannel->iEntChannel;
     pChannel->force_free();
 
@@ -1976,7 +2028,7 @@ void S_OPENAL_AddLoopSounds(const vec3_t vTempAxis)
 
             S_OPENAL_UpdateLoopSound(
                 pLoopSound,
-                S_EF2_ChannelVolume(0) * fPlayVolume,
+                S_EF2_LoopChannelVolume() * fPlayVolume,
                 fMinDistance,
                 fMaxDistance,
                 vListenerOrigin,
@@ -2009,7 +2061,7 @@ void S_OPENAL_AddLoopSounds(const vec3_t vTempAxis)
 
         iChannel = S_OPENAL_Start3DLoopSound(
             pLoopSound,
-            S_EF2_ChannelVolume(0) * fPlayVolume,
+            S_EF2_LoopChannelVolume() * fPlayVolume,
             fMinDistance,
             fMaxDistance,
             vLoopOrigin,
@@ -2343,37 +2395,21 @@ void S_OPENAL_Update()
         bLevelsChanged       = true;
     }
 
-    //     v27 = *(int *)(off_228B24 + 428);        // the ramp driver, NEVER written (see the
-    // ramp below never moves off 1.0 -- which is what retail does.  `changed` is the
-    // volume-dirty latch that makes retail re-gain every live channel this frame; here it
-    if (s_bRetailDuckDriver && !s_bDucking) {
-        s_bDucking        = qtrue;
-        s_fDuckVolume     = 1.0f;
-        s_fDuckStartTime  = (float)cls.realtime;
-    }
+    /* the mixer advances its envelope here and latches the same two dirty
+       flags the unreachable pre-r52 ramp used: `bLevelsChanged' re-gains the 3D
+       pool and `music_volume_changed' re-gains the song pool, so a duck that
+       moves this frame is audible this frame */
+    {
+        qboolean bMixLevels = qfalse;
+        qboolean bMixMusic  = qfalse;
 
-    if (s_bDucking) {
-        const float fDuckFloor = 0.5f;
-        const float fDuckCeil  = 1.0f;
-        const float fDuckTime  = 2.0f;
+        SndMix_FrameAdvance(cls.realtime, s_fFadeVolume, &bMixLevels, &bMixMusic);
 
-        if (s_bRetailDuckDriver) {
-            if (s_fDuckVolume > fDuckFloor) {
-                s_fDuckVolume = fDuckCeil - (fDuckFloor * ((float)cls.realtime - s_fDuckStartTime)) / fDuckTime;
-                if (s_fDuckVolume < fDuckFloor) {
-                    s_fDuckVolume = fDuckFloor;
-                }
-                music_volume_changed = true;
-                bLevelsChanged       = true;
-            }
-        } else {
-            s_fDuckVolume = fDuckFloor + (fDuckFloor * ((float)cls.realtime - s_fDuckStartTime)) / fDuckTime;
-            if (s_fDuckVolume >= fDuckCeil) {
-                s_fDuckVolume = fDuckCeil;
-                s_bDucking    = qfalse;
-            }
+        if (bMixLevels) {
+            bLevelsChanged = true;
+        }
+        if (bMixMusic) {
             music_volume_changed = true;
-            bLevelsChanged       = true;
         }
     }
 
@@ -2821,7 +2857,10 @@ void openal_channel::force_free()
 
 bool openal_channel::set_sfx(sfx_t *pNewSfx)
 {
-    ALint freq = 0;
+    ALint      freq = 0;
+    byte      *pAnalyze = NULL;
+    snd_info_t analyzeInfo;
+    int        iAnalyzeWidth = 0;
 
     assert(pNewSfx->length);
 
@@ -2834,7 +2873,7 @@ bool openal_channel::set_sfx(sfx_t *pNewSfx)
             qalGenBuffers(1, &pNewSfx->buffer);
             alDieIfError();
 
-            if (!S_OPENAL_LoadMP3_Codec(pNewSfx->name, pNewSfx)) {
+            if (!S_OPENAL_LoadMP3_Codec(pNewSfx->name, pNewSfx, &pAnalyze, &analyzeInfo)) {
                 qalDeleteBuffers(1, &pNewSfx->buffer);
                 alDieIfError();
 
@@ -2843,6 +2882,7 @@ bool openal_channel::set_sfx(sfx_t *pNewSfx)
             }
 
             alDieIfError();
+            iAnalyzeWidth = (int)analyzeInfo.width;
         } else {
             ALenum fmt = S_OPENAL_Format(pNewSfx->info.width, pNewSfx->info.channels);
 
@@ -2867,6 +2907,14 @@ bool openal_channel::set_sfx(sfx_t *pNewSfx)
                 pNewSfx->info.rate
             );
             alDieIfError();
+
+            /* resident PCM: analysed in place, never freed here */
+            pAnalyze        = &pNewSfx->data[pNewSfx->info.dataofs];
+            analyzeInfo.rate     = pNewSfx->info.rate;
+            analyzeInfo.width    = (float)pNewSfx->info.width;
+            analyzeInfo.channels = pNewSfx->info.channels;
+            analyzeInfo.samples  = pNewSfx->info.samples;
+            iAnalyzeWidth        = pNewSfx->info.width;
         }
     }
 
@@ -2883,6 +2931,17 @@ bool openal_channel::set_sfx(sfx_t *pNewSfx)
     alDieIfError();
 
     iBaseRate = freq;
+
+    /* the bus is already known: every caller stores iEntChannel before this */
+    if (pAnalyze) {
+        SndMix_RegisterPCM(
+            pNewSfx, pAnalyze, analyzeInfo.samples, analyzeInfo.rate, iAnalyzeWidth, analyzeInfo.channels,
+            SndMix_BusForChannel(iEntChannel, (iFlags & CHANNEL_FLAG_LOOP_SOUND) ? qtrue : qfalse));
+
+        if (pNewSfx->iFlags & SFX_FLAG_MP3) {
+            Hunk_FreeTempMemory(pAnalyze);
+        }
+    }
 
     return true;
 }
@@ -3419,7 +3478,10 @@ void MUSIC_UpdateMood(int current, int fallback)
 
 void MUSIC_UpdateDucking(int ducking)
 {
-    s_music_ducking_state = ducking;
+    /* the plumbing was live and its consumer was not: this used to gate a
+       multiply by `s_fDuckVolume', which never moved off 1.0.  It now gates the
+       music bus's own depth in the mixer. */
+    SndMix_SetMusicDucking(ducking);
 }
 
 void MUSIC_UpdateVolume(float volume, float fade_time)
@@ -4038,7 +4100,7 @@ static ALuint S_OPENAL_Format(float width, int channels)
     return format;
 }
 
-static bool S_OPENAL_LoadMP3_Codec(const char *_path, sfx_t *pSfx)
+static bool S_OPENAL_LoadMP3_Codec(const char *_path, sfx_t *pSfx, byte **ppPcm, snd_info_t *pInfo)
 {
     void      *data;
     snd_info_t info;
@@ -4064,7 +4126,14 @@ static bool S_OPENAL_LoadMP3_Codec(const char *_path, sfx_t *pSfx)
 
     alDieIfError();
 
-    Hunk_FreeTempMemory(data);
+    /* the decoded PCM is handed out and freed by the caller, which registers it
+       with the mixer before letting it go */
+    if (ppPcm && pInfo) {
+        *ppPcm  = (byte *)data;
+        *pInfo  = info;
+    } else {
+        Hunk_FreeTempMemory(data);
+    }
 
     return true;
 }

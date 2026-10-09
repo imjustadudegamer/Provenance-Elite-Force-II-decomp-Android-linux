@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "snd_local.h"
 #include "snd_openal_new.h"
+#include "snd_mixer.h"
 #include "client.h"
 #include "cl_ui.h"
 
@@ -95,6 +96,12 @@ void S_Init(qboolean full_startup)
     s_khz            = Cvar_Get("s_khz", "44", CVAR_ARCHIVE | CVAR_SOUND_LATCH);
     s_loadas8bit     = Cvar_Get("s_loadas8bit", "0", CVAR_ARCHIVE | CVAR_LATCH);
     s_show           = Cvar_Get("s_show", "0", CVAR_CHEAT);
+
+    /* the mixer's cvars are registered here so they exist before the driver
+       opens its context: `s_limiter' is read at context creation, and a QUIET
+       boot with the mixer off must still find every knob. */
+    SndMix_Init();
+
     s_bLastInitSound = false;
 
     cv = Cvar_Get("s_initsound", "1", 0);
@@ -604,6 +611,10 @@ void S_SoundList()
     Com_Printf("Total resident: %i\n", total);
 }
 
+/* Deliberately empty.  Not a retail entry point (absent from the 5,241-function
+   Mac engine corpus): it is Q3-era FS bookkeeping (files.cpp) from when the mixer
+   owned a device buffer a file op could swap under.  Every sample here is already
+   in an AL buffer and no source reads a file handle, so there is nothing to flush. */
 void S_ClearSoundBuffer()
 {
 }

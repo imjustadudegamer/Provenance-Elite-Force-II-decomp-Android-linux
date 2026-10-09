@@ -159,6 +159,8 @@ client/snd_local_new.h	gpl	recovered GPL banner	client/snd_local_new.h	0.871	-	0
 client/snd_mem_new.cpp	gpl	recovered GPL banner	client/snd_mem_new.cpp	0.903	-	0.000
 client/snd_miles_new.cpp	gpl	recovered GPL banner	client/snd_miles_new.cpp	1.000	-	0.000
 client/snd_miles_new.h	gpl	recovered GPL banner	client/snd_miles_new.h	1.000	-	0.000
+client/snd_mixer.cpp	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+client/snd_mixer.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 client/snd_openal_new.cpp	gpl	recovered GPL banner	client/snd_openal_new.cpp	0.785	-	0.000
 client/snd_openal_new.h	gpl	recovered GPL banner	client/snd_openal_new.h	0.939	-	0.000
 client/snd_public.h	gpl	recovered GPL banner	client/snd_public.h	0.610	-	0.000
