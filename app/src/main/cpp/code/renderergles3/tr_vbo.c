@@ -1645,10 +1645,7 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	Com_Memset( buf, 0, sizeof( buf ) );
 	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
 
-	/* The depth plane. 0.3.21 asked for it as GL_FLOAT whatever the attachment was, the device
-	   answered GL_INVALID_ENUM (0x500) -- what the 0.3.21 rows carry in `err=0/1280` -- and `zbuf`
-	   kept its memset, so the row reported `depth=0.0000` as a measurement and the depth gate was
-	   convicted on a zero the read had produced itself. The type now follows the attachment's own
+	/* The depth plane.  The type now follows the attachment's own
 	   precision, the read's error is taken before anything can clear it, and a read that did not
 	   happen prints as -1 rather than as a value. */
 	depthOk = qfalse;

@@ -224,11 +224,7 @@ static int       s_2dTriBase;
    runs to the batch's end.
 
    The span a quad belongs to is the state the quad was AUTHORED under, so it is
-   recorded when the quad is written (RB_2D_SpanQuad).  The earlier shape guessed
-   it at the next state command by reading the renderer's live 2D mirror, which a
-   span replay can itself have written: the guess then handed the batch the
-   previously replayed span's scissor, and a whole LCARS tile drew under its
-   neighbour's clip.  A guess is not needed when the authoring site can say. */
+   recorded when the quad is written (RB_2D_SpanQuad).  A guess is not needed when the authoring site can say. */
 #define RB_2D_SPAN_MAX	256
 
 static float	s_2dSpanOrtho[RB_2D_SPAN_MAX][16];
@@ -740,14 +736,6 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
 		RB_ImmEnd();
 	}
 }
-
-/* RB_2D_SetWindow and RB_2D_Scissor used to live here.  They were the walk's
-   names, but the walk reaches the window and the scissor through the
-   RC_2D_SET_WINDOW and RC_2D_SCISSOR cases in tr_cmds.c, so nothing in this
-   lane ever called them: they were dead.  What they did do was flush the 2D
-   batch from whatever thread called them, which is the front end's, and that
-   is the walk's tess store -- a latent cross-thread touch of the batch state.
-   Set2DWindow and RE_Scissor below are the live recorders. */
 
 void RB_2D_ShaderTime( float startTime ) {
 	if (backEnd.in2D)

@@ -429,9 +429,7 @@ void ProjectDlightTexture( void ) {
    RB_2D_StretchPic and friends), and a 2D batch now spans many widgets
    (tr_draw.c RB_2D_Span*), so the two generators that read the draw colour have
    to read it from the quad being drawn rather than from whatever the walk's
-   last Draw_SetColor left in backEnd.color2D.  In the old sequencing a batch
-   was one widget, so the two were the same value; this keeps them the same
-   value now, and is what the missing and mis-tinted menu 2D was. */
+   last Draw_SetColor left in backEnd.color2D. */
 static qboolean s_2DColorFromVertex;
 
 static void ComputeColors( shaderStage_t *pStage )
