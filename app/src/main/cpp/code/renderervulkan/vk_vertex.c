@@ -366,6 +366,7 @@ static void VK_VertexRing_FrameRow( void )
 	static int	lastUsed = -1;
 	static int	lastDrops = -1;
 	static int	bootPeak;
+	static int	s_peakCapRow;
 	int used, bytes, indexes, drops, surfaces, refused;
 	int demand;
 
@@ -387,6 +388,17 @@ static void VK_VertexRing_FrameRow( void )
 			   that comes before the refusals do */
 			VK_Guard_Row( "VK:ring",
 						  "peak demand=%d of %d slots (%.1f%%) f=%d",
+						  bootPeak, VK_RING_MAX_VERTEXES,
+						  100.0 * bootPeak / VK_RING_MAX_VERTEXES, RB_FrameCount() );
+		}
+		/* The sizing number, whether or not a probe is armed: a boot that never
+		   comes within a quarter of the cap has settled the ceiling question and
+		   one row is the whole proof.  A refusal still prints its own row, so
+		   this arm is the headroom reading, not the fault arm. */
+		if ( !s_peakCapRow && bootPeak > ( VK_RING_MAX_VERTEXES - VK_RING_MAX_VERTEXES / 4 ) ) {
+			s_peakCapRow = 1;
+			VK_Guard_Row( "VK:ring",
+						  "ceiling-approach demand=%d of %d slots (%.1f%%) f=%d",
 						  bootPeak, VK_RING_MAX_VERTEXES,
 						  100.0 * bootPeak / VK_RING_MAX_VERTEXES, RB_FrameCount() );
 		}
