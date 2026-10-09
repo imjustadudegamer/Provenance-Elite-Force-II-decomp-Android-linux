@@ -14,6 +14,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import com.provenanceef2.LogGate;
 
 
 public class SDLControllerManager
@@ -475,7 +476,9 @@ class SDLHapticHandler_API26 extends SDLHapticHandler {
     public void run(int device_id, float intensity, int length) {
         SDLHaptic haptic = getHaptic(device_id);
         if (haptic != null) {
-            Log.d("SDL", "Rtest: Vibe with intensity " + intensity + " for " + length);
+            if (LogGate.on()) {
+                Log.d("SDL", "Rtest: Vibe with intensity " + intensity + " for " + length);
+            }
             if (intensity == 0.0f) {
                 stop(device_id);
                 return;

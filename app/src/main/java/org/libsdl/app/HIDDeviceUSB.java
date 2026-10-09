@@ -3,6 +3,7 @@ package org.libsdl.app;
 import android.hardware.usb.*;
 import android.os.Build;
 import android.util.Log;
+import com.provenanceef2.LogGate;
 import java.util.Arrays;
 
 class HIDDeviceUSB implements HIDDevice {
@@ -285,7 +286,10 @@ class HIDDeviceUSB implements HIDDevice {
                 }
                 catch (Exception e)
                 {
-                    Log.v(TAG, "Exception in UsbDeviceConnection bulktransfer: " + e);
+                    if (LogGate.on())
+                    {
+                        Log.v(TAG, "Exception in UsbDeviceConnection bulktransfer: " + e);
+                    }
                     break;
                 }
                 if (r < 0) {

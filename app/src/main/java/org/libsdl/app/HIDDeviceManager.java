@@ -19,6 +19,7 @@ import android.content.pm.PackageManager;
 import android.hardware.usb.*;
 import android.os.Handler;
 import android.os.Looper;
+import com.provenanceef2.LogGate;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,7 +86,9 @@ public class HIDDeviceManager {
             // Bluetooth device was connected. If it was a Steam Controller, handle it
             if (action.equals(BluetoothDevice.ACTION_ACL_CONNECTED)) {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                Log.d(TAG, "Bluetooth device connected: " + device);
+                if (LogGate.on()) {
+                    Log.d(TAG, "Bluetooth device connected: " + device);
+                }
 
                 if (isSteamController(device)) {
                     connectBluetoothDevice(device);
@@ -95,7 +98,9 @@ public class HIDDeviceManager {
             // Bluetooth device was disconnected, remove from controller manager (if any)
             if (action.equals(BluetoothDevice.ACTION_ACL_DISCONNECTED)) {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                Log.d(TAG, "Bluetooth device disconnected: " + device);
+                if (LogGate.on()) {
+                    Log.d(TAG, "Bluetooth device disconnected: " + device);
+                }
 
                 disconnectBluetoothDevice(device);
             }
@@ -358,22 +363,30 @@ public class HIDDeviceManager {
     }
 
     private void initializeBluetooth() {
-        Log.d(TAG, "Initializing Bluetooth");
+        if (LogGate.on()) {
+            Log.d(TAG, "Initializing Bluetooth");
+        }
 
         if (Build.VERSION.SDK_INT >= 31 /* Android 12  */ &&
             mContext.getPackageManager().checkPermission(android.Manifest.permission.BLUETOOTH_CONNECT, mContext.getPackageName()) != PackageManager.PERMISSION_GRANTED) {
-            Log.d(TAG, "Couldn't initialize Bluetooth, missing android.permission.BLUETOOTH_CONNECT");
+            if (LogGate.on()) {
+                Log.d(TAG, "Couldn't initialize Bluetooth, missing android.permission.BLUETOOTH_CONNECT");
+            }
             return;
         }
 
         if (Build.VERSION.SDK_INT <= 30 /* Android 11.0 (R) */ &&
             mContext.getPackageManager().checkPermission(android.Manifest.permission.BLUETOOTH, mContext.getPackageName()) != PackageManager.PERMISSION_GRANTED) {
-            Log.d(TAG, "Couldn't initialize Bluetooth, missing android.permission.BLUETOOTH");
+            if (LogGate.on()) {
+                Log.d(TAG, "Couldn't initialize Bluetooth, missing android.permission.BLUETOOTH");
+            }
             return;
         }
 
         if (!mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE) || (Build.VERSION.SDK_INT < 18 /* Android 4.3 (JELLY_BEAN_MR2) */)) {
-            Log.d(TAG, "Couldn't initialize Bluetooth, this version of Android does not support Bluetooth LE");
+            if (LogGate.on()) {
+                Log.d(TAG, "Couldn't initialize Bluetooth, this version of Android does not support Bluetooth LE");
+            }
             return;
         }
 
@@ -393,7 +406,9 @@ public class HIDDeviceManager {
         // Get our bonded devices.
         for (BluetoothDevice device : btAdapter.getBondedDevices()) {
 
-            Log.d(TAG, "Bluetooth device available: " + device);
+            if (LogGate.on()) {
+                Log.d(TAG, "Bluetooth device available: " + device);
+            }
             if (isSteamController(device)) {
                 connectBluetoothDevice(device);
             }
@@ -471,10 +486,14 @@ public class HIDDeviceManager {
     }
 
     public boolean connectBluetoothDevice(BluetoothDevice bluetoothDevice) {
-        Log.v(TAG, "connectBluetoothDevice device=" + bluetoothDevice);
+        if (LogGate.on()) {
+            Log.v(TAG, "connectBluetoothDevice device=" + bluetoothDevice);
+        }
         synchronized (this) {
             if (mBluetoothDevices.containsKey(bluetoothDevice)) {
-                Log.v(TAG, "Steam controller with address " + bluetoothDevice + " already exists, attempting reconnect");
+                if (LogGate.on()) {
+                    Log.v(TAG, "Steam controller with address " + bluetoothDevice + " already exists, attempting reconnect");
+                }
 
                 HIDDeviceBLESteamController device = mBluetoothDevices.get(bluetoothDevice);
                 device.reconnect();
@@ -548,8 +567,12 @@ public class HIDDeviceManager {
         synchronized (this) {
             HIDDevice result = mDevicesById.get(id);
             if (result == null) {
-                Log.v(TAG, "No device for id: " + id);
-                Log.v(TAG, "Available devices: " + mDevicesById.keySet());
+                if (LogGate.on()) {
+                    Log.v(TAG, "No device for id: " + id);
+                }
+                if (LogGate.on()) {
+                    Log.v(TAG, "Available devices: " + mDevicesById.keySet());
+                }
             }
             return result;
         }
@@ -560,7 +583,9 @@ public class HIDDeviceManager {
     //////////////////////////////////////////////////////////////////////////////////////////////////////
 
     public boolean initialize(boolean usb, boolean bluetooth) {
-        Log.v(TAG, "initialize(" + usb + ", " + bluetooth + ")");
+        if (LogGate.on()) {
+            Log.v(TAG, "initialize(" + usb + ", " + bluetooth + ")");
+        }
 
         if (usb) {
             initializeUSB();
@@ -572,7 +597,9 @@ public class HIDDeviceManager {
     }
 
     public boolean openDevice(int deviceID) {
-        Log.v(TAG, "openDevice deviceID=" + deviceID);
+        if (LogGate.on()) {
+            Log.v(TAG, "openDevice deviceID=" + deviceID);
+        }
         HIDDevice device = getDevice(deviceID);
         if (device == null) {
             HIDDeviceDisconnected(deviceID);
@@ -599,7 +626,9 @@ public class HIDDeviceManager {
                    mUsbManager.requestPermission(usbDevice, PendingIntent.getBroadcast(mContext, 0, new Intent(HIDDeviceManager.ACTION_USB_PERMISSION), flags));
                }
             } catch (Exception e) {
-                Log.v(TAG, "Couldn't request permission for USB device " + usbDevice);
+                if (LogGate.on()) {
+                    Log.v(TAG, "Couldn't request permission for USB device " + usbDevice);
+                }
                 HIDDeviceOpenResult(deviceID, false);
             }
             return false;
@@ -666,7 +695,9 @@ public class HIDDeviceManager {
 
     public void closeDevice(int deviceID) {
         try {
-            Log.v(TAG, "closeDevice deviceID=" + deviceID);
+            if (LogGate.on()) {
+                Log.v(TAG, "closeDevice deviceID=" + deviceID);
+            }
             HIDDevice device;
             device = getDevice(deviceID);
             if (device == null) {

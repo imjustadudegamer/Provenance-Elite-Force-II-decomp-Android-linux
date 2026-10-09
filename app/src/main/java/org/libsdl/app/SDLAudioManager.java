@@ -10,6 +10,7 @@ import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.util.Log;
+import com.provenanceef2.LogGate;
 
 import java.util.Arrays;
 
@@ -76,7 +77,9 @@ public class SDLAudioManager {
         int sampleSize;
         int frameSize;
 
-        Log.v(TAG, "Opening " + (isCapture ? "capture" : "playback") + ", requested " + desiredFrames + " frames of " + desiredChannels + " channel " + getAudioFormatString(audioFormat) + " audio at " + sampleRate + " Hz");
+        if (LogGate.on()) {
+            Log.v(TAG, "Opening " + (isCapture ? "capture" : "playback") + ", requested " + desiredFrames + " frames of " + desiredChannels + " channel " + getAudioFormatString(audioFormat) + " audio at " + sampleRate + " Hz");
+        }
 
         /* On older devices let's use known good settings */
         if (Build.VERSION.SDK_INT < 21 /* Android 5.0 (LOLLIPOP) */) {
@@ -112,7 +115,10 @@ public class SDLAudioManager {
             sampleSize = 4;
             break;
         default:
-            Log.v(TAG, "Requested format " + audioFormat + ", getting ENCODING_PCM_16BIT");
+            if (LogGate.on())
+            {
+                Log.v(TAG, "Requested format " + audioFormat + ", getting ENCODING_PCM_16BIT");
+            }
             audioFormat = AudioFormat.ENCODING_PCM_16BIT;
             sampleSize = 2;
             break;
@@ -127,7 +133,9 @@ public class SDLAudioManager {
                 channelConfig = AudioFormat.CHANNEL_IN_STEREO;
                 break;
             default:
-                Log.v(TAG, "Requested " + desiredChannels + " channels, getting stereo");
+                if (LogGate.on()) {
+                    Log.v(TAG, "Requested " + desiredChannels + " channels, getting stereo");
+                }
                 desiredChannels = 2;
                 channelConfig = AudioFormat.CHANNEL_IN_STEREO;
                 break;
@@ -159,13 +167,17 @@ public class SDLAudioManager {
                 if (Build.VERSION.SDK_INT >= 23 /* Android 6.0 (M) */) {
                     channelConfig = AudioFormat.CHANNEL_OUT_7POINT1_SURROUND;
                 } else {
-                    Log.v(TAG, "Requested " + desiredChannels + " channels, getting 5.1 surround");
+                    if (LogGate.on()) {
+                        Log.v(TAG, "Requested " + desiredChannels + " channels, getting 5.1 surround");
+                    }
                     desiredChannels = 6;
                     channelConfig = AudioFormat.CHANNEL_OUT_5POINT1;
                 }
                 break;
             default:
-                Log.v(TAG, "Requested " + desiredChannels + " channels, getting stereo");
+                if (LogGate.on()) {
+                    Log.v(TAG, "Requested " + desiredChannels + " channels, getting stereo");
+                }
                 desiredChannels = 2;
                 channelConfig = AudioFormat.CHANNEL_OUT_STEREO;
                 break;
@@ -277,7 +289,9 @@ public class SDLAudioManager {
         }
         results[3] = desiredFrames;
 
-        Log.v(TAG, "Opening " + (isCapture ? "capture" : "playback") + ", got " + results[3] + " frames of " + results[2] + " channel " + getAudioFormatString(results[1]) + " audio at " + results[0] + " Hz");
+        if (LogGate.on()) {
+            Log.v(TAG, "Opening " + (isCapture ? "capture" : "playback") + ", got " + results[3] + " frames of " + results[2] + " channel " + getAudioFormatString(results[1]) + " audio at " + results[0] + " Hz");
+        }
 
         return results;
     }
@@ -501,7 +515,9 @@ public class SDLAudioManager {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
 
         } catch (Exception e) {
-            Log.v(TAG, "modify thread properties failed " + e.toString());
+            if (LogGate.on()) {
+                Log.v(TAG, "modify thread properties failed " + e.toString());
+            }
         }
     }
 
