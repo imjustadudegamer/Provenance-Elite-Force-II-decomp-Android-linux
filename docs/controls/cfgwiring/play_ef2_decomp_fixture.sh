@@ -5,30 +5,29 @@
 # or its engine command line change; the control prefers the live script.
 RENDERER_CVAR="vulkan"
 BASE="${EF2_RUN_DIR:-$HOME/.cache/ef2-android/airun}/base"
+
 LAUNCHER_OVERRIDES=(
-    # renderer: this launch's .so, never the config's stale one
     "cl_renderer=$RENDERER_CVAR"
-    # window: the run's own 800x600, not the config's mode
     "r_fullscreen=0"  "r_mode=-1"  "r_customwidth=800"  "r_customheight=600"
-    # engine
     "s_initsound=1"  "sv_pure=0"
-    "developer=0"  "ui_console=0"  "com_maxfps=0"  "logfile=3"
-    # the A/B block (operator orders 2026-10-15)
-    "r_vkSafeMode=1"  "r_smp=0"  "r_lightmap=1"
-    # worker pool auto-sizing, and no vsync cap
+    "developer=0"  "ui_console=0"  "com_maxfps=0"  "logfile=0"
+    "r_vkSafeMode=0"  "r_smp=1"  "r_lightmap=0"  "r_worldFlat=0"
+    "r_vertexLight=0"  "r_vboStatic=0"
+    "vk_2dCover=2"
     "r_jobs=-1"  "cl_jobs=-1"  "r_swapInterval=0"
 )
-# pix_probe is deliberately NOT set by this launcher: it answers to the shared
-# probe gate, and forcing it 0 suppresses the other instrument families (PROGCACHE
-# / imgup / UI rows).  Set it per-boot only for a specific experiment.
-if [ "$PERF_ONLY" -eq 1 ]; then
-    LAUNCHER_OVERRIDES+=( "qa_probe=0" "r_vkValidate=0" "r_footprintProbe=0"
-                          "ui_statsOn=0" "d2_stallStats=0" "r_perfFps=1" )
-    echo "mode: CLEAN PERFORMANCE (--perf) -- validation, probe rows and census OFF" >&2
-else
+if [ "$DIAG" -eq 1 ]; then
     LAUNCHER_OVERRIDES+=( "qa_probe=1" "r_footprintProbe=1" "r_vkValidate=1"
-                          "ui_statsOn=1" "d2_stallStats=1" "r_perfFps=1" )
-    echo "mode: DIAGNOSTIC (validation + all probe families ON; use --perf for a clean read)" >&2
+                          "ui_statsOn=1" "d2_stallStats=1" "r_perfFps=1"
+                          "smp_loadStats=1"
+                          "logfile=3" )
+    echo "mode: DIAGNOSTIC (--diag) -- validation + all probe families + engine log + host monitors ON" >&2
+else
+    LAUNCHER_OVERRIDES+=( "qa_probe=0" "r_vkValidate=0" "r_footprintProbe=0"
+                          "ui_statsOn=0" "d2_stallStats=0" "r_perfFps=0"
+                          "smp_loadStats=0" )
+    echo "mode: QUIET -- validation, probes, engine log and host monitors OFF; --diag arms them" >&2
+    echo "        a QUIET run dir holds game.log (the crash channel) and nothing else" >&2
 fi
 
 OVERRIDE_FILE="$BASE/ef2-launcher.cfg"

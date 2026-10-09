@@ -289,9 +289,11 @@ qboolean VK_VertexRing_Init( void )
 	}
 	vk_ringSlot = 0;
 
-	VK_Guard_Row( "VK:ring", "ready vertexes=%d bytes=%d indexes=%d slots=%d",
-				  VK_RING_MAX_VERTEXES, VK_RING_VERTEX_BYTES, VK_RING_MAX_INDEXES,
-				  VK_FRAMES_IN_FLIGHT );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:ring", "ready vertexes=%d bytes=%d indexes=%d slots=%d",
+					  VK_RING_MAX_VERTEXES, VK_RING_VERTEX_BYTES, VK_RING_MAX_INDEXES,
+					  VK_FRAMES_IN_FLIGHT );
+	}
 
 	return qtrue;
 }
@@ -379,7 +381,7 @@ static void VK_VertexRing_FrameRow( void )
 	demand = used + refused;
 	if ( demand > bootPeak ) {
 		bootPeak = demand;
-		if ( bootPeak > ( VK_RING_MAX_VERTEXES / 2 ) ) {
+		if ( bootPeak > ( VK_RING_MAX_VERTEXES / 2 ) && R_ProbeStatsOn() ) {
 			/* the ceiling is a multiple of the engine's batch, and the frame's
 			   batch count is not bounded by it, so crossing half is the warning
 			   that comes before the refusals do */
@@ -391,7 +393,11 @@ static void VK_VertexRing_FrameRow( void )
 	}
 
 	rows++;
-	if ( rows <= 8 || used != lastUsed || drops != lastDrops || ( rows % 600 ) == 0 ) {
+	/* a frame that refused or dropped geometry is the fault arm and names itself
+	   whatever the probe says; the steady-state sample is the gated part */
+	if ( ( drops || refused )
+		 || ( R_ProbeStatsOn() && ( rows <= 8 || used != lastUsed || drops != lastDrops
+		 || ( rows % 600 ) == 0 ) ) ) {
 		VK_Guard_Row( "VK:ring", "frame slots=%d of %d demand=%d peak=%d vertex-bytes=%d indexes=%d surfaces=%d drops=%d refused-slots=%d",
 					  used, VK_RING_MAX_VERTEXES, demand, bootPeak, bytes, indexes, surfaces, drops, refused );
 	}

@@ -206,7 +206,11 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 	VK_Sentinel_Clear();
 	vk_firstLightState = 6;
 
-	VK_FirstLightRow( "pass", "" );
+	/* the "fail" arms above are the fault channel and stay loud; a pass row is
+	   the boot succeeding, which a quiet boot does not log */
+	if ( R_ProbeStatsOn() ) {
+		VK_FirstLightRow( "pass", "" );
+	}
 
 	return qtrue;
 }

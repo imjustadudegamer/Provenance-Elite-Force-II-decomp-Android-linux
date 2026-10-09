@@ -249,15 +249,19 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 
 	if ( qvk.EnumerateInstanceVersion ) {
 		qvk.EnumerateInstanceVersion( &vk.instanceApiVersion );
-		VK_Guard_Row( "VK:loader", "lib=%s runtime=%u.%u.%u",
-					  VK_Procs_LoaderName(),
-					  VK_API_VERSION_MAJOR( vk.instanceApiVersion ),
-					  VK_API_VERSION_MINOR( vk.instanceApiVersion ),
-					  VK_API_VERSION_PATCH( vk.instanceApiVersion ) );
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:loader", "lib=%s runtime=%u.%u.%u",
+						  VK_Procs_LoaderName(),
+						  VK_API_VERSION_MAJOR( vk.instanceApiVersion ),
+						  VK_API_VERSION_MINOR( vk.instanceApiVersion ),
+						  VK_API_VERSION_PATCH( vk.instanceApiVersion ) );
+		}
 	} else {
 		vk.instanceApiVersion = VK_API_VERSION_1_0;
-		VK_Guard_Row( "VK:loader", "lib=%s runtime=1.0.0 enumerate-version-absent",
-					  VK_Procs_LoaderName() );
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:loader", "lib=%s runtime=1.0.0 enumerate-version-absent",
+						  VK_Procs_LoaderName() );
+		}
 	}
 
 	/* The loader's own report is the ceiling for the request.  A loader that
@@ -317,8 +321,10 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 		char loaderName[32];
 		VK_ApiName( vk.instanceApiVersion, apiName, sizeof( apiName ) );
 		VK_ApiName( loaderApiVersion, loaderName, sizeof( loaderName ) );
-		VK_Guard_Row( "VK:instance", "api=%s loader=%s extensions=%u layers=%u", apiName, loaderName,
-					  numExtensions, vk_numRequestedLayers );
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:instance", "api=%s loader=%s extensions=%u layers=%u", apiName, loaderName,
+						  numExtensions, vk_numRequestedLayers );
+		}
 	}
 
 	VK_Debug_Init();
@@ -497,17 +503,19 @@ static void VK_LogDevice( const vkPhysDevice_t *dev, int score, int chosen )
 		snprintf( driverInfo, sizeof( driverInfo ), "driver=0x%x", dev->props.driverVersion );
 	}
 
-	VK_Guard_Row( "VK:device",
-				  "%s name=\"%s\" type=%d api=%s %s mdi=%d di=%d bindless=%d score=%d",
-				  chosen ? "chosen" : "cand",
-				  dev->props.deviceName,
-				  (int)dev->props.deviceType,
-				  apiName,
-				  driverInfo,
-				  dev->hasMultiDrawIndirect ? 1 : 0,
-				  dev->hasDescriptorIndexing ? 1 : 0,
-				  dev->supportsBindless ? 1 : 0,
-				  score );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:device",
+					  "%s name=\"%s\" type=%d api=%s %s mdi=%d di=%d bindless=%d score=%d",
+					  chosen ? "chosen" : "cand",
+					  dev->props.deviceName,
+					  (int)dev->props.deviceType,
+					  apiName,
+					  driverInfo,
+					  dev->hasMultiDrawIndirect ? 1 : 0,
+					  dev->hasDescriptorIndexing ? 1 : 0,
+					  dev->supportsBindless ? 1 : 0,
+					  score );
+	}
 }
 
 static void VK_QueryFamilies( vkPhysDevice_t *dev )
@@ -726,13 +734,15 @@ qboolean VK_Device_Create( void )
 	{
 		char apiName[32];
 		VK_ApiName( vk.deviceApiVersion, apiName, sizeof( apiName ) );
-		VK_Guard_Row( "VK:device", "created name=\"%s\" api=%s graphics=%u present=%u queues=%u bindless=%d",
-					  vk.deviceProps.deviceName,
-					  apiName,
-					  vk.graphicsFamily,
-					  vk.presentFamily,
-					  numQueues,
-					  vk.bindless ? 1 : 0 );
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:device", "created name=\"%s\" api=%s graphics=%u present=%u queues=%u bindless=%d",
+						  vk.deviceProps.deviceName,
+						  apiName,
+						  vk.graphicsFamily,
+						  vk.presentFamily,
+						  numQueues,
+						  vk.bindless ? 1 : 0 );
+		}
 	}
 
 	return qtrue;

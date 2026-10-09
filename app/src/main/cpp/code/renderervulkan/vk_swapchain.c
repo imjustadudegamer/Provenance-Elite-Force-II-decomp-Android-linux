@@ -308,14 +308,16 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 		return qfalse;
 	}
 
-	VK_Guard_Row( "VK:swapchain",
-				  "created images=%u %ux%u format=%d present=%d currentExtent=%ux%u currentTransform=0x%x supportedTransforms=0x%x preTransform=0x%x",
-				  vk.swapchainImageCount,
-				  plan->extent.width, plan->extent.height,
-				  (int)plan->format.format, (int)plan->presentMode,
-				  plan->currentExtent.width, plan->currentExtent.height,
-				  (unsigned)plan->currentTransform, (unsigned)plan->supportedTransforms,
-				  (unsigned)plan->preTransform );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:swapchain",
+					  "created images=%u %ux%u format=%d present=%d currentExtent=%ux%u currentTransform=0x%x supportedTransforms=0x%x preTransform=0x%x",
+					  vk.swapchainImageCount,
+					  plan->extent.width, plan->extent.height,
+					  (int)plan->format.format, (int)plan->presentMode,
+					  plan->currentExtent.width, plan->currentExtent.height,
+					  (unsigned)plan->currentTransform, (unsigned)plan->supportedTransforms,
+					  (unsigned)plan->preTransform );
+	}
 
 	return qtrue;
 }

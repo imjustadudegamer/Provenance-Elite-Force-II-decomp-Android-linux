@@ -105,10 +105,16 @@ void R_InitNextFrame( void ) {
 }
 
 
-/* A pool that fills names nothing in the reference: the row names pool and fill */
+/* A pool that fills names nothing in the reference: the row names pool and fill.
+   A refused add is geometry the scene dropped, so that arm stays loud whatever
+   the probe says; the fill accounting around it is the gated part. */
 static void R_SceneGate( const char *gate, int cap, int live, int refused )
 {
 	static int rows;
+
+	if ( !refused && !R_ProbeStatsOn() ) {
+		return;
+	}
 
 	if ( rows < 8 || ( rows % 600 ) == 0 ) {
 		VK_Guard_Row( "VK:fe", "gate=%s cap=%d live=%d refused=%d f=%d",

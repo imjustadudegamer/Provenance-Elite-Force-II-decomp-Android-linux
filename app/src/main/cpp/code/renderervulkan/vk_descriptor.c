@@ -210,12 +210,14 @@ qboolean VK_Descriptor_Init( void )
 		}
 	}
 
-	VK_Guard_Row( "VK:descriptor",
-				  "path=%s textures=%u uab=%s update-after-bind=%s",
-				  ( vk.bindlessTextures > 0 ) ? "bindless" : "compat",
-				  ( vk.bindlessTextures > 0 ) ? vk.bindlessTextures : VK_COMPAT_TEXTURE_SLOTS,
-				  ( vk.bindlessTextures > 0 ) ? "yes" : "no",
-				  ( vk.bindlessTextures > 0 ) ? "1" : "0" );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:descriptor",
+					  "path=%s textures=%u uab=%s update-after-bind=%s",
+					  ( vk.bindlessTextures > 0 ) ? "bindless" : "compat",
+					  ( vk.bindlessTextures > 0 ) ? vk.bindlessTextures : VK_COMPAT_TEXTURE_SLOTS,
+					  ( vk.bindlessTextures > 0 ) ? "yes" : "no",
+					  ( vk.bindlessTextures > 0 ) ? "1" : "0" );
+	}
 
 	return qtrue;
 }

@@ -2626,7 +2626,7 @@ static void CollapseMultitexture(int *stagecounter) {
 			static int s_merges;
 
 			s_merges++;
-			if ( s_merges <= 32 ) {
+			if ( R_ProbeStatsOn() && s_merges <= 32 ) {
 				ri.Printf( PRINT_ALL,
 						   "[VK:merge] n=%d shader='%s' a=0x%x b=0x%x hi=0x%x env=%d "
 						   "t0='%s' t1='%s' passes=%d->%d\n",

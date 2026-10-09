@@ -88,14 +88,18 @@ static int SDLCALL VKimp_RenderThreadWrapper( void *arg )
 	vkRenderThreadActive = qtrue;
 	vk_renderThreadId = SDL_ThreadID();
 
-	VK_Guard_Row( "VK:smp", "born" );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:smp", "born" );
+	}
 
 	vk_renderThreadFunction();
 
 	/* The walk function returning is a thread exit, and the front end is parked
 	   on the handoff it was about to make.  Naming it and dropping active is
 	   what lets that park release instead of running forever. */
-	VK_Guard_Row( "VK:smp", "exiting active-was=%d", vkRenderThreadActive ? 1 : 0 );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:smp", "exiting active-was=%d", vkRenderThreadActive ? 1 : 0 );
+	}
 	vkRenderThreadActive = qfalse;
 
 	SDL_LockMutex( vk_smpMutex );
@@ -127,7 +131,9 @@ qboolean VKimp_SpawnRenderThread( void ( *function )( void ) )
 		return qfalse;
 	}
 
-	VK_Guard_Row( "VK:smp", "spawned frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:smp", "spawned frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
+	}
 
 	return qtrue;
 }

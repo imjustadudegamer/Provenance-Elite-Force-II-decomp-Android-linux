@@ -128,12 +128,15 @@ qboolean VK_PipelineCache_Open( void )
 	}
 
 	if ( vk.pipelineCacheForeign ) {
+		/* an on-disk cache the device cannot use is a failed load: it stays loud */
 		VK_Guard_Row( "VK:pcache", "status=foreign path=%s size=%u device=%04x:%04x",
 					  path, header.dataSize, header.vendorID, header.deviceID );
 	} else if ( vk.pipelineCacheLoaded ) {
-		VK_Guard_Row( "VK:pcache", "status=loaded path=%s bytes=%u", path,
-					  (unsigned int)vk.pipelineCacheBytes );
-	} else {
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:pcache", "status=loaded path=%s bytes=%u", path,
+						  (unsigned int)vk.pipelineCacheBytes );
+		}
+	} else if ( R_ProbeStatsOn() ) {
 		VK_Guard_Row( "VK:pcache", "status=cold path=%s", path );
 	}
 
@@ -221,7 +224,9 @@ void VK_PipelineCache_Save( void )
 
 	free( blob );
 
-	VK_Guard_Row( "VK:pcache", "status=saved path=%s bytes=%u", path, (unsigned int)bytes );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:pcache", "status=saved path=%s bytes=%u", path, (unsigned int)bytes );
+	}
 }
 
 void VK_PipelineCache_Close( void )

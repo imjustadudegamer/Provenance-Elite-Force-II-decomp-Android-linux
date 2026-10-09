@@ -576,8 +576,10 @@ qboolean VK_Draw_Init( void )
 		vk_sets[i].set = VK_NULL_HANDLE;
 	}
 
-	VK_Guard_Row( "VK:draw", "ready pipelines=%d sets=%d vertex-bytes=%d",
-				  VK_PIPELINE_SLOTS, VK_SET_SLOTS, VK_TESS_VERTEX_BYTES );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:draw", "ready pipelines=%d sets=%d vertex-bytes=%d",
+					  VK_PIPELINE_SLOTS, VK_SET_SLOTS, VK_TESS_VERTEX_BYTES );
+	}
 
 	return qtrue;
 }

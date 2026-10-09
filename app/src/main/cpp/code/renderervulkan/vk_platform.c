@@ -202,7 +202,9 @@ qboolean VK_Surface_Create( void )
 			return qfalse;
 		}
 
-		VK_Guard_Row( "VK:surface", "created headless=%dx%d", vk_headlessWidth, vk_headlessHeight );
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:surface", "created headless=%dx%d", vk_headlessWidth, vk_headlessHeight );
+		}
 
 		return qtrue;
 	}
@@ -217,7 +219,9 @@ qboolean VK_Surface_Create( void )
 	}
 
 	SDL_GetWindowSize( SDL_window, &surfaceWidth, &surfaceHeight );
-	VK_Guard_Row( "VK:surface", "created window=%dx%d", surfaceWidth, surfaceHeight );
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:surface", "created window=%dx%d", surfaceWidth, surfaceHeight );
+	}
 
 	return qtrue;
 }
@@ -466,8 +470,10 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 
 		/* surface= is the window the swapchain is created against: the mode is
 		   right only when the two agree, so the row carries both. */
-		VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d surface=%dx%d maxTextureSize=%d",
-					  mode, width, height, fullscreen, windowWidth, windowHeight, vkConfig.maxTextureSize );
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d surface=%dx%d maxTextureSize=%d",
+						  mode, width, height, fullscreen, windowWidth, windowHeight, vkConfig.maxTextureSize );
+		}
 	}
 
 	return qtrue;
@@ -660,7 +666,11 @@ qboolean VK_EnsureBroughtUp( const char *where )
 	   "did a Vulkan call fail", and VK_INCOMPLETE here is a marker that reads as
 	   a failure result (site=device result=incomplete n=1) without one.  The
 	   real failure is the row below, which stays a hit. */
-	VK_Guard_Row( "VK:bringup", "site=%s entry", where );
+	/* informational, and a quiet boot carries no informational rows: the failure
+	   below is the loud arm (guard hit + ri.Error) */
+	if ( R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:bringup", "site=%s entry", where );
+	}
 
 	if ( !R_SetMode( mode, &vkConfig ) ) {
 		VK_Guard_Hit( VK_GSITE_DEVICE, "bring-up failed", VK_ERROR_INITIALIZATION_FAILED );

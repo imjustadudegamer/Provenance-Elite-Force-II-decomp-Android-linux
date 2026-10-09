@@ -813,8 +813,10 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 
 	/* The 2D binding row: the quad's shader, the view the slot resolves to, and
 	   the rect the geometry carries.  A tile sampling the wrong art names itself
-	   here as shader X with image Y. */
-	if ( backEnd.in2D ) {
+	   here as shader X with image Y.  Everything in the block exists for the row
+	   and for the order transcript, which gates itself, so a quiet boot pays
+	   neither. */
+	if ( backEnd.in2D && PROBE_On() ) {
 		static int s_rows;
 
 		float x0 = tess.xyz[0][0], y0 = tess.xyz[0][1];
@@ -1256,7 +1258,7 @@ void RB_ImmCommit( void )
 
 	{
 		static int s_dbg;
-		if ( s_dbg < 40 ) {
+		if ( PROBE_On() && s_dbg < 40 ) {
 			VK_Guard_Row( "VK:dbg", "imm-commit topo=%d verts=%d base=%d in2d=%d",
 						  run->topology, run->verts, run->base, backEnd.in2D );
 			s_dbg++;
