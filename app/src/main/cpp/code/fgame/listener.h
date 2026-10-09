@@ -412,6 +412,16 @@ class Event : public Class
 		static Container<Event *> *eventDefList;
 		static qboolean			dirtylist;
 
+		/* the name index FindEvent answers through: hashNext[eventnum] is the
+		   next eventnum in that name's bucket, 0 ending the chain.  Rebuilt
+		   from commandList, never stored across a shutdown. */
+		static int				*hashNext;
+		static qboolean			hashdirty;
+
+		static long				generateHashValue( const char *name );
+		static void				BuildEventHash( void );
+		static void				ResetEventHash( void );
+
 		static int			   compareEvents( const void *arg1, const void *arg2 );
 		static void			   SortEventList( void );
 		static void			   PrintEvent( Event *ev );
