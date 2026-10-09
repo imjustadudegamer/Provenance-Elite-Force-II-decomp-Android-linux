@@ -41,6 +41,7 @@ set(CLIENT_SOURCES
     ${SOURCE_DIR}/client/snd_codec.c
     ${SOURCE_DIR}/client/snd_dma_new.cpp
     ${SOURCE_DIR}/client/snd_info.cpp
+    ${SOURCE_DIR}/client/snd_mixer.cpp
     ${SOURCE_DIR}/client/snd_mem_new.cpp
     ${SOURCE_DIR}/client/snd_miles_new.cpp
     ${SOURCE_DIR}/client/snd_openal_new.cpp
