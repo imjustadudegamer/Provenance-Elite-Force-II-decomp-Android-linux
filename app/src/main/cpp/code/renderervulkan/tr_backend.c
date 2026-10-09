@@ -1425,6 +1425,20 @@ int		max_polyverts;
 void	R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	drawSurfsCommand_t	*cmd;
 
+	/* A 3D view that reached the command list with no surfaces renders nothing
+	   but the pass clear, which is exactly "the whole 3D viewport flashed".  A
+	   scene that carried entities but produced no surfaces is the anomaly worth
+	   naming; an empty scene is a legitimate NOWORLDMODEL-free view. */
+	if ( R_ProbeStatsOn() && numDrawSurfs == 0 && tr.refdef.num_entities > 0 ) {
+		static int	emptyRows;
+
+		if ( PROBE_Throttle( &emptyRows, 8, 600 ) ) {
+			VK_Guard_Row( "VK:view", "empty 3D view ents=%d polys=%d sprites=%d f=%d",
+						  tr.refdef.num_entities, tr.refdef.numPolys,
+						  tr.refdef.num_sprites, RB_FrameCount() );
+		}
+	}
+
 	R_Invalidate2DWindowCache();
 
 	cmd = R_GetCommandBuffer( sizeof( *cmd ) );

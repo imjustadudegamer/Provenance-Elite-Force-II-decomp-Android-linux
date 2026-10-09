@@ -955,6 +955,8 @@ static void R_ShowTikiLodDebugNumbers(trRefEntity_t *ent, dtiki_t *tiki)
     R_DrawDebugNumber(org, number, scale, 1.0f, 1.0f, 0.0f, precision);
 }
 
+static void R_SkelCullWhere(const refEntity_t *e, const vec3_t worldOrg, float radius);
+
 /* The drop sites here are silent in the reference: PRINT_DEVELOPER never reaches
    a device log, so every gate answers through one of these two rows instead. */
 static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
@@ -970,8 +972,46 @@ static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
     rows++;
 }
 
-static void R_SkelDropFrame(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
+/* A `cull' drop is only a defect if the entity was inside the view.  This names
+   where it actually was, in the same three axes the cull and the cgame shadow
+   gate both test, so a log says "4000 units behind the eye" -- a correct drop --
+   or "12 units in front and 30 wide" -- a model the operator could see vanishing.
+   The world centre is the entity origin plus the scaled load origin, which is
+   the point R_CullLocalPointAndRadius transforms. */
+static void R_SkelCullWhere(const refEntity_t *e, const vec3_t worldOrg, float radius)
 {
+    vec3_t delta;
+    float  fwd, side, up;
+
+    if (!R_ProbeStatsOn()) {
+        return;
+    }
+
+    VectorSubtract(worldOrg, tr.refdef.vieworg, delta);
+    fwd  = DotProduct(delta, tr.refdef.viewaxis[0]);
+    side = DotProduct(delta, tr.refdef.viewaxis[1]);
+    up   = DotProduct(delta, tr.refdef.viewaxis[2]);
+
+    {
+        static int rows;
+
+        if (!PROBE_Throttle(&rows, 16, 600)) {
+            return;
+        }
+
+        ri.Printf(
+            PRINT_ALL,
+            "[VK:skelcull] model='%s' org=(%.1f,%.1f,%.1f) radius=%.1f dist=%.1f "
+            "fwd=%.1f side=%.1f up=%.1f behind=%d\n",
+            e->tiki && e->tiki->a->name ? e->tiki->a->name : "?",
+            worldOrg[0], worldOrg[1], worldOrg[2], radius,
+            sqrtf(delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]),
+            fwd, side, up, (fwd < 0.0f) ? 1 : 0
+        );
+    }
+}
+
+static void R_SkelDropFrame(const char *why, dtiki_t *tiki, trRefEntity_t *ent){
     int numFrames   = ri.TIKI_Anim_NumFrames(tiki, ent->e.anim);
     int numTan      = 0;
     int numSkan     = 0;
@@ -1102,6 +1142,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
         if (R_CullSkelModel(tiki, &ent->e, nf, of, tiki_scale, tiki_localorigin) == CULL_OUT) {
             R_SkelDrop("cull", tiki, ent);
+            R_SkelCullWhere(&ent->e, tiki_entityorigin, nf->radius * tiki_scale);
             return;
         }
 
@@ -1128,6 +1169,11 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
         if (!ent->e.legsLive) {
             if (R_CullSkelModel(tiki, &ent->e, tf, tof, tiki_scale, tiki_localorigin) == CULL_OUT) {
+                /* the legs arm names its drop; this arm dropped a model with no
+                   row at all, so a torso-only entity culled while visible was
+                   invisible in the census */
+                R_SkelDrop("cull-torso", tiki, ent);
+                R_SkelCullWhere(&ent->e, tiki_entityorigin, tf->radius * tiki_scale);
                 return;
             }
             ent->e.of = tof;
