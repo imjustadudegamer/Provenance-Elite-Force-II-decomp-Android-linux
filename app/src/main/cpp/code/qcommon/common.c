@@ -1669,7 +1669,7 @@ void Com_Init( char *commandLine ) {
 	   config exec and therefore beats the archived value -- the compiled cvar
 	   default does not (r_smp 0 sat in the device's GLES-era config.cfg and
 	   serialized the front end and the walk for the whole Vulkan era). */
-#define PORT_DEFAULTS_SEED 2
+#define PORT_DEFAULTS_SEED 3
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );

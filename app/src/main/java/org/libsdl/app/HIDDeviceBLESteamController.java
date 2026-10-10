@@ -85,7 +85,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
                     chr = getCharacteristic(mUuid);
                     //Log.v(TAG, "Reading characteristic " + chr.getUuid());
                     if (!mGatt.readCharacteristic(chr)) {
-                        Log.e(TAG, "Unable to read characteristic " + mUuid.toString());
+                        if (LogGate.on()) {
+                            Log.e(TAG, "Unable to read characteristic " + mUuid.toString());
+                        }
                         mResult = false;
                         break;
                     }
@@ -96,7 +98,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
                     //Log.v(TAG, "Writing characteristic " + chr.getUuid() + " value=" + HexDump.toHexString(value));
                     chr.setValue(mValue);
                     if (!mGatt.writeCharacteristic(chr)) {
-                        Log.e(TAG, "Unable to write characteristic " + mUuid.toString());
+                        if (LogGate.on()) {
+                            Log.e(TAG, "Unable to write characteristic " + mUuid.toString());
+                        }
                         mResult = false;
                         break;
                     }
@@ -115,7 +119,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
                             } else if ((properties & BluetoothGattCharacteristic.PROPERTY_INDICATE) == BluetoothGattCharacteristic.PROPERTY_INDICATE) {
                                 value = BluetoothGattDescriptor.ENABLE_INDICATION_VALUE;
                             } else {
-                                Log.e(TAG, "Unable to start notifications on input characteristic");
+                                if (LogGate.on()) {
+                                    Log.e(TAG, "Unable to start notifications on input characteristic");
+                                }
                                 mResult = false;
                                 return;
                             }
@@ -123,7 +129,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
                             mGatt.setCharacteristicNotification(chr, true);
                             cccd.setValue(value);
                             if (!mGatt.writeDescriptor(cccd)) {
-                                Log.e(TAG, "Unable to write descriptor " + mUuid.toString());
+                                if (LogGate.on()) {
+                                    Log.e(TAG, "Unable to write descriptor " + mUuid.toString());
+                                }
                                 mResult = false;
                                 return;
                             }
@@ -347,7 +355,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
         }
 
         if ((mGatt.getServices().size() == 0) && mIsChromebook && !mIsReconnecting) {
-            Log.e(TAG, "Chromebook: Discovered services were empty; this almost certainly means the BtGatt.ContextMap bug has bitten us.");
+            if (LogGate.on()) {
+                Log.e(TAG, "Chromebook: Discovered services were empty; this almost certainly means the BtGatt.ContextMap bug has bitten us.");
+            }
             mIsConnected = false;
             mIsReconnecting = true;
             mGatt.disconnect();
@@ -397,7 +407,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
             public void run() {
                 synchronized (mOperations) {
                     if (mCurrentOperation == null) {
-                        Log.e(TAG, "Current operation null in executor?");
+                        if (LogGate.on()) {
+                            Log.e(TAG, "Current operation null in executor?");
+                        }
                         return;
                     }
 
@@ -602,7 +614,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
     @Override
     public int sendFeatureReport(byte[] report) {
         if (!isRegistered()) {
-            Log.e(TAG, "Attempted sendFeatureReport before Steam Controller is registered!");
+            if (LogGate.on()) {
+                Log.e(TAG, "Attempted sendFeatureReport before Steam Controller is registered!");
+            }
             if (mIsConnected) {
                 probeService(this);
             }
@@ -619,7 +633,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
     @Override
     public int sendOutputReport(byte[] report) {
         if (!isRegistered()) {
-            Log.e(TAG, "Attempted sendOutputReport before Steam Controller is registered!");
+            if (LogGate.on()) {
+                Log.e(TAG, "Attempted sendOutputReport before Steam Controller is registered!");
+            }
             if (mIsConnected) {
                 probeService(this);
             }
@@ -634,7 +650,9 @@ class HIDDeviceBLESteamController extends BluetoothGattCallback implements HIDDe
     @Override
     public boolean getFeatureReport(byte[] report) {
         if (!isRegistered()) {
-            Log.e(TAG, "Attempted getFeatureReport before Steam Controller is registered!");
+            if (LogGate.on()) {
+                Log.e(TAG, "Attempted getFeatureReport before Steam Controller is registered!");
+            }
             if (mIsConnected) {
                 probeService(this);
             }

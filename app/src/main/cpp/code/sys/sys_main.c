@@ -129,6 +129,19 @@ qboolean Sys_AndroidDiagOn( void )
 	return cached ? qtrue : qfalse;
 }
 
+/* The quiet boot's SDL log sink: every row the vendor or the engine hands to
+   SDL_Log lands here and dies, so logcat carries nothing from the process
+   unless the diag arm is set (main() re-arms the default output then). */
+static void SDLCALL Sys_AndroidQuietLogOutput( void *userdata, int category,
+											   SDL_LogPriority priority,
+											   const char *message )
+{
+	(void) userdata;
+	( void ) category;
+	( void ) priority;
+	( void ) message;
+}
+
 void Sys_AndroidCaptureStdio( void )
 {
 	const char *files;
@@ -892,13 +905,17 @@ int main( int argc, char **argv )
 	SDL_SetHint( SDL_HINT_ANDROID_BLOCK_ON_PAUSE_PAUSEAUDIO, "1" );
 #endif
 
-	/* SDL's own APPLICATION-category rows default to INFO and go to logcat.
-	   They are vendor diagnostics, not ours: hold them at WARN so a silent
-	   boot stays silent, and let the operator's diag arm -- which reads the
-	   same property they do -- decide the level. */
-	SDL_LogSetAllPriority( Sys_AndroidDiagOn()
-		? SDL_LOG_PRIORITY_INFO
-		: SDL_LOG_PRIORITY_WARN );
+	/* The operator's order is TOTAL silence on Android unless the diag arm is
+	   set: the old WARN floor still let the vendor's warning and error rows
+	   through, and a quiet logcat is the contract.  QUIET discards every SDL
+	   log row at the output function -- even a crash only reaches the OS's own
+	   tombstone, which is exactly the one log the operator wants -- and the
+	   arm restores the default output at the INFO floor. */
+	if( Sys_AndroidDiagOn() ) {
+		SDL_LogSetAllPriority( SDL_LOG_PRIORITY_INFO );
+	} else {
+		SDL_LogSetOutputFunction( Sys_AndroidQuietLogOutput, NULL );
+	}
 #endif
 
 	Sys_Milliseconds( );
