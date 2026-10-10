@@ -1660,8 +1660,16 @@ void Com_Init( char *commandLine ) {
 	   The gate is a cvar only THIS code writes.  `port_defaultsSeed' starts at 0
 	   on every install, is bumped only
 	   here, and cannot be outrun by a stray value.  `in_androidDefaults' is still
-	   written so an Android install keeps one continuous history of the seed. */
-#define PORT_DEFAULTS_SEED 1
+	   written so an Android install keeps one continuous history of the seed.
+
+	   Seed 2 (2026-10-21): the Android block grows the frame-thread shape the
+	   desktop launcher has proven (r_smp 1, r_jobs -1, cl_jobs -1, r_vboStatic
+	   0).  A seed bump is the only way new rows reach an install that already
+	   archived seed 1, because this block is the one place that runs AFTER the
+	   config exec and therefore beats the archived value -- the compiled cvar
+	   default does not (r_smp 0 sat in the device's GLES-era config.cfg and
+	   serialized the front end and the walk for the whole Vulkan era). */
+#define PORT_DEFAULTS_SEED 2
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );

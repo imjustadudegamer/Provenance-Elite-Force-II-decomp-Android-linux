@@ -118,7 +118,29 @@ static int SDLCALL JobPool_Worker( void *arg ) {
 }
 
 void JobPool_InitCritical( const char *name, int requestedWorkers ) {
+	int workers;
+
 	jobs_pool.critical = 1;
+
+	/* The pool is a process-wide singleton and the client starts it first
+	   (CL_Init before the renderer loads), so a plain Init here would return on
+	   `started' and the walk's parallel ranges would spend their whole life on
+	   the client's smaller share of the core headroom.  Taking the pool over is
+	   safe at this seam: the renderer is initialising, no frame has run, and no
+	   batch is in flight. */
+	JobPool_SplitWorkers( SDL_GetCPUCount(),
+#ifdef __ANDROID__
+						  1,
+#else
+						  0,
+#endif
+						  requestedWorkers, 1, &workers );
+
+	if ( jobs_pool.started && JobPool_NumWorkers() == workers ) {
+		return;
+	}
+
+	JobPool_Shutdown();
 	JobPool_Init( name, requestedWorkers );
 }
 

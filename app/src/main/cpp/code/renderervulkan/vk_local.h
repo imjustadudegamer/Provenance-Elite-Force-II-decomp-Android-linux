@@ -514,6 +514,11 @@ void VK_Device_Destroy( void );
 
 qboolean VK_Surface_Create( void );
 void VK_Surface_Destroy( void );
+#ifdef __ANDROID__
+qboolean VK_Surface_Refresh( void );
+qboolean VK_Surface_WindowChanged( void );
+void VK_Surface_WindowTrack( void );
+#endif
 
 qboolean VK_Swapchain_CreateViews( void );
 qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_t outBytes );

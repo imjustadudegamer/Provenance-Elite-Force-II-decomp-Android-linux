@@ -446,10 +446,22 @@ static VkResult VK_Frame_AcquireOnce( int slot )
 	result = qvk.AcquireNextImageKHR( vk.device, vk.swapchain, timeout,
 									  vk.acquireSemaphores[slot], VK_NULL_HANDLE, &vk.acquiredImage );
 
-	if ( result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ) {
-		VK_Guard_Hit( result == VK_ERROR_OUT_OF_DATE_KHR ? VK_GSITE_SWAPCHAIN_OUT_OF_DATE
-														 : VK_GSITE_SWAPCHAIN_SUBOPTIMAL,
-					  "acquire", result );
+	/* SUBOPTIMAL from acquire still handed an image over: the spec lets the frame
+	   use it.  On Android the port claims IDENTITY pre-rotation on a panel whose
+	   own transform is a rotation, so the presentation engine answers SUBOPTIMAL
+	   on every frame -- rebuilding here would tear the swapchain, the depth target
+	   and the framebuffers down and back up once per frame. */
+#if defined( __ANDROID__ )
+	if ( result == VK_SUBOPTIMAL_KHR ) {
+		/* counted, not acted on: the throttled row is how a diag boot proves
+		   whether the pre-rotation SUBOPTIMAL is per-frame or a one-off */
+		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_SUBOPTIMAL, "acquire", result );
+		return result;
+	}
+#endif
+
+	if ( result == VK_ERROR_OUT_OF_DATE_KHR ) {
+		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_OUT_OF_DATE, "acquire", result );
 
 		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
 			return result;
@@ -477,10 +489,45 @@ qboolean VK_Frame_Acquire( int slot )
 		return qtrue;
 	}
 
+#if defined( __ANDROID__ )
+	/* Android replaced the ANativeWindow across suspend (SDL releases the old
+	   handle in onNativeSurfaceDestroyed and fetches a new one in
+	   onNativeSurfaceCreated, and it recreates nothing for Vulkan).  The driver
+	   is not obliged to report SURFACE_LOST for a surface whose window is gone,
+	   so the window identity -- not an error return -- is the deterministic
+	   signal; rebinding before the acquire costs one compare per frame. */
+	if ( vk.swapchain == VK_NULL_HANDLE ) {
+		/* A recreate that already failed once lands here every frame after: the
+		   walk would short-circuit on the NULL below forever.  Retrying is the
+		   recovery, and the attempt is cheap while the window is still absent. */
+		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+			return qfalse;
+		}
+		if ( !VK_Target_Recreate() ) {
+			return qfalse;
+		}
+	} else if ( VK_Surface_WindowChanged() ) {
+		VK_Guard_Row( "VK:surface", "rebind window f=%d", RB_FrameCount() );
+		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+			return qfalse;
+		}
+		if ( !VK_Target_Recreate() ) {
+			return qfalse;
+		}
+	}
+#endif
+
 	result = VK_Frame_AcquireOnce( slot );
 
 	if ( result == VK_ERROR_SURFACE_LOST_KHR ) {
+		/* The window is gone from under the surface: only a surface rebuild
+		   recovers, and skipping it here strands the walk on a dead surface. */
 		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_LOST, "acquire", result );
+#if defined( __ANDROID__ )
+		if ( VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+			VK_Target_Recreate();
+		}
+#endif
 		return qfalse;
 	}
 
@@ -767,6 +814,17 @@ qboolean VK_Frame_Present( int slot )
 			vk.imagesHeld--;
 		}
 
+#if defined( __ANDROID__ )
+		/* The port's IDENTITY pre-rotation claim is answered SUBOPTIMAL on every
+		   frame the panel is natively rotated; the image still went out, so the
+		   recreate below would rebuild the swapchain, the depth target and the
+		   framebuffers once per frame for a frame that already presented. */
+		if ( result == VK_SUBOPTIMAL_KHR ) {
+			vk.acquired = qfalse;
+			return qtrue;
+		}
+#endif
+
 		if ( VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
 			VK_Target_Recreate();
 		}
@@ -776,8 +834,17 @@ qboolean VK_Frame_Present( int slot )
 	}
 
 	if ( result == VK_ERROR_SURFACE_LOST_KHR ) {
+		/* Android destroyed the ANativeWindow under us (sleep, app switch): the
+		   surface itself is dead, so only a surface rebuild recovers.  Returning
+		   here without one leaves the walk acquiring on a dead surface forever --
+		   the engine keeps simulating and mixing audio over a black screen. */
 		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_LOST, "present", result );
 		vk.acquired = qfalse;
+#if defined( __ANDROID__ )
+		if ( VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+			VK_Target_Recreate();
+		}
+#endif
 		return qfalse;
 	}
 

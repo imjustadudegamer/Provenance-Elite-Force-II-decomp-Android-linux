@@ -37,9 +37,11 @@ root, for more details.
 #ifdef USE_INTERNAL_SDL_HEADERS
 #	include "SDL.h"
 #	include "SDL_vulkan.h"
+#	include "SDL_syswm.h"
 #else
 #	include <SDL.h>
 #	include <SDL_vulkan.h>
+#	include <SDL_syswm.h>
 #endif
 
 #include <stdio.h>
@@ -180,6 +182,80 @@ void VKimp_FillConfig( glconfig_t *glconfig, int width, int height, float aspect
 	glconfig->smpActive = vk.smpActive;
 }
 
+#ifdef __ANDROID__
+/* Android hands the app a DIFFERENT ANativeWindow after every suspend: SDL2's
+   onNativeSurfaceDestroyed releases the old one and onNativeSurfaceCreated fetches
+   the new one (SDL_android.c), and it recreates the EGL surface for GL itself while
+   doing nothing for Vulkan -- so the VkSurface built at first light from the old
+   window is dead after the first sleep, and every acquire/present on it fails
+   forever.  SDLActivity only signals resume once mIsSurfaceReady, so by the time
+   the engine sees the foreground the new window exists and this rebind is legal. */
+qboolean VK_Surface_Refresh( void )
+{
+	/* Also the recovery path for a surface that a previous refresh already lost:
+	   returning early on NULL would leave Recreate failing against "no surface"
+	   forever, so the NULL case is a create like any other. */
+	if ( vk.surface != VK_NULL_HANDLE ) {
+		VK_Surface_Destroy();
+	}
+
+	return VK_Surface_Create();
+}
+
+/* The window identity the surface was built from, tracked so the walk can tell
+   "the window came back as a different handle" from "the swapchain merely went
+   stale" -- the second is repaired by the existing swapchain recreate, the first
+   needs the surface itself rebuilt.  NULL means the window is gone (backgrounded),
+   which is a change like any other. */
+static void *s_surfaceWindow = NULL;
+
+qboolean VK_Surface_WindowChanged( void )
+{
+	SDL_SysWMinfo info;
+	void *current;
+
+	if ( !SDL_window ) {
+		return qfalse;
+	}
+
+	SDL_VERSION( &info.version );
+	if ( !SDL_GetWindowWMInfo( SDL_window, &info ) || info.subsystem != SDL_SYSWM_ANDROID ) {
+		return qfalse;
+	}
+
+	current = info.info.android.window;
+	/* A NULL window is the backgrounded state itself: there is nothing to bind
+	   yet, and creating a surface against NULL would only fail.  The walk skips
+	   on its own while the window is away, and the rebind waits for the real
+	   handle the UI thread installs in onNativeSurfaceCreated. */
+	if ( current == NULL ) {
+		return qfalse;
+	}
+	if ( s_surfaceWindow == NULL ) {
+		return qtrue;
+	}
+
+	return current != s_surfaceWindow;
+}
+
+void VK_Surface_WindowTrack( void )
+{
+	SDL_SysWMinfo info;
+
+	s_surfaceWindow = NULL;
+	if ( !SDL_window ) {
+		return;
+	}
+
+	SDL_VERSION( &info.version );
+	if ( !SDL_GetWindowWMInfo( SDL_window, &info ) || info.subsystem != SDL_SYSWM_ANDROID ) {
+		return;
+	}
+
+	s_surfaceWindow = info.info.android.window;
+}
+#endif
+
 qboolean VK_Surface_Create( void )
 {
 	int surfaceWidth = 0;
@@ -213,6 +289,12 @@ qboolean VK_Surface_Create( void )
 		return qtrue;
 	}
 
+	/* Tracked before the result is decided: a failed bind must still record the
+	   window it failed against, or the next compare would re-arm forever. */
+#ifdef __ANDROID__
+	VK_Surface_WindowTrack();
+#endif
+
 	if ( !SDL_Vulkan_CreateSurface( SDL_window, vk.instance, &vk.surface ) ) {
 		VK_Guard_Hit( VK_GSITE_SURFACE, "SDL_Vulkan_CreateSurface", VK_ERROR_INITIALIZATION_FAILED );
 		return qfalse;
@@ -233,6 +315,7 @@ void VK_Surface_Destroy( void )
 	}
 	vk.surface = VK_NULL_HANDLE;
 }
+
 
 static void VK_Platform_ModeSize( int mode, int *width, int *height, float *aspect )
 {
