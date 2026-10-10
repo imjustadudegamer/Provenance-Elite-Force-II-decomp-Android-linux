@@ -2304,7 +2304,10 @@ void Entity::SetHealth(Event *ev)
 
 void Entity::GetHealth(Event *ev)
 {
-    ev->AddFloat(health);
+    // retail @0x0019A030 is one ReturnFloat call: AddFloat appends an argument and
+    // never writes the script VM's return slot, so a script `gethealth` read stale
+    // globals (m1l1b's changLifeCounter drained nothing, its boss bar never moved).
+    ev->ReturnFloat(health);
 }
 
 
@@ -3472,9 +3475,9 @@ void Entity::traceHitsEntity(Event *ev)
     trace = G_Trace(start, vec_zero, vec_zero, end, NULL, MASK_SHOT, false, "traceHitsEntity");
 
     if (trace.ent && entityToCheck && trace.ent->entity == entityToCheck) {
-        ev->AddFloat(1.0f);
+        ev->ReturnFloat(1.0f);
     } else {
-        ev->AddFloat(0.0f);
+        ev->ReturnFloat(0.0f);
     }
 }
 
@@ -6614,7 +6617,8 @@ cvar_t *thereisnomonkey;
 
 void Entity::GetVelocity(Event *ev)
 {
-    ev->AddVector(velocity);
+    // retail @0x001B4F20 returns the vector through ReturnVector (this->velocity at +220).
+    ev->ReturnVector(velocity);
 }
 
 void Entity::SetVelocity(Event *ev)

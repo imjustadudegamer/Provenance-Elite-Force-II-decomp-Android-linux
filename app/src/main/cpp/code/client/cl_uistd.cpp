@@ -76,6 +76,8 @@ int CL_SafePlayerStat(int idx)
     return cl.snap.ps.stats[idx];
 }
 
+static int bossbarRows;
+
 static qboolean CL_UIPaused(void)
 {
     return paused && paused->integer;
@@ -811,6 +813,14 @@ void UIFakkLabel::Draw(void)
                 frac = 1.0f;
             } else if (frac < 0.0f) {
                 frac = 0.0f;
+            }
+
+            /* The bar's render half: the stat this widget re-read this draw and the
+               fill that came out of it.  Flat next to a stepping bossstat row means
+               the widget stopped re-reading; stepping means the draw is live. */
+            if (m_stat == STAT_BOSSHEALTH && PROBE_Throttle(&bossbarRows, 8, 60)) {
+                PROBE("bosshud", "stat=%d raw=%d frac=%.3f w=%.1f",
+                      m_stat, (int)CL_SafePlayerStat(m_stat), frac, m_frame.size.width * frac);
             }
 
             DrawStatbar(frac);
