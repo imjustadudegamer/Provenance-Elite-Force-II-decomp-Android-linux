@@ -39,7 +39,17 @@
     <!-- The ONLY permission the app needs.  Game data lives in the app's own
          OBB directory (Android/obb/com.provenanceef2), which requires no storage
          permission at any targetSdk.  The engine's own sockets (the loopback
-         single-player server, and the LAN server browser) need INTERNET. -->
+         single-player server, and the LAN server browser) need INTERNET.
+
+         Multiplayer strip (operator order): this is the one row that must stay.
+         qcommon/net_ip.c NET_Init then NET_Config(qtrue) then NET_OpenIP opens a
+         real AF_INET/SOCK_DGRAM socket on every boot with no net_enabled gate, and
+         the single-player client-server channel rides it; an app without INTERNET
+         never gets the inet supplementary group, so that socket comes back EACCES
+         and the game loses its own server.  Every other network, nearby, Wi-Fi,
+         Bluetooth and sensors/body/location permission was already absent: this
+         file is the only manifest in the tree that declares one, and this row is
+         it. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- allowBackup=false: configs and saves live in the OBB dir (not backed up

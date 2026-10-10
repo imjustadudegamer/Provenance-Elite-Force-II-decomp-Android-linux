@@ -368,23 +368,27 @@ static void CL_DrawTouchPill( float ncx, float ncy, float nhw, float nhh, qboole
 	const char *label, float cr, float cg, float cb, float opacity )
 {
 	float W = cls.glconfig.vidWidth, H = cls.glconfig.vidHeight;
+	float da = ( touchControl.deviceW > 0 && touchControl.deviceH > 0 )
+		? touchControl.deviceW / touchControl.deviceH
+		: ( H > 0 ? W / H : 2.0f );
+	float pillhh = TC_PillHalfH( nhh, da );
 	float black[4] = { 0, 0, 0, 1 };
 	float col[4];
 	if ( pressed ) {
-		col[0] = 0.80f; col[1] = 0.40f; col[2] = 0.60f; col[3] = 1.0f * opacity; 
+		col[0] = 0.80f; col[1] = 0.40f; col[2] = 0.60f; col[3] = 1.0f * opacity;
 	} else {
 		col[0] = cr; col[1] = cg; col[2] = cb; col[3] = 0.82f * opacity;
 	}
 	re.SetColor( col );
-	re.DrawStretchPic( ( ncx - nhw ) * W, ( ncy - nhh ) * H, 2.0f * nhw * W, 2.0f * nhh * H,
+	re.DrawStretchPic( ( ncx - nhw ) * W, ( ncy - pillhh ) * H, 2.0f * nhw * W, 2.0f * pillhh * H,
 		0, 0, 1, 1, tc_pillShader );
 	re.SetColor( NULL );
 	if ( label && *label ) {
 		float pillW  = 2.0f * nhw * W;
-		float pillH  = 2.0f * nhh * H;
-		float cap    = nhh * H;                       
-		float avail  = pillW - 2.0f * cap;            
-		if ( avail < pillW * 0.5f ) avail = pillW * 0.5f;  
+		float pillH  = 2.0f * pillhh * H;
+		float cap    = pillhh * H;
+		float avail  = pillW - 2.0f * cap;
+		if ( avail < pillW * 0.5f ) avail = pillW * 0.5f;
 		black[3] = opacity;
 		CL_DrawTouchText( ncx, ncy, label, avail, pillH * 0.72f, black );
 	}

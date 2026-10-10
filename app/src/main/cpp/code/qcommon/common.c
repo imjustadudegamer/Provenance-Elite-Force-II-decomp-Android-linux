@@ -1668,8 +1668,15 @@ void Com_Init( char *commandLine ) {
 	   archived seed 1, because this block is the one place that runs AFTER the
 	   config exec and therefore beats the archived value -- the compiled cvar
 	   default does not (r_smp 0 sat in the device's GLES-era config.cfg and
-	   serialized the front end and the walk for the whole Vulkan era). */
-#define PORT_DEFAULTS_SEED 3
+	   serialized the front end and the walk for the whole Vulkan era).
+
+	   Seed 3 (2026-10-21): quiet + the frame pace (com_maxfps 60,
+	   r_swapInterval 0).
+
+	   Seed 4 (2026-10-21): the max-graphics rows.  Costs one fold on every
+	   install, so all 74 binds and every seta row re-execute once and a
+	   hand-tuned sensitivity or bind resets to the compiled value. */
+#define PORT_DEFAULTS_SEED 4
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );
@@ -1798,7 +1805,10 @@ void Com_Init( char *commandLine ) {
 	s = va( "%s %s %s %s", "Elite Force II", "1.10", PLATFORM_STRING, "Oct  9 2003");
 	com_version = Cvar_Get( "version", s, CVAR_ROM | CVAR_SERVERINFO );
 	// Retail registers "protocol" in SV_Init, not here (SV_Init @0x001DF3E0,
-	com_shortversion = Cvar_Get( "shortversion", "1.10", CVAR_ROM );
+	/* Retail's corner label links `shortversion'; this port's builds answer with
+	   their own number (the same PRODUCT_VERSION_FULL the banner prints), not
+	   retail's 1.10. */
+	com_shortversion = Cvar_Get( "shortversion", PRODUCT_VERSION, CVAR_ROM );
 
 
 	Sys_Init();

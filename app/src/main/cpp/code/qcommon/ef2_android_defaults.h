@@ -21,7 +21,29 @@ root, for more details.
 
 /* s_dialogvolume 0.96 is deliberate: retail's shared 0.60 leaves dialogue 6.804 dB under
    the tutorial's authored effect, and this seta is what carries the change to an install
-   whose config.cfg already archived the old value.  See snd_dma_new.cpp S_Init. */
+   whose config.cfg already archived the old value.  See snd_dma_new.cpp S_Init.
+
+   Touch/gamepad feel = the EF1 port's answer key (VoyagerNX_Android
+   android_defaults.cfg).  Its own derivation line names the target: full stick
+   deflection ~245 deg/s yaw, ~180 deg/s pitch.  EF2's stick look is the key-turn
+   path (cl_input.cpp CL_KeyState * cl_yawspeed/cl_pitchspeed, degrees per
+   second), so those two cvars ARE the EF1 numbers.  sensitivity 5, m_pitch
+   0.022, joy_threshold 0.15, cl_touchLook 2.2 and in_joystick 1 already equal
+   EF1; in_joystickUseAnalog stays 0 because this engine has no analog consumer
+   (cl.joystickAxis is written and read nowhere, and there is no JoystickMove) --
+   EF1's 1 would route the movement stick into that dead axis array and the
+   player would not move.
+
+   Max graphics (operator order): pin the quality cvars at their top setting on
+   every install.  r_subdivisions 3 -> 2 is the one real raise -- tr_bsp.c feeds
+   the value straight in as the patch chord tolerance, so smaller is finer, and
+   the twin's own Cvar_CheckRange floors it at 2.  r_lodbias 1 IS the maximum
+   here, not 0: tr_model.cpp/tr_surface.c return every vertex once the value
+   clears 0.5, so 0 would ENABLE the distance collapse, and
+   r_lodScaleDistance/r_lodscale never run behind that early return.  r_picmip
+   0 / r_texturebits 0 / r_colorbits 32 keep native mip, texture and colour
+   depth (16 forces a downgrade in tr_image.c).  cg_marks/cg_shadows/
+   cg_effectdetail are already the authored maximum. */
 #define EF2_ANDROID_DEFAULT_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
 	"bind w \"+forward\"\n" \
@@ -97,8 +119,6 @@ root, for more details.
 	"bind PAD0_RIGHTSTICK_CLICK \"+aim\"\n" \
 	"bind PAD0_BACK \"nightvision\"\n" \
 	"bind PAD0_START \"togglemenu\"\n" \
-	"seta joy_threshold 0.0\n" \
-	"seta in_joystick 0\n" \
 	"seta ui_dialogdisplaymode 1\n" \
 	"seta ui_radarviewmode 0\n" \
 	"seta rate 25000\n" \
@@ -137,8 +157,8 @@ root, for more details.
 	"seta in_joystick 1\n" \
 	"seta in_joystickUseAnalog 0\n" \
 	"seta joy_threshold 0.15\n" \
-	"seta cl_yawspeed 220\n" \
-	"seta cl_pitchspeed 170\n" \
+	"seta cl_yawspeed 245\n" \
+	"seta cl_pitchspeed 180\n" \
 	"seta cl_touchLook 2.2\n" \
 	"seta cl_touchScale 1.0\n" \
 	"seta cl_touchOpacity 1.0\n" \
@@ -150,9 +170,14 @@ root, for more details.
 	"seta r_smp 1\n" \
 	"seta r_jobs -1\n" \
 	"seta cl_jobs -1\n" \
-	"seta r_vboStatic 0\n"
+	"seta r_vboStatic 0\n" \
+	"seta r_picmip 0\n" \
+	"seta r_lodbias 1\n" \
+	"seta r_subdivisions 2\n" \
+	"seta r_texturebits 0\n" \
+	"seta r_colorbits 32\n"
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 
 
-#define EF2_ANDROID_DEFAULT_SETA_COUNT 50
+#define EF2_ANDROID_DEFAULT_SETA_COUNT 57

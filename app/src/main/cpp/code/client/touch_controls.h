@@ -17,6 +17,17 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #define TC_PAD_CY   0.72f
 #define TC_PAD_R    0.060f
 
+/* The table's h values were authored at TC_DESIGN_ASPECT.  Past that aspect a
+   pill's height follows its WIDTH, so the pill keeps one shape on any panel;
+   the draw and the hit test must apply the same factor or the finger lands
+   beside the pill it is drawn on.  Narrower panels clamp at the authored size
+   so a target never shrinks under the finger. */
+#define TC_DESIGN_ASPECT 2.2222f
+static float TC_PillHalfH( float hh, float aspect ) {
+	float f = aspect / TC_DESIGN_ASPECT;
+	return hh * ( f < 1.0f ? 1.0f : f );
+}
+
 #define LCARS_ORANGE       1.00f, 0.60f, 0.00f    
 #define LCARS_GOLD         1.00f, 0.667f, 0.00f  
 #define LCARS_SUNFLOWER    1.00f, 0.80f, 0.60f   
@@ -59,12 +70,12 @@ static const tcActionButton_t tcActionButtons[] = {
 	{ 0.665f, 0.925f, 0.054f, 0.034f, K_PAD0_B,             "CROUCH",   LCARS_VIOLET,    qfalse, qfalse },
 	{ 0.950f, 0.520f, 0.050f, 0.032f, K_PAD0_RIGHTSHOULDER, "NEXT",     LCARS_SUNFLOWER, qtrue,  qfalse },
 	{ 0.950f, 0.405f, 0.050f, 0.032f, K_PAD0_LEFTSHOULDER,  "PREV",     LCARS_BUTTERSCOTCH, qtrue, qfalse },
-	{ 0.950f, 0.290f, 0.048f, 0.030f, K_PAD0_DPAD_UP,       "TRICORDER",LCARS_ICE,       qtrue,  qfalse },
-	{ 0.950f, 0.180f, 0.048f, 0.030f, K_PAD0_BACK,          "VISOR",    LCARS_ICE,       qtrue,  qfalse },
+	{ 0.050f, 0.290f, 0.048f, 0.030f, K_PAD0_DPAD_UP,       "TRICORDER",LCARS_ICE,       qtrue,  qfalse },
+	{ 0.050f, 0.180f, 0.048f, 0.030f, K_PAD0_BACK,          "VIEW",     LCARS_ICE,       qtrue,  qfalse },
 	{ 0.115f, 0.470f, 0.062f, 0.034f, K_TAB,                "MISSION",  LCARS_HOPBUSH,   qfalse, qfalse },
 };
 #define TC_NUM_ACTION ( (int)( sizeof( tcActionButtons ) / sizeof( tcActionButtons[0] ) ) )
-#define TC_NUM_RIGHT_ACTION 9
+#define TC_NUM_RIGHT_ACTION 7
 
 extern touchControlState_t touchControl;
 
