@@ -591,6 +591,13 @@ void VK_Upload_Quiesce( void )
 	VKimp_FrontEndWaitIdle();
 }
 
+/* The same id VK_Pool_Register keys its pools by, so a per-texture owner and a
+   pool owner answer the same question. */
+unsigned long VK_Upload_ThreadID( void )
+{
+	return ( unsigned long )SDL_ThreadID();
+}
+
 /* The graphics queue is host-synchronised, and under r_smp two threads reach
    it: the walk thread submits frames while the main thread submits texture
    uploads, publishes and readbacks.  The validation layer named it -- "object

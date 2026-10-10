@@ -2939,6 +2939,16 @@ VkCommandBuffer VK_VboStaticXferClose( int slot );
 
 /* ---- textures ------------------------------------------------------------ */
 
+/* One queued mip of one chain: the bytes sit in the chain's staging buffer and
+   the copy runs when that buffer is flushed. */
+typedef struct {
+	int				level;
+	int				width;
+	int				height;
+	VkDeviceSize	offset;
+	size_t			bytes;
+} vkPendingUpload_t;
+
 typedef struct {
 	VkImage		image;
 	VkDeviceMemory memory;
@@ -2953,6 +2963,27 @@ typedef struct {
 	   s7.9.2: `oldLayout` must match the layout the image is actually in, or be
 	   VK_IMAGE_LAYOUT_UNDEFINED). */
 	VkImageLayout layout;
+	/* A chain's uploads are staged, not submitted: the epoch holds the bytes and
+	   the queue names the copies, and the flush is what runs both.  Two
+	   lifetimes with separate owners (see vk_texture.c): a path that writes a
+	   record cannot release the pointer it writes through, and a record is never
+	   queued without a mapped buffer behind it.  One thread queues a chain at a
+	   time -- the same single-writer assumption the layout field carries -- and
+	   stagingOwner names it, so another thread's flush is refused whole. */
+	VkBuffer			staging;
+	VkDeviceMemory		stagingMemory;
+	byte				*stagingMapped;
+	VkDeviceSize		stagingSize;
+	VkDeviceSize		stagingUsed;
+	/* The thread that opened the epoch.  0 is no epoch; a flush from any other
+	   thread is refused whole instead of freeing a map that thread is writing. */
+	unsigned long		stagingOwner;
+	vkPendingUpload_t	*pending;
+	int					pendingCount;
+	int					pendingCap;
+	/* armed by the queue: a refilled chain is sampled until its copies run, so
+	   the flush parks the walk before its submit */
+	qboolean			pendingQuiesce;
 } vkTexture_t;
 
 #define VK_MAX_TEXTURES MAX_DRAWIMAGES
@@ -2962,6 +2993,7 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat format, int *handleOut );
 qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes );
+qboolean VK_Texture_Flush( int handle );
 qboolean VK_Texture_Publish( int handle );
 qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked );
 qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],
