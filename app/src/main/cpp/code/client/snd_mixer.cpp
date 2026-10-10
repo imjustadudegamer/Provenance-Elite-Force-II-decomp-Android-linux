@@ -100,6 +100,7 @@ static int      s_iLastMs     = -1;
 
 static int   s_iDialogDrops;
 static int   s_iDialogSteals;
+static int   s_iPendingVoices;
 static int   s_iSummaryMs;
 static int   s_iBusCount[SNDBUS_COUNT];
 static float s_fBusSquare[SNDBUS_COUNT];
@@ -491,6 +492,7 @@ void SndMix_FrameAdvance(int iNowMs, float fFadeVolume, qboolean *pbLevelsChange
 
     memset(s_iBusCount, 0, sizeof(s_iBusCount));
     memset(s_fBusSquare, 0, sizeof(s_fBusSquare));
+    s_iPendingVoices = 0;
 
     /* --- the detector reads the 2D dialog pool only: the movie track is
            protected and is not a competitor of itself. */
@@ -508,6 +510,13 @@ void SndMix_FrameAdvance(int iNowMs, float fFadeVolume, qboolean *pbLevelsChange
             }
             if (pChannel->iFlags & CHANNEL_FLAG_PAUSED) {
                 continue;
+            }
+
+            /* r54: armed but never started is the silent-slot signature -- a
+               0.5 s UI click cannot be alive at two 1 Hz samples, so a voice
+               that shows up here without playing is the flush that never came. */
+            if (pChannel->bPendingStart && !pChannel->is_playing()) {
+                s_iPendingVoices++;
             }
 
             bus = SndMix_BusForChannel(
@@ -621,14 +630,14 @@ void SndMix_SummaryRow(void)
         PROBE_PRINT(
             "[SND:mix] bus(dlg=%d mov=%d mus=%d amb=%d sfx=%d ui=%d)"
             " det=%.3f thr=%.3f duck=%.1f%% rmsdB(dlg=%.1f sfx=%.1f mus=%.1f)"
-            " drops=%d steal=%d anchor=%s limiter=%s\n",
+            " drops=%d steal=%d pend=%d anchor=%s limiter=%s\n",
             s_iBusCount[SNDBUS_DIALOG], s_iBusCount[SNDBUS_MOVIE], s_iBusCount[SNDBUS_MUSIC],
             s_iBusCount[SNDBUS_AMBIENT], s_iBusCount[SNDBUS_SFX], s_iBusCount[SNDBUS_UI],
             s_fDetector, s_duckThreshold->value, s_fDuckAmount * 100.0f,
             10.0f * log10f(s_fBusSquare[SNDBUS_DIALOG] + 1e-9f),
             10.0f * log10f(s_fBusSquare[SNDBUS_SFX] + 1e-9f),
             10.0f * log10f(s_fBusSquare[SNDBUS_MUSIC] + 1e-9f),
-            s_iDialogDrops, s_iDialogSteals,
+            s_iDialogDrops, s_iDialogSteals, s_iPendingVoices,
             s_loudnessAnchor->integer ? "on" : "off",
             s_limiter->integer ? "on" : "off");
     } else if (s_iRows == PROBE_ROW_CAP) {
@@ -668,6 +677,7 @@ void SndMix_Init(void)
     s_iMusicDucking = 0;
     s_iDialogDrops = 0;
     s_iDialogSteals = 0;
+    s_iPendingVoices = 0;
 
     Alias_CombatVolume();
 }

@@ -27,6 +27,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "client.h"
 #include "cl_ui.h"
 
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
+
 // the success and the "not initializing." arms, exactly where retail emits it.
 #define S_SOUND_SEPARATOR "------------------------------------\n"
 
@@ -474,6 +478,15 @@ void S_StartLocalSoundChannel(const char *sound_name, qboolean force_load, sound
     }
 
     sfxHandle = S_RegisterSoundExt(name, qfalse, force_load);
+
+    /* r54: the UI sound census.  handle 0 is a silent load failure (retail
+       warns through Com_WDPrintf, which a quiet boot never prints) and a
+       non-CHAN_MENU channel arms instead of starting, so this row plus
+       [SND:menuflush] is the whole chain a --diag boot needs. */
+    PROBE_EMIT_N("[SND:", "uisound", 64,
+                 "name='%s' chan=%d handle=%d %s\n",
+                 name ? name : "(null)", (int)channel, (int)sfxHandle,
+                 sfxHandle ? "ok" : "LOAD-FAILED");
 
     S_StartSoundExt(NULL, s_iListenerNumber, channel, sfxHandle, -1.0, -1.0, 1.0, -1.0, qfalse);
 }
