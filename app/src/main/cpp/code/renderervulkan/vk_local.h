@@ -483,6 +483,8 @@ void VK_Upload_End( void );
 /* Park the walk thread and drain its frame before re-laying out an image it
    may still sample. */
 void VK_Upload_Quiesce( void );
+/* The calling thread's id, in the pool-ownership sense: 0 is no owner. */
+unsigned long VK_Upload_ThreadID( void );
 
 /* The master instrument gate (qa_probe, default 0): every row this lane emits
    beyond the startup banner answers to it.  Declared here because the pool
