@@ -6051,6 +6051,22 @@ void Player::UpdateStats( void )
 		client->ps.stats[ STAT_BOSSHEALTH ] = 0;
 	}
 
+	/* The boss bar's game half: what the cvar holds and what stat it produced.  A
+	   frozen bar with this row stepping down convicts the renderer; a frozen bar
+	   with this row flat convicts the game.  1 Hz, site-capped, qa_probe only. */
+	if ( PROBE_On() )
+	{
+		static int bossstat_lastsec = -1;
+
+		if ( level.inttime / 1000 != bossstat_lastsec )
+		{
+			bossstat_lastsec = level.inttime / 1000;
+			PROBE( "bossstat", "t=%d cvar='%s' value=%.5f stat=%d name='%s'",
+				   level.inttime, bosshealth->string, bosshealth->value,
+				   client->ps.stats[ STAT_BOSSHEALTH ], bossname->string );
+		}
+	}
+
 	if ( _itemText.length() > 0  )
 	{
 		client->ps.stats[ STAT_ITEMICON ] = _itemIcon;
