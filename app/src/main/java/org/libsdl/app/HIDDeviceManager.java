@@ -637,7 +637,9 @@ public class HIDDeviceManager {
         try {
             return device.open();
         } catch (Exception e) {
-            Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            if (LogGate.on()) {
+                Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            }
         }
         return false;
     }
@@ -654,7 +656,11 @@ public class HIDDeviceManager {
 
             return device.sendOutputReport(report);
         } catch (Exception e) {
-            Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            if (LogGate.on()) {
+                if (LogGate.on()) {
+                Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            }
+            }
         }
         return -1;
     }
@@ -671,7 +677,11 @@ public class HIDDeviceManager {
 
             return device.sendFeatureReport(report);
         } catch (Exception e) {
-            Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            if (LogGate.on()) {
+                if (LogGate.on()) {
+                Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            }
+            }
         }
         return -1;
     }
@@ -688,7 +698,11 @@ public class HIDDeviceManager {
 
             return device.getFeatureReport(report);
         } catch (Exception e) {
-            Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            if (LogGate.on()) {
+                if (LogGate.on()) {
+                Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            }
+            }
         }
         return false;
     }
@@ -707,7 +721,9 @@ public class HIDDeviceManager {
 
             device.close();
         } catch (Exception e) {
-            Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            if (LogGate.on()) {
+                Log.e(TAG, "Got exception: " + Log.getStackTraceString(e));
+            }
         }
     }
 

@@ -792,7 +792,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         public void handleMessage(Message msg) {
             Context context = SDL.getContext();
             if (context == null) {
-                Log.e(TAG, "error handling message, getContext() returned null");
+                if (LogGate.on()) {
+                    Log.e(TAG, "error handling message, getContext() returned null");
+                }
                 return;
             }
             switch (msg.arg1) {
@@ -800,7 +802,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                 if (context instanceof Activity) {
                     ((Activity) context).setTitle((String)msg.obj);
                 } else {
-                    Log.e(TAG, "error handling message, getContext() returned no Activity");
+                    if (LogGate.on()) {
+                        Log.e(TAG, "error handling message, getContext() returned no Activity");
+                    }
                 }
                 break;
             case COMMAND_CHANGE_WINDOW_STYLE:
@@ -828,7 +832,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                             }
                         }
                     } else {
-                        Log.e(TAG, "error handling message, getContext() returned no Activity");
+                        if (LogGate.on()) {
+                            Log.e(TAG, "error handling message, getContext() returned no Activity");
+                        }
                     }
                 }
                 break;
@@ -863,7 +869,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             }
             default:
                 if ((context instanceof SDLActivity) && !((SDLActivity) context).onUnhandledMessage(msg.arg1, msg.obj)) {
-                    Log.e(TAG, "error handling message, command is " + msg.arg1);
+                    if (LogGate.on()) {
+                        Log.e(TAG, "error handling message, command is " + msg.arg1);
+                    }
                 }
             }
         }
@@ -1890,7 +1898,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                         }
                         toast.show();
                     } catch(Exception ex) {
-                        Log.e(TAG, ex.getMessage());
+                        if (LogGate.on()) {
+                            Log.e(TAG, ex.getMessage());
+                        }
                     }
                 }
             }

@@ -243,7 +243,9 @@ public class SDLAudioManager {
 
                 // see notes about AudioTrack state in audioOpen(), above. Probably also applies here.
                 if (mAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                    Log.e(TAG, "Failed during initialization of AudioRecord");
+                    if (LogGate.on()) {
+                        Log.e(TAG, "Failed during initialization of AudioRecord");
+                    }
                     mAudioRecord.release();
                     mAudioRecord = null;
                     return null;
@@ -270,7 +272,9 @@ public class SDLAudioManager {
                 if (mAudioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
                     /* Try again, with safer values */
 
-                    Log.e(TAG, "Failed during initialization of Audio Track");
+                    if (LogGate.on()) {
+                        Log.e(TAG, "Failed during initialization of Audio Track");
+                    }
                     mAudioTrack.release();
                     mAudioTrack = null;
                     return null;
@@ -370,12 +374,16 @@ public class SDLAudioManager {
      */
     public static void audioWriteFloatBuffer(float[] buffer) {
         if (mAudioTrack == null) {
-            Log.e(TAG, "Attempted to make audio call with uninitialized audio!");
+            if (LogGate.on()) {
+                Log.e(TAG, "Attempted to make audio call with uninitialized audio!");
+            }
             return;
         }
 
         if (android.os.Build.VERSION.SDK_INT < 21 /* Android 5.0 (LOLLIPOP) */) {
-            Log.e(TAG, "Attempted to make an incompatible audio call with uninitialized audio! (floating-point output is supported since Android 5.0 Lollipop)");
+            if (LogGate.on()) {
+                Log.e(TAG, "Attempted to make an incompatible audio call with uninitialized audio! (floating-point output is supported since Android 5.0 Lollipop)");
+            }
             return;
         }
 
@@ -401,7 +409,9 @@ public class SDLAudioManager {
      */
     public static void audioWriteShortBuffer(short[] buffer) {
         if (mAudioTrack == null) {
-            Log.e(TAG, "Attempted to make audio call with uninitialized audio!");
+            if (LogGate.on()) {
+                Log.e(TAG, "Attempted to make audio call with uninitialized audio!");
+            }
             return;
         }
 
@@ -427,7 +437,9 @@ public class SDLAudioManager {
      */
     public static void audioWriteByteBuffer(byte[] buffer) {
         if (mAudioTrack == null) {
-            Log.e(TAG, "Attempted to make audio call with uninitialized audio!");
+            if (LogGate.on()) {
+                Log.e(TAG, "Attempted to make audio call with uninitialized audio!");
+            }
             return;
         }
 

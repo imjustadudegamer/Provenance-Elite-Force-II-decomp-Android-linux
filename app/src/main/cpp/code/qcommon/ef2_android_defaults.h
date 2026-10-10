@@ -132,8 +132,8 @@ root, for more details.
 	"seta cl_renderer \"vulkan\"\n" \
 	"seta r_mode -2\n" \
 	"seta r_fullscreen 1\n" \
-	"seta r_swapInterval 1\n" \
-	"seta com_maxfps 85\n" \
+	"seta r_swapInterval 0\n" \
+	"seta com_maxfps 60\n" \
 	"seta in_joystick 1\n" \
 	"seta in_joystickUseAnalog 0\n" \
 	"seta joy_threshold 0.15\n" \
