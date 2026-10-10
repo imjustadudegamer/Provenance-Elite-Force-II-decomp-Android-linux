@@ -2616,6 +2616,8 @@ qboolean VK_Shade_Descriptors_Init( void )
 	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	for ( i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		int memType;
+
 		result = qvk.CreateBuffer( vk.device, &bufferInfo, NULL, &vk_shadeUbo[i] );
 		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkCreateBuffer(ubo)" ) ) {
 			return qfalse;
@@ -2626,19 +2628,31 @@ qboolean VK_Shade_Descriptors_Init( void )
 		allocInfo.allocationSize = reqs.size;
 		/* The ring is written per draw, so prefer the host-cached type and fall
 		   back to plain host-visible; HOST_COHERENT in either case keeps the
-		   device read correct without a flush. */
-		allocInfo.memoryTypeIndex = VK_Memory_FindType( reqs.memoryTypeBits,
+		   device read correct without a flush.  FindType answers an int and -1
+		   means nothing matched: the checks must run on that int.  The field is
+		   unsigned, so storing -1 first made both the "< 0" fallback and the
+		   ">= 0" guard vacuous -- and the Mali-G715 carries no HOST_CACHED type
+		   in the ones this buffer's requirements select, so the first pass
+		   legitimately misses there.  The dead fallback turned that into a read
+		   of memoryTypes[0xFFFFFFFF]: the Pixel 8's bring-up SEGV.  VK_Memory_
+		   AllocFor already runs this shape the right way. */
+		memType = VK_Memory_FindType( reqs.memoryTypeBits,
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 				| VK_MEMORY_PROPERTY_HOST_CACHED_BIT );
-		if ( allocInfo.memoryTypeIndex < 0 ) {
-			allocInfo.memoryTypeIndex = VK_Memory_FindType( reqs.memoryTypeBits,
+		if ( memType < 0 ) {
+			memType = VK_Memory_FindType( reqs.memoryTypeBits,
 					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
 		}
-		if ( !i ) {
-			uboSawCached = ( allocInfo.memoryTypeIndex >= 0 )
-						   && ( ( vk.memProps.memoryTypes[allocInfo.memoryTypeIndex].propertyFlags
-								  & VK_MEMORY_PROPERTY_HOST_CACHED_BIT ) != 0 );
+		if ( memType < 0 ) {
+			VK_Guard_Hit( VK_GSITE_ALLOC, "no host-visible memory type for the shade ubo ring",
+						  VK_ERROR_OUT_OF_DEVICE_MEMORY );
+			return qfalse;
 		}
+		if ( !i ) {
+			uboSawCached = ( ( vk.memProps.memoryTypes[memType].propertyFlags
+							   & VK_MEMORY_PROPERTY_HOST_CACHED_BIT ) != 0 );
+		}
+		allocInfo.memoryTypeIndex = ( uint32_t )memType;
 		result = qvk.AllocateMemory( vk.device, &allocInfo, NULL, &vk_shadeUboMemory[i] );
 		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkAllocateMemory(ubo)" ) ) {
 			return qfalse;
