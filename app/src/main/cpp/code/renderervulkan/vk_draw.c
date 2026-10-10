@@ -706,6 +706,7 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 		at--;
 		if ( vk_sets[at].used && vk_sets[at].view == view && vk_sets[at].sampler == sampler ) {
 			set = vk_sets[at].set;
+			i = at;		/* the cache-hit path skips the slot scan below: the row reads the real index */
 			break;
 		}
 	}

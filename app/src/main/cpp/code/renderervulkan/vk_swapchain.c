@@ -563,6 +563,15 @@ qboolean VK_Swapchain_Recreate( int windowWidth, int windowHeight )
 		VK_Swapchain_Destroy();
 	}
 
+#if defined( __ANDROID__ )
+	/* The old surface must die after the swapchain built on it and before the
+	   next one: Android has already replaced the ANativeWindow it was created
+	   from, so a plan against it fails and strands the walk. */
+	if ( !VK_Surface_Refresh() ) {
+		return qfalse;
+	}
+#endif
+
 	if ( !VK_Swapchain_Plan( &plan, windowWidth, windowHeight ) ) {
 		return qfalse;
 	}

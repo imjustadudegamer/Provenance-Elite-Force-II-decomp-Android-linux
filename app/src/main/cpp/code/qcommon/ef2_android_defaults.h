@@ -146,7 +146,11 @@ root, for more details.
 	"seta s_musicvolume 0.5\n" \
 	"seta s_dialogvolume 0.96\n" \
 	"seta ui_console 0\n" \
-	"seta ui_minicon 0\n"
+	"seta ui_minicon 0\n" \
+	"seta r_smp 1\n" \
+	"seta r_jobs -1\n" \
+	"seta cl_jobs -1\n" \
+	"seta r_vboStatic 0\n"
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 
