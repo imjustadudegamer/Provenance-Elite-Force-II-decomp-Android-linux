@@ -29,6 +29,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "snd_codec.h"
 #include "../qcommon/cm_public.h"
 
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
+
 typedef struct {
     const char *funcname;
     void      **funcptr;
@@ -58,6 +62,13 @@ cvar_t *s_speaker_type;
 cvar_t *s_checkObstructions; 
 cvar_t *s_openaldriver;
 cvar_t *s_alAvailableDevices;
+
+/* r54: retail arms a non-CHAN_MENU start (S_MILES_StartSound @0x001F1700, slot[1]=1,
+   no AIL_start) and starts it only in S_MILES_Respatialize @0x001F2CC0, which the
+   port reaches only from cgame (cg_view.c:861) -- so a UI click, which retail plays
+   on CHAN_MENU2 (UIButtonBase::Released @0x00050710) as a .wav, armed and never
+   started at the main menu.  0 restores that. */
+cvar_t *s_menuFlush;
 
 static const float s_reverbTable[26] = {
     0.5f,   0.25f,        0.417f, 0.653f,      0.208f,      0.5f,   0.403f, 0.5f,   0.5f,
@@ -557,6 +568,7 @@ qboolean S_OPENAL_Init()
     s_show_loopsounds        = Cvar_Get("s_show_loopsounds", "0", 0);
     s_speaker_type           = Cvar_Get("s_speaker_type", "0", CVAR_ARCHIVE);
     s_checkObstructions      = Cvar_Get("s_checkObstructions", "1", CVAR_ARCHIVE);
+    s_menuFlush              = Cvar_Get("s_menuFlush", "1", 0);
     s_openaldriver = Cvar_Get("s_openaldriver", ALDRIVER_DEFAULT, CVAR_LATCH | CVAR_PROTECTED);
 
     if (!QAL_Init(s_openaldriver->string)) {
@@ -2372,6 +2384,81 @@ void S_OPENAL_SetReverb(int iType, float fLevel)
     s_bReverbChanged = true;
 }
 
+/* r54: the flush half of S_OPENAL_Respatialize, lifted into the per-frame pass:
+   the UI is the one place Respatialize never runs, because its only caller is
+   cgame and the main menu has no cgame.  In game it finds nothing -- Respatialize
+   already ran this frame, inside SCR_UpdateScreen, before CL_Frame's S_Update. */
+static void S_OPENAL_FlushPendingStarts()
+{
+    static int s_iTotal;
+    openal_channel *pChannel;
+    int             i;
+
+    if (!s_menuFlush || !s_menuFlush->integer) {
+        return;
+    }
+
+    /* CA_ACTIVE means cgame ran Respatialize this frame and owns every armed
+       start, including the ones it culled with ShouldStart -- those stay dead.
+       Only the UI, which has no cgame, needs this pass. */
+    if (cls.state == CA_ACTIVE) {
+        return;
+    }
+
+    for (i = 0; i < s_iNumChannels3D; i++) {
+        pChannel = openal.channel[i];
+
+        if (!pChannel || !pChannel->bPendingStart) {
+            continue;
+        }
+
+        if (pChannel->iFlags & CHANNEL_FLAG_PAUSED) {
+            continue;
+        }
+
+        if (!S_OPENAL_ShouldStart(pChannel->vOrigin, pChannel->fMinDist, pChannel->fMaxDist)) {
+            continue;
+        }
+
+        pChannel->bPendingStart = qfalse;
+        pChannel->iBaseRate     = pChannel->pSfx->info.rate;
+        if (pChannel->fNewPitchMult > 0.0f) {
+            pChannel->set_sample_playback_rate(pChannel->iBaseRate * pChannel->fNewPitchMult);
+            pChannel->fNewPitchMult = 0;
+        }
+
+        pChannel->play();
+        pChannel->iStartTime = cl.serverTime;
+        pChannel->iEndTime   = cl.serverTime + (int)pChannel->pSfx->time_length + 250;
+        s_iTotal++;
+
+        PROBE_EMIT_N("[SND:", "menuflush", 64,
+                     "pool=3d slot=%d chan=%d name='%s' total=%d\n",
+                     i, pChannel->iEntChannel, pChannel->pSfx ? pChannel->pSfx->name : "", s_iTotal);
+    }
+
+    for (i = MAX_SOUNDSYSTEM_CHANNELS_3D; i < MAX_SOUNDSYSTEM_CHANNELS_3D + MAX_SOUNDSYSTEM_CHANNELS_2D; i++) {
+        pChannel = openal.channel[i];
+
+        if (!pChannel || !pChannel->bPendingStart) {
+            continue;
+        }
+
+        if (pChannel->iFlags & CHANNEL_FLAG_PAUSED) {
+            continue;
+        }
+
+        pChannel->bPendingStart = qfalse;
+        pChannel->play();
+        pChannel->iStartTime = cl.serverTime;
+        s_iTotal++;
+
+        PROBE_EMIT_N("[SND:", "menuflush", 64,
+                     "pool=2d slot=%d chan=%d name='%s' total=%d\n",
+                     i, pChannel->iEntChannel, pChannel->pSfx ? pChannel->pSfx->name : "", s_iTotal);
+    }
+}
+
 void S_OPENAL_Update()
 {
     int             i;
@@ -2494,6 +2581,11 @@ void S_OPENAL_Update()
         }
         Com_DPrintf("Number of active sounds = %d\n", num);
     }
+
+    /* r54: the per-frame flush the UI was missing (see the comment at
+       S_OPENAL_FlushPendingStarts).  In game it finds nothing: Respatialize
+       already ran inside this frame's SCR_UpdateScreen. */
+    S_OPENAL_FlushPendingStarts();
 
     Music_Update();
 

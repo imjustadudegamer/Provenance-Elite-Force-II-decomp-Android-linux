@@ -955,7 +955,10 @@ static void R_ShowTikiLodDebugNumbers(trRefEntity_t *ent, dtiki_t *tiki)
     R_DrawDebugNumber(org, number, scale, 1.0f, 1.0f, 0.0f, precision);
 }
 
-static void R_SkelCullWhere(const refEntity_t *e, const vec3_t worldOrg, float radius);
+static void R_SkelCullWhere(
+    const refEntity_t *e, const skelFrame_t *nf, const skelFrame_t *of, float fScale,
+    const vec3_t worldOrg, const vec3_t localOrg
+);
 
 /* The drop sites here are silent in the reference: PRINT_DEVELOPER never reaches
    a device log, so every gate answers through one of these two rows instead. */
@@ -972,20 +975,131 @@ static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
     rows++;
 }
 
+/* The four side planes, exactly as R_CullPointAndRadius tests them, on any point
+   set.  Returns the worst (most negative) plane distance. */
+static float R_SkelCullPlaneMin(const vec3_t pt, float radius, qboolean *outp)
+{
+    float worst = 0.0f;
+    int   i;
+
+    for (i = 0; i < tr.viewParms.fog.extrafrustums + 4; i++) {
+        float d = DotProduct(pt, tr.viewParms.frustum[i].normal) - tr.viewParms.frustum[i].dist;
+
+        if (i == 0 || d < worst) {
+            worst = d;
+        }
+        if (d < -radius && outp) {
+            *outp = qtrue;
+        }
+    }
+
+    return worst;
+}
+
+/* The 8-corner box test, R_CullLocalBoxOffset without its counters. */
+static int R_SkelCullBoxVerdict(const vec3_t bounds[2])
+{
+    vec3_t   transformed[8];
+    int      i, j;
+    int      anyBack = 0;
+
+    if (r_nocull->integer) {
+        return CULL_CLIP;
+    }
+
+    for (i = 0; i < 8; i++) {
+        vec3_t v;
+
+        v[0] = bounds[i & 1][0];
+        v[1] = bounds[(i >> 1) & 1][1];
+        v[2] = bounds[(i >> 2) & 1][2];
+
+        VectorCopy(tr.ori.origin, transformed[i]);
+        VectorMA(transformed[i], v[0], tr.ori.axis[0], transformed[i]);
+        VectorMA(transformed[i], v[1], tr.ori.axis[1], transformed[i]);
+        VectorMA(transformed[i], v[2], tr.ori.axis[2], transformed[i]);
+    }
+
+    for (i = 0; i < tr.viewParms.fog.extrafrustums + 4; i++) {
+        cplane_t *frust = &tr.viewParms.frustum[i];
+        int front = 0, back = 0;
+
+        for (j = 0; j < 8; j++) {
+            float d = DotProduct(transformed[j], frust->normal) - frust->dist;
+
+            if (d > frust->dist) {
+                front = 1;
+                if (back) {
+                    break;
+                }
+            } else {
+                back = 1;
+            }
+        }
+
+        if (!front) {
+            return CULL_OUT;
+        }
+        anyBack |= back;
+    }
+
+    return anyBack ? CULL_CLIP : CULL_IN;
+}
+
 /* A `cull' drop is only a defect if the entity was inside the view.  This names
    where it actually was, in the same three axes the cull and the cgame shadow
    gate both test, so a log says "4000 units behind the eye" -- a correct drop --
    or "12 units in front and 30 wide" -- a model the operator could see vanishing.
-   The world centre is the entity origin plus the scaled load origin, which is
-   the point R_CullLocalPointAndRadius transforms. */
-static void R_SkelCullWhere(const refEntity_t *e, const vec3_t worldOrg, float radius)
+   r54: it also replays the two tests R_CullSkelModel ran, on the same inputs, so
+   a row says for itself whether the sphere bound was violated.  The sphere point
+   is R_LocalPointToWorld(localOrg) -- the entity-axis rotation the old row's
+   printed origin did not carry -- and the box is the same frame-bounds union. */
+static void R_SkelCullWhere(
+    const refEntity_t *e, const skelFrame_t *nf, const skelFrame_t *of, float fScale,
+    const vec3_t worldOrg, const vec3_t localOrg
+)
 {
-    vec3_t delta;
-    float  fwd, side, up;
+    vec3_t    delta, spherePt, bounds[2], boxdelta;
+    float     fwd, side, up, radius, dsphere;
+    int       i, boxv;
+    qboolean  sout = qfalse;
 
     if (!R_ProbeStatsOn()) {
         return;
     }
+
+    radius = nf->radius * fScale;
+
+    R_LocalPointToWorld(localOrg, spherePt);
+    dsphere = R_SkelCullPlaneMin(spherePt, radius, &sout);
+
+    for (i = 0; i < 3; i++) {
+        float a, b;
+
+        a = nf->bounds[0][i] * fScale + localOrg[i];
+        b = (of && of != nf) ? of->bounds[0][i] * fScale + localOrg[i] : a;
+        bounds[0][i] = (b < a) ? b : a;
+
+        a = nf->bounds[1][i] * fScale + localOrg[i];
+        b = (of && of != nf) ? of->bounds[1][i] * fScale + localOrg[i] : a;
+        bounds[1][i] = (a < b) ? a : b;
+    }
+
+    if (tr.currentEntity && (tr.currentEntity->e.renderfx & RF_FRAMELERP)) {
+        boxdelta[0] = e->origin[0] - e->attachOrigin[0];
+        boxdelta[1] = e->origin[1] - e->attachOrigin[1];
+        boxdelta[2] = e->origin[2] - e->attachOrigin[2];
+    } else {
+        VectorClear(boxdelta);
+    }
+    for (i = 0; i < 3; i++) {
+        if (boxdelta[i] <= 0.0f) {
+            bounds[0][i] += boxdelta[i];
+        } else {
+            bounds[1][i] += boxdelta[i];
+        }
+    }
+    boxv = R_SkelCullBoxVerdict(bounds);
 
     VectorSubtract(worldOrg, tr.refdef.vieworg, delta);
     fwd  = DotProduct(delta, tr.refdef.viewaxis[0]);
@@ -1002,11 +1116,18 @@ static void R_SkelCullWhere(const refEntity_t *e, const vec3_t worldOrg, float r
         ri.Printf(
             PRINT_ALL,
             "[VK:skelcull] model='%s' org=(%.1f,%.1f,%.1f) radius=%.1f dist=%.1f "
-            "fwd=%.1f side=%.1f up=%.1f behind=%d\n",
+            "fwd=%.1f side=%.1f up=%.1f behind=%d"
+            " plane=%.1f sphere=%s box=%s nna=%d xb=%d ofr=%.1f\n",
             e->tiki && e->tiki->a->name ? e->tiki->a->name : "?",
             worldOrg[0], worldOrg[1], worldOrg[2], radius,
             sqrtf(delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]),
-            fwd, side, up, (fwd < 0.0f) ? 1 : 0
+            fwd, side, up, (fwd < 0.0f) ? 1 : 0,
+            dsphere,
+            sout ? "out" : ((dsphere <= radius) ? "clip" : "in"),
+            (boxv == CULL_IN) ? "in" : ((boxv == CULL_CLIP) ? "clip" : "out"),
+            e->nonNormalizedAxes ? 1 : 0,
+            (of && of != nf) ? 1 : 0,
+            (of && of != nf) ? of->radius * fScale : 0.0f
         );
     }
 }
@@ -1142,7 +1263,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
         if (R_CullSkelModel(tiki, &ent->e, nf, of, tiki_scale, tiki_localorigin) == CULL_OUT) {
             R_SkelDrop("cull", tiki, ent);
-            R_SkelCullWhere(&ent->e, tiki_entityorigin, nf->radius * tiki_scale);
+            R_SkelCullWhere(&ent->e, nf, of, tiki_scale, tiki_entityorigin, tiki_localorigin);
             return;
         }
 
@@ -1173,7 +1294,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
                    row at all, so a torso-only entity culled while visible was
                    invisible in the census */
                 R_SkelDrop("cull-torso", tiki, ent);
-                R_SkelCullWhere(&ent->e, tiki_entityorigin, tf->radius * tiki_scale);
+                R_SkelCullWhere(&ent->e, tf, tof, tiki_scale, tiki_entityorigin, tiki_localorigin);
                 return;
             }
             ent->e.of = tof;
