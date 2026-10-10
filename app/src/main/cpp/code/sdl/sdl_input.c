@@ -1311,8 +1311,12 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 		for ( bi = 0; bi < TC_NUM_ACTION; bi++ )
 		{
 			const tcActionButton_t *ab = &tcActionButtons[bi];
+			float da = ( touchControl.deviceW > 0 && touchControl.deviceH > 0 )
+				? touchControl.deviceW / touchControl.deviceH
+				: ( cls.glconfig.vidHeight > 0
+					? (float)cls.glconfig.vidWidth / (float)cls.glconfig.vidHeight : 2.0f );
 			float hw = ab->hw * IN_TouchScale( );
-			float hh = ab->hh * IN_TouchScale( );
+			float hh = TC_PillHalfH( ab->hh * IN_TouchScale( ), da );
 			if ( tc_actionFinger[bi] == (SDL_FingerID)-1
 			     && IN_TouchInRect( f->x, f->y, ab->cx, ab->cy, hw, hh ) )
 			{

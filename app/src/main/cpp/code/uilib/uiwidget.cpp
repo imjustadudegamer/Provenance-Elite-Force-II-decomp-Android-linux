@@ -4241,6 +4241,15 @@ void UIWidget::ExecuteShowCommands(void)
     }
 }
 
+void UIWidget::ClearShowCommands(void)
+{
+    for (int i = 1; i <= m_showcommands.NumObjects(); i++) {
+        delete m_showcommands.ObjectAt(i);
+    }
+
+    m_showcommands.FreeObjectList();
+}
+
 void UIWidget::ExecuteHideCommands(void)
 {
     if (m_hidesound.length()) {

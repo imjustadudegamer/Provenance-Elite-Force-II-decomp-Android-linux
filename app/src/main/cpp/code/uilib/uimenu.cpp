@@ -703,6 +703,13 @@ Menu *MenuManager::FindMenu(str name)
 }
 
 #ifdef __ANDROID__
+/* Composition contract: this runs AFTER MENU3DVideoMenuResolutionFixup at every
+   open, and it must re-clear what that one added -- the r_mode SwitchBox takes
+   the aspect rows and android_aspect here, so the resolution rows only exist on
+   the desktop.  It is also the only owner of this row's visibility: the
+   load-time adapt pass must not disable it (see s_adaptRowsAndroid), because a
+   disabled widget is skipped by Menu::ShowMenu and the aspect options would
+   never be reachable. */
 static void MENU3DAndroidVideoMenuFixup(Menu *menu)
 {
     UIWidget *menu3dcont;
@@ -1419,9 +1426,17 @@ static adaptRow_s s_adaptRows[] = {
 
 #ifdef __ANDROID__
 /* Options the port DOES service, hidden only because the Android build's menus
-   were trimmed for touch.  The Linux build shows retail's rows for them. */
+   were trimmed for touch.  The Linux build shows retail's rows for them.
+
+   The video page's r_mode row is NOT in this table: MENU3DAndroidVideoMenuFixup
+   owns that row and turns it into the android_aspect selector, so disabling it
+   here (UIWidget::Disable hides) hides the very widget the fixup repurposes --
+   Menu::ShowMenu then skips the disabled widget on every open and the aspect
+   options never appear.  Only the resolution pulldown is named here, because
+   ShowMenu re-shows an enabled widget and would cancel the fixup's own per-open
+   hide of it. */
 static adaptRow_s s_adaptRowsAndroid[] = {
-    {"video",         "$$VideoMode$$",              "r_mode",                      "reslist",     NULL              },
+    {"video",         NULL,                         NULL,                          "reslist",     NULL              },
     {"video",         "$$FullScreen$$",             "r_fullscreen",                NULL,          NULL              },
     {"audio",         "$$SoundDriver$$",            "s_milesdriver",               "sounddriver", NULL              },
     {"GameOptions",   "$$DataRate$$",               "rate",                        NULL,          NULL              },
@@ -1436,11 +1451,58 @@ static const char *s_adaptBindWidgets[] = {
     "WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList",
     "WeaponBind",     "AttackLookBind",     "MovementBind",     "GameplayBind",
     "PressKey",
+    /* the bind table's own apparatus: header bar, command column, the two bind
+       buttons and the scrollbar -- templates the shipped Table names by string */
+    "bindHeader",     "bindcommand",        "bindbutton",       "bindbuttonalt",
+    "bindscroll",
 };
 #endif /* __ANDROID__ */
 
-static void AdaptHideRow(UIWidget *container, const adaptRow_s *row)
+/* The main menu's version corner.  The shipped file keeps its bytes: its own
+   version label is commented out and linked to `shortversion', which this port
+   answers with its own number, so the corner is built here from that cvar and
+   reads the same source the startup banner prints. */
+static void UI_VersionCornerLabel(UIWidget *container)
 {
+    static const char versionName[] = "pef2version";
+    UIWidget         *wid;
+
+    wid = container->FindWidget(versionName);
+    if (!wid) {
+        const char *translated = uii.Client_TranslateWidgetName("Label");
+        str         classname  = "UI";
+        ClassDef   *widgetclass;
+
+        classname += translated ? translated : "Label";
+        widgetclass = getClass(classname.c_str());
+        if (!widgetclass) {
+            return;
+        }
+
+        wid = (UIWidget *)widgetclass->newInstance();
+        if (!wid) {
+            return;
+        }
+
+        wid->InitFrame(container, 10, 464, 160, 14, -1, "serpentinelight-10");
+        wid->setName(str(versionName));
+    }
+
+    {
+        cvar_t *ver = uii.Cvar_Find("shortversion");
+        str     title = "P:EF2 ";
+
+        if (ver && ver->string[0]) {
+            title += ver->string;
+        } else {
+            title += "?";
+        }
+
+        wid->setTitle(title);
+    }
+}
+
+static void AdaptHideRow(UIWidget *container, const adaptRow_s *row) {
     Container<UIWidget *>& children = container->getChildren();
     str                    title;
     int                    i;
@@ -1692,6 +1754,10 @@ void UI_AdaptSettingsMenus(void)
             }
         }
 
+        if (!stricmp(container->getName(), "main")) {
+            UI_VersionCornerLabel(container);
+        }
+
 #ifdef __ANDROID__
         for (j = 0; j < (int)(sizeof(s_adaptRowsAndroid) / sizeof(s_adaptRowsAndroid[0])); j++) {
             if (!stricmp(container->getName(), s_adaptRowsAndroid[j].menu)) {
@@ -1710,6 +1776,12 @@ void UI_AdaptSettingsMenus(void)
 
 #ifdef __ANDROID__
         if (!stricmp(container->getName(), "controls")) {
+            /* The shipped page carries its own menu-level showcommand, which
+               re-enables WeaponBindList every time the page opens
+               (menu_controls.urc) -- exactly what defeats the hide below.  The
+               touch build owns this page, so its bind-tab commands do not run. */
+            container->ClearShowCommands();
+
             AdaptHideNamed(container, s_adaptBindWidgets,
                            (int)(sizeof(s_adaptBindWidgets) / sizeof(s_adaptBindWidgets[0])));
             AdaptTouchSection(container);

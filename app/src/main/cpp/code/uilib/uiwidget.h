@@ -517,6 +517,7 @@ public:
     virtual void       LinkCvar(str cvarname);
     void               LinkCommand(str cmd);
     void               ExecuteShowCommands(void);
+    void               ClearShowCommands(void);
     void               ExecuteHideCommands(void);
     void               ExecutePushCommands(void);
     void               ExecutePopCommands(void);
