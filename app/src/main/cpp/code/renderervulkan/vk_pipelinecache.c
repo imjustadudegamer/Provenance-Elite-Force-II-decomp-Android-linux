@@ -42,6 +42,39 @@ root, for more details.
 #define VK_PCACHE_HEADER_BYTES 40
 #define VK_PCACHE_MAX_BYTES (32u * 1024u * 1024u)
 
+/* The load's own crash marker, the same shape as tr_init.c's VK_SAFE_MODE_MARKER:
+   armed before the one call that can die inside the driver, cleared when it
+   returns.  Present at the next launch means the parse killed the process. */
+#define VK_PCACHE_LOAD_MARKER ".vk_pcache_load"
+#define VK_PCACHE_DEAD_MARKER ".vk_pcache_dead"
+
+static qboolean VK_PCache_MarkerPresent( const char *name )
+{
+	return ( ri.FS_FileExists && ri.FS_FileExists( name ) ) ? qtrue : qfalse;
+}
+
+static void VK_PCache_MarkerWrite( const char *name )
+{
+	fileHandle_t f;
+
+	if ( !ri.FS_OpenFileWrite ) {
+		return;
+	}
+
+	f = ri.FS_OpenFileWrite( name );
+	if ( f ) {
+		ri.FS_Write( "1", 1, f );
+		ri.FS_CloseFile( f );
+	}
+}
+
+static void VK_PCache_MarkerClear( const char *name )
+{
+	if ( ri.FS_RemoveHomeData ) {
+		ri.FS_RemoveHomeData( name );
+	}
+}
+
 typedef struct {
 	uint32_t magic;
 	uint32_t version;
@@ -75,21 +108,42 @@ qboolean VK_PipelineCache_Open( void )
 	homeCvar = ri.Cvar_Get( "fs_homepath", "", 0 );
 	home = homeCvar ? homeCvar->string : NULL;
 
-	/* Feed saved data back only behind the explicit opt-in.  Mesa's ANV
-	   25.2.8 segfaults inside vkCreatePipelineCache parsing a blob the same
-	   driver produced and saved (gdb: memcpy from libvulkan_intel under
-	   VK_PipelineCache_Open, fault at blob+0x51010 on every reopen -- the
-	   configure tab's vid restart hit it too), while a blob written by an
-	   older build opened fine, so the parse is not trustworthy even for
-	   self-produced data.  Cold start costs pipeline compiles once per
-	   boot; the save path below keeps collecting data for a driver that
-	   can parse its own output. */
+	/* Loaded by default on the phone, opt-in on the desktop.  Mesa's ANV 25.2.8
+	   segfaults inside vkCreatePipelineCache parsing a blob it saved itself
+	   (memcpy from libvulkan_intel, fault at blob+0x51010 on every reopen), so
+	   the marker below turns that from a repeat into a one-boot cost; the
+	   phone's pipeline compiles are the slow leg of a cold boot. */
+#ifdef __ANDROID__
+	loadCvar = ri.Cvar_Get( "r_vkPipelineCacheLoad", "1", 0 );
+#else
 	loadCvar = ri.Cvar_Get( "r_vkPipelineCacheLoad", "0", 0 );
+#endif
 
 	if ( home && home[0] && loadCvar->integer ) {
 		snprintf( path, sizeof( path ), "%s/%s", home, VK_PCACHE_FILE );
 		fh = fopen( path, "rb" );
 	} else {
+		path[0] = '\0';
+		fh = NULL;
+	}
+
+	/* A load that killed the last bring-up accuses its blob: drop it and retire
+	   the load for this install, so the next boot compiles cold and the save
+	   below writes a blob this device will not be asked to parse again. */
+	if ( VK_PCache_MarkerPresent( VK_PCACHE_LOAD_MARKER ) ) {
+		VK_Guard_Row( "VK:pcache", "status=load-crashed marker=%s blob-removed=%d",
+					  VK_PCACHE_LOAD_MARKER, home && home[0] ? 1 : 0 );
+		VK_PCache_MarkerClear( VK_PCACHE_LOAD_MARKER );
+		if ( home && home[0] ) {
+			VK_PCache_MarkerWrite( VK_PCACHE_DEAD_MARKER );
+			VK_PCache_MarkerClear( VK_PCACHE_FILE );
+		}
+		path[0] = '\0';
+		fh = NULL;
+	} else if ( VK_PCache_MarkerPresent( VK_PCACHE_DEAD_MARKER ) ) {
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:pcache", "status=load-retired marker=%s", VK_PCACHE_DEAD_MARKER );
+		}
 		path[0] = '\0';
 		fh = NULL;
 	}
@@ -119,7 +173,17 @@ qboolean VK_PipelineCache_Open( void )
 		fclose( fh );
 	}
 
+	/* the parse is the only step that has ever died inside a driver, so the
+	   marker covers exactly it */
+	if ( createInfo.initialDataSize ) {
+		VK_PCache_MarkerWrite( VK_PCACHE_LOAD_MARKER );
+	}
+
 	result = qvk.CreatePipelineCache( vk.device, &createInfo, NULL, &vk.pipelineCache );
+
+	if ( createInfo.initialDataSize ) {
+		VK_PCache_MarkerClear( VK_PCACHE_LOAD_MARKER );
+	}
 
 	if ( result != VK_SUCCESS ) {
 		VK_Guard_Hit( VK_GSITE_ALLOC, "vkCreatePipelineCache", result );

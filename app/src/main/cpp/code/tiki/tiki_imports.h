@@ -37,7 +37,7 @@ extern "C" {
     int  TIKI_ReadFileEx(const char *qpath, void **buffer, qboolean quiet);
 
     int  TIKI_SkelRollStart( void );
-    void TIKI_SkelRollRead( int bytes, int ms );
+    void TIKI_SkelRollRead( int bytes, int ms, const char *path );
     void TIKI_SkelRollEnd( int t0 );
 
     int  TIKI_Millis( void );

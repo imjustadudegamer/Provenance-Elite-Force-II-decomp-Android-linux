@@ -869,14 +869,14 @@ skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
 
     r0 = Com_Milliseconds();
     iBuffLength = TIKI_ReadFileEx(npath, (void **)&buffer, qtrue);
-    TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0);
+    TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0, npath);
     if (iBuffLength > 0) {
         finishedHeader = skeletor_c::LoadProcessedAnim(npath, buffer, iBuffLength, path);
         TIKI_FreeFile(buffer);
     } else {
         r0 = Com_Milliseconds();
         iBuffLength = TIKI_ReadFileEx(path, (void **)&pHeader, qtrue);
-        TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0);
+        TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0, path);
         if (iBuffLength <= 0) {
             Com_DPrintf("Skeletor CacheAnimSkel: Could not open binary file %s\n", path);
             return NULL;
@@ -970,6 +970,15 @@ qboolean SkeletorCacheEntryLoaded(int index)
     }
 
     return m_cachedData[index].data != NULL;
+}
+
+int SkeletorCacheEntryUsers(int index)
+{
+    if (index < 0 || index >= m_numInCache) {
+        return 0;
+    }
+
+    return m_cachedData[index].numusers;
 }
 
 int SkeletorCacheEntrySize(int index)
@@ -1118,6 +1127,30 @@ int TIKI_RegisterAnim(const char *path, qboolean use)
 void TIKI_CacheAnim(const char *path)
 {
     TIKI_RegisterAnim(path, qtrue);
+}
+
+/* Retail TIKI_RegisterTiki @0x000FC900:76-83 re-registers a warm alias whose
+   entry has no data or no users -- numusers is what carries the entry through
+   SkeletorCacheCleanCache, so skipping it hands the level's own animations to
+   the next unload.  Only a RESIDENT entry is re-registered: a resident slot is
+   still owned by its own path, a dropped slot may name another path, and an
+   unloaded alias keeps its paging-by-index shape. */
+int TIKI_Anim_RetainAlias(int alias)
+{
+    if (alias < 0 || alias >= MAX_TIKI_ALIASES) {
+        return alias;
+    }
+
+    if (SkeletorCacheEntryLoaded(alias)) {
+        if (!SkeletorCacheEntryUsers(alias)) {
+            return TIKI_RegisterAnim(SkeletorCacheEntryPath(alias), qtrue);
+        }
+
+        return alias;
+    }
+
+    SkeletorCacheGetData(alias);
+    return alias;
 }
 
 void TikiAddToBounds(dtikianim_t *tiki, SkelVec3 *newBounds)

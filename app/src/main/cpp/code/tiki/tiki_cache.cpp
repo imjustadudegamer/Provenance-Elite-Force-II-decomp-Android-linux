@@ -316,7 +316,8 @@ int TIKI_RegisterTiki(const char *path)
                 int j;
 
                 for (j = 0; j < s_tikis[i].tiki->a->num_anims; j++) {
-                    SkeletorCacheGetData(s_tikis[i].tiki->a->m_aliases[j]);
+                    s_tikis[i].tiki->a->m_aliases[j] =
+                        TIKI_Anim_RetainAlias(s_tikis[i].tiki->a->m_aliases[j]);
                 }
             }
 
