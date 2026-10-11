@@ -977,8 +977,17 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		return qtrue;
 	}
 
+	/* Both halves are reserved before a vertex is written: a surface whose index
+	   half does not fit is skipped whole, and reserving the vertex half first
+	   left its written vertices stranded in the ring on that path. */
+	ringIndexes = VK_VertexRing_ReserveIndexes( tess.numIndexes, &indexBase );
+	if ( !ringIndexes ) {
+		return qfalse;
+	}
+
 	ringVerts = VK_VertexRing_Reserve( tess.numVertexes, &vertexBase );
 	if ( !ringVerts ) {
+		VK_VertexRing_RollBack( 0, tess.numIndexes );
 		return qfalse;
 	}
 
@@ -1000,11 +1009,6 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 			ringVerts[i].color[2] = colors[i][2];
 			ringVerts[i].color[3] = colors[i][3];
 		}
-	}
-
-	ringIndexes = VK_VertexRing_ReserveIndexes( tess.numIndexes, &indexBase );
-	if ( !ringIndexes ) {
-		return qfalse;
 	}
 
 	memcpy( ringIndexes, tess.indexes, (size_t)tess.numIndexes * sizeof( vkIndex_t ) );

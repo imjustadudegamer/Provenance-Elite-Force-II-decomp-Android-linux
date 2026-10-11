@@ -86,6 +86,11 @@ const char *JobPool_Name( void );
 
 void JobPool_BeginBatch( void );
 void JobPool_Add( void ( *fn )( void *ctx, int begin, int end ), void *ctx, int begin, int end );
+/* qfalse when the batch table refused the range, which means the range has NOT
+   run; a caller that cares runs it itself.  JobPool_Add is the fire-and-forget
+   form and keeps its historical signature. */
+qboolean JobPool_AddChecked( void ( *fn )( void *ctx, int begin, int end ), void *ctx,
+							 int begin, int end );
 void JobPool_RunAndWait( void );
 
 void JobPool_ParallelRange( int count, int minChunk,
@@ -99,11 +104,14 @@ typedef void ( *JobPoolPrint )( const char *fmt, ... );
 qboolean JobPool_SelfTest( JobPoolPrint print );
 
 typedef struct jobpoolStats_s {
-	int			workers;			
-	int			batches;			
-	int			inlineCalls;		
-	long long	parallelElements;	
-	long long	inlineElements;		
+	int			workers;
+	int			batches;
+	int			inlineCalls;
+	/* ranges the batch table refused; each one is a range the caller's output
+	   would have been missing until the caller runs it itself */
+	int			droppedRanges;
+	long long	parallelElements;
+	long long	inlineElements;
 } jobpoolStats_t;
 
 void JobPool_GetStats( jobpoolStats_t *out );

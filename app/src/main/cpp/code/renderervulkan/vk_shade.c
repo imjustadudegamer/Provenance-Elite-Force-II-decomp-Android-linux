@@ -2289,6 +2289,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	vkStreamVertex_t	*verts;
 	vkIndex_t			*idx;
 	int					base = 0, indexBase = 0;
+	int					tessSlots;
 	VkCommandBuffer		cmd;
 	long long			walkT0;
 
@@ -2332,8 +2333,25 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 	}
 
 	walkT0 = VK_WALK_T0();
-	/* the shade vertex is wider than the 2D tess slot: reserve bytes */
-	if ( !VK_VertexRing_ReserveBytes( input->numVertexes * VK_STREAM_STRIDE, &base ) ) {
+	/* Both halves are reserved before a byte is packed: a surface whose index
+	   half does not fit is skipped whole, and reserving the vertex half first
+	   left its packed bytes stranded in the ring on that path.  tessSlots is the
+	   reservation expressed in ring slots, so the rollback hands back exactly
+	   what ReserveBytes took (a multiple of the slot size rounds to itself). */
+	tessSlots = ( input->numVertexes * VK_STREAM_STRIDE + VK_TESS_VERTEX_BYTES - 1 )
+				/ VK_TESS_VERTEX_BYTES;
+	if ( indexes ) {
+		idx = VK_VertexRing_ReserveIndexes( numIndexes, &indexBase );
+		if ( !idx ) {
+			VK_WALK_ADD( walkT0, VK_WP_PACK );
+			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
+			return;
+		}
+	}
+	if ( !VK_VertexRing_ReserveBytes( tessSlots * VK_TESS_VERTEX_BYTES, &base ) ) {
+		if ( indexes ) {
+			VK_VertexRing_RollBack( 0, numIndexes );
+		}
 		VK_WALK_ADD( walkT0, VK_WP_PACK );
 		VK_Guard_Hit( VK_GSITE_ALLOC, "tess ring exhausted", VK_INCOMPLETE );
 		return;
@@ -2363,12 +2381,6 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		JobPool_ParallelRange( input->numVertexes, VK_PACK_CHUNK, VK_Stream_PackRange, &packCtx );
 	}
 	if ( indexes ) {
-		idx = VK_VertexRing_ReserveIndexes( numIndexes, &indexBase );
-		if ( !idx ) {
-			VK_WALK_ADD( walkT0, VK_WP_PACK );
-			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
-			return;
-		}
 		memcpy( idx, indexes, numIndexes * sizeof( vkIndex_t ) );
 	}
 	VK_WALK_ADD( walkT0, VK_WP_PACK );

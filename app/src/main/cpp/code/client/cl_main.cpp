@@ -2185,9 +2185,9 @@ static void CL_JobPoolStats_f( void ) {
 
 	JobPool_GetStats( &st );
 	Com_Printf( "jobpoolstats: %s %i workers | %i batches, %lld elements parallel; "
-		"%i inline calls, %lld elements inline\n",
+		"%i inline calls, %lld elements inline; %i ranges refused\n",
 		JobPool_Name(), st.workers, st.batches, st.parallelElements,
-		st.inlineCalls, st.inlineElements );
+		st.inlineCalls, st.inlineElements, st.droppedRanges );
 }
 
 void CL_Init( void ) {
