@@ -952,6 +952,25 @@ void VK_PerfFpsRow( void )
 				   (double)srfPart[VK_WSS_BATCHE] / perSurf,
 				   (double)srfPart[VK_WSS_BEGIN] / perSurf,
 				   (double)srfOther / perSurf );
+
+		/* The pool the walk's parallel ranges actually ran on.  This module
+		   compiles q_jobs.c for itself (cmake/renderer_common.cmake), so its
+		   pool is not the client's and the row is the only place the name, the
+		   worker count and the refused-range count are readable in this lane --
+		   the GLES3 twin's [MT] row and CL_JobPoolStats_f both answer a
+		   different module.  refused>0 names a batch whose ranges were not all
+		   queued, which is the one shape that loses vertex work. */
+		{
+			jobpoolStats_t	st;
+
+			JobPool_GetStats( &st );
+			ri.Printf( PRINT_ALL,
+					   "[PERF:jobs] win=%dms pool=%s workers=%d batches=%lld parallel=%lld "
+					   "inline=%lld calls=%d refused=%d r_smp=%d\n",
+					   now - t0, JobPool_Name(), st.workers,
+					   ( long long )st.batches, st.parallelElements, st.inlineElements,
+					   st.inlineCalls, st.droppedRanges, vk.smpActive ? 1 : 0 );
+		}
 	}
 
 	frames = 0;

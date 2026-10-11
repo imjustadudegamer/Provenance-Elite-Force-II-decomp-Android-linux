@@ -118,29 +118,23 @@ static int SDLCALL JobPool_Worker( void *arg ) {
 }
 
 void JobPool_InitCritical( const char *name, int requestedWorkers ) {
-	int workers;
-
 	jobs_pool.critical = 1;
 
-	/* The pool is a process-wide singleton and the client starts it first
-	   (CL_Init before the renderer loads), so a plain Init here would return on
-	   `started' and the walk's parallel ranges would spend their whole life on
-	   the client's smaller share of the core headroom.  Taking the pool over is
-	   safe at this seam: the renderer is initialising, no frame has run, and no
-	   batch is in flight. */
-	JobPool_SplitWorkers( SDL_GetCPUCount(),
-#ifdef __ANDROID__
-						  1,
-#else
-						  0,
-#endif
-						  requestedWorkers, 1, &workers );
-
-	if ( jobs_pool.started && JobPool_NumWorkers() == workers ) {
+	/* One private instance per module (q_jobs.h T2): this jobs_pool is the
+	   calling module's own, so a client pool that started earlier never set
+	   `started' here and there is no client pool to take over.  A pool that IS
+	   already running is adopted, never rebuilt: JobPool_Shutdown zeroes
+	   numJobs/nextJob/pending without the producer lock, so a caller sitting
+	   inside JobPool_ParallelRange would reach RunAndWait with numJobs 0, run a
+	   batch of zero ranges and lose every one of them -- and a caller still in
+	   its Add loop would write over the reset cursor, running some ranges twice
+	   and not at all.  RE_Shutdown joins the walk and stops the pool first, so
+	   a restart that does want a new worker count goes through Shutdown on a
+	   quiesced seam and keeps that path. */
+	if ( jobs_pool.started ) {
 		return;
 	}
 
-	JobPool_Shutdown();
 	JobPool_Init( name, requestedWorkers );
 }
 
@@ -260,17 +254,30 @@ void JobPool_BeginBatch( void ) {
 	jobs_pool.pending = 0;
 }
 
-void JobPool_Add( void ( *fn )( void *ctx, int begin, int end ), void *ctx, int begin, int end ) {
+qboolean JobPool_AddChecked( void ( *fn )( void *ctx, int begin, int end ), void *ctx,
+							 int begin, int end ) {
 	job_t *job;
 
-	if ( !fn || jobs_pool.numJobs >= JOBPOOL_MAX_JOBS ) {
-		return;		
+	if ( !fn ) {
+		return qfalse;
+	}
+	if ( jobs_pool.numJobs >= JOBPOOL_MAX_JOBS ) {
+		/* A refused range has not run and would never run: count it, so the
+		   caller that checks can run the range itself instead of silently
+		   losing the output it covers. */
+		jobs_stats.droppedRanges++;
+		return qfalse;
 	}
 	job = &jobs_pool.jobs[ jobs_pool.numJobs++ ];
 	job->fn = fn;
 	job->ctx = ctx;
 	job->begin = begin;
 	job->end = end;
+	return qtrue;
+}
+
+void JobPool_Add( void ( *fn )( void *ctx, int begin, int end ), void *ctx, int begin, int end ) {
+	JobPool_AddChecked( fn, ctx, begin, end );
 }
 
 void JobPool_RunAndWait( void ) {
@@ -299,7 +306,7 @@ void JobPool_RunAndWait( void ) {
 
 void JobPool_ParallelRange( int count, int minChunk,
 							void ( *fn )( void *ctx, int begin, int end ), void *ctx ) {
-	int chunks, per, i;
+	int chunks, per, i, ranInline = 0;
 
 	if ( !fn || count <= 0 ) {
 		return;
@@ -342,9 +349,21 @@ void JobPool_ParallelRange( int count, int minChunk,
 		if ( begin >= end ) {
 			break;
 		}
-		JobPool_Add( fn, ctx, begin, end );
+		if ( !JobPool_AddChecked( fn, ctx, begin, end ) ) {
+			/* The table is full, so this range is not queued: run it here.  The
+			   contract makes the chunks disjoint, so the producer thread running
+			   one of them beside the queued ones is the same set of writes, and
+			   it still finishes before RunAndWait joins the batch.  Dropping it
+			   would leave exactly the elements the range covers unupdated. */
+			jobs_stats.inlineCalls++;
+			jobs_stats.inlineElements += end - begin;
+			ranInline = 1;
+			fn( ctx, begin, end );
+		}
 	}
-	if ( jobs_pool.numJobs == 0 ) {
+	/* Nothing queued and something already run: the batch is done, so the
+	   whole-range fallback below would run those chunks a second time. */
+	if ( jobs_pool.numJobs == 0 && !ranInline ) {
 		JobPool_RunAndWait();
 		jobs_stats.inlineCalls++;
 		jobs_stats.inlineElements += count;
@@ -491,6 +510,16 @@ void JobPool_Add( void ( *fn )( void *ctx, int begin, int end ), void *ctx, int 
 	( void ) ctx;
 	( void ) begin;
 	( void ) end;
+}
+
+qboolean JobPool_AddChecked( void ( *fn )( void *ctx, int begin, int end ), void *ctx,
+							 int begin, int end ) {
+	( void ) ctx;
+	( void ) begin;
+	( void ) end;
+	/* No table exists to refuse the range, so the caller's own inline loop is
+	   the only thing that will ever run it. */
+	return ( fn != NULL ) ? qtrue : qfalse;
 }
 
 void JobPool_RunAndWait( void ) {

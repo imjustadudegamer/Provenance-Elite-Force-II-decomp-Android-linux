@@ -268,15 +268,18 @@ void RB_2D_SpanGet( int i, int *firstIndex, int *count, float *ortho, int *win, 
 }
 
 /* One 2D batch quad is about to be appended: the state in force is the state it
-   is authored under, and a change of state opens the next span.  A run whose
-   state cannot be named at all is marked unnameable, and the draw then falls
-   back to the batch-wide state the change itself leaves, as before. */
-static void RB_2D_SpanQuad( void ) {
+   is authored under, and a change of state opens the next span.  Returns qfalse
+   when the span table is full, in which case the batch is still intact and the
+   caller closes it before writing this quad -- the same arm its own tess
+   overflow takes.  A run whose state cannot be named at all is marked
+   unnameable, and the draw then falls back to the batch-wide state the change
+   itself leaves, as before. */
+static qboolean RB_2D_SpanQuad( void ) {
 	float	ortho[16];
 	int		win[4], scn[4];
 
 	if ( s_2dSpanUnnamed ) {
-		return;
+		return qtrue;
 	}
 	/* The mirrors are cheap to compare and the common case is unchanged state:
 	   the full fetch (24 values) runs only when a span would actually open.
@@ -285,32 +288,51 @@ static void RB_2D_SpanQuad( void ) {
 	if ( s_2dSpanCount > 0 && s_2dSpanCount < RB_2D_SPAN_MAX
 		 && !memcmp( vk_2dWindow, s_2dSpanWin[s_2dSpanCount - 1], sizeof( win ) )
 		 && !memcmp( vk_2dScissor, s_2dSpanScn[s_2dSpanCount - 1], sizeof( scn ) ) ) {
-		return;
+		return qtrue;
 	}
-	if ( !VK_Draw_2DStateGet( ortho, win, scn ) || s_2dSpanCount >= RB_2D_SPAN_MAX ) {
+	if ( !VK_Draw_2DStateGet( ortho, win, scn ) ) {
+		/* no 2D state is in force at all, so there is nothing to name and
+		   nothing a reopen would name either: the batch keeps the fallback */
 		s_2dSpanCount = 0;
 		s_2dSpanUnnamed = qtrue;
-		/* the batch now draws under the command buffer's own scissor, which is
-		   some other widget's clip: a whole run can vanish and nothing would
-		   say why.  Name it, and say which of the two ways it was lost. */
 		{
 			static int	s_rows;
 
 			if ( R_ProbeStatsOn() && s_rows < 16 ) {
-				VK_Guard_Row( "VK:2dspan", "unnamed batch shader='%s' reason=%s states=%d f=%d",
+				VK_Guard_Row( "VK:2dspan", "unnamed batch shader='%s' reason=no-2d-state "
+										   "states=0 verts=%d idx=%d f=%d",
 							  tess.shader ? tess.shader->name : "?",
-							  VK_Draw_2DStateGet( ortho, win, scn ) ? "span-table-full"
-																	: "no-2d-state",
-							  s_2dSpanCount, RB_FrameCount() );
+							  tess.numVertexes, tess.numIndexes, RB_FrameCount() );
 				s_rows++;
 			}
 		}
-		return;
+		return qtrue;
+	}
+	if ( s_2dSpanCount >= RB_2D_SPAN_MAX ) {
+		/* Every span so far still carries the state its own quads were authored
+		   under, so closing the batch here draws them correctly and the quads
+		   after it reopen with a fresh table.  The old fallback marked the whole
+		   batch unnamed, which drew it under the command buffer's scissor --
+		   some other widget's clip, and the shape that landed a tricorder page
+		   in a strip. */
+		{
+			static int	s_rows;
+
+			if ( R_ProbeStatsOn() && s_rows < 16 ) {
+				VK_Guard_Row( "VK:2dspan", "span-table-full shader='%s' states=%d "
+										   "verts=%d idx=%d f=%d",
+							  tess.shader ? tess.shader->name : "?",
+							  s_2dSpanCount, tess.numVertexes, tess.numIndexes,
+							  RB_FrameCount() );
+				s_rows++;
+			}
+		}
+		return qfalse;
 	}
 	if ( s_2dSpanCount > 0
 		 && !memcmp( win, s_2dSpanWin[s_2dSpanCount - 1], sizeof( win ) )
 		 && !memcmp( scn, s_2dSpanScn[s_2dSpanCount - 1], sizeof( scn ) ) ) {
-		return;					/* same state: the open span takes this quad */
+		return qtrue;			/* same state: the open span takes this quad */
 	}
 
 	s_2dSpanFirst[s_2dSpanCount] = tess.numIndexes;
@@ -318,6 +340,7 @@ static void RB_2D_SpanQuad( void ) {
 	memcpy( s_2dSpanWin[s_2dSpanCount], win, sizeof( win ) );
 	memcpy( s_2dSpanScn[s_2dSpanCount], scn, sizeof( scn ) );
 	s_2dSpanCount++;
+	return qtrue;
 }
 
 /* The walk is about to apply a new 2D state with the batch still open.  Every
@@ -504,8 +527,20 @@ static void RB_2D_BatchQuad( shader_t *shader, const float (*xy)[2], const float
 	}
 
 	/* The state in force is the state this quad is authored under, and it is
-	   recorded here, at the writer, before a single vertex exists. */
-	RB_2D_SpanQuad();
+	   recorded here, at the writer, before a single vertex exists.  A full span
+	   table closes the batch here, so every quad already queued draws under its
+	   own state and this one opens a fresh table instead of joining a batch the
+	   draw would have to guess at. */
+	if ( !RB_2D_SpanQuad() ) {
+		RB_2D_Flush();
+		RB_BeginSurface( shader, 0 );
+		s_2dBatchOpen   = qtrue;
+		s_2dBatchShader = shader;
+		s_2dBatchVerts  = 0;
+		RB_2D_SpanReset();
+
+		RB_2D_SpanQuad();
+	}
 
 	b = tess.numVertexes;
 
