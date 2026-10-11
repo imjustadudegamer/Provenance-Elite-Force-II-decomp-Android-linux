@@ -50,6 +50,7 @@ extern "C" {
 
     int TIKI_RegisterAnim(const char *path, qboolean use);
     void TIKI_CacheAnim(const char *path);
+    int  TIKI_Anim_RetainAlias(int alias);
 
 #ifdef __cplusplus
     bool SkeletorCacheFindFilename(const char *path, int *indexPtr);
@@ -68,6 +69,7 @@ extern "C" {
     int         SkeletorCacheNumEntries(void);
     const char *SkeletorCacheEntryPath(int index);
     qboolean    SkeletorCacheEntryLoaded(int index);
+    int         SkeletorCacheEntryUsers(int index);
     int         SkeletorCacheEntrySize(int index);
 
 #ifdef __cplusplus

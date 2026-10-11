@@ -81,9 +81,53 @@ typedef struct {
     int      bytes;
     int      readMs;
     int      convMs;
-    int      misses;
+    int      distinct;
+    int      repeats;
     int      rollAt;
 } tikiSkelRoll_t;
+
+/* Paths this process already paged in, by name hash.  A collision can hide a
+   repeat and never invent one, so repeat= is a lower bound. */
+#define TIKI_SKEL_PATH_BUCKETS 8192
+
+static unsigned int tikiSkelPathSeen[TIKI_SKEL_PATH_BUCKETS];
+
+static unsigned long long TIKI_SkelPathHash( const char *path )
+{
+    unsigned long long h = 1469598103934665603ull;
+
+    while ( *path ) {
+        h ^= (unsigned char)*path++;
+        h *= 1099511628211ull;
+    }
+
+    h = ( h >> 32 ) ^ h;
+
+    return h ? h : 1;
+}
+
+/* qtrue when this path was paged in before; a first path is claimed here. */
+static qboolean TIKI_SkelPathRepeat( const char *path )
+{
+    unsigned int hash = (unsigned int)TIKI_SkelPathHash( path );
+    unsigned int slot = hash & ( TIKI_SKEL_PATH_BUCKETS - 1 );
+    int          probe;
+
+    for ( probe = 0; probe < TIKI_SKEL_PATH_BUCKETS; probe++ ) {
+        unsigned int at = ( slot + (unsigned int)probe ) & ( TIKI_SKEL_PATH_BUCKETS - 1 );
+
+        if ( !tikiSkelPathSeen[at] ) {
+            tikiSkelPathSeen[at] = hash;
+            return qfalse;
+        }
+
+        if ( tikiSkelPathSeen[at] == hash ) {
+            return qtrue;
+        }
+    }
+
+    return qtrue;
+}
 
 static tikiSkelRoll_t s_tikiSkel;
 
@@ -93,13 +137,23 @@ int TIKI_SkelRollStart( void )
     return Com_Milliseconds();
 }
 
-void TIKI_SkelRollRead( int bytes, int usec )
+void TIKI_SkelRollRead( int bytes, int usec, const char *path )
 {
     s_tikiSkel.bytes += bytes;
     s_tikiSkel.readMs += usec;
-    if ( !bytes ) {
-        s_tikiSkel.misses++;
+
+    /* The processed-anim pre-read reports zero by design: retail ships no
+       newanim/ directory (0 entries across the shipped paks), so a zero-length
+       first read is the fallback arm's entry, not a miss.  What the row needs
+       is whether this boot reads a path it already read. */
+    if ( bytes > 0 && path && path[0] ) {
+        if ( TIKI_SkelPathRepeat( path ) ) {
+            s_tikiSkel.repeats++;
+        } else {
+            s_tikiSkel.distinct++;
+        }
     }
+
     if ( !s_tikiSkel.rollAt ) {
         s_tikiSkel.rollAt = Com_Milliseconds();
     }
@@ -114,9 +168,9 @@ void TIKI_SkelRollEnd( int t0 )
     if ( !s_tikiSkel.rollAt || now - s_tikiSkel.rollAt < 1000 ) {
         return;
     }
-    Com_Printf( "[TIKI:skel] loads=%d bytes=%d read=%dms conv=%dms miss=%d win=%dms\n",
+    Com_Printf( "[TIKI:skel] loads=%d bytes=%d read=%dms conv=%dms distinct=%d repeat=%d win=%dms\n",
                 s_tikiSkel.loads, s_tikiSkel.bytes, s_tikiSkel.readMs, s_tikiSkel.convMs,
-                s_tikiSkel.misses, now - s_tikiSkel.rollAt );
+                s_tikiSkel.distinct, s_tikiSkel.repeats, now - s_tikiSkel.rollAt );
     memset( &s_tikiSkel, 0, sizeof( s_tikiSkel ) );
 }
 
