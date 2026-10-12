@@ -4117,10 +4117,7 @@ void UIRadarDialog::DrawBlips(void)
         re.ModelBounds(m_groundModel, mins, maxs);
         scale = RADAR_BOUNDS_SCALE * (maxs[0] - mins[0]);
     } else {
-        /* DrawRadar already stood down for a missing ground model; this pass
-           still needs a scale, and ModelBounds on handle 0 returns nothing
-           useful, so leave the blips at their authored distance instead of
-           scaling them by whatever an empty bounds read produced. */
+        /* no ground model: ModelBounds(0) is useless */
         scale = 1.0f;
     }
 
@@ -4265,14 +4262,7 @@ void UIRadarDialog::setShow(bool visible)
     m_complexMode = Cvar_Get("ui_radarmode", "0", 0)->integer;
 }
 
-/* ui_radarmode is the GAME's flag, not the UI's: cgame writes it from
-   PMF_RADAR_MODE every packet (cg_radar.cpp CG_UpdateRadarMode, called from
-   CG_AddPacketEntities), which is exactly how the operator swaps the tricorder
-   to the enhanced radar while the dialog is already on screen.  Reading it only
-   in setShow meant the latch was whatever the cvar held at the moment the
-   widget was shown, so the swap reached the cvar and stopped there -- the
-   enhanced radar never drew, or drew with the other mode's ground model and
-   background.  ui_radarviewmode already reads here every Draw; this joins it. */
+/* cgame rewrites ui_radarmode while the dialog is up, so read it per Draw */
 void UIRadarDialog::ReadRadarMode(void)
 {
     m_complexMode = Cvar_Get("ui_radarmode", "0", 0)->integer;

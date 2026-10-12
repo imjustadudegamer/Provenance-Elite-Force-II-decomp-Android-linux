@@ -67,17 +67,8 @@ void R_InitNextFrame( void ) {
 	backEndData = backEndDataBuf[tr.smpFrame];
 	backEndData->commands.used = 0;
 
-	/* The reference lane does both of these in its frame boundary
-	   (renderergles3/tr_cmds.c RE_BeginFrame) and this lane dropped them.  Six
-	   sites read tr.frameCount and none wrote it, so the counter sat at 0 for the
-	   whole session: the dynamic-lightmap throttle (tr_world.c lastUpdatedFrame)
-	   never armed, the image "used this frame" bookkeeping matched every frame,
-	   and the lens-flare state pool (tr_sun_flare.c) recycled nothing -- 128
-	   states allocated once and never returned, after which a new flare could
-	   not get one and simply did not draw.  tr.frameSceneNum is a per-frame
-	   counter in the reference too, reset here so a state keyed on it survives
-	   from one frame to the next; left cumulative, no state ever matched twice
-	   and every flare rebuilt itself every frame. */
+	/* the frame boundary owns both: tr.frameCount readers were stuck at 0 and
+	   tr.frameSceneNum never reset, so no per-frame state ever matched twice */
 	tr.frameCount++;
 	tr.frameSceneNum = 0;
 

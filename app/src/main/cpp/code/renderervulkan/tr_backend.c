@@ -2023,10 +2023,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
-	/* How far the front end had run ahead when this frame was handed over.  A
-	   non-zero row is the window the pre-fix code read through: every walk-side
-	   tr.refdef read was taking the NEXT frame's dlight count, sky alpha and
-	   view axis while this frame drew.  Silent unless qa_probe is armed. */
+	/* front end ahead of the handed-over frame: nonzero means the live reads raced */
 	if ( R_ProbeStatsOn() ) {
 		static int carryRows;
 
