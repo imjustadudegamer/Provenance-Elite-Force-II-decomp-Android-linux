@@ -351,7 +351,7 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 		vkProgram_t	*pSky = VK_BeginFamily( VKP_FAMILY_SKY, 1 );
 
 		VK_SetBaseColor4f( pSky, 1.0f, 1.0f, 1.0f, 1.0f );
-		VK_SetUniform1f( pSky, VK_U_SKYALPHA, tr.refdef.sky_alpha );
+		VK_SetUniform1f( pSky, VK_U_SKYALPHA, backEnd.refdef.sky_alpha );
 		VK_SetUniform1i( pSky, VK_U_SKYALPHAMODE, 0 );
 		VK_SetUniform2f( pSky, VK_U_SKYSCROLL, 0.0f, 0.0f );
 	}

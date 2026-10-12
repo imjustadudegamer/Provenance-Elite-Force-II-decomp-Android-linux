@@ -780,10 +780,11 @@ static void ComputeColors( shaderStage_t *pStage )
 		}
 		break;
 	case AGEN_SKYALPHA:
-		RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, tr.refdef.sky_alpha * 255.0);
+		/* frame-carry: the walk reads the record's refdef, never the live one */
+		RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, backEnd.refdef.sky_alpha * 255.0);
 		break;
 	case AGEN_ONE_MINUS_SKYALPHA:
-		RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, (1.0 - tr.refdef.sky_alpha) * 255.0);
+		RB_CalcAlphaFromConstant((unsigned char*)tess.svars.colors, (1.0 - backEnd.refdef.sky_alpha) * 255.0);
 		break;
 	case AGEN_SCOORD:
 		RB_CalcAlphaFromTexCoords(
@@ -1234,10 +1235,10 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 			break;
 		}
 
-		if (pStage->alphaGen == AGEN_SKYALPHA && tr.refdef.sky_alpha < 0.01) {
+		if (pStage->alphaGen == AGEN_SKYALPHA && backEnd.refdef.sky_alpha < 0.01) {
 			continue;
 		}
-		else if (pStage->alphaGen == AGEN_ONE_MINUS_SKYALPHA && tr.refdef.sky_alpha > 0.99) {
+		else if (pStage->alphaGen == AGEN_ONE_MINUS_SKYALPHA && backEnd.refdef.sky_alpha > 0.99) {
 			continue;
 		}
 
@@ -1539,7 +1540,7 @@ void RB_EndSurface( void ) {
 	VK_SrfPart_Open();
 	VK_Shade_BatchEnd();
 
-	if (!(tr.refdef.rdflags & RDF_NOWORLDMODEL) && !backEnd.in2D)
+	if (!(backEnd.refdef.rdflags & RDF_NOWORLDMODEL) && !backEnd.in2D)
 	{
 		if (r_showtris->integer && r_developer->integer) {
 			DrawTris(input, r_showtris->integer);

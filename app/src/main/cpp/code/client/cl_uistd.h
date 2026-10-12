@@ -585,6 +585,7 @@ public:
     void SetViewAngles(const vec3_t angles);
 
 private:
+    void ReadRadarMode(void);
     void DrawRadar(void);
     void DrawFov(void);
     void DrawBlips(void);

@@ -209,10 +209,11 @@ root, for more details.
 	"seta r_ext_nv_multisample_filter 1\n" \
 	"seta r_anisotropicFiltering 1\n" \
 	"seta r_lodCurveError 250\n" \
+	"seta r_lodScaleDistance 1.0\n" \
 	"seta r_light_simple 0\n" \
 	"seta r_light_simple_dist 5000\n"
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 
 
-#define EF2_ANDROID_DEFAULT_SETA_COUNT 64
+#define EF2_ANDROID_DEFAULT_SETA_COUNT 65

@@ -1512,9 +1512,11 @@ void VK_SetupViewUniforms( vkProgram_t *p )
 	VK_SetUniformMat4( p, VK_U_MVP, mvp );
 	VK_SetUniformMat4( p, VK_U_MODELMATRIX, mv );
 	VK_SetUniform3fv( p, VK_U_VIEWORIGIN, backEnd.viewParms.ori.origin );
-	VK_SetUniform3fv( p, VK_U_VIEWAXIS0, tr.refdef.viewaxis[0] );
+	/* frame-carry: the view axis and origin published to the shader come from
+	   the record's refdef; the live tr.refdef is already the next frame's */
+	VK_SetUniform3fv( p, VK_U_VIEWAXIS0, backEnd.refdef.viewaxis[0] );
 	VK_SetUniform3f( p, VK_U_LOCALVIEWORIGIN,
-						tr.refdef.vieworg[0], tr.refdef.vieworg[1], tr.refdef.vieworg[2] );
+						backEnd.refdef.vieworg[0], backEnd.refdef.vieworg[1], backEnd.refdef.vieworg[2] );
 
 	if ( backEnd.currentEntity )
 	{
@@ -2758,9 +2760,15 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 		return ( VkDeviceSize )-1;
 	}
 
+	/* the descriptor range is the whole slice, so zero past this draw's writes:
+	   an unset uniform must not read another draw's block */
+	if ( s_uboHighWater < VK_UBO_SIZE_PAD ) {
+		memset( s_ubo + s_uboHighWater, 0, (size_t)( VK_UBO_SIZE_PAD - s_uboHighWater ) );
+	}
+
 	if ( vk_shadeUboLastValid[slot]
 		 && ( !s_uboDirty
-			  || memcmp( s_ubo, vk_shadeUboShadow[slot], (size_t)s_uboHighWater ) == 0 ) ) {
+			  || memcmp( s_ubo, vk_shadeUboShadow[slot], (size_t)VK_UBO_SIZE_PAD ) == 0 ) ) {
 		VK_WalkStat_Count( VK_ELIDE_UBO );
 		return vk_shadeUboLast[slot];
 	}
@@ -2778,8 +2786,8 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 	vk_shadeUboNext[slot] = slice + 1;
 
 	offset = ( VkDeviceSize )slice * vk_shadeUboSliceBytes;
-	memcpy( vk_shadeUboMapped[slot] + offset, s_ubo, s_uboHighWater );
-	memcpy( vk_shadeUboShadow[slot], s_ubo, s_uboHighWater );
+	memcpy( vk_shadeUboMapped[slot] + offset, s_ubo, VK_UBO_SIZE_PAD );
+	memcpy( vk_shadeUboShadow[slot], s_ubo, VK_UBO_SIZE_PAD );
 	s_uboDirty = qfalse;
 	s_uboHighWater = VK_UBO_HIGHWATER_FLOOR;
 	vk_shadeUboLast[slot] = offset;
@@ -4594,10 +4602,10 @@ static int VK_Shade_ExpectedStages( char *detail, int detailBytes )
 		if ( !pStage ) {
 			break;
 		}
-		if ( pStage->alphaGen == AGEN_SKYALPHA && tr.refdef.sky_alpha < 0.01 ) {
+		if ( pStage->alphaGen == AGEN_SKYALPHA && backEnd.refdef.sky_alpha < 0.01 ) {
 			continue;
 		}
-		if ( pStage->alphaGen == AGEN_ONE_MINUS_SKYALPHA && tr.refdef.sky_alpha > 0.99 ) {
+		if ( pStage->alphaGen == AGEN_ONE_MINUS_SKYALPHA && backEnd.refdef.sky_alpha > 0.99 ) {
 			continue;
 		}
 		n++;
