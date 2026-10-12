@@ -943,10 +943,13 @@ static void MENU3DVideoMenuResolutionFixup(Menu *m)
    so retail's text is replaced in place rather than stacked beside: the pair is
    collapsed onto the first label, which is re-titled to the same string the
    startup banner prints, and the second is disabled.  Nothing is created; the
-   widget's own font, colours and border survive, because only the title and the
-   frame's width move (the corner string is wider than the 25 the file authored
-   for "EF2", and the label draws clipped to its own frame -- uiwidget.cpp
-   Rend_Scissor).  menu_main.urc keeps its bytes. */
+   widget's own font, colours and border survive.  The frame must move AND
+   re-justify: widgets draw centered in their own frame by default
+   (uiwidget.cpp), the label clips to its own frame (uiwidget.cpp Rend_Scissor),
+   and the banner string is wider than the 25 the file authored for "EF2" -- a
+   centered draw in a narrow frame loses both ends at the scissor.  Left
+   justification keeps the authored left edge as the anchor and the widened
+   frame just carries the string.  menu_main.urc keeps its bytes. */
 static void MENUVersionCornerFixup(Menu *m)
 {
     UIWidget *maincont;
@@ -977,13 +980,17 @@ static void MENUVersionCornerFixup(Menu *m)
             Event *rect = new Event(EV_Layout_Rect);
 
             mainw->setTitle(str("P:EF2 ") + PRODUCT_VERSION_FULL);
+            mainw->setFontHorizontalAlignment(FONT_JUSTHORZ_LEFT);
 
             /* the authored `rect' path, not setFrame: LayoutRect also re-latches
                m_startingpos, so a mid-session ChangeResolution re-derives the
-               widened frame instead of the 25 the file authored for "EF2". */
+               widened frame instead of the 25 the file authored for "EF2".  320
+               holds the longest banner string with room to spare; the draw is
+               left-justified, so the extra width stays empty rather than
+               shifting the text. */
             rect->AddFloat(20.0f);
             rect->AddFloat(455.0f);
-            rect->AddFloat(160.0f);
+            rect->AddFloat(320.0f);
             rect->AddFloat(16.0f);
             mainw->ProcessEvent(rect);
         }
