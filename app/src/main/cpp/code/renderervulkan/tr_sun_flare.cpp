@@ -147,12 +147,15 @@ void lens_flare::SetVect(const float *vect)
         vec3_t offset;
         vec3_t rot_offset;
 
-        VectorSubtract(vect, tr.refdef.sky_origin, offset);
-        VectorRotate(offset, tr.refdef.sky_axis, rot_offset);
-        VectorAdd(tr.refdef.vieworg, rot_offset, v);
+        /* frame-carry: R_DrawLensFlares runs on the walk, so the sky frame and
+           the view origin come from the record's refdef, not the live one the
+           front end is already refilling with the next frame's scene */
+        VectorSubtract(vect, backEnd.refdef.sky_origin, offset);
+        VectorRotate(offset, backEnd.refdef.sky_axis, rot_offset);
+        VectorAdd(backEnd.refdef.vieworg, rot_offset, v);
 
         VectorNormalize(offset);
-        VectorMA(tr.refdef.vieworg, 16384, offset, trace_v);
+        VectorMA(backEnd.refdef.vieworg, 16384, offset, trace_v);
     } else {
         VectorCopy(vect, v);
         VectorCopy(vect, trace_v);
@@ -644,7 +647,7 @@ bool sun_flare_class::SunCheckRay()
     mnode_t *pViewLeaf;
     trace_t  trace;
 
-    pViewLeaf = R_PointInLeaf(tr.refdef.vieworg);
+    pViewLeaf = R_PointInLeaf(backEnd.refdef.vieworg);
 
     if (pViewLeaf->area != -1) {
         ri.CM_BoxTrace(

@@ -770,7 +770,11 @@ void R_Sphere_SetupEntity()
 
 void RB_Static_SetupModel()
 {
-    RB_SetupStaticModelLighting(&tr.refdef, backEnd.currentStaticModel, backEnd.currentStaticModel->origin);
+    /* frame-carry: the walk's static-model lighting must read the record's
+       refdef -- the live tr.refdef is already the next frame's dlight set */
+    RB_SetupStaticModelLighting(
+        &backEnd.refdef, backEnd.currentStaticModel, backEnd.currentStaticModel->origin
+    );
 }
 
 void RB_Light_FullbrightSphere(unsigned char *colors)

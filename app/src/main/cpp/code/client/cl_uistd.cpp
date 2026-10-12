@@ -4113,9 +4113,15 @@ void UIRadarDialog::DrawBlips(void)
 
     if (m_groundModelBoundingSizeSet) {
         scale = m_groundModelBoundingSize;
-    } else {
+    } else if (m_groundModel) {
         re.ModelBounds(m_groundModel, mins, maxs);
         scale = RADAR_BOUNDS_SCALE * (maxs[0] - mins[0]);
+    } else {
+        /* DrawRadar already stood down for a missing ground model; this pass
+           still needs a scale, and ModelBounds on handle 0 returns nothing
+           useful, so leave the blips at their authored distance instead of
+           scaling them by whatever an empty bounds read produced. */
+        scale = 1.0f;
     }
 
     for (i = 0; i < m_numBlips; i++) {
@@ -4156,9 +4162,11 @@ void UIRadarDialog::DrawMissionObjectiveBlips(void)
 
     if (m_groundModelBoundingSizeSet) {
         scale = m_groundModelBoundingSize;
-    } else {
+    } else if (m_groundModel) {
         re.ModelBounds(m_groundModel, mins, maxs);
         scale = RADAR_BOUNDS_SCALE * (maxs[0] - mins[0]);
+    } else {
+        scale = 1.0f;
     }
 
     for (i = 0; i < m_numObjectiveBlips; i++) {
@@ -4257,6 +4265,19 @@ void UIRadarDialog::setShow(bool visible)
     m_complexMode = Cvar_Get("ui_radarmode", "0", 0)->integer;
 }
 
+/* ui_radarmode is the GAME's flag, not the UI's: cgame writes it from
+   PMF_RADAR_MODE every packet (cg_radar.cpp CG_UpdateRadarMode, called from
+   CG_AddPacketEntities), which is exactly how the operator swaps the tricorder
+   to the enhanced radar while the dialog is already on screen.  Reading it only
+   in setShow meant the latch was whatever the cvar held at the moment the
+   widget was shown, so the swap reached the cvar and stopped there -- the
+   enhanced radar never drew, or drew with the other mode's ground model and
+   background.  ui_radarviewmode already reads here every Draw; this joins it. */
+void UIRadarDialog::ReadRadarMode(void)
+{
+    m_complexMode = Cvar_Get("ui_radarmode", "0", 0)->integer;
+}
+
 void UIRadarDialog::Draw(void)
 {
     vec3_t   angles;
@@ -4266,6 +4287,8 @@ void UIRadarDialog::Draw(void)
     int      viewMode;
 
     VectorCopy(m_viewAngles, angles);
+
+    ReadRadarMode();
 
     if (m_complexMode) {
         viewMode      = Cvar_Get("ui_radarviewmode", "0", CVAR_ARCHIVE)->integer;

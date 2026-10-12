@@ -2023,6 +2023,27 @@ const void	*RB_DrawSurfs( const void *data ) {
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
+	/* How far the front end had run ahead when this frame was handed over.  A
+	   non-zero row is the window the pre-fix code read through: every walk-side
+	   tr.refdef read was taking the NEXT frame's dlight count, sky alpha and
+	   view axis while this frame drew.  Silent unless qa_probe is armed. */
+	if ( R_ProbeStatsOn() ) {
+		static int carryRows;
+
+		if ( cmd->refdef.num_dlights != tr.refdef.num_dlights
+			|| cmd->refdef.sky_alpha != tr.refdef.sky_alpha
+			|| cmd->refdef.rdflags != tr.refdef.rdflags ) {
+			if ( PROBE_Throttle( &carryRows, 8, 600 ) ) {
+				VK_Guard_Row( "VK:refdefcarry",
+							  "front end ahead dlive=%d drec=%d skylive=%.3f skyrec=%.3f "
+							  "rflive=%d rfrec=%d f=%d",
+							  tr.refdef.num_dlights, cmd->refdef.num_dlights,
+							  tr.refdef.sky_alpha, cmd->refdef.sky_alpha,
+							  tr.refdef.rdflags, cmd->refdef.rdflags, RB_FrameCount() );
+			}
+		}
+	}
+
 	backEnd.pc.c_surfaces += 0;
 
 	VK_Shade_NoteSurfCmds( cmd->numDrawSurfs );
