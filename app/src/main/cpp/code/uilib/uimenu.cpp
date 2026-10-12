@@ -982,16 +982,22 @@ static void MENUVersionCornerFixup(Menu *m)
             mainw->setTitle(str("P:EF2 ") + PRODUCT_VERSION_FULL);
             mainw->setFontHorizontalAlignment(FONT_JUSTHORZ_LEFT);
 
-            /* the authored `rect' path, not setFrame: LayoutRect also re-latches
-               m_startingpos, so a mid-session ChangeResolution re-derives the
-               widened frame instead of the 25 the file authored for "EF2".  320
-               holds the longest banner string with room to spare; the draw is
-               left-justified, so the extra width stays empty rather than
-               shifting the text. */
+            /* the authored `rect' path, and with the FIFTH argument: a 4-arg
+               rect moves the live frame but leaves m_authoredFrame holding the
+               urc's 25-wide "EF2" frame, and every menu re-derive runs
+               ChangeResolution, which re-derives the frame FROM
+               m_authoredFrame (and overwrites m_size/m_startingpos with the
+               result) -- the widened width died on the next menu open.  The
+               fifth arg makes LayoutRect drop the latch and re-derive, so the
+               banner frame becomes the authored frame and survives every later
+               re-derive.  320 holds the longest banner string with room to
+               spare; the draw is left-justified, so the extra width stays
+               empty rather than shifting the text. */
             rect->AddFloat(20.0f);
             rect->AddFloat(455.0f);
             rect->AddFloat(320.0f);
             rect->AddFloat(16.0f);
+            rect->AddFloat(1.0f);
             mainw->ProcessEvent(rect);
         }
 
