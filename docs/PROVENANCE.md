@@ -36,12 +36,15 @@ machine-checked:
   the tree. `tools/license_lint.py` fails if a file carries no notice or two
   conflicting ones.
 
-## The citation register
+## Where a claim lives
 
-The reverse-engineering claims are recorded in
-`personal/RE_REFERENCE_CITATIONS.tsv`, one row per claim (`file`, `line`,
-`kind`, `comment`), so a claim stays checkable in the tree that carries it. The
-fuller engineering notes are kept off the repository, on disk only.
+A claim is carried by the source that makes it, in the comment at the line, with
+the address or the SDK name that grounds it. Where a claim is behavioural rather
+than structural, `docs/controls/` holds it up: a tracked host program that
+compiles the shipping source, requires it green as written, and requires red on
+every planted fault. A rig never launches the game. The fuller engineering notes
+-- capture logs, the decompile corpus, the retail binary -- stay off the
+repository, on disk only.
 
 ## Evidence is untracked
 
@@ -54,10 +57,17 @@ when a corpus is absent.
 
 - **Nothing is executed to prove a claim.** Nothing in the tree runs the game,
   an engine binary, a probe or a first-light executable. Evidence comes from
-  static reads, raw-word assertions and shipped-asset censuses.
+  static reads, raw-word assertions and shipped-asset censuses; the `docs/controls/`
+  rigs are the one exception, and they are host programs built for the check, not
+  the tree's own binaries.
 - **No log carries a network address.** Diagnostics keep the port, the state and
   the failure reason; the address-free form is `NET_AdrToLogString`.
 - **Startup logging is minimal.** The engine prints the device model and the CPU
-  model, and nothing further.
+  model, and nothing further. On Android the instrument set is silent unless a
+  crash prints or a probe family is armed explicitly.
+- **A performance number comes from a quiet boot.** A diagnostic boot runs under
+  the Vulkan validation layer with the probe families, the engine log and the
+  host monitors on, so it measures the cost of being measured. Frame timings
+  quoted as performance are taken without that instrumentation.
 - **The prose speaks in the engine's terms.** Names, identifiers and quoted
   evidence come from the engine, the renderer or retail.

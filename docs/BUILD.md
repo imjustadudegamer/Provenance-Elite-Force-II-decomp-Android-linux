@@ -21,7 +21,9 @@ app/build_apk.sh assembleRelease        # the release variant, same signing key
 `build_apk.sh` runs the tree-isolation guard first (a build must not absorb
 untracked or modified work the CMake globs would compile in), then Gradle's
 `externalNativeBuild`, which configures the engine CMake with the NDK toolchain
-and `-DEF2_PLATFORM=android -DEF2_RENDERER=gles3 -DEF2_DEFAULT_RENDERER=vulkan`.
+and `-DEF2_PLATFORM=android -DEF2_RENDERER=gles3`. `EF2_DEFAULT_RENDERER` is not
+passed here: it keeps its own CMake default of `vulkan`, which is what
+`cl_renderer` compiles to.
 When `$HOME` is not writable
 it redirects Gradle and ccache state to copies under `personal/evidence/` and prints
 the substitution; a normal interactive shell is unaffected.
@@ -70,9 +72,27 @@ Every change must pass, on a clean rebuild:
 | `assets/base/zpak-android.pk3` | the on-screen touch art, the front-end text override, and `global/{default,defaultcontrols,defaultoptions}.cfg` (the boot baseline plus the Restore Controls / Restore Defaults payloads) |
 
 Retail game data is not distributed. `zpak-android.pk3` is generated from
-`code/qcommon/ef2_android_defaults.h` by `app/make_zpak.py`, so the binary
-defaults and the pak cannot drift. `Assets/base/` changes require a
-`versionCode` bump, or an existing install keeps its extracted copy.
+`code/qcommon/ef2_android_defaults.h` by `app/make_zpak.py` (`python3
+app/make_zpak.py`, with `--check` verifying it is current), so the binary
+defaults and the pak cannot drift; it is the only pack the build ever
+regenerates. `Assets/base/` changes require a `versionCode` bump
+(`10500` in `app/build.gradle.kts`), or an existing install keeps its extracted
+copy.
+
+The manifest's `versionName` comes from the single version source,
+`app/src/main/cpp/VERSION`; Gradle appends the build's commit so two installs
+are distinguishable in a manifest dump. The manifest declares no permissions.
+
+## Desktop launcher
+
+The untracked `personal/scripts/play_ef2_decomp.sh` is the Linux boot path. It
+owns the per-boot config override: a fresh `ef2-launcher.cfg` is written and
+handed to the engine through `com_execAfterConfig` with `setx` values, so the
+launcher's overrides win over the `config.cfg` the engine execs, on every boot,
+regardless of what that config carried last. `--legacy-audio` flips the mixer
+off. Quiet is the default on every target: `--diag` is the only arm (validation,
+probe families, engine log, host monitors), and `--quiet` is kept as the explicit
+no-op.
 
 ## Run-time layout
 

@@ -12,8 +12,8 @@ model layer all build from one tree.
 |---|---|
 | `app/` | the Android module (`build.gradle.kts`, manifest, assets, java, res) |
 | `app/src/main/cpp/` | **all native source**: the engine modules, the renderer, the vendored third-party libraries, the CMake build |
-| `docs/` | project documentation (this file, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`) |
-| `personal/scripts/` (untracked) | the build/capture wrappers |
+| `docs/` | project documentation (this file, `BUILD.md`, `RENDERER.md`, `PROVENANCE.md`, `ANDROID_PORT.md`) and the `docs/controls/` rigs |
+| `personal/scripts/` (untracked) | the build/capture wrappers, including the desktop launcher |
 | `tools/` | release tooling: the notice codemod, `license_lint.py`, `ship_text_lint.py`, `provenance_ledger.py` |
 | `LICENSING.md`, `PROVENANCE.tsv`, `COPYING.txt` | the licence statement, the per-file provenance ledger and the GPLv2 text. `docs/EF2-SDK-licenseAgreement.txt` is the Ritual SDK agreement, shipped verbatim |
 | `personal/evidence/`, `personal/oracle/` | untracked, on-disk-only material: the Mac PPC decompile corpus, the retail binary, the capture corpora |
@@ -59,6 +59,29 @@ compiled into the same executable as the client and reaches the engine through
 `refexport_t`, selected by the `cl_renderer` cvar, whose compiled default is
 `vulkan`.
 
+## Identity
+
+`app/src/main/cpp/VERSION` is the single version source: `q_version.h` derives
+`PRODUCT_VERSION` and `PRODUCT_VERSION_FULL` from it, the console banner prints
+the latter, `common.c` registers `shortversion` as a `CVAR_ROM` cvar from the
+former, and the Android manifest's `versionName` is set from the same file at
+build time. The main menu carries the same number in its lower-left corner: see
+`ANDROID_PORT.md`. No other source in the tree states a version number.
+
+## Two invariants
+
+**The shipped data is never edited.** Every menu change this port makes is an
+in-memory fixup applied at menu-open time in `uilib/uimenu.cpp`; the shipped
+`.urc` files and every retail pak stay byte-identical. A change that cannot be
+expressed as a fixup at open time is not made.
+
+**A script-event getter writes the return slot.** The script VM reads a getter's
+result from one return slot. `Event::Add*` appends an argument and never writes
+that slot, so a getter that calls `AddFloat` leaves the script reading whatever
+was in the slot before -- a script counter fed by such a getter never moves.
+Every script-event getter uses `Event::Return*` (`ReturnFloat`,
+`ReturnInteger`, `ReturnString`); `Add*` is for arguments only.
+
 ## Platform and renderer switch
 
 Two CMake cache variables select the target, and a third names the default:
@@ -74,5 +97,9 @@ Two CMake cache variables select the target, and a third names the default:
 
 The accepted divergences from retail are confined to platform glue, the sound
 backend and the renderer's platform layer (the Vulkan renderer and its GLES 3.0
-twin). Everything else is held retail-exact against the SDK and the retail binaries; the citations that back
-each claim are recorded in `personal/RE_REFERENCE_CITATIONS.tsv`.
+twin). Everything else is held retail-exact against the SDK and the retail
+binaries; the reasoning behind a specific claim lives in the source comment that
+carries it, and where a claim is behavioural rather than structural it is held up
+by one of the `docs/controls/` rigs -- tracked host programs that compile the
+shipping source, check it green, and go red on every planted fault. None of them
+launches the game.

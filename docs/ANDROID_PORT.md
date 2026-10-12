@@ -11,6 +11,51 @@ layout; the engine is the same tree as the desktop reference (see `BUILD.md`).
 | `app/src/main/java/com/provenanceef2/EF2Activity.java` | the engine (SDLActivity) |
 | `app/src/main/java/org/libsdl/app/*.java` | SDL2's Java half |
 
+## Identity
+
+`app/src/main/cpp/VERSION` is the only place the version is written. The
+CMake build feeds it to `qcommon/q_version.h`, which derives `PRODUCT_VERSION`
+and `PRODUCT_VERSION_FULL`; the console banner prints the latter, and
+`qcommon/common.c` registers `shortversion` as a `CVAR_ROM` cvar from the same
+number. `app/build.gradle.kts` reads the same file into the manifest's
+`versionName` and appends the build's commit, so two installs are
+distinguishable in a manifest dump. `versionCode` is the monotone release
+counter (`10500`); it is bumped when `app/src/main/assets/` changes, because an
+existing install keeps its extracted copy.
+
+## Menus are fixed up in memory, never on disk
+
+Every menu change this port makes is an in-memory fixup applied at menu-open
+time in `uilib/uimenu.cpp`. The shipped `.urc` files and every retail pak stay
+byte-identical.
+
+The main menu's lower-left version corner is the worked example. `menu_main.urc`
+ships the corner as a pair of `serpentineLight-10` labels: the literal `EF2`,
+and the `shortversion` label beside it. Because this port's `shortversion` is
+its own number, retail's text is replaced in place rather than stacked beside:
+`MENUVersionCornerFixup` re-titles the first label to the same string the
+console banner prints (`P:EF2 <PRODUCT_VERSION_FULL>`), widens its frame through
+the authored `rect` event -- the authored path, so a mid-session
+`ChangeResolution` re-derives the widened frame rather than the narrow one the
+file shipped -- and disables the second. Nothing is created; the widget's own
+font, colours and border survive, and the label draws clipped to its own frame.
+
+The Android video page carries the same discipline. `MENU3DAndroidVideoMenuFixup`
+reuses the resolution `SwitchBox` as the aspect selector -- `Fill`, `16:9`,
+`4:3`, driving the `android_aspect` cvar -- hides the desktop resolution list,
+and retitles the row. `MENU3DAndroidAdvancedVideoMenuFixup` hides the two
+antialiasing checkboxes (`r_arb_multisample`,
+`r_ext_nv_multisample_filter`), which are registered and read nowhere, so they
+change neither picture nor cost. The Advanced Video page's own max set is pinned
+by the defaults seed below: `r_flares 2` (the page's top option; the lane tests
+the value, so 1 and 2 draw identically) and `r_dynamiclightmaps 1` are the two
+rows that need an explicit seta, because every other page cvar is born at its
+maximum in `renderervulkan/tr_init.c`. `r_dynamiclightmaps` is display only --
+the renderer declares it, neither defines nor reads it -- so without the row its
+checkbox would read an unregistered cvar and show unchecked. Shadows stays on
+`cg_shadows 1`, the simple path: this lane's depth format carries no stencil, so
+the stencil shadow path renders nothing.
+
 ## Game data (first run)
 
 The import screen asks for the retail files and copies them into `<obb>/base/`
@@ -42,6 +87,10 @@ and still `Com_Error` on it in `FS_InitFilesystem`/`FS_Restart`. Dropping the
 entry broke exactly that (a stale binary plus this pak aborted with
 `Com_Error: FATAL: Couldn't load default.cfg` at 2026-10-15 09:03).
 
+`zpak-android.pk3` is the only pack the build ever regenerates. `app/make_zpak.py`
+rebuilds it from the header text; `--check` verifies the pak is current and
+exits non-zero when it is stale.
+
 ## Configuration
 
 Exactly ONE config is loaded at launch: `config.cfg` in the engine's write root.
@@ -59,14 +108,25 @@ and the `mp_*` defaults. It is applied before `config.cfg`, exactly where retail
 applies it, so the archive wins every value it names.
 
 The first-boot defaults are command text in the binary
-(`EF2_ANDROID_DEFAULT_COMMANDS`) applied once per `PORT_DEFAULTS_SEED` and
-persisted straight into `config.cfg`, on both platforms and from one source. The
-gate is `port_defaultsSeed`, a cvar only this code writes: the old gate read the
-Android install's own `in_androidDefaults`, and a stray `14` in a shared write
-root silently outran the constant `10`, so the defaults were never folded in at
-all. Bump `PORT_DEFAULTS_SEED` whenever the defaults header changes.
+(`EF2_ANDROID_DEFAULT_COMMANDS`, in `code/qcommon/ef2_android_defaults.h`)
+applied once per install and persisted straight into `config.cfg`, on both
+platforms and from one source. The gate is `PORT_DEFAULTS_SEED` in
+`qcommon/common.c`, a compile-time constant compared against the archived
+`port_defaultsSeed` cvar, which only this code writes: the old gate read the
+Android install's own `in_androidDefaults`, and a stray value in a shared write
+root silently outran the constant, so the defaults were never folded in at all.
+Bump `PORT_DEFAULTS_SEED` whenever the defaults header changes, or an install
+that already archived the previous set never sees the new rows.
 
 There is no `autoexec.cfg`: a per-machine override belongs in `config.cfg`.
+
+The defaults carry the frame and input baseline the port ships: `com_maxfps 60`,
+`r_swapInterval 0`, `r_smp 1`, `r_jobs -1` and `cl_jobs -1` (the job pools),
+`r_vboStatic 0`, and the max-detail graphics set (`r_picmip 0`, `r_lodbias 1` --
+which is the maximum here, not 0: `tr_model.cpp`/`tr_surface.c` return every
+vertex once the value clears 0.5, so 0 enables the distance collapse --
+`r_subdivisions 2`, `r_texturebits 0`, `r_colorbits 32`, `r_flares 2`,
+`r_dynamiclightmaps 1`).
 
 ### Dialogue level, deliberately not retail's
 
@@ -88,7 +148,27 @@ side is untouched. `s_dialogvolume` is `CVAR_ARCHIVE`, so the value also ships a
 archived retail's 0.60. Both gains are computed from the port's own source
 arithmetic, before and after; the default must not be "corrected" back to 0.60.
 
-### In-game HUD scale
+### The mixer
+
+`client/snd_mixer.cpp` walks the channel pool once per frame and applies one
+gain per bus: DIALOG, MOVIE, MUSIC, AMBIENT, SFX and UI. COMBAT is folded into
+SFX (its cvar stays registered and aliases onto the SFX trim) and AMBIENT is the
+looping-sound pool, which keeps the SFX trim and takes the SFX depth. DIALOG and
+MOVIE are protected: cinematics carry lip-synced speech.
+
+An analytic sidechain ducks MUSIC while a dialog plays. Ten-millisecond blocks
+of K-shaped RMS are measured once per sound, while its PCM is in hand at upload,
+and pooled; the detector runs on the pool rather than on the samples. Attack
+12 ms, hold 120 ms, release 350 ms, and the music bus drops by
+`s_duckDepthMusic` (6 dB) while the dialog envelope is open. A loudness anchor
+and a limiter sit behind the envelope; the anchor re-centres each bus on its own
+measured loudness, so a quiet bus is not mistaken for a ducked one.
+
+`s_duckEnable` is `1` by default and `0` makes every contribution a no-op, which
+is the pre-mixer behaviour bit for bit. The desktop launcher flips it with
+`--legacy-audio` (the launcher script is untracked; see `BUILD.md`).
+
+## In-game HUD scale
 
 `ui_hudScale` scales the in-game HUD, weapon ammo, the dialogue box, the
 tricorder, the radar and the rest; and nothing else. The 640x480 virtual space
@@ -118,7 +198,7 @@ geometry scales and keeps its coarse corner.
 
 A scaled HUD element's frame is in scaled pixels, so the font that measures and
 draws its text carries the same factor: `ChangeResolution` tells the widget's
-`UIFont` the factor at the moment it chooses the frame, and every metric read , 
+`UIFont` the factor at the moment it chooses the frame, and every metric read ,
 at layout, at a print event or at the draw, answers in that unit. The dialogue
 console is why: it derives its wrap width from its frame at layout time and its
 character widths when the print event arrives, and a metric that resolved through
@@ -148,6 +228,10 @@ feature cannot silently collapse to `1.0`. The effective factor is printed once
 at startup on every platform, with the path it came from, the raw density and the
 pre-clamp ratio.
 
+The touch overlay's own geometry is separate from the HUD scale: the pill layout
+resolves against the device's display aspect (`IN_TouchAspect`), so a wide panel
+spreads the same control set instead of stretching a portrait arrangement.
+
 ### Pointer
 
 The software cursor is drawn only where a pointer exists. On Android a touch or a
@@ -165,3 +249,51 @@ gamepad maps through SDL's GameController API, sticks to move/look, triggers to
 fire, face buttons to jump/crouch/use/reload, D-pad to tricorder/objectives/lean,
 Back to the visor, Start to the menu. While a menu is up the common buttons are
 translated to the keys the menus bind.
+
+Stick feel is the EF1 Android port's answer key, carried in the defaults seed:
+`cl_yawspeed 245`, `cl_pitchspeed 180` (full stick deflection, degrees per
+second), `sensitivity 5.0`, `m_pitch 0.022`, `joy_threshold 0.15`,
+`cl_touchLook 2.2`. `in_joystickUseAnalog` stays 0 because this engine has no
+analog consumer for it -- `cl.joystickAxis` is written and read nowhere and
+there is no joystick movement handler -- so EF1's 1 would route the movement
+stick into a dead axis array and the player would not move.
+
+The touch page carries one slider for look sensitivity, one for the axis
+deadzone, and the crouch-toggle checkbox. The size and fade rows are gone:
+`cl_touchScale` and `cl_touchOpacity` only size and fade the on-screen buttons,
+which is not what the page was being asked to fix, and `joy_threshold` is the
+axis deadzone itself. The deadzone slider starts at the EF1 floor (0.05) and
+puts the shipped default (0.15) a third of the way up.
+
+## Networking and permissions
+
+The manifest declares zero permissions. Every `<uses-feature>` entry is
+optional, and game data lives in the app's own OBB directory, which needs no
+storage permission at any target SDK level. Because the app never joins
+Android's inet group, `socket()` returns `EACCES` -- which is the condition the
+networking path handles rather than hides.
+
+Single player never touches a socket: the client and the server talk through the
+in-memory `loopbacks[]` queues in `qcommon/net_chan.c`. `NET_Init` builds only
+the local address table; the real UDP socket opens lazily, on the first packet
+aimed at a non-loopback address. The open is attempted once per networking
+session and the refusal is sticky, so a denied socket prints one row
+(`NET: remote play unavailable -- no UDP socket ...`) instead of a warning per
+packet for as long as the game runs. A remote connect asks
+`NET_RemoteAvailable` before committing, so a refused socket fails clean: the
+client disconnects, returns to the main menu and opens the engine's own ok
+dialog rather than sitting in a retransmit loop. Single player is unaffected.
+
+## Logging and measurement
+
+Every engine instrument answers to one master switch, `qa_probe`, registered at
+0: the Android build boots silent, and stays silent unless a crash prints or
+something arms a probe family explicitly. There is no ambient logging on the
+device.
+
+The desktop launcher (untracked, `personal/scripts/play_ef2_decomp.sh`) arms the
+instrument set with `--diag` and disarms it with `--quiet` or `--clean`. A
+diagnostic boot runs under the Vulkan validation layer with every probe family,
+the engine log and the host monitors on, so its frame timings are not
+performance numbers: the measurements it takes are the cost of being measured.
+Any performance claim is taken from a quiet boot.
