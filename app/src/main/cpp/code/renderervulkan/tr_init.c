@@ -170,9 +170,7 @@ void R_RegisterCvars( void )
 	r_colorbits           = ri.Cvar_Get( "r_colorbits", "32", CVAR_ARCHIVE | CVAR_LATCH );
 	r_draw2d              = ri.Cvar_Get( "r_draw2d", "1", 0 );
 	r_vertexLight         = ri.Cvar_Get( "r_vertexLight", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	/* Declared in tr_local.h and pinned by the advanced-video defaults row, but
-	   never defined: the checkbox read an unregistered cvar and RE_SetDynamicLights
-	   had no gate to test.  Same name, default and flags as the reference lane. */
+	/* declared in tr_local.h but never defined here */
 	r_dynamiclightmaps    = ri.Cvar_Get( "r_dynamiclightmaps", "1", CVAR_ARCHIVE );
 	r_ignoreFastPath      = ri.Cvar_Get( "r_ignoreFastPath", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_developer           = ri.Cvar_Get( "r_developer", "0", 0 );
@@ -508,10 +506,7 @@ void VK_Life_Census( const char *site )
 				  (int)vk.swapchainImageCount, (int)vk.framebufferCount,
 				  vk.renderPass != VK_NULL_HANDLE, vk.offscreenPass != VK_NULL_HANDLE,
 				  (unsigned)vk.depthFormat, (int)vkConfig.stencilBits,
-				  /* the stencil shadow pass only exists when the picked depth
-				     format actually carries stencil planes; the picker prefers
-				     D32_SFLOAT, which has none, so 126 here means cg_shadows 2
-				     is standing down and cannot be the flash */
+				  /* 126 = D32_SFLOAT, no stencil: shadows stand down */
 				  ( vkConfig.stencilBits >= 4 ) ? 1 : 0,
 				  vk.clearColor[0], vk.clearColor[1], vk.clearColor[2] );
 
@@ -683,13 +678,7 @@ int RE_GetRegistrationSequence( void )
 
 
 
-/* The client calls this every snapshot (cl_parse.cpp) with the server's own
-   animated per-group light intensities.  The empty body threw them away, so
-   every group sat at the load-time 0xFF forever: the lightmap composite added
-   each group's contribution at full strength on top of the base, the over-255
-   clamp in R_CalcSurfLightmap then normalised the hue toward white, and no
-   authored light style could ever animate a light again.  Body is the
-   reference lane's (renderergles3/tr_init.c), unchanged. */
+/* the server's per-group light-style intensities drive the lightmap composite */
 void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities )
 {
 	int		i;

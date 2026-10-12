@@ -147,9 +147,7 @@ void lens_flare::SetVect(const float *vect)
         vec3_t offset;
         vec3_t rot_offset;
 
-        /* frame-carry: R_DrawLensFlares runs on the walk, so the sky frame and
-           the view origin come from the record's refdef, not the live one the
-           front end is already refilling with the next frame's scene */
+        /* frame-carry: walk side reads the record's refdef */
         VectorSubtract(vect, backEnd.refdef.sky_origin, offset);
         VectorRotate(offset, backEnd.refdef.sky_axis, rot_offset);
         VectorAdd(backEnd.refdef.vieworg, rot_offset, v);

@@ -770,8 +770,7 @@ void R_Sphere_SetupEntity()
 
 void RB_Static_SetupModel()
 {
-    /* frame-carry: the walk's static-model lighting must read the record's
-       refdef -- the live tr.refdef is already the next frame's dlight set */
+    /* frame-carry: walk side reads the record's refdef */
     RB_SetupStaticModelLighting(
         &backEnd.refdef, backEnd.currentStaticModel, backEnd.currentStaticModel->origin
     );

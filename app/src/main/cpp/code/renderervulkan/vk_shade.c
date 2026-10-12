@@ -1512,8 +1512,7 @@ void VK_SetupViewUniforms( vkProgram_t *p )
 	VK_SetUniformMat4( p, VK_U_MVP, mvp );
 	VK_SetUniformMat4( p, VK_U_MODELMATRIX, mv );
 	VK_SetUniform3fv( p, VK_U_VIEWORIGIN, backEnd.viewParms.ori.origin );
-	/* frame-carry: the view axis and origin published to the shader come from
-	   the record's refdef; the live tr.refdef is already the next frame's */
+	/* frame-carry: read the record's refdef, not the live one */
 	VK_SetUniform3fv( p, VK_U_VIEWAXIS0, backEnd.refdef.viewaxis[0] );
 	VK_SetUniform3f( p, VK_U_LOCALVIEWORIGIN,
 						backEnd.refdef.vieworg[0], backEnd.refdef.vieworg[1], backEnd.refdef.vieworg[2] );
