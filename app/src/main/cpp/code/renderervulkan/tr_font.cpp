@@ -40,6 +40,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 #define MAX_LOADED_FONTS 255
 
 typedef struct {
@@ -938,6 +942,30 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         Set2DWindow( 0, 0, vkConfig.vidWidth, vkConfig.vidHeight,
                      0.0f, (float)vkConfig.vidWidth, (float)vkConfig.vidHeight, 0.0f,
                      0.0f, 1.0f );
+    }
+
+    /* A corner string is the run the overlay-visibility question is about, so it
+       names the window and the clip it will be recorded under: a clip that
+       cannot show the run's own rect is the run that vanishes. */
+    if ( PROBE_On() && x < 60.0f && y < 32.0f ) {
+        static int s_rows;
+        int        win[4], scn[4];
+
+        RB_2D_WindowState( win, scn );
+
+        s_rows++;
+        if ( s_rows <= 16 || ( s_rows % 256 ) == 0 ) {
+            ri.Printf( PRINT_ALL,
+                       "[VK:2dovl] n=%d font=0x%x at=(%.1f,%.1f) "
+                       "win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d) sv=%d f=%d\n",
+                       s_rows,
+                       (unsigned)font->trhandle,
+                       x, y,
+                       win[0], win[1], win[2], win[3],
+                       scn[0], scn[1], scn[2], scn[3],
+                       RB_2D_WindowValid() ? 1 : 0,
+                       RB_FrameCount() );
+        }
     }
 
     if (font->trhandle != r_sequencenumber) {

@@ -1887,10 +1887,19 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			static int	s_polyLastFrame = -1;
 			static int	s_polyRows;
 			static int	s_polyCount;
+			static int	s_polyWindow;
 
 			if ( RB_FrameCount() != s_polyLastFrame ) {
 				s_polyLastFrame = RB_FrameCount();
 				s_polyFrame = 0;
+			}
+			/* The budget refills, so the transcript reaches the marks the order
+			   question is about: a decal created minutes into a boot is past any
+			   lifetime cap, and a cap that spent itself on the opening frames
+			   leaves that boot with no rows to answer it. */
+			if ( RB_FrameCount() - s_polyWindow >= 1000 ) {
+				s_polyWindow = RB_FrameCount();
+				s_polyRows   = 0;
 			}
 			s_polyCount++;
 			if ( s_polyRows <= PROBE_ROW_CAP && s_polyFrame < 4 && ( s_polyCount % 30 ) == 1 ) {
