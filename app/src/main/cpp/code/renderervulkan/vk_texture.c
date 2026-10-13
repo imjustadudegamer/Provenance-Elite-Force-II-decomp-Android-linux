@@ -963,11 +963,13 @@ done:
 		ri.Free( regionList );
 	}
 
-	/* the copies have run, so the epoch is dead either way: the queue array
-	   stays with the texture, emptied */
+	/* the epoch is dead either way, and every record names an offset inside it,
+	   so the queue dies with it.  A count left behind made the next flush read a
+	   chain nothing had reserved (the staging-drop alarm) and re-copy every
+	   level it named out of a buffer that no longer held them. */
 	VK_Texture_StagingFree( tex );
+	tex->pendingCount = 0;
 	if ( !ok ) {
-		tex->pendingCount = 0;
 		vk_uploadDrops++;
 	}
 
