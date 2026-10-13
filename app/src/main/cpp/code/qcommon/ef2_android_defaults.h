@@ -45,13 +45,31 @@ root, for more details.
    depth (16 forces a downgrade in tr_image.c).  cg_marks/cg_shadows/
    cg_effectdetail are already the authored maximum.
 
-   Advanced video (r58): only two rows here need an explicit seta, because every
-   other page cvar is born at its maximum in renderervulkan/tr_init.c and this
-   build has no config.cfg to outrun it.  r_flares 2 is the page's top option and
-   the lane only tests the value, so 1 and 2 draw identically.  r_dynamiclightmaps
-   1 is DISPLAY ONLY -- renderervulkan declares it extern (tr_local.h) and neither
-   defines nor reads it, so without a row the checkbox reads an unregistered cvar
-   and shows unchecked; it changes no pixel in this lane. */
+   Advanced video: the page's rows are pinned at their maximums by explicit seta
+   rows, because several of them are not born at their page maximum in
+   renderervulkan/tr_init.c and an install's own config.cfg can outrun a compiled
+   default.  Directions verified in this lane:
+     r_flares 2 is the page's top option and the lane only tests the value, so 1
+       and 2 draw identically.
+     r_dynamiclightmaps 1 is DISPLAY ONLY -- renderervulkan declares it extern
+       (tr_local.h) and neither defines nor reads it; without a row the checkbox
+       reads an unregistered cvar and shows unchecked.
+     r_allowExtensions 1 opens the page's master gate: the checkbox and the three
+       sub-rows it gates (r_arb_multisample, r_ext_nv_multisample_filter,
+       r_anisotropicFiltering) read unregistered cvars and grey out while it sits
+       at 0.  Nothing in renderervulkan reads any of the four, so the pins change
+       no pixel; they make the page read max.
+     r_light_simple 0 is the maximum: tr_sphere_shade.cpp gates the RF_EXTRALIGHT
+       path on !r_light_simple, so 1 SWITCHES IT OFF; unchecked is the rich path.
+     r_light_simple_dist 5000 is the page's top option and the extralight radius
+       compare (fDist <= value), so larger = the extra light reaches farther.
+     r_lodCurveError 250 is the page's High; cg_effectdetail 1.0 High,
+     cg_marks 1 and cg_shadows 1 are archive-proof pins of the maximums -- the
+       compiled defaults equal them but an install's archived config can carry
+       lower values, and the launcher's overrides only protect rows it names.
+     cg_shadows Stencil (2) renders nothing here (the depth picker prefers
+       D32_SFLOAT, stencilBits 0), so Simple IS this lane's maximum.
+     r_swapInterval is deliberately absent: operator order leaves it alone. */
 #define EF2_ANDROID_DEFAULT_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
 	"bind w \"+forward\"\n" \
@@ -185,9 +203,16 @@ root, for more details.
 	"seta r_texturebits 0\n" \
 	"seta r_colorbits 32\n" \
 	"seta r_flares 2\n" \
-	"seta r_dynamiclightmaps 1\n"
+	"seta r_dynamiclightmaps 1\n" \
+	"seta r_allowExtensions 1\n" \
+	"seta r_arb_multisample 1\n" \
+	"seta r_ext_nv_multisample_filter 1\n" \
+	"seta r_anisotropicFiltering 1\n" \
+	"seta r_lodCurveError 250\n" \
+	"seta r_light_simple 0\n" \
+	"seta r_light_simple_dist 5000\n"
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 
 
-#define EF2_ANDROID_DEFAULT_SETA_COUNT 57
+#define EF2_ANDROID_DEFAULT_SETA_COUNT 64
