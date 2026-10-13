@@ -17,7 +17,12 @@
  *   2. an empty body isolates the dispatch cost itself;
  *   3. a frame walk (S surfaces x F frames) reports ctx/s, sys/s and wall for
  *      both pools at each candidate chunk;
- *   4. the chunk at which dispatching stops paying is read off 3.
+ *   4. the chunk at which dispatching stops paying is read off 3;
+ *   5. the texcoord grain: the walk's own bodies (the environment texcoord and
+ *      the diffuse colour, verbatim in shape from tr_shade_calc.c) at ONE
+ *      surface size per run, inline against each candidate chunk, so the
+ *      break-even is read as "a surface of N vertices" and compared against
+ *      the verts/surf column [PERF:walk] already prints.
  *
  * Build/run: docs/controls/threadroot/run.sh  (never launches the game)
  */
@@ -144,6 +149,113 @@ static void EmptyBody( void *vctx, int begin, int end )
 	( void )vctx; ( void )begin; ( void )end;
 }
 
+/* ---- 5. the walk's own texcoord bodies ----------------------------------- */
+
+/* tr_shade_calc.c RB_CalcEnvironmentTexCoordsRange, shape verbatim: a view
+   vector per vertex, the fast reciprocal square root the engine carries, the
+   reflect, two stores.  Q_rsqrt and the vector macros are inlined here so the
+   rig keeps its one-include build. */
+static float RigQrsqrt( float number )
+{
+	union { float f; int i; } t;
+	float	x2, y;
+
+	x2 = number * 0.5f;
+	t.f = number;
+	t.i = 0x5f3759df - ( t.i >> 1 );
+	y = t.f;
+	y = y * ( 1.5f - ( x2 * y * y ) );
+
+	return y;
+}
+
+typedef struct {
+	float		*st;
+	const float	*xyz;
+	const float	*normal;
+	int			numVertexes;
+	float		viewOrigin[3];
+	float		sink;
+} rigEnvTex_t;
+
+static void EnvTexBody( void *vctx, int begin, int end )
+{
+	rigEnvTex_t	*c = ( rigEnvTex_t * )vctx;
+	int			i;
+	const float	*v = c->xyz + 4 * begin;
+	const float	*normal = c->normal + 4 * begin;
+	float		*st = c->st + 2 * begin;
+	float		viewer[3], reflected;
+	float		d;
+
+	for ( i = begin; i < end; i++, v += 4, normal += 4, st += 2 ) {
+		viewer[0] = c->viewOrigin[0] - v[0];
+		viewer[1] = c->viewOrigin[1] - v[1];
+		viewer[2] = c->viewOrigin[2] - v[2];
+		d = RigQrsqrt( viewer[0] * viewer[0] + viewer[1] * viewer[1] + viewer[2] * viewer[2] );
+		viewer[0] *= d; viewer[1] *= d; viewer[2] *= d;
+
+		d = normal[0] * viewer[0] + normal[1] * viewer[1] + normal[2] * viewer[2];
+
+		reflected = normal[0] * 2 * d - viewer[0];
+		st[0] = 1.0f + normal[1] * 2 * d - viewer[1];
+		st[1] = 1.0f - ( normal[2] * 2 * d - viewer[2] );
+		c->sink += reflected;
+	}
+}
+
+/* tr_shade_calc.c RB_CalcDiffuseColorRange, shape verbatim: the dot against the
+   light direction, the three clamped colour channels, the four byte stores. */
+typedef struct {
+	unsigned char	*colors;
+	const float		*xyz;
+	const float		*normal;
+	int				numVertexes;
+	int				ambientLightInt;
+	float			ambientLight[3];
+	float			directedLight[3];
+	float			lightDir[3];
+	float			sink;
+} rigDiffuse_t;
+
+static int RigFtol( float f )
+{
+	return ( int )f;
+}
+
+static void DiffuseBody( void *vctx, int begin, int end )
+{
+	rigDiffuse_t	*c = ( rigDiffuse_t * )vctx;
+	int				i, j;
+	const float		*v = c->xyz + 4 * begin;
+	const float		*normal = c->normal + 4 * begin;
+	float			incoming;
+	unsigned char	*colors = c->colors;
+
+	for ( i = begin; i < end; i++, v += 4, normal += 4 ) {
+		incoming = normal[0] * c->lightDir[0] + normal[1] * c->lightDir[1]
+				   + normal[2] * c->lightDir[2];
+		if ( incoming <= 0 ) {
+			*( int * )&colors[i * 4] = c->ambientLightInt;
+			continue;
+		}
+		j = RigFtol( c->ambientLight[0] + incoming * c->directedLight[0] );
+		if ( j > 255 ) j = 255;
+		colors[i * 4 + 0] = ( unsigned char )j;
+
+		j = RigFtol( c->ambientLight[1] + incoming * c->directedLight[1] );
+		if ( j > 255 ) j = 255;
+		colors[i * 4 + 1] = ( unsigned char )j;
+
+		j = RigFtol( c->ambientLight[2] + incoming * c->directedLight[2] );
+		if ( j > 255 ) j = 255;
+		colors[i * 4 + 2] = ( unsigned char )j;
+
+		colors[i * 4 + 3] = 255;
+		c->sink += incoming;
+	}
+}
+
 static unsigned g_seed = 12345u;
 
 static int NextCount( int lo, int hi )
@@ -211,6 +323,75 @@ static void ShapeAgreement( int count, int minChunk )
 	}
 }
 
+/* The texcoord bodies through the pool against the same range run inline: the
+   two must write the same bytes, which is the output-identity claim for handing
+   these sites to the pool at any chunk. */
+static float RunEnvTex( int pooled, int count, int minChunk )
+{
+	rigEnvTex_t	c;
+
+	c.xyz = g_src;
+	c.normal = g_src;
+	c.st = ( float * )g_outNew;
+	c.numVertexes = count;
+	c.viewOrigin[0] = 12.5f; c.viewOrigin[1] = -3.25f; c.viewOrigin[2] = 40.0f;
+	c.sink = 0.0f;
+	if ( pooled ) {
+		JobPool_ParallelRange( count, minChunk, EnvTexBody, &c );
+	} else {
+		EnvTexBody( &c, 0, count );
+	}
+
+	return c.sink;
+}
+
+static float RunDiffuse( int pooled, int count, int minChunk )
+{
+	rigDiffuse_t	c;
+
+	c.colors = ( unsigned char * )g_outNew;
+	c.xyz = g_src;
+	c.normal = g_src;
+	c.numVertexes = count;
+	c.ambientLightInt = 0x00804020;
+	c.ambientLight[0] = 0.35f; c.ambientLight[1] = 0.30f; c.ambientLight[2] = 0.25f;
+	c.directedLight[0] = 0.9f; c.directedLight[1] = 0.8f; c.directedLight[2] = 0.7f;
+	c.lightDir[0] = 0.4f; c.lightDir[1] = -0.5f; c.lightDir[2] = 0.76f;
+	c.sink = 0.0f;
+	if ( pooled ) {
+		JobPool_ParallelRange( count, minChunk, DiffuseBody, &c );
+	} else {
+		DiffuseBody( &c, 0, count );
+	}
+
+	return c.sink;
+}
+
+static void BodyAgreement( const char *name, float ( *run )( int pooled, int count, int minChunk ),
+						   size_t perVertex, int count, int minChunk )
+{
+	size_t	bytes = ( size_t )count * perVertex;
+
+	memset( g_outNew, 0x5A, bytes );
+	g_sinkHold += run( 0, count, minChunk );
+	memcpy( g_outOld, g_outNew, bytes );
+
+	memset( g_outNew, 0xA5, bytes );
+	g_sinkHold += run( 1, count, minChunk );
+
+	check( memcmp( g_outNew, g_outOld, bytes ) == 0, name );
+	if ( memcmp( g_outNew, g_outOld, bytes ) != 0 ) {
+		size_t	i;
+
+		for ( i = 0; i < bytes; i++ ) {
+			if ( ( ( unsigned char * )g_outNew )[i] != ( ( unsigned char * )g_outOld )[i] ) {
+				printf( "        %s first differing byte %d of %d\n", name, ( int )i, ( int )bytes );
+				break;
+			}
+		}
+	}
+}
+
 /* ---- 2. the dispatch cost itself ---------------------------------------- */
 
 static void DispatchCost( int chunks, int isNew, sample_t *out )
@@ -270,6 +451,34 @@ static void Walk( int isNew, int heavy, int minChunk, int frames, int surfPerFra
 	Delta( &a, &b, out );
 	g_sinkHold += c.sink;
 	( void )heavy;
+}
+
+/* ---- 5. the texcoord grain: one surface size per run --------------------- */
+
+/* S surfaces of exactly N vertices per frame, one body.  minChunk == N is the
+   inline row (the pool's own count<=minChunk arm), so the table reads the
+   break-even as "a surface of N vertices" and [PERF:walk]'s verts/surf column
+   says which row the boot is on. */
+typedef struct {
+	const char	*name;
+	void		( *body )( void *ctx, int begin, int end );
+	void		*ctx;
+} rigBody_t;
+
+static void SurfaceSweep( const rigBody_t *b, int sizeVerts, int minChunk,
+						  int frames, int surfPerFrame, sample_t *out )
+{
+	sample_t	a, b2;
+	int			f, s;
+
+	Sample( &a );
+	for ( f = 0; f < frames; f++ ) {
+		for ( s = 0; s < surfPerFrame; s++ ) {
+			JobPool_ParallelRange( sizeVerts, minChunk, b->body, b->ctx );
+		}
+	}
+	Sample( &b2 );
+	Delta( &a, &b2, out );
 }
 
 int main( int argc, char **argv )
@@ -353,6 +562,76 @@ int main( int argc, char **argv )
 			}
 		}
 		( void )baseWall;
+	}
+
+	/* 5. the texcoord grain: the walk's own bodies at one surface size per run */
+	{
+		static rigEnvTex_t	env;
+		static rigDiffuse_t	dif;
+		static const int	sizes[] = { 64, 128, 256, 512, 1024, 2048, 4096 };
+		static const int	chunks[] = { 64, 128, 256, 512, 1024 };
+		const int			surfFrames = 120;
+		const int			surfs = 96;
+		rigBody_t			bodies[2];
+		int					si, bi;
+
+		env.xyz = g_src;
+		env.normal = g_src;
+		env.st = g_outNew;
+		env.numVertexes = MAX_ELEM;
+		env.viewOrigin[0] = 12.5f; env.viewOrigin[1] = -3.25f; env.viewOrigin[2] = 40.0f;
+		env.sink = 0.0f;
+		dif.colors = ( unsigned char * )g_outNew;
+		dif.xyz = g_src;
+		dif.normal = g_src;
+		dif.numVertexes = MAX_ELEM;
+		dif.ambientLightInt = 0x00804020;
+		dif.ambientLight[0] = 0.35f; dif.ambientLight[1] = 0.30f; dif.ambientLight[2] = 0.25f;
+		dif.directedLight[0] = 0.9f; dif.directedLight[1] = 0.8f; dif.directedLight[2] = 0.7f;
+		dif.lightDir[0] = 0.4f; dif.lightDir[1] = -0.5f; dif.lightDir[2] = 0.76f;
+		dif.sink = 0.0f;
+
+		bodies[0].name = "envtex";
+		bodies[0].body = EnvTexBody;
+		bodies[0].ctx = &env;
+		bodies[1].name = "diffuse";
+		bodies[1].body = DiffuseBody;
+		bodies[1].ctx = &dif;
+
+		BodyAgreement( "envtex", RunEnvTex, sizeof( float ) * 2, 1024, 256 );
+		BodyAgreement( "diffuse", RunDiffuse, 4, 1024, 256 );
+
+		for ( bi = 0; bi < 2; bi++ ) {
+			double	inlineWall[7] = { 0 };
+			int		k;
+
+			printf( "threadroot: texcoord grain (%s), %d frames x %d surfaces of one size\n",
+					bodies[ bi ].name, surfFrames, surfs );
+			printf( "  %-8s %10s %12s %11s %10s\n", "surface", "inline", "chunk", "wall", "ns/vert" );
+
+			for ( si = 0; si < ( int )( sizeof( sizes ) / sizeof( sizes[0] ) ); si++ ) {
+				int	n = sizes[ si ];
+
+				SurfaceSweep( &bodies[ bi ], n, n, surfFrames, surfs, &so );
+				inlineWall[ si ] = so.wall;
+
+				printf( "  %-8d %10.2fms %12s %11s %10.2f\n", n, so.wall * 1000.0,
+						"-", "inline",
+						( double )so.wall * 1e9 / ( ( double )surfFrames * surfs * n ) );
+				for ( k = 0; k < ( int )( sizeof( chunks ) / sizeof( chunks[0] ) ); k++ ) {
+					int	c = chunks[ k ];
+
+					if ( c >= n ) {
+						continue;			/* the pool would run it inline anyway */
+					}
+					SurfaceSweep( &bodies[ bi ], n, c, surfFrames, surfs, &sn );
+					printf( "  %-8d %10.2fms %12d %11.2fms %10.2f  %s\n", n,
+							inlineWall[ si ] * 1000.0, c, sn.wall * 1000.0,
+							( double )sn.wall * 1e9 / ( ( double )surfFrames * surfs * n ),
+							( sn.wall < inlineWall[ si ] ) ? "faster" : "slower" );
+				}
+			}
+		}
 	}
 
 	OldPool_Shutdown();

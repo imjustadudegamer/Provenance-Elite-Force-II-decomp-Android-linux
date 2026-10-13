@@ -163,6 +163,7 @@ static long long	s_walkVerts;
 static long long	s_walkSurfs;
 static long long	s_walkFrames;
 static long long	s_walkElisions[VK_ELIDE_HITS];
+static long long	s_walkRequests[VK_ELIDE_HITS];
 
 qboolean VK_WalkStatOn( void )
 {
@@ -208,11 +209,14 @@ void VK_WalkStat_TakeShade( long long *usecOut )
    rot/mv already do for their own window.  The charge sites live inside the
    two functions, which the sprite and world walks also call, so the window
    arms around the pair and every site is one predictable test when it is not
-   armed.  OTHER is the residual, so the parts sum to srf=. */
+   armed.  Each part is charged net of the binds and records it flushes, the
+   same netting the window total applies, so the parts sum to srf= instead of
+   double-counting what the stage window hands to bind= and rec=. */
 static long long	s_walkSrfUsec[VK_WSS_PARTS];
 static long long	s_walkSrfTotal;
 static long long	s_srfArmT0;
 static long long	s_srfArmNested;
+static long long	s_srfPartNested;
 static int			s_srfArmed;
 
 void VK_SrfPart_Arm( void )
@@ -243,6 +247,7 @@ void VK_SrfPart_Open( void )
 {
 	if ( s_srfArmed ) {
 		s_srfT0 = BE_Microseconds64();
+		s_srfPartNested = VK_WalkStat_Nested();
 	}
 }
 
@@ -254,7 +259,8 @@ void VK_SrfPart_Close( int part )
 		return;
 	}
 
-	usec = BE_Microseconds64() - s_srfT0;
+	/* netted like the window total: a part charged raw read 2x the window it sits in */
+	usec = BE_Microseconds64() - s_srfT0 - VK_WalkStat_NestedSince( s_srfPartNested );
 	s_srfT0 = -1;
 
 	if ( usec < 0 ) {
@@ -359,13 +365,28 @@ void VK_WalkStat_Count( int what )
 	}
 }
 
-void VK_WalkStat_TakeElisions( long long *out )
+/* The request beside the hit: an elision column without its denominator names a
+   count, not a rate, so a cache that stopped firing reads as one that is full. */
+void VK_WalkStat_Req( int what )
+{
+	if ( what >= 0 && what < VK_ELIDE_HITS ) {
+		s_walkRequests[what]++;
+	}
+}
+
+void VK_WalkStat_TakeElisions( long long *out, long long *reqOut )
 {
 	int i;
 
 	for ( i = 0; i < VK_ELIDE_HITS; i++ ) {
 		out[i] = s_walkElisions[i];
 		s_walkElisions[i] = 0;
+	}
+	if ( reqOut ) {
+		for ( i = 0; i < VK_ELIDE_HITS; i++ ) {
+			reqOut[i] = s_walkRequests[i];
+			s_walkRequests[i] = 0;
+		}
 	}
 }
 

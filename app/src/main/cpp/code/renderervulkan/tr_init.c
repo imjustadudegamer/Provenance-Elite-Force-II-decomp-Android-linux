@@ -856,6 +856,7 @@ void VK_PerfFpsRow( void )
 	long long		 srfTotal, srfNamed, srfOther;
 	long long		 present[VK_WSUB_SLOTS];
 	long long		 elide[VK_ELIDE_HITS];
+	long long		 req[VK_ELIDE_HITS];
 	long long		 gpu[VK_GPU_BUCKETS];
 	long long		 gpuMarks = 0, gpuCap = 0;
 	long long		 verts = 0, surfs = 0, wframes = 0, walkUsec;
@@ -899,7 +900,7 @@ void VK_PerfFpsRow( void )
 		srfOther = 0;
 	}
 	VK_WalkStat_TakePresent( present );
-	VK_WalkStat_TakeElisions( elide );
+	VK_WalkStat_TakeElisions( elide, req );
 	VK_PerfGpu_Take( gpu, &gpuMarks, &gpuCap );
 
 	/* The first window is the baseline: every later row carries the drift off
@@ -948,6 +949,7 @@ void VK_PerfFpsRow( void )
 				   "open=%.2fms ui=%.2fms out=%.2fms recend=%.2fms submit=%.2fms present=%.2fms pix=%.2fms rest=%.2fms "
 				   "cpu=%.2fms dev=%.2fms walk=%.2fms elide_idx=%.1f/f elide_ubo=%.1f/f "
 				   "elide_pipe=%.1f/f elide_set=%.1f/f "
+				   "req_idx=%.1f/f req_ubo=%.1f/f req_pipe=%.1f/f req_set=%.1f/f "
 				   "gpu_clear=%.2fms gpu_world=%.2fms gpu_sprite=%.2fms gpu_ui=%.2fms "
 				   "gpu=%.2fms gmarks=%.1f/f gcap=%lld\n",
 				   now - t0, wframes, (double)verts / nf, (double)surfs / nf,
@@ -973,6 +975,10 @@ void VK_PerfFpsRow( void )
 				   (double)elide[VK_ELIDE_UBO] / nf,
 				   (double)elide[VK_ELIDE_PIPE] / nf,
 				   (double)elide[VK_ELIDE_SET] / nf,
+				   (double)req[VK_ELIDE_INDEX] / nf,
+				   (double)req[VK_ELIDE_UBO] / nf,
+				   (double)req[VK_ELIDE_PIPE] / nf,
+				   (double)req[VK_ELIDE_SET] / nf,
 				   (double)gpu[VK_GPU_CLEAR] / nf / 1000.0,
 				   (double)gpu[VK_GPU_WORLD] / nf / 1000.0,
 				   (double)gpu[VK_GPU_SPRITE] / nf / 1000.0,
