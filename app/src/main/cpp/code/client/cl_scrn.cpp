@@ -187,7 +187,7 @@ static void SCR_DrawFPS( void ) {
 	static fontheader_t *fpsFont;
 	char		line[160];
 	int			t, frameTime, i, total, framesPerSecond;
-	float		W, H, scale, w, x, y;
+	float		W, H, scale, x, y;
 	float		white[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 
 	if ( !cl_drawFPS || cl_drawFPS->integer <= 0 ) {
@@ -226,13 +226,21 @@ static void SCR_DrawFPS( void ) {
 		return;
 	}
 
-	scale = H / 480.0f;		
+	scale = H / 480.0f;
 	if ( scale < 1.0f ) scale = 1.0f;
 	if ( scale > 6.0f ) scale = 6.0f;
 
+	/* The counter draws after the UI pass, so the last widget's clip is still the
+	   scissor in force and the glyphs land in a dead rectangle.  A screen-level
+	   overlay arms its own window, as the bars and the touch overlay do. */
+	re.Set2DWindow(
+		uid.originX, uid.surfaceHeight - uid.originY - uid.vidHeight,
+		uid.vidWidth, uid.vidHeight,
+		0, (float)uid.vidWidth, (float)uid.vidHeight, 0,
+		-1, 1 );
+
 	Com_sprintf( line, sizeof( line ), "%ifps", framesPerSecond );
-	w = re.GetFontStringWidth( fpsFont, line ) * scale;
-	x = W - w - 4.0f * scale;
+	x = 4.0f * scale;
 	y = 4.0f * scale;
 	SCR_DrawStringFont( fpsFont, x, y, scale, white, line );
 
@@ -252,8 +260,7 @@ static void SCR_DrawFPS( void ) {
 		} else {
 			Q_strncpyz( line, "(frame budget: no window closed yet)", sizeof( line ) );
 		}
-		w = re.GetFontStringWidth( fpsFont, line ) * scale;
-		SCR_DrawStringFont( fpsFont, W - w - 4.0f * scale, y, scale, white, line );
+		SCR_DrawStringFont( fpsFont, x, y, scale, white, line );
 	}
 }
 

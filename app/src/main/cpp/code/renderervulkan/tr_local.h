@@ -1717,6 +1717,7 @@ void RB_2D_ShaderTime( float startTime );
 void R_Invalidate2DWindowCache( void );
 void RB_2D_InvalidateWindow( void );
 qboolean	RB_2D_WindowValid( void );
+void RB_2D_WindowState( int *win, int *scn );
 /* The widget's placement inside the pass's screen-space 2D window: the UI says
    where the widget is and the renderer adds it to the 2D vertices, the way
    retail's screen-space glVertex2f stream already carries it. */

@@ -582,16 +582,13 @@ void Set2DOrigin( float x, float y ) {
    each draw makes (the traced frame: glDepthMask FALSE then glDisable(GL_DEPTH_TEST)
    right after the ortho, and the view restores both).  A drawer that appends quads
    without entering the phase inherits the view's depth and lands behind the wall
-   in front of the camera -- the in-game counter that only shows over playback. */
+   in front of the camera -- the in-game counter that only shows over playback.
+   The block it re-issues is the screen window: the last widget's own rect is the
+   widget's state, and re-arming it here put a screen-level string inside that
+   widget's viewport and scissor a few seconds in, once the in-game panels began
+   naming their own. */
 void RB_2D_EnterPhase( void ) {
 	if ( GLES3_DepthGate2D() && r_window2DValid && r_scissor2DValid ) {
-		return;
-	}
-
-	if ( r_window2DValid && r_scissor2DValid ) {
-		RB_2D_SetWindow( r_window2D[0], r_window2D[1], r_window2D[2], r_window2D[3],
-						 r_window2DOrtho[0], r_window2DOrtho[1], r_window2DOrtho[2],
-						 r_window2DOrtho[3], r_window2DOrtho[4], r_window2DOrtho[5] );
 		return;
 	}
 

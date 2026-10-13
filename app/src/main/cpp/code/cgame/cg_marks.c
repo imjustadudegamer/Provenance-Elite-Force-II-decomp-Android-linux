@@ -479,7 +479,14 @@ void CG_ImpactMark(
         return;
     }
 
-    texCoordScale = (radius != 0.0f) ? 0.5f / radius : 0.0f;
+    /* retail's own guard: its PC cgame ships the string and the Mac body tests
+       radius <= 0 before the axes, so a zero radius names itself and bails */
+    if (radius <= 0.0f) {
+        cgi.Printf("CG_ImpactMark called with <= 0 radius\n");
+        return;
+    }
+
+    texCoordScale = 0.5f / radius;
 
     fSScale2 = radius;
     fTScale2 = radius;
@@ -540,13 +547,19 @@ void CG_ImpactMark(
 
     if (PROBE_On()) {
         static int s_iDoccNewRows = 0;
+        static int s_iDoccShader;
         int        iPts = 0;
 
         for (i = 0, mf = markFragments; i < numFragments; i++, mf++) {
             iPts += mf->numPoints;
         }
 
-        if (PROBE_Throttle(&s_iDoccNewRows, 24, 400)) {
+        /* A shader the boot has not marked with yet always names itself: the
+           shared cadence is spent on the per-frame shadow mark, and a decal that
+           creates once would otherwise never print the fragment count that
+           splits a dead creation path from a dead draw path. */
+        if (markShader != s_iDoccShader || PROBE_Throttle(&s_iDoccNewRows, 24, 400)) {
+            s_iDoccShader = markShader;
             UIVK_PROBE(
                 "DOCC:new",
                 "sh=%d org=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f) radius=%.4f nfrag=%d npts=%d temp=%d\n",

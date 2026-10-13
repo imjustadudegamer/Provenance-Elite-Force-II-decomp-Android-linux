@@ -77,6 +77,15 @@ void RB_2D_InvalidateWindow( void ) {
 	r_scissor2DValid = qfalse;
 }
 
+/* The window and the clip a queued 2D call will draw under, for the row that
+   names them; a run's own clip is stamped from these same mirrors. */
+void RB_2D_WindowState( int *win, int *scn ) {
+	win[0] = r_window2D[0]; win[1] = r_window2D[1];
+	win[2] = r_window2D[2]; win[3] = r_window2D[3];
+	scn[0] = r_scissor2D[0]; scn[1] = r_scissor2D[1];
+	scn[2] = r_scissor2D[2]; scn[3] = r_scissor2D[3];
+}
+
 /* the reference renderer's tr_draw.c carries this note in full */
 typedef enum {
 	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
