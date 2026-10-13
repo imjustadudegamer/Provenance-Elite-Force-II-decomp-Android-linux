@@ -36,21 +36,19 @@
         android:name="android.hardware.type.pc"
         android:required="false" />
 
-    <!-- The ONLY permission the app needs.  Game data lives in the app's own
-         OBB directory (Android/obb/com.provenanceef2), which requires no storage
-         permission at any targetSdk.  The engine's own sockets (the loopback
-         single-player server, and the LAN server browser) need INTERNET.
+    <!-- NO permissions at all.  Game data lives in the app's own OBB directory
+         (Android/obb/com.provenanceef2), which requires no storage permission at
+         any targetSdk.
 
-         Multiplayer strip (operator order): this is the one row that must stay.
-         qcommon/net_ip.c NET_Init then NET_Config(qtrue) then NET_OpenIP opens a
-         real AF_INET/SOCK_DGRAM socket on every boot with no net_enabled gate, and
-         the single-player client-server channel rides it; an app without INTERNET
-         never gets the inet supplementary group, so that socket comes back EACCES
-         and the game loses its own server.  Every other network, nearby, Wi-Fi,
-         Bluetooth and sensors/body/location permission was already absent: this
-         file is the only manifest in the tree that declares one, and this row is
-         it. -->
-    <uses-permission android:name="android.permission.INTERNET" />
+         r59 netloop: single player rides the in-memory loopbacks[] queue
+         (qcommon/net_chan.c) and never touches a socket, and the real UDP socket
+         is no longer opened at boot either: qcommon/net_ip.c NET_Init builds
+         only the local address table, and the socket appears on the first packet
+         aimed at a non-loopback address.  Without this row the app never joins
+         Android's inet group, so socket() returns EACCES; that is exactly the
+         refusal the lazy open now handles as one logged row, and the client
+         reports a remote connect as "network unavailable" instead of stalling. -->
+
 
     <!-- allowBackup=false: configs and saves live in the OBB dir (not backed up
          anyway); a restore would only bring back stale state. -->

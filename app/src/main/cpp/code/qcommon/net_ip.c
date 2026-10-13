@@ -110,6 +110,15 @@ static struct sockaddr	socksRelayAddr;
 static SOCKET	ip_socket = INVALID_SOCKET;
 static SOCKET	socks_socket = INVALID_SOCKET;
 
+// r59 netloop: the socket is opened lazily, on the first non-loopback packet.
+// Boot builds only the local-address table, so an install without Android's
+// INTERNET permission never calls socket() during single player -- that channel
+// is the loopbacks[] memory queue and never reaches Sys_SendPacket at all.
+static int		ipSocketLastError;
+static qboolean	ipSocketRefused;
+
+static qboolean NET_EnsureIPSocket( void );
+
 #ifndef IF_NAMESIZE
   #define IF_NAMESIZE 16
 #endif
@@ -487,7 +496,10 @@ void Sys_SendPacket( int length, const void *data, netadr_t to ) {
 	struct sockaddr_storage	addr;
 	struct sockaddr_in	*in = (struct sockaddr_in *)&addr;
 
-	if ( ip_socket == INVALID_SOCKET ) {
+	// Reaching here already means a remote or broadcast address: NET_SendPacket
+	// has routed NA_LOOPBACK to the memory queue and dropped NA_BOT/NA_BAD.  This
+	// is the only place the real socket is asked for, and the only one it is made.
+	if ( !NET_EnsureIPSocket() ) {
 		return;
 	}
 
@@ -639,6 +651,7 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 
 	if( ( newsocket = socket( PF_INET, SOCK_DGRAM, IPPROTO_UDP ) ) == INVALID_SOCKET ) {
 		*err = socketError;
+		ipSocketLastError = socketError;
 		Com_Printf( "WARNING: NET_IPSocket: socket: %s\n", NET_ErrorString() );
 		return newsocket;
 	}
@@ -960,6 +973,41 @@ void NET_OpenIP( void ) {
 }
 
 
+// One attempt per networking session.  A refusal is sticky: without it, every
+// later packet would re-enter NET_IPSocket and print a warning row for as long
+// as the game ran.
+static qboolean NET_EnsureIPSocket( void ) {
+
+	if( ip_socket != INVALID_SOCKET ) {
+		return qtrue;
+	}
+
+	if( ipSocketRefused ) {
+		return qfalse;
+	}
+
+	NET_OpenIP();
+
+	if( ip_socket != INVALID_SOCKET ) {
+		return qtrue;
+	}
+
+	ipSocketRefused = qtrue;
+	// 13 == EACCES: an Android install without the INTERNET permission never
+	// joins the inet group, so socket() is refused before bind is reached.
+	Com_Printf( "NET: remote play unavailable -- no UDP socket (errno %i); "
+		"single player does not need one\n", ipSocketLastError );
+	return qfalse;
+}
+
+
+// Client-side ask before committing to a remote server, so a refused socket is
+// reported as a clean failure instead of a getchallenge retransmit loop.
+qboolean NET_RemoteAvailable( void ) {
+	return NET_EnsureIPSocket();
+}
+
+
 
 
 static qboolean NET_GetCvars( void ) {
@@ -1045,12 +1093,18 @@ void NET_Config( qboolean enableNetworking ) {
 			closesocket( socks_socket );
 			socks_socket = INVALID_SOCKET;
 		}
-		
+
+		// a fresh session is allowed to try the socket again
+		ipSocketRefused = qfalse;
+
 	}
 
 	if( start )
 	{
-		NET_OpenIP();
+		// The address table only: getifaddrs needs no socket and no permission,
+		// so Sys_IsLANAddress / NET_IsIPAddressLocal answer exactly as they did
+		// when the socket was opened at boot.  The socket waits for a remote packet.
+		NET_GetLocalAddress();
 	}
 }
 

@@ -906,6 +906,22 @@ void CL_Connect_f(void) {
 		if ( clc.serverAddress.type == NA_LOOPBACK ) {
 			cls.state = CA_CHALLENGING;
 		} else {
+			// A remote server is the only thing that needs the real UDP socket.
+			// Without it there is no challenge to wait for, so stop here rather
+			// than sit in CA_CONNECTING retransmitting into a closed socket.
+			if ( !NET_RemoteAvailable() ) {
+				Com_Printf( "Connect to %s failed: network unavailable\n", cls.servername );
+				CL_Disconnect( qfalse );
+				UI_StopLoading();
+				UI_ForceMenuOff( qtrue );
+				UI_ForceMenu( "main" );
+				UI_ShowMenu( "okdialog", qfalse );
+				// A literal, not a $$token$$: the retail string table carries no
+				// row for this, and an unresolved token would print as itself.
+				Cbuf_ExecuteText( EXEC_NOW, "globalwidgetcommand OkDialogTitle title "
+					"\"Network unavailable -- this install has no network permission\"\n" );
+				return;
+			}
 			cls.state = CA_CONNECTING;
 		}
 
