@@ -117,6 +117,7 @@ void VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline )
 	int slot = VK_Draw_BindSlot();
 	int frame = RB_FrameCount();
 
+	VK_WalkStat_Req( VK_ELIDE_PIPE );
 	/* The command buffer is part of the key: a frame slot maps to one buffer for
 	   the walk, but the bring-up paths record into their own, and state does not
 	   carry between buffers. */
@@ -157,6 +158,7 @@ void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptor
 	int slot = VK_Draw_BindSlot();
 	int frame = RB_FrameCount();
 
+	VK_WalkStat_Req( VK_ELIDE_SET );
 	if ( s_boundSetFrame[slot] == frame && s_boundSetCmd[slot] == cmd
 		 && s_boundSetLayout[slot] == layout
 		 && s_boundSet[slot] == set && s_boundSetOffset[slot] == dynamicOffset
@@ -1235,6 +1237,8 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 
 	offsets[0] = vertexOffset;
 	offsets[1] = 0;
+
+	VK_WalkStat_Req( VK_ELIDE_INDEX );	/* one request per call, two binds may elide */
 
 	buffers[0] = VK_VertexRing_Buffer();
 	buffers[1] = VK_VertexRing_IndexBuffer();

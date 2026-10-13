@@ -384,7 +384,8 @@ void VK_WalkStat_Frame( int verts, int surfs );
    the number of the frame's own counters the row prints. */
 enum { VK_ELIDE_INDEX = 0, VK_ELIDE_UBO, VK_ELIDE_PIPE, VK_ELIDE_SET, VK_ELIDE_HITS };
 void VK_WalkStat_Count( int what );
-void VK_WalkStat_TakeElisions( long long *out );
+void VK_WalkStat_Req( int what );
+void VK_WalkStat_TakeElisions( long long *out, long long *reqOut );
 void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfsOut,
 					   long long *framesOut );
 /* -1 is "not timed", so a real reading of 0 is still a reading.  The reading

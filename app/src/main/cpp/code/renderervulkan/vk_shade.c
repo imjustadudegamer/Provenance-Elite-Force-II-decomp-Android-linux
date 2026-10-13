@@ -2760,6 +2760,7 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 	int			slice;
 	VkDeviceSize offset = 0;
 
+	VK_WalkStat_Req( VK_ELIDE_UBO );
 	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT || !vk_shadeUboMapped[slot] ) {
 		return ( VkDeviceSize )-1;
 	}
