@@ -167,6 +167,10 @@ void		NET_Shutdown( void );
 void		NET_Restart_f( void );
 void		NET_Config( qboolean enableNetworking );
 void		NET_SendPacket (netsrc_t sock, size_t length, const void *data, netadr_t to);
+// r59 netloop: qtrue when a real UDP socket can be had.  Opens it on the first
+// ask; a refusal is sticky and is reported once.  The client gates a remote
+// connect on this so a permission-less install fails cleanly, not by stall.
+qboolean	NET_RemoteAvailable( void );
 void		QDECL NET_OutOfBandPrint( netsrc_t net_socket, netadr_t adr, const char *format, ...) Q_PRINTF_FUNC(3, 4);
 void		QDECL NET_OutOfBandData( netsrc_t sock, netadr_t adr, byte *format, int len );
 
