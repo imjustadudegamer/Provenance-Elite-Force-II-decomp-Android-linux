@@ -2939,16 +2939,6 @@ VkCommandBuffer VK_VboStaticXferClose( int slot );
 
 /* ---- textures ------------------------------------------------------------ */
 
-/* One queued mip of one chain: the bytes sit in the chain's staging buffer and
-   the copy runs when the chain is published. */
-typedef struct {
-	int				level;
-	int				width;
-	int				height;
-	VkDeviceSize	offset;
-	size_t			bytes;
-} vkPendingUpload_t;
-
 typedef struct {
 	VkImage		image;
 	VkDeviceMemory memory;
@@ -2963,18 +2953,6 @@ typedef struct {
 	   s7.9.2: `oldLayout` must match the layout the image is actually in, or be
 	   VK_IMAGE_LAYOUT_UNDEFINED). */
 	VkImageLayout layout;
-	/* The chain's queued uploads.  A chain is queued by one thread at a time --
-	   the same single-writer assumption the layout field already carries -- and
-	   the queue drains into one submit at the publish that follows it. */
-	VkBuffer			staging;
-	VkDeviceMemory		stagingMemory;
-	byte				*stagingMapped;
-	VkDeviceSize		stagingSize;
-	VkDeviceSize		stagingUsed;
-	vkPendingUpload_t	*pending;
-	int					pendingCount;
-	int					pendingCap;
-	qboolean			pendingQuiesce;
 } vkTexture_t;
 
 #define VK_MAX_TEXTURES MAX_DRAWIMAGES
@@ -2984,7 +2962,6 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat format, int *handleOut );
 qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes );
-qboolean VK_Texture_Flush( int handle );
 qboolean VK_Texture_Publish( int handle );
 qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked );
 qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],

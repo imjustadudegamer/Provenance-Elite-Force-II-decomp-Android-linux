@@ -311,9 +311,6 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
 	return qtrue;
 }
 
-/* The queued-upload staging a chain holds; defined below the upload section. */
-static void VK_Texture_StagingFree( vkTexture_t *tex );
-
 void VK_Texture_Destroy( int handle )
 {
 	vkTexture_t *tex;
@@ -323,12 +320,6 @@ void VK_Texture_Destroy( int handle )
 	}
 
 	tex = &vk_textures[handle];
-
-	/* a chain queued and never published dies with its image: the copies would
-	   name a destroyed image, so the queue goes first.  No load path reaches
-	   this with an unpublished chain -- every upload is followed by its publish
-	   -- so the drop is the failure path, not the normal exit. */
-	VK_Texture_StagingFree( tex );
 
 	if ( tex->view != VK_NULL_HANDLE && qvk.DestroyImageView ) {
 		qvk.DestroyImageView( vk.device, tex->view, NULL );
@@ -366,109 +357,75 @@ static VkAccessFlags VK_Texture_LayoutAccess( VkImageLayout layout )
 	}
 }
 
-/* The staging buffer holds every mip of a chain until the chain is published,
-   so a load pays one buffer, one submit and one wait per image instead of per
-   mip.  The loaders walk a chain largest level first, so the first upload sizes
-   the buffer for the whole chain and the rest of it only copies. */
-#define VK_UPLOAD_OFFSET_ALIGN 16
-#define VK_UPLOAD_QUEUE_MIN    8
-/* A mip chain is bounded by the largest level the loaders upload, and the
-   region list rides the stack below this count. */
-#define VK_TEXTURE_FLUSH_REGIONS 16
-
-static void VK_Texture_StagingFree( vkTexture_t *tex )
-{
-	if ( tex->staging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
-		qvk.DestroyBuffer( vk.device, tex->staging, NULL );
-	}
-	if ( tex->stagingMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
-		qvk.FreeMemory( vk.device, tex->stagingMemory, NULL );
-	}
-	tex->staging = VK_NULL_HANDLE;
-	tex->stagingMemory = VK_NULL_HANDLE;
-	tex->stagingMapped = NULL;
-	tex->stagingSize = 0;
-	tex->stagingUsed = 0;
-
-	if ( tex->pending ) {
-		ri.Free( tex->pending );
-		tex->pending = NULL;
-	}
-	tex->pendingCount = 0;
-	tex->pendingCap = 0;
-	tex->pendingQuiesce = qfalse;
-}
-
-static void VK_Texture_QueueDrop( vkTexture_t *tex )
-{
-	VK_Texture_StagingFree( tex );
-}
-
-/* The batching instrument: submits and the copies they carried, so a device
-   boot reads the win as one number.  per= is mips per submit -- 1.0 is the
-   per-mip submit-and-wait this replaced, and the measured chain is ~2.5. */
-static int	vk_uploadSubmits;
-static int	vk_uploadMips;
-
-/* Every queued copy of one chain, in one submit.  The barrier still declares
-   the layout the image actually holds; the tracked layout only moves once the
-   fence says the transition ran. */
-qboolean VK_Texture_Flush( int handle )
+qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
+							const void *data, size_t bytes )
 {
 	vkTexture_t *tex;
+	VkBufferCreateInfo stagingInfo;
+	VkBuffer staging = VK_NULL_HANDLE;
+	VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+	void *mapped = NULL;
 	VkCommandBufferAllocateInfo allocInfo;
 	VkCommandBufferBeginInfo beginInfo;
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
-	VkBufferImageCopy regions[VK_TEXTURE_FLUSH_REGIONS];
-	VkBufferImageCopy *regionList = regions;
+	VkBufferImageCopy region;
 	VkFenceCreateInfo fenceInfo;
 	VkFence fence = VK_NULL_HANDLE;
 	VkSubmitInfo submitInfo;
-	VkImageLayout oldLayout;
+	size_t rowBytes;
 	VkResult result;
-	int i;
-	int count;
 	qboolean ok = qfalse;
 
 	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "upload handle out of range", VK_ERROR_TOO_MANY_OBJECTS );
 		return qfalse;
 	}
 
 	tex = &vk_textures[handle];
-	count = tex->pendingCount;
-	if ( !tex->inUse || !count || tex->staging == VK_NULL_HANDLE ) {
-		return qtrue;
+	if ( !tex->inUse || !data || bytes == 0 ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "upload of an unusable texture", VK_ERROR_INITIALIZATION_FAILED );
+		return qfalse;
 	}
 
-	/* Quiesce BEFORE the upload section is taken: the walk thread can reach a
+	/* A zero extent cannot be contained in the image (VUID-07970); the caller
+	   that computes one has walked its chain past the last level. */
+	if ( width < 1 || height < 1 || mipLevel < 0 || mipLevel >= tex->mipLevels ) {
+		VK_Guard_Hit( VK_GSITE_ALLOC, "upload level outside the image",
+					  VK_ERROR_INITIALIZATION_FAILED );
+		return qfalse;
+	}
+
+	/* Quiesce BEFORE the upload section is taken.  The walk thread can reach a
 	   lazy texture load inside the frame this parks, and that load needs the
-	   section (vk_texture.c's own note, moved here with the transition it
-	   guards). */
-	if ( tex->pendingQuiesce ) {
-		tex->pendingQuiesce = qfalse;
+	   section: waiting for the walk while holding it would wait for a thread
+	   that is waiting for us. */
+	if ( tex->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ) {
 		VK_Upload_Quiesce();
 	}
 
 	VK_Upload_Begin();
 
-	if ( count > VK_TEXTURE_FLUSH_REGIONS ) {
-		regionList = (VkBufferImageCopy *)ri.Malloc( sizeof( *regionList ) * (size_t)count );
-		if ( !regionList ) {
-			VK_Upload_End();
-			return qfalse;
-		}
+	memset( &stagingInfo, 0, sizeof( stagingInfo ) );
+	stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	stagingInfo.size = (VkDeviceSize)bytes;
+	stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if ( !VK_Memory_CreateBuffer( stagingInfo.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+								  &staging, &stagingMemory ) ) {
+		VK_Upload_End();
+		return qfalse;
 	}
 
-	memset( regionList, 0, sizeof( *regionList ) * (size_t)count );
-	for ( i = 0; i < count; i++ ) {
-		regionList[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		regionList[i].imageSubresource.mipLevel = (uint32_t)tex->pending[i].level;
-		regionList[i].imageSubresource.layerCount = 1;
-		regionList[i].imageExtent.width = (uint32_t)tex->pending[i].width;
-		regionList[i].imageExtent.height = (uint32_t)tex->pending[i].height;
-		regionList[i].imageExtent.depth = 1;
-		regionList[i].bufferOffset = tex->pending[i].offset;
+	result = qvk.MapMemory( vk.device, stagingMemory, 0, stagingInfo.size, 0, &mapped );
+	if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkMapMemory(staging)" ) ) {
+		goto done;
 	}
+
+	memcpy( mapped, data, bytes );
+	qvk.UnmapMemory( vk.device, stagingMemory );
+	mapped = NULL;
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -490,19 +447,28 @@ qboolean VK_Texture_Flush( int handle )
 		goto done;
 	}
 
-	/* The copies want TRANSFER_DST, and the image may be in any layout the boot
-	   already left it in: a refill hits SHADER_READ_ONLY, a re-publish hits
-	   TRANSFER_DST.  One barrier from the TRACKED layout covers both, and its
-	   declared oldLayout is the layout the image actually holds. */
-	oldLayout = tex->layout;
-	if ( oldLayout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
-		VK_Texture_Barrier( cmd, tex->image, oldLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-							VK_Texture_LayoutAccess( oldLayout ),
+	/* The copy wants TRANSFER_DST, and the image may be in any layout the boot
+	   already left it in: a refill hits SHADER_READ_ONLY, a later level of the
+	   same chain hits TRANSFER_DST.  One barrier from the TRACKED layout covers
+	   both, and its declared oldLayout is the layout the image actually holds
+	   -- declaring SHADER_READ_ONLY over an image that is in TRANSFER_DST is
+	   exactly the InvalidImageLayout the layer reported. */
+	if ( tex->layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
+		VK_Texture_Barrier( cmd, tex->image, tex->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							VK_Texture_LayoutAccess( tex->layout ),
 							VK_ACCESS_TRANSFER_WRITE_BIT, tex->mipLevels );
+		tex->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	}
 
-	qvk.CmdCopyBufferToImage( cmd, tex->staging, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-							  (uint32_t)count, regionList );
+	memset( &region, 0, sizeof( region ) );
+	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.imageSubresource.mipLevel = (uint32_t)mipLevel;
+	region.imageSubresource.layerCount = 1;
+	region.imageExtent.width = (uint32_t)width;
+	region.imageExtent.height = (uint32_t)height;
+	region.imageExtent.depth = 1;
+
+	qvk.CmdCopyBufferToImage( cmd, staging, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(upload)" ) ) {
 		goto done;
@@ -531,21 +497,9 @@ qboolean VK_Texture_Flush( int handle )
 		goto done;
 	}
 
-	/* the transition is known to have run */
-	if ( oldLayout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
-		tex->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	}
+	rowBytes = (size_t)width;
+	vk_textureBytes += (int)( rowBytes * (size_t)height );
 	ok = qtrue;
-
-	vk_uploadSubmits++;
-	vk_uploadMips += count;
-	if ( R_ProbeStatsOn() && ( vk_uploadSubmits & 63 ) == 0 ) {
-		VK_Guard_Row( "VK:upload", "submits=%d mips=%d per=%d.%d bytes=%d",
-					  vk_uploadSubmits, vk_uploadMips,
-					  vk_uploadMips / vk_uploadSubmits,
-					  ( vk_uploadMips * 10 / vk_uploadSubmits ) % 10,
-					  VK_Texture_BytesUsed() );
-	}
 
 done:
 	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
@@ -554,141 +508,16 @@ done:
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
 		VK_Pool_FreeBuffers( VK_Upload_Pool(), 1, &cmd );
 	}
-	if ( regionList != regions ) {
-		ri.Free( regionList );
+	if ( staging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+		qvk.DestroyBuffer( vk.device, staging, NULL );
 	}
-
-	/* a failed flush drops the chain's queue: the texture is short its mips,
-	   which is the same outcome a per-mip failure had, and the guard row names
-	   which submit died */
-	if ( ok ) {
-		VK_Texture_StagingFree( tex );
-	} else {
-		VK_Texture_QueueDrop( tex );
+	if ( stagingMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, stagingMemory, NULL );
 	}
 
 	VK_Upload_End();
 
 	return ok;
-}
-
-qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
-							const void *data, size_t bytes )
-{
-	vkTexture_t *tex;
-	VkDeviceSize offset;
-	size_t rowBytes;
-
-	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
-		VK_Guard_Hit( VK_GSITE_ALLOC, "upload handle out of range", VK_ERROR_TOO_MANY_OBJECTS );
-		return qfalse;
-	}
-
-	tex = &vk_textures[handle];
-	if ( !tex->inUse || !data || bytes == 0 ) {
-		VK_Guard_Hit( VK_GSITE_ALLOC, "upload of an unusable texture", VK_ERROR_INITIALIZATION_FAILED );
-		return qfalse;
-	}
-
-	/* A zero extent cannot be contained in the image (VUID-07970); the caller
-	   that computes one has walked its chain past the last level. */
-	if ( width < 1 || height < 1 || mipLevel < 0 || mipLevel >= tex->mipLevels ) {
-		VK_Guard_Hit( VK_GSITE_ALLOC, "upload level outside the image",
-					  VK_ERROR_INITIALIZATION_FAILED );
-		return qfalse;
-	}
-
-	/* A refilled chain is sampled by the walk until its copies run, so the
-	   flush parks the walk first (VK_Texture_Flush). */
-	if ( tex->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ) {
-		tex->pendingQuiesce = qtrue;
-	}
-
-	if ( tex->pendingCount >= tex->pendingCap ) {
-		int cap = tex->pendingCap ? tex->pendingCap * 2 : VK_UPLOAD_QUEUE_MIN;
-		vkPendingUpload_t *grown = (vkPendingUpload_t *)ri.Malloc( (int)( sizeof( *grown ) * (size_t)cap ) );
-		vkPendingUpload_t *old = tex->pending;
-
-		if ( !grown ) {
-			VK_Guard_Hit( VK_GSITE_ALLOC, "upload queue alloc", VK_ERROR_OUT_OF_HOST_MEMORY );
-			return qfalse;
-		}
-		if ( old && tex->pendingCount ) {
-			memcpy( grown, old, sizeof( *grown ) * (size_t)tex->pendingCount );
-		}
-		tex->pending = grown;
-		tex->pendingCap = cap;
-		if ( old ) {
-			ri.Free( old );
-		}
-	}
-
-	/* the copy's bufferOffset is a multiple of the format's texel block, and
-	   every format this module maps is 16 or smaller, so a 16-byte alignment
-	   covers them all (VUID-vkCmdCopyBufferToImage-01576) */
-	offset = ( tex->stagingUsed + ( VK_UPLOAD_OFFSET_ALIGN - 1 ) ) & ~(VkDeviceSize)( VK_UPLOAD_OFFSET_ALIGN - 1 );
-
-	/* the buffer needs the new bytes: grow, flushing what the chain already
-	   queued so nothing is stranded */
-	if ( offset + (VkDeviceSize)bytes > tex->stagingSize ) {
-		VkBuffer		newBuffer = VK_NULL_HANDLE;
-		VkDeviceMemory	newMemory = VK_NULL_HANDLE;
-		byte			*newMapped = NULL;
-		void			*mappedPtr = NULL;
-		VkDeviceSize	trySize = (VkDeviceSize)bytes;
-		VkResult		result;
-
-		if ( tex->pendingCount ) {
-			if ( !VK_Texture_Flush( handle ) ) {
-				return qfalse;
-			}
-			offset = 0;
-		}
-
-		/* a chain arrives largest level first, so this is normally the only
-		   allocation the whole chain makes */
-		if ( trySize < 1024 ) {
-			trySize = 1024;
-		}
-
-		if ( !VK_Memory_CreateBuffer( trySize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-									  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-									  &newBuffer, &newMemory ) ) {
-			return qfalse;
-		}
-
-		result = qvk.MapMemory( vk.device, newMemory, 0, trySize, 0, &mappedPtr );
-		if ( !VK_Guard_Result( VK_GSITE_ALLOC, result, "vkMapMemory(staging)" ) ) {
-			qvk.DestroyBuffer( vk.device, newBuffer, NULL );
-			qvk.FreeMemory( vk.device, newMemory, NULL );
-			return qfalse;
-		}
-		newMapped = (byte *)mappedPtr;
-
-		/* the queue is empty here, so nothing the old buffer held is owed a copy */
-		VK_Texture_StagingFree( tex );
-
-		tex->staging = newBuffer;
-		tex->stagingMemory = newMemory;
-		tex->stagingMapped = newMapped;
-		tex->stagingSize = trySize;
-		tex->stagingUsed = 0;
-	}
-
-	memcpy( tex->stagingMapped + offset, data, bytes );
-
-	tex->pending[tex->pendingCount].level = mipLevel;
-	tex->pending[tex->pendingCount].width = width;
-	tex->pending[tex->pendingCount].height = height;
-	tex->pending[tex->pendingCount].offset = offset;
-	tex->pending[tex->pendingCount].bytes = bytes;
-	tex->pendingCount++;
-	tex->stagingUsed = offset + (VkDeviceSize)bytes;
-
-	rowBytes = (size_t)width;
-	vk_textureBytes += (int)( rowBytes * (size_t)height );
-
-	return qtrue;
 }
 
 /* Lay the image out for sampling: the barrier makes the copy visible to the
@@ -712,13 +541,6 @@ qboolean VK_Texture_Publish( int handle )
 
 	tex = &vk_textures[handle];
 	if ( !tex->inUse ) {
-		return qfalse;
-	}
-
-	/* the chain's queued copies run before the layout that publishes them: a
-	   barrier out of TRANSFER_DST with no copy behind it would publish mips the
-	   device never received */
-	if ( !VK_Texture_Flush( handle ) ) {
 		return qfalse;
 	}
 
@@ -849,12 +671,6 @@ qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],
 
 	tex = &vk_textures[handle];
 	if ( !tex->inUse ) {
-		return qfalse;
-	}
-
-	/* a readback proves what the device holds, so a chain still queued goes
-	   first: reading past it would prove the staging buffer instead */
-	if ( !VK_Texture_Flush( handle ) ) {
 		return qfalse;
 	}
 
@@ -1049,11 +865,6 @@ void VK_Texture_MakeMips( int handle )
 
 	tex = &vk_textures[handle];
 	if ( !tex->inUse || tex->mipLevels <= 1 ) {
-		return;
-	}
-
-	/* the blit reads level 0, so the chain's queued copies run first */
-	if ( !VK_Texture_Flush( handle ) ) {
 		return;
 	}
 
@@ -1279,10 +1090,6 @@ qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes 
 	tex = &vk_textures[handle];
 	if ( !tex || tex->image == VK_NULL_HANDLE ) {
 		VK_Guard_Hit( VK_GSITE_ALLOC, "readback texture out of range", VK_ERROR_TOO_MANY_OBJECTS );
-		return qfalse;
-	}
-
-	if ( !VK_Texture_Flush( handle ) ) {
 		return qfalse;
 	}
 
