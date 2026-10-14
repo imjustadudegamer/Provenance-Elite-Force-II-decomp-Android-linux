@@ -1033,18 +1033,26 @@ const char *PF_Tag_NumToName( dtiki_t *tiki, int num )
 	return TIKI_Tag_NumToName( tiki, num );
 }
 
+/* dtiki_t::alias_list, never a->alias_list: the client registers the character sound
+   families into the dtiki_t list and server and client share that one object. */
 qboolean PF_Alias_Add( dtiki_t *pmdl, const char *alias, const char *name, const char *parameters )
 {
-	if( !pmdl->a->alias_list ) pmdl->a->alias_list = AliasList_New( pmdl->a->name );
-	return Alias_ListAdd( pmdl->a->alias_list, alias, name, parameters );
+	if (!pmdl) {
+		return qfalse;
+	}
+
+	if (!pmdl->alias_list) {
+		pmdl->alias_list = AliasList_New( pmdl->name );
+	}
+	return Alias_ListAdd( (AliasList_t *)pmdl->alias_list, alias, name, parameters );
 }
 
 const char *PF_Alias_Find( dtiki_t *tiki, const char *alias )
 {
 	AliasList_t* alias_list = NULL;
 
-	if (tiki && tiki->a) {
-		alias_list = tiki->a->alias_list;
+	if (tiki) {
+		alias_list = (AliasList_t *)tiki->alias_list;
 	}
 
 	return alias_list ? Alias_ListFind(alias_list, alias) : NULL;
@@ -1052,15 +1060,15 @@ const char *PF_Alias_Find( dtiki_t *tiki, const char *alias )
 
 void *PF_Alias_GetList( dtiki_t *tiki )
 {
-	return (tiki && tiki->a) ? tiki->a->alias_list : NULL;
+	return tiki ? tiki->alias_list : NULL;
 }
 
 void PF_Alias_AddActorDialog( dtiki_t *tiki, const char *alias, int actor_number, int number_of_times_played, byte been_played_this_loop, int last_time_played )
 {
 	AliasList_t* alias_list = NULL;
 
-	if (tiki && tiki->a) {
-		alias_list = tiki->a->alias_list;
+	if (tiki) {
+		alias_list = (AliasList_t *)tiki->alias_list;
 	}
 
 	if (alias_list) {
@@ -1073,7 +1081,7 @@ const char *PF_Alias_FindRandom( dtiki_t *tiki, const char *alias, AliasListNode
 	AliasList_t* alias_list = NULL;
 
 	if (tiki) {
-		alias_list = tiki->a->alias_list;
+		alias_list = (AliasList_t *)tiki->alias_list;
 	}
 
 	if (alias_list) {
@@ -1083,12 +1091,12 @@ const char *PF_Alias_FindRandom( dtiki_t *tiki, const char *alias, AliasListNode
 	}
 }
 
-void PF_Alias_UpdateDialog( dtikianim_t *tiki, const char *alias, int number_of_times_played, byte been_played_this_loop, int last_time_played )
+void PF_Alias_UpdateDialog( dtiki_t *tiki, const char *alias, int number_of_times_played, byte been_played_this_loop, int last_time_played )
 {
 	AliasList_t* alias_list = NULL;
 
 	if (tiki) {
-		alias_list = tiki->alias_list;
+		alias_list = (AliasList_t *)tiki->alias_list;
 	}
 
     if (alias_list) {
@@ -1102,8 +1110,8 @@ const char *PF_Alias_FindDialog(
 {
 	AliasList_t* alias_list = NULL;
 
-	if (tiki && tiki->a) {
-		alias_list = tiki->a->alias_list;
+	if (tiki) {
+		alias_list = (AliasList_t *)tiki->alias_list;
 	}
 
 	if (!alias_list) {
@@ -1117,8 +1125,8 @@ const char *PF_Alias_FindSpecificAnim( dtiki_t *tiki, const char *name )
 {
 	AliasList_t* alias_list = NULL;
 
-	if (tiki && tiki->a) {
-		alias_list = tiki->a->alias_list;
+	if (tiki) {
+		alias_list = (AliasList_t *)tiki->alias_list;
 	}
 
 	return Alias_ListFindSpecificAnim(alias_list, name);
@@ -1128,8 +1136,8 @@ qboolean PF_Alias_CheckLoopAnim( dtiki_t *tiki, const char *name )
 {
 	AliasList_t* alias_list = NULL;
 
-	if (tiki && tiki->a) {
-		alias_list = tiki->a->alias_list;
+	if (tiki) {
+		alias_list = (AliasList_t *)tiki->alias_list;
 	}
 
 	return Alias_ListCheckLoopAnim(alias_list, name);
@@ -1146,11 +1154,11 @@ void PF_Alias_Dump( dtiki_t *tiki )
     AliasList_t* alias_list = NULL;
 
     if (tiki) {
-        alias_list = tiki->a->alias_list;
+        alias_list = (AliasList_t *)tiki->alias_list;
     }
 
     if (alias_list) {
-        Alias_ListDump(tiki->a->alias_list);
+        Alias_ListDump(alias_list);
     }
 }
 
@@ -2049,8 +2057,8 @@ void PF_Alias_UpdateDialog_mi(
 {
     dtiki_t *tiki = PF_TikiForModelIndexOrNULL(modelindex);
 
-    if (tiki && tiki->a) {
-        PF_Alias_UpdateDialog(tiki->a, alias, number_of_times_played, been_played_this_loop, last_time_played);
+    if (tiki) {
+        PF_Alias_UpdateDialog(tiki, alias, number_of_times_played, been_played_this_loop, last_time_played);
     }
 }
 
