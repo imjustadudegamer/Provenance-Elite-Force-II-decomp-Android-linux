@@ -48,6 +48,13 @@ void R_Invalidate2DWindowCache( void ) {
 	r_scissor2DValid = qfalse;
 }
 
+/* A 3D view reopens depth, so the next overlay draw has to re-issue the phase's
+   own state block; a window cached across it would let that draw skip it. */
+void RB_2D_InvalidateWindow( void ) {
+	r_window2DValid  = qfalse;
+	r_scissor2DValid = qfalse;
+}
+
 /* ---- [2D:stall] per-call accounting of the 2D entry points ---------------- A menu frame's cost
    is charged to whichever widget calls in here, and the widget probe only sees the widget's total.
    This splits that total per entry point and separates the flush prefix -- which, with a
@@ -569,6 +576,26 @@ void Set2DOrigin( float x, float y ) {
 
 	gles3_2dOrigin[0] = x;
 	gles3_2dOrigin[1] = y;
+}
+
+/* retail's overlay phase is one state block issued at its start, not a choice
+   each draw makes (the traced frame: glDepthMask FALSE then glDisable(GL_DEPTH_TEST)
+   right after the ortho, and the view restores both).  A drawer that appends quads
+   without entering the phase inherits the view's depth and lands behind the wall
+   in front of the camera -- the in-game counter that only shows over playback. */
+void RB_2D_EnterPhase( void ) {
+	if ( GLES3_DepthGate2D() && r_window2DValid && r_scissor2DValid ) {
+		return;
+	}
+
+	if ( r_window2DValid && r_scissor2DValid ) {
+		RB_2D_SetWindow( r_window2D[0], r_window2D[1], r_window2D[2], r_window2D[3],
+						 r_window2DOrtho[0], r_window2DOrtho[1], r_window2DOrtho[2],
+						 r_window2DOrtho[3], r_window2DOrtho[4], r_window2DOrtho[5] );
+		return;
+	}
+
+	RB_SetGL2D();
 }
 
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {

@@ -931,6 +931,15 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         D2_StringBegin(&s_fontStringT0);
     }
 
+    /* The run records quads and never names a window of its own: with the view's
+       cache dropped it has to establish the overlay phase or its glyphs land
+       under the view's depth and behind the wall in front of the camera. */
+    if ( !RB_2D_WindowValid() ) {
+        Set2DWindow( 0, 0, vkConfig.vidWidth, vkConfig.vidHeight,
+                     0.0f, (float)vkConfig.vidWidth, (float)vkConfig.vidHeight, 0.0f,
+                     0.0f, 1.0f );
+    }
+
     if (font->trhandle != r_sequencenumber) {
         font->shader = NULL;
     }

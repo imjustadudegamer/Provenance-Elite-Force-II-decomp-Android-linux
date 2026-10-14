@@ -309,6 +309,9 @@ void RE_RenderScene( const refdef_t *fd ) {
 	}
 
 	backEnd.in2D = qfalse;
+	/* the view reopens depth, so the overlay phase has to be re-stated after it:
+	   a cached window would let the next 2D draw skip its own state block */
+	RB_2D_InvalidateWindow();
 	tr.refdef.x = fd->x;
 	tr.refdef.y = fd->y;
 	tr.refdef.width = fd->width;
