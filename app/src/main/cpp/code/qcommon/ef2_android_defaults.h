@@ -19,9 +19,9 @@ root, for more details.
 #define EF2_ANDROID_DEFAULTS_H
 
 
-/* s_dialogvolume 0.96 is deliberate: retail's shared 0.60 leaves dialogue 6.804 dB under
-   the tutorial's authored effect, and this seta is what carries the change to an install
-   whose config.cfg already archived the old value.  See snd_dma_new.cpp S_Init.
+/* s_dialogvolume 0.96 == s_sfxvolume x the loudest paired effect, so a full-scale
+   line and that effect land level; holds under either gain law, cannot clip.  This
+   seta carries the value to an install whose config.cfg archived the old one.
 
    Touch/gamepad feel = the EF1 port's answer key (VoyagerNX_Android
    android_defaults.cfg).  Its own derivation line names the target: full stick

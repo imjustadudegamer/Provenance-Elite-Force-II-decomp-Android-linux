@@ -92,8 +92,8 @@ void S_Init(qboolean full_startup)
 
     s_volume         = Cvar_Get("s_volume", "1.0", CVAR_ARCHIVE);
     s_musicVolume    = Cvar_Get("s_musicvolume", "0.60", CVAR_ARCHIVE);
-    /* 0.96, not retail's 0.60: bus = master x category x authored, then ^(5/3), so at 0.60
-       the tutorial pair puts lcars_hit.wav (authored 1.6) +6.804 dB over Tuvok (1.0). */
+    /* 0.96 == s_sfxvolume x the loudest paired effect (0.60 x 1.6), and that holds
+       under either gain law; 0.96 x 1.0 cannot clip.  See S_EF2_GainLaw. */
     s_dialogVolume   = Cvar_Get("s_dialogvolume", "0.96", CVAR_ARCHIVE);
     s_sfxVolume      = Cvar_Get("s_sfxvolume", "0.60", CVAR_ARCHIVE);
     s_combatVolume   = Cvar_Get("s_combatvolume", "0.60", CVAR_ARCHIVE);

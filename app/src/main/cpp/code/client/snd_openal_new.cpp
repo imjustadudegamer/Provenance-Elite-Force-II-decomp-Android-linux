@@ -740,6 +740,17 @@ float S_GetBaseVolume()
     return s_volume->value;
 }
 
+/* Retail's chain is linear, so the mixer path is; the exponent is the pre-mixer
+   port's signature and stays on --legacy-audio only. */
+static float S_EF2_GainLaw(float fProduct)
+{
+    if (SndMix_Enabled()) {
+        return fProduct;
+    }
+
+    return powf(fProduct, 5.0f / 3.0f);
+}
+
 /* The one place the mixer's gains land, in the pre-mixer order: master x
    category x fade x what the mixer adds.  With `s_duckEnable 0' and
    `s_loudnessAnchor 0' SndMix_BusGain is exactly 1.0, so this builds
@@ -1320,7 +1331,7 @@ static void S_OPENAL_Start2DSound(
 
     SND_SndRow(
         "start2d", pSfx->name, (int)( pSfx - s_knownSfx ), iEntNum, iEntChannel, fVolume, fMinDistance, 0.0f, fPitch,
-        powf(fRealVolume, 5.0f / 3.0f), iFreeChannel, 0
+        S_EF2_GainLaw(fRealVolume), iFreeChannel, 0
     );
 
     pChannel->iStartTime    = cl.serverTime;
@@ -1501,7 +1512,7 @@ void S_OPENAL_StartSound(
 
     SND_SndRow(
         "start", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch,
-        powf(S_EF2_ChannelVolume(iEntChannel) * pChannel->fVolume, 5.0f / 3.0f), iChannel, iStolen
+        S_EF2_GainLaw(S_EF2_ChannelVolume(iEntChannel) * pChannel->fVolume), iChannel, iStolen
     );
 
     if (s_show_sounds->integer > 0) {
@@ -1822,7 +1833,7 @@ static int S_OPENAL_Start3DLoopSound(
     SND_SndRow(
         "startloop", pLoopSound->pSfx->name, (int)( pLoopSound->pSfx - s_knownSfx ), 0, CHAN_AUTO,
         fVolumeToPlay, fMinDistance, fMaxDistance, fLoopPitch,
-        powf(fVolumeToPlay, 5.0f / 3.0f), iChannel, 0
+        S_EF2_GainLaw(fVolumeToPlay), iChannel, 0
     );
 
     S_OPENAL_reverb(iChannel, s_iReverbType, s_fReverbLevel);
@@ -2839,7 +2850,7 @@ void openal_channel::set_gain(float gain)
 
 void openal_channel::set_gain_3d(float gain)
 {
-    set_gain(powf(gain, 5.0f / 3.0f));
+    set_gain(S_EF2_GainLaw(gain));
 }
 
 void openal_channel::set_no_3d()
@@ -4110,7 +4121,7 @@ void S_RawSamples(
     qalSourceQueueBuffers(s_rawSource, 1, &buffer);
     s_rawSamplesFed += (unsigned)samples;
 
-    qalSourcef(s_rawSource, AL_GAIN, powf(S_EF2_ChannelVolume(CHAN_CINEMATIC) * volume, 5.0f / 3.0f));
+    qalSourcef(s_rawSource, AL_GAIN, S_EF2_GainLaw(S_EF2_ChannelVolume(CHAN_CINEMATIC) * volume));
 
     qalGetSourcei(s_rawSource, AL_SOURCE_STATE, &state);
     if (state != AL_PLAYING) {
