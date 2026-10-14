@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "ui_local.h"
+#include "../qcommon/q_version.h"
 #include "../qcommon/stringresource.h"
 
 #define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
@@ -935,6 +936,62 @@ static void MENU3DVideoMenuResolutionFixup(Menu *m)
     }
 }
 
+/* The main menu's lower-left version corner.  menu_main.urc ships the corner as
+   a pair of serpentinelight-10 labels -- the literal "EF2" at 20,455 and the
+   `shortversion' label beside it at 40,455 -- and this port's shortversion is
+   its own number (qcommon/common.c registers it CVAR_ROM from PRODUCT_VERSION),
+   so retail's text is replaced in place rather than stacked beside: the pair is
+   collapsed onto the first label, which is re-titled to the same string the
+   startup banner prints, and the second is disabled.  Nothing is created; the
+   widget's own font, colours and border survive, because only the title and the
+   frame's width move (the corner string is wider than the 25 the file authored
+   for "EF2", and the label draws clipped to its own frame -- uiwidget.cpp
+   Rend_Scissor).  menu_main.urc keeps its bytes. */
+static void MENUVersionCornerFixup(Menu *m)
+{
+    UIWidget *maincont;
+    UIWidget *mainw;
+
+    if (!m || Q_stricmp(m->m_name.c_str(), "main")) {
+        return;
+    }
+
+    maincont = m->GetContainerWidget();
+    if (!maincont) {
+        return;
+    }
+
+    mainw = maincont->getFirstChild();
+
+    while (mainw) {
+        const char *maincvar  = mainw->getCvarName();
+        const char *maintitle = mainw->getTitle();
+
+        if (maincvar && maincvar[0] && !Q_stricmp(maincvar, "shortversion")) {
+            /* Its draw reads the cvar ahead of the title (uilabel.cpp tries
+               m_labelText, then m_cvarname, then m_title), so a blank title
+               cannot silence it; the established hide is the only thing that
+               can. */
+            mainw->Disable();
+        } else if (maintitle && !strcmp(maintitle, "EF2")) {
+            Event *rect = new Event(EV_Layout_Rect);
+
+            mainw->setTitle(str("P:EF2 ") + PRODUCT_VERSION_FULL);
+
+            /* the authored `rect' path, not setFrame: LayoutRect also re-latches
+               m_startingpos, so a mid-session ChangeResolution re-derives the
+               widened frame instead of the 25 the file authored for "EF2". */
+            rect->AddFloat(20.0f);
+            rect->AddFloat(455.0f);
+            rect->AddFloat(160.0f);
+            rect->AddFloat(16.0f);
+            mainw->ProcessEvent(rect);
+        }
+
+        mainw = mainw->getNextSibling();
+    }
+}
+
 
 bool MenuManager::PushMenu(str name)
 {
@@ -959,6 +1016,7 @@ bool MenuManager::PushMenu(str name)
     }
 
     MENU3DVideoMenuResolutionFixup(m);
+    MENUVersionCornerFixup(m);
 
 #ifdef __ANDROID__
     AUDIOAudioMenuFixup(m);
@@ -1020,6 +1078,7 @@ bool MenuManager::TransitionMenu(str name)
     }
 
     MENU3DVideoMenuResolutionFixup(m);
+    MENUVersionCornerFixup(m);
 
 #ifdef __ANDROID__
     AUDIOAudioMenuFixup(m);
@@ -1066,6 +1125,7 @@ bool MenuManager::ShowMenu(str name)
     }
 
     MENU3DVideoMenuResolutionFixup(m);
+    MENUVersionCornerFixup(m);
 
 #ifdef __ANDROID__
     AUDIOAudioMenuFixup(m);
@@ -1458,50 +1518,6 @@ static const char *s_adaptBindWidgets[] = {
 };
 #endif /* __ANDROID__ */
 
-/* The main menu's version corner.  The shipped file keeps its bytes: its own
-   version label is commented out and linked to `shortversion', which this port
-   answers with its own number, so the corner is built here from that cvar and
-   reads the same source the startup banner prints. */
-static void UI_VersionCornerLabel(UIWidget *container)
-{
-    static const char versionName[] = "pef2version";
-    UIWidget         *wid;
-
-    wid = container->FindWidget(versionName);
-    if (!wid) {
-        const char *translated = uii.Client_TranslateWidgetName("Label");
-        str         classname  = "UI";
-        ClassDef   *widgetclass;
-
-        classname += translated ? translated : "Label";
-        widgetclass = getClass(classname.c_str());
-        if (!widgetclass) {
-            return;
-        }
-
-        wid = (UIWidget *)widgetclass->newInstance();
-        if (!wid) {
-            return;
-        }
-
-        wid->InitFrame(container, 10, 464, 160, 14, -1, "serpentinelight-10");
-        wid->setName(str(versionName));
-    }
-
-    {
-        cvar_t *ver = uii.Cvar_Find("shortversion");
-        str     title = "P:EF2 ";
-
-        if (ver && ver->string[0]) {
-            title += ver->string;
-        } else {
-            title += "?";
-        }
-
-        wid->setTitle(title);
-    }
-}
-
 static void AdaptHideRow(UIWidget *container, const adaptRow_s *row) {
     Container<UIWidget *>& children = container->getChildren();
     str                    title;
@@ -1677,7 +1693,7 @@ static void AdaptTouchSection(UIWidget *container)
     AdaptCommand(header, "bgcolor", "0.278", "0.365", "0.510", "1.000", NULL);
     AdaptCommand(header, "borderstyle", "3D_BORDER", NULL);
 
-    box = AdaptWidget(container, "Widget", "TouchSectionBox", 46, 107, 325, 112);
+    box = AdaptWidget(container, "Widget", "TouchSectionBox", 46, 107, 325, 84);
     AdaptCommand(box, "fgcolor", "1", "1", "1", "1", NULL);
     AdaptCommand(box, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
     AdaptCommand(box, "borderstyle", "OUTLINE_BORDER", NULL);
@@ -1686,11 +1702,16 @@ static void AdaptTouchSection(UIWidget *container)
 
     AdaptTouchSlider(container, "TouchLook", 115, "Touch Look Sensitivity", "cl_touchLook",
                      "0.5", "6.0", "0.1", "Look sensitivity on the touch pad");
-    AdaptTouchSlider(container, "TouchScale", 139, "Touch Control Scale", "cl_touchScale",
-                     "0.6", "2.0", "0.05", "Size of the touch controls");
-    AdaptTouchSlider(container, "TouchOpacity", 163, "Touch Overlay Opacity", "cl_touchOpacity",
-                     "0.1", "1.0", "0.05", "Opacity of the touch controls");
-    AdaptTouchCheckbox(container, "TouchCrouchToggle", 187, "Crouch Toggle", "cl_crouchToggle",
+    /* the deadzone, not the overlay: cl_touchScale and cl_touchOpacity only size
+       and fade the onscreen buttons (sdl_input.c IN_TouchScale, cl_scrn.cpp's
+       draw scale/opacity), so their rows went.  joy_threshold is the axis
+       deadzone itself (sdl_input.c zeroes the axis below it) and its compiled
+       default 0.15 is the EF1 answer key's own value; the range starts at EF1's
+       own 0.05 floor (ui_controls2.c) and puts that default a third of the way
+       up. */
+    AdaptTouchSlider(container, "JoystickDeadzone", 139, "Joystick Deadzone", "joy_threshold",
+                     "0.05", "0.35", "0.01", "How far the stick must move before it responds");
+    AdaptTouchCheckbox(container, "TouchCrouchToggle", 163, "Crouch Toggle", "cl_crouchToggle",
                        "Tap crouch to hold it down");
 }
 #endif /* __ANDROID__ */
@@ -1752,10 +1773,6 @@ void UI_AdaptSettingsMenus(void)
             if (!stricmp(container->getName(), s_adaptRows[j].menu)) {
                 AdaptHideRow(container, &s_adaptRows[j]);
             }
-        }
-
-        if (!stricmp(container->getName(), "main")) {
-            UI_VersionCornerLabel(container);
         }
 
 #ifdef __ANDROID__
