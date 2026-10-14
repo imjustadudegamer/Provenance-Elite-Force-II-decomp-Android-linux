@@ -1675,8 +1675,12 @@ void Com_Init( char *commandLine ) {
 
 	   Seed 4 (2026-10-21): the max-graphics rows.  Costs one fold on every
 	   install, so all 74 binds and every seta row re-execute once and a
-	   hand-tuned sensitivity or bind resets to the compiled value. */
-#define PORT_DEFAULTS_SEED 4
+	   hand-tuned sensitivity or bind resets to the compiled value.
+
+	   Seed 5 (2026-10-21): the advanced-video rows (r_flares 2,
+	   r_dynamiclightmaps 1) and the controls page's deadzone slider.  Same
+	   one-fold cost as every bump. */
+#define PORT_DEFAULTS_SEED 5
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );

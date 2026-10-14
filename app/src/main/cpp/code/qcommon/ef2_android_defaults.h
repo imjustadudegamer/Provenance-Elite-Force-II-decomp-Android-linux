@@ -43,7 +43,15 @@ root, for more details.
    r_lodScaleDistance/r_lodscale never run behind that early return.  r_picmip
    0 / r_texturebits 0 / r_colorbits 32 keep native mip, texture and colour
    depth (16 forces a downgrade in tr_image.c).  cg_marks/cg_shadows/
-   cg_effectdetail are already the authored maximum. */
+   cg_effectdetail are already the authored maximum.
+
+   Advanced video (r58): only two rows here need an explicit seta, because every
+   other page cvar is born at its maximum in renderervulkan/tr_init.c and this
+   build has no config.cfg to outrun it.  r_flares 2 is the page's top option and
+   the lane only tests the value, so 1 and 2 draw identically.  r_dynamiclightmaps
+   1 is DISPLAY ONLY -- renderervulkan declares it extern (tr_local.h) and neither
+   defines nor reads it, so without a row the checkbox reads an unregistered cvar
+   and shows unchecked; it changes no pixel in this lane. */
 #define EF2_ANDROID_DEFAULT_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
 	"bind w \"+forward\"\n" \
@@ -175,7 +183,9 @@ root, for more details.
 	"seta r_lodbias 1\n" \
 	"seta r_subdivisions 2\n" \
 	"seta r_texturebits 0\n" \
-	"seta r_colorbits 32\n"
+	"seta r_colorbits 32\n" \
+	"seta r_flares 2\n" \
+	"seta r_dynamiclightmaps 1\n"
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 
