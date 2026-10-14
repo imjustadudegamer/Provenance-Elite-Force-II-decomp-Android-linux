@@ -49,6 +49,8 @@ public:
     void clearOptions(Event *ev);
     void displayOption(int index, bool bStuff);
     void nextOption(Event *ev);
+    void prevOption(void);
+    qboolean KeyEvent(int key, unsigned int time) override;
     void Pressed(Event *ev) override;
     void copyProperties(UIWidget& other) override;
     void setData(const str& data) override;
@@ -251,6 +253,45 @@ void UISwitchBox::nextOption(Event *ev)
     }
 
     displayOption(m_current, true);
+}
+
+void UISwitchBox::prevOption(void)
+{
+    if (m_widgetState == WIDGET_STATE_DISABLED) {
+        return;
+    }
+
+    if (!m_options.NumObjects()) {
+        return;
+    }
+
+    m_current--;
+    if (m_current < 1) {
+        m_current = m_options.NumObjects();
+    }
+
+    displayOption(m_current, true);
+}
+
+/* Left and right are the switchbox's own control: one option each way, wrapping,
+   and the option's command runs exactly as a click's does. */
+qboolean UISwitchBox::KeyEvent(int key, unsigned int time)
+{
+    if (m_widgetState == WIDGET_STATE_DISABLED) {
+        return qfalse;
+    }
+
+    if (key == K_RIGHTARROW || key == K_PAD0_LEFTSTICK_RIGHT) {
+        nextOption(NULL);
+        return qtrue;
+    }
+
+    if (key == K_LEFTARROW || key == K_PAD0_LEFTSTICK_LEFT) {
+        prevOption();
+        return qtrue;
+    }
+
+    return UIButton::KeyEvent(key, time);
 }
 
 void UISwitchBox::Pressed(Event *ev)

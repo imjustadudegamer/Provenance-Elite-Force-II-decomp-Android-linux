@@ -152,6 +152,35 @@ static void IN_PrintKey( const SDL_Keysym *keysym, keyNum_t key, qboolean down )
 	Com_Printf( " Q:0x%02x(%s)\n", key, Key_KeynumToString( key ) );
 }
 
+static int IN_GamepadMenuKey( int button, int defaultKey );
+
+#ifdef __ANDROID__
+/* The release must hand back the key the press sent, even if a menu opened or
+   closed while the button was held. Same memory the pad path keeps. */
+static int IN_AndroidMenuKey( int sdlKey, qboolean down )
+{
+	static int sentMenu;
+	static int sentBack;
+	int       *slot = ( sdlKey == SDLK_AC_BACK ) ? &sentBack : &sentMenu;
+	int        key;
+
+	if ( down )
+	{
+		key = IN_GamepadMenuKey( SDL_CONTROLLER_BUTTON_BACK, K_PAD0_START );
+
+		if ( key )
+			*slot = key;
+	}
+	else
+	{
+		key   = *slot ? *slot : K_PAD0_START;
+		*slot = 0;
+	}
+
+	return key;
+}
+#endif
+
 static keyNum_t IN_TranslateSDLToQ3Key( SDL_Keysym *keysym, qboolean down )
 {
 	keyNum_t key = 0;
@@ -193,7 +222,10 @@ static keyNum_t IN_TranslateSDLToQ3Key( SDL_Keysym *keysym, qboolean down )
 			case SDLK_UP:           key = K_UPARROW;       break;
 			case SDLK_ESCAPE:       key = K_ESCAPE;        break;
 #ifdef __ANDROID__
-			case SDLK_AC_BACK:      key = K_ESCAPE;        break;
+			/* Start and Select reach here as keys, not pad buttons: SDL's Android
+			   keyboard table gives BUTTON_START no scancode and BACK the AC_BACK one. */
+			case SDLK_AC_BACK:
+			case SDLK_MENU:         key = IN_AndroidMenuKey( keysym->sym, down ); break;
 #endif
 			case SDLK_KP_ENTER:     key = K_KP_ENTER;      break;
 			case SDLK_RETURN:       key = K_ENTER;         break;
@@ -243,7 +275,9 @@ static keyNum_t IN_TranslateSDLToQ3Key( SDL_Keysym *keysym, qboolean down )
 			case SDLK_HELP:         key = K_HELP;          break;
 			case SDLK_PRINTSCREEN:  key = K_PRINT;         break;
 			case SDLK_SYSREQ:       key = K_SYSREQ;        break;
+#ifndef __ANDROID__
 			case SDLK_MENU:         key = K_MENU;          break;
+#endif
 			case SDLK_APPLICATION:	key = K_MENU;          break;
 			case SDLK_POWER:        key = K_POWER;         break;
 			case SDLK_UNDO:         key = K_UNDO;          break;
@@ -663,6 +697,13 @@ static int IN_GamepadMenuKey( int button, int defaultKey )
 			case SDL_CONTROLLER_BUTTON_BACK:  return K_ESCAPE;
 		}
 	}
+
+#ifdef __ANDROID__
+	/* Select stands for Start while nothing is up, so both open the pause menu.
+	   The touch overlay's own back key is queued directly and keeps its bind. */
+	if ( button == SDL_CONTROLLER_BUTTON_BACK )
+		defaultKey = K_PAD0_START;
+#endif
 
 	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) )
 		return defaultKey;
