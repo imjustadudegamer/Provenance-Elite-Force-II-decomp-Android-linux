@@ -66,6 +66,17 @@ void R_Invalidate2DWindowCache( void ) {
 	r_scissor2DValid = qfalse;
 }
 
+/* A 3D view reopens depth, so the next overlay draw has to re-issue the phase's
+   own state block; a window cached across it would let that draw skip it. */
+qboolean RB_2D_WindowValid( void ) {
+	return r_window2DValid && r_scissor2DValid;
+}
+
+void RB_2D_InvalidateWindow( void ) {
+	r_window2DValid  = qfalse;
+	r_scissor2DValid = qfalse;
+}
+
 /* the reference renderer's tr_draw.c carries this note in full */
 typedef enum {
 	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,

@@ -632,6 +632,7 @@ static void R_FontRunWrite( void ) {
 		return;
 	}
 
+	RB_2D_EnterPhase();
 	RB_BeginSurface( s_fontRunShader, 0 );
 
 	for ( i = 0; i < s_fontRunCount; i++ ) {
@@ -777,6 +778,7 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
            tess -- so the 2D batch has to be drawn first or every quad appended
            since the last flush is dropped on the floor. */
         D2_StringBegin(&s_fontStringT0);
+        RB_2D_EnterPhase();
         RB_2D_Flush();
         R_FlushRenderCommands();
     }

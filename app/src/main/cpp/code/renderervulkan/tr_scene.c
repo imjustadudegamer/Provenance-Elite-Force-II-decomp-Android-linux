@@ -370,6 +370,9 @@ void RE_RenderScene( const refdef_t *fd ) {
 	   its RE_RenderScene ran on the render thread.  Under r_smp this front-end
 	   write raced the walk's 2D pass, and a batch begun in the window read in2D
 	   false and took the 3D iterator. */
+	/* the window cache is the front end's own, and the view reopens depth: the
+	   next overlay draw has to record its state block again, not skip it */
+	RB_2D_InvalidateWindow();
 	tr.refdef.x = fd->x;
 	tr.refdef.y = fd->y;
 	tr.refdef.width = fd->width;

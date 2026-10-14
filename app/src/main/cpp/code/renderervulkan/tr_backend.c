@@ -1882,6 +1882,61 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 		}
 
+		if ( PROBE_On() && *drawSurf->surface == SF_POLY ) {
+			static int	s_polyFrame;
+			static int	s_polyLastFrame = -1;
+			static int	s_polyRows;
+			static int	s_polyCount;
+
+			if ( RB_FrameCount() != s_polyLastFrame ) {
+				s_polyLastFrame = RB_FrameCount();
+				s_polyFrame = 0;
+			}
+			s_polyCount++;
+			if ( s_polyRows <= PROBE_ROW_CAP && s_polyFrame < 4 && ( s_polyCount % 30 ) == 1 ) {
+				char		szBefore[192];
+				char		szAfter[96];
+				shader_t	*pNb;
+				int			iNb, iEnt, iFog, iDl, iLen;
+
+				s_polyFrame++;
+				s_polyRows++;
+
+				szBefore[0] = 0;
+				iLen = 0;
+				for ( iNb = i - 6; iNb < i; iNb++ ) {
+					if ( iNb < 0 || iNb >= numDrawSurfs || drawSurfs[iNb].surface == NULL ) {
+						continue;
+					}
+					R_DecomposeSort( drawSurfs[iNb].sort, &iEnt, &pNb, &iFog, &iDl );
+					iLen += Com_sprintf( szBefore + iLen, sizeof( szBefore ) - iLen, "%s%s|",
+										 iNb == i ? ">" : "", pNb->name );
+					if ( iLen >= (int)sizeof( szBefore ) - 48 ) {
+						break;
+					}
+				}
+
+				szAfter[0] = 0;
+				iLen = 0;
+				for ( iNb = i + 1; iNb <= i + 3 && iNb < numDrawSurfs; iNb++ ) {
+					if ( drawSurfs[iNb].surface == NULL ) {
+						continue;
+					}
+					R_DecomposeSort( drawSurfs[iNb].sort, &iEnt, &pNb, &iFog, &iDl );
+					iLen += Com_sprintf( szAfter + iLen, sizeof( szAfter ) - iLen, "|%s", pNb->name );
+					if ( iLen >= (int)sizeof( szAfter ) - 24 ) {
+						break;
+					}
+				}
+
+				VK_Guard_Row( "DOCC:order",
+							  "n=%d '%s' sort=%u st0=0x%08x before=%s after=%s",
+							  i, shader->name, drawSurf->sort,
+							  ( shader->unfoggedStages[0] ) ? shader->unfoggedStages[0]->stateBits : 0u,
+							  szBefore, szAfter );
+			}
+		}
+
 		VK_Shade_WindowClose( shadeT0, shadeNested0, shadeParts );
 
 		{

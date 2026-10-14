@@ -1238,6 +1238,47 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 					fRange[0], fRange[1],
 					backEnd.viewParms.projectionMatrix[15]
 				);
+
+				/* the neighbours decide the occlusion question: a decal that
+				   precedes the wall it sits on is the whole see-through symptom */
+				{
+					char		szBefore[192];
+					char		szAfter[96];
+					shader_t	*pNb;
+					int			iNb, iEnt;
+					int			iFog, iDl;
+					int			iLen;
+
+					szBefore[0] = 0;
+					iLen = 0;
+					for ( iNb = i - 6; iNb < i; iNb++ ) {
+						if ( iNb < 0 || iNb >= numDrawSurfs ) {
+							continue;
+						}
+						R_DecomposeSort( drawSurfs[iNb].sort, &iEnt, &pNb, &iFog, &iDl );
+						iLen += Com_sprintf( szBefore + iLen, sizeof( szBefore ) - iLen, "%s%s|",
+											 iNb == i ? ">" : "", pNb->name );
+						if ( iLen >= (int)sizeof( szBefore ) - 48 ) {
+							break;
+						}
+					}
+
+					szAfter[0] = 0;
+					iLen = 0;
+					for ( iNb = i + 1; iNb <= i + 3 && iNb < numDrawSurfs; iNb++ ) {
+						R_DecomposeSort( drawSurfs[iNb].sort, &iEnt, &pNb, &iFog, &iDl );
+						iLen += Com_sprintf( szAfter + iLen, sizeof( szAfter ) - iLen, "|%s", pNb->name );
+						if ( iLen >= (int)sizeof( szAfter ) - 24 ) {
+							break;
+						}
+					}
+
+					UIVK_PROBE(
+						"DOCC:order",
+						"n=%d '%s' before=%s after=%s\n",
+						i, shader->name, szBefore, szAfter
+					);
+				}
 			}
 		}
 
@@ -1724,6 +1765,7 @@ static const void *RB_2DFontString( const void *data ) {
 			RB_EndSurface();
 		}
 
+		RB_2D_EnterPhase();
 		RB_BeginSurface( cmd->shader, 0 );
 
 		for ( i = 0; i < cmd->numGlyphs; i++, g++ ) {
