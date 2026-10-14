@@ -457,7 +457,7 @@ void UIWindowManager::ServiceEvents(void)
 
             m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT;
 
-            if (dir != 0) {
+            if (dir != 0 && !PadFocusRepeat(m_padRepeatKey)) {
                 MovePadFocus(dir);
             }
         }
@@ -765,6 +765,53 @@ int UIWindowManager::PadNavDirection(int key)
     return 0;
 }
 
+qboolean UIWindowManager::PadHorizontal(int key)
+{
+    return key == K_LEFTARROW || key == K_RIGHTARROW
+        || key == K_PAD0_LEFTSTICK_LEFT || key == K_PAD0_LEFTSTICK_RIGHT;
+}
+
+UIWidget *UIWindowManager::PadFocusedWidget(void)
+{
+    Menu     *menu = menuManager.CurrentMenu();
+    UIWidget *cont;
+
+    if (!menu) {
+        return NULL;
+    }
+
+    cont = menu->GetContainerWidget();
+
+    if (!cont || !cont->isSubclassOf(UIWidgetContainer)) {
+        return NULL;
+    }
+
+    return ((UIWidgetContainer *)cont)->getFocusWidget();
+}
+
+/* Held on a row that owns its horizontal, the row keeps the key: the slider steps,
+   a switchbox only holds, because an option runs its command every step. */
+bool UIWindowManager::PadFocusRepeat(int key)
+{
+    UIWidget *focused;
+
+    if (!PadHorizontal(key)) {
+        return false;
+    }
+
+    focused = PadFocusedWidget();
+
+    if (!focused) {
+        return false;
+    }
+
+    if (focused->isSubclassOf(UISlider)) {
+        focused->KeyEvent(key, 0);
+    }
+
+    return true;
+}
+
 bool UIWindowManager::MovePadFocus(int dir)
 {
     Menu      *menu = menuManager.CurrentMenu();
@@ -834,6 +881,12 @@ bool UIWindowManager::ActivateFocusedWidget(void)
 
     ActivateControl(focused);
 
+    /* A slider has nothing to click and a synthesized press would drop the thumb at
+       the centre of its track; its value is the left and right keys. */
+    if (focused->isSubclassOf(UISlider)) {
+        return true;
+    }
+
     pos = focused->getGlobalPoint(UIPoint2D(focused->getSize().width * 0.5f, focused->getSize().height * 0.5f));
 
     ViewEvent(focused, down, pos, 1);
@@ -863,6 +916,18 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
            text field, slider -- get the key first and keep it. */
         if (m_activeControl && m_activeControl->KeyEvent(key, time)) {
             return true;
+        }
+
+        /* A horizontal key steps the focused row instead of walking off it: a slider's
+           value and a switchbox's option are the only horizontal move that row has. */
+        if (PadHorizontal(key)) {
+            UIWidget *focused = PadFocusedWidget();
+
+            if (focused && focused->KeyEvent(key, time)) {
+                m_padRepeatKey  = key;
+                m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT_DELAY;
+                return true;
+            }
         }
 
         if (MovePadFocus(dir)) {

@@ -4985,7 +4985,10 @@ qboolean UIWidgetContainer::moveFocus(int dir)
     for (i = 1; i <= m_children.NumObjects(); i++) {
         UIWidget *child = m_children.ObjectAt(i);
 
-        if (child && child->isEnabled() && child->getShow()) {
+        /* A row the pad cannot act on is not a stop: retail's own activation test,
+           plus the slider, which retail never marks activatable. */
+        if (child && child->isEnabled() && child->getShow()
+            && (child->CanActivate() || child->isSubclassOf(UISlider))) {
             focusable.AddObject(child);
         }
     }

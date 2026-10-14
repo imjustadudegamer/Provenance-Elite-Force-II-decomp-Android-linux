@@ -528,9 +528,9 @@ void UISlider::setType(slidertype_t type)
 
 qboolean UISlider::KeyEvent(int key, unsigned int time)
 {
-    if (key == K_RIGHTARROW) {
+    if (key == K_RIGHTARROW || key == K_PAD0_LEFTSTICK_RIGHT) {
         Increment();
-    } else if (key == K_LEFTARROW) {
+    } else if (key == K_LEFTARROW || key == K_PAD0_LEFTSTICK_LEFT) {
         Decrement();
     } else {
         return qfalse;
