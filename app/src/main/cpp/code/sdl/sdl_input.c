@@ -155,110 +155,49 @@ static void IN_PrintKey( const SDL_Keysym *keysym, keyNum_t key, qboolean down )
 static int IN_GamepadMenuKey( int button, int defaultKey );
 
 #ifdef __ANDROID__
-/* The menu buttons are claimed from the raw indices SDL's Android driver parks its unnamed keycodes on. */
-#define IN_PAD_MAX_BUTTONS 36
+#include "sdl_padmapping.h"
 
-static qboolean IN_PadMapHasElem( const char *map, const char *elem )
+/* SDL reads the mapping database at open time, so the completion lands before SDL_GameControllerOpen. */
+static void IN_GamepadInstallMapping( int device_index )
 {
-	char token[16];
+	SDL_JoystickGUID guid;
+	char             base[64];
+	char             guidstr[33];
+	char            *map;
+	char             full[1024];
+	int              completed;
 
-	token[0] = ',';
-	Q_strncpyz( token + 1, elem, sizeof( token ) - 1 );
-	return SDL_strstr( map, token ) ? qtrue : qfalse;
-}
-
-static qboolean IN_PadIndexUsed( const char *map, int index )
-{
-	char token[12];
-
-	Com_sprintf( token, sizeof( token ), ":b%d,", index );
-	return SDL_strstr( map, token ) ? qtrue : qfalse;
-}
-
-static void IN_GamepadCompleteMapping( void )
-{
-	static const char *const menuElems[] = { "start:", "back:", "guide:" };
-	char  *map;
-	char   add[96];
-	size_t len, maplen;
-	int    elem, next, nbuttons;
-
-	if ( !gamepad || !stick )
+	if ( device_index < 0 || device_index >= SDL_NumJoysticks() )
 		return;
 
-	map = SDL_GameControllerMapping( gamepad );
-	if ( !map )
-		return;
+	guid = SDL_JoystickGetDeviceGUID( device_index );
 
-	add[0]   = '\0';
-	len      = 0;
-	next     = 20;
-	nbuttons = SDL_JoystickNumButtons( stick );
+	/* Also asks SDL to install its own Android guess mapping when it can build one. */
+	map = SDL_GameControllerMappingForGUID( guid );
 
-	for ( elem = 0; elem < (int)ARRAY_LEN( menuElems ); elem++ )
+	/* A mapping stored under the "none" GUID lands in SDL's zero-GUID bucket, which no device ever matches. */
+	SDL_JoystickGetGUIDString( guid, guidstr, sizeof( guidstr ) );
+	snprintf( base, sizeof( base ), "%s,*,", guidstr );
+
+	completed = sdl_padMappingComplete( map ? map : base, full, sizeof( full ) );
+
+	if ( completed == 1 )
 	{
-		if ( IN_PadMapHasElem( map, menuElems[elem] ) )
-			continue;
+		if ( SDL_GameControllerAddMapping( full ) < 0 )
+			Com_DPrintf( "pad mapping install failed: %s\n", SDL_GetError() );
 
-		for ( ; next < IN_PAD_MAX_BUTTONS && next < nbuttons; next++ )
-		{
-			if ( !IN_PadIndexUsed( map, next ) )
-				break;
-		}
-
-		if ( next >= IN_PAD_MAX_BUTTONS || next >= nbuttons )
-			break;
-
-		len += Com_sprintf( add + len, sizeof( add ) - len, ",%s:b%d",
-			menuElems[elem], next );
-		next++;
+		PROBE( "input:pad", "mapping installed for device %d (%s)", device_index,
+			SDL_strstr( full, ",start:" ) ? "start mapped" : "start already mapped" );
+	}
+	else if ( completed < 0 )
+	{
+		Com_DPrintf( "pad mapping completion refused for device %d\n", device_index );
 	}
 
-	if ( !add[0] )
-	{
-		SDL_free( map );
-		return;
-	}
-
-	maplen = SDL_strlen( map );
-	{
-		/* New elements go before the platform field: the parser stops at one. */
-		char *plat = SDL_strstr( map, "platform:" );
-		char *full = (char *)SDL_malloc( maplen + len + 1 );
-
-		if ( !full )
-		{
-			SDL_free( map );
-			return;
-		}
-
-		if ( plat )
-		{
-			size_t at = (size_t)( plat - map );
-
-			SDL_memcpy( full, map, at );
-			SDL_memcpy( full + at, add, len );
-			SDL_memcpy( full + at + len, map + at, maplen - at + 1 );
-		}
-		else
-		{
-			SDL_memcpy( full, map, maplen );
-			SDL_memcpy( full + maplen, add, len + 1 );
-		}
-
-		SDL_free( map );
-		map = full;
-	}
-
-	if ( SDL_GameControllerAddMapping( map ) < 0 )
-		Com_DPrintf( "pad mapping add failed: %s\n", SDL_GetError() );
-
-	PROBE( "input:pad", "mapping completed%s", add );
 	SDL_free( map );
 }
 
-/* The release must hand back the key the press sent, even if a menu opened or
-   closed while the button was held. Same memory the pad path keeps. */
+/* The release must hand back the key the press sent, even if a menu opened or closed while it was held. */
 static int IN_AndroidMenuKey( int sdlKey, qboolean down )
 {
 	static int sentMenu;
@@ -268,14 +207,14 @@ static int IN_AndroidMenuKey( int sdlKey, qboolean down )
 
 	if ( down )
 	{
-		key = IN_GamepadMenuKey( SDL_CONTROLLER_BUTTON_BACK, K_PAD0_START );
+		key = IN_GamepadMenuKey( SDL_CONTROLLER_BUTTON_BACK, K_ESCAPE );
 
 		if ( key )
 			*slot = key;
 	}
 	else
 	{
-		key   = *slot ? *slot : K_PAD0_START;
+		key   = *slot ? *slot : K_ESCAPE;
 		*slot = 0;
 	}
 
@@ -614,6 +553,10 @@ static void IN_InitJoystick( void )
 
 	in_joystickUseAnalog = Cvar_Get( "in_joystickUseAnalog", "1", CVAR_ARCHIVE );
 
+#ifdef __ANDROID__
+	IN_GamepadInstallMapping( in_joystickNo->integer );
+#endif
+
 	stick = SDL_JoystickOpen( in_joystickNo->integer );
 
 	if (stick == NULL) {
@@ -628,9 +571,6 @@ static void IN_InitJoystick( void )
 		gamepad = SDL_GameControllerOpen(in_joystickNo->integer);
 
 #ifdef __ANDROID__
-	if (gamepad)
-		IN_GamepadCompleteMapping();
-
 	SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "1" );
 	touchControl.controllerConnected = ( gamepad != NULL );
 #endif
@@ -801,10 +741,9 @@ static int IN_GamepadMenuKey( int button, int defaultKey )
 	}
 
 #ifdef __ANDROID__
-	/* Select stands for Start while nothing is up, so both open the pause menu.
-	   The touch overlay's own back key is queued directly and keeps its bind. */
-	if ( button == SDL_CONTROLLER_BUTTON_BACK )
-		defaultKey = K_PAD0_START;
+	/* Gameplay start takes escape: the pad's own bind runs "togglemenu", which retail's UI_ToggleMenu_f refuses without a menu name. */
+	if ( button == SDL_CONTROLLER_BUTTON_START )
+		defaultKey = K_ESCAPE;
 #endif
 
 	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) )
@@ -1029,8 +968,35 @@ static void IN_JoyMove( void )
 			qboolean pressed = (SDL_JoystickGetButton(stick, i) != 0);
 			if (pressed != stick_state.buttons[i])
 			{
+#ifdef __ANDROID__
+				/* Android numbers the joystick buttons with SDL's own enum, so the pad's menu buttons land here too when no mapping was installed. */
+				int key = K_JOY1 + i;
+
+				if ( i < SDL_CONTROLLER_BUTTON_MAX )
+				{
+					switch ( i )
+					{
+						case SDL_CONTROLLER_BUTTON_BACK:  key = IN_GamepadMenuKey( SDL_CONTROLLER_BUTTON_BACK,  K_PAD0_BACK );  break;
+						case SDL_CONTROLLER_BUTTON_GUIDE: key = IN_GamepadMenuKey( SDL_CONTROLLER_BUTTON_GUIDE, K_PAD0_GUIDE ); break;
+						case SDL_CONTROLLER_BUTTON_START: key = IN_GamepadMenuKey( SDL_CONTROLLER_BUTTON_START, K_PAD0_START ); break;
+					}
+
+					/* The release hands back the key the press sent, even if a menu opened meanwhile. */
+					if ( pressed )
+						gamepadSentKey[i] = key;
+					else if ( gamepadSentKey[i] )
+					{
+						key = gamepadSentKey[i];
+						gamepadSentKey[i] = 0;
+					}
+				}
+
+				Com_QueueEvent( in_eventTime, SE_KEY, key, pressed, 0, NULL );
+				stick_state.buttons[i] = pressed;
+#else
 				Com_QueueEvent( in_eventTime, SE_KEY, K_JOY1 + i, pressed, 0, NULL );
 				stick_state.buttons[i] = pressed;
+#endif
 			}
 		}
 	}
