@@ -2835,6 +2835,8 @@ void	vkColorMask( qboolean r, qboolean g, qboolean b, qboolean a );
 void	vkLineWidth( float width );
 void	vkDepthRangef( float n, float f );
 void	vkDepthRange( float n, float f );
+void	VK_Draw_DepthRangeLast( float *n, float *f );
+qboolean R_ProbeMarkOn( void );
 void	vkPolygonOffset( float factor, float units );
 qboolean VK_Shade_PolygonOffset( void );
 void	VK_Shade_SetStencil( qboolean test, int func, int ref, unsigned int mask );

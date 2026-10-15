@@ -1171,6 +1171,16 @@ int VK_Draw_LastSetIndex( void )
    range, and a coordinate outside it is undefined too.  The rect is held inside
    what the device said it takes.  Every CmdSetViewport in this lane goes through
    here, so no site can invent an out-of-range origin. */
+/* the range the lane last issued through VK_Draw_ViewportRect: the decal row
+   reads it, so a draw under the viewmodel's 0.3 names itself */
+static float	s_depthRangeLast[2] = { 0.0f, 1.0f };
+
+void VK_Draw_DepthRangeLast( float *n, float *f )
+{
+	*n = s_depthRangeLast[0];
+	*f = s_depthRangeLast[1];
+}
+
 void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
 						   float minDepth, float maxDepth )
 {
@@ -1184,6 +1194,10 @@ void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
 	viewport.height = (float)( h > 0 ? h : 1 );
 	viewport.minDepth = minDepth;
 	viewport.maxDepth = maxDepth;
+
+	/* the single CmdSetViewport choke point, so the last issued range is the device's own */
+	s_depthRangeLast[0] = minDepth;
+	s_depthRangeLast[1] = maxDepth;
 
 	lo = vk.deviceProps.limits.viewportBoundsRange[0];
 	hi = vk.deviceProps.limits.viewportBoundsRange[1];

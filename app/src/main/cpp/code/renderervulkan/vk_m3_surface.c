@@ -45,6 +45,9 @@ root, for more details.
 #include "tr_local.h"
 
 #include <time.h>
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
 
 /* Named in the header: the back end reaches it for a shader that carries 3D
    terms the 2D walk does not evaluate. */
@@ -98,6 +101,29 @@ qboolean R_ProbeStatsOn( void )
 	}
 
 	return ( probe && probe->integer ) ? qtrue : qfalse;
+}
+
+/* The light/mark rows answer to the device's own diag property as well, so one
+   arm boots the decal evidence without qa_probe's whole census behind it. */
+qboolean R_ProbeMarkOn( void )
+{
+	static int cached = -1;
+
+	if ( cached < 0 ) {
+		cached = R_ProbeStatsOn() ? 1 : 0;
+#ifdef __ANDROID__
+		if ( !cached ) {
+			char val[ PROP_VALUE_MAX ];
+
+			if ( __system_property_get( "log.tag.ProvenanceEF2", val ) > 0
+				 && val[ 0 ] != '\0' && Q_stricmp( val, "0" ) && Q_stricmp( val, "false" ) ) {
+				cached = 1;
+			}
+		}
+#endif
+	}
+
+	return cached ? qtrue : qfalse;
 }
 
 /* The renderer's own clock.  It was `ri.Milliseconds() * 1000`, which is a

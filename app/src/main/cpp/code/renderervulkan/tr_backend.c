@@ -1688,7 +1688,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	int				entityNum, oldEntityNum;
 	int				dlightMap, oldDlightMap;
 	int				fogNum, oldFogNum;
-	qboolean		depthRange, oldDepthRange;
+	qboolean		depthRange;
 	qboolean		bStaticModel, oldbStaticModel;
 	int				i;
 	drawSurf_t		*drawSurf;
@@ -1699,7 +1699,6 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	oldEntityNum = -1;
 	backEnd.currentEntity = &tr.worldEntity;
 	oldShader = NULL;
-	oldDepthRange = qfalse;
 	oldFogNum = -1;
 	oldDlightMap = 0;
 	oldSort = -1;
@@ -1844,14 +1843,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			RB_LoadModelViewMatrix(  backEnd.ori.modelMatrix );
 			shadeParts += VK_Shade_PartCharge( VK_WS_MODELVIEW, partT0, partNested0 );
 
-			if ( oldDepthRange != depthRange ) {
-				if ( depthRange ) {
-					vkDepthRange (0, 0.3);
-				} else {
-					vkDepthRange (0, 1.0);
-				}
-				oldDepthRange = depthRange;
-			}
+			/* the range is a recorded command, not retail's sticky GL state, so every transition re-issues it */
+			vkDepthRange( 0, depthRange ? 0.3 : 1.0 );
 
 			oldEntityNum = entityNum;
 			oldbStaticModel = bStaticModel;
@@ -1882,7 +1875,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 		}
 
-		if ( PROBE_On() && *drawSurf->surface == SF_POLY ) {
+		if ( R_ProbeMarkOn() && *drawSurf->surface == SF_POLY ) {
 			static int	s_polyFrame;
 			static int	s_polyLastFrame = -1;
 			static int	s_polyRows;
@@ -1906,6 +1899,9 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				unsigned		sAnom = ( shader->unfoggedStages[0] )
 										? shader->unfoggedStages[0]->stateBits : 0u;
 				int				aMin = 255, aMax = 0, vi;
+				float			rN, rF;
+
+				VK_Draw_DepthRangeLast( &rN, &rF );
 
 				for ( vi = 0; vi < pAnom->numVerts; vi++ ) {
 					if ( pAnom->verts[vi].modulate[3] < aMin ) {
@@ -1915,18 +1911,21 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 						aMax = pAnom->verts[vi].modulate[3];
 					}
 				}
+				/* a world poly under the viewmodel's 0.3 cannot be occluded, so the draw names its range */
 				if ( ( sAnom & VKS_DEPTHTEST_DISABLE ) || ( sAnom & VKS_DEPTHMASK_TRUE )
-					 || aMax == 0 ) {
+					 || aMax == 0 || rF < 0.999f ) {
 					VK_Guard_Row( "DOCC:pipeline",
 								  "'%s' sb=0x%08x dtest=%d dwrite=%d dequal=%d "
-								  "blend=1 src=%d dst=%d alpha=%d..%d nverts=%d f=%d",
+								  "blend=1 src=%d dst=%d alpha=%d..%d nverts=%d "
+								  "range=%.3f..%.3f f=%d",
 								  shader->name, sAnom,
 								  ( sAnom & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
 								  ( sAnom & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
 								  ( sAnom & VKS_DEPTHFUNC_EQUAL ) ? 1 : 0,
 								  (int)( sAnom & VKS_SRCBLEND_BITS ),
 								  (int)( ( sAnom & VKS_DSTBLEND_BITS ) >> 4 ),
-								  aMin, aMax, pAnom->numVerts, RB_FrameCount() );
+								  aMin, aMax, pAnom->numVerts,
+								  rN, rF, RB_FrameCount() );
 				}
 			}
 			if ( s_polyRows <= PROBE_ROW_CAP && s_polyFrame < 4 && ( s_polyCount % 30 ) == 1 ) {
@@ -1934,6 +1933,9 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				char		szAfter[96];
 				shader_t	*pNb;
 				int			iNb, iEnt, iFog, iDl, iLen;
+				float		rN, rF;
+
+				VK_Draw_DepthRangeLast( &rN, &rF );	/* the range in force at the draw, not the walk's belief */
 
 				s_polyFrame++;
 				s_polyRows++;
@@ -1966,10 +1968,10 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				}
 
 				VK_Guard_Row( "DOCC:order",
-							  "n=%d '%s' sort=%u st0=0x%08x before=%s after=%s",
+							  "n=%d '%s' sort=%u st0=0x%08x ent=%d range=%.3f..%.3f before=%s after=%s",
 							  i, shader->name, drawSurf->sort,
 							  ( shader->unfoggedStages[0] ) ? shader->unfoggedStages[0]->stateBits : 0u,
-							  szBefore, szAfter );
+							  entityNum, rN, rF, szBefore, szAfter );
 			}
 		}
 
@@ -1992,9 +1994,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	}
 
 	RB_LoadModelViewMatrix(  backEnd.viewParms.world.modelMatrix );
-	if ( oldDepthRange ) {
-		vkDepthRange (0, 1.0);
-	}
+	/* the walk hands the next list the full range whatever its own mirror said */
+	vkDepthRange (0, 1.0);
 
 	if (!(backEnd.refdef.rdflags & RDF_FULLBRIGHT)) {
 		R_DrawLensFlares();
@@ -2014,7 +2015,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	shader_t	*shader;
 	shader_t	*oldShader;
 	qboolean	depthRange;
-	qboolean	oldDepthRange;
 	int			i;
 	drawSurf_t	*drawSurf;
 
@@ -2028,7 +2028,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
 	oldShader = NULL;
     depthRange = qfalse;
-    oldDepthRange = qfalse;
+    vkDepthRange( 0.0, 1.0 );	/* no RB_BeginDrawingView here, so the walk anchors the range it inherits */
 
     for (i = 0, drawSurf = drawSurfs; i < numDrawSurfs; i++, drawSurf++) {
         if (!drawSurf->surface) continue;
@@ -2054,11 +2054,8 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
 			RB_LoadModelViewMatrix( backEnd.ori.modelMatrix);
 
-			if (oldDepthRange != depthRange)
-			{
-				vkDepthRange(0.0, depthRange ? 0.3 : 1.0);
-				oldDepthRange = depthRange;
-			}
+			/* same law as the surf walk: the sprite's own range, issued every time */
+			vkDepthRange(0.0, depthRange ? 0.3 : 1.0);
 
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 
@@ -2073,9 +2070,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	r_spriteListOpen = 0;
 
     RB_LoadModelViewMatrix( backEnd.viewParms.world.modelMatrix);
-	if (oldDepthRange) {
-		vkDepthRange(0.0, 1.0);
-	}
+	vkDepthRange(0.0, 1.0);
 }
 
 void RB_SetupFog(void) {
