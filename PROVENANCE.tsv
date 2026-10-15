@@ -1254,6 +1254,7 @@ sdl/sdl_gamma.c	gpl	recovered GPL banner	sdl/sdl_gamma.c	1.000	-	0.000
 sdl/sdl_glimp.c	gpl	recovered GPL banner	sdl/sdl_glimp.c	0.970	-	0.000
 sdl/sdl_icon.h	gpl	id Tech 3 lineage (standard GPL notice)	sdl/sdl_icon.h	0.040	-	0.000
 sdl/sdl_input.c	gpl	recovered GPL banner	sdl/sdl_input.c	0.685	-	0.000
+sdl/sdl_padmapping.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 sdl/sdl_mouse.c	gpl	recovered GPL banner	sdl/sdl_mouse.c	0.560	-	0.000
 sdl/sdl_snd.c	gpl	recovered GPL banner	sdl/sdl_snd.c	0.956	-	0.000
 server/server.h	gpl	recovered GPL banner	server/server.h	0.533	-	0.000
