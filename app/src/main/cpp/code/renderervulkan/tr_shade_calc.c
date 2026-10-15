@@ -1022,7 +1022,9 @@ void RB_CalcWaveAlpha( const waveForm_t *wf, unsigned char *dstColors )
 
 
 
-#define MT_VERTEX_CHUNK 512
+/* the walk's texcoord bodies are per-vertex heavier than the pack, so their
+   break-even sits lower than VK_PACK_CHUNK's -- docs/controls/threadroot */
+#define MT_VERTEX_CHUNK 1024
 
 typedef struct {
 	float		*st;

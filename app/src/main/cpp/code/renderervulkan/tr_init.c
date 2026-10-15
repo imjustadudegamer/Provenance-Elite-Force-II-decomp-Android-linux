@@ -1019,14 +1019,20 @@ void VK_PerfFpsRow( void )
 		   different module.  refused>0 names a batch whose ranges were not all
 		   queued, which is the one shape that loses vertex work. */
 		{
-			jobpoolStats_t	st;
+			static long long	batchesPrev;
+			jobpoolStats_t		st;
+			long long			batchesWin;
 
 			JobPool_GetStats( &st );
+			batchesWin = st.batches - batchesPrev;
+			batchesPrev = st.batches;
 			ri.Printf( PRINT_ALL,
-					   "[PERF:jobs] win=%dms pool=%s workers=%d batches=%lld parallel=%lld "
-					   "inline=%lld calls=%d refused=%d r_smp=%d\n",
+					   "[PERF:jobs] win=%dms pool=%s workers=%d batches=%lld win=%lld "
+					   "batch/frame=%.1f parallel=%lld inline=%lld calls=%d refused=%d r_smp=%d\n",
 					   now - t0, JobPool_Name(), st.workers,
-					   ( long long )st.batches, st.parallelElements, st.inlineElements,
+					   ( long long )st.batches, batchesWin,
+					   wframes > 0 ? ( double )batchesWin / ( double )wframes : 0.0,
+					   st.parallelElements, st.inlineElements,
 					   st.inlineCalls, st.droppedRanges, vk.smpActive ? 1 : 0 );
 		}
 	}

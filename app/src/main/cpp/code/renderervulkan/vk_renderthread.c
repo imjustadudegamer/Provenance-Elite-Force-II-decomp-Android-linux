@@ -606,6 +606,11 @@ unsigned long VK_Upload_ThreadID( void )
    and no call site has to remember it. */
 static SDL_mutex *vk_queueMutex;
 
+/* Fences are the same shape: the walk's frame fence and the readback fence are
+   reset from two threads, and the layer names that too, so the resets take
+   their own lock rather than each site remembering whose fence it is. */
+static SDL_mutex *vk_fenceMutex;
+
 static SDL_mutex *VK_Queue_Mutex( void )
 {
 	if ( !vk_queueMutex ) {
@@ -629,8 +634,22 @@ void VK_Sync_Init( void )
 	if ( !vk_queueMutex ) {
 		vk_queueMutex = SDL_CreateMutex();
 	}
+	if ( !vk_fenceMutex ) {
+		vk_fenceMutex = SDL_CreateMutex();
+	}
 
 	VK_Pool_Init();
+}
+
+VkResult VK_Fence_ResetResult( VkFence fence )
+{
+	VkResult result;
+
+	SDL_LockMutex( vk_fenceMutex );
+	result = qvk.ResetFences( vk.device, 1, &fence );
+	SDL_UnlockMutex( vk_fenceMutex );
+
+	return result;
 }
 
 VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,

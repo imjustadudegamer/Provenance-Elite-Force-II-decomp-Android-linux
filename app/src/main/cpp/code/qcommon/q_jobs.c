@@ -35,6 +35,9 @@ typedef struct job_s {
 	int end;
 } job_t;
 
+/* Same mutex-guarded handoff the pool always had; what changed is what a
+   worker does when it finds the batch already handed out, and what the
+   producer does while its batch runs.  Both used to spin. */
 typedef struct jobpool_s {
 	const char *name;
 	int critical;		
@@ -45,6 +48,7 @@ typedef struct jobpool_s {
 	SDL_mutex *mutex;
 	SDL_cond *work;		
 	SDL_cond *done;		
+	SDL_cond *idle;		
 
 	SDL_mutex *producer;
 
@@ -83,10 +87,39 @@ static int JobPool_ResolveWorkers( int requested ) {
 	return n;
 }
 
+/* A worker whose batch was handed out before it got there used to loop on this
+   mutex at full speed until the last chunk landed.  It waits now. */
+static void JobPool_WaitForBatchEnd( jobpool_t *pool ) {
+	while ( !pool->shutdown && pool->running && pool->nextJob >= pool->numJobs ) {
+		SDL_CondWait( pool->idle, pool->mutex );
+	}
+}
+
+/* Take one chunk, or report that the batch has none left for this caller. */
+static qboolean JobPool_Take( jobpool_t *pool, job_t *job ) {
+	if ( pool->nextJob >= pool->numJobs ) {
+		return qfalse;
+	}
+	*job = pool->jobs[ pool->nextJob++ ];
+	return qtrue;
+}
+
+/* The chunk that takes the batch to zero closes it. */
+static void JobPool_FinishChunk( jobpool_t *pool ) {
+	pool->pending--;
+	if ( pool->pending <= 0 ) {
+		pool->running = qfalse;
+		SDL_CondSignal( pool->done );
+		SDL_CondBroadcast( pool->idle );
+	}
+}
+
 static int SDLCALL JobPool_Worker( void *arg ) {
 	jobpool_t *pool = ( jobpool_t * ) arg;
 
 	for ( ;; ) {
+		job_t job;
+
 		SDL_LockMutex( pool->mutex );
 
 		while ( !pool->shutdown && !pool->running ) {
@@ -98,20 +131,16 @@ static int SDLCALL JobPool_Worker( void *arg ) {
 			return 0;
 		}
 
-		if ( pool->nextJob < pool->numJobs ) {
-			job_t job = pool->jobs[ pool->nextJob++ ];
+		if ( JobPool_Take( pool, &job ) ) {
 			SDL_UnlockMutex( pool->mutex );
 
 			job.fn( job.ctx, job.begin, job.end );
 
 			SDL_LockMutex( pool->mutex );
-			pool->pending--;
-			if ( pool->pending == 0 ) {
-				pool->running = qfalse;
-				SDL_CondSignal( pool->done );
-			}
+			JobPool_FinishChunk( pool );
 			SDL_UnlockMutex( pool->mutex );
 		} else {
+			JobPool_WaitForBatchEnd( pool );
 			SDL_UnlockMutex( pool->mutex );
 		}
 	}
@@ -155,10 +184,12 @@ void JobPool_Init( const char *name, int requestedWorkers ) {
 	jobs_pool.mutex = SDL_CreateMutex();
 	jobs_pool.work  = SDL_CreateCond();
 	jobs_pool.done  = SDL_CreateCond();
+	jobs_pool.idle  = SDL_CreateCond();
 
 	jobs_pool.producer = SDL_CreateMutex();
 
-	if ( !jobs_pool.mutex || !jobs_pool.work || !jobs_pool.done || !jobs_pool.producer ) {
+	if ( !jobs_pool.mutex || !jobs_pool.work || !jobs_pool.done || !jobs_pool.idle
+		 || !jobs_pool.producer ) {
 		jobs_pool.numWorkers = 0;
 		if ( jobs_pool.mutex ) {
 			SDL_DestroyMutex( jobs_pool.mutex );
@@ -171,6 +202,10 @@ void JobPool_Init( const char *name, int requestedWorkers ) {
 		if ( jobs_pool.done ) {
 			SDL_DestroyCond( jobs_pool.done );
 			jobs_pool.done = NULL;
+		}
+		if ( jobs_pool.idle ) {
+			SDL_DestroyCond( jobs_pool.idle );
+			jobs_pool.idle = NULL;
 		}
 		if ( jobs_pool.producer ) {
 			SDL_DestroyMutex( jobs_pool.producer );
@@ -210,6 +245,8 @@ void JobPool_Shutdown( void ) {
 	jobs_pool.nextJob = 0;
 	jobs_pool.pending = 0;
 	SDL_CondBroadcast( jobs_pool.work );
+	SDL_CondBroadcast( jobs_pool.idle );
+	SDL_CondBroadcast( jobs_pool.done );
 	SDL_UnlockMutex( jobs_pool.mutex );
 
 	for ( i = 0; i < JOBPOOL_MAX_WORKERS; i++ ) {
@@ -221,6 +258,7 @@ void JobPool_Shutdown( void ) {
 
 	SDL_DestroyCond( jobs_pool.work );
 	SDL_DestroyCond( jobs_pool.done );
+	SDL_DestroyCond( jobs_pool.idle );
 	SDL_DestroyMutex( jobs_pool.mutex );
 	if ( jobs_pool.producer ) {
 		SDL_DestroyMutex( jobs_pool.producer );
@@ -228,6 +266,7 @@ void JobPool_Shutdown( void ) {
 	jobs_pool.producer = NULL;
 	jobs_pool.work = NULL;
 	jobs_pool.done = NULL;
+	jobs_pool.idle = NULL;
 	jobs_pool.mutex = NULL;
 	jobs_pool.numWorkers = 0;
 	jobs_pool.started = qfalse;
@@ -281,6 +320,9 @@ void JobPool_Add( void ( *fn )( void *ctx, int begin, int end ), void *ctx, int 
 }
 
 void JobPool_RunAndWait( void ) {
+	job_t job;
+	int wake, i;
+
 	SDL_LockMutex( jobs_pool.mutex );
 
 	jobs_pool.nextJob = 0;
@@ -289,9 +331,34 @@ void JobPool_RunAndWait( void ) {
 
 	if ( jobs_pool.pending > 0 ) {
 		jobs_pool.running = qtrue;
-		SDL_CondBroadcast( jobs_pool.work );
+		/* Wake what the batch can feed, not the whole park: the rest stay
+		   asleep and the batch closes without them. */
+		wake = jobs_pool.numWorkers;
+		if ( wake > jobs_pool.numJobs ) {
+			wake = jobs_pool.numJobs;
+		}
+		for ( i = 0; i < wake; i++ ) {
+			SDL_CondSignal( jobs_pool.work );
+		}
 
-		while ( jobs_pool.running ) {
+		/* The producer runs chunks while the batch is live instead of sleeping
+		   through it, so a batch the caller can finish costs no park at all. */
+		for ( ;; ) {
+			if ( !JobPool_Take( &jobs_pool, &job ) ) {
+				break;
+			}
+			SDL_UnlockMutex( jobs_pool.mutex );
+
+			job.fn( job.ctx, job.begin, job.end );
+
+			SDL_LockMutex( jobs_pool.mutex );
+			JobPool_FinishChunk( &jobs_pool );
+			if ( jobs_pool.pending <= 0 ) {
+				break;
+			}
+		}
+
+		while ( jobs_pool.running && !jobs_pool.shutdown ) {
 			SDL_CondWait( jobs_pool.done, jobs_pool.mutex );
 		}
 	}
@@ -327,8 +394,8 @@ void JobPool_ParallelRange( int count, int minChunk,
 	}
 
 	chunks = ( count + minChunk - 1 ) / minChunk;
-	if ( chunks > jobs_pool.numWorkers * 2 ) {
-		chunks = jobs_pool.numWorkers * 2;
+	if ( chunks > jobs_pool.numWorkers + 1 ) {
+		chunks = jobs_pool.numWorkers + 1;
 	}
 	if ( chunks < 2 ) {
 		jobs_stats.inlineCalls++;
@@ -425,7 +492,7 @@ qboolean JobPool_SelfTest( JobPoolPrint print ) {
 		t.count = ( int )( sizeof( t.hits ) / sizeof( t.hits[ 0 ] ) );
 	}
 
-	chunks = jobs_pool.numWorkers * 2;
+	chunks = jobs_pool.numWorkers + 1;
 	JobPool_BeginBatch();
 	for ( i = 0; i < chunks; i++ ) {
 		int step = ( t.count + chunks - 1 ) / chunks;

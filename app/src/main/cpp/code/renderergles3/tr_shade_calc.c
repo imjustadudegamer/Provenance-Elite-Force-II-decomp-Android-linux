@@ -1005,7 +1005,8 @@ void RB_CalcWaveAlpha( const waveForm_t *wf, unsigned char *dstColors )
 
 
 
-#define MT_VERTEX_CHUNK 512
+/* measured break-even, matching the Vulkan twin -- docs/controls/threadroot */
+#define MT_VERTEX_CHUNK 1024
 
 typedef struct {
 	float		*st;

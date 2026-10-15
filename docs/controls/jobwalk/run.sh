@@ -50,7 +50,7 @@ mutate() {
 
 mutate 's/JobPool_ParallelRange( input->numVertexes, VK_PACK_CHUNK, VK_Stream_PackRange, &packCtx );/for ( i = 0; i < input->numVertexes; i++ ) {}/' \
 	"7 the dispatch is gone"
-mutate 's/^#define VK_PACK_CHUNK\t256$/#undef VK_PACK_CHUNK/' \
+mutate 's/^#define VK_PACK_CHUNK\t2048$/#undef VK_PACK_CHUNK/' \
 	"8 the chunk define is gone"
 mutate 's/out->xyz\[0\] = xyz\[0\];/out->xyz[0] = input->shader != NULL;/' \
 	"9 the pack reads more of the tess store"
