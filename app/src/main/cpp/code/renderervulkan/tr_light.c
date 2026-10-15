@@ -40,6 +40,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
+/* the row cap only; the census gate is R_ProbeMarkOn, not the master switch */
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 void R_TransformDlights(int count, dlight_t *dl, orientationr_t *ori)
 {
     int    i;
@@ -242,4 +247,63 @@ static void Q_UNUSED_VAR LogLight(trRefEntity_t *ent)
 
 int R_LightForPoint(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir) {
     return 0;
+}
+
+/* One row per frame whose dlight feed moved on a light that did not: a stationary light going black or changing hue is a wrong slot, not the level. */
+void RB_DLightFeedCensus( void )
+{
+    typedef struct { vec3_t origin; vec3_t color; float radius; } dlightKey_t;
+    static dlightKey_t  prev[MAX_DLIGHTS];
+    static int          prevNum;
+    static int          rows;
+    int                 i, j;
+
+    if ( !R_ProbeMarkOn() ) {
+        return;
+    }
+
+    for ( i = 0; i < backEnd.refdef.num_dlights && i < MAX_DLIGHTS; i++ ) {
+        dlight_t    *dl = &backEnd.refdef.dlights[i];
+        const char  *arm = NULL;
+
+        for ( j = 0; j < prevNum && j < MAX_DLIGHTS; j++ ) {
+            vec3_t delta;
+
+            VectorSubtract( dl->origin, prev[j].origin, delta );
+            if ( VectorLength( delta ) > 4.0f ) {
+                continue;   /* a moved light is a different read, not a colour change */
+            }
+            if ( dl->color[0] < 0.02f && dl->color[1] < 0.02f && dl->color[2] < 0.02f
+                 && prev[j].radius > 1.0f && dl->radius > 1.0f ) {
+                arm = "black";
+            } else if ( fabs( dl->color[0] - prev[j].color[0] ) > 0.25f
+                     || fabs( dl->color[1] - prev[j].color[1] ) > 0.25f
+                     || fabs( dl->color[2] - prev[j].color[2] ) > 0.25f ) {
+                arm = "hue";
+            }
+            if ( arm && rows < PROBE_ROW_CAP ) {
+                rows++;
+                VK_Guard_Row( "DOCC:dlight",
+                              "arm=%s slot=%d org=(%.1f,%.1f,%.1f) r=%.1f "
+                              "was=%d,%d,%d now=%d,%d,%d f=%d",
+                              arm, i, dl->origin[0], dl->origin[1], dl->origin[2],
+                              dl->radius,
+                              (int)( prev[j].color[0] * 255.0f ),
+                              (int)( prev[j].color[1] * 255.0f ),
+                              (int)( prev[j].color[2] * 255.0f ),
+                              (int)( dl->color[0] * 255.0f ),
+                              (int)( dl->color[1] * 255.0f ),
+                              (int)( dl->color[2] * 255.0f ),
+                              RB_FrameCount() );
+            }
+            break;
+        }
+    }
+
+    prevNum = backEnd.refdef.num_dlights;
+    for ( i = 0; i < prevNum && i < MAX_DLIGHTS; i++ ) {
+        VectorCopy( backEnd.refdef.dlights[i].origin, prev[i].origin );
+        VectorCopy( backEnd.refdef.dlights[i].color, prev[i].color );
+        prev[i].radius = backEnd.refdef.dlights[i].radius;
+    }
 }

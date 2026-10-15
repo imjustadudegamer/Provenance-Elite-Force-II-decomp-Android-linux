@@ -2132,6 +2132,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	VK_Shade_NoteSurfCmds( cmd->numDrawSurfs );
 	RB_SetupFog();
+	RB_DLightFeedCensus();
 	RB_RenderDrawSurfList( cmd->drawSurfs, cmd->numDrawSurfs );
 
 	BE_RootEnd( BE_FAM_DS );
