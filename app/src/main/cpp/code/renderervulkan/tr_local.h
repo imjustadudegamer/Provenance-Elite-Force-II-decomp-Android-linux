@@ -1947,6 +1947,7 @@ void R_CalcSurfLighting( msurface_t *surf );
 void R_ClearDynamicLightmaps( void );
 void R_UploadDynamicLightmaps( void );
 void R_TransformDlights( int count, dlight_t *dl, orientationr_t *ori );
+void RB_DLightFeedCensus( void );
 void RB_Light_Sphere(unsigned char* colors);
 void RB_Light_Sphere_ExactDLights(unsigned char* colors);
 void RB_Light_FullbrightSphere(unsigned char* colors);

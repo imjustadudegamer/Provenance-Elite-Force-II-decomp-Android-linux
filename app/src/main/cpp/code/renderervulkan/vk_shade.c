@@ -1692,6 +1692,44 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 	}
 	VK_SetUniform4fv( p, VK_U_BASECOLOR, baseColor );
 
+	/* a const colour cannot change between binds, so a move names a wrong feed; the vent's purple flash reads here */
+	if ( R_ProbeMarkOn() && !backEnd.in2D && pStage->rgbGen == CGEN_CONSTANT ) {
+		static struct { const shader_t *sh; const shaderStage_t *st; vec4_t col; } seen[256];
+		static int seenRows;
+		int si, slot = -1;
+		const int cap = 200;	/* PROBE_ROW_CAP; this lane has no qa_probe include */
+
+		for ( si = 0; si < 256; si++ ) {
+			if ( !seen[si].sh ) {
+				if ( slot < 0 ) slot = si;
+				break;
+			}
+			if ( seen[si].sh == shader && seen[si].st == pStage ) {
+				slot = si;
+				break;
+			}
+		}
+		if ( slot >= 0 ) {
+			if ( seen[slot].sh
+				 && ( fabs( baseColor[0] - seen[slot].col[0] ) > 0.02f
+				   || fabs( baseColor[1] - seen[slot].col[1] ) > 0.02f
+				   || fabs( baseColor[2] - seen[slot].col[2] ) > 0.02f )
+				 && seenRows < cap ) {
+				seenRows++;
+				VK_Guard_Row( "DOCC:const",
+							  "'%s' was=%d,%d,%d now=%d,%d,%d f=%d",
+							  shader->name,
+							  (int)( seen[slot].col[0] * 255 ), (int)( seen[slot].col[1] * 255 ),
+							  (int)( seen[slot].col[2] * 255 ),
+							  (int)( baseColor[0] * 255 ), (int)( baseColor[1] * 255 ),
+							  (int)( baseColor[2] * 255 ), RB_FrameCount() );
+			}
+			seen[slot].sh = shader;
+			seen[slot].st = pStage;
+			Vector4Copy( baseColor, seen[slot].col );
+		}
+	}
+
 	/* the 2D quad carries Draw_SetColor per vertex; in 3D u_BaseColor carries the global colour */
 	if ( backEnd.in2D && !cpuColor )
 	{
