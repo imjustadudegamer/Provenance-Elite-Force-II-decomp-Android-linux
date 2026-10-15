@@ -1569,6 +1569,9 @@ void VK_SetUniform4fvN( vkProgram_t *p, vkUniform_t u, const float *v, int n )
 		bytes = size;
 	}
 	memcpy( s_ubo + off, v, bytes );
+	if ( off + bytes > s_uboHighWater ) {
+		s_uboHighWater = off + bytes;
+	}
 	s_uboDirty = qtrue;
 }
 
@@ -5620,10 +5623,10 @@ void VK_Shade_NewFrame( void )
 		if ( R_ProbeStatsOn()
 			 && ( rows < 8 || s_frameShadeDraws != lastBatches || recorded != lastRecorded
 			 || recordedIdx != lastRecordedIdx || ( rows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:draw3d", "frame batches=%d refusals=%d imm=%d surf-cmds=%d draw-surfs=%d perm-req=%d perm-miss=%d recorded=%d recorded-idx=%d",
+			VK_Guard_Row( "VK:draw3d", "frame batches=%d refusals=%d imm=%d surf-cmds=%d draw-surfs=%d perm-req=%d perm-miss=%d recorded=%d recorded-idx=%d sets=%d/%d",
 			  s_frameShadeDraws, s_frameShadeDrops, s_frameImmDraws,
 			  s_frameSurfCmds, s_frameDrawSurfs, s_framePermReq, s_framePermMiss,
-			  recorded, recordedIdx );
+			  recorded, recordedIdx, vk_numShadeSets, VK_SHADE_SETS );
 		}
 		lastBatches     = s_frameShadeDraws;
 		lastRecorded    = recorded;

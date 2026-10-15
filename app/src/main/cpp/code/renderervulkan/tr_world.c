@@ -276,7 +276,7 @@ static void R_CalcSurfLightmap( msurface_t *surf, baseLightingSurf_t *bls ) {
 	found = 0;
 	for ( i = 0; i < bls->numLightingSurfaces; i++ ) {
 		ls = &world->lightingSurfs[ bls->firstLightingSurface + i ];
-		if ( world->lightGroupFrame[ ls->lightGroupNum ] >= bls->lastUpdatedFrame ) {
+		if ( tr.refdef.lightGroupFrame[ ls->lightGroupNum ] >= bls->lastUpdatedFrame ) {
 			found = 1;
 			break;
 		}
@@ -313,7 +313,7 @@ static void R_CalcSurfLightmap( msurface_t *surf, baseLightingSurf_t *bls ) {
 	for ( i = 0; i < num; i++ ) {
 		ls = &world->lightingSurfs[ first + i ];
 
-		scale = world->lightGroupIntensity[ ls->lightGroupNum ];
+		scale = tr.refdef.lightGroupIntensity[ ls->lightGroupNum ];
 		if ( !scale ) {
 			continue;
 		}
@@ -377,11 +377,11 @@ static void R_CalcSurfLightVerts( msurface_t *surf, baseLightingSurf_t *bls,
 
 	for ( i = 0; i < bls->numLightingVertSurfaces; i++ ) {
 		lvs = &world->lightingVertSurfs[ bls->firstLightingVertSurface + i ];
-		if ( world->lightGroupIntensity[ lvs->lightGroupNum ] >= 255 ) {
+		if ( tr.refdef.lightGroupIntensity[ lvs->lightGroupNum ] >= 255 ) {
 			continue;
 		}
 		found_group = 1;
-		if ( world->lightGroupFrame[ lvs->lightGroupNum ] >= bls->lastUpdatedFrame ) {
+		if ( tr.refdef.lightGroupFrame[ lvs->lightGroupNum ] >= bls->lastUpdatedFrame ) {
 			updated = 1;
 			break;
 		}
@@ -410,7 +410,7 @@ static void R_CalcSurfLightVerts( msurface_t *surf, baseLightingSurf_t *bls,
 	for ( i = 0; i < bls->numLightingVertSurfaces; i++ ) {
 		lvs = &world->lightingVertSurfs[ bls->firstLightingVertSurface + i ];
 
-		scale = world->lightGroupIntensity[ lvs->lightGroupNum ];
+		scale = tr.refdef.lightGroupIntensity[ lvs->lightGroupNum ];
 		if ( !scale ) {
 			continue;
 		}

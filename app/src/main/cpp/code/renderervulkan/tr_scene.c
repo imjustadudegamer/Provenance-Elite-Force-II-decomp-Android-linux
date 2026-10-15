@@ -412,6 +412,8 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	tr.refdef.floatTime = tr.refdef.time * 0.001f;
 
+	R_DetachLightGroups();
+
 	tr.refdef.numDrawSurfs = r_firstSceneDrawSurf;
 	tr.refdef.drawSurfs = backEndData->drawSurfs;
 

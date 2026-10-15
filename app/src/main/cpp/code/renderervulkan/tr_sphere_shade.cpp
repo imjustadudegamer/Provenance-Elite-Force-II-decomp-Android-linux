@@ -352,7 +352,7 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
     fBrightness = thislight->brightness;
     if (thislight->group_num != -1 && tr.world) {
         fBrightness = fBrightness
-                    * ((float)tr.world->lightGroupIntensity[thislight->group_num & 0xFF] / 255.0f);
+                    * ((float)backEnd.refdef.lightGroupIntensity[thislight->group_num & 0xFF] / 255.0f);
     }
 
     if (fBrightness >= -0.01f && fBrightness <= 0.01f) {
@@ -914,9 +914,7 @@ void R_Sphere_InitLights()
     backEnd.bExactDLights       = qfalse;
     backEnd.numExactDLights     = 0;
 
-    if (tr.world) {
-        memset(tr.world->lightGroupIntensity, 0xFF, sizeof(tr.world->lightGroupIntensity));
-    }
+    R_InitLightGroups();
 
     while (ents) {
         ret = COM_Parse((char **)&ents);
@@ -961,9 +959,9 @@ void R_Sphere_InitLights()
     }
 }
 
-static float R_SphereLightIntensityAt(const spherel_t *pLight, const vec3_t vPos);
+static float R_SphereLightIntensityAt(const spherel_t *pLight, const vec3_t vPos, const byte *groupIntensity);
 
-static void R_Sphere_AccumulateAtPoint(const vec3_t vPos, vec3_t vLight)
+static void R_Sphere_AccumulateAtPoint(const vec3_t vPos, vec3_t vLight, const byte *groupIntensity)
 {
     int          i;
     int          numlights;
@@ -1002,16 +1000,16 @@ static void R_Sphere_AccumulateAtPoint(const vec3_t vPos, vec3_t vLight)
             continue;
         }
 
-        fIntensity = R_SphereLightIntensityAt(pLight, vPos);
+        fIntensity = R_SphereLightIntensityAt(pLight, vPos, groupIntensity);
         if (fIntensity > 0.0f) {
             VectorMA(vLight, 255.0f * fIntensity, pLight->color, vLight);
         }
     }
 }
 
-void R_GetLightingAtPoint(const vec3_t vPos, vec3_t vLight)
+void R_GetLightingAtPoint(const vec3_t vPos, vec3_t vLight, const byte *groupIntensity)
 {
-    R_Sphere_AccumulateAtPoint(vPos, vLight);
+    R_Sphere_AccumulateAtPoint(vPos, vLight, groupIntensity);
 }
 
 typedef struct gatheredLight_s {
@@ -1021,7 +1019,7 @@ typedef struct gatheredLight_s {
 
 #define MAX_GATHERED_LIGHTS 8
 
-static float R_SphereLightIntensityAt(const spherel_t *pLight, const vec3_t vPos)
+static float R_SphereLightIntensityAt(const spherel_t *pLight, const vec3_t vPos, const byte *groupIntensity)
 {
     vec3_t vDelta;
     float  fDist, fT, fIntensity, fFalloff;
@@ -1038,7 +1036,7 @@ static float R_SphereLightIntensityAt(const spherel_t *pLight, const vec3_t vPos
 
     fIntensity = pLight->brightness;
     if (tr.world && pLight->group_num != -1) {
-        fIntensity *= (float)tr.world->lightGroupIntensity[pLight->group_num & 0xFF] / 255.0f;
+        fIntensity *= (float)groupIntensity[pLight->group_num & 0xFF] / 255.0f;
     }
 
     if (pLight->type == SPHEREL_SPOT && fDist > 0.0f) {
@@ -1142,14 +1140,14 @@ int R_GatherLightSources(const vec3_t vPos, vec3_t *pvLightPos, vec3_t *pvLightI
             }
             pCurrLight->reference_count = light_reference_count;
 
-            fIntensity = R_SphereLightIntensityAt(pCurrLight, vPos);
+            fIntensity = R_SphereLightIntensityAt(pCurrLight, vPos, tr.refdef.lightGroupIntensity);
             if (fIntensity > 0.0f) {
                 R_InsertLightIntoList(pCurrLight, fIntensity, lights, &iFound);
             }
         }
     } else {
         for (i = 0; i < tr.numSLights; i++) {
-            float fIntensity = R_SphereLightIntensityAt(&tr.sLights[i], vPos);
+            float fIntensity = R_SphereLightIntensityAt(&tr.sLights[i], vPos, tr.refdef.lightGroupIntensity);
 
             if (fIntensity > 0.0f) {
                 R_InsertLightIntoList(&tr.sLights[i], fIntensity, lights, &iFound);

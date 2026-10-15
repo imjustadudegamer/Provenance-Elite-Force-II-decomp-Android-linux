@@ -99,7 +99,7 @@ void R_DlightBmodel(bmodel_t *bmodel)
 
 void R_GetLightingForDecal(vec3_t vLight, const vec3_t vFacing, const vec3_t vOrigin)
 {
-    R_GetLightingAtPoint(vOrigin, vLight);
+    R_GetLightingAtPoint(vOrigin, vLight, tr.refdef.lightGroupIntensity);
 
     if (!tr.overbrightShift) {
         return;
@@ -121,7 +121,7 @@ void R_GetLightingForSmoke(vec3_t vLight, const vec3_t vOrigin)
     vec3_t    dir;
     float     d;
 
-    R_GetLightingAtPoint(vOrigin, vLight);
+    R_GetLightingAtPoint(vOrigin, vLight, tr.refdef.lightGroupIntensity);
 
     for (i = 0; i < backEnd.refdef.num_dlights; i++) {
         dl = &backEnd.refdef.dlights[i];
@@ -167,7 +167,7 @@ void RB_SetupStaticModelLighting(trRefdef_t *refdef, cStaticModelUnpacked_t *ent
     ent->bStaticLightingCalculated = qtrue;
 
     if (!(refdef->rdflags & RDF_NOWORLDMODEL)) {
-        R_GetLightingAtPoint(lightOrigin, vLight);
+        R_GetLightingAtPoint(lightOrigin, vLight, backEnd.refdef.lightGroupIntensity);
     } else {
         vLight[0] = vLight[1] = vLight[2] = tr.identityLight * 150.0;
     }

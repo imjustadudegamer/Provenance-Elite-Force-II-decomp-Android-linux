@@ -18,6 +18,10 @@ root, for more details.
 #include "tr_local.h"
 #include "tr_vbo.h"
 
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 cvar_t* r_ignore;
 cvar_t* r_jobs;
 cvar_t* r_debuglines_depthmask;
@@ -678,20 +682,23 @@ int RE_GetRegistrationSequence( void )
 
 
 
-/* the server's per-group light-style intensities drive the lightmap composite */
+/* the client's copy of the light-group set; tr.refdef carries it from here */
+static byte  s_lightGroupIntensity[MAX_LIGHTING_GROUPS];
+static byte  s_lightGroupDefaultIntensity[MAX_LIGHTING_GROUPS];
+static int   s_lightGroupFrame[MAX_LIGHTING_GROUPS];
+static byte  s_detachedIntensity[MAX_LIGHTING_GROUPS];
+static qboolean s_lightGroupValid;
+
+/* client thread only; the walk reads the frame-carried copy */
 void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities )
 {
 	int		i;
 	byte	intensity;
 
-	if ( !tr.world ) {
-		return;
-	}
-
 	for ( i = 0 ; i < MAX_LIGHTING_GROUPS ; i++ ) {
-		if ( tr.world->lightGroupDefaultIntensity[ i ] != defaultIntensities[ i ] ) {
-			tr.world->lightGroupDefaultIntensity[ i ] = defaultIntensities[ i ];
-			tr.world->lightGroupDefaultFrame[ i ] = tr.frameCount;
+		if ( !s_lightGroupValid || s_lightGroupDefaultIntensity[ i ] != defaultIntensities[ i ] ) {
+			s_lightGroupDefaultIntensity[ i ] = defaultIntensities[ i ];
+			s_lightGroupFrame[ i ] = tr.frameCount;
 		}
 	}
 
@@ -704,11 +711,43 @@ void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensitie
 			intensity = defaultIntensities[ i ];
 		}
 
-		if ( tr.world->lightGroupIntensity[ i ] != intensity ) {
-			tr.world->lightGroupIntensity[ i ] = intensity;
-			tr.world->lightGroupFrame[ i ] = tr.frameCount;
+		if ( !s_lightGroupValid || s_lightGroupIntensity[ i ] != intensity ) {
+			s_lightGroupIntensity[ i ] = intensity;
+			s_lightGroupFrame[ i ] = tr.frameCount;
 		}
 	}
+
+	s_lightGroupValid = qtrue;
+}
+
+void R_DetachLightGroups( void )
+{
+	memcpy( tr.refdef.lightGroupIntensity, s_lightGroupIntensity, sizeof( s_lightGroupIntensity ) );
+	memcpy( tr.refdef.lightGroupDefaultIntensity, s_lightGroupDefaultIntensity,
+			sizeof( s_lightGroupDefaultIntensity ) );
+	memcpy( tr.refdef.lightGroupFrame, s_lightGroupFrame, sizeof( s_lightGroupFrame ) );
+
+	if ( PROBE_On() && memcmp( tr.refdef.lightGroupIntensity, s_detachedIntensity,
+							   sizeof( s_detachedIntensity ) ) != 0 ) {
+		static int rows;
+
+		memcpy( s_detachedIntensity, tr.refdef.lightGroupIntensity, sizeof( s_detachedIntensity ) );
+		if ( PROBE_Throttle( &rows, 4, 300 ) ) {
+			VK_Guard_Row( "VK:lgroup", "light groups changed gen=%d f=%d g0=%d g1=%d g2=%d g3=%d",
+						  r_sequencenumber, tr.frameCount,
+						  tr.refdef.lightGroupIntensity[0], tr.refdef.lightGroupIntensity[1],
+						  tr.refdef.lightGroupIntensity[2], tr.refdef.lightGroupIntensity[3] );
+		}
+	}
+}
+
+/* every group starts at full, matching the load-time init the world groups had */
+void R_InitLightGroups( void )
+{
+	memset( s_lightGroupIntensity, 0xFF, sizeof( s_lightGroupIntensity ) );
+	memset( s_lightGroupDefaultIntensity, 0xFF, sizeof( s_lightGroupDefaultIntensity ) );
+	memset( s_lightGroupFrame, 0, sizeof( s_lightGroupFrame ) );
+	R_DetachLightGroups();
 }
 
 static vec3_t s_windDirection;
