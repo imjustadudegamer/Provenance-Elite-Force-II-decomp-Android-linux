@@ -382,7 +382,7 @@ qboolean VK_Frame_Begin( int slot )
 	{
 		long long openT0 = VK_WALK_T0();
 
-		if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.ResetFences( vk.device, 1, &vk.fences[slot] ),
+		if ( !VK_Guard_Result( VK_GSITE_FENCE, VK_Fence_ResetResult( vk.fences[slot] ),
 							   "vkResetFences" ) ) {
 			VK_WALK_ADD( openT0, VK_WP_OPEN );
 			return qfalse;

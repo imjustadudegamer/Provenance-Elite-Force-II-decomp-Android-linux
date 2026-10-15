@@ -450,10 +450,10 @@ qboolean VK_Swapchain_ReadPixels( uint32_t imageIndex, unsigned char *out, size_
 			goto done;
 		}
 		fence = s_rbFence;
-	} else if ( qvk.ResetFences ) {
+	} else {
 		/* a waited fence stays signalled, and a submit into a signalled fence
 		   completes instantly and reads back the previous frame */
-		qvk.ResetFences( vk.device, 1, &fence );
+		VK_Fence_ResetResult( fence );
 	}
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );

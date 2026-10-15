@@ -2259,7 +2259,9 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
    element reads and writes only its own index, so which worker runs which chunk
    cannot move a byte.  The control docs/controls/jobwalk drives both forms over
    many shapes and compares them byte for byte. */
-#define VK_PACK_CHUNK	256
+/* measured break-even: docs/controls/threadroot shows a surface this small
+   costs more to hand out than to run inline */
+#define VK_PACK_CHUNK	2048
 
 typedef struct {
 	vkStreamVertex_t		*verts;

@@ -458,6 +458,7 @@ int VKimp_HandshakeViolations( void );
    pool table are both created by VK_Sync_Init, once, on the main thread from
    VK_Frame_Init, before either thread can reach a pool or a queue. */
 void VK_Sync_Init( void );
+VkResult VK_Fence_ResetResult( VkFence fence );
 VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
 						  const VkSubmitInfo *submits, VkFence fence );
 VkResult VK_Queue_Present( VkQueue queue, const VkPresentInfoKHR *present );
