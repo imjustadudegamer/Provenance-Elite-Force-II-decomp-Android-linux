@@ -2033,10 +2033,11 @@ const void	*RB_DrawSurfs( const void *data ) {
 			if ( PROBE_Throttle( &carryRows, 8, 600 ) ) {
 				VK_Guard_Row( "VK:refdefcarry",
 							  "front end ahead dlive=%d drec=%d skylive=%.3f skyrec=%.3f "
-							  "rflive=%d rfrec=%d f=%d",
+							  "rflive=%d rfrec=%d f=%d gen=%d",
 							  tr.refdef.num_dlights, cmd->refdef.num_dlights,
 							  tr.refdef.sky_alpha, cmd->refdef.sky_alpha,
-							  tr.refdef.rdflags, cmd->refdef.rdflags, RB_FrameCount() );
+							  tr.refdef.rdflags, cmd->refdef.rdflags, RB_FrameCount(),
+							  r_sequencenumber );
 			}
 		}
 	}

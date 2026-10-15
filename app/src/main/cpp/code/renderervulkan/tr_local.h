@@ -724,6 +724,11 @@ typedef struct {
     float sky_alpha;
     vec3_t sky_origin;
     vec3_t sky_axis[3];
+
+    /* the light-group set is client-written and walk-read, so it rides the frame */
+    byte    lightGroupIntensity[MAX_LIGHTING_GROUPS];
+    byte    lightGroupDefaultIntensity[MAX_LIGHTING_GROUPS];
+    int     lightGroupFrame[MAX_LIGHTING_GROUPS];
 } trRefdef_t;
 
 
@@ -1420,6 +1425,8 @@ extern cvar_t	*r_dynamiclightmaps;
 extern cvar_t	*r_dynamiclight;		 
 
 void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities );
+void R_DetachLightGroups( void );
+void R_InitLightGroups( void );
 void RE_SetWindDirection( vec3_t direction );
 void RE_SetWindIntensity( float intensity );
 void RE_SetTimeScale( float timeScale );
@@ -1927,7 +1934,7 @@ qboolean R_inPVS( const vec3_t p1, const vec3_t p2 );
 
 
 void R_DlightBmodel( bmodel_t *bmodel );
-void R_GetLightingAtPoint(const vec3_t vPos, vec3_t vLight);
+void R_GetLightingAtPoint(const vec3_t vPos, vec3_t vLight, const byte *groupIntensity);
 void R_GetLightingForDecal(vec3_t vLight, const vec3_t vFacing, const vec3_t vOrigin);
 void R_GetLightingForSmoke(vec3_t vLight, const vec3_t vOrigin);
 void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent );
