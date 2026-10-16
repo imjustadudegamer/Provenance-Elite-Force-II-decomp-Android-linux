@@ -605,6 +605,9 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 	R_ClearWorld();
 
+	/* a registration recycles every texture slot, so the walk's latch may not outlive it */
+	VK_Shade_RegistrationReset();
+
 	/* The frame's colour clear is a view value that only a world view writes
 	   (RB_BeginDrawingView's fog arm), so a registration must not carry the
 	   last map's clear into the next map's first frame. */
