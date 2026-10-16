@@ -1405,6 +1405,22 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 	VK_Shade_TexelProbe( image );
 }
 
+/* the latch names slots a registration recycles, and the walk is parked here */
+void VK_Shade_RegistrationReset( void )
+{
+	int tmu;
+
+	for ( tmu = 0; tmu < 2; tmu++ ) {
+		s_shade.texBound[tmu]  = 0;
+		s_shade.texView[tmu]   = VK_NULL_HANDLE;
+		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
+		s_shade.texNum[tmu]    = -1;
+		s_shade.texImage[tmu]  = NULL;
+	}
+	s_shade.waveBound = qfalse;
+	s_shade.waveView  = VK_NULL_HANDLE;
+}
+
 /* The view a latched unit may still write into a descriptor.  A level load
    destroys world images out from under the latch, and a later stage that binds
    only unit 0 never refreshes unit 1, so the latch is re-validated against the
@@ -1420,14 +1436,20 @@ static VkImageView VK_Shade_LiveView( int tmu )
 	}
 	live = VK_Texture_View( s_shade.texNum[tmu] );
 	if ( live == VK_NULL_HANDLE || live != s_shade.texView[tmu] ) {
-		/* the unit falls back to the white image, which changes what a stage
-		   that did expect this texture would draw: name it */
+		/* the unit falls back to the white image: name the draw that loses it */
 		static int s_disarmRows;
 
 		if ( R_ProbeStatsOn() && s_disarmRows < 16 ) {
-			VK_Guard_Row( "VK:shade", "unit disarmed tmu=%d handle=%d reason=%s", tmu,
-						  s_shade.texNum[tmu],
-						  live == VK_NULL_HANDLE ? "slot-destroyed" : "slot-reused" );
+			VK_Guard_Row( "VK:shade",
+						  "unit disarmed tmu=%d handle=%d reason=%s prog=0x%x shader='%s' "
+						  "bound='%s' frame=%d",
+						  tmu, s_shade.texNum[tmu],
+						  live == VK_NULL_HANDLE ? "slot-destroyed" : "slot-reused",
+						  s_shade.prog ? (unsigned)s_shade.prog->defines : 0u,
+						  ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?",
+						  ( s_shade.texImage[tmu] && s_shade.texImage[tmu]->imgName[0] )
+							? s_shade.texImage[tmu]->imgName : "(unnamed)",
+						  RB_FrameCount() );
 			s_disarmRows++;
 		}
 		s_shade.texBound[tmu] = 0;

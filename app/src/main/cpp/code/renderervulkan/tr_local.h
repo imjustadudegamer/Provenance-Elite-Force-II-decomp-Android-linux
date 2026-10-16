@@ -2758,6 +2758,8 @@ void		VK_Shade_Descriptors_Shutdown( void );
 qboolean	VK_Shade_Init( void );
 void		VK_Shade_Shutdown( void );
 void		VK_Shade_NewFrame( void );
+/* drop the walk's texture latch: a registration recycles every slot */
+void		VK_Shade_RegistrationReset( void );
 void		VK_2DOrder_Note( const char *shader );
 void		VK_Shade_NoteDraw( int shade );
 void		VK_Shade_NoteSurfCmds( int surfs );
