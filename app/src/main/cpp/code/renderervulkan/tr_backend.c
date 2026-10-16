@@ -1888,20 +1888,47 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			static int	s_polyRows;
 			static int	s_polyCount;
 			static int	s_polyWindow;
+			static int	s_polyAnomalyRows;
 
 			if ( RB_FrameCount() != s_polyLastFrame ) {
 				s_polyLastFrame = RB_FrameCount();
 				s_polyFrame = 0;
 			}
-			/* The budget refills, so the transcript reaches the marks the order
-			   question is about: a decal created minutes into a boot is past any
-			   lifetime cap, and a cap that spent itself on the opening frames
-			   leaves that boot with no rows to answer it. */
+			/* the budget refills so a late decal still reaches the transcript */
 			if ( RB_FrameCount() - s_polyWindow >= 1000 ) {
 				s_polyWindow = RB_FrameCount();
 				s_polyRows   = 0;
 			}
 			s_polyCount++;
+			/* a mark with no depth test, depth write, or zero alpha can never show */
+			if ( PROBE_Throttle( &s_polyAnomalyRows, 4, 600 ) ) {
+				const srfPoly_t	*pAnom = (const srfPoly_t *)drawSurf->surface;
+				unsigned		sAnom = ( shader->unfoggedStages[0] )
+										? shader->unfoggedStages[0]->stateBits : 0u;
+				int				aMin = 255, aMax = 0, vi;
+
+				for ( vi = 0; vi < pAnom->numVerts; vi++ ) {
+					if ( pAnom->verts[vi].modulate[3] < aMin ) {
+						aMin = pAnom->verts[vi].modulate[3];
+					}
+					if ( pAnom->verts[vi].modulate[3] > aMax ) {
+						aMax = pAnom->verts[vi].modulate[3];
+					}
+				}
+				if ( ( sAnom & VKS_DEPTHTEST_DISABLE ) || ( sAnom & VKS_DEPTHMASK_TRUE )
+					 || aMax == 0 ) {
+					VK_Guard_Row( "DOCC:pipeline",
+								  "'%s' sb=0x%08x dtest=%d dwrite=%d dequal=%d "
+								  "blend=1 src=%d dst=%d alpha=%d..%d nverts=%d f=%d",
+								  shader->name, sAnom,
+								  ( sAnom & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
+								  ( sAnom & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
+								  ( sAnom & VKS_DEPTHFUNC_EQUAL ) ? 1 : 0,
+								  (int)( sAnom & VKS_SRCBLEND_BITS ),
+								  (int)( ( sAnom & VKS_DSTBLEND_BITS ) >> 4 ),
+								  aMin, aMax, pAnom->numVerts, RB_FrameCount() );
+				}
+			}
 			if ( s_polyRows <= PROBE_ROW_CAP && s_polyFrame < 4 && ( s_polyCount % 30 ) == 1 ) {
 				char		szBefore[192];
 				char		szAfter[96];
