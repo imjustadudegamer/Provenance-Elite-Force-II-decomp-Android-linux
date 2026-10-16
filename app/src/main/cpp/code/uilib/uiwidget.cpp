@@ -4973,46 +4973,75 @@ void UIWidgetContainer::clearFocusWidget(void)
 
 qboolean UIWidgetContainer::moveFocus(int dir)
 {
-    Container<UIWidget *> focusable;
-    int                   i;
-    int                   cur;
-    int                   next;
+    /* Visual order: activation restacks the child list, so the list is not a walk order. */
+    struct FocusRow {
+        UIWidget *wid;
+        float     y;
+        float     x;
+    };
+    FocusRow   rows[128];
+    int        count = 0;
+    int        i;
+    int        cur;
+    int        next;
 
     if (!dir) {
         return qfalse;
     }
 
-    for (i = 1; i <= m_children.NumObjects(); i++) {
+    for (i = 1; i <= m_children.NumObjects() && count < ( int )( sizeof( rows ) / sizeof( rows[0] ) ); i++) {
         UIWidget *child = m_children.ObjectAt(i);
 
         /* A row the pad cannot act on is not a stop: retail's own activation test,
            plus the slider, which retail never marks activatable. */
         if (child && child->isEnabled() && child->getShow()
             && (child->CanActivate() || child->isSubclassOf(UISlider))) {
-            focusable.AddObject(child);
+            UIRect2D frame = child->getFrame();
+
+            rows[count].wid = child;
+            rows[count].y   = frame.pos.y + frame.size.height * 0.5f;
+            rows[count].x   = frame.pos.x;
+            count++;
         }
     }
 
-    if (!focusable.NumObjects()) {
+    if (!count) {
         return qfalse;
     }
 
-    cur = m_focusWidget ? focusable.IndexOfObject(m_focusWidget) : 0;
+    for (i = 1; i < count; i++) {
+        FocusRow  key = rows[i];
+        int       j   = i - 1;
 
-    if (cur < 1) {
-        next = (dir > 0) ? 1 : focusable.NumObjects();
+        while (j >= 0 && (rows[j].y > key.y || (rows[j].y == key.y && rows[j].x > key.x))) {
+            rows[j + 1] = rows[j];
+            j--;
+        }
+        rows[j + 1] = key;
+    }
+
+    cur = -1;
+    for (i = 0; i < count; i++) {
+        if (rows[i].wid == m_focusWidget) {
+            cur = i;
+            break;
+        }
+    }
+
+    if (cur < 0) {
+        next = (dir > 0) ? 0 : count - 1;
     } else {
         next = cur + ((dir > 0) ? 1 : -1);
     }
 
-    if (next < 1) {
-        next = 1;
+    if (next < 0) {
+        next = 0;
     }
-    if (next > focusable.NumObjects()) {
-        next = focusable.NumObjects();
+    if (next > count - 1) {
+        next = count - 1;
     }
 
-    setFocusWidget(focusable.ObjectAt(next));
+    setFocusWidget(rows[next].wid);
     return qtrue;
 }
 

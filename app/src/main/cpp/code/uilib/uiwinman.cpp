@@ -906,10 +906,12 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 
     dir = PadNavDirection(key);
 
-    /* Navigation is only ever taken from a 2D menu. A D-pad or stick press in the world is still
-       the world's, and the first navigation key here is what arms the highlight -- until it
-       arrives nothing on screen differs from before. */
-    if (dir != 0 && menuManager.CurrentMenu()) {
+    /* menus walk by screen order; TAB joins the walk only where a menu owns the key */
+    if ((dir != 0 || key == K_TAB) && menuManager.CurrentMenu()) {
+        if (!dir) {
+            dir = 1;
+        }
+
         m_padNavActive = true;
 
         /* The widgets that read arrows themselves -- listbox, table, console,

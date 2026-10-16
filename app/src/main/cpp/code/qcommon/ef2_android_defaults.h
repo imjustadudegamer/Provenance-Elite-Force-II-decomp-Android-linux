@@ -25,14 +25,17 @@ root, for more details.
 
    Touch/gamepad feel = the EF1 port's answer key (VoyagerNX_Android
    android_defaults.cfg).  Its own derivation line names the target: full stick
-   deflection ~245 deg/s yaw, ~180 deg/s pitch.  EF2's stick look is the key-turn
-   path (cl_input.cpp CL_KeyState * cl_yawspeed/cl_pitchspeed, degrees per
-   second), so those two cvars ARE the EF1 numbers.  sensitivity 5, m_pitch
-   0.022, joy_threshold 0.15, cl_touchLook 2.2 and in_joystick 1 already equal
-   EF1; in_joystickUseAnalog stays 0 because this engine has no analog consumer
-   (cl.joystickAxis is written and read nowhere, and there is no JoystickMove) --
-   EF1's 1 would route the movement stick into that dead axis array and the
-   player would not move.
+   deflection ~245 deg/s yaw, ~180 deg/s pitch, and true analog movement across
+   the whole throw (j_side 0.004 = 127/32767; its earlier 0.25 saturated to a
+   full run at ~2% deflection, which is exactly the on/off stick the operator
+   reported).  CL_JoystickMove is the consumer those values exist for.  Look is
+   the key-turn path's own rate (cl_input.cpp CL_KeyState *
+   cl_yawspeed/cl_pitchspeed, degrees per second), so cl_yawspeed 245 /
+   cl_pitchspeed 180 ARE the EF1 numbers and j_yaw/j_pitch only scale the
+   deflection onto them.  sensitivity 5, m_pitch 0.022, joy_threshold 0.15,
+   cl_touchLook 2.2 and in_joystick 1 already equal EF1.  The touch overlay's
+   own stick keeps its digital keys, and a menu takes the stick back as keys so
+   it still walks rows (sdl_input.c IN_GamepadMove).
 
    Max graphics (operator order): pin the quality cvars at their top setting on
    every install.  r_subdivisions 3 -> 2 is the one real raise -- tr_bsp.c feeds
@@ -181,8 +184,17 @@ root, for more details.
 	"seta r_swapInterval 0\n" \
 	"seta com_maxfps 60\n" \
 	"seta in_joystick 1\n" \
-	"seta in_joystickUseAnalog 0\n" \
+	"seta in_joystickUseAnalog 1\n" \
 	"seta joy_threshold 0.15\n" \
+	"seta j_forward -0.004\n" \
+	"seta j_side 0.004\n" \
+	"seta j_pitch 0.0055\n" \
+	"seta j_yaw -0.0075\n" \
+	"seta j_forward_axis 1\n" \
+	"seta j_side_axis 0\n" \
+	"seta j_pitch_axis 3\n" \
+	"seta j_yaw_axis 2\n" \
+	"seta j_up_axis 4\n" \
 	"seta cl_yawspeed 245\n" \
 	"seta cl_pitchspeed 180\n" \
 	"seta cl_touchLook 2.2\n" \

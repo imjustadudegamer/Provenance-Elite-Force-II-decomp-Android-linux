@@ -1679,8 +1679,11 @@ void Com_Init( char *commandLine ) {
 
 	   Seed 5 (2026-10-21): the advanced-video rows (r_flares 2,
 	   r_dynamiclightmaps 1) and the controls page's deadzone slider.  Same
-	   one-fold cost as every bump. */
-#define PORT_DEFAULTS_SEED 6
+	   one-fold cost as every bump.
+
+	   Seed 7 (2026-10-22): in_joystickUseAnalog 1 and the j_* stick rows -- the
+	   analog axes CL_JoystickMove consumes.  Same one-fold cost as every bump. */
+#define PORT_DEFAULTS_SEED 7
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );

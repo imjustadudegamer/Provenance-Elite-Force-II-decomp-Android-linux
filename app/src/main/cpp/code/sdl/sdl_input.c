@@ -155,6 +155,108 @@ static void IN_PrintKey( const SDL_Keysym *keysym, keyNum_t key, qboolean down )
 static int IN_GamepadMenuKey( int button, int defaultKey );
 
 #ifdef __ANDROID__
+/* The menu buttons are claimed from the raw indices SDL's Android driver parks its unnamed keycodes on. */
+#define IN_PAD_MAX_BUTTONS 36
+
+static qboolean IN_PadMapHasElem( const char *map, const char *elem )
+{
+	char token[16];
+
+	token[0] = ',';
+	Q_strncpyz( token + 1, elem, sizeof( token ) - 1 );
+	return SDL_strstr( map, token ) ? qtrue : qfalse;
+}
+
+static qboolean IN_PadIndexUsed( const char *map, int index )
+{
+	char token[12];
+
+	Com_sprintf( token, sizeof( token ), ":b%d,", index );
+	return SDL_strstr( map, token ) ? qtrue : qfalse;
+}
+
+static void IN_GamepadCompleteMapping( void )
+{
+	static const char *const menuElems[] = { "start:", "back:", "guide:" };
+	char  *map;
+	char   add[96];
+	size_t len, maplen;
+	int    elem, next, nbuttons;
+
+	if ( !gamepad || !stick )
+		return;
+
+	map = SDL_GameControllerMapping( gamepad );
+	if ( !map )
+		return;
+
+	add[0]   = '\0';
+	len      = 0;
+	next     = 20;
+	nbuttons = SDL_JoystickNumButtons( stick );
+
+	for ( elem = 0; elem < (int)ARRAY_LEN( menuElems ); elem++ )
+	{
+		if ( IN_PadMapHasElem( map, menuElems[elem] ) )
+			continue;
+
+		for ( ; next < IN_PAD_MAX_BUTTONS && next < nbuttons; next++ )
+		{
+			if ( !IN_PadIndexUsed( map, next ) )
+				break;
+		}
+
+		if ( next >= IN_PAD_MAX_BUTTONS || next >= nbuttons )
+			break;
+
+		len += Com_sprintf( add + len, sizeof( add ) - len, ",%s:b%d",
+			menuElems[elem], next );
+		next++;
+	}
+
+	if ( !add[0] )
+	{
+		SDL_free( map );
+		return;
+	}
+
+	maplen = SDL_strlen( map );
+	{
+		/* New elements go before the platform field: the parser stops at one. */
+		char *plat = SDL_strstr( map, "platform:" );
+		char *full = (char *)SDL_malloc( maplen + len + 1 );
+
+		if ( !full )
+		{
+			SDL_free( map );
+			return;
+		}
+
+		if ( plat )
+		{
+			size_t at = (size_t)( plat - map );
+
+			SDL_memcpy( full, map, at );
+			SDL_memcpy( full + at, add, len );
+			SDL_memcpy( full + at + len, map + at, maplen - at + 1 );
+		}
+		else
+		{
+			SDL_memcpy( full, map, maplen );
+			SDL_memcpy( full + maplen, add, len + 1 );
+		}
+
+		SDL_free( map );
+		map = full;
+	}
+
+	if ( SDL_GameControllerAddMapping( map ) < 0 )
+		Com_DPrintf( "pad mapping add failed: %s\n", SDL_GetError() );
+
+	PROBE( "input:pad", "mapping completed%s", add );
+	SDL_free( map );
+}
+
 /* The release must hand back the key the press sent, even if a menu opened or
    closed while the button was held. Same memory the pad path keeps. */
 static int IN_AndroidMenuKey( int sdlKey, qboolean down )
@@ -510,11 +612,7 @@ static void IN_InitJoystick( void )
 	if( in_joystickNo->integer < 0 || in_joystickNo->integer >= total )
 		Cvar_Set( "in_joystickNo", "0" );
 
-#ifdef __ANDROID__
-	in_joystickUseAnalog = Cvar_Get( "in_joystickUseAnalog", "0", CVAR_ARCHIVE );
-#else
-	in_joystickUseAnalog = Cvar_Get( "in_joystickUseAnalog", "1", CVAR_ARCHIVE ); 
-#endif
+	in_joystickUseAnalog = Cvar_Get( "in_joystickUseAnalog", "1", CVAR_ARCHIVE );
 
 	stick = SDL_JoystickOpen( in_joystickNo->integer );
 
@@ -530,6 +628,9 @@ static void IN_InitJoystick( void )
 		gamepad = SDL_GameControllerOpen(in_joystickNo->integer);
 
 #ifdef __ANDROID__
+	if (gamepad)
+		IN_GamepadCompleteMapping();
+
 	SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "1" );
 	touchControl.controllerConnected = ( gamepad != NULL );
 #endif
@@ -546,9 +647,10 @@ static void IN_InitJoystick( void )
 	SDL_JoystickEventState(SDL_QUERY);
 	SDL_GameControllerEventState(SDL_QUERY);
 
-	PROBE( "input:pad", "opened joystick %d '%s' gamepad=%d",
+	PROBE( "input:pad", "opened joystick %d '%s' gamepad=%d buttons=%d axes=%d analog=%d",
 		in_joystickNo->integer, SDL_JoystickNameForIndex( in_joystickNo->integer ),
-		gamepad ? 1 : 0 );
+		gamepad ? 1 : 0, SDL_JoystickNumButtons( stick ), SDL_JoystickNumAxes( stick ),
+		in_joystickUseAnalog->integer ? 1 : 0 );
 }
 
 static void IN_ShutdownJoystick( void )
@@ -730,6 +832,9 @@ static void IN_GamepadMove( void )
 	int i;
 	int translatedAxes[MAX_JOYSTICK_AXIS];
 	qboolean translatedAxesSet[MAX_JOYSTICK_AXIS];
+	/* A menu walks the stick as keys; the analog axes are the world's alone. */
+	qboolean uiCatcher = ( Key_GetCatcher( ) & ( KEYCATCH_UI | KEYCATCH_CONSOLE ) ) != 0;
+	qboolean analog    = in_joystickUseAnalog->integer && !uiCatcher;
 
 	SDL_GameControllerUpdate();
 
@@ -765,7 +870,7 @@ static void IN_GamepadMove( void )
 		}
 	}
 
-	if (in_joystickUseAnalog->integer)
+	if (analog)
 	{
 		for (i = 0; i < MAX_JOYSTICK_AXIS; i++)
 		{
@@ -795,7 +900,7 @@ static void IN_GamepadMove( void )
 			int negKey = negMap[i];
 			int posKey = posMap[i];
 
-			if (in_joystickUseAnalog->integer)
+			if (analog)
 			{
 				int posAxis = 0, posSign = 0, negAxis = 0, negSign = 0;
 
@@ -846,10 +951,28 @@ static void IN_GamepadMove( void )
 
 	if (in_joystickUseAnalog->integer)
 	{
-		for (i = 0; i < MAX_JOYSTICK_AXIS; i++)
+		/* A menu opening mid-throw leaves the last axis latched in the client. */
+		static qboolean axesLatched;
+
+		if ( uiCatcher )
 		{
-			if (translatedAxesSet[i])
-				Com_QueueEvent(in_eventTime, SE_JOYSTICK_AXIS, i, translatedAxes[i], 0, NULL);
+			if ( axesLatched )
+			{
+				for (i = 0; i < MAX_JOYSTICK_AXIS; i++)
+					Com_QueueEvent(in_eventTime, SE_JOYSTICK_AXIS, i, 0, 0, NULL);
+				axesLatched = qfalse;
+			}
+		}
+		else
+		{
+			for (i = 0; i < MAX_JOYSTICK_AXIS; i++)
+			{
+				if (translatedAxesSet[i])
+				{
+					Com_QueueEvent(in_eventTime, SE_JOYSTICK_AXIS, i, translatedAxes[i], 0, NULL);
+					axesLatched = qtrue;
+				}
+			}
 		}
 	}
 }
@@ -1498,6 +1621,9 @@ static void IN_ProcessEvents( void )
 				if( ( key = IN_TranslateSDLToQ3Key( &e.key.keysym, qtrue ) ) )
 					Com_QueueEvent( in_eventTime, SE_KEY, key, qtrue, 0, NULL );
 
+				PROBE( "input:key", "sym=0x%x scancode=0x%x -> key %d catcher=0x%x",
+					e.key.keysym.sym, e.key.keysym.scancode, key, Key_GetCatcher( ) );
+
 				if( key == K_BACKSPACE )
 					Com_QueueEvent( in_eventTime, SE_CHAR, CTRL('h'), 0, 0, NULL );
 				else if (key == K_ENTER || key == K_TAB || key == K_ESCAPE) 
@@ -1679,6 +1805,16 @@ static void IN_ProcessEvents( void )
 				if (in_joystick->integer)
 					IN_InitJoystick();
 				break;
+
+#ifdef __ANDROID__
+			case SDL_JOYBUTTONDOWN:
+			case SDL_JOYBUTTONUP:
+				/* A raw button no mapping named: the pause keys' most likely grave. */
+				PROBE( "input:pad", "raw button %d %s (gamepad=%d catcher=0x%x)",
+					e.jbutton.button, ( e.type == SDL_JOYBUTTONDOWN ) ? "down" : "up",
+					gamepad ? 1 : 0, Key_GetCatcher( ) );
+				break;
+#endif
 
 #ifdef __ANDROID__
 			case SDL_APP_WILLENTERBACKGROUND:

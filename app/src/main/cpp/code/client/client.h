@@ -454,7 +454,8 @@ void IN_MissionStatusUp( void );
 void CL_UpdateMissionObjectives( void );	 
 
 void GetViewTrace( trace_t *trace );			 
-void CL_KeyMoveAlternate( usercmd_t *cmd );	 
+void CL_KeyMoveAlternate( usercmd_t *cmd );
+void CL_JoystickMove( usercmd_t *cmd );
 
 extern	vec3_t	cl_crosshairoffset;
 
