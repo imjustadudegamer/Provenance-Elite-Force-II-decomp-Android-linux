@@ -412,6 +412,41 @@ void CL_KeyMove( usercmd_t *cmd ) {
 	cmd->lean = ClampChar( lean );
 }
 
+/* The stick's analog consumer: the SDL layer owns the deadzone, j_* own the scale. */
+void CL_JoystickMove( usercmd_t *cmd ) {
+	float	anglespeed;
+
+	float	yaw     = j_yaw->value     * cl.joystickAxis[j_yaw_axis->integer];
+	float	right   = j_side->value    * cl.joystickAxis[j_side_axis->integer];
+	float	forward = j_forward->value * cl.joystickAxis[j_forward_axis->integer];
+	float	pitch   = j_pitch->value   * cl.joystickAxis[j_pitch_axis->integer];
+	float	up      = j_up->value      * cl.joystickAxis[j_up_axis->integer];
+
+	if ( in_speed.active ) {
+		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;
+	} else {
+		anglespeed = 0.001 * cls.frametime;
+	}
+
+	if ( !in_strafe.active ) {
+		cl.viewangles[YAW] += anglespeed * yaw;
+		cmd->rightmove = ClampChar( cmd->rightmove + (int)right );
+	} else {
+		cl.viewangles[YAW] += anglespeed * right;
+		cmd->rightmove = ClampChar( cmd->rightmove + (int)yaw );
+	}
+
+	if ( in_mlooking ) {
+		cl.viewangles[PITCH] += anglespeed * forward;
+		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)pitch );
+	} else {
+		cl.viewangles[PITCH] += anglespeed * pitch;
+		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)forward );
+	}
+
+	cmd->upmove = ClampChar( cmd->upmove + (int)up );
+}
+
 void CL_GetMouseState( int *x, int *y, unsigned int *buttons )
 {
 	if( x )
@@ -750,6 +785,8 @@ usercmd_t CL_CreateCmd( void ) {
 		CL_KeyMove( &cmd );
 
 		CL_MouseMove( &cmd );
+
+		CL_JoystickMove( &cmd );
 	}
 
 	if ( cl.viewangles[PITCH] - oldAngles[PITCH] > 90 ) {

@@ -15,7 +15,7 @@ android {
         minSdk = 26           // Android 8.0, the port's platform-layer floor
         targetSdk = 35        // game data lives in the app's own OBB dir; no storage permission
 
-        versionCode = 10600
+        versionCode = 10700
         versionName = file("src/main/cpp/VERSION").readText().trim()
         // The name carries the commit the APK was built from, so two installs are
         // distinguishable in a manifest dump.  versionCode stays the monotone
