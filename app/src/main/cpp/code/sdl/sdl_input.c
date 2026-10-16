@@ -741,7 +741,7 @@ static int IN_GamepadMenuKey( int button, int defaultKey )
 	}
 
 #ifdef __ANDROID__
-	/* Gameplay start takes escape: the pad's own bind runs "togglemenu", which retail's UI_ToggleMenu_f refuses without a menu name. */
+	/* Start takes escape everywhere: retail's UI_ToggleMenu_f refuses a bare "togglemenu", and gameplay's pause arm IS the menu arm. */
 	if ( button == SDL_CONTROLLER_BUTTON_START )
 		defaultKey = K_ESCAPE;
 #endif
@@ -756,7 +756,12 @@ static int IN_GamepadMenuKey( int button, int defaultKey )
 	{
 		case SDL_CONTROLLER_BUTTON_A:          return K_ENTER;
 		case SDL_CONTROLLER_BUTTON_B:          return K_ESCAPE;
+#ifdef __ANDROID__
+		/* Start is escape in menus too: the menu up takes the same UI_MenuEscape arm a gameplay press took. */
+		case SDL_CONTROLLER_BUTTON_START:      return K_ESCAPE;
+#else
 		case SDL_CONTROLLER_BUTTON_START:      return K_ENTER;
+#endif
 		case SDL_CONTROLLER_BUTTON_BACK:       return K_ESCAPE;
 		case SDL_CONTROLLER_BUTTON_DPAD_UP:    return K_UPARROW;
 		case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  return K_DOWNARROW;
