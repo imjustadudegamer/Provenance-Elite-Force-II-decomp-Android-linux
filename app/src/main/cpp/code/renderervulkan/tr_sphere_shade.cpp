@@ -47,6 +47,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 suninfo_t       s_sun;
 static vec3_t   ambientlight;
 static int      light_reference_count = 0;
+static int      s_exclusiveDropped;
 
 #define MAX_SPHERE_FLASH_TRACK 512
 
@@ -347,6 +348,7 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
         }
 
         if (!bAllowed) {
+            s_exclusiveDropped++;
             return;
         }
     }
@@ -696,6 +698,7 @@ void R_Sphere_SetupEntity()
     if (!R_Sphere_SetupGlobals()) {
         return;
     }
+    s_exclusiveDropped = 0;
     if (!R_Sphere_ResetPointColors()) {
         return;
     }
@@ -777,11 +780,12 @@ void R_Sphere_SetupEntity()
             float ambient[3];
         } s_prev[MAX_SPHERE_FLASH_TRACK];
         int          iSlot = backEnd.currentEntity->e.entityNumber % MAX_SPHERE_FLASH_TRACK;
-        unsigned int iLeaf, iLeafKey = 0;
+        unsigned int iLeaf, iLeafKey = 0, iLeafFilled = 0;
 
         for (iLeaf = 0; iLeaf < 4; iLeaf++) {
             iLeafKey = (iLeafKey * 33u)
                        + (unsigned int)(uintptr_t)backEnd.currentSphere->leaves[iLeaf];
+            iLeafFilled += backEnd.currentSphere->leaves[iLeaf] != 0;
         }
 
         if (s_prev[iSlot].frame && s_prev[iSlot].frame != RB_FrameCount()) {
@@ -796,12 +800,15 @@ void R_Sphere_SetupEntity()
                 VK_Guard_Row(
                     "DOCC:sphere",
                     "f=%d ent=%d move=%.2f ambient=(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f) "
-                    "d=%.1f nlights=%d sun=%d leaves=%08x",
+                    "d=%.1f nlights=%d sun=%d leaves=%08x/%u dl=%d ex=%d ob=%.3f fb=%d exl=%d ws=(%.0f,%.0f,%.0f)",
                     RB_FrameCount(), backEnd.currentEntity->e.entityNumber, fMove,
                     s_prev[iSlot].ambient[0], s_prev[iSlot].ambient[1], s_prev[iSlot].ambient[2],
                     backEnd.currentEntity->ambientLight[0], backEnd.currentEntity->ambientLight[1],
                     backEnd.currentEntity->ambientLight[2], fDelta,
-                    backEnd.currentSphere->numLights, tr.numSLights, iLeafKey);
+                    backEnd.currentSphere->numLights, tr.numSLights, iLeafKey, iLeafFilled,
+                    backEnd.refdef.num_dlights, backEnd.bExactDLights, tr.overbrightMult,
+                    (backEnd.refdef.rdflags & RDF_FULLBRIGHT) ? 1 : 0, s_exclusiveDropped,
+                    ambientlight[0], ambientlight[1], ambientlight[2]);
             }
         }
 
