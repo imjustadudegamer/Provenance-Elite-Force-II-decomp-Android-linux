@@ -2013,6 +2013,30 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		}
 
 		if ( R_ProbeMarkOn() && *drawSurf->surface == SF_POLY ) {
+			/* the sort word carries 11 bits of shader and MAX_SHADERS is 16384, so a past-2048 index wears another shader's stages */
+			static int	s_keyRows;
+
+			if ( s_keyRows < 32 || ( s_keyRows % 600 ) == 0 ) {
+				const srfPoly_t	*pPoly = (const srfPoly_t *)drawSurf->surface;
+				shader_t		*pAsk  = R_GetShaderByHandle( pPoly->hShader );
+
+				if ( pAsk != shader ) {
+					s_keyRows++;
+					VK_Guard_Row( "DOCC:polykey",
+								  "f=%d i=%d ask='%s' hsh=%d sidx=%d got='%s' gidx=%d "
+								  "sort=0x%08x numshaders=%d",
+								  RB_FrameCount(), i,
+								  ( pAsk && pAsk->name[0] ) ? pAsk->name : "?",
+								  (int)pPoly->hShader,
+								  pAsk ? pAsk->sortedIndex : -1,
+								  ( shader && shader->name[0] ) ? shader->name : "?",
+								  shader ? shader->sortedIndex : -1,
+								  drawSurf->sort, tr.numShaders );
+				}
+			}
+		}
+
+		if ( R_ProbeMarkOn() && *drawSurf->surface == SF_POLY ) {
 			static int	s_polyFrame;
 			static int	s_polyLastFrame = -1;
 			static int	s_polyRows;
