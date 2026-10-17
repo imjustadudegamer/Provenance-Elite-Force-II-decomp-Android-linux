@@ -2752,6 +2752,12 @@ static shader_t *GeneratePermanentShader( void ) {
 
 	tr.numShaders++;
 
+	/* the census that says whether a level's index can wrap the sort word's 11-bit shader field */
+	if ( tr.numShaders == 2048 && R_ProbeMarkOn() ) {
+		VK_Guard_Row( "VK:newshader", "'%s' filled the retail shader table (%d) f=%d",
+					  newShader->name, tr.numShaders, RB_FrameCount() );
+	}
+
 	newShader->numUnfoggedPasses = R_AllocStageList( newShader->unfoggedStages, unfoggedStages, newShader->numUnfoggedPasses );
 	newShader->numFogPasses = R_AllocStageList( newShader->fogStages, fogStages, newShader->numFogPasses );
 	newShader->numGlobalFogPasses = R_AllocStageList( newShader->globalFogStages, globalFogStages, newShader->numGlobalFogPasses );
