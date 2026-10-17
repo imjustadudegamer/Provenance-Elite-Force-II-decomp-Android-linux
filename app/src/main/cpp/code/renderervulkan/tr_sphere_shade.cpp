@@ -337,7 +337,7 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
 
     if (thislight->exclusiveLightNameCount) {
         int i;
-        const unsigned int uTikiHash = 0;
+        const unsigned int uTikiHash = backEnd.currentEntity->e.tiki->exclusive_light_name_hash;
 
         bAllowed = qfalse;
         for (i = 0; i < thislight->exclusiveLightNameCount; i++) {

@@ -322,6 +322,9 @@ static_assert(
 static_assert(
     offsetof(dtiki_t, skelIndex) == 312 + 2 * (sizeof(void *) - 4),
     "retail dtiki_s+312 (alias_list +surfaces widened)");
+static_assert(
+    offsetof(dtiki_t, exclusive_light_name_hash) == 572 + 2 * (sizeof(void *) - 4),
+    "retail dtiki_s+572 -- the field R_Sphere_AddNewLight tests exclusives against");
 #endif
 
 typedef struct {
