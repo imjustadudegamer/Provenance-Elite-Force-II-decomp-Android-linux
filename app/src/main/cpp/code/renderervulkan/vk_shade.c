@@ -1370,6 +1370,30 @@ static void VK_Shade_TexelProbe( image_t *image )
 				  (unsigned)px[0], (unsigned)px[1], (unsigned)px[2], (unsigned)px[3] );
 }
 
+/* the walk a bind rides in: the row's only cheap way to name its caller's family */
+static const char *VK_Shade_IterName( void )
+{
+	if ( tess.currentStageIteratorFunc == RB_StageIterator2D ) {
+		return "2d";
+	}
+	if ( tess.currentStageIteratorFunc == RB_StageIteratorSky ) {
+		return "sky";
+	}
+	if ( tess.currentStageIteratorFunc == RB_GLFogStageIteratorFunc ) {
+		return "glfog";
+	}
+	if ( tess.currentStageIteratorFunc == RB_StageIteratorVertexLitTextureUnfogged ) {
+		return "vlt";
+	}
+	if ( tess.currentStageIteratorFunc == RB_StageIteratorLightmappedMultitextureUnfogged ) {
+		return "lmmt";
+	}
+	if ( tess.currentStageIteratorFunc == RB_StageIteratorGeneric ) {
+		return "generic";
+	}
+	return "other";
+}
+
 static void VK_Shade_BindImage( image_t *image, int tmu )
 {
 	VkImageView view = VK_NULL_HANDLE;
@@ -1388,9 +1412,17 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 		static int s_zeroRows;
 
 		if ( R_ProbeMarkOn() && ( s_zeroRows < 8 || ( s_zeroRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:bind", "handle=0 image='%s' tmu=%d shader='%s' f=%d",
+			VK_Guard_Row( "VK:bind",
+						  "handle=0 image='%s' tmu=%d shader='%s' "
+						  "ent=%d iter=%s stage0='%s' f=%d",
 						  image->imgName[0] ? image->imgName : "(unnamed)", tmu,
 						  ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?",
+						  ( backEnd.currentEntity )
+						  ? backEnd.currentEntity->e.entityNumber : -1,
+						  VK_Shade_IterName(),
+						  ( tess.xstages && tess.xstages[0] && tess.xstages[0]->bundle[0].image[0]
+							&& tess.xstages[0]->bundle[0].image[0]->imgName[0] )
+						  ? tess.xstages[0]->bundle[0].image[0]->imgName : "?",
 						  RB_FrameCount() );
 		}
 		s_zeroRows++;
