@@ -1123,6 +1123,7 @@ void R_UploadScratchRGBA( int cols, int rows, const byte *rgba )
 	}
 
 	if ( image->texnum ) {
+		VK_Image_SlotTenant_Set( image->texnum, NULL );
 		VK_Texture_Destroy( (int)image->texnum );
 		image->texnum = 0;
 	}
@@ -1132,6 +1133,7 @@ void R_UploadScratchRGBA( int cols, int rows, const byte *rgba )
 	}
 
 	image->texnum = (unsigned int)handle;
+	VK_Image_SlotTenant_Set( image->texnum, image );
 	image->uploadWidth = cols;
 	image->uploadHeight = rows;
 	image->width = cols;
