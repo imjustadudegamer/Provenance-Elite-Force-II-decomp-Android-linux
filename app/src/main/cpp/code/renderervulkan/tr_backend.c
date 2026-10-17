@@ -2073,7 +2073,6 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	shader_t	*shader;
 	shader_t	*oldShader;
-	qboolean	depthRange;
 	int			i;
 	drawSurf_t	*drawSurf;
 
@@ -2086,7 +2085,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	backEnd.ori = backEnd.viewParms.world;
 
 	oldShader = NULL;
-    depthRange = qfalse;
     vkDepthRange( 0.0, 1.0 );	/* no RB_BeginDrawingView here, so the walk anchors the range it inherits */
 
     for (i = 0, drawSurf = drawSurfs; i < numDrawSurfs; i++, drawSurf++) {
@@ -2111,8 +2109,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 								  RB_FrameCount() );
 				}
 			}
-			depthRange = (spr->renderfx & RF_DEPTHHACK) != 0;
-
 			if ((shader != oldShader || (shader->noMerge & 1)) && !shader->entityMergable)
 			{
 				if (oldShader) {
@@ -2125,8 +2121,42 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
 			RB_LoadModelViewMatrix( backEnd.ori.modelMatrix);
 
-			/* same law as the surf walk: the sprite's own range, issued every time */
-			vkDepthRange(0.0, depthRange ? 0.3 : 1.0);
+			/* retail's sprite walk carries no range of its own: RB_RenderSpriteSurfList
+			   never calls glDepthRange, so an inherited renderfx bit must not shrink it */
+			if ( R_ProbeMarkOn() ) {
+				static int	s_sprRows;
+				static int	s_sprFrame = -1;
+				static int	s_sprAnom;
+				float		rN, rF;
+				unsigned	sState = ( shader->unfoggedStages[0] )
+								 ? shader->unfoggedStages[0]->stateBits : 0u;
+
+				VK_Draw_DepthRangeLast( &rN, &rF );
+				if ( RB_FrameCount() != s_sprFrame || oldShader != shader ) {
+					s_sprFrame = RB_FrameCount();
+					if ( s_sprRows < 24 ) {
+						s_sprRows++;
+						VK_Guard_Row( "DOCC:sprite",
+									  "f=%d '%s' i=%d dtest=%d dwrite=%d dfunc_eq=%d "
+									  "blend=%d/%d range=%.3f..%.3f rf=0x%x",
+									  RB_FrameCount(), shader->name, i,
+									  ( sState & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
+									  ( sState & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
+									  ( sState & VKS_DEPTHFUNC_EQUAL ) ? 1 : 0,
+									  (int)( sState & VKS_SRCBLEND_BITS ),
+									  (int)( ( sState & VKS_DSTBLEND_BITS ) >> 4 ),
+									  rN, rF, spr->renderfx );
+					}
+				}
+				if ( rN != 0.0f || rF != 1.0f ) {
+					s_sprAnom++;
+					if ( s_sprAnom <= 8 || ( s_sprAnom % 600 ) == 0 ) {
+						VK_Guard_Row( "DOCC:sprite",
+									  "range-arm f=%d '%s' i=%d range=%.3f..%.3f rf=0x%x",
+									  RB_FrameCount(), shader->name, i, rN, rF, spr->renderfx );
+					}
+				}
+			}
 
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 
