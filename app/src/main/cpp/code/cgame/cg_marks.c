@@ -66,6 +66,7 @@ typedef struct cg_impactmarkinfo_s {
     vec3_t dir;
     float  radius;
     int    temporary;
+    qhandle_t shader;
 } cg_impactmarkinfo_t;
 
 int CG_GetMarkFragments(
@@ -403,10 +404,11 @@ qboolean CG_ImpactMark_PerPolyCallback(const vec3_t *markPoints, markFragment_t 
             if (PROBE_On() && PROBE_Throttle(&faultMarkPlaceRows, 24, 400)) {
                 UIVK_PROBE(
                     "MARK:place",
-                    "n=%d sh=? iIndex=%d npts=%d temp=%d org=(%.2f,%.2f,%.2f) "
+                    "n=%d sh=%d '%s' iIndex=%d npts=%d temp=%d org=(%.2f,%.2f,%.2f) "
                     "dir=(%.3f,%.3f,%.3f) radius=%.4f "
                     "poly0=(%.2f,%.2f,%.2f) poly1=(%.2f,%.2f,%.2f) polyN=(%.2f,%.2f,%.2f)\n",
-                    faultMarkPlaceRows, mf->iIndex, mf->numPoints, pInfo->temporary,
+                    faultMarkPlaceRows, pInfo->shader, cgi.R_GetShaderName(pInfo->shader),
+                    mf->iIndex, mf->numPoints, pInfo->temporary,
                     pInfo->origin[0], pInfo->origin[1], pInfo->origin[2],
                     pInfo->dir[0], pInfo->dir[1], pInfo->dir[2], pInfo->radius,
                     verts[0].xyz[0], verts[0].xyz[1], verts[0].xyz[2],
@@ -527,10 +529,10 @@ void CG_ImpactMark(
         if (PROBE_Throttle(&s_iMarkQuadCount, 24, 400)) {
             UIVK_PROBE(
                 "MARK:quad",
-                "n=%d sh=%d org=(%.2f,%.2f,%.2f) r=%.4f proj=(%.2f,%.2f,%.2f)"
+                "n=%d sh=%d '%s' org=(%.2f,%.2f,%.2f) r=%.4f proj=(%.2f,%.2f,%.2f)"
                 " a1=(%.3f,%.3f,%.3f) a2=(%.3f,%.3f,%.3f)"
                 " P0=(%.2f,%.2f,%.2f) P1=(%.2f,%.2f,%.2f) P2=(%.2f,%.2f,%.2f) P3=(%.2f,%.2f,%.2f)\n",
-                s_iMarkQuadCount, markShader,
+                s_iMarkQuadCount, markShader, cgi.R_GetShaderName(markShader),
                 origin[0], origin[1], origin[2], radius,
                 projection[0], projection[1], projection[2],
                 info.axis[1][0], info.axis[1][1], info.axis[1][2],
@@ -562,8 +564,9 @@ void CG_ImpactMark(
             s_iDoccShader = markShader;
             UIVK_PROBE(
                 "DOCC:new",
-                "sh=%d org=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f) radius=%.4f nfrag=%d npts=%d temp=%d\n",
+                "sh=%d '%s' org=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f) radius=%.4f nfrag=%d npts=%d temp=%d\n",
                 markShader,
+                cgi.R_GetShaderName(markShader),
                 origin[0], origin[1], origin[2],
                 dir[0], dir[1], dir[2],
                 radius,
@@ -599,6 +602,7 @@ void CG_ImpactMark(
         info.colors[3] = (int)(alpha * 255.0f);
     }
     VectorCopy(origin, info.origin);
+    info.shader = markShader;
     VectorAdd(origin, dir, v);
     info.leafnum = cgi.CM_PointLeafnum(v);
     VectorCopy(dir, info.dir);
