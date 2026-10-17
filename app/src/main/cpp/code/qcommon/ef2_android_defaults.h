@@ -146,7 +146,7 @@ root, for more details.
 	"bind PAD0_DPAD_RIGHT \"+leanright\"\n" \
 	"bind PAD0_LEFTSTICK_CLICK \"+speed\"\n" \
 	"bind PAD0_RIGHTSTICK_CLICK \"+aim\"\n" \
-	"bind PAD0_BACK \"nightvision\"\n" \
+	"bind PAD0_BACK \"+objectives_score\"\n" \
 	"bind PAD0_START \"togglemenu\"\n" \
 	"seta ui_dialogdisplaymode 1\n" \
 	"seta ui_radarviewmode 0\n" \

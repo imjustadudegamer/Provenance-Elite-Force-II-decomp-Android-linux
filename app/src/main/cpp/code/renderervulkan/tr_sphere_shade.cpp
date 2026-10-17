@@ -48,6 +48,8 @@ suninfo_t       s_sun;
 static vec3_t   ambientlight;
 static int      light_reference_count = 0;
 
+#define MAX_SPHERE_FLASH_TRACK 512
+
 vec3_t spheredef[SPHERE_NUM_BASIS] = {
     { 1.0f,  0.0f,  0.0f},
     {-1.0f,  0.0f,  0.0f},
@@ -765,6 +767,47 @@ void R_Sphere_SetupEntity()
         backEnd.currentEntity->e.shaderRGBA[2] = (byte)vAmbient[2];
 
         VectorClear(backEnd.currentEntity->directedLight);
+    }
+
+    /* an entity that has not moved whose resolved ambient changed names itself with the light set that produced it */
+    if (R_ProbeMarkOn()) {
+        static struct {
+            int   frame;
+            float origin[3];
+            float ambient[3];
+        } s_prev[MAX_SPHERE_FLASH_TRACK];
+        int          iSlot = backEnd.currentEntity->e.entityNumber % MAX_SPHERE_FLASH_TRACK;
+        unsigned int iLeaf, iLeafKey = 0;
+
+        for (iLeaf = 0; iLeaf < 4; iLeaf++) {
+            iLeafKey = (iLeafKey * 33u)
+                       + (unsigned int)(uintptr_t)backEnd.currentSphere->leaves[iLeaf];
+        }
+
+        if (s_prev[iSlot].frame && s_prev[iSlot].frame != RB_FrameCount()) {
+            float fMove = fabs(backEnd.currentEntity->e.origin[0] - s_prev[iSlot].origin[0])
+                          + fabs(backEnd.currentEntity->e.origin[1] - s_prev[iSlot].origin[1])
+                          + fabs(backEnd.currentEntity->e.origin[2] - s_prev[iSlot].origin[2]);
+            float fDelta = fabs(backEnd.currentEntity->ambientLight[0] - s_prev[iSlot].ambient[0])
+                           + fabs(backEnd.currentEntity->ambientLight[1] - s_prev[iSlot].ambient[1])
+                           + fabs(backEnd.currentEntity->ambientLight[2] - s_prev[iSlot].ambient[2]);
+
+            if (fMove < 4.0f && fDelta > 8.0f) {
+                VK_Guard_Row(
+                    "DOCC:sphere",
+                    "f=%d ent=%d move=%.2f ambient=(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f) "
+                    "d=%.1f nlights=%d sun=%d leaves=%08x",
+                    RB_FrameCount(), backEnd.currentEntity->e.entityNumber, fMove,
+                    s_prev[iSlot].ambient[0], s_prev[iSlot].ambient[1], s_prev[iSlot].ambient[2],
+                    backEnd.currentEntity->ambientLight[0], backEnd.currentEntity->ambientLight[1],
+                    backEnd.currentEntity->ambientLight[2], fDelta,
+                    backEnd.currentSphere->numLights, tr.numSLights, iLeafKey);
+            }
+        }
+
+        s_prev[iSlot].frame = RB_FrameCount();
+        VectorCopy(backEnd.currentEntity->e.origin, s_prev[iSlot].origin);
+        VectorCopy(backEnd.currentEntity->ambientLight, s_prev[iSlot].ambient);
     }
 }
 

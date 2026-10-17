@@ -1875,6 +1875,52 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 		}
 
+		/* every family's first draw of a shader names itself: the poly transcript samples the list head only */
+		if ( R_ProbeMarkOn() ) {
+			static char	szDrawn[192][64];
+			static int	s_nDrawn;
+			static shader_t	*s_pCensusShader;
+			static qboolean	s_bCensusSeen;
+			unsigned	sState = ( shader->unfoggedStages[0] )
+								 ? shader->unfoggedStages[0]->stateBits : 0u;
+
+			if ( s_pCensusShader != shader ) {
+				int	iSeen;
+
+				s_pCensusShader = shader;
+				s_bCensusSeen   = qfalse;
+				for ( iSeen = 0; iSeen < s_nDrawn; iSeen++ ) {
+					if ( !strcmp( szDrawn[iSeen], shader->name ) ) {
+						s_bCensusSeen = qtrue;
+						break;
+					}
+				}
+				if ( !s_bCensusSeen && s_nDrawn < 192 ) {
+					Q_strncpyz( szDrawn[s_nDrawn++], shader->name, sizeof( szDrawn[0] ) );
+				}
+			}
+
+			if ( !s_bCensusSeen ) {
+				float	rN, rF;
+
+				VK_Draw_DepthRangeLast( &rN, &rF );
+				VK_Guard_Row( "DOCC:draw",
+							  "f=%d fam=%d '%s' st0=0x%08x ent=%d dhack=%d "
+							  "dtest=%d dwrite=%d dequal=%d blend=%d/%d range=%.3f..%.3f",
+							  RB_FrameCount(), *drawSurf->surface, shader->name,
+							  sState, entityNum,
+							  ( !bStaticModel && entityNum != ENTITYNUM_WORLD
+								&& ( backEnd.refdef.entities[entityNum].e.renderfx & RF_DEPTHHACK ) )
+								? 1 : 0,
+							  ( sState & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
+							  ( sState & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
+							  ( sState & VKS_DEPTHFUNC_EQUAL ) ? 1 : 0,
+							  (int)( sState & VKS_SRCBLEND_BITS ),
+							  (int)( ( sState & VKS_DSTBLEND_BITS ) >> 4 ),
+							  rN, rF );
+			}
+		}
+
 		if ( R_ProbeMarkOn() && *drawSurf->surface == SF_POLY ) {
 			static int	s_polyFrame;
 			static int	s_polyLastFrame = -1;
