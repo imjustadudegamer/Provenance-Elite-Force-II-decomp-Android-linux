@@ -805,6 +805,19 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		return qfalse;
 	}
 
+	/* 0 is "no texture" here too: the first slot is a real image */
+	if ( image->texnum == 0 ) {
+		static int s_zeroRows;
+
+		s_zeroRows++;
+		if ( R_ProbeMarkOn() && ( s_zeroRows < 8 || ( s_zeroRows % 600 ) == 0 ) ) {
+			VK_Guard_Row( "VK:bind", "handle=0 image='%s' pass=2d shader='%s' f=%d",
+						  image->imgName[0] ? image->imgName : "(unnamed)",
+						  tess.shader ? tess.shader->name : "?", RB_FrameCount() );
+		}
+		return qfalse;
+	}
+
 	view = VK_Texture_View( (int)image->texnum );
 	if ( view == VK_NULL_HANDLE ) {
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "image without a Vulkan view", VK_ERROR_INITIALIZATION_FAILED );
@@ -2085,6 +2098,18 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 			shader = tr.sortedShaders[spr->shaderNum];
 			if ( shader == NULL ) {
 				continue;	/* the guard named the key */
+			}
+			/* a record whose index no longer names its own shader's slot */
+			if ( R_ProbeMarkOn() && shader->sortedIndex != spr->shaderNum ) {
+				static int	s_keyRows;
+
+				s_keyRows++;
+				if ( s_keyRows <= 24 || ( s_keyRows % 600 ) == 0 ) {
+					VK_Guard_Row( "DOCC:sprite",
+								  "stale shaderNum=%d sortedIndex=%d shader='%s' f=%d",
+								  spr->shaderNum, shader->sortedIndex, shader->name,
+								  RB_FrameCount() );
+				}
 			}
 			depthRange = (spr->renderfx & RF_DEPTHHACK) != 0;
 

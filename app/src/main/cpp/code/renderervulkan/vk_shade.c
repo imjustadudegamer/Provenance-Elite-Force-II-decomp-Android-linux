@@ -1374,8 +1374,26 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 {
 	VkImageView view = VK_NULL_HANDLE;
 	VkSampler sampler = VK_NULL_HANDLE;
+	image_t *tenant;
 
 	if ( !image || image->texnum < 0 ) {
+		s_shade.texView[tmu] = VK_NULL_HANDLE;
+		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
+		s_shade.texImage[tmu] = image;
+		s_shade.texBound[tmu] = 0;
+		return;
+	}
+	/* texnum is unsigned: 0 is "no texture" at every other reader of it */
+	if ( image->texnum == 0 ) {
+		static int s_zeroRows;
+
+		if ( R_ProbeMarkOn() && ( s_zeroRows < 8 || ( s_zeroRows % 600 ) == 0 ) ) {
+			VK_Guard_Row( "VK:bind", "handle=0 image='%s' tmu=%d shader='%s' f=%d",
+						  image->imgName[0] ? image->imgName : "(unnamed)", tmu,
+						  ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?",
+						  RB_FrameCount() );
+		}
+		s_zeroRows++;
 		s_shade.texView[tmu] = VK_NULL_HANDLE;
 		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
 		s_shade.texImage[tmu] = image;
@@ -1392,6 +1410,23 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
 		s_shade.texBound[tmu] = 0;
 		return;
+	}
+	/* the slot this draw samples answers to another image_t: the recycle arm */
+	tenant = VK_Image_SlotTenant( (int)image->texnum );
+	if ( tenant && tenant != image ) {
+		static int s_tenantRows;
+
+		if ( R_ProbeMarkOn() && ( s_tenantRows < 32 || ( s_tenantRows % 600 ) == 0 ) ) {
+			VK_Guard_Row( "VK:bind",
+						  "tenant handle=%d asked='%s' slot='%s' tmu=%d shader='%s' f=%d",
+						  (int)image->texnum,
+						  image->imgName[0] ? image->imgName : "(unnamed)",
+						  tenant->imgName[0] ? tenant->imgName : "(unnamed)",
+						  tmu,
+						  ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?",
+						  RB_FrameCount() );
+		}
+		s_tenantRows++;
 	}
 	/* wrapClampModeX/Y hold the legacy wrap enum: REPEAT is 10497, not 0 */
 	VK_Texture_Sampler( ( image->wrapClampModeX != VK_TWRAP_REPEAT
@@ -4758,6 +4793,50 @@ void VK_Shade_BatchEnd( void )
 	}
 }
 
+/* The colour stream the pack reads, bounded per channel; mark-gated. */
+static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
+									 const unsigned char *colors, const shader_t *shader,
+									 const shaderStage_t *pStage )
+{
+	static int s_rows;
+	int rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0, aMin = 255, aMax = 0;
+	int v;
+
+	if ( !colors || input->numVertexes <= 0 ) {
+		return;
+	}
+	for ( v = 0; v < input->numVertexes; v++ ) {
+		const unsigned char *c = colors + v * 4;
+
+		if ( c[0] < rMin ) rMin = c[0];
+		if ( c[0] > rMax ) rMax = c[0];
+		if ( c[1] < gMin ) gMin = c[1];
+		if ( c[1] > gMax ) gMax = c[1];
+		if ( c[2] < bMin ) bMin = c[2];
+		if ( c[2] > bMax ) bMax = c[2];
+		if ( c[3] < aMin ) aMin = c[3];
+		if ( c[3] > aMax ) aMax = c[3];
+	}
+	s_rows++;
+	if ( !R_ProbeMarkOn() ) {
+		return;
+	}
+	/* a zeroed green with both neighbours saturated is the magenta shape */
+	if ( ( gMin == 0 && gMax == 0 && rMax >= 224 && bMax >= 224 )
+		 || ( rMin == rMax && gMin == gMax && bMin == bMax && aMin == aMax
+			  && !( rMin == 255 && gMin == 255 && bMin == 255 && aMin == 255 ) ) ) {
+		if ( s_rows <= 24 || ( s_rows % 400 ) == 0 ) {
+			VK_Guard_Row( "DOCC:color",
+						  "shader='%s' rg=%d ag=%d n=%d rgba=%d..%d,%d..%d,%d..%d,%d..%d "
+						  "f=%d",
+						  shader ? shader->name : "?", (int)pStage->rgbGen,
+						  (int)pStage->alphaGen, input->numVertexes,
+						  rMin, rMax, gMin, gMax, bMin, bMax, aMin, aMax,
+						  RB_FrameCount() );
+		}
+	}
+}
+
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -4877,6 +4956,7 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	(void)stateBits;
 	VK_StageBindCensus( shader, pStage, -1, backEnd.in2D ? qtrue : qfalse, 0, 0, 0, 0 );
 	VK_PassCensus( shader, pStage, stateBits, input, colors, backEnd.in2D ? qtrue : qfalse );
+	VK_Shade_ColorStreamRow( input, colors, shader, pStage );
 
 	RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
 						   tc0, tc1, tcStride, colors, input->normal[0], pStage );

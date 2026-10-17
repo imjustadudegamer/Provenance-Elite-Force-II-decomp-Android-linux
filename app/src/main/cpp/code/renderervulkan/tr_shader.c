@@ -2651,10 +2651,22 @@ static void CollapseMultitexture(int *stagecounter) {
 	}
 }
 
-static void Q_UNUSED_VAR FixRenderCommandList( int newShader ) {
-	/* The twin patches the sort key's shader number; this record carries the
-	   pointer and resolves the remap at draw time. */
-	( void )newShader;
+/* Retail @0x0001E5A0: the frame's already-built sort keys carry sortedIndex. */
+static void R_UpdateDrawSurfs_NewShader( int sortedIndex )
+{
+	int			count, i;
+	drawSurf_t	*surfs;
+
+	count = tr.refdef.numDrawSurfs;
+	if ( count > MAX_DRAWSURFS ) {
+		count = MAX_DRAWSURFS;
+	}
+	surfs = tr.refdef.drawSurfs;
+	for ( i = 0; i < count; i++ ) {
+		if ( (int)( surfs[i].sort >> QSORT_SHADERNUM_SHIFT ) >= sortedIndex ) {
+			surfs[i].sort += ( 1 << QSORT_SHADERNUM_SHIFT );
+		}
+	}
 }
 
 static void SortNewShader( void ) {
@@ -2675,6 +2687,22 @@ static void SortNewShader( void ) {
 
 	newShader->sortedIndex = i+1;
 	tr.sortedShaders[i+1] = newShader;
+
+	/* the trigger this repair exists for: a registration while surfaces build */
+	if ( tr.refdef.numDrawSurfs && R_ProbeStatsOn() ) {
+		static int	s_rows;
+
+		s_rows++;
+		if ( s_rows <= 24 || ( s_rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:newshader",
+						  "'%s' sortedIndex=%d moved=%d surfs=%d f=%d",
+						  newShader->name, newShader->sortedIndex,
+						  ( tr.numShaders - 2 ) - newShader->sortedIndex,
+						  tr.refdef.numDrawSurfs, RB_FrameCount() );
+		}
+	}
+
+	R_UpdateDrawSurfs_NewShader( newShader->sortedIndex );
 }
 
 

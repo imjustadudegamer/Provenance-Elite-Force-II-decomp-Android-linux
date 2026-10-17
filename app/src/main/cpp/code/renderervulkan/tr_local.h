@@ -1803,6 +1803,8 @@ byte	*RB_ReadPixels( int x, int y, int width, int height, size_t *offset, int *p
 
 void	R_InitImages( void );
 void	R_FreeImage(image_t* image);
+image_t	*VK_Image_SlotTenant( int handle );
+void	VK_Image_SlotTenant_Set( unsigned int handle, image_t *image );
 void	R_DeleteTextures( void );
 void    R_FreeUnusedImages( void );
 int		R_SumOfUsedImages( void );

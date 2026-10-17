@@ -1407,6 +1407,29 @@ static void UploadTranscoded(
 	SMP_RLOAD_END( transcode );
 }
 
+/* A bind resolving a slot another image_t owns is the recycle convict. */
+static image_t	*s_slotTenant[VK_MAX_TEXTURES];
+
+image_t *VK_Image_SlotTenant( int handle )
+{
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES ) {
+		return NULL;
+	}
+	return s_slotTenant[handle];
+}
+
+static void R_SlotTenant_Set( unsigned int handle, image_t *image )
+{
+	VK_Image_SlotTenant_Set( handle, image );
+}
+
+void VK_Image_SlotTenant_Set( unsigned int handle, image_t *image )
+{
+	if ( handle < VK_MAX_TEXTURES ) {
+		s_slotTenant[handle] = image;
+	}
+}
+
 image_t* R_CreateImageOld(
 	const char* name,
 	byte* pic,
@@ -1537,6 +1560,7 @@ image_t* R_CreateImageOld(
 			s_uploadFailRows++;
 		} else {
 			image->texnum = (unsigned int)s_vkUploadTex;
+			R_SlotTenant_Set( image->texnum, image );
 		}
 	}
 
@@ -2848,6 +2872,7 @@ void R_DeleteImageFromHash(image_t* image) {
 
 void R_FreeImage(image_t* image) {
 	if (image->texnum) {
+		R_SlotTenant_Set( image->texnum, NULL );
 		VK_Texture_Destroy( (int)image->texnum );
 	}
 

@@ -37,6 +37,8 @@ root, for more details.
    own stick keeps its digital keys, and a menu takes the stick back as keys so
    it still walks rows (sdl_input.c IN_GamepadMove).
 
+   Pad rows are the EF1 answer key's layout on EF2's own commands (weapnext/weapprev are nextinv/previnv, +button2 the reload bit, +button3 the run bit, +zoom has no row).
+
    Max graphics (operator order): pin the quality cvars at their top setting on
    every install.  r_subdivisions 3 -> 2 is the one real raise -- tr_bsp.c feeds
    the value straight in as the patch chord tolerance, so smaller is finer, and
@@ -139,11 +141,11 @@ root, for more details.
 	"bind PAD0_A \"+moveup\"\n" \
 	"bind PAD0_B \"+movedown\"\n" \
 	"bind PAD0_X \"+use\"\n" \
-	"bind PAD0_Y \"+reload\"\n" \
-	"bind PAD0_DPAD_UP \"warpinv 6\"\n" \
-	"bind PAD0_DPAD_DOWN \"+objectives_score\"\n" \
-	"bind PAD0_DPAD_LEFT \"+leanleft\"\n" \
-	"bind PAD0_DPAD_RIGHT \"+leanright\"\n" \
+	"bind PAD0_Y \"nextinv\"\n" \
+	"bind PAD0_DPAD_UP \"+button2\"\n" \
+	"bind PAD0_DPAD_DOWN \"+button3\"\n" \
+	"bind PAD0_DPAD_LEFT \"previnv\"\n" \
+	"bind PAD0_DPAD_RIGHT \"nextinv\"\n" \
 	"bind PAD0_LEFTSTICK_CLICK \"+speed\"\n" \
 	"bind PAD0_RIGHTSTICK_CLICK \"+aim\"\n" \
 	"bind PAD0_BACK \"+objectives_score\"\n" \
