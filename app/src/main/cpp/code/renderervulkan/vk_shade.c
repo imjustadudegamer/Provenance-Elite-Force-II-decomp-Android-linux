@@ -1494,6 +1494,11 @@ void VK_Shade_RegistrationReset( void )
    slot's own view before it can reach vkUpdateDescriptorSets.  A destroyed slot
    reads VK_NULL_HANDLE and a reused slot reads a different view; both disarm.
    Reads no image_t field, so a freed image cannot be dereferenced here. */
+/* the open world batch's own census: armed per batch, reset by BatchBegin */
+static qboolean			s_batchCensus;
+/* the open batch's disarmed-unit count: the world census owns the reset */
+static int				s_batchUnitDisarmed;
+
 static VkImageView VK_Shade_LiveView( int tmu )
 {
 	VkImageView live;
@@ -1519,6 +1524,8 @@ static VkImageView VK_Shade_LiveView( int tmu )
 						  RB_FrameCount() );
 			s_disarmRows++;
 		}
+		/* the census still reads this unit's image as its own, so the white fallback it took reads clean */
+		s_batchUnitDisarmed += s_batchCensus ? 1 : 0;
 		s_shade.texBound[tmu] = 0;
 		s_shade.texView[tmu] = VK_NULL_HANDLE;
 		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
@@ -4537,7 +4544,6 @@ static qboolean VK_WorldsetSampleDue( int rows, int frame, int lastSampleFrame )
 static int				s_batchStagesDrawn;
 static const shader_t	*s_batchShader;
 static int				s_batchBindMiss;
-static qboolean			s_batchCensus;
 static int				s_batchEntity;		/* 'w' world, 'e' entity, 's' static model */
 static int				s_batchSurfs;		/* draw surfs this batch covered */
 /* the bind evidence: per submitted pass, the image each witnessed unit really
@@ -4574,9 +4580,10 @@ void VK_Shade_NoteBatchSurf( void )
 
 void VK_Shade_BatchBegin( const shader_t *shader )
 {
-	s_batchStagesDrawn = 0;
-	s_batchBindMiss    = 0;
-	s_batchBindsLen    = 0;
+	s_batchStagesDrawn  = 0;
+	s_batchBindMiss     = 0;
+	s_batchUnitDisarmed = 0;
+	s_batchBindsLen     = 0;
 	s_batchBinds[0]    = 0;
 	s_batchSurfs       = 0;
 	s_batchShader      = shader;
@@ -4797,7 +4804,15 @@ void VK_Shade_BatchEnd( void )
 	frame = RB_FrameCount();
 
 	s_rows++;
-	if ( s_batchStagesDrawn != expected ) {
+	if ( s_batchUnitDisarmed ) {
+		VK_Guard_Row( "VK:worldset",
+					  "MISS why=unit-disarmed shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
+					  "disarmed=%d bindmiss=%d lm=%d src=%d srcidx=%d binds=[%s] stages=%s",
+					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
+					  expected, s_batchStagesDrawn, s_batchUnitDisarmed, s_batchBindMiss,
+					  r_lightmap->integer, srcMode, srcIdx,
+					  s_batchBindsLen ? s_batchBinds : "none", detail );
+	} else if ( s_batchStagesDrawn != expected ) {
 		VK_Guard_Row( "VK:worldset",
 					  "MISS why=stage-count shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
 					  "bindmiss=%d lm=%d src=%d srcidx=%d binds=[%s] stages=%s",
