@@ -74,7 +74,8 @@ root, for more details.
        lower values, and the launcher's overrides only protect rows it names.
      cg_shadows Stencil (2) renders nothing here (the depth picker prefers
        D32_SFLOAT, stencilBits 0), so Simple IS this lane's maximum.
-     r_swapInterval is deliberately absent: operator order leaves it alone. */
+     r_swapInterval is deliberately absent: operator order leaves it alone.
+     Pad roles: Y nightvision (EV_Player_Nightvision), d-pad sides +leanleft/+leanright, shoulders nextinv/previnv alone, and the left trigger stays +attackright -- the sniper's controlZoom. */
 #define EF2_ANDROID_DEFAULT_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
 	"bind w \"+forward\"\n" \
@@ -141,11 +142,11 @@ root, for more details.
 	"bind PAD0_A \"+moveup\"\n" \
 	"bind PAD0_B \"+movedown\"\n" \
 	"bind PAD0_X \"+use\"\n" \
-	"bind PAD0_Y \"nextinv\"\n" \
+	"bind PAD0_Y \"nightvision\"\n" \
 	"bind PAD0_DPAD_UP \"+button2\"\n" \
 	"bind PAD0_DPAD_DOWN \"+button3\"\n" \
-	"bind PAD0_DPAD_LEFT \"previnv\"\n" \
-	"bind PAD0_DPAD_RIGHT \"nextinv\"\n" \
+	"bind PAD0_DPAD_LEFT \"+leanleft\"\n" \
+	"bind PAD0_DPAD_RIGHT \"+leanright\"\n" \
 	"bind PAD0_LEFTSTICK_CLICK \"+speed\"\n" \
 	"bind PAD0_RIGHTSTICK_CLICK \"+aim\"\n" \
 	"bind PAD0_BACK \"+objectives_score\"\n" \
