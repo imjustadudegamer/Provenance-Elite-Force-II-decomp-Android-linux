@@ -32,6 +32,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
 #define PROBE_PRINT                 cgi.Printf
 #include "../qcommon/qa_probe.h"
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
 
 
 void CG_SetEntitySoundPosition(centity_t *cent)
