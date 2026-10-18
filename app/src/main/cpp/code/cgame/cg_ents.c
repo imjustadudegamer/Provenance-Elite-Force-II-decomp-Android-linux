@@ -598,6 +598,27 @@ void CG_Beam(centity_t *cent)
     );
 }
 
+/* qa_probe is desktop-only: the renderer's device property arms here too. */
+static qboolean CG_DecalProbeOn( void )
+{
+    static int cached = -1;
+
+    if ( cached < 0 ) {
+        cached = PROBE_On() ? 1 : 0;
+#ifdef __ANDROID__
+        if ( !cached ) {
+            char val[PROP_VALUE_MAX];
+
+            if ( __system_property_get( "log.tag.ProvenanceEF2", val ) > 0
+                 && val[0] != '\0' && Q_stricmp( val, "0" ) && Q_stricmp( val, "false" ) ) {
+                cached = 1;
+            }
+        }
+#endif
+    }
+    return cached ? qtrue : qfalse;
+}
+
 void CG_Decal(centity_t *cent)
 
 {
@@ -610,18 +631,25 @@ void CG_Decal(centity_t *cent)
     shader = cgi.R_RegisterShader(CG_ConfigString(CS_IMAGES + s1->tag_num));
     ByteToDir(s1->surfaces[0], dir);
 
-    UIVK_PROBE(
-        "DOCC:decal",
-        "ent=%d org=(%.1f,%.1f,%.1f) dirbyte=%d dir=(%.3f,%.3f,%.3f) scale=%f (0x%08x) roll=%.1f shader='%s'\n",
-        cent->currentState.number,
-        s1->origin[0], s1->origin[1], s1->origin[2],
-        s1->surfaces[0],
-        dir[0], dir[1], dir[2],
-        s1->scale,
-        *(unsigned int *)&s1->scale,
-        s1->angles[2],
-        CG_ConfigString(CS_IMAGES + s1->tag_num)
-    );
+    if ( CG_DecalProbeOn() ) {
+        static int decal_rows;
+
+        decal_rows++;
+        if ( decal_rows <= 64 || ( decal_rows % 240 ) == 0 ) {
+            UIVK_PROBE(
+                "DOCC:decal",
+                "ent=%d org=(%.1f,%.1f,%.1f) dirbyte=%d dir=(%.3f,%.3f,%.3f) scale=%f (0x%08x) roll=%.1f shader='%s'\n",
+                cent->currentState.number,
+                s1->origin[0], s1->origin[1], s1->origin[2],
+                s1->surfaces[0],
+                dir[0], dir[1], dir[2],
+                s1->scale,
+                *(unsigned int *)&s1->scale,
+                s1->angles[2],
+                CG_ConfigString(CS_IMAGES + s1->tag_num)
+            );
+        }
+    }
     CG_ImpactMark(
         shader,
         s1->origin,
