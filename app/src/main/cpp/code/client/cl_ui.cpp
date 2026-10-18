@@ -43,6 +43,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <SDL.h>
 #endif
 
+#include <SDL_mutex.h>
+
 #include "../corepp/listener.h"
 #include "../corepp/script.h"
 #include "../qcommon/gameplaymanager.h"
@@ -80,6 +82,8 @@ typedef struct {
 } intermediate_console_text_t;
 
 static Container<intermediate_console_text_t *> s_intermediateconsole;
+// every print from any thread lands here, so the queue's add and drain share one lock
+static SDL_mutex            *s_intermediateconsoleLock = SDL_CreateMutex();
 static qboolean             hudListHidden;
 static int                  lastScoreboardTime;
 Menu                       *ui_pLoadingMenu;
@@ -426,10 +430,12 @@ void UI_PrintConsole(const char *msg, int color)
     } else {
         intermediate_console_text_t *record;
 
-        record       = new intermediate_console_text_t;
-        record->text = new str(pszString);
+        record        = new intermediate_console_text_t;
+        record->text  = new str(pszString);
         record->color = color;
+        SDL_LockMutex(s_intermediateconsoleLock);
         s_intermediateconsole.AddObject(record);
+        SDL_UnlockMutex(s_intermediateconsoleLock);
     }
 }
 
@@ -2882,6 +2888,7 @@ void CL_ShutdownUI(void)
     if (s_intermediateconsole.NumObjects()) {
         int i;
 
+        SDL_LockMutex(s_intermediateconsoleLock);
         for (i = 1; i <= s_intermediateconsole.NumObjects(); i++) {
             intermediate_console_text_t *record = s_intermediateconsole.ObjectAt(i);
 
@@ -2895,6 +2902,7 @@ void CL_ShutdownUI(void)
         }
 
         s_intermediateconsole.FreeObjectList();
+        SDL_UnlockMutex(s_intermediateconsoleLock);
     }
 
     {
@@ -5159,9 +5167,11 @@ static void UI_Flush_f(void)
     CL_ShutdownUI();
     L_ClearEventList();
 
+    SDL_LockMutex(s_intermediateconsoleLock);
     for (i = 1; i <= saved.NumObjects(); i++) {
         s_intermediateconsole.AddObject(saved.ObjectAt(i));
     }
+    SDL_UnlockMutex(s_intermediateconsoleLock);
 
     saved.ClearObjectList();
 }
@@ -5882,6 +5892,7 @@ void CL_InitializeUI(void)
     if (s_intermediateconsole.NumObjects() && fakk_console) {
         UIConsole *console = fakk_console->getConsole();
 
+        SDL_LockMutex(s_intermediateconsoleLock);
         for (i = 1; i <= s_intermediateconsole.NumObjects(); i++) {
             intermediate_console_text_t *record = s_intermediateconsole.ObjectAt(i);
 
@@ -5897,6 +5908,7 @@ void CL_InitializeUI(void)
         }
 
         s_intermediateconsole.FreeObjectList();
+        SDL_UnlockMutex(s_intermediateconsoleLock);
     }
 
     filenames = FS_ListFiles("ui/", "urc", qfalse, &nfiles);
