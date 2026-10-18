@@ -4525,8 +4525,10 @@ void VK_Shade_BatchBegin( const shader_t *shader )
 	   PREVIOUS surface, so every batch that opened on an entity->world
 	   transition was dropped -- and entity, static-model and sky batches, which
 	   are world geometry the operator can see lose its texture, could never
-	   reach the census at all.  The row names the class instead. */
-	s_batchCensus      = ( R_ProbeStatsOn() && !backEnd.in2D && shader
+	   reach the census at all.  The row names the class instead.  The device
+	   arm arms it too: a world surface reading the wrong lightmap is the same
+	   one-boot question as the decal rows. */
+	s_batchCensus      = ( R_ProbeMarkOn() && !backEnd.in2D && shader
 						   && shader != tr.shadowShader ) ? qtrue : qfalse;
 }
 
