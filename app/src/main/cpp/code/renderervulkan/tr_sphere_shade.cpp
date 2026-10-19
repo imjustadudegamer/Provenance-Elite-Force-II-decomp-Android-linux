@@ -776,8 +776,11 @@ void R_Sphere_SetupEntity()
     if (R_ProbeMarkOn()) {
         static struct {
             int   frame;
+            int   dl;
             float origin[3];
             float ambient[3];
+            float dlor[3];
+            float dlcol[3];
         } s_prev[MAX_SPHERE_FLASH_TRACK];
         int          iSlot = backEnd.currentEntity->e.entityNumber % MAX_SPHERE_FLASH_TRACK;
         unsigned int iLeaf, iLeafKey = 0, iLeafFilled = 0;
@@ -797,22 +800,44 @@ void R_Sphere_SetupEntity()
                            + fabs(backEnd.currentEntity->ambientLight[2] - s_prev[iSlot].ambient[2]);
 
             if (fMove < 4.0f && fDelta > 8.0f) {
+                int iCur = backEnd.refdef.num_dlights - 1;
+
                 VK_Guard_Row(
                     "DOCC:sphere",
                     "f=%d ent=%d move=%.2f ambient=(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f) "
-                    "d=%.1f nlights=%d sun=%d leaves=%08x/%u dl=%d ex=%d ob=%.3f fb=%d exl=%d ws=(%.0f,%.0f,%.0f)",
+                    "d=%.1f nlights=%d sun=%d leaves=%08x/%u dl=%d->%d ex=%d ob=%.3f fb=%d exl=%d "
+                    "ws=(%.0f,%.0f,%.0f) dlorg=(%.0f,%.0f,%.0f)->(%.0f,%.0f,%.0f) dlcol=(%.2f,%.2f,%.2f)",
                     RB_FrameCount(), backEnd.currentEntity->e.entityNumber, fMove,
                     s_prev[iSlot].ambient[0], s_prev[iSlot].ambient[1], s_prev[iSlot].ambient[2],
                     backEnd.currentEntity->ambientLight[0], backEnd.currentEntity->ambientLight[1],
                     backEnd.currentEntity->ambientLight[2], fDelta,
                     backEnd.currentSphere->numLights, tr.numSLights, iLeafKey, iLeafFilled,
-                    backEnd.refdef.num_dlights, backEnd.bExactDLights, tr.overbrightMult,
-                    (backEnd.refdef.rdflags & RDF_FULLBRIGHT) ? 1 : 0, s_exclusiveDropped,
-                    ambientlight[0], ambientlight[1], ambientlight[2]);
+                    s_prev[iSlot].dl, backEnd.refdef.num_dlights, backEnd.bExactDLights,
+                    tr.overbrightMult, (backEnd.refdef.rdflags & RDF_FULLBRIGHT) ? 1 : 0,
+                    s_exclusiveDropped,
+                    ambientlight[0], ambientlight[1], ambientlight[2],
+                    s_prev[iSlot].dlor[0], s_prev[iSlot].dlor[1], s_prev[iSlot].dlor[2],
+                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].origin[0] : 0.0f,
+                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].origin[1] : 0.0f,
+                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].origin[2] : 0.0f,
+                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[0] : 0.0f,
+                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[1] : 0.0f,
+                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[2] : 0.0f
+                );
             }
         }
 
         s_prev[iSlot].frame = RB_FrameCount();
+        s_prev[iSlot].dl    = backEnd.refdef.num_dlights;
+        if ( backEnd.refdef.num_dlights > 0 ) {
+            dlight_t *pDl = &backEnd.refdef.dlights[backEnd.refdef.num_dlights - 1];
+
+            VectorCopy(pDl->origin, s_prev[iSlot].dlor);
+            VectorCopy(pDl->color, s_prev[iSlot].dlcol);
+        } else {
+            VectorClear(s_prev[iSlot].dlor);
+            VectorClear(s_prev[iSlot].dlcol);
+        }
         VectorCopy(backEnd.currentEntity->e.origin, s_prev[iSlot].origin);
         VectorCopy(backEnd.currentEntity->ambientLight, s_prev[iSlot].ambient);
     }
