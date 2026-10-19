@@ -2930,6 +2930,23 @@ qhandle_t RE_ReplaceShader( const char *name, const char *text ) {
 }
 
 
+/* One number for every image a bundle resolved, weighted by frame, so a bundle still holding the art it parsed folds the same forever and one recycled frame moves it */
+int R_Bundle_StampFold( const textureBundle_t *b, const image_t *bound, int *frame )
+{
+	int		i, fold = 0;
+
+	if ( frame ) {
+		*frame = -1;
+	}
+	for ( i = 0; i < MAX_IMAGE_ANIMATIONS && b->image[i]; i++ ) {
+		fold += b->image[i]->imgStamp * ( i + 1 );
+		if ( bound && *frame < 0 && b->image[i] == bound ) {
+			*frame = i;
+		}
+	}
+	return fold;
+}
+
 static shader_t *FinishShader( void ) {
 	int stage;
 	int i;
@@ -3021,6 +3038,7 @@ static shader_t *FinishShader( void ) {
 			textureBundle_t	*b = &unfoggedStages[i].bundle[bundle];
 
 			b->imgStamp = b->image[0] ? b->image[0]->imgStamp : 0;
+			b->imgAnimStamp = R_Bundle_StampFold( b, NULL, NULL );
 		}
 	}
 
@@ -3488,6 +3506,8 @@ qhandle_t RE_RefreshShaderNoMip(const char* name) {
 					sh->unfoggedStages[0]->bundle[0].imgStamp =
 						sh->unfoggedStages[0]->bundle[0].image[0]
 						? sh->unfoggedStages[0]->bundle[0].image[0]->imgStamp : 0;
+					sh->unfoggedStages[0]->bundle[0].imgAnimStamp =
+						R_Bundle_StampFold( &sh->unfoggedStages[0]->bundle[0], NULL, NULL );
 				}
 
 				return sh->index;

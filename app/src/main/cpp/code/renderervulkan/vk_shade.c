@@ -4658,6 +4658,7 @@ void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean subst
 {
 	const textureBundle_t	*bundle;
 	image_t					*bound;
+	int						now, frame;
 
 	if ( !s_batchCensus || !pStage ) {
 		return;
@@ -4715,15 +4716,17 @@ void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean subst
 		return;
 	}
 
-	/* a recycled OBJECT owns its slot legally, so name and tenant agree; the parse's stamp is what says the art is not the art the shader asked for */
-	if ( bound->imgStamp != bundle->imgStamp ) {
+	/* a recycled OBJECT owns its slot legally, so name and tenant agree; an anim bundle hands frame N's image to the bind, so the fold over every frame the parse resolved is what says the art moved -- frame 0's stamp alone named 58k rows of build 0.4.0 recycles that never happened */
+	now = R_Bundle_StampFold( bundle, bound, &frame );
+	if ( now != bundle->imgAnimStamp ) {
 		s_batchBindMiss++;
 		VK_Guard_Row( "VK:worldset",
-					  "MISS why=stale-image shader='%s' ent=%c lmidx=%d unit=%d "
-					  "parsed=%d now=%d img='%s' tex=%d",
+					  "MISS why=stale-image shader='%s' ent=%c lmidx=%d unit=%d f=%d "
+					  "parsed=%d now=%d fr=%d img='%s' tex=%d",
 					  s_batchShader ? s_batchShader->name : "?", s_batchEntity,
 					  s_batchShader ? (int)s_batchShader->lightmapIndex : -1,
-					  unit, bundle->imgStamp, bound->imgStamp,
+					  unit, RB_FrameCount(),
+					  bundle->imgAnimStamp, now, frame,
 					  ( bound->imgName[0] ) ? bound->imgName : "(unnamed)",
 					  (int)bound->texnum );
 		return;
