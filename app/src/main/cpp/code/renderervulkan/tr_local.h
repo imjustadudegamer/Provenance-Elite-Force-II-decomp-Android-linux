@@ -459,6 +459,8 @@ typedef struct {
 	int				flags;
 	/* the image stamp this bundle resolved at parse; another stamp under the same pointer names the recycled slot */
 	int				imgStamp;
+	/* the same stamp folded over every frame the parse resolved, so an anim frame drawn from its own list is not read as a recycle */
+	int				imgAnimStamp;
 } textureBundle_t;
 
 #define NUM_TEXTURE_BUNDLES 2
@@ -2698,6 +2700,7 @@ void	 ProjectDlightTexture( void );
 void	R_SetupShaders( void );
 void	R_StartupShaders( void );
 void	R_DeleteImageFromHash( image_t *image );
+int		R_Bundle_StampFold( const textureBundle_t *b, const image_t *bound, int *frame );
 
 int      R_CountTextureMemory( void );
 qboolean R_ImageExists( const char *name );

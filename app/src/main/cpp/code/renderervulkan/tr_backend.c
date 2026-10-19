@@ -131,6 +131,11 @@ qboolean VK_ModelPixelAtSwap( int x, int y, byte out[4] );
 
 #define RB_2DCOV_SPAN_MAX	1024
 
+/* Per-frame row budgets: a menu frame carries tens of spans (784k rows / 270 MB of one boot), so each detail family names its first rows and one row names the drop, while the frame summary stays uncapped as the family's answer */
+#define RB_2DCOV_SPAN_ROWS		4
+#define RB_2DCOV_SHADER_ROWS	8
+#define RB_2DCOV_READBACK_ROWS	4
+
 typedef struct {
 	char		shader[64];
 	char		image[64];
@@ -155,6 +160,7 @@ static int			s_2dCovCount;
 static int			s_2dCovFrame = -1;
 static cvar_t	   *s_2dCovCvar;
 static byte			s_2dCovReadPx[4];
+static int			s_2dCovSpanRows, s_2dCovShaderRows, s_2dCovReadbackRows;
 
 static qboolean RB_2DCoverOn( void )
 {
@@ -473,6 +479,8 @@ static void RB_2DCoverSpan( int level, const float *ortho, const int *win, const
 	}
 
 	if ( level >= 1 ) {
+		s_2dCovSpanRows++;
+		if ( s_2dCovSpanRows <= RB_2DCOV_SPAN_ROWS ) {
 		VK_Guard_Row( "VK:2dcov",
 					  "f=%d span first=%d count=%d shader='%s' img='%s' verts=%d "
 					  "pipe=0x%llx set=%d slice=v%d/i%d "
@@ -507,6 +515,7 @@ static void RB_2DCoverSpan( int level, const float *ortho, const int *win, const
 					  c && c->imgDesc[0] ? c->imgDesc : "(none)",
 					  px > 0 ? "RASTER" : "CLIP0",
 					  haveQuad ? "" : " QUAD=EMPTY" );
+		}
 	}
 }
 
@@ -557,6 +566,10 @@ static void RB_2DCoverFrame( void )
 					}
 				}
 			}
+			s_2dCovShaderRows++;
+			if ( s_2dCovShaderRows > RB_2DCOV_SHADER_ROWS ) {
+				continue;
+			}
 			VK_Guard_Row( "VK:2dcov",
 						  "frame=%d shader='%s' img='%s' issued=%d covered=%d px=%lld %s",
 						  s_2dCovFrame, s_2dCov[i].shader, s_2dCov[i].image,
@@ -570,6 +583,11 @@ static void RB_2DCoverFrame( void )
 				unsigned distinct, nbg, nink, ndark, centre, mean[3], samples;
 				qboolean	ambiguous;
 				const char *verdict = "", *inkNote = "";
+
+				s_2dCovReadbackRows++;
+				if ( s_2dCovReadbackRows > RB_2DCOV_READBACK_ROWS ) {
+					continue;		/* each row is a host readback as well as a line */
+				}
 
 				RB_2DCoverReadback( &s_2dCov[i], &distinct, &nbg, &nink, &ndark,
 									&centre, mean, &samples, &ambiguous );
@@ -608,6 +626,16 @@ static void RB_2DCoverFrame( void )
 			}
 		}
 	}
+
+	/* the row budgets belong to the frame that just ended */
+	if ( s_2dCovSpanRows > RB_2DCOV_SPAN_ROWS ) {
+		VK_Guard_Row( "VK:2dcov", "frame=%d spans=%d spanrows=%d truncated=%d",
+					  s_2dCovFrame, s_2dCovCount, s_2dCovSpanRows,
+					  s_2dCovSpanRows - RB_2DCOV_SPAN_ROWS );
+	}
+	s_2dCovSpanRows    = 0;
+	s_2dCovShaderRows  = 0;
+	s_2dCovReadbackRows = 0;
 
 	s_2dCovCount = 0;
 	s_2dCovFrame = RB_FrameCount();
@@ -691,6 +719,8 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 				RB_2DCoverVertexColour( 0, numIndexes, vcol, &nvcol );
 			}
 
+			s_2dCovSpanRows++;
+			if ( s_2dCovSpanRows <= RB_2DCOV_SPAN_ROWS ) {
 			VK_Guard_Row( "VK:2dcov",
 						  "f=%d span=WHOLE shader='%s' img='%s' spans=%d idx=[0,%d) verts=%d "
 						  "slice=v%d/i%d scissor=(%d,%d %dx%d) quad=(%d,%d)-(%d,%d) clip=(%d,%d %dx%d) "
@@ -711,6 +741,7 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 						  VK_Draw_LastAlphaTest(),
 						  imgDesc[0] ? imgDesc : "(none)",
 						  backEnd.in2D ? "" : " (3D)" );
+			}
 
 			if ( backEnd.in2D && s_2dCovCount < RB_2DCOV_SPAN_MAX ) {
 				rb2dCov_t	*c = &s_2dCov[s_2dCovCount++];
@@ -816,6 +847,27 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 						  tess.shader ? tess.shader->name : "?", RB_FrameCount() );
 		}
 		return qfalse;
+	}
+
+	/* the 2D half of the stamp witness: the bind the world census cannot see and the path every menu material and font takes, anomaly-only */
+	if ( PROBE_On() ) {
+		int now, frame;
+
+		now = R_Bundle_StampFold( &stage->bundle[0], image, &frame );
+		if ( now != stage->bundle[0].imgAnimStamp ) {
+			static int s_staleRows;
+
+			s_staleRows++;
+			if ( s_staleRows <= 24 || ( s_staleRows % 256 ) == 0 ) {
+				VK_Guard_Row( "VK:2dset",
+							  "MISS why=stale-image shader='%s' f=%d "
+							  "parsed=%d now=%d fr=%d img='%s' tex=%d",
+							  tess.shader ? tess.shader->name : "?", RB_FrameCount(),
+							  stage->bundle[0].imgAnimStamp, now, frame,
+							  image->imgName[0] ? image->imgName : "(unnamed)",
+							  (int)image->texnum );
+			}
+		}
 	}
 
 	view = VK_Texture_View( (int)image->texnum );
