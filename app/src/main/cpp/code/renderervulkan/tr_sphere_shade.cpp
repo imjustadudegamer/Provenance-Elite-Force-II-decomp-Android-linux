@@ -150,6 +150,9 @@ static void R_Sphere_AccumulateBasis(const vec3_t vColor, float fScale, const ve
     }
 }
 
+/* the sky trace's verdict, for the DOCC:slight row */
+static int g_sunSkyHit;
+
 static void R_Sphere_Light_Sun(const vec3_t vDir, const vec3_t vColor)
 {
     trace_t trace;
@@ -163,6 +166,7 @@ static void R_Sphere_Light_Sun(const vec3_t vDir, const vec3_t vColor)
     );
 
     hitSun = (qboolean)((trace.surfaceFlags >> 2) & 1);
+    g_sunSkyHit = hitSun ? 1 : 0;
 
     if (r_light_sun_line->integer) {
         vec3_t transpos;
@@ -285,6 +289,54 @@ static void R_Sphere_AddNewPointOrSpotLight(const spherel_t *thislight, float fB
     RB_Sphere_DrawDebugLine(thislight, fIntensity, vDebug);
 }
 
+/* DOCC:slight -- names the light whose verdict or brightness moved on a still entity */
+static void R_Sphere_TrackLight(const spherel_t *thislight, float fBrightness, int iVerdict, int iSrc)
+{
+    static struct {
+        int   frame;
+        int   v;
+        float br;
+    } s_track[MAX_MAP_SPHERE_LIGHTS_EF2];
+    static int s_rows;
+    int        i;
+
+    if (!R_ProbeMarkOn() || !thislight) {
+        return;
+    }
+
+    i = (int)(thislight - tr.sLights);
+    if (i < 0 || i >= MAX_MAP_SPHERE_LIGHTS_EF2) {
+        return;
+    }
+
+    if (s_track[i].frame && s_track[i].frame != RB_FrameCount()
+        && (s_track[i].v != iVerdict || fabs(fBrightness - s_track[i].br) > 0.01f)
+        && (s_rows < 24 || (s_rows % 600) == 0)) {
+        s_rows++;
+        VK_Guard_Row(
+            "DOCC:slight",
+            "f=%d ent=%d li=%d src=%d typ=%d tr=%d v=%d->%d br=%.3f->%.3f grp=%d gi=%d "
+            "org=(%.1f,%.1f,%.1f) col=(%.3f,%.3f,%.3f) fo=(%.1f,%.1f) wo=(%.2f,%.2f,%.2f) "
+            "nl=%d sky=%d",
+            RB_FrameCount(), backEnd.currentEntity->e.entityNumber, i, iSrc,
+            thislight->type, thislight->needs_trace, s_track[i].v, iVerdict,
+            s_track[i].br, fBrightness, thislight->group_num,
+            (thislight->group_num != -1 && tr.world)
+                ? backEnd.refdef.lightGroupIntensity[thislight->group_num & 0xFF] : -1,
+            thislight->origin[0], thislight->origin[1], thislight->origin[2],
+            thislight->color[0], thislight->color[1], thislight->color[2],
+            thislight->falloff_start_dist, thislight->falloff_end_dist,
+            backEnd.currentSphere->worldOrigin[0], backEnd.currentSphere->worldOrigin[1],
+            backEnd.currentSphere->worldOrigin[2],
+            backEnd.currentSphere->numLights, g_sunSkyHit
+        );
+    }
+
+    s_track[i].frame = RB_FrameCount();
+    s_track[i].br    = fBrightness;
+    s_track[i].v     = iVerdict;
+}
+
 static void R_Sphere_AddNewLight(const spherel_t *thislight)
 {
     trace_t trace;
@@ -328,10 +380,12 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
     }
 
     if (!bVisible) {
+        R_Sphere_TrackLight(thislight, 0.0f, 1, 0);
         return;
     }
 
     if (!backEnd.currentEntity->e.tiki) {
+        R_Sphere_TrackLight(thislight, 0.0f, 2, 0);
         return;
     }
 
@@ -349,6 +403,7 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
 
         if (!bAllowed) {
             s_exclusiveDropped++;
+            R_Sphere_TrackLight(thislight, 0.0f, 3, 0);
             return;
         }
     }
@@ -360,6 +415,7 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
     }
 
     if (fBrightness >= -0.01f && fBrightness <= 0.01f) {
+        R_Sphere_TrackLight(thislight, fBrightness, 4, 0);
         return;
     }
 
@@ -367,10 +423,12 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
     case SPHEREL_POINT:
     case SPHEREL_SPOT:
         R_Sphere_AddNewPointOrSpotLight(thislight, fBrightness);
+        R_Sphere_TrackLight(thislight, fBrightness, 0, 0);
         break;
     case SPHEREL_SUN:
         VectorScale(thislight->color, fBrightness, vColor);
         R_Sphere_Light_Sun(thislight->targetNormal, vColor);
+        R_Sphere_TrackLight(thislight, fBrightness, 0, 1);
         break;
     case SPHEREL_AREA:
         ri.Printf(PRINT_ALL, "R_Sphere_AddNewLight : area lights not yet supported\n");
