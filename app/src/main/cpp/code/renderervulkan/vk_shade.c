@@ -4550,6 +4550,12 @@ static int				s_batchSurfs;		/* draw surfs this batch covered */
    holds, capped so a row stays a row */
 static char				s_batchBinds[200];
 static int				s_batchBindsLen;
+/* the light term this batch actually carried: -1 no isLightmap stage, 1 a real
+   lightmap array, 0 the white substitution the LIGHTMAP_BY_VERTEX / fade variants
+   build in (tr_shader.c 0x3D598) -- the whole "fully lit, no shadow" class */
+static int				s_batchLmBound;
+static int				s_batchDlightIdx;	/* dlight indexes ProjectDlightTexture submitted */
+static int				s_batchDlightBits;	/* the mask the batch's surfaces carried */
 
 /* The entity the batch belongs to, as far as it is knowable when the batch
    opens.  backEnd.currentEntity is updated by the draw-surf walk AFTER
@@ -4586,6 +4592,8 @@ void VK_Shade_BatchBegin( const shader_t *shader )
 	s_batchBindsLen     = 0;
 	s_batchBinds[0]    = 0;
 	s_batchSurfs       = 0;
+	s_batchDlightIdx   = backEnd.pc.c_dlightIndexes;
+	s_batchDlightBits  = 0;
 	s_batchShader      = shader;
 	s_batchEntity      = VK_Shade_BatchEntityClass();
 	switch ( s_batchEntity ) {
@@ -4727,6 +4735,8 @@ static int VK_Shade_ExpectedStages( char *detail, int detailBytes )
 {
 	int stage, n = 0, written = 0;
 
+	s_batchLmBound = -1;
+
 	if ( detail && detailBytes > 0 ) {
 		detail[0] = 0;
 	}
@@ -4775,6 +4785,17 @@ static int VK_Shade_ExpectedStages( char *detail, int detailBytes )
 			written += len;
 		}
 
+			if ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) {
+			const image_t	*lm = pStage->bundle[0].isLightmap ? pStage->bundle[0].image[0]
+												   : pStage->bundle[1].image[0];
+
+			if ( s_batchLmBound == -1 ) {
+				s_batchLmBound = VK_StageBindKnown( lm ) ? 1 : 0;
+			} else if ( !VK_StageBindKnown( lm ) ) {
+				s_batchLmBound = 0;
+			}
+		}
+
 		if ( r_lightmap->integer
 			 && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap
 				  || pStage->bundle[0].vertexLightmap ) ) {
@@ -4802,39 +4823,49 @@ void VK_Shade_BatchEnd( void )
 	expected = VK_Shade_ExpectedStages( detail, (int)sizeof( detail ) );
 	RB_VboStaticLastRun( &srcMode, &srcIdx );
 	frame = RB_FrameCount();
+	s_batchDlightBits = tess.dlightBits;
+	s_batchDlightIdx  = backEnd.pc.c_dlightIndexes - s_batchDlightIdx;
 
 	s_rows++;
 	if ( s_batchUnitDisarmed ) {
 		VK_Guard_Row( "VK:worldset",
 					  "MISS why=unit-disarmed shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
-					  "disarmed=%d bindmiss=%d lm=%d src=%d srcidx=%d binds=[%s] stages=%s",
+					  "disarmed=%d bindmiss=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
+					  "src=%d srcidx=%d binds=[%s] stages=%s",
 					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
 					  expected, s_batchStagesDrawn, s_batchUnitDisarmed, s_batchBindMiss,
-					  r_lightmap->integer, srcMode, srcIdx,
+					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
+					  tess.entityFade, srcMode, srcIdx,
 					  s_batchBindsLen ? s_batchBinds : "none", detail );
 	} else if ( s_batchStagesDrawn != expected ) {
 		VK_Guard_Row( "VK:worldset",
 					  "MISS why=stage-count shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
-					  "bindmiss=%d lm=%d src=%d srcidx=%d binds=[%s] stages=%s",
+					  "bindmiss=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
+					  "src=%d srcidx=%d binds=[%s] stages=%s",
 					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
 					  expected, s_batchStagesDrawn, s_batchBindMiss,
-					  r_lightmap->integer, srcMode, srcIdx,
+					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
+					  tess.entityFade, srcMode, srcIdx,
 					  s_batchBindsLen ? s_batchBinds : "none", detail );
 	} else if ( s_batchBindMiss ) {
 		VK_Guard_Row( "VK:worldset",
 					  "MISS why=bind-image shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
-					  "bindmiss=%d lm=%d src=%d srcidx=%d binds=[%s] stages=%s",
+					  "bindmiss=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
+					  "src=%d srcidx=%d binds=[%s] stages=%s",
 					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
 					  expected, s_batchStagesDrawn, s_batchBindMiss,
-					  r_lightmap->integer, srcMode, srcIdx,
+					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
+					  tess.entityFade, srcMode, srcIdx,
 					  s_batchBindsLen ? s_batchBinds : "none", detail );
 	} else if ( VK_WorldsetSampleDue( s_rows, frame, s_sampleFrame ) ) {
 		s_sampleFrame = frame;
 		VK_Guard_Row( "VK:worldset",
-					  "shader='%s' ent=%c lmidx=%d surfs=%d lm=%d expected=%d drawn=%d bindmiss=0 "
+					  "shader='%s' ent=%c lmidx=%d surfs=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
+					  "expected=%d drawn=%d bindmiss=0 "
 					  "src=%d srcidx=%d binds=[%s] stages=%s",
 					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
-					  r_lightmap->integer,
+					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
+					  tess.entityFade,
 					  expected, s_batchStagesDrawn, srcMode, srcIdx,
 					  s_batchBindsLen ? s_batchBinds : "none", detail );
 	}
