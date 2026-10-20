@@ -3492,6 +3492,10 @@ qhandle_t RE_RefreshShaderNoMip(const char* name) {
 				image_t* image;
 
 				sh = currentShader->shader;
+				if (!sh) {
+					/* retail @0x0003E040 answers 0 for a shader this registration has not re-parsed yet; R_SetupShaders cleared the cache, so the old code read bundle[0] through a null shader_t */
+					return 0;
+				}
 				image = sh->unfoggedStages[0]->bundle[0].image[0];
 				currentShader = NULL;
 
