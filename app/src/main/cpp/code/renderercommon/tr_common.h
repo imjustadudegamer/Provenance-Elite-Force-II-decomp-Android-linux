@@ -89,6 +89,7 @@ typedef struct image_s {
 	int			textureMode;
 	int			r_sequence;
 	int			UseCount;
+	int			imgStamp;	/* creation ordinal: a recycled slot wears a new one */
 } image_t;
 
 #define LIGHTMAP_2D         -4	

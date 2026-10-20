@@ -370,6 +370,7 @@ void R_Init( void )
 
 	memset( tess.constantColor255, 255, sizeof( tess.constantColor255 ) );
 
+	/* RETAIL-EXACT, do not "fix": R_Init @0x19D50 issues four stb (0xff,0x00,0xff,0xff @19e24/34/38/3c), so the world entity IS magenta; the decompile's 16-bit store is two merged stb, and reading it as white regressed the gas */
 	tr.worldEntity.e.shaderRGBA[0] = -1;
 	tr.worldEntity.e.shaderRGBA[1] = 0;
 	tr.worldEntity.e.shaderRGBA[2] = -1;

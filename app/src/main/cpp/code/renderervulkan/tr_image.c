@@ -1430,6 +1430,11 @@ void VK_Image_SlotTenant_Set( unsigned int handle, image_t *image )
 	}
 }
 
+/* the slot a material refresh freed: re-fill it, or the next image strands every shader still holding that pointer */
+static int	s_refreshSlot = -1;
+/* creation ordinal: only a fresh image_t ever carries a given stamp */
+static int	s_imageStamp;
+
 image_t* R_CreateImageOld(
 	const char* name,
 	byte* pic,
@@ -1474,6 +1479,11 @@ image_t* R_CreateImageOld(
 			break;
 		}
 	}
+
+	if ( s_refreshSlot >= 0 && s_refreshSlot < tr.numImages && !tr.images[s_refreshSlot].imgName[0] ) {
+		i = s_refreshSlot;
+	}
+	s_refreshSlot = -1;
 
 	if (i == tr.numImages)
     {
@@ -1576,6 +1586,7 @@ image_t* R_CreateImageOld(
 	image->textureMode = textureMode;
 	image->wrapClampModeX = getGLClampType( VK_TWRAP_S, textureMode );
 	image->wrapClampModeY = getGLClampType( VK_TWRAP_T, textureMode );
+	image->imgStamp = ++s_imageStamp;
 
 	/* A Vulkan draw names its own descriptor: no texture unit to select. */
 	image->TMU = 0;
@@ -2584,16 +2595,19 @@ image_t* R_RefreshImageFileOld(const char* name, qboolean mipmap, qboolean allow
 			}
         }
 
+		s_refreshSlot = (int)( image - tr.images );
         R_FreeImage(image);
     }
 
-    return R_FindImageFileOld(
+    image = R_FindImageFileOld(
 		imagename,
 		mipmap,
 		allowPicmip,
 		force32bit,
 		textureMode
 	);
+	s_refreshSlot = -1;
+    return image;
 }
 
 qboolean R_ImageExists(const char* name) {
