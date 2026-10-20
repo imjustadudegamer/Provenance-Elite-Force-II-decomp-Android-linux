@@ -52,6 +52,11 @@ sprite_t *SPR_RegisterSprite(const char *name)
 		spriteImage = 0;
 		if(shader->unfoggedStages[0])
 			spriteImage = shader->unfoggedStages[0]->bundle[0].image[0];
+		/* retail's R_FindShader returns null for missing art, so its if(!Shader) guard dropped the sprite; ours hands back <default> which passed and drew white */
+		if ( shader == tr.defaultShader ) {
+			ri.Printf(1, "Could not find image for sprite in shader %s\n", name);
+			return 0;
+		}
 		if ( !spriteImage ) {
 			ri.Printf(1, "Could not find image for sprite in shader %s\n", name);
 			return 0;

@@ -730,7 +730,7 @@ void R_DetachLightGroups( void )
 			sizeof( s_lightGroupDefaultIntensity ) );
 	memcpy( tr.refdef.lightGroupFrame, s_lightGroupFrame, sizeof( s_lightGroupFrame ) );
 
-	if ( PROBE_On() && memcmp( tr.refdef.lightGroupIntensity, s_detachedIntensity,
+	if ( R_ProbeMarkOn() && memcmp( tr.refdef.lightGroupIntensity, s_detachedIntensity,
 							   sizeof( s_detachedIntensity ) ) != 0 ) {
 		static int rows;
 
