@@ -3015,6 +3015,15 @@ static shader_t *FinishShader( void ) {
 		}
 	}
 
+	/* the identity each bundle resolved at parse; the draw-side bind compares it against the image it is handed */
+	for (i = 0; i < stage; i++) {
+		for (bundle = 0; bundle < NUM_TEXTURE_BUNDLES; bundle++) {
+			textureBundle_t	*b = &unfoggedStages[i].bundle[bundle];
+
+			b->imgStamp = b->image[0] ? b->image[0]->imgStamp : 0;
+		}
+	}
+
 	for (i = 0; i < stage; i++) {
 		shaderStage_t* pStage = &unfoggedStages[i];
 
@@ -3476,6 +3485,9 @@ qhandle_t RE_RefreshShaderNoMip(const char* name) {
 						image->force32bit,
 						image->textureMode
 					);
+					sh->unfoggedStages[0]->bundle[0].imgStamp =
+						sh->unfoggedStages[0]->bundle[0].image[0]
+						? sh->unfoggedStages[0]->bundle[0].image[0]->imgStamp : 0;
 				}
 
 				return sh->index;

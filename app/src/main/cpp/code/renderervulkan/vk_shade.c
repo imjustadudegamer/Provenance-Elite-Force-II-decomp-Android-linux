@@ -4715,6 +4715,20 @@ void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean subst
 		return;
 	}
 
+	/* a recycled OBJECT owns its slot legally, so name and tenant agree; the parse's stamp is what says the art is not the art the shader asked for */
+	if ( bound->imgStamp != bundle->imgStamp ) {
+		s_batchBindMiss++;
+		VK_Guard_Row( "VK:worldset",
+					  "MISS why=stale-image shader='%s' ent=%c lmidx=%d unit=%d "
+					  "parsed=%d now=%d img='%s' tex=%d",
+					  s_batchShader ? s_batchShader->name : "?", s_batchEntity,
+					  s_batchShader ? (int)s_batchShader->lightmapIndex : -1,
+					  unit, bundle->imgStamp, bound->imgStamp,
+					  ( bound->imgName[0] ) ? bound->imgName : "(unnamed)",
+					  (int)bound->texnum );
+		return;
+	}
+
 	if ( !VK_StageImageOwned( bundle, bound ) ) {
 		s_batchBindMiss++;
 		VK_Guard_Row( "VK:worldset",
@@ -4915,6 +4929,49 @@ static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
 	}
 }
 
+/* the entity colour a gen-entity stage is fed under the WORLD entity: one row per shader, budgeted, master gate only */
+static void VK_Shade_EntityColorRow( const shader_t *shader, const shaderStage_t *pStage )
+{
+	static const shader_t	*s_seen[16];
+	static int				s_seenCount;
+	static int				s_rows;
+	int						i;
+
+	if ( !R_ProbeMarkOn() || !shader || !pStage ) {
+		return;
+	}
+	if ( pStage->rgbGen != CGEN_ENTITY && pStage->alphaGen != AGEN_ENTITY ) {
+		return;
+	}
+	if ( backEnd.currentEntity != &tr.worldEntity ) {
+		return;
+	}
+
+	for ( i = 0; i < s_seenCount; i++ ) {
+		if ( s_seen[i] == shader ) {
+			return;
+		}
+	}
+	if ( s_seenCount < (int)( sizeof( s_seen ) / sizeof( s_seen[0] ) ) ) {
+		s_seen[s_seenCount++] = shader;
+	} else {
+		return;
+	}
+
+	s_rows++;
+	if ( s_rows > 16 ) {
+		return;
+	}
+	VK_Guard_Row( "DOCC:entcol",
+				  "shader='%s' rg=%d ag=%d ent=%d,%d,%d,%d iter=%s f=%d",
+				  shader->name, (int)pStage->rgbGen, (int)pStage->alphaGen,
+				  (unsigned)backEnd.currentEntity->e.shaderRGBA[0],
+				  (unsigned)backEnd.currentEntity->e.shaderRGBA[1],
+				  (unsigned)backEnd.currentEntity->e.shaderRGBA[2],
+				  (unsigned)backEnd.currentEntity->e.shaderRGBA[3],
+				  VK_Shade_IterName(), RB_FrameCount() );
+}
+
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -4938,6 +4995,7 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	VK_BindProgram( prog );
 
 	VK_SetupStageUniforms( prog, pStage, shader );
+	VK_Shade_EntityColorRow( shader, pStage );
 	VK_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
 	VK_SetUniform1f( prog, VK_U_FORCEALPHA, forceAlpha );
 

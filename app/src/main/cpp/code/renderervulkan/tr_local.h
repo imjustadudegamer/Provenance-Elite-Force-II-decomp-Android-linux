@@ -457,6 +457,8 @@ typedef struct {
 	qboolean		vertexLightmap;
 	qboolean		isVideoMap;
 	int				flags;
+	/* the image stamp this bundle resolved at parse; another stamp under the same pointer names the recycled slot */
+	int				imgStamp;
 } textureBundle_t;
 
 #define NUM_TEXTURE_BUNDLES 2
