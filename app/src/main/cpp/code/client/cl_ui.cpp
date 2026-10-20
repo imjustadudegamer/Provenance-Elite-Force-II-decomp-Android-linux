@@ -2453,7 +2453,8 @@ void CL_BeginRegistration(void)
         CL_TouchRegisterShaders();
     }
 #endif
-    uWinMan.CleanupShadersFromList();
+    // Retail CL_BeginRegistration @0x196FB0 re-registers every material here, before any world shader parses; the lazy invalidate this replaced left each hMat a stale index until its first draw
+    uWinMan.RefreshShadersFromList();
     // Models have no lazy path: retail re-registers them eagerly, and they MUST be
     uWinMan.RegisterModelsFromList();
     SMP_LOAD_END( rendreg );

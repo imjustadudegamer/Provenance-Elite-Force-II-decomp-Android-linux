@@ -54,6 +54,39 @@ qboolean   g_bInfoworldtris = qfalse;
 static int entityNumIndexes[MAX_ENTITIES];
 static int staticModelNumIndexes[4095];
 
+/* A registration rebuilds tr.shaders[] from zero, so a tiki not re-registered in this sequence draws whatever index now holds its slot -- the foreign-art class; anomaly-only */
+static qboolean R_TikiShaderIdentity( const dtikisurface_t *dsurf, int iShaderNum, const shader_t *sh, const dtiki_t *tiki )
+{
+	const char *want, *got;
+	static int  s_rows;
+
+	if ( !PROBE_On() || !sh || !sh->name[0] ) {
+		return qtrue;
+	}
+	want = dsurf->shader[iShaderNum];
+	if ( !want[0] ) {
+		return qtrue;
+	}
+	got = sh->name;
+	while ( *want && *got && tolower( *want ) == tolower( *got ) ) {
+		want++;
+		got++;
+	}
+	if ( !*got && ( !*want || *want == '.' ) ) {
+		return qtrue;
+	}
+	s_rows++;
+	if ( s_rows <= 24 || ( s_rows % 256 ) == 0 ) {
+		VK_Guard_Row( "VK:handle",
+					  "FOREIGN tiki='%s' surf=%d skin=%d wanted='%s' got='%s' idx=%d f=%d",
+					  tiki->name,
+					  iShaderNum, (int)dsurf->numskins,
+					  dsurf->shader[iShaderNum], sh->name,
+					  dsurf->hShader[iShaderNum], RB_FrameCount() );
+	}
+	return qfalse;
+}
+
 
 static int R_CullSkelModel(
     dtiki_t      *tiki,
@@ -1436,6 +1469,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
                     iShaderNum = 0;
                 }
                 shader = tr.shaders[dsurf->hShader[iShaderNum]];
+                R_TikiShaderIdentity(dsurf, iShaderNum, shader, tiki);
             } else {
                 shader = R_GetShaderByHandle(ent->e.customShader);
             }
@@ -2475,6 +2509,7 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
                                     iShaderNum = 0;
                                 }
                                 shader = tr.shaders[dsurf->hShader[iShaderNum]];
+                                R_TikiShaderIdentity(dsurf, iShaderNum, shader, tiki);
                             } else {
                                 shader = R_GetShaderByHandle(ent->e.customShader);
                             }
