@@ -2689,7 +2689,7 @@ static void SortNewShader( void ) {
 	tr.sortedShaders[i+1] = newShader;
 
 	/* the trigger this repair exists for: a registration while surfaces build */
-	if ( tr.refdef.numDrawSurfs && R_ProbeStatsOn() ) {
+	if ( tr.refdef.numDrawSurfs && R_ProbeMarkOn() ) {
 		static int	s_rows;
 
 		s_rows++;

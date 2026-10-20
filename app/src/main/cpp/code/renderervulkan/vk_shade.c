@@ -1506,7 +1506,7 @@ static VkImageView VK_Shade_LiveView( int tmu )
 		/* the unit falls back to the white image: name the draw that loses it */
 		static int s_disarmRows;
 
-		if ( R_ProbeStatsOn() && s_disarmRows < 16 ) {
+		if ( R_ProbeMarkOn() && s_disarmRows < 16 ) {
 			VK_Guard_Row( "VK:shade",
 						  "unit disarmed tmu=%d handle=%d reason=%s prog=0x%x shader='%s' "
 						  "bound='%s' frame=%d",
