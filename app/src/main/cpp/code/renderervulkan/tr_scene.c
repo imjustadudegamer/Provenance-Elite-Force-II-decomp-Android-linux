@@ -251,7 +251,11 @@ void RE_AddRefEntityToScene( const refEntity_t *ent ) {
 
 	backEndData->entities[r_numentities].e = *ent;
 
-	backEndData->entities[r_numentities].lightDir[0] = 0.0f;
+	/* the record pool is the two-slot frame ring, so a record the sphere pass never lights must not answer with a previous occupant's ambient */
+	VectorClear( backEndData->entities[r_numentities].lightDir );
+	VectorClear( backEndData->entities[r_numentities].ambientLight );
+	backEndData->entities[r_numentities].ambientLightInt = 0;
+	VectorClear( backEndData->entities[r_numentities].directedLight );
 
 	r_numentities++;
 }

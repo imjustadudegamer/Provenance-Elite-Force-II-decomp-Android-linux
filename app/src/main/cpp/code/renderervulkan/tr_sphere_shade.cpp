@@ -791,7 +791,7 @@ void R_Sphere_SetupEntity()
         && fDist <= r_light_simple_dist->value) {
         float fFudge = r_light_ambientFudge->value;
 
-        /* retail leaves entity ambientLight alone in this branch; the row names which one ran */
+        /* retail draws this branch from the sphere itself and leaves the record alone; the row still names which one ran */
         s_sphereWroteAmbient = 0;
 
         VectorClear(backEnd.currentSphere->ambient);
@@ -804,6 +804,14 @@ void R_Sphere_SetupEntity()
         VectorScale(
             backEnd.currentSphere->ambient, r_light_ambientEmphasize->value, backEnd.currentSphere->ambient
         );
+
+        /* the record's ambient is what the TessFunction-null fallback reads; mirror the drawn sphere ambient into it */
+        VectorCopy(backEnd.currentSphere->ambient, backEnd.currentEntity->ambientLight);
+        ((byte *)&backEnd.currentEntity->ambientLightInt)[0] = (byte)Q_min(backEnd.currentSphere->ambient[0], 255.0f);
+        ((byte *)&backEnd.currentEntity->ambientLightInt)[1] = (byte)Q_min(backEnd.currentSphere->ambient[1], 255.0f);
+        ((byte *)&backEnd.currentEntity->ambientLightInt)[2] = (byte)Q_min(backEnd.currentSphere->ambient[2], 255.0f);
+        ((byte *)&backEnd.currentEntity->ambientLightInt)[3] = 0xFF;
+        VectorClear(backEnd.currentEntity->directedLight);
     } else {
         vec3_t vAmbient;
 
