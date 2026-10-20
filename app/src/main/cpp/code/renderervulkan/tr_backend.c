@@ -1696,6 +1696,77 @@ static void VK_Shade_WindowClose( long long shadeT0, long long nested0, long lon
 	VK_WalkStat_Add( VK_WP_SHADE, usec );
 }
 
+/* the stage-0 image a draw will sample: a wrong bind names both the image and the slot's tenant */
+static image_t *RB_Stage0Image( shader_t *shader )
+{
+	if ( !shader->unfoggedStages[0] ) {
+		return NULL;
+	}
+	return shader->unfoggedStages[0]->bundle[0].image[0];
+}
+
+/* the sprite record's own shader, as its model still holds it at draw time */
+static shader_t *RB_SpriteModelShader( const refSprite_t *spr )
+{
+	model_t *model;
+
+	if ( !spr->hModel ) {
+		return NULL;
+	}
+	model = R_GetModelByHandle( spr->hModel );
+	if ( !model || !model->d.sprite || !model->d.sprite->shader ) {
+		return NULL;
+	}
+	return model->d.sprite->shader;
+}
+
+/* a vertex-colour stage whose stream is pure magenta is the r50 rollback arm, not an authored fade */
+static void RB_ColorStreamProbe( shader_t *shader, const char *fam, int index )
+{
+	const byte		*c;
+	int				n, k;
+	int				mn[4] = { 255, 255, 255, 255 };
+	int				mx[4] = { 0, 0, 0, 0 };
+	static int		s_rows;
+
+	if ( !R_ProbeMarkOn() ) {
+		return;
+	}
+	if ( !shader->unfoggedStages[0] || shader->unfoggedStages[0]->rgbGen != CGEN_VERTEX ) {
+		return;
+	}
+	if ( tess.numVertexes <= 0 || tess.numVertexes > SHADER_MAX_VERTEXES ) {
+		return;
+	}
+
+	c = &tess.vertexColors[0][0];
+	for ( n = 0; n < tess.numVertexes; n++ ) {
+		for ( k = 0; k < 4; k++ ) {
+			int	v = c[ ( n << 2 ) + k ];
+
+			if ( v < mn[k] ) {
+				mn[k] = v;
+			}
+			if ( v > mx[k] ) {
+				mx[k] = v;
+			}
+		}
+	}
+
+	if ( mx[0] != 255 || mx[2] != 255 || mn[1] != 0 ) {
+		return;
+	}
+
+	s_rows++;
+	if ( s_rows <= 24 || ( s_rows % 600 ) == 0 ) {
+		VK_Guard_Row( "DOCC:color",
+					  "magenta-stream fam=%s '%s' i=%d nverts=%d r=%d..%d g=%d..%d b=%d..%d a=%d..%d f=%d",
+					  fam, shader->name, index, tess.numVertexes,
+					  mn[0], mx[0], mn[1], mx[1], mn[2], mx[2], mn[3], mx[3],
+					  RB_FrameCount() );
+	}
+}
+
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	shader_t		*shader, *oldShader;
 	int				entityNum, oldEntityNum;
@@ -1914,12 +1985,15 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			}
 
 			if ( !s_bCensusSeen ) {
-				float	rN, rF;
+				float		rN, rF;
+				image_t		*pTex0 = RB_Stage0Image( shader );
+				image_t		*pOwn  = pTex0 ? VK_Image_SlotTenant( (int)pTex0->texnum ) : NULL;
 
 				VK_Draw_DepthRangeLast( &rN, &rF );
 				VK_Guard_Row( "DOCC:draw",
 							  "f=%d fam=%d '%s' st0=0x%08x ent=%d dhack=%d "
-							  "dtest=%d dwrite=%d dequal=%d blend=%d/%d range=%.3f..%.3f",
+							  "dtest=%d dwrite=%d dequal=%d blend=%d/%d range=%.3f..%.3f "
+							  "tex0='%s' h=%d tenant='%s'",
 							  RB_FrameCount(), *drawSurf->surface, shader->name,
 							  sState, entityNum,
 							  ( !bStaticModel && entityNum != ENTITYNUM_WORLD
@@ -1930,7 +2004,11 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 							  ( sState & VKS_DEPTHFUNC_EQUAL ) ? 1 : 0,
 							  (int)( sState & VKS_SRCBLEND_BITS ),
 							  (int)( ( sState & VKS_DSTBLEND_BITS ) >> 4 ),
-							  rN, rF );
+							  rN, rF,
+							  ( pTex0 && pTex0->imgName[0] ) ? pTex0->imgName : "(none)",
+							  ( pTex0 ) ? (int)pTex0->texnum : -1,
+							  ( pOwn && pOwn->imgName[0] ) ? pOwn->imgName
+										: ( pOwn ? "(unnamed)" : "-" ) );
 			}
 		}
 
@@ -2046,6 +2124,10 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			}
 			VK_WALK_ADD_NET( walkT0, walkNest0, VK_WP_GEN );
 		}
+
+		if ( *drawSurf->surface == SF_POLY ) {
+			RB_ColorStreamProbe( shader, "poly", i );
+		}
 	}
 
 	if (oldShader != NULL) {
@@ -2142,20 +2224,31 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 						s_sprRows   = 0;
 					}
 					if ( s_sprRows < 24 ) {
-						s_sprRows++;
-						VK_Guard_Row( "DOCC:sprite",
-									  "f=%d '%s' i=%d rgba=%u,%u,%u,%u dtest=%d dwrite=%d "
-									  "dfunc_eq=%d blend=%d/%d range=%.3f..%.3f rf=0x%x",
-									  RB_FrameCount(), shader->name, i,
-									  (unsigned)spr->shaderRGBA[0], (unsigned)spr->shaderRGBA[1],
-									  (unsigned)spr->shaderRGBA[2], (unsigned)spr->shaderRGBA[3],
-									  ( sState & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
-									  ( sState & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
-									  ( sState & VKS_DEPTHFUNC_EQUAL ) ? 1 : 0,
-									  (int)( sState & VKS_SRCBLEND_BITS ),
-									  (int)( ( sState & VKS_DSTBLEND_BITS ) >> 4 ),
-									  rN, rF, spr->renderfx );
-					}
+					shader_t	*pOwn  = RB_SpriteModelShader( spr );
+					image_t		*pTex0 = RB_Stage0Image( shader );
+					image_t		*pTen  = pTex0 ? VK_Image_SlotTenant( (int)pTex0->texnum ) : NULL;
+
+					s_sprRows++;
+					VK_Guard_Row( "DOCC:sprite",
+								  "f=%d '%s' i=%d rgba=%u,%u,%u,%u dtest=%d dwrite=%d "
+								  "dfunc_eq=%d blend=%d/%d range=%.3f..%.3f rf=0x%x "
+								  "num=%d own='%s' tex0='%s' h=%d tenant='%s'",
+								  RB_FrameCount(), shader->name, i,
+								  (unsigned)spr->shaderRGBA[0], (unsigned)spr->shaderRGBA[1],
+								  (unsigned)spr->shaderRGBA[2], (unsigned)spr->shaderRGBA[3],
+								  ( sState & VKS_DEPTHTEST_DISABLE ) ? 0 : 1,
+								  ( sState & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
+								  ( sState & VKS_DEPTHFUNC_EQUAL ) ? 1 : 0,
+								  (int)( sState & VKS_SRCBLEND_BITS ),
+								  (int)( ( sState & VKS_DSTBLEND_BITS ) >> 4 ),
+								  rN, rF, spr->renderfx,
+								  spr->shaderNum,
+								  ( pOwn && pOwn->name[0] ) ? pOwn->name : "-",
+								  ( pTex0 && pTex0->imgName[0] ) ? pTex0->imgName : "(none)",
+								  ( pTex0 ) ? (int)pTex0->texnum : -1,
+								  ( pTen && pTen->imgName[0] ) ? pTen->imgName
+										: ( pTen ? "(unnamed)" : "-" ) );
+				}
 				}
 				if ( rN != 0.0f || rF != 1.0f ) {
 					s_sprAnom++;
@@ -2170,6 +2263,8 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 
 			rb_surfaceTable[*drawSurf->surface](drawSurf->surface);
+
+			RB_ColorStreamProbe( shader, "sprite", i );
 		}
 	}
 
