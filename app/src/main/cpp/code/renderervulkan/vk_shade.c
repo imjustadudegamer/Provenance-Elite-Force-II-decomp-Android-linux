@@ -4975,6 +4975,47 @@ static void VK_Shade_EntityColorRow( const shader_t *shader, const shaderStage_t
 				  VK_Shade_IterName(), RB_FrameCount() );
 }
 
+/* Which walk reached the world entity with a gen-entity stage: retail only ever
+   draws such a stage there through the sprite list, so the route is the verdict.
+   One row per shader, same caps as the row above, master gate only. */
+static void VK_Shade_FeedRow( const shaderCommands_t *input,
+							  const shader_t *shader, const shaderStage_t *pStage )
+{
+	static const shader_t	*s_seen[16];
+	static int				s_seenCount;
+	int						i;
+
+	if ( !R_ProbeMarkOn() || !input || !shader || !pStage ) {
+		return;
+	}
+	if ( pStage->rgbGen != CGEN_ENTITY && pStage->alphaGen != AGEN_ENTITY ) {
+		return;
+	}
+	if ( backEnd.currentEntity != &tr.worldEntity ) {
+		return;
+	}
+
+	for ( i = 0; i < s_seenCount; i++ ) {
+		if ( s_seen[i] == shader ) {
+			return;
+		}
+	}
+	if ( s_seenCount < (int)( sizeof( s_seen ) / sizeof( s_seen[0] ) ) ) {
+		s_seen[s_seenCount++] = shader;
+	} else {
+		return;
+	}
+
+	VK_Guard_Row( "DOCC:fed",
+				  "shader='%s' walk=%s n=%d nspr=%d svis=%d f=%d",
+				  shader->name,
+				  r_spriteListOpen ? "sprite" : "draw",
+				  input->numVertexes,
+				  tr.refdef.num_sprites,
+				  ( backEnd.currentStaticModel != NULL ) ? 1 : 0,
+				  RB_FrameCount() );
+}
+
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -4999,6 +5040,7 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 
 	VK_SetupStageUniforms( prog, pStage, shader );
 	VK_Shade_EntityColorRow( shader, pStage );
+	VK_Shade_FeedRow( input, shader, pStage );
 	VK_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
 	VK_SetUniform1f( prog, VK_U_FORCEALPHA, forceAlpha );
 
