@@ -48,6 +48,7 @@ suninfo_t       s_sun;
 static vec3_t   ambientlight;
 static int      light_reference_count = 0;
 static int      s_exclusiveDropped;
+static int      s_sphereWroteAmbient;
 
 #define MAX_SPHERE_FLASH_TRACK 512
 
@@ -790,6 +791,9 @@ void R_Sphere_SetupEntity()
         && fDist <= r_light_simple_dist->value) {
         float fFudge = r_light_ambientFudge->value;
 
+        /* retail leaves entity ambientLight alone in this branch; the row names which one ran */
+        s_sphereWroteAmbient = 0;
+
         VectorClear(backEnd.currentSphere->ambient);
         for (i = 0; i < SPHERE_NUM_BASIS; i++) {
             VectorAdd(backEnd.currentSphere->ambient, backEnd.currentSphere->pointcolor[i], backEnd.currentSphere->ambient);
@@ -803,6 +807,7 @@ void R_Sphere_SetupEntity()
     } else {
         vec3_t vAmbient;
 
+        s_sphereWroteAmbient = 1;
         backEnd.currentSphere->TessFunction = &RB_CalcColorFromEntity;
 
         VectorClear(vAmbient);
@@ -864,7 +869,8 @@ void R_Sphere_SetupEntity()
                     "DOCC:sphere",
                     "f=%d ent=%d move=%.2f ambient=(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f) "
                     "d=%.1f nlights=%d sun=%d leaves=%08x/%u dl=%d->%d ex=%d ob=%.3f fb=%d exl=%d "
-                    "ws=(%.0f,%.0f,%.0f) dlorg=(%.0f,%.0f,%.0f)->(%.0f,%.0f,%.0f) dlcol=(%.2f,%.2f,%.2f)",
+                    "ws=(%.0f,%.0f,%.0f) dlorg=(%.0f,%.0f,%.0f)->(%.0f,%.0f,%.0f) dlcol=(%.2f,%.2f,%.2f) "
+                    "rf=%x nf=%d slot=%d w=%d pf=%d exd=%d",
                     RB_FrameCount(), backEnd.currentEntity->e.entityNumber, fMove,
                     s_prev[iSlot].ambient[0], s_prev[iSlot].ambient[1], s_prev[iSlot].ambient[2],
                     backEnd.currentEntity->ambientLight[0], backEnd.currentEntity->ambientLight[1],
@@ -880,7 +886,12 @@ void R_Sphere_SetupEntity()
                     ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].origin[2] : 0.0f,
                     ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[0] : 0.0f,
                     ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[1] : 0.0f,
-                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[2] : 0.0f
+                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[2] : 0.0f,
+                    backEnd.currentEntity->e.renderfx,
+                    backEnd.currentEntity->e.nf ? 1 : 0,
+                    tr.smpFrame, s_sphereWroteAmbient,
+                    r_fullbright->integer,
+                    backEnd.numExactDLights
                 );
             }
         }
