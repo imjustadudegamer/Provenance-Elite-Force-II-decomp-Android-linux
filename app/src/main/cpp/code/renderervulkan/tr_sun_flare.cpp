@@ -238,6 +238,67 @@ bool lens_flare::ScreenCalc()
     return retval;
 }
 
+/* The flare quad's own bind witness.  The dlight colour lands on this pass's
+   art too, and no world census covers it: one row per frame names what the
+   quads sample, and a stage whose slot another image_t took, or whose parse
+   stamp no longer matches the image it names, is the recycle convict. */
+static void R_FlareWitness( shader_t *sh, const char *fam, const float *color )
+{
+    static int  s_rows;
+    static int  s_frame   = -1;
+    static int  s_tenant;
+    static int  s_stale;
+    image_t    *img;
+    image_t    *tenant;
+
+    if (!R_ProbeMarkOn() || !sh) {
+        return;
+    }
+
+    img    = sh->unfoggedStages[0] ? sh->unfoggedStages[0]->bundle[0].image[0] : NULL;
+    tenant = (img && img->texnum < VK_MAX_TEXTURES) ? VK_Image_SlotTenant((int)img->texnum) : NULL;
+
+    if (tenant && tenant != img) {
+        s_tenant++;
+        if (s_tenant <= 8 || (s_tenant % 600) == 0) {
+            VK_Guard_Row("VK:flare",
+                          "why=tenant f=%d fam=%s shader='%s' img='%s' tex=%d tenant='%s'",
+                          RB_FrameCount(), fam, sh->name,
+                          (img && img->imgName[0]) ? img->imgName : "(none)",
+                          img ? (int)img->texnum : -1,
+                          (tenant && tenant->imgName[0]) ? tenant->imgName : "-");
+        }
+    }
+    if (img && sh->unfoggedStages[0]->bundle[0].imgStamp != img->imgStamp) {
+        s_stale++;
+        if (s_stale <= 8 || (s_stale % 600) == 0) {
+            VK_Guard_Row("VK:flare",
+                          "why=stale f=%d fam=%s shader='%s' img='%s' bstamp=%d istamp=%d tex=%d",
+                          RB_FrameCount(), fam, sh->name,
+                          (img && img->imgName[0]) ? img->imgName : "(none)",
+                          sh->unfoggedStages[0]->bundle[0].imgStamp, img->imgStamp,
+                          (int)img->texnum);
+        }
+    }
+
+    if (RB_FrameCount() == s_frame) {
+        return;
+    }
+    s_frame = RB_FrameCount();
+    s_rows++;
+    if (s_rows <= 8 || (s_rows % 30) == 0) {
+        VK_Guard_Row("VK:flare",
+                      "fam=%s f=%d shader='%s' img='%s' stamp=%d tex=%d upto=%dx%d "
+                      "col=%.3f,%.3f,%.3f",
+                      fam, RB_FrameCount(), sh->name,
+                      (img && img->imgName[0]) ? img->imgName : "(none)",
+                      img ? img->imgStamp : -1,
+                      img ? (int)img->texnum : -1,
+                      img ? img->uploadWidth : 0, img ? img->uploadHeight : 0,
+                      color ? color[0] : 0.f, color ? color[1] : 0.f, color ? color[2] : 0.f);
+    }
+}
+
 void lens_flare::Try()
 {
     vec2_t diff;
@@ -264,6 +325,7 @@ void lens_flare::Try()
         VectorMA2D(screen, flare->where, diff, point);
 
         RB_Color4f(color[0], color[1], color[2], fadeAlpha * this->alpha * flare->alphascale);
+        R_FlareWitness(flare->shader, "dlight-flare", color);
         RB_StreamBegin(flare->shader);
         RB_Texcoord2f(0.0, 0.0);
 
@@ -302,6 +364,7 @@ void dlight_lens_flare::Try()
     }
 
     RB_Color4f(color[0], color[1], color[2], alpha);
+    R_FlareWitness(corona_shader, "dlight-corona", color);
     RB_StreamBegin(corona_shader);
     RB_Texcoord2f(0.0, 0.0);
 
@@ -732,6 +795,7 @@ void sun_flare_class::SunTry()
         VectorMA2D(screen, flare->where, diff, point);
 
         RB_Color4f(color[0], color[1], color[2], fadeAlpha * this->alpha * flare->alphascale);
+        R_FlareWitness(flare->shader, "sun-flare", color);
         RB_StreamBegin(flare->shader);
         RB_Texcoord2f(0.0, 0.0);
 
@@ -1344,6 +1408,7 @@ static void R_LensflareDrawCorona(const lensflareState_t *f)
         f->color[0] * f->alpha, f->color[1] * f->alpha, f->color[2] * f->alpha, info->coronaAlpha * f->alpha
     );
 
+    R_FlareWitness(sh, "emitter-corona", f->color);
     RB_StreamBegin(sh);
     RB_Texcoord2f(0.0, 0.0);
     RB_Vertex2f(f->screen[0] - size, f->screen[1] + size);
@@ -1440,6 +1505,7 @@ static void R_LensflareDraw(lensflareState_t *f)
             f->alpha * brightness * flare->alphascale
         );
 
+        R_FlareWitness(sh, "emitter-flare", f->color);
         RB_StreamBegin(sh);
         RB_Texcoord2f(0.0, 0.0);
         RB_Vertex2f(point[0] - half, point[1] + half);

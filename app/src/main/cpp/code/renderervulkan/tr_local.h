@@ -2743,6 +2743,7 @@ void		VK_BindMultitexture( image_t *image, int tmu );
 void		VK_TexEnv( int env );
 void		VK_DepthState( qboolean test, qboolean write );
 void		VK_DepthStateReset( void );
+void		VK_Shade_DlightWitness( const dlight_t *dl, int light, int numIndexes );
 void		ProjectDlightTexture( void );
 void		RB_StageIteratorSky( void );
 void		RB_StageIteratorVertexLitTextureUnfogged( void );

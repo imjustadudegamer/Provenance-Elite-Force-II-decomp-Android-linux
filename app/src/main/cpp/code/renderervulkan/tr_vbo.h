@@ -100,6 +100,15 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const void *stage );
 void RB_VBO_DrawTess( const shaderCommands_t *input );
 
+/* The streaming pack alone, with no residency check: a draw the walk computed
+   its own texcoords and colours for never holds arena bytes. */
+void RB_VBO_DrawTessStream( const shaderCommands_t *input,
+							const vkIndex_t *indexes, int numIndexes,
+							const float *texcoord0, const float *texcoord1, int tcStrideFloats,
+							const unsigned char *colors,
+							const float *normals,
+							const void *stage );
+
 /* The per-batch surface log and the static arena behind it.  Record appends a
    surface whose generator ran this frame (its bytes are then in the streaming
    pack); TrySurface is the fast arm that skips the generator outright for a
