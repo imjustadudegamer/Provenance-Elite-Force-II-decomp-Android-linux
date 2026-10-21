@@ -357,6 +357,34 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
                     mod->r_sequence = r_sequencenumber;
                     R_RegisterShaders(mod);
                 }
+            } else if (mod->type == MOD_SPRITE && mod->d.sprite
+                       && mod->spriteShaderGen != tr.shaderGen) {
+                /* The r41 class one level down: SPR_RegisterSprite stored a raw
+                   shader_t* taken at whichever registration first loaded the
+                   model, and the name-cache hit above serves that pointer across
+                   the wipe -- R_AddSpriteSurfaces dereferenced whatever shader_t
+                   now lives at that address (the m1l1a gas vent wore blueplasma's
+                   stages: bluepuff art, GL_ONE GL_ONE, every frame, for the rest
+                   of the session). Re-resolve against the current table. */
+                sprite_t      *spr = mod->d.sprite;
+                shader_t      *prev = spr->shader;
+                shader_t      *fresh;
+                char           shadername[MAX_QPATH];
+
+                COM_StripExtension(mod->name, shadername, sizeof(shadername));
+                fresh = R_FindShader(shadername, -1, qfalse, qfalse, qfalse, qfalse);
+                if (fresh && fresh != tr.defaultShader && fresh != prev) {
+                    spr->shader = fresh;
+                    if (R_ProbeMarkOn()) {
+                        VK_Guard_Row("VK:sprrefresh",
+                                     "model='%s' old='%s' new='%s' f=%d",
+                                     mod->name,
+                                     prev ? prev->name : "<null>",
+                                     fresh->name,
+                                     RB_FrameCount());
+                    }
+                }
+                mod->spriteShaderGen = tr.shaderGen;
             }
             return hModel;
         }
@@ -385,6 +413,7 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
 
             if (mod->d.sprite) {
                 mod->type = MOD_SPRITE;
+                mod->spriteShaderGen = tr.shaderGen;
                 return mod->index;
             }
         } else if (!stricmp(ptr, "tik")) {
