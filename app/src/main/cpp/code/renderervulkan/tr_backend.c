@@ -2238,6 +2238,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
     backEnd.currentStaticModel = 0;
 
 	r_spriteListOpen = 1;
+	r_spriteWalkSurfs = numDrawSurfs;
 
 	backEnd.pc.c_surfaces += numDrawSurfs;
 	backEnd.ori = backEnd.viewParms.world;
@@ -2349,6 +2350,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	}
 
 	r_spriteListOpen = 0;
+	r_spriteWalkSurfs = 0;
 
     RB_LoadModelViewMatrix( backEnd.viewParms.world.modelMatrix);
 	vkDepthRange(0.0, 1.0);

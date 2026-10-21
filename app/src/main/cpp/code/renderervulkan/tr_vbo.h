@@ -164,6 +164,7 @@ const float *RB_GetModelViewMatrix( void );
 const float *RB_GetProjectionMatrix( void );
 
 extern int r_spriteListOpen;
+extern int r_spriteWalkSurfs;
 
 #ifdef __cplusplus
 }
