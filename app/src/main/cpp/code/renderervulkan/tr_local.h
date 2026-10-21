@@ -1139,6 +1139,11 @@ typedef struct model_s {
 
 	int			r_sequence;
 
+	/* the shader-table generation this model's sprite shader pointer was taken at;
+	   SPR_RegisterSprite stores a raw shader_t*, and a surviving sprite model must
+	   re-resolve it after R_SetupShaders rebuilds the table from zero */
+	int			spriteShaderGen;
+
     qboolean serveronly;
     union {
         bmodel_t* bmodel;
@@ -1266,7 +1271,12 @@ typedef struct {
 
 	qboolean				registrating;
 
-	int						visCount;		
+	/* bumped by every R_SetupShaders; cacheable models hold raw shader_t*
+	   pointers and compare against this to know their pointer pre-dates
+	   the table they are about to be drawn through */
+	int						shaderGen;
+
+	int						visCount;
 	int						frameCount;		
 	int						sceneCount;		
 	int						viewCount;		

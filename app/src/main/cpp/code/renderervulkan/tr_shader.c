@@ -2667,6 +2667,31 @@ static void R_UpdateDrawSurfs_NewShader( int sortedIndex )
 			surfs[i].sort += ( 1 << QSORT_SHADERNUM_SHIFT );
 		}
 	}
+
+	/* The sprite list packs the same eleven-bit field into its own sort keys and
+	   also caches the index in each record's shaderNum, which the sprite walk
+	   reads straight out of sortedShaders -- so an insert the draw list survives
+	   still moved the cones onto the next shader's art. */
+	count = tr.refdef.numSpriteSurfs;
+	if ( count > MAX_SPRITESURFS ) {
+		count = MAX_SPRITESURFS;
+	}
+	surfs = tr.refdef.spriteSurfs;
+	for ( i = 0; i < count; i++ ) {
+		if ( (int)( surfs[i].sort >> QSORT_SHADERNUM_SHIFT ) >= sortedIndex ) {
+			surfs[i].sort += ( 1 << QSORT_SHADERNUM_SHIFT );
+		}
+	}
+
+	count = tr.refdef.num_sprites;
+	if ( count > MAX_SPRITES ) {
+		count = MAX_SPRITES;
+	}
+	for ( i = 0; i < count; i++ ) {
+		if ( tr.refdef.sprites[i].shaderNum >= sortedIndex ) {
+			tr.refdef.sprites[i].shaderNum++;
+		}
+	}
 }
 
 static void SortNewShader( void ) {
@@ -3836,6 +3861,10 @@ void R_SetupShaders(void)
     tr.numShaders = 0;
     Com_Memset( tr.shaders, 0, sizeof( tr.shaders ) );
     Com_Memset( tr.sortedShaders, 0, sizeof( tr.sortedShaders ) );
+
+    /* raw shader_t* pointers held across the wipe (sprite models) are now
+       stale; they re-resolve against this generation at their use site */
+    tr.shaderGen++;
 
     for (hash = 0; hash < FILE_HASH_SIZE; ++hash)
     {
