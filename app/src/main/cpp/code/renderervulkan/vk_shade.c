@@ -5007,10 +5007,11 @@ static void VK_Shade_FeedRow( const shaderCommands_t *input,
 	}
 
 	VK_Guard_Row( "DOCC:fed",
-				  "shader='%s' walk=%s n=%d nspr=%d svis=%d f=%d",
+				  "shader='%s' walk=%s n=%d vc=%d nspr=%d svis=%d f=%d",
 				  shader->name,
 				  r_spriteListOpen ? "sprite" : "draw",
 				  input->numVertexes,
+				  input->vertexColorValid ? 1 : 0,
 				  tr.refdef.num_sprites,
 				  ( backEnd.currentStaticModel != NULL ) ? 1 : 0,
 				  RB_FrameCount() );
