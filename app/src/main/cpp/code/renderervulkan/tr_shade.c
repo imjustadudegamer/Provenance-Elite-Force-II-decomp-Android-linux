@@ -415,7 +415,10 @@ void ProjectDlightTexture( void ) {
 			else {
 				VK_ApplyStateBits( VKS_SRCBLEND_DST_COLOR | VKS_DSTBLEND_ONE | VKS_DEPTHFUNC_EQUAL );
 			}
-			RB_VBO_DrawTessArrays( &tess, hitIndexes, numIndexes,
+			VK_Shade_DlightWitness( dl, l, numIndexes );
+			/* the term's texcoords and colours are the walk's own, so the arena
+			   arm never holds them; retail draws it over the triangles every frame */
+			RB_VBO_DrawTessStream( &tess, hitIndexes, numIndexes,
 								   texCoordsArray[0], NULL, 2,
 								   colorArray[0], NULL, NULL );
 		}

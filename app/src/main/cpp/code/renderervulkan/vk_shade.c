@@ -2426,13 +2426,6 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const float *normals,
 							const void *stage )
 {
-	vkStreamVertex_t	*verts;
-	vkIndex_t			*idx;
-	int					base = 0, indexBase = 0;
-	int					tessSlots;
-	VkCommandBuffer		cmd;
-	long long			walkT0;
-
 	if ( !input || input->numVertexes <= 0 || numIndexes <= 0 ) {
 		return;
 	}
@@ -2442,6 +2435,28 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 								 colors, normals, stage ) ) {
 		return;
 	}
+
+	RB_VBO_DrawTessStream( input, indexes, numIndexes, texcoord0, texcoord1,
+						   tcStrideFloats, colors, normals, stage );
+}
+
+/* The streaming half alone.  A draw whose texcoords and colours the walk
+   computed itself -- the dlight term -- carries no arena bytes, so the arena
+   arm's own signature cannot own it: retail draws the term over the surface's
+   triangles every frame, and this arm never consults the batch's residency. */
+void RB_VBO_DrawTessStream( const shaderCommands_t *input,
+							const vkIndex_t *indexes, int numIndexes,
+							const float *texcoord0, const float *texcoord1, int tcStrideFloats,
+							const unsigned char *colors,
+							const float *normals,
+							const void *stage )
+{
+	vkStreamVertex_t	*verts;
+	vkIndex_t			*idx;
+	int					base = 0, indexBase = 0;
+	int					tessSlots;
+	VkCommandBuffer		cmd;
+	long long			walkT0;
 
 	cmd = VK_Shade_CommandBuffer();
 
@@ -4742,6 +4757,83 @@ void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean subst
 					  ( bundle->image[0] && bundle->image[0]->imgName[0] )
 						  ? bundle->image[0]->imgName : "",
 					  bound->imgName, (int)bound->texnum );
+	}
+}
+
+/* The dlight term's bind witness: the one pass that binds outside VK_DrawStage,
+   so the worldset census never names what it sampled.  Retail rebinds its dlight
+   texture before every dlight draw (ProjectDlightTexture @0x34F60: GL_Bind,
+   GL_State 0x823/0x824, R_DrawElements), so what convicts here is a latch
+   holding anything but *dlight, a slot another image_t took, or a view the slot
+   no longer owns -- the three shapes a foreign blob takes.  One row per frame
+   names the art; each anomaly names itself. */
+void VK_Shade_DlightWitness( const dlight_t *dl, int light, int numIndexes )
+{
+	static int			s_rows;
+	static int			s_sampleFrame = -1;
+	static int			s_anomRows;
+	const image_t		*asked = s_shade.texImage[0];
+	const image_t		*bound;
+	const image_t		*tenant;
+	int					frame;
+
+	if ( !R_ProbeMarkOn() || !dl ) {
+		return;
+	}
+
+	frame = RB_FrameCount();
+
+	/* texImage survives a disarmed bind, so the descriptor's art is read only
+	   while the unit is still armed; the disarmed case is its own anomaly */
+	bound = s_shade.texBound[0] ? s_shade.texImage[0] : NULL;
+	tenant = ( bound && bound->texnum < VK_MAX_TEXTURES )
+			 ? VK_Image_SlotTenant( (int)bound->texnum ) : NULL;
+
+	if ( !bound || bound != tr.dlightImage
+		 || ( tenant && tenant != tr.dlightImage )
+		 || VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE ) {
+		static const char	*why[] = { "disarmed", "foreign", "tenant", "no-view" };
+		int					w = !bound ? 0
+							   : bound != tr.dlightImage ? 1
+							   : ( tenant && tenant != tr.dlightImage ) ? 2 : 3;
+
+		s_anomRows++;
+		if ( s_anomRows <= 8 || ( s_anomRows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:dlight",
+						  "why=%s f=%d l=%d asked='%s' bound='%s' tex=%d "
+						  "tenant='%s' dcol=%.3f,%.3f,%.3f rad=%.1f type=%d n=%d idx=%d",
+						  why[w], frame, light,
+						  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
+						  ( bound && bound->imgName[0] ) ? bound->imgName : "(none)",
+						  bound ? (int)bound->texnum : -1,
+						  ( tenant && tenant->imgName[0] ) ? tenant->imgName : "-",
+						  dl->color[0], dl->color[1], dl->color[2],
+						  dl->radius, (int)dl->type, backEnd.refdef.num_dlights,
+						  numIndexes );
+		}
+		return;
+	}
+
+	if ( frame == s_sampleFrame ) {
+		return;
+	}
+	s_sampleFrame = frame;
+	s_rows++;
+	if ( s_rows <= 8 || ( s_rows % 30 ) == 0 ) {
+		VK_Guard_Row( "VK:dlight",
+					  "f=%d img='%s' stamp=%d tex=%d tenant='%s' upto=%dx%d "
+					  "l=%d n=%d idx=%d dcol=%.3f,%.3f,%.3f rad=%.1f type=%d "
+					  "prog=0x%x state=0x%x",
+					  frame,
+					  ( bound->imgName[0] ) ? bound->imgName : "(unnamed)",
+					  bound->imgStamp, (int)bound->texnum,
+					  ( tenant && tenant->imgName[0] ) ? tenant->imgName : "-",
+					  bound->uploadWidth, bound->uploadHeight,
+					  light, backEnd.refdef.num_dlights, numIndexes,
+					  dl->color[0], dl->color[1], dl->color[2],
+					  dl->radius, (int)dl->type,
+					  s_shade.prog ? (unsigned)s_shade.prog->defines : 0u,
+					  s_shade.stateBits );
 	}
 }
 
