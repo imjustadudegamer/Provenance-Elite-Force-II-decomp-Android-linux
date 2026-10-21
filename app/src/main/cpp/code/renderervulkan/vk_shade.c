@@ -1045,6 +1045,15 @@ qboolean VK_StageReadsVertexColor( const shaderStage_t *pStage )
 	default:
 		break;
 	}
+	/* the sprite feed retires a gen-entity stage to the vertex generators, and
+	   RB_DrawSprite has already stamped the batch's own rgba into the array, so
+	   the guard that keeps a static model from reading its neighbour's colours
+	   does not apply here */
+	if ( r_spriteListOpen
+		 && ( pStage->rgbGen == CGEN_ENTITY || pStage->rgbGen == CGEN_ONE_MINUS_ENTITY ) )
+	{
+		return qtrue;
+	}
 	return qfalse;
 }
 
@@ -1110,6 +1119,10 @@ typedef struct {
 
 static vkShadeState_t	s_shade;
 int						r_spriteListOpen = 0;
+/* the sprite count the walk was handed, not the live front-end counter: the walk
+   runs as a recorded command, so tr.refdef.num_sprites at draw time is a later
+   scene's number and made the batch arithmetic read wrong */
+int						r_spriteWalkSurfs = 0;
 
 /* The alpha-test selector the fragment stage discards on.  It is a property of
    the STAGE -- the state word's atest bits -- so it is derived from the state
@@ -5024,6 +5037,39 @@ static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
 	}
 }
 
+/* A sprite walk batch is one draw for many sprites, so a gen-entity stage cannot
+   read a per-sprite record; retail's walk installs tr.worldEntity there, which is
+   the magenta.  The sprite's own rgba is already per-vertex in the tess colour
+   array, so the vertex generators are the feed that gives each sprite its own
+   colour without giving up the batch. */
+static int VK_Shade_SpriteFeedRgb( int gen )
+{
+	if ( !r_spriteListOpen ) {
+		return gen;
+	}
+	if ( gen == CGEN_ENTITY ) {
+		return CGEN_VERTEX;
+	}
+	if ( gen == CGEN_ONE_MINUS_ENTITY ) {
+		return CGEN_ONE_MINUS_VERTEX;
+	}
+	return gen;
+}
+
+static int VK_Shade_SpriteFeedAlpha( int gen )
+{
+	if ( !r_spriteListOpen ) {
+		return gen;
+	}
+	if ( gen == AGEN_ENTITY ) {
+		return AGEN_VERTEX;
+	}
+	if ( gen == AGEN_ONE_MINUS_ENTITY ) {
+		return AGEN_ONE_MINUS_VERTEX;
+	}
+	return gen;
+}
+
 /* the entity colour a gen-entity stage is fed under the WORLD entity: one row per shader, budgeted, master gate only */
 static void VK_Shade_EntityColorRow( const shader_t *shader, const shaderStage_t *pStage )
 {
@@ -5039,6 +5085,11 @@ static void VK_Shade_EntityColorRow( const shader_t *shader, const shaderStage_t
 		return;
 	}
 	if ( backEnd.currentEntity != &tr.worldEntity ) {
+		return;
+	}
+	/* the sprite feed no longer reads the world entity, so a row here means a
+	   gen-entity stage is wearing it for real */
+	if ( r_spriteListOpen ) {
 		return;
 	}
 
@@ -5099,12 +5150,15 @@ static void VK_Shade_FeedRow( const shaderCommands_t *input,
 	}
 
 	VK_Guard_Row( "DOCC:fed",
-				  "shader='%s' walk=%s n=%d vc=%d nspr=%d svis=%d f=%d",
+				  "shader='%s' walk=%s feed=%s n=%d vc=%d nspr=%d svis=%d f=%d",
 				  shader->name,
 				  r_spriteListOpen ? "sprite" : "draw",
+				  ( r_spriteListOpen
+					&& ( pStage->rgbGen == CGEN_ENTITY
+						 || pStage->rgbGen == CGEN_ONE_MINUS_ENTITY ) ) ? "vertex" : "entity",
 				  input->numVertexes,
 				  input->vertexColorValid ? 1 : 0,
-				  tr.refdef.num_sprites,
+				  r_spriteWalkSurfs,
 				  ( backEnd.currentStaticModel != NULL ) ? 1 : 0,
 				  RB_FrameCount() );
 }
@@ -5136,6 +5190,16 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	VK_Shade_FeedRow( input, shader, pStage );
 	VK_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
 	VK_SetUniform1f( prog, VK_U_FORCEALPHA, forceAlpha );
+
+	if ( r_spriteListOpen
+		 && ( pStage->rgbGen == CGEN_ENTITY || pStage->rgbGen == CGEN_ONE_MINUS_ENTITY
+			  || pStage->alphaGen == AGEN_ENTITY || pStage->alphaGen == AGEN_ONE_MINUS_ENTITY ) )
+	{
+		VK_SetUniform1i( prog, VK_U_COLORGEN,
+						 VK_Shade_SpriteFeedRgb( ( int )pStage->rgbGen ) );
+		VK_SetUniform1i( prog, VK_U_ALPHAGEN,
+						 VK_Shade_SpriteFeedAlpha( ( int )pStage->alphaGen ) );
+	}
 
 	if ( hudColorClobber && ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
 		 && pStage->rgbGen != CGEN_LIGHTING_SPHERICAL
