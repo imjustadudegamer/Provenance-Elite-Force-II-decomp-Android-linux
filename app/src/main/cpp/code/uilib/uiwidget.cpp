@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "ui_local.h"
+#include "uiwidgets_ef2.h"
 #include "../qcommon/stringresource.h"
 #include "../qcommon/gameplaymanager.h"
 
@@ -4990,12 +4991,20 @@ qboolean UIWidgetContainer::moveFocus(int dir)
     }
 
     for (i = 1; i <= m_children.NumObjects() && count < ( int )( sizeof( rows ) / sizeof( rows[0] ) ); i++) {
-        UIWidget *child = m_children.ObjectAt(i);
+        UIWidget    *child = m_children.ObjectAt(i);
+        UIRowColumn *list  = NULL;
+
+        if (child && child->isSubclassOf(UITable)) {
+            list = ((UITable *)child)->getRowColumn();
+        } else if (child && child->isSubclassOf(UIRowColumn)) {
+            list = (UIRowColumn *)child;
+        }
 
         /* A row the pad cannot act on is not a stop: retail's own activation test,
-           plus the slider, which retail never marks activatable. */
+           the slider, which retail never marks activatable, and a selectable list,
+           which carries its own selection instead of a stop per row. */
         if (child && child->isEnabled() && child->getShow()
-            && (child->CanActivate() || child->isSubclassOf(UISlider))) {
+            && (child->CanActivate() || child->isSubclassOf(UISlider) || (list && !list->getNoRowSelect()))) {
             UIRect2D frame = child->getFrame();
 
             rows[count].wid = child;
@@ -5041,18 +5050,28 @@ qboolean UIWidgetContainer::moveFocus(int dir)
         next = count - 1;
     }
 
-    /* Names the walk, so a menu the pad cannot move in says which rows it has. */
+    /* Names the walk, so a menu the pad cannot move in says which rows it has.
+       A list stop adds its own row count and where its selection sits. */
     {
-        static int s_navRows;
+        static int    s_navRows;
+        UIRowColumn  *list = NULL;
+
+        if (rows[next].wid->isSubclassOf(UITable)) {
+            list = ((UITable *)rows[next].wid)->getRowColumn();
+        } else if (rows[next].wid->isSubclassOf(UIRowColumn)) {
+            list = (UIRowColumn *)rows[next].wid;
+        }
 
         s_navRows++;
         if (s_navRows <= 16 || (s_navRows % 200) == 0) {
             UIVK_PROBE("padnav",
-                       "dir=%d rows=%d from='%s' to='%s' active='%s' menu='%s'",
+                       "dir=%d rows=%d from='%s' to='%s'%s%s active='%s' menu='%s'",
                        dir,
                        count,
                        m_focusWidget && m_focusWidget->getName() ? m_focusWidget->getName() : "(null)",
                        rows[next].wid->getName() ? rows[next].wid->getName() : "(null)",
+                       list ? " list" : "",
+                       list ? va(" items=%d sel=%d", list->getNumItems(), list->getSelectedIndex()) : "",
                        uWinMan.ActiveControl() && uWinMan.ActiveControl()->getName()
                            ? uWinMan.ActiveControl()->getName() : "(null)",
                        menuManager.CurrentMenu() ? menuManager.CurrentMenu()->m_name.c_str() : "(none)");

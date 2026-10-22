@@ -899,6 +899,11 @@ void UIRowColumn::ScrollTo(int row)
     }
 }
 
+int UIRowColumn::getSelectedIndex(void) const
+{
+    return m_selectedRow ? m_rows.IndexOfObject(m_selectedRow) : 0;
+}
+
 int UIRowColumn::VisibleRowCount(void) const
 {
     float rowHeight = getItemHeight();
@@ -954,6 +959,16 @@ qboolean UIRowColumn::KeyEvent(int key, unsigned int time)
 
     if (!total) {
         return UIScrollable::KeyEvent(key, time);
+    }
+
+    /* Pad nav: an unselected list's first arrow takes row 1 rather than skipping
+       it, which the populate path's own selectrow usually gives it. */
+    if (!m_selectedRow && (key == K_UPARROW || key == K_DOWNARROW)) {
+        m_selectedRow = m_rows.ObjectAt(1);
+        m_selectedRow->setSelected(true);
+        executeCommand(WIDGET_STATE_SELECTED, m_selectedRow);
+        executeColumnCommand(WIDGET_STATE_SELECTED, m_selectedRow);
+        return qtrue;
     }
 
     switch (key) {
@@ -1227,6 +1242,17 @@ void UITable::noRowHighlight(Event *ev)
 void UITable::Draw(void)
 {
     UIWidget::Draw();
+}
+
+/* The pad's arrows are the list's own selection while it can still move; at the
+   top or bottom row it returns the key and the container's walk moves on. */
+qboolean UITable::KeyEvent(int key, unsigned int time)
+{
+    if (!m_pRowColumn) {
+        return qfalse;
+    }
+
+    return m_pRowColumn->KeyEvent(key, time);
 }
 
 void UITable::LayoutRowColumn(void)
