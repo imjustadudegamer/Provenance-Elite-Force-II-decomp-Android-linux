@@ -187,6 +187,8 @@ public:
     float getRowHeight(void) const { return getItemHeight(); }
     void ScrollTo(int row);
     int  VisibleRowCount(void) const;
+    int  getSelectedIndex(void) const;
+    bool getNoRowSelect(void) const { return m_noRowSelect; }
     void ClampScroll(void);
     void SyncScrollBar(void);
     qboolean KeyEvent(int key, unsigned int time) override;
@@ -235,6 +237,9 @@ public:
     void Draw(void) override;
     void Realign(void) override;
     void ChangeResolution(void) override;
+    qboolean KeyEvent(int key, unsigned int time) override;
+
+    UIRowColumn *getRowColumn(void) const { return m_pRowColumn; }
 
 private:
     void LayoutRowColumn(void);

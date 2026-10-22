@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "ui_local.h"
+#include "uiwidgets_ef2.h"
 
 #define PROBE_GET(name, def, flags) ((cvar_t *)0)
 #define PROBE_PRINT                 Com_Printf
@@ -892,6 +893,14 @@ bool UIWindowManager::ActivateFocusedWidget(void)
     /* A slider has nothing to click and a synthesized press would drop the thumb at
        the centre of its track; its value is the left and right keys. */
     if (focused->isSubclassOf(UISlider)) {
+        return true;
+    }
+
+    /* A list's activate key is its own activatecommand on the selected row, the
+       same one its Load button stuffs; a click at the centre would land on
+       whichever row happens to sit under it. */
+    if (focused->isSubclassOf(UITable) || focused->isSubclassOf(UIRowColumn)) {
+        focused->ProcessEvent(EV_RowColumn_Activate);
         return true;
     }
 
