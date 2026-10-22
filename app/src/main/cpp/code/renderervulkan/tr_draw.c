@@ -61,6 +61,17 @@ static float    r_window2DOrtho[6];
 static qboolean r_scissor2DValid;
 static int      r_scissor2D[4];
 
+/* A 2D window went out this frame; the [VK:2dlost] row asks it. */
+static qboolean r_2dWindowSeen;
+
+qboolean R_2D_WindowSeenThisFrame( void ) {
+	return r_2dWindowSeen;
+}
+
+void R_2D_BeginFrame( void ) {
+	r_2dWindowSeen = qfalse;
+}
+
 void R_Invalidate2DWindowCache( void ) {
 	r_window2DValid = qfalse;
 	r_scissor2DValid = qfalse;
@@ -1336,6 +1347,13 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
    time is not the run's.  Stamped into the run's own command. */
 float r_2dOrigin[2] = { 0.0f, 0.0f };
 
+/* The caller's placement in force, as the [VK:2dlost] row reads it. */
+void R_2D_OriginState( float *ox, float *oy )
+{
+	*ox = r_2dOrigin[0];
+	*oy = r_2dOrigin[1];
+}
+
 /* The widget's placement inside the window the pass sets: retail carries it in
    the vertices (glVertex2f in screen space), so this records an offset the walk's
    2D vertex writers add, and the ortho stays the one constant screen ortho. */
@@ -1367,6 +1385,8 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 	int		t0;
 
 	t0 = D2_Prepare();
+
+	r_2dWindowSeen = qtrue;
 
 	if ( r_window2DValid && r_scissor2DValid &&
 		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&

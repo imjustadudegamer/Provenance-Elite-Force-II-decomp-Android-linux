@@ -108,9 +108,9 @@ public:
     /* The focused widget lives on the current menu's container; these drive it
        from the pad's arrow keys and the pad's activation key. */
     static int        PadNavDirection(int key);
-    static qboolean   PadHorizontal(int key);
     UIWidget         *PadFocusedWidget(void);
     bool              PadFocusRepeat(int key);
+    bool              MovePadFocusTo(UIWidget *wid);
     bool              MovePadFocus(int dir);
     bool              ActivateFocusedWidget(void);
     void              ClearPadFocus(void);

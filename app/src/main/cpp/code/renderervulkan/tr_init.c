@@ -1096,6 +1096,7 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	   R_AddDrawSurfCmd and R_AddSpriteSurfCmd drop it too, because a 3D pass
 	   overwrites the viewport and scissor a cached 2D rect describes. */
 	R_Invalidate2DWindowCache();
+	R_2D_BeginFrame();
 
 	if ( frontEndMsec ) {
 		*frontEndMsec = tr.frontEndMsec;

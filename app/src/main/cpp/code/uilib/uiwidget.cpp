@@ -5041,6 +5041,24 @@ qboolean UIWidgetContainer::moveFocus(int dir)
         next = count - 1;
     }
 
+    /* Names the walk, so a menu the pad cannot move in says which rows it has. */
+    {
+        static int s_navRows;
+
+        s_navRows++;
+        if (s_navRows <= 16 || (s_navRows % 200) == 0) {
+            UIVK_PROBE("padnav",
+                       "dir=%d rows=%d from='%s' to='%s' active='%s' menu='%s'",
+                       dir,
+                       count,
+                       m_focusWidget && m_focusWidget->getName() ? m_focusWidget->getName() : "(null)",
+                       rows[next].wid->getName() ? rows[next].wid->getName() : "(null)",
+                       uWinMan.ActiveControl() && uWinMan.ActiveControl()->getName()
+                           ? uWinMan.ActiveControl()->getName() : "(null)",
+                       menuManager.CurrentMenu() ? menuManager.CurrentMenu()->m_name.c_str() : "(none)");
+        }
+    }
+
     setFocusWidget(rows[next].wid);
     return qtrue;
 }
