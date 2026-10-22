@@ -1789,6 +1789,12 @@ void Com_Init( char *commandLine ) {
 	com_speeds = Cvar_Get( "com_speeds", "0", 0 );
 	com_timedemo = Cvar_Get( "timedemo", "0", CVAR_CHEAT );
 	Cvar_Get( "mem_churnStats", "1", CVAR_ARCHIVE );
+#ifdef __ANDROID__
+	/* the property arms qa_probe itself, so the UI's own override reads it too */
+	if ( Sys_AndroidDiagOn() ) {
+		Cvar_Set( "qa_probe", "1" );
+	}
+#endif
 	com_dedicated = Cvar_Get( "dedicated", "0", CVAR_LATCH );
 	com_introplayed = Cvar_Get( "com_introplayed", "0", CVAR_ARCHIVE );
 	com_sv_running = Cvar_Get( "sv_running", "0", CVAR_ROM );
@@ -3038,10 +3044,12 @@ void Com_Frame( void ) {
 	if ( !s_splitT0 ) {
 		s_splitT0 = s_splitNow;
 	} else if ( s_splitNow - s_splitT0 >= 1000 ) {
-		Com_Printf(
-			"[PERF:frame] win=%dms frames=%d sv=%dms ev=%dms cl=%dms rest=%dms\n",
-			s_splitNow - s_splitT0, s_splitFrames, s_splitSv, s_splitEv, s_splitCl,
-			s_splitRest );
+		if ( PROBE_On() ) {
+			Com_Printf(
+				"[PERF:frame] win=%dms frames=%d sv=%dms ev=%dms cl=%dms rest=%dms\n",
+				s_splitNow - s_splitT0, s_splitFrames, s_splitSv, s_splitEv, s_splitCl,
+				s_splitRest );
+		}
 		s_splitSv = 0;
 		s_splitRest = 0;
 		s_splitEv = 0;

@@ -4670,7 +4670,7 @@ void ClientGameCommandManager::PlaySound(
 
         movsnd_rows++;
 
-        if (movsnd_movsnd && movsnd_movsnd->integer && (movsnd_rows <= 48 || (movsnd_rows % 16) == 0)) {
+        if (PROBE_On() && movsnd_movsnd && movsnd_movsnd->integer && (movsnd_rows <= 48 || (movsnd_rows % 16) == 0)) {
             cgi.Printf(
                 "[MOVSND:movsnd] built='%s' resolved='%s' handle=%d entnum=%d chan=%d vol=%.3f min_dist=%.3f pitch=%.3f origin=%s\n",
                 sound_name.c_str(),

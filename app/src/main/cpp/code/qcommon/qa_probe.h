@@ -19,6 +19,10 @@ root, for more details.
 #ifndef __QA_PROBE_H__
 #define __QA_PROBE_H__
 
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
+
 #ifndef PROBE_GET
 #error "define PROBE_GET(name,def,flags) before including qa_probe.h"
 #endif
@@ -26,12 +30,12 @@ root, for more details.
 #error "define PROBE_PRINT before including qa_probe.h"
 #endif
 
-/* `qa_probe' is the MASTER instrument switch: 0 silences every probe family,
- * 1 arms them all.  The family cvars (smp_frameStats, smp_loadStats, be_stats,
- * ui_stats, smp_serverStats, mem_churnStats, smp_vpProbe, smp_shaderProbe) are
- * fine-grained overrides that only matter while the master is on; every family
- * also answers to the master at its gate.  smp_texCache stays
- * 1 -- a feature. */
+/* `qa_probe' is the ONE switch: 0 (default) silences every row family, 1 arms
+ * them all.  The family cvars are fine-grained overrides that only matter while
+ * the master is on.  PC arms it with play_ef2_decomp.sh --diag; Android arms it
+ * with the property `log.tag.ProvenanceEF2' (read once below, and also by
+ * Sys_AndroidDiagOn and the Java LogGate).  Fault paths (ERR_DROP, Sys_Error,
+ * Sys_FaultOutf, the signal handler, VK_Guard_Hit) stay ungated. */
 #ifdef PROBE_ON_OVERRIDE
 static inline qboolean PROBE_On(void)
 {
@@ -40,12 +44,32 @@ static inline qboolean PROBE_On(void)
 #else
 static inline qboolean PROBE_On(void)
 {
-	static cvar_t *v;
+#ifdef __ANDROID__
+	static int propArmed = -1;
 
-	if (!v) {
-		v = PROBE_GET("qa_probe", "0", 0);
+	if (propArmed < 0) {
+		char val[PROP_VALUE_MAX];
+
+		propArmed = 0;
+		if (__system_property_get("log.tag.ProvenanceEF2", val) > 0 &&
+			val[0] != '\0' &&
+			Q_stricmp(val, "0") &&
+			Q_stricmp(val, "false")) {
+			propArmed = 1;
+		}
 	}
-	return (v && v->integer) ? qtrue : qfalse;
+	if (propArmed) {
+		return qtrue;
+	}
+#endif
+	{
+		static cvar_t *v;
+
+		if (!v) {
+			v = PROBE_GET("qa_probe", "0", 0);
+		}
+		return (v && v->integer) ? qtrue : qfalse;
+	}
 }
 #endif
 

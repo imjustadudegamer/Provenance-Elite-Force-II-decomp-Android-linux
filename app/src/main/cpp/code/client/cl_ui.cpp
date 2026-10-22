@@ -687,7 +687,7 @@ void UI_ClearBackground(void)
     {
         static int rows;
         rows++;
-        if (rows <= 16 || (rows % 600) == 0) {
+        if (PROBE_On() && (rows <= 16 || (rows % 600) == 0)) {
             Menu *m = menuManager.CurrentMenu();
             Com_Printf(
                 "[UI:bkgfill] n=%d menu='%s' full=%d state=%d rect=%gx%g\n", rows,

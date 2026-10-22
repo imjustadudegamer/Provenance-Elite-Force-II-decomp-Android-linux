@@ -410,7 +410,7 @@ void RB_2D_FlushImmediate( void ) {
 
 			s_d2Drops += s_2dTriVerts - got;
 			s_rows++;
-			if ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) {
+			if ( D2_On() && ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) ) {
 				ri.Printf( PRINT_ALL, "[2D:drop] box lost=%d asked=%d got=%d f=%d\n",
 						   s_2dTriVerts - got, s_2dTriVerts, got, RB_FrameCount() );
 			}
@@ -460,7 +460,7 @@ void RB_2D_Flush( void ) {
 
 			s_d2Drops += lost;
 			s_rows++;
-			if ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) {
+			if ( D2_On() && ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) ) {
 				ri.Printf( PRINT_ALL, "[2D:drop] tess lost=%d asked=%d got=%d f=%d\n",
 						   lost, s_2dBatchVerts, verts, RB_FrameCount() );
 			}

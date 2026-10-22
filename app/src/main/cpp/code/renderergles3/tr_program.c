@@ -1187,6 +1187,9 @@ static void GLES3_UnifUnbound( gles3Program_t *p, gles3Uniform_t u )
 	if ( !p || p->uniforms[u] == -1 ) {
 		return;
 	}
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
 	s_rows++;
 	if ( s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
 		s_shown++;

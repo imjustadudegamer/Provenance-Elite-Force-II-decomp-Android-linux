@@ -295,7 +295,7 @@ static void RAWPTR_CheckRawWidgetPointers(UIWidget **p, const char *name)
     if (!s_cvar) {
         s_cvar = Cvar_Get("rawptr_focusStats", "0", 0);
     }
-    if (s_cvar && !s_cvar->integer) {
+    if (!PROBE_On() || (s_cvar && !s_cvar->integer)) {
         return;
     }
 

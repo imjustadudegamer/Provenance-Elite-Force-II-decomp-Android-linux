@@ -62,6 +62,12 @@ typedef struct {
 	float    deviceW, deviceH; 
 } touchControlState_t;
 
+/* A pill's key field is a KEY, not a command: sdl_input.c queues it as an
+   SE_KEY and the binding executor runs whatever that key's bind carries, so
+   each row rides the keyboard's own bind and must follow it when the pad rows
+   move.  TRICORDER rides '6' = warpinv 6, retail's own weapon-select row
+   (global/default.cfg) for the inventory group global/inventory.scr typedefs
+   as 6 -- Tricorder / Tricorder-stx / Tricorder-rom. */
 static const tcActionButton_t tcActionButtons[] = {
 	{ 0.845f, 0.775f, 0.062f, 0.050f, K_MOUSE1,             "FIRE",     LCARS_MARS,      qfalse, qtrue  },
 	{ 0.945f, 0.640f, 0.042f, 0.034f, K_MOUSE2,             "ALT",      LCARS_ORANGE,    qfalse, qtrue  },
@@ -70,7 +76,7 @@ static const tcActionButton_t tcActionButtons[] = {
 	{ 0.665f, 0.925f, 0.054f, 0.034f, K_PAD0_B,             "CROUCH",   LCARS_VIOLET,    qfalse, qfalse },
 	{ 0.950f, 0.520f, 0.050f, 0.032f, K_PAD0_RIGHTSHOULDER, "NEXT",     LCARS_SUNFLOWER, qtrue,  qfalse },
 	{ 0.950f, 0.405f, 0.050f, 0.032f, K_PAD0_LEFTSHOULDER,  "PREV",     LCARS_BUTTERSCOTCH, qtrue, qfalse },
-	{ 0.050f, 0.290f, 0.048f, 0.030f, K_PAD0_DPAD_UP,       "TRICORDER",LCARS_ICE,       qtrue,  qfalse },
+	{ 0.050f, 0.290f, 0.048f, 0.030f, '6',                  "TRICORDER",LCARS_ICE,       qtrue,  qfalse },
 	{ 0.050f, 0.180f, 0.048f, 0.030f, 'n',                "NIGHT",    LCARS_ICE,       qtrue,  qfalse },
 	{ 0.115f, 0.470f, 0.062f, 0.034f, K_TAB,                "MISSION",  LCARS_HOPBUSH,   qfalse, qfalse },
 };

@@ -1380,6 +1380,7 @@ void R_Init( void ) {
 
 		if ( !s_smpGltexLogged ) {
 			s_smpGltexLogged = qtrue;
+			if ( R_ProbeStatsOn() ) {
 			ri.Printf( PRINT_ALL,
 				"[GLES3:gltex] r_colorbits=%d r_texturebits=%d r_picmip=%d "
 				"r_roundImagesDown=%d r_vertexLight=%d r_lightmap=%d r_fullbright=%d "
@@ -1395,6 +1396,7 @@ void R_Init( void ) {
 				  && r_texturebits->integer == 0 && r_colorbits->integer == 0 )
 					? "the literal 3 (INVALID with format=GL_RGBA)"
 					: "a legal RGBA-column format" );
+			}
 		}
 	}
 

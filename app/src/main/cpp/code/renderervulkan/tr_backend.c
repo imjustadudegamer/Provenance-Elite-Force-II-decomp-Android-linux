@@ -1823,6 +1823,11 @@ void RB_NoteIndexDesync( const char *walk, shader_t *shader, int carriedIndex )
 {
 	static int	s_rows;
 
+	/* the row is an instrument: master gate */
+	if ( !R_ProbeMarkOn() ) {
+		return;
+	}
+
 	if ( !shader || shader->sortedIndex == carriedIndex ) {
 		return;
 	}

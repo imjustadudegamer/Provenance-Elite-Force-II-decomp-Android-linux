@@ -3854,7 +3854,10 @@ void R_SetupShaders(void)
 	shadertext_t* shaderText;
 	int hash;
 
-    ri.Printf(0, "Setting up Shaders\n");
+    /* load banner: master gate */
+    if (R_ProbeStatsOn()) {
+        ri.Printf(0, "Setting up Shaders\n");
+    }
     currentShader = NULL;
 
     /* Every shader_t died with the arena; the table must not carry one. */

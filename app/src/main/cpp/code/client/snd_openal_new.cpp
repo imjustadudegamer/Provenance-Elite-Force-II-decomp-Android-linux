@@ -1387,7 +1387,7 @@ static void SND_SndRow(
         snd = Cvar_Get("qa_snd", "0", 0);
     }
 
-    if (!snd->integer) {
+    if (!PROBE_On() || !snd->integer) {
         return;
     }
 

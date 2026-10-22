@@ -1194,11 +1194,13 @@ static void RB_VboArenaMapFrame( void ) {
 		if ( s_arenaMapDead || !RB_VboArenaMapPair( slot ) ) {
 			if ( !s_arenaMapDead ) {
 				s_arenaMapDead = qtrue;
-				ri.Printf( PRINT_ALL,
-						   "[BE:arm] store stood down (%s glerror=0x%x): ring runs, fall counts\n",
-						   s_arenaMapWhy == RB_ARM_NOEXT ? "no GL_EXT_buffer_storage"
-											  : "persistent map refused",
-						   (unsigned)s_arenaMapErr );
+				if ( R_ProbeStatsOn() ) {
+					ri.Printf( PRINT_ALL,
+							   "[BE:arm] store stood down (%s glerror=0x%x): ring runs, fall counts\n",
+							   s_arenaMapWhy == RB_ARM_NOEXT ? "no GL_EXT_buffer_storage"
+												  : "persistent map refused",
+							   (unsigned)s_arenaMapErr );
+				}
 			}
 			s_arenaFull   = qtrue;
 			s_arenaActive = qfalse;
@@ -1324,7 +1326,7 @@ void RB_VBO_BeginFrame( void ) {
 		   change and every 600 frames. `ran=` is what the previous frame used, not the intent: 0.3.20
 		   said "mapped" for a whole session while every [BE:send] window read arena=0. `carried=` and
 		   `orphans=` are the store's own session totals. */
-		if ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) {
+		if ( R_ProbeStatsOn() && ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) ) {
 			ri.Printf( PRINT_ALL,
 					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s ran=%d dead=%d"
 					   " why=%d %s(0x%x) carried=%d orphans=%d f=%d\n",
@@ -1346,8 +1348,10 @@ void RB_VBO_BeginFrame( void ) {
 
 		if ( on != s_arenaAlternate ) {
 			s_arenaAlternate = on;
-			ri.Printf( PRINT_ALL, "[BE:arm] r_tessArena A/B -> %s f=%d\n",
-					   on ? "store" : "ring", RB_FrameCount() );
+			if ( R_ProbeStatsOn() ) {
+				ri.Printf( PRINT_ALL, "[BE:arm] r_tessArena A/B -> %s f=%d\n",
+						   on ? "store" : "ring", RB_FrameCount() );
+			}
 		}
 		if ( !on ) {
 			s_arenaActive = qfalse;
@@ -1856,7 +1860,7 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 			s_sendVerts += input->numVertexes;
 
 			/* A phase that outcosts a frame is the wobble; name the arm. */
-			if ( phase >= 2000 ) {
+			if ( R_ProbeStatsOn() && phase >= 2000 ) {
 				s_sendStalls++;
 				if ( s_sendStallShown < 8 || ( s_sendStalls % 64 ) == 0 ) {
 					s_sendStallShown++;

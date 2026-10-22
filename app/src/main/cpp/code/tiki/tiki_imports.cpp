@@ -26,6 +26,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "qcommon.h"
 #include "tiki_imports.h"
 
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
+
 #ifndef DEDICATED
 #include "../client/client.h"
 #endif
@@ -165,7 +169,7 @@ void TIKI_SkelRollEnd( int t0 )
 
     s_tikiSkel.convMs += now - t0;
 
-    if ( !s_tikiSkel.rollAt || now - s_tikiSkel.rollAt < 1000 ) {
+    if ( !s_tikiSkel.rollAt || now - s_tikiSkel.rollAt < 1000 || !PROBE_On() ) {
         return;
     }
     Com_Printf( "[TIKI:skel] loads=%d bytes=%d read=%dms conv=%dms distinct=%d repeat=%d win=%dms\n",
@@ -222,7 +226,7 @@ void TIKI_TikiRoll( void )
 {
     int now = Com_Milliseconds();
 
-    if ( !s_tikiTiki.rollAt || now - s_tikiTiki.rollAt < 1000 ) {
+    if ( !s_tikiTiki.rollAt || now - s_tikiTiki.rollAt < 1000 || !PROBE_On() ) {
         return;
     }
     Com_Printf( "[TIKI:tiki] regs=%d parse=%dms build=%dms warm=%d win=%dms\n",
@@ -231,13 +235,11 @@ void TIKI_TikiRoll( void )
     memset( &s_tikiTiki, 0, sizeof( s_tikiTiki ) );
 }
 
-/* Names the set the keep-loaded arm retained at an unload, so a warm restore reads `kept=N` and a
-   `[TIKI:tiki]` window with `warm=` after it instead of the cold parse/build figures. The warm
-   counter on the roll row is the always-on half: 0.3.19's keep branch never reached its own row
-   (the unload did not go through TIKI_FreeAll) while the cache was demonstrably working --
-   build=65ms and 37ms for 28 and 33 registrations against 0.3.18's 2255ms for 7 -- so the effect
-   now reports from the hit path, which always runs. */
+/* the keep-loaded arm retained this many models at an unload */
 void TIKI_TikiRollKeep( int kept )
 {
+    if ( !PROBE_On() ) {
+        return;
+    }
     Com_Printf( "[TIKI:keep] kept=%d\n", kept );
 }

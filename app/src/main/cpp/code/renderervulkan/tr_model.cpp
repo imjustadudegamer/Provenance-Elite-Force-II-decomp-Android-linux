@@ -1023,6 +1023,11 @@ static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
 {
     static int rows;
 
+    /* fade0 happens on every weapon switch: master gate */
+    if (!PROBE_On()) {
+        return;
+    }
+
     if (rows < 8 || (rows % 600) == 0) {
         ri.Printf(PRINT_ALL, "[VK:skeldrop] why=%s model='%s' anim=%d frame=%d oldanim=%d oldframe=%d f=%d\n",
                   why, tiki->a->name ? tiki->a->name : "?",
@@ -1166,7 +1171,7 @@ static void R_SkelCullWhere(
     {
         static int rows;
 
-        if (!PROBE_Throttle(&rows, 16, 600)) {
+        if (!PROBE_On() || !PROBE_Throttle(&rows, 16, 600)) {
             return;
         }
 
@@ -1203,7 +1208,7 @@ static void R_SkelDropFrame(const char *why, dtiki_t *tiki, trRefEntity_t *ent){
     {
         static int rows;
 
-        if (rows < 8 || (rows % 600) == 0) {
+        if (PROBE_On() && (rows < 8 || (rows % 600) == 0)) {
             ri.Printf(PRINT_ALL,
                       "[VK:skeldrop] why=%s model='%s' anim=%d frame=%d skanframes=%d tanframes=%d animframes=%d f=%d\n",
                       why, tiki->a->name ? tiki->a->name : "?",
@@ -1275,7 +1280,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
         if (TIKI_Skel_Bones_Cursor[boneArena] + skel->numBones > MAX_SKELBONES) {
 /* the reference renderer's tr_model.cpp carries this note in full */
             static int skelbail_rows;
-            if (PROBE_Throttle(&skelbail_rows, 4, 240)) {
+            if (PROBE_On() && PROBE_Throttle(&skelbail_rows, 4, 240)) {
                 ri.Printf(
                     PRINT_ALL,
                     "[VK:skelbail] arena=%d cursor=%d bones=%d model='%s' f=%d\n",

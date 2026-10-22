@@ -251,12 +251,16 @@ int BE_SysMilliseconds( void )
 int BE_CgFrameOpen( void )
 {
 	static cvar_t *stats;
+	static cvar_t *master;
 
 	if ( !stats ) {
 		stats = cgi.Cvar_Get( "ui_stats", "1", 0 );
 	}
+	if ( !master ) {
+		master = cgi.Cvar_Get( "qa_probe", "0", 0 );
+	}
 
-	be_cgOn = ( stats && stats->integer ) ? 1 : 0;
+	be_cgOn = ( stats && stats->integer && master && master->integer ) ? 1 : 0;
 
 	return BE_CgRoot();
 }
