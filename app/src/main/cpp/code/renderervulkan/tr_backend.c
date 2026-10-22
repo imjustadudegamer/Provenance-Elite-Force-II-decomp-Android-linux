@@ -1575,9 +1575,8 @@ void RB_BeginDrawingView (void) {
 
 	backEnd.in2D = qfalse;
 
-	/* A rect cached here would survive the 3D pass and skip re-issuing a
-	   scissor that pass overwrote: drop the pair. */
-	R_Invalidate2DWindowCache();
+	/* No R_Invalidate2DWindowCache here: the cache is the recorder's, and the walk
+	   writing it made a string re-open the screen window over its widget's own. */
 
 	SetViewportAndScissor();
 

@@ -930,6 +930,33 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
        performs, so a string is one recorded run per page-and-colour. */
     record = 1;
 
+    /* The re-open below drops the caller's placement to (0,0) and its clip to the
+       screen: raw local glyphs, no clip.  Anomaly-only; the frame's first window
+       leaves r_2dWindowSeen clear. */
+    if ( !RB_2D_WindowValid() && R_2D_WindowSeenThisFrame() ) {
+        static int s_lostRows;
+        int        win[4], scn[4];
+        float      org[2];
+
+        RB_2D_WindowState( win, scn );
+        R_2D_OriginState( &org[0], &org[1] );
+
+        s_lostRows++;
+        if ( s_lostRows <= 16 || ( s_lostRows % 256 ) == 0 ) {
+            ri.Printf( PRINT_ALL,
+                       "[VK:2dlost] n=%d at=(%.1f,%.1f) own_org=(%.1f,%.1f) own_scn=(%d,%d,%d,%d) "
+                       "win=(%d,%d,%d,%d) font=0x%x text='%.24s' f=%d\n",
+                       s_lostRows,
+                       x, y,
+                       org[0], org[1],
+                       scn[0], scn[1], scn[2], scn[3],
+                       win[0], win[1], win[2], win[3],
+                       (unsigned)font->trhandle,
+                       text ? text : "",
+                       RB_FrameCount() );
+        }
+    }
+
     {
         /* The string's run is recorded like every other 2D call, so this is the timing hook only. */
         D2_StringBegin(&s_fontStringT0);

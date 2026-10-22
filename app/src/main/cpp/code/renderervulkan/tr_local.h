@@ -1741,6 +1741,10 @@ void RB_2D_WindowState( int *win, int *scn );
    retail's screen-space glVertex2f stream already carries it. */
 void Set2DOrigin( float x, float y );
 void R_2DQueuePlacement( float *ox, float *oy, qboolean *scnValid, int *scn, byte *color );
+/* The recorder's own "a 2D window went out this frame"; see the [VK:2dlost] row. */
+qboolean R_2D_WindowSeenThisFrame( void );
+void R_2D_BeginFrame( void );
+void R_2D_OriginState( float *ox, float *oy );
 
 void RB_2D_Flush( void );
 /* The immediate (box and line) run alone, which a window change still closes. */

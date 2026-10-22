@@ -765,12 +765,6 @@ int UIWindowManager::PadNavDirection(int key)
     return 0;
 }
 
-qboolean UIWindowManager::PadHorizontal(int key)
-{
-    return key == K_LEFTARROW || key == K_RIGHTARROW
-        || key == K_PAD0_LEFTSTICK_LEFT || key == K_PAD0_LEFTSTICK_RIGHT;
-}
-
 UIWidget *UIWindowManager::PadFocusedWidget(void)
 {
     Menu     *menu = menuManager.CurrentMenu();
@@ -795,20 +789,34 @@ bool UIWindowManager::PadFocusRepeat(int key)
 {
     UIWidget *focused;
 
-    if (!PadHorizontal(key)) {
-        return false;
-    }
-
     focused = PadFocusedWidget();
 
     if (!focused) {
         return false;
     }
 
-    if (focused->isSubclassOf(UISlider)) {
-        focused->KeyEvent(key, 0);
+    /* The pad's row keeps its key while it is held, and hands back what it
+       does not want. */
+    return focused->KeyEvent(key, 0) ? true : false;
+}
+
+/* The pad's row follows the widget that took a key while the pad had none. */
+bool UIWindowManager::MovePadFocusTo(UIWidget *wid)
+{
+    Menu     *menu = menuManager.CurrentMenu();
+    UIWidget *cont;
+
+    if (!menu || !wid) {
+        return false;
     }
 
+    cont = menu->GetContainerWidget();
+
+    if (!cont || !cont->isSubclassOf(UIWidgetContainer)) {
+        return false;
+    }
+
+    ((UIWidgetContainer *)cont)->setFocusWidget(wid);
     return true;
 }
 
@@ -908,28 +916,49 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 
     /* menus walk by screen order; TAB joins the walk only where a menu owns the key */
     if ((dir != 0 || key == K_TAB) && menuManager.CurrentMenu()) {
+        UIWidget *focused;
+        UIWidget *owner;
+
         if (!dir) {
             dir = 1;
         }
 
         m_padNavActive = true;
 
-        /* The widgets that read arrows themselves -- listbox, table, console,
-           text field, slider -- get the key first and keep it. */
-        if (m_activeControl && m_activeControl->KeyEvent(key, time)) {
-            return true;
+        /* ONE row owns a navigation key: the pad's row, or the active control while
+           the pad has none.  The active control alone took it before, which starved
+           the pad's row -- a list keeps its own rows until it runs out, then hands
+           the key to the walk. */
+        focused = PadFocusedWidget();
+
+        owner = focused;
+        if (!owner && m_activeControl) {
+            owner = m_activeControl;
         }
 
-        /* A horizontal key steps the focused row instead of walking off it: a slider's
-           value and a switchbox's option are the only horizontal move that row has. */
-        if (PadHorizontal(key)) {
-            UIWidget *focused = PadFocusedWidget();
+        if (owner && owner->KeyEvent(key, time)) {
+            /* Fires only when the key went to a row the pad is not on. */
+            if (focused && owner != focused) {
+                static int s_stealRows;
 
-            if (focused && focused->KeyEvent(key, time)) {
-                m_padRepeatKey  = key;
-                m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT_DELAY;
-                return true;
+                s_stealRows++;
+                if (s_stealRows <= 8 || (s_stealRows % 240) == 0) {
+                    UIVK_PROBE("padnav:steal",
+                               "key=%d focused='%s' took='%s' menu='%s'",
+                               key,
+                               focused->getName() ? focused->getName() : "(null)",
+                               owner->getName() ? owner->getName() : "(null)",
+                               menuManager.CurrentMenu() ? menuManager.CurrentMenu()->m_name.c_str() : "(none)");
+                }
             }
+
+            if (!focused) {
+                MovePadFocusTo(owner);
+            }
+
+            m_padRepeatKey  = key;
+            m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT_DELAY;
+            return true;
         }
 
         if (MovePadFocus(dir)) {
