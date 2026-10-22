@@ -5163,6 +5163,166 @@ static void VK_Shade_FeedRow( const shaderCommands_t *input,
 				  RB_FrameCount() );
 }
 
+/* The sprite walk's bind witness.  worldset covers world batches, VK:stagebind
+   samples the whole walk on a cadence, and DOCC:sprite names the shader's own
+   stage-0 art on a budget a two-frame flash can miss -- so the one draw path that
+   never named the art it sampled was the sprite list, and the light cones flash
+   between two beamflare shafts only the bound image can tell apart.  A sprite's
+   colour is per-vertex, so the row reports the whole batch's rgba range rather
+   than the one sprite the budget picked.  It fires on first sight of a shader,
+   on any bind anomaly, and whenever that rgba range moves, which is the flash. */
+static void VK_Shade_SpriteBindWitness( const shaderCommands_t *input,
+										const shader_t *shader,
+										const shaderStage_t *pStage )
+{
+	typedef struct {
+		const shader_t	*sh;
+		int				lo[4], hi[4];
+		int				rows;
+	} spriteWatch_t;
+
+	static spriteWatch_t	s_seen[32];
+	static int				s_seenCount;
+	static int				s_anomRows;
+	const textureBundle_t	*bundle;
+	const image_t			*asked, *bound, *tenant;
+	int						lo[4], hi[4];
+	int						v, i, slot, fold, animFrame, frame;
+
+	if ( !R_ProbeMarkOn() || !input || !shader || !pStage || !r_spriteListOpen ) {
+		return;
+	}
+	if ( input->numVertexes <= 0 ) {
+		return;
+	}
+
+	bundle = &pStage->bundle[0];
+	asked  = bundle->image[0];
+	bound  = s_shade.texBound[0] ? s_shade.texImage[0] : NULL;
+	tenant = ( bound && bound->texnum < VK_MAX_TEXTURES )
+			 ? VK_Image_SlotTenant( (int)bound->texnum ) : NULL;
+	frame  = RB_FrameCount();
+
+	/* every sprite in the batch, not the one the budget happened to name */
+	for ( i = 0; i < 4; i++ ) {
+		lo[i] = 255;
+		hi[i] = 0;
+	}
+	if ( input->vertexColorValid ) {
+		for ( v = 0; v < input->numVertexes; v++ ) {
+			const unsigned char *c = &input->vertexColors[v][0];
+
+			for ( i = 0; i < 4; i++ ) {
+				if ( c[i] < lo[i] ) lo[i] = c[i];
+				if ( c[i] > hi[i] ) hi[i] = c[i];
+			}
+		}
+	} else {
+		for ( i = 0; i < 4; i++ ) {
+			lo[i] = hi[i] = -1;
+		}
+	}
+
+	slot = -1;
+	for ( i = 0; i < s_seenCount; i++ ) {
+		if ( s_seen[i].sh == shader ) {
+			slot = i;
+			break;
+		}
+	}
+	if ( slot < 0 ) {
+		if ( s_seenCount >= (int)( sizeof( s_seen ) / sizeof( s_seen[0] ) ) ) {
+			return;
+		}
+		slot = s_seenCount++;
+		s_seen[slot].sh   = shader;
+		s_seen[slot].rows = 0;
+		for ( i = 0; i < 4; i++ ) {
+			s_seen[slot].lo[i] = lo[i];
+			s_seen[slot].hi[i] = hi[i];
+		}
+		VK_Guard_Row( "VK:spritebind",
+					  "shader='%s' art='%s' tex=%d tenant='%s' n=%d "
+					  "rgba=%d..%d,%d..%d,%d..%d,%d..%d f=%d",
+					  shader->name,
+					  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
+					  asked ? (int)asked->texnum : -1,
+					  ( tenant && tenant->imgName[0] ) ? tenant->imgName
+						: ( tenant ? "(unnamed)" : "-" ),
+					  input->numVertexes,
+					  lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], lo[3], hi[3],
+					  frame );
+		return;
+	}
+
+	/* the bind anomalies: the four shapes a foreign blob takes, plus the art the
+	   stage asked for not being the art the unit holds */
+	fold = R_Bundle_StampFold( bundle, bound, &animFrame );
+	if ( !asked || !bound || bound != asked
+		 || ( tenant && tenant != asked )
+		 || VK_Texture_View( (int)asked->texnum ) == VK_NULL_HANDLE
+		 || fold != bundle->imgAnimStamp ) {
+		static const char	*why[] = { "no-art", "disarmed", "swapped",
+									   "tenant", "no-view", "stale" };
+		int					w = !asked ? 0 : !bound ? 1 : bound != asked ? 2
+						   : ( tenant && tenant != asked ) ? 3
+						   : VK_Texture_View( (int)asked->texnum ) == VK_NULL_HANDLE ? 4 : 5;
+
+		s_anomRows++;
+		if ( s_anomRows <= 48 || ( s_anomRows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:spritebind",
+						  "why=%s shader='%s' want='%s' got='%s' tex=%d "
+						  "stamp=%d/%d fr=%d tenant='%s' n=%d f=%d",
+						  why[w], shader->name,
+						  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
+						  ( bound && bound->imgName[0] ) ? bound->imgName : "(none)",
+						  bound ? (int)bound->texnum : -1,
+						  bundle->imgAnimStamp, fold, animFrame,
+						  ( tenant && tenant->imgName[0] ) ? tenant->imgName
+							: ( tenant ? "(unnamed)" : "-" ),
+						  input->numVertexes, frame );
+		}
+		return;
+	}
+
+	/* the colour moved: that is the flash, whatever it flashed to */
+	{
+		qboolean moved = qfalse;
+
+		for ( i = 0; i < 4; i++ ) {
+			if ( lo[i] != s_seen[slot].lo[i] || hi[i] != s_seen[slot].hi[i] ) {
+				moved = qtrue;
+			}
+		}
+		if ( !moved || s_seen[slot].rows > 96 ) {
+			return;
+		}
+	}
+
+	s_seen[slot].rows++;
+	for ( i = 0; i < 4; i++ ) {
+		if ( lo[i] < s_seen[slot].lo[i] ) s_seen[slot].lo[i] = lo[i];
+		if ( hi[i] > s_seen[slot].hi[i] ) s_seen[slot].hi[i] = hi[i];
+	}
+
+	s_anomRows++;
+	if ( s_anomRows > 400 ) {
+		return;
+	}
+	VK_Guard_Row( "VK:spritebind",
+				  "shift shader='%s' art='%s' tex=%d stamp=%d/%d fr=%d "
+				  "tenant='%s' n=%d rgba=%d..%d,%d..%d,%d..%d,%d..%d f=%d",
+				  shader->name,
+				  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
+				  asked ? (int)asked->texnum : -1,
+				  bundle->imgAnimStamp, fold, animFrame,
+				  ( tenant && tenant->imgName[0] ) ? tenant->imgName
+					: ( tenant ? "(unnamed)" : "-" ),
+				  input->numVertexes,
+				  lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], lo[3], hi[3],
+				  frame );
+}
+
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -5296,6 +5456,8 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	VK_PassCensus( shader, pStage, stateBits, input, colors, backEnd.in2D ? qtrue : qfalse );
 	VK_Shade_ColorStreamRow( input, colors, shader, pStage );
 
+	VK_Shade_SpriteBindWitness( input, shader, pStage );
+
 	RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
 						   tc0, tc1, tcStride, colors, input->normal[0], pStage );
 }
@@ -5422,6 +5584,8 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 					  (unsigned)pStage->colorConst[0], (unsigned)pStage->colorConst[1],
 					  (unsigned)pStage->colorConst[2], (unsigned)pStage->colorConst[3] );
 	}
+
+
 }
 
 /* One row per DISTINCT pass signature: shader, stage, stateBits, the blend
