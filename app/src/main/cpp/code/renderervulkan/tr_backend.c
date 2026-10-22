@@ -1819,11 +1819,30 @@ static void RB_ColorStreamProbe( shader_t *shader, const char *fam, int index )
 	}
 }
 
+/* names a draw whose carried index no longer matches its shader's live sortedIndex */
+void RB_NoteIndexDesync( const char *walk, shader_t *shader, int carriedIndex )
+{
+	static int	s_rows;
+
+	if ( !shader || shader->sortedIndex == carriedIndex ) {
+		return;
+	}
+
+	s_rows++;
+	if ( s_rows <= 32 || ( s_rows % 600 ) == 0 ) {
+		VK_Guard_Row( "VK:xidx",
+					  "walk=%s shader='%s' live=%d carried=%d delta=%d f=%d",
+					  walk, shader->name, shader->sortedIndex, carriedIndex,
+					  carriedIndex - shader->sortedIndex, RB_FrameCount() );
+	}
+}
+
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	shader_t		*shader, *oldShader;
 	int				entityNum, oldEntityNum;
 	int				dlightMap, oldDlightMap;
 	int				fogNum, oldFogNum;
+	shader_t		*fogShader;
 	qboolean		depthRange;
 	qboolean		bStaticModel, oldbStaticModel;
 	int				i;
@@ -1897,12 +1916,20 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		partNested0 = VK_WalkStat_Nested();
 
 		if (*drawSurf->surface != SF_SPRITE) {
-			R_DecomposeSort(drawSurf->sort, &entityNum, &shader, &fogNum, &dlightMap);
+			/* sort decomposes for entity/fog/dlight; the shader comes from the
+			   pack-time pointer, not the mutable index. */
+			R_DecomposeSort(drawSurf->sort, &entityNum, &fogShader, &fogNum, &dlightMap);
+			shader = ( drawSurf->shaderGen == tr.shaderGen ) ? drawSurf->shader : NULL;
+			RB_NoteIndexDesync( "drawsurf", shader,
+								( drawSurf->sort >> QSORT_SHADERNUM_SHIFT ) & ( MAX_SHADERS - 1 ) );
 			bStaticModel = qfalse;
 		} else {
-			shader = tr.sortedShaders[((refSprite_t*)drawSurf->surface)->shaderNum];
+			refSprite_t *spr = (refSprite_t*)drawSurf->surface;
+
+			shader = ( spr->shaderGen == tr.shaderGen ) ? spr->shader : NULL;
+			RB_NoteIndexDesync( "sprite", shader, spr->shaderNum );
 			entityNum = ENTITYNUM_WORLD;
-			fogNum = ((refSprite_t*)drawSurf->surface)->fogNum;
+			fogNum = spr->fogNum;
 			dlightMap = 0;
 			bStaticModel = qfalse;
 		}
@@ -2252,21 +2279,16 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 			refSprite_t *spr = (refSprite_t*)drawSurf->surface;
 
 			if (spr->shaderNum < 0 || spr->shaderNum >= tr.numShaders) continue;
-			shader = tr.sortedShaders[spr->shaderNum];
+			shader = ( spr->shaderGen == tr.shaderGen ) ? spr->shader : NULL;
 			if ( shader == NULL ) {
-				continue;	/* the guard named the key */
+				continue;	/* the record carries no art this generation */
 			}
-			/* a record whose index no longer names its own shader's slot */
-			if ( R_ProbeMarkOn() && shader->sortedIndex != spr->shaderNum ) {
-				static int	s_keyRows;
-
-				s_keyRows++;
-				if ( s_keyRows <= 24 || ( s_keyRows % 600 ) == 0 ) {
-					VK_Guard_Row( "DOCC:sprite",
-								  "stale shaderNum=%d sortedIndex=%d shader='%s' f=%d",
-								  spr->shaderNum, shader->sortedIndex, shader->name,
-								  RB_FrameCount() );
-				}
+			/* a record whose index no longer names its own shader's slot.  The
+			   draw above already took the pointer, so this is pure witness: it
+			   names the frames where resolving the index would have worn another
+			   shader's stages. */
+			if ( shader->sortedIndex != spr->shaderNum ) {
+				RB_NoteIndexDesync( "sprite", shader, spr->shaderNum );
 			}
 			if ((shader != oldShader || (shader->noMerge & 1)) && !shader->entityMergable)
 			{

@@ -1016,7 +1016,9 @@ void R_AddDrawSurf(surfaceType_t* surface, shader_t* shader, int fogNum, int dli
 		| tr.shiftedEntityNum
 		| (fogNum << QSORT_FOGNUM_SHIFT)
 		| (dlightMap & QSORT_DLIGHTMAP_MASK);
-	tr.refdef.drawSurfs[index].surface = surface;
+	tr.refdef.drawSurfs[index].surface   = surface;
+	tr.refdef.drawSurfs[index].shader    = shader;
+	tr.refdef.drawSurfs[index].shaderGen = tr.shaderGen;
 	tr.refdef.numDrawSurfs++;
 	R_FrontEnd_NoteAdd();
 }
@@ -1031,7 +1033,9 @@ void R_AddSpriteSurf(surfaceType_t* surface, shader_t* shader, float zDistance)
 
 	index = tr.refdef.numSpriteSurfs % MAX_SPRITES;
     tr.refdef.spriteSurfs[index].sort = (int)(MAX_SPRITE_DIST_SQUARED - zDistance) | (shader->sortedIndex << QSORT_SHADERNUM_SHIFT);
-    tr.refdef.spriteSurfs[index].surface = surface;
+    tr.refdef.spriteSurfs[index].surface   = surface;
+    tr.refdef.spriteSurfs[index].shader    = shader;
+    tr.refdef.spriteSurfs[index].shaderGen = tr.shaderGen;
     tr.refdef.numSpriteSurfs++;
 }
 
@@ -1324,14 +1328,42 @@ void R_AddSpriteSurfaces(void)
 			continue;
 		}
 
-		sprite->shaderNum = tr.currentModel->d.sprite->shader->sortedIndex;
+		/* the sprite model's shader must still be the one its name asks for */
+		if (R_ProbeMarkOn()) {
+			static	int		s_modelRows;
+			shader_t		*sprShader = tr.currentModel->d.sprite->shader;
+			char			expected[MAX_QPATH];
+
+			if (sprShader && sprShader->name[0]) {
+				COM_StripExtension(tr.currentModel->name, expected, sizeof(expected));
+				if (Q_stricmp(sprShader->name, expected)) {
+					s_modelRows++;
+					if (s_modelRows <= 32 || (s_modelRows % 200) == 0) {
+						VK_Guard_Row("VK:sprmodel",
+									 "why=model model='%s' drawing='%s' f=%d",
+									 tr.currentModel->name,
+									 sprShader->name,
+									 RB_FrameCount());
+					}
+				}
+			}
+		}
+
+		sprite->shader = tr.currentModel->d.sprite->shader;
+		sprite->shaderGen = tr.shaderGen;
+
+		if (!sprite->shader) {
+			continue;
+		}
+
+		sprite->shaderNum = sprite->shader->sortedIndex;
 
 		sprite->fogNum = R_SpriteFogNum(
 			sprite->origin,
 			sprite->scale * (tr.currentModel->d.sprite->width * tr.currentModel->d.sprite->scale));
 
 		VectorSubtract(sprite->origin, tr.refdef.vieworg, delta);
-		R_AddSpriteSurf(&sprite->surftype, tr.currentModel->d.sprite->shader, VectorLengthSquared(delta));
+		R_AddSpriteSurf(&sprite->surftype, sprite->shader, VectorLengthSquared(delta));
 	}
 }
 
