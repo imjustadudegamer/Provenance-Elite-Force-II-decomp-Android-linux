@@ -359,13 +359,8 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
                 }
             } else if (mod->type == MOD_SPRITE && mod->d.sprite
                        && mod->spriteShaderGen != tr.shaderGen) {
-                /* The r41 class one level down: SPR_RegisterSprite stored a raw
-                   shader_t* taken at whichever registration first loaded the
-                   model, and the name-cache hit above serves that pointer across
-                   the wipe -- R_AddSpriteSurfaces dereferenced whatever shader_t
-                   now lives at that address (the m1l1a gas vent wore blueplasma's
-                   stages: bluepuff art, GL_ONE GL_ONE, every frame, for the rest
-                   of the session). Re-resolve against the current table. */
+                /* a surviving sprite model must re-resolve its raw shader
+                   pointer after a table wipe (the r41 class) */
                 sprite_t      *spr = mod->d.sprite;
                 shader_t      *prev = spr->shader;
                 shader_t      *fresh;

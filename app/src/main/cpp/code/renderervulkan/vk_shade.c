@@ -5255,21 +5255,22 @@ static void VK_Shade_SpriteBindWitness( const shaderCommands_t *input,
 		return;
 	}
 
-	/* the bind anomalies: the four shapes a foreign blob takes, plus the art the
-	   stage asked for not being the art the unit holds */
+	/* swapped = the bound image is no frame of this stage's bundle (animmaps
+	   legitimately bind frame N, so image[0] is not the test) */
 	fold = R_Bundle_StampFold( bundle, bound, &animFrame );
-	if ( !asked || !bound || bound != asked
-		 || ( tenant && tenant != asked )
-		 || VK_Texture_View( (int)asked->texnum ) == VK_NULL_HANDLE
+	if ( !asked || !bound
+		 || animFrame < 0
+		 || ( tenant && tenant != bound )
+		 || VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE
 		 || fold != bundle->imgAnimStamp ) {
 		static const char	*why[] = { "no-art", "disarmed", "swapped",
 									   "tenant", "no-view", "stale" };
-		int					w = !asked ? 0 : !bound ? 1 : bound != asked ? 2
-						   : ( tenant && tenant != asked ) ? 3
-						   : VK_Texture_View( (int)asked->texnum ) == VK_NULL_HANDLE ? 4 : 5;
+		int					w = !asked ? 0 : !bound ? 1 : animFrame < 0 ? 2
+						   : ( tenant && tenant != bound ) ? 3
+						   : VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE ? 4 : 5;
 
 		s_anomRows++;
-		if ( s_anomRows <= 48 || ( s_anomRows % 600 ) == 0 ) {
+		if ( s_anomRows <= 64 || ( s_anomRows % 200 ) == 0 ) {
 			VK_Guard_Row( "VK:spritebind",
 						  "why=%s shader='%s' want='%s' got='%s' tex=%d "
 						  "stamp=%d/%d fr=%d tenant='%s' n=%d f=%d",

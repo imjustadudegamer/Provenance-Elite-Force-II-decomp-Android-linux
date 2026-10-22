@@ -208,6 +208,9 @@ typedef struct refSprite_s {
     surfaceType_t surftype;
     int hModel;
     int shaderNum;
+    /* pack-time shader + the table generation it is valid in */
+    struct shader_s *shader;
+    int shaderGen;
     float origin[3];
     float scale;
     float axis[3][3];
@@ -806,8 +809,11 @@ typedef struct {
 
 
 typedef struct drawSurf_s {
-	unsigned			sort;			
-	surfaceType_t		*surface;		
+	unsigned			sort;
+	surfaceType_t		*surface;
+	/* pack-time shader + generation; the index in `sort' is mutable */
+	struct shader_s		*shader;
+	int					shaderGen;
 } drawSurf_t;
 
 #define	MAX_FACE_POINTS		64
@@ -1139,9 +1145,7 @@ typedef struct model_s {
 
 	int			r_sequence;
 
-	/* the shader-table generation this model's sprite shader pointer was taken at;
-	   SPR_RegisterSprite stores a raw shader_t*, and a surviving sprite model must
-	   re-resolve it after R_SetupShaders rebuilds the table from zero */
+	/* generation the sprite's raw shader pointer was taken at */
 	int			spriteShaderGen;
 
     qboolean serveronly;
@@ -1915,6 +1919,7 @@ extern qboolean vk_frameOpen;
 void RB_BeginDrawingView( void );
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
 void RB_RenderSpriteSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
+void RB_NoteIndexDesync( const char *walk, shader_t *shader, int carriedIndex );
 void RB_SetupFog( void );
 const void *RB_DrawSurfs( const void *data );
 const void *RB_SpriteSurfs( const void *data );

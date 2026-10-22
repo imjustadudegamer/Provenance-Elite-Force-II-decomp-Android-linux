@@ -23,12 +23,60 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_local.h"
 
+#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 cgi.Printf
+#include "../qcommon/qa_probe.h"
+
 static pmove_t cg_pmove;
 
 static int        cg_numSolidEntities;
 static centity_t *cg_solidEntities[MAX_ENTITIES_IN_SNAPSHOT];
 static int        cg_numTriggerEntities;
 
+/* the temp box must carry CONTENTS_BODY: the trace mask never asks for less */
+#define CG_CLIP_BOX_CONTENTS CONTENTS_BODY
+
+static qboolean CG_SegmentCrossesBox(
+    const vec3_t start, const vec3_t end, const vec3_t mins, const vec3_t maxs
+)
+{
+    vec3_t dir;
+    float  tmin = 0.0f;
+    float  tmax = 1.0f;
+    int    i;
+
+    for (i = 0; i < 3; i++) {
+        dir[i] = end[i] - start[i];
+
+        if (dir[i] > -1e-8f && dir[i] < 1e-8f) {
+            if (start[i] < mins[i] || start[i] > maxs[i]) {
+                return qfalse;
+            }
+        } else {
+            float inv = 1.0f / dir[i];
+            float t1 = (mins[i] - start[i]) * inv;
+            float t2 = (maxs[i] - start[i]) * inv;
+
+            if (t1 > t2) {
+                float t = t1;
+                t1 = t2;
+                t2 = t;
+            }
+
+            if (t1 > tmin) {
+                tmin = t1;
+            }
+            if (t2 < tmax) {
+                tmax = t2;
+            }
+            if (tmin > tmax) {
+                return qfalse;
+            }
+        }
+    }
+
+    return qtrue;
+}
 
 void CG_BuildSolidList(void)
 {
@@ -75,6 +123,7 @@ void CG_ClipMoveToEntities(
 )
 {
     int            i;
+    int            boxContents;
     trace_t        trace;
     entityState_t *ent;
     clipHandle_t   cmodel;
@@ -97,7 +146,34 @@ void CG_ClipMoveToEntities(
             }
         } else {
             IntegerToBoundingBox(ent->solid, bmins, bmaxs);
-            cmodel = cgi.CM_TempBoxModel(bmins, bmaxs, CONTENTS_WINDOW);
+            boxContents = CG_CLIP_BOX_CONTENTS;
+            cmodel      = cgi.CM_TempBoxModel(bmins, bmaxs, boxContents);
+
+            /* Anomaly only: the caller asked for body hits and this temp box
+               cannot answer them, so every actor standing on the segment is
+               invisible to the trace and the impact or beam lands behind it.
+               With CG_CLIP_BOX_CONTENTS == CONTENTS_BODY the second test is
+               never true, so the row stays silent on a correct build. */
+            if (PROBE_On() && (mask & CONTENTS_BODY) && !(boxContents & CONTENTS_BODY)
+                && CG_SegmentCrossesBox(start, end, bmins, bmaxs)) {
+                static int clip_xmask_n;
+
+                if (PROBE_Throttle(&clip_xmask_n, 4, 200)) {
+                    PROBE(
+                        "clip:xmask",
+                        "ent=%d etype=%d solid=0x%x box=(%.0f,%.0f,%.0f)-(%.0f,%.0f,%.0f) "
+                        "boxcontents=0x%x mask=0x%x crossedbox=1 -> entity pass blind for this "
+                        "mask, the shot art lands behind the actor\n",
+                        ent->number,
+                        ent->eType,
+                        ent->solid,
+                        bmins[0], bmins[1], bmins[2],
+                        bmaxs[0], bmaxs[1], bmaxs[2],
+                        boxContents,
+                        mask
+                    );
+                }
+            }
         }
 
         VectorCopy(cent->lerpOrigin, origin);
