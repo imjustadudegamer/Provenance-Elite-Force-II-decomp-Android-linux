@@ -3744,6 +3744,9 @@ static void VK_Shade_DropRow( const char *why )
 {
 	static int	s_rows;
 
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
 	s_rows++;
 	if ( s_rows <= 64 || ( s_rows % 600 ) == 0 ) {
 		ri.Printf( PRINT_ALL, "[VK:drop] why=%s frame=%d drops=%d n=%d\n",

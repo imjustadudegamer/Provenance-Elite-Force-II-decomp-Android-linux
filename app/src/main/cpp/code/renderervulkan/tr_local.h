@@ -2528,7 +2528,8 @@ int		SMP_RLoadNow( void );
 void	SMP_RLoadAdd( int zone, int msec, int depth );
 
 static inline int SMP_RLoadArmed( void ) {
-	return smp_rloadStats ? smp_rloadStats->integer : 1;
+	/* master gate (qa_probe.h); the GLES3 lane already carried this AND */
+	return ( smp_rloadStats && smp_rloadStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
 }
 
 #define SMP_RLOAD_BEGIN(z) \

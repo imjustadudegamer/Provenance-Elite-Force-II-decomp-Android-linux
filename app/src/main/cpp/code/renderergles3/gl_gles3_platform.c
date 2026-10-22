@@ -75,6 +75,7 @@ static void GLES3_LogOfferedVersion(void)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 	probe = SDL_GL_CreateContext(SDL_window);
 	if (!probe) {
+		/* fault, not instrument: prints armed or not */
 		ri.Printf(PRINT_ALL,
 				  "[GLES3:gles3] context requested=%d.%d offered=\"none\" (%s)\n",
 				  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR, SDL_GetError());
@@ -84,10 +85,12 @@ static void GLES3_LogOfferedVersion(void)
 	getString = (gles3GetString_t)GLES3_ResolveProc("glGetString");
 	version   = getString ? (const char *)getString(0x1F02 /* GL_VERSION */) : NULL;
 	renderer  = getString ? (const char *)getString(0x1F01 /* GL_RENDERER */) : NULL;
-	ri.Printf(PRINT_ALL,
-			  "[GLES3:gles3] context requested=%d.%d offered=\"%s\" renderer=\"%s\"\n",
-			  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
-			  version ? version : "(null)", renderer ? renderer : "(null)");
+	if (R_ProbeStatsOn()) {
+		ri.Printf(PRINT_ALL,
+				  "[GLES3:gles3] context requested=%d.%d offered=\"%s\" renderer=\"%s\"\n",
+				  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
+				  version ? version : "(null)", renderer ? renderer : "(null)");
+	}
 	SDL_GL_DeleteContext(probe);
 }
 
@@ -113,11 +116,13 @@ static void *GLES3_ResolveProc(const char *name)
 	return p;
 }
 
-/* The loader's per-event rows are instruments; the identity and condition rows
- * are not, and print regardless. */
+/* the loader's rows are all instruments; this sink is the one gate they share
+ * (the core-missing abort below goes through ri.Error, which stays ungated) */
 static void GLES3_LogToEngine(const char *line)
 {
-	static const char *const eventRows[2] = { "[GLES3:glfixed]", "[GLES3:glcap]" };
+	static const char *const eventRows[5] = { "[GLES3:glfixed]", "[GLES3:glcap]",
+											  "[GLES3:glmissing]", "[GLES3:glinfo]",
+											  "[GLES3:build]" };
 	size_t i;
 
 	for (i = 0; i < sizeof(eventRows) / sizeof(eventRows[0]); i++) {
@@ -192,10 +197,12 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		SDL_GL_SetAttribute(SDL_GL_STEREO, 0);
 	}
 
-	ri.Printf(PRINT_ALL,
-			  "[GLES3:gles3] context attempt %s requested=%d.%d (%dx%d depth=%d stencil=%d)\n",
-			  what, GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
-			  width, height, depthBits, stencilBits);
+	if (R_ProbeStatsOn()) {
+		ri.Printf(PRINT_ALL,
+				  "[GLES3:gles3] context attempt %s requested=%d.%d (%dx%d depth=%d stencil=%d)\n",
+				  what, GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
+				  width, height, depthBits, stencilBits);
+	}
 
 	SDL_window = SDL_CreateWindow(CLIENT_WINDOW_TITLE, x, y, width, height, flags);
 	if (!SDL_window) {
@@ -220,7 +227,7 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		int missingCore = QGL_GLES3_LoadProcs(&staged);
 
 		QGL_GLES3_LogDeviceInfo();
-		{
+		if (R_ProbeStatsOn()) {
 			const char *grantedRenderer =
 				qglGetString ? (const char *)qglGetString(GL_RENDERER) : NULL;
 
@@ -229,11 +236,12 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 					  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
 					  qglesMajorVersion, qglesMinorVersion,
 					  grantedRenderer ? grantedRenderer : "(null)");
+			ri.Printf(PRINT_ALL, "[GLES3:gles3] procs=%d core=%d core32=%d core_missing=%d staged_desktop_traps=%d\n",
+					  QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), QGL_GLES3_Core32Procs(),
+					  missingCore, staged);
 		}
-		ri.Printf(PRINT_ALL, "[GLES3:gles3] procs=%d core=%d core32=%d core_missing=%d staged_desktop_traps=%d\n",
-				  QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), QGL_GLES3_Core32Procs(),
-				  missingCore, staged);
 		if (missingCore > 0) {
+			/* names the abort below */
 			ri.Printf(PRINT_ALL, "[GLES3:glmissing] core_list=%s\n",
 					  QGL_GLES3_CoreMissingList());
 			if (!gles3_gles3_allow_missing_core->integer) {
@@ -456,6 +464,7 @@ static void GLES3_InitExtensions(void)
 		QGL_GLES3_HasExtension("GL_ARB_ES3_compatibility") ? 1 : 0,
 		astc ? 1 : 0, r_ext_compress_textures->value ? 1 : 0);
 
+	if (R_ProbeStatsOn()) {
 	ri.Printf(PRINT_ALL,
 			  "[GLES3:gltex] s3tc=%d etc1=%d etc2=%d etc2_core=%d astc_ldr=%d astc_sliced_3d=%d "
 			  "-> compressed_path=%s transcode=%s software_decode=%s\n",
@@ -467,6 +476,7 @@ static void GLES3_InitExtensions(void)
 															: "none",
 			  (glConfig.textureCompression == TC_NONE &&
 			   smp_texTranscode == SMP_TEXC_NONE) ? "yes" : "no");
+	}
 
 	glConfig.textureEnvAddAvailable = (envAdd && r_ext_texture_env_add->integer) ? qtrue : qfalse;
 	glConfig.textureEnvCombineAvailable = envCombine ? qtrue : qfalse;
@@ -498,14 +508,16 @@ static void GLES3_InitExtensions(void)
 		}
 	}
 
-	ri.Printf(PRINT_ALL, "[GLES3:glcaps] env_add=%d env_combine=%d cube_map=1\n",
-			  glConfig.textureEnvAddAvailable ? 1 : 0,
-			  glConfig.textureEnvCombineAvailable ? 1 : 0);
+	if (R_ProbeStatsOn()) {
+		ri.Printf(PRINT_ALL, "[GLES3:glcaps] env_add=%d env_combine=%d cube_map=1\n",
+				  glConfig.textureEnvAddAvailable ? 1 : 0,
+				  glConfig.textureEnvCombineAvailable ? 1 : 0);
+	}
 }
 
 void GLimp_Init(qboolean fixedFunction)
 {
-	if (fixedFunction) {
+	if (fixedFunction && R_ProbeStatsOn()) {
 		ri.Printf(PRINT_ALL, "[GLES3:gles3] GLimp_Init(fixedFunction=1) -- GLES 3.0 "
 							 "has no fixed-function pipeline; GLSL ES 3.0 programs "
 							 "replace it (G2)\n");

@@ -1001,7 +1001,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
              * reaches a device log, and a dropped skel surface is the flat-blue /
              * missing-model end state.  Name it at the master gate, throttled. */
             static int skelbail_rows;
-            if (PROBE_Throttle(&skelbail_rows, 4, 240)) {
+            if (PROBE_On() && PROBE_Throttle(&skelbail_rows, 4, 240)) {
                 ri.Printf(
                     PRINT_ALL,
                     "[GLES3:skelbail] arena=%d cursor=%d bones=%d model='%s' f=%d\n",

@@ -3760,7 +3760,10 @@ void R_SetupShaders(void)
 	shadertext_t* shaderText;
 	int hash;
 
-    ri.Printf(0, "Setting up Shaders\n");
+    /* load banner: master gate */
+    if (R_ProbeStatsOn()) {
+        ri.Printf(0, "Setting up Shaders\n");
+    }
     currentShader = NULL;
     for (hash = 0; hash < FILE_HASH_SIZE; ++hash)
     {

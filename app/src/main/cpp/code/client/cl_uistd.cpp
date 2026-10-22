@@ -2523,7 +2523,7 @@ UIInventoryBar::UIInventoryBar()
         if (!shadow_inv) {
             shadow_inv = Cvar_Get("shadow_invStats", "0", 0);
         }
-        if (shadow_inv && shadow_inv->integer && shadow_invRows < 8) {
+        if (PROBE_On() && shadow_inv && shadow_inv->integer && shadow_invRows < 8) {
             UColor c = getBackgroundColor();
             Com_Printf("[SHADOW:inv] ctor bar.bg=(%.3f,%.3f,%.3f,%.3f) "
                        "selWidget.bg=(%.3f,%.3f,%.3f,%.3f) typeWidget.bg=(%.3f,%.3f,%.3f,%.3f)\n",
@@ -4329,7 +4329,7 @@ void UIRadarDialog::Draw(void)
 
     {
         static int uiparityuivp3d_radar;
-        if ((uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d_radar, 2, 120)) {
+        if (PROBE_On() && (uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d_radar, 2, 120)) {
             Com_Printf(
                 "[UIPARITY:uivp3d] radar refdef %d,%d %dx%d | origin %d,%d rect %dx%d\n",
                 refdef.x, refdef.y, refdef.width, refdef.height,

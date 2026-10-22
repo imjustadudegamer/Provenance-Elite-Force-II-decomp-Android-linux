@@ -635,8 +635,11 @@ int VK_Device_Select( void )
 	VK_LogDevice( &list[best], bestScore, 1 );
 
 	if ( !vk.multiDrawIndirect ) {
-		VK_Guard_Row( "VK:guard",
-					  "site=quirk detail=\"multiDrawIndirect absent (Mali class) - not required, not enabled\" result=success(0) n=1" );
+		/* capability note, not a fault: master gate */
+		if ( R_ProbeStatsOn() ) {
+			VK_Guard_Row( "VK:guard",
+						  "site=quirk detail=\"multiDrawIndirect absent (Mali class) - not required, not enabled\" result=success(0) n=1" );
+		}
 	}
 
 	free( handles );
