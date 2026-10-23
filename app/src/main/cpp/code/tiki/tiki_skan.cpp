@@ -17,6 +17,10 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #include "../skeletor/skeletor.h"
 #include "tiki_files.h"
 
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
+
 #include <stddef.h>
 
 extern "C" void TIKI_Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -306,10 +310,100 @@ static void TIKI_Skan_QuatMul(const float *q, const float *p, float *r)
     r[3] = q[3] * p[3] - q[0] * p[0] - q[1] * p[1] - q[2] * p[2];
 }
 
+/* A missing anim->bone map is only the identity when the two tables are the
+   same size; otherwise the skeleton index is not a channel index at all. */
+static int TIKI_Skan_ChannelForBone(const int *mapping, skelAnimHeader_t *hdr, int numBones, int bone)
+{
+    if (mapping) {
+        return mapping[bone];
+    }
+    if (hdr && numBones == hdr->numbones && bone >= 0 && bone < hdr->numbones) {
+        return bone;
+    }
+    return -1;
+}
+
+/* slot 1 is the head controller (fgame ACTOR_HEAD_TAG); names the row the head
+   bone actually sampled.  A correct build resolves it to its own name. */
+static void TIKI_Skan_HeadCantProbe(
+    dtiki_t                *tiki,
+    skelHeaderGame_t       *skel,
+    int                     bone,
+    const char             *boneName,
+    const int              *mapping,
+    skelAnimHeader_t       *hdr,
+    const float            *cq,
+    const float            *w)
+{
+    const char *chanName;
+    int         mapped;
+    vec3_t      head;
+
+    if (!PROBE_On()) {
+        return;
+    }
+
+    if (!boneName || stricmp(boneName, "Bip01 Head")) {
+        CHAN_PROBE(
+            "head",
+            "why=bone tiki=%s slot1bone=%d name='%s' bones=%d\n",
+            tiki->name,
+            bone,
+            boneName ? boneName : "?",
+            skel->numBones
+        );
+        return;
+    }
+
+    /* A bone absent from the anim maps to -1 by design and takes its base row;
+       only a lost mapping makes the skeleton index stand in for a channel. */
+    if (!mapping && hdr && skel->numBones != hdr->numbones) {
+        QuatToAngles(w, head);
+        CHAN_PROBE(
+            "head",
+            "why=nomap tiki=%s bone=%d head='%s' bones=%d chans=%d "
+            "ctl=(%.1f,%.1f,%.1f) headang=(%.1f,%.1f,%.1f)\n",
+            tiki->name,
+            bone,
+            boneName,
+            skel->numBones,
+            hdr->numbones,
+            cq[0],
+            cq[1],
+            cq[2],
+            head[0],
+            head[1],
+            head[2]
+        );
+        return;
+    }
+
+    mapped   = TIKI_Skan_ChannelForBone(mapping, hdr, skel->numBones, bone);
+    chanName = NULL;
+    if (mapped >= 0 && hdr) {
+        chanName = (const char *)hdr + hdr->ofsChannelNames + 36 * mapped + 4;
+    }
+
+    if (mapped >= 0 && (!chanName || stricmp(chanName, boneName))) {
+        CHAN_PROBE(
+            "head",
+            "why=chan tiki=%s bone=%d head='%s' chan=%d chan='%s' bones=%d chans=%d\n",
+            tiki->name,
+            bone,
+            boneName,
+            mapped,
+            chanName ? chanName : "?",
+            skel->numBones,
+            hdr ? hdr->numbones : -1
+        );
+    }
+}
+
 const short int *TIKI_Skan_RecordRow(
     skelAnimHeader_t *hdr,
     skelFrame_t      *frameRec,
     const int        *mapping,
+    int               numBones,
     int               bone,
     float             baseLen,
     const char       *boneName,
@@ -321,7 +415,7 @@ const short int *TIKI_Skan_RecordRow(
     float            ratio = 1.0f;
     int              mapped;
 
-    mapped = mapping ? mapping[bone] : bone;
+    mapped = TIKI_Skan_ChannelForBone(mapping, hdr, numBones, bone);
 
     if (mapped != -1 && hdr) {
         float chanLen = *(const float *)((const byte *)hdr + hdr->ofsChannelNames + 36 * mapped);
@@ -459,7 +553,7 @@ static void TIKI_Skan_SolveChannelBone(
     int              i;
 
     row = TIKI_Skan_RecordRow(
-        ch->mainHdr, ch->mainRec, ch->mainMap, bone, baseLen, boneName, bindRow, &ratio
+        ch->mainHdr, ch->mainRec, ch->mainMap, skel->numBones, bone, baseLen, boneName, bindRow, &ratio
     );
 
     if (!row) {
@@ -478,7 +572,7 @@ static void TIKI_Skan_SolveChannelBone(
 
     if (ch->mode != 1) {
         row = TIKI_Skan_RecordRow(
-            ch->aHdr, ch->aRec, ch->aMap, bone, baseLen, boneName, bindRow, &ratio
+            ch->aHdr, ch->aRec, ch->aMap, skel->numBones, bone, baseLen, boneName, bindRow, &ratio
         );
 
         if (!row) {
@@ -503,7 +597,7 @@ static void TIKI_Skan_SolveChannelBone(
 
     if (ch->mode == 3) {
         row = TIKI_Skan_RecordRow(
-            ch->crossHdr, ch->crossRec, ch->crossMap, bone, baseLen, boneName, bindRow, &ratio
+            ch->crossHdr, ch->crossRec, ch->crossMap, skel->numBones, bone, baseLen, boneName, bindRow, &ratio
         );
 
         if (!row) {
@@ -717,6 +811,11 @@ int TIKI_SkelBonesFromRecords(
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
             TIKI_Skan_QuatMul(w, cq, w);
+            if (n == 1) {
+                TIKI_Skan_HeadCantProbe(
+                    tiki, skel, b, boneName, ch->mainMap, ch->mainHdr, cq, w
+                );
+            }
             break;
         }
 
