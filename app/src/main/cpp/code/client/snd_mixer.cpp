@@ -54,12 +54,8 @@ qboolean SndMix_LimiterWanted(void)
 
 /* ----------------------------------------------------------- envelope pool */
 
-/* 10 ms blocks of K-shaped RMS, one row per sound that ever started on a
-   protected bus.  PCM is in hand only while set_sfx uploads it, so the
-   analysis runs there, once per sound.  The pool is bounded: a sound longer
-   than the block cap keeps its first blocks, and once the entry cap is hit
-   later sounds fall back to the voice-level detector, which only ever
-   over-ducks. */
+/* 10 ms blocks of K-shaped RMS, one row per sound that ever started on a protected bus, analysed once in set_sfx while the PCM is in hand.  The pool is
+   bounded: a sound longer than the block cap keeps its first blocks, and past the entry cap later sounds fall back to the voice-level detector. */
 #define SNDMIX_ENV_BLOCK_MS    10
 #define SNDMIX_ENV_MAX_BLOCKS  600
 #define SNDMIX_ENV_MAX_ENTRIES 128
@@ -126,10 +122,8 @@ static float DuckDepthDb(int bus)
 
 /* ------------------------------------------------------- K-shape (approx) */
 
-/* A two-stage approximation of the BS.1770 pre-filter: a 1st-order high-pass
-   near 40 Hz for DC and rumble, then a +4 dB shelf above 1.5 kHz.  Not a
-   certified loudness meter -- the duck threshold and the anchor are ear-tuned
-   cvars and the anchor is clamped to +-6 dB. */
+/* a two-stage approximation of the BS.1770 pre-filter -- a 1st-order high-pass near 40 Hz, then a +4 dB shelf above 1.5 kHz.  Not a certified loudness
+   meter: the duck threshold and the anchor are ear-tuned cvars and the anchor is clamped to +-6 dB. */
 typedef struct {
     float fB0, fB1, fB2, fA1, fA2;
     float fX1, fX2, fY1, fY2;

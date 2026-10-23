@@ -412,15 +412,9 @@ qboolean VK_Frame_Begin( int slot )
    mistaken for a starved swapchain, short enough that the walk comes back. */
 #define VK_ACQUIRE_TIMEOUT_NS	100000000ULL
 
-/* VUID-07783 is conditional, not blanket: the timeout must not be UINT64_MAX
-   when forward progress cannot be guaranteed.  Forward progress is exactly
-   "every acquired image comes back", and the back end knows whether it does,
-   because it counts them.  Below the limit the acquire blocks indefinitely,
-   which is the Khronos samples' shape and what Android drivers want -- Adreno
-   refuses finite timeouts here and turns them into a per-frame warning with
-   ragged pacing.  At or past the limit this boot held all 4 images, so
-   blocking indefinitely is the wedge itself, and the finite timeout turns it
-   into a skipped frame while retire hands the images back. */
+/* VUID-07783 is conditional, not blanket: the timeout must not be UINT64_MAX when forward progress cannot be guaranteed, and the back end
+   knows whether every acquired image comes back because it counts them.  Below the limit the acquire blocks indefinitely (Adreno refuses
+   finite timeouts here); at or past the limit this boot held all 4 images, so the finite timeout turns the wedge into a skipped frame. */
 static uint64_t VK_Frame_AcquireTimeout( void )
 {
 	uint32_t spare = vk.swapchainImageCount;
@@ -490,12 +484,8 @@ qboolean VK_Frame_Acquire( int slot )
 	}
 
 #if defined( __ANDROID__ )
-	/* Android replaced the ANativeWindow across suspend (SDL releases the old
-	   handle in onNativeSurfaceDestroyed and fetches a new one in
-	   onNativeSurfaceCreated, and it recreates nothing for Vulkan).  The driver
-	   is not obliged to report SURFACE_LOST for a surface whose window is gone,
-	   so the window identity -- not an error return -- is the deterministic
-	   signal; rebinding before the acquire costs one compare per frame. */
+	/* Android replaced the ANativeWindow across suspend and the driver is not obliged to report SURFACE_LOST for a surface whose window is gone,
+	   so the window identity -- not an error return -- is the deterministic signal; rebinding before the acquire costs one compare per frame. */
 	if ( vk.swapchain == VK_NULL_HANDLE ) {
 		/* A recreate that already failed once lands here every frame after: the
 		   walk would short-circuit on the NULL below forever.  Retrying is the
@@ -664,24 +654,8 @@ void VK_Frame_RecordEnd( int slot )
 	vk_back_end_slot = -1;
 }
 
-/* A walk that opened the pass and then left without PRESENT used to leave the
-   fence reset and the command buffer recording: the next Begin on that slot was
-   the wait that never returned.  Worse, it kept the acquired image.
-
-   The pass and the image are the back end's, so closing them is the back end's
-   job on every exit.  Retire ends the pass -- finalLayout is PRESENT_SRC, so the
-   image is presentable the instant the pass ends -- submits what was recorded,
-   which also re-arms the fence so the next Begin on this slot waits on a real
-   submission again, and presents, which is the only way the presentation engine
-   ever gets an image back.  Acquire and present are therefore paired by
-   construction rather than by convention: every RC_VK_BEGIN acquires, and both
-   exits from the pass, the PRESENT marker and this retire, hand the image back.
-
-   The contents are whatever the walk managed to record, so a retired frame can
-   show a partial image.  That is the correct cost of a walk that died early; the
-   alternative was holding the image until the swapchain wedged.  Only a submit
-   the queue refused still leaves an image held, and that is a device failure the
-   guard names rather than a path this function can repair. */
+/* a walk that opened the pass and left without PRESENT used to leave the fence reset, the buffer recording and the acquired image held -- the next Begin on that
+   slot was the wait that never returned.  Retire ends the pass, submits, re-arms the fence and presents, so acquire and present are paired by construction; a retired frame may show a partial image. */
 void VK_Frame_Retire( int slot )
 {
 	if ( !vk.passOpen ) {

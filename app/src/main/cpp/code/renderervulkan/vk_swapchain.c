@@ -184,13 +184,8 @@ qboolean VK_Swapchain_Plan( vkSwapchainPlan_t *plan, int windowWidth, int window
 	plan->supportedTransforms = caps.supportedTransforms;
 	plan->currentExtent = caps.currentExtent;
 
-	/* The presentation engine transforms the image by (currentTransform relative
-	   to preTransform).  The front end authors a landscape frame in the surface's
-	   landscape extent, so on Android the pre-rotation must be IDENTITY: claiming
-	   currentTransform (ROTATE_90 on a portrait-native panel) tells the compositor
-	   the frame is already rotated and it presents a portrait image.  Android
-	   lists every transform as supported, so IDENTITY is the safe claim; on a
-	   surface that does not offer it, fall back to the surface's own answer. */
+	/* the presentation engine transforms the image by (currentTransform relative to preTransform), so on Android the pre-rotation must be IDENTITY:
+	   claiming currentTransform tells the compositor the frame is already rotated and it presents a portrait image.  Android lists every transform as supported, so IDENTITY is the safe claim. */
 #if defined(__ANDROID__)
 	if ( caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR ) {
 		plan->preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;

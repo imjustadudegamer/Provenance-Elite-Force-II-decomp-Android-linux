@@ -272,13 +272,9 @@ protected:
        therefore restored to its authored geometry instead of keeping an old factor. */
     float    m_hudScale = 1.0f;
     bool     m_hudScaleSet = false;
-    /* One descent per UI update. `MenuManager::UpdateAllMenus' walks every registered menu
-       container and `UIWindowManager::UpdateViews' then walks the window manager, whose children
-       are those same containers, so the same visible subtrees were descended twice. The window
-       manager also owns children that are not menu containers (View3D, the miniconsole), so its
-       walk must stay; the stamp makes the second descent over a subtree already walked this update
-       a no-op instead. A node reached twice in one update is the same node with the same
-       visibility, so repeating it changes nothing. */
+    /* one descent per UI update: MenuManager::UpdateAllMenus walks every registered menu container and UIWindowManager::UpdateViews then walks the same
+       containers as its own children, so the same visible subtrees were descended twice.  The window manager also owns children that are not menu containers, so its
+       walk stays and the stamp makes a second descent over a subtree already walked this update a no-op. */
     int m_updateStamp = -1;
 
 public:

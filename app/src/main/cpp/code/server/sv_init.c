@@ -350,13 +350,9 @@ static int	s_spawnTotalT0;
 #define SPAWN_LEG_END( leg ) \
 	do { if ( PROBE_On() ) { s_spawnLegs[ leg ] += Sys_Milliseconds() - s_spawnLegT0[ leg ]; } } while ( 0 )
 
-/* The twelve legs bracket the fresh-map path. A solo savegame load runs the other arm of the `if (
-   loadgame )` fork and skips both `if ( !ge )` and `if ( !loadgame )`, so the work it does needs
-   windows of its own; they are a separate table so the twelve legs keep their meaning. A window
-   never contains a leg and a leg never contains a window, so the sum of the two tables is the
-   measured time and the residual is what neither covers. Windows: 0 the name parse and
-   first-initialisation block, 1 the hunk clear, map load name, checksum feed, portals and world
-   clear, 2 the loadgame level restore, 3 the post-spawn gaps and the tail. */
+/* the twelve legs bracket the fresh-map path: a solo savegame load runs the other arm of the `if ( loadgame )' fork and skips both `if ( !ge )' and
+   `if ( !loadgame )', so it needs windows of its own (0 name parse and first init, 1 hunk clear/map load/checksum/portals/world clear, 2 the loadgame
+   level restore, 3 the post-spawn gaps and tail).  A window never contains a leg and a leg never contains a window. */
 #define SPAWN_WIN_COUNT 4
 #define SPAWN_WIN_NAME		0
 #define SPAWN_WIN_SETUP		1
@@ -596,6 +592,15 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		}
 
 		if ( !SV_ArchiveLevelFile( levelExt, serverExt, qtrue ) ) {
+			if ( !sublevelLoad ) {
+				/* retail (SV_SpawnServer @0x1DE820) drops to a fresh level here;
+				   a silently unscripted level is worse than a refused load */
+				SAVE_PROBE( "load", "slot %s restore failed: %s unreadable, refusing the fresh-level fallback\n",
+				           svs.gameName, levelExt );
+				Com_Error( ERR_DROP, "Savegame '%s' could not be restored; load refused.\n",
+				           svs.gameName );
+			}
+
 			loadgame = qfalse;
 			sv.restarting = qfalse;
 		}

@@ -2403,12 +2403,9 @@ static int R_SurfStatClaim( surfStatRow_t *rows, int *used, int cap,
 	return SURFSTAT_NEW;
 }
 
-/* One row per distinct stage bind, reported by every stage path that binds a bundle -- the generic
-   iterator through `GLES3_DrawStage' and the lightmapped multitexture iterator, which is the fast
-   path most world geometry takes and which bound its bundles directly, so the census never saw the
-   level. The row carries the raw flags word and both bits apart, and it is claimed against one of
-   three budgets: the arm actually firing, a bind that did not follow the stage's own image, or
-   neither. `want' is the stage's own image for the unit, `u' is what is bound there now. */
+/* one row per distinct stage bind, reported by every stage path that binds a bundle -- the generic iterator through `GLES3_DrawStage' and the lightmapped
+   multitexture iterator, which bound its bundles directly so the census never saw the level.  The row carries the raw flags word and both bits apart, claimed
+   against the arm actually firing, a bind that did not follow the stage's own image, or neither; `want' is the stage's own image, `u' what is bound now. */
 void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 							int stageIndex, qboolean in2D,
 							unsigned w0, unsigned w1, unsigned u0, unsigned u1 )

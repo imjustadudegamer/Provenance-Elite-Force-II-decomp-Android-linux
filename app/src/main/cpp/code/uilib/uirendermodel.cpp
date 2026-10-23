@@ -318,19 +318,9 @@ void UIRenderModel::Draw(void)
     UIWidget::Draw();
 
     {
-        /* One row per model per frame for the first frames of a screen, then
-           sparsely.  The shared PROBE_Throttle counter this replaced sampled
-           whichever widget happened to land on the throttle's phase and hid the
-           other: the CONTROLS boot carried 17 rows for its munro preview and
-           none at all for the 0,0,640x480 stardome, so the composition the blue
-           background depends on could not be read.  This site answers per
-           widget, and it comes after UIWidget::Draw -- the row is the fill that
-           was just painted, which is what a flat background wash is. */
-        /* Keyed on the widget, not on a global draw counter: CONTROLS is the one
-           front-end screen that draws two UIRenderModels every frame, and a
-           single counter sampled every 240 rows aliases exactly with the
-           two-per-frame pattern, so every sample landed on the same widget and
-           the second model never appeared in a boot. */
+        /* one row per model per frame for the first frames of a screen, then sparsely: the shared PROBE_Throttle counter this replaced sampled whichever widget
+           landed on the throttle's phase and hid the other (the CONTROLS boot carried 17 rows for its munro preview and none for the stardome).  Keyed on the widget,
+           and it comes after UIWidget::Draw, so the row is the fill that was just painted. */
         static const void *s_menu3dWidget[16];
         static int         s_menu3dRows[16];
         static int         s_menu3dWidgets;

@@ -124,6 +124,7 @@ public:
 	void setName(const str& name);
 	void setModified(bool modified)				{ _modified = modified; }
 	void setType(GameplayValueType type)		{ _type = type; }
+	void retypeFromString(const str& valuestr);
 	bool setStringValue(const str& valuestr);
 	bool setFloatValue(float valuefloat);
 	bool setVectorValue(const Vector& vector);

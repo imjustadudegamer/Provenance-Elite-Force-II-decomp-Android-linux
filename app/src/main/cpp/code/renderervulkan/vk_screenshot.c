@@ -24,20 +24,10 @@ root, for more details.
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- the save-game screenshot ------------------------------------------- *
- *
- * SV_Savegame writes the thumbnail by executing `saveshot <file> 256 256`
- * (sv_ccmds.c), which forwards to `screenshot`; retail's Load Game panel then
- * shows that file.  This lane declared R_ScreenShot_f and registered no
- * renderer command at all, so the save wrote no image and the panel kept
- * showing whatever an earlier build had left on disk.
- *
- * The read runs at the present seam, not where the command is walked: a swap
- * image is only readable once the frame that drew it has been submitted and
- * presented, so the request is carried to the seam and answered there against
- * the image that was just presented.  That is the one readback in the lane
- * that is fence-synchronised and returns the composited frame.
- * ------------------------------------------------------------------------- */
+/* ---- the save-game screenshot ------------------------------------------- */
+/* SV_Savegame writes the thumbnail by executing `saveshot <file> 256 256' (sv_ccmds.c), which forwards to `screenshot', and this lane had
+   declared R_ScreenShot_f and registered no renderer command at all.  The read runs at the present seam, because a swap image is only readable
+   once the frame that drew it has been submitted and presented -- the one readback in the lane that is fence-synchronised and returns the composited frame. */
 
 #define VK_SHOT_MAXNAME	256
 

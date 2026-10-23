@@ -46,12 +46,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 vec4_t r_colorWhite = { 1.0, 1.0, 1.0, 1.0 };
 
-/* The 2D colour as RECORDED, in this (the front end's) thread.  The walk's copy
- * is backEnd.color2D, which only RB_2D_SetColor -- reached from the RC_2D_COLOR
- * record -- may write: it is the walk's 2D batch state, and a front-end write
- * raced every read the walk makes of it (the span's per-quad colour, a box, a
- * line, a glyph run), so the colour an element drew with was whichever thread
- * wrote last.  White is RB_InitBackend's initial value. */
+/* the 2D colour as RECORDED, in this (the front end's) thread: the walk's copy is backEnd.color2D, which only RB_2D_SetColor may
+   write -- a front-end write raced every read the walk makes of it, so the colour an element drew with was whichever thread wrote last. */
 static byte r_color2D[4] = { 255, 255, 255, 255 };
 
 /* the reference renderer's tr_draw.c carries this note in full */
@@ -168,14 +164,8 @@ static void D2_End( int slot, int t0 ) {
 
 /* the reference renderer's tr_draw.c carries this note in full */
 static int D2_Prepare( void ) {
-	/* The twin's prefix flushed the recorded frame; there is no immediate mode
-	   here, so the FLUSH collapses to nothing.  The timestamp must not: D2_End
-	   drops a zero t0, so returning 0 here left every slot whose recorder goes
-	   through D2_Prepare -- box, stretchpic, stretchpic2, tilepic, setwindow,
-	   scissor, lineloop, trianglepic -- reading 0 in the [2D:sum] roll, which
-	   reads as "the boxes never reach the 2D path" when the box path is exactly
-	   what they are.  Only setcolor and drawstring, which take D2_T0 directly,
-	   were ever counted. */
+	/* the twin's prefix flushed the recorded frame and there is no immediate mode here, so the FLUSH collapses to nothing; the timestamp
+	   must not, because D2_End drops a zero t0 and every recorder through D2_Prepare read 0 in the [2D:sum] roll.  Only setcolor and drawstring, which take D2_T0 directly, were ever counted. */
 	return D2_T0();
 }
 
@@ -240,22 +230,8 @@ static int       s_2dTriBase;
 
 /* ---- the 2D batch's spans ------------------------------------------------ */
 
-/* A widget sets its own window (and often its own scissor) before it draws, so
-   a menu's 2D run is a state change every few quads.  Ending the surface at each
-   one re-did the stage pass for a handful of vertices: pipeline lookup, texture
-   and descriptor bind, uniform ring slice, index copy, draw.  None of that is
-   what changed -- only the ortho push constant and the viewport and scissor,
-   which are dynamic state -- so the batch keeps one span per state and the draw
-   re-applies each span's copy before the span's own indexed draw.  The quads,
-   their order and their clip rects are unchanged; what goes away is the surface
-   work per widget.
-
-   Each span is (firstIndex, ortho, window rect, scissor rect).  Span i draws the
-   indexes [first[i], first[i+1]) of the batch's index range, and the last span
-   runs to the batch's end.
-
-   The span a quad belongs to is the state the quad was AUTHORED under, so it is
-   recorded when the quad is written (RB_2D_SpanQuad).  A guess is not needed when the authoring site can say. */
+/* a widget sets its own window (and often its own scissor) before it draws, so ending the surface at each change re-did the stage pass for a handful of vertices.
+   Only the ortho push constant and the viewport and scissor change, so the batch keeps one span per state, recorded when the quad is written (RB_2D_SpanQuad). */
 #define RB_2D_SPAN_MAX	256
 
 static float	s_2dSpanOrtho[RB_2D_SPAN_MAX][16];
@@ -298,13 +274,8 @@ void RB_2D_SpanGet( int i, int *firstIndex, int *count, float *ortho, int *win, 
 	memcpy( scn, s_2dSpanScn[i], sizeof( s_2dSpanScn[i] ) );
 }
 
-/* One 2D batch quad is about to be appended: the state in force is the state it
-   is authored under, and a change of state opens the next span.  Returns qfalse
-   when the span table is full, in which case the batch is still intact and the
-   caller closes it before writing this quad -- the same arm its own tess
-   overflow takes.  A run whose state cannot be named at all is marked
-   unnameable, and the draw then falls back to the batch-wide state the change
-   itself leaves, as before. */
+/* one 2D batch quad is about to be appended: a change of state opens the next span, and qfalse means the span table is full, in which case
+   the caller closes the (still intact) batch before writing this quad.  A run whose state cannot be named is marked unnameable and falls back to the batch-wide state. */
 static qboolean RB_2D_SpanQuad( void ) {
 	float	ortho[16];
 	int		win[4], scn[4];
@@ -340,12 +311,8 @@ static qboolean RB_2D_SpanQuad( void ) {
 		return qtrue;
 	}
 	if ( s_2dSpanCount >= RB_2D_SPAN_MAX ) {
-		/* Every span so far still carries the state its own quads were authored
-		   under, so closing the batch here draws them correctly and the quads
-		   after it reopen with a fresh table.  The old fallback marked the whole
-		   batch unnamed, which drew it under the command buffer's scissor --
-		   some other widget's clip, and the shape that landed a tricorder page
-		   in a strip. */
+		/* every span so far still carries the state its own quads were authored under, so closing the batch here draws them correctly; the old
+		   fallback marked the whole batch unnamed, which drew it under some other widget's clip. */
 		{
 			static int	s_rows;
 
@@ -423,14 +390,9 @@ void RB_2D_FlushImmediate( void ) {
 
 /* ---- the state a one-shot 2D writer draws under --------------------------- */
 
-/* A glyph run, a box run, a line loop, a triangle or a raw frame draws at its
-   own record, and the 2D batch an earlier widget left open is usually still
-   open there: closing it replays the batch's spans, and a span re-applies the
-   BATCH's ortho, window and scissor.  The writer therefore takes the state its
-   record was queued under before that flush and re-applies it after, which is
-   what a span already does for a queued quad.  The mirrors hold the queued
-   state here because the walk meets the records in the order the front end
-   queued them. */
+/* a glyph run, a box run, a line loop, a triangle or a raw frame draws at its own record while the 2D batch an earlier widget left open is
+   usually still open there: closing it replays the batch's spans and re-applies the BATCH's ortho, window and scissor, so the writer takes the
+   state its record was queued under before that flush and re-applies it after. */
 static qboolean s_2dOwnValid;
 static float	s_2dOwnOrtho[16];
 static int		s_2dOwnWin[4];
@@ -486,23 +448,11 @@ void RB_2D_Flush( void ) {
 	RB_2D_FlushImmediate();
 }
 
-/* The hunk-clear notify: the arena the batch's shader and stages live in is
-   freed right after this returns, and this runs on the FRONT END's thread.  The
-   pending 2D work is therefore DROPPED, never drawn -- RB_2D_Flush() would draw,
-   and RB_EndSurface reaches RB_StageIterator2D and RB_StagePass, which write
-   vk.commandBuffers[s_rbSlot] on the walk thread's command buffer while s_rbSlot
-   is still -1 (RB_FrameOpen, tr_backend.c, sets it), i.e. an index of -1.
-   The normal path never reaches that: RB_2D_Flush is guarded on s_2dBatchOpen
-   and RB_2D_FlushImmediate on s_2dTriOpen, and both walk exits flush before a
-   frame ends -- VK_Frame_RecordEnd (vk_frame.c) on the present path and
-   VK_Frame_Retire on the abandoned one -- so between frames this function is a
-   draw-free no-op either way and the span reset below is all it does.  What
-   clearing the two flags removes is the misuse path where one is open here.
-   Both are DROPPED rather than committed: the batch's shader and stages are the
-   memory being freed, and the immediate run's vertices are already in the vertex
-   ring (not the arena) with a Vulkan pipeline and image, so leaving its run open
-   costs nothing -- the next immediate draw ends and commits it on the walk
-   thread, which is where a draw belongs. */
+/* the hunk-clear notify: the arena the batch's shader and stages live in is freed right after this returns and this runs on the front end's
+   thread, so the pending 2D work is DROPPED, never drawn -- RB_2D_Flush would write vk.commandBuffers[s_rbSlot] while s_rbSlot is still -1.
+   The normal path never reaches that: both walk exits flush before a frame ends (VK_Frame_RecordEnd / VK_Frame_Retire), so between frames this
+   is a draw-free no-op and the span reset below is all it does.  Clearing the two flags removes the misuse path where one is open here; both are
+   DROPPED rather than committed, since the immediate run's vertices are already in the vertex ring and the next immediate draw commits it on the walk thread. */
 void RB_2D_OwnersPurged( void ) {
 	s_2dBatchOpen   = qfalse;
 	s_2dBatchShader = NULL;

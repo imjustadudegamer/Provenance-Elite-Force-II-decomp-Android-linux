@@ -31,13 +31,9 @@ extern "C" {
 #define MAX_SKELBONES   TIKI_BONE_CACHE
 #define MAX_SKELMORPH 12800
 
-/* Two arenas, because the pose indexes them by front-end frame parity. The pose writes
-   TIKI_Skel_Bones_Arena[tr.smpFrame] (tr_model.cpp) and the back end reads
-   TIKI_Skel_Bones_Arena[RB_FrameBoneArena()] (tr_model.cpp:1611), and smpFrame alternates 0/1
-   (tr_scene.c:49) -- so one arena is the double-buffer bug: every odd frame posed a full arena
-   MAX_SKELBONES*sizeof(skelBoneCache_t) past the array and read its cursor out of the first bone
-   cache's own bytes. That is the third occurrence of the menu-3d flat-blue family (r134-menu3d R1,
-   ledger \S11.2), this time with the reset present and landing out of bounds. */
+/* two arenas, because the pose indexes them by front-end frame parity: the pose writes TIKI_Skel_Bones_Arena[tr.smpFrame] and the back end reads
+   TIKI_Skel_Bones_Arena[RB_FrameBoneArena()], and smpFrame alternates 0/1 -- so one arena is the double-buffer bug: every odd frame posed a full arena past the array
+   and read its cursor out of the first bone cache's own bytes. */
 #ifndef TIKI_BONE_ARENAS
 #define TIKI_BONE_ARENAS 2
 #endif

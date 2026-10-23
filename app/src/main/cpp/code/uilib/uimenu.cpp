@@ -704,13 +704,9 @@ Menu *MenuManager::FindMenu(str name)
 }
 
 #ifdef __ANDROID__
-/* Composition contract: this runs AFTER MENU3DVideoMenuResolutionFixup at every
-   open, and it must re-clear what that one added -- the r_mode SwitchBox takes
-   the aspect rows and android_aspect here, so the resolution rows only exist on
-   the desktop.  It is also the only owner of this row's visibility: the
-   load-time adapt pass must not disable it (see s_adaptRowsAndroid), because a
-   disabled widget is skipped by Menu::ShowMenu and the aspect options would
-   never be reachable. */
+/* composition contract: this runs AFTER MENU3DVideoMenuResolutionFixup at every open and must re-clear what that one added -- the r_mode SwitchBox takes the
+   aspect rows and android_aspect here, so the resolution rows only exist on the desktop.  It is also the only owner of this row's visibility: a disabled widget is
+   skipped by Menu::ShowMenu and the aspect options would never be reachable. */
 static void MENU3DAndroidVideoMenuFixup(Menu *menu)
 {
     UIWidget *menu3dcont;
@@ -856,14 +852,9 @@ static void AUDIOAudioMenuFixup(Menu *menu)
 #endif
 
 
-/* The shipped video page carries only the 2003 4:3 rows: menu_video.urc bakes
-   six SwitchBox options and six reslist addpopups, all "set r_mode N".  The
-   operator asked for the standard 16:9 rows interleaved by width, and both
-   rows are rebuilt here from this table at menu open -- the shipped data in
-   the pak stays untouched and every label and command keeps its shape.  The
-   indices are the renderer's r_vidModes (renderervulkan/tr_init.c): 0-11 are
-   retail's, 12-14 are this port's widescreen additions; keep the two in
-   step. */
+/* the shipped video page carries only the 2003 4:3 rows (menu_video.urc bakes six SwitchBox options and six reslist addpopups, all "set r_mode N"); both rows
+   are rebuilt here from this table at menu open, so the shipped data in the pak stays untouched.  The indices are the renderer's r_vidModes (renderervulkan/tr_init.c):
+   0-11 are retail's, 12-14 this port's widescreen additions; keep the two in step. */
 typedef struct {
     int         mode;
     const char *label;
@@ -936,20 +927,9 @@ static void MENU3DVideoMenuResolutionFixup(Menu *m)
     }
 }
 
-/* The main menu's lower-left version corner.  menu_main.urc ships the corner as
-   a pair of serpentinelight-10 labels -- the literal "EF2" at 20,455 and the
-   `shortversion' label beside it at 40,455 -- and this port's shortversion is
-   its own number (qcommon/common.c registers it CVAR_ROM from PRODUCT_VERSION),
-   so retail's text is replaced in place rather than stacked beside: the pair is
-   collapsed onto the first label, which is re-titled to the same string the
-   startup banner prints, and the second is disabled.  Nothing is created; the
-   widget's own font, colours and border survive.  The frame must move AND
-   re-justify: widgets draw centered in their own frame by default
-   (uiwidget.cpp), the label clips to its own frame (uiwidget.cpp Rend_Scissor),
-   and the banner string is wider than the 25 the file authored for "EF2" -- a
-   centered draw in a narrow frame loses both ends at the scissor.  Left
-   justification keeps the authored left edge as the anchor and the widened
-   frame just carries the string.  menu_main.urc keeps its bytes. */
+/* the main menu's lower-left version corner: menu_main.urc ships it as a pair of serpentinelight-10 labels and this port's shortversion is its own number, so retail's
+   text is replaced in place -- the pair collapses onto the first label, re-titled to the banner string, the second disabled, and menu_main.urc keeps its bytes.  The frame
+   must move AND re-justify: widgets draw centered in their own frame, the label clips to it, and the banner is wider than the 25 authored for "EF2", so the draw is left-justified. */
 static void MENUVersionCornerFixup(Menu *m)
 {
     UIWidget *maincont;
@@ -982,17 +962,9 @@ static void MENUVersionCornerFixup(Menu *m)
             mainw->setTitle(str("P:EF2 ") + PRODUCT_VERSION_FULL);
             mainw->setFontHorizontalAlignment(FONT_JUSTHORZ_LEFT);
 
-            /* the authored `rect' path, and with the FIFTH argument: a 4-arg
-               rect moves the live frame but leaves m_authoredFrame holding the
-               urc's 25-wide "EF2" frame, and every menu re-derive runs
-               ChangeResolution, which re-derives the frame FROM
-               m_authoredFrame (and overwrites m_size/m_startingpos with the
-               result) -- the widened width died on the next menu open.  The
-               fifth arg makes LayoutRect drop the latch and re-derive, so the
-               banner frame becomes the authored frame and survives every later
-               re-derive.  320 holds the longest banner string with room to
-               spare; the draw is left-justified, so the extra width stays
-               empty rather than shifting the text. */
+            /* the authored `rect' path, and with the FIFTH argument: a 4-arg rect moves the live frame but leaves m_authoredFrame holding the urc's 25-wide
+               "EF2" frame, and every menu re-derive runs ChangeResolution, which re-derives the frame FROM m_authoredFrame -- the widened width died on the next
+               menu open.  The fifth arg makes LayoutRect drop the latch; 320 holds the longest banner string, and the draw is left-justified. */
             rect->AddFloat(20.0f);
             rect->AddFloat(455.0f);
             rect->AddFloat(320.0f);
@@ -1488,26 +1460,14 @@ static adaptRow_s s_adaptRows[] = {
     {"controls",      NULL,                         NULL,                          NULL,          "menu/mp/bar-fix" },
 };
 
-/* These rows stay hidden on BOTH targets because the option does not exist in
-   this lane, not because the menu is Android's: `r_texturebits` is registered
-   (renderervulkan/tr_init.c:173) and never read again, and
-   `r_arb_multisample` / `r_ext_nv_multisample_filter` are not referenced there
-   at all -- every pipeline it builds is VK_SAMPLE_COUNT_1_BIT (vk_draw.c:293,
-   vk_pipeline.c:228, vk_shade.c:2369).  The controls row hides retail's bind
-   scrollbar, which this port's own bind tables replace.  A shown-but-dead
-   option is worse than a hidden one. */
+/* these rows stay hidden on BOTH targets because the option does not exist in this lane, not because the menu is Android's: `r_texturebits' is registered and
+   never read again, and `r_arb_multisample' / `r_ext_nv_multisample_filter' are not referenced at all (every pipeline is VK_SAMPLE_COUNT_1_BIT).  The controls row
+   hides retail's bind scrollbar, which this port's own bind tables replace. */
 
 #ifdef __ANDROID__
-/* Options the port DOES service, hidden only because the Android build's menus
-   were trimmed for touch.  The Linux build shows retail's rows for them.
-
-   The video page's r_mode row is NOT in this table: MENU3DAndroidVideoMenuFixup
-   owns that row and turns it into the android_aspect selector, so disabling it
-   here (UIWidget::Disable hides) hides the very widget the fixup repurposes --
-   Menu::ShowMenu then skips the disabled widget on every open and the aspect
-   options never appear.  Only the resolution pulldown is named here, because
-   ShowMenu re-shows an enabled widget and would cancel the fixup's own per-open
-   hide of it. */
+/* options the port DOES service, hidden only because the Android build's menus were trimmed for touch; the Linux build shows retail's rows.  The video page's
+   r_mode row is NOT in this table: MENU3DAndroidVideoMenuFixup owns it and turns it into the android_aspect selector, so disabling it here hides the very widget the
+   fixup repurposes.  Only the resolution pulldown is named here, since ShowMenu re-shows an enabled widget and would cancel the fixup's own per-open hide. */
 static adaptRow_s s_adaptRowsAndroid[] = {
     {"video",         NULL,                         NULL,                          "reslist",     NULL              },
     {"video",         "$$FullScreen$$",             "r_fullscreen",                NULL,          NULL              },
@@ -1574,14 +1534,9 @@ static void AdaptHideNamed(UIWidget *container, const char *const *names, int co
 }
 #endif /* __ANDROID__ */
 
-/* Widget builders the touch section owns.  Its gate used to be the presence of
-   `cl_touchLook', and that cvar reached Linux because the launcher staged the
-   retail install's loose base/global/default.cfg, which shadowed the port's own
-   copy inside zpak-android.pk3, so the Linux settings menus grew a whole Touch
-   Controls section.  Neither the loose copy nor the boot cfg exec exists any
-   more (the defaults ship compiled in ef2_android_defaults.h), and gating the
-   section and its helpers themselves means a stray cvar or config can never
-   re-inject it, which the cvar test could not promise. */
+/* widget builders the touch section owns.  Its gate used to be the presence of `cl_touchLook', which reached Linux because the launcher staged the retail
+   install's loose default.cfg that shadowed the port's own copy, so the Linux settings menus grew a Touch Controls section.  Neither the loose copy nor the boot cfg
+   exec exists any more, and gating the section itself means a stray cvar or config can never re-inject it. */
 #ifdef __ANDROID__
 static UIWidget *AdaptWidget(
     UIWidget *parent, const char *resource, const char *name, float x, float y, float w, float h
@@ -1715,13 +1670,8 @@ static void AdaptTouchSection(UIWidget *container)
 
     AdaptTouchSlider(container, "TouchLook", 115, "Touch Look Sensitivity", "cl_touchLook",
                      "0.5", "6.0", "0.1", "Look sensitivity on the touch pad");
-    /* the deadzone, not the overlay: cl_touchScale and cl_touchOpacity only size
-       and fade the onscreen buttons (sdl_input.c IN_TouchScale, cl_scrn.cpp's
-       draw scale/opacity), so their rows went.  joy_threshold is the axis
-       deadzone itself (sdl_input.c zeroes the axis below it) and its compiled
-       default 0.15 is the EF1 answer key's own value; the range starts at EF1's
-       own 0.05 floor (ui_controls2.c) and puts that default a third of the way
-       up. */
+    /* the deadzone, not the overlay: cl_touchScale and cl_touchOpacity only size and fade the onscreen buttons, so their rows went.  joy_threshold is the axis
+       deadzone itself and its compiled default 0.15 is the EF1 answer key's own value; the range starts at EF1's 0.05 floor and puts that default a third of the way up. */
     AdaptTouchSlider(container, "JoystickDeadzone", 139, "Joystick Deadzone", "joy_threshold",
                      "0.05", "0.35", "0.01", "How far the stick must move before it responds");
     AdaptTouchCheckbox(container, "TouchCrouchToggle", 163, "Crouch Toggle", "cl_crouchToggle",

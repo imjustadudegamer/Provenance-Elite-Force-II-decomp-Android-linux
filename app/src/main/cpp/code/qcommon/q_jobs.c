@@ -149,17 +149,9 @@ static int SDLCALL JobPool_Worker( void *arg ) {
 void JobPool_InitCritical( const char *name, int requestedWorkers ) {
 	jobs_pool.critical = 1;
 
-	/* One private instance per module (q_jobs.h T2): this jobs_pool is the
-	   calling module's own, so a client pool that started earlier never set
-	   `started' here and there is no client pool to take over.  A pool that IS
-	   already running is adopted, never rebuilt: JobPool_Shutdown zeroes
-	   numJobs/nextJob/pending without the producer lock, so a caller sitting
-	   inside JobPool_ParallelRange would reach RunAndWait with numJobs 0, run a
-	   batch of zero ranges and lose every one of them -- and a caller still in
-	   its Add loop would write over the reset cursor, running some ranges twice
-	   and not at all.  RE_Shutdown joins the walk and stops the pool first, so
-	   a restart that does want a new worker count goes through Shutdown on a
-	   quiesced seam and keeps that path. */
+	/* one private instance per module (q_jobs.h T2): this jobs_pool is the calling module's own.  A pool that IS already running is adopted, never rebuilt --
+	   JobPool_Shutdown zeroes numJobs/nextJob/pending without the producer lock, so a caller inside ParallelRange would run a batch of zero ranges and lose them.
+	   RE_Shutdown joins the walk and stops the pool first. */
 	if ( jobs_pool.started ) {
 		return;
 	}

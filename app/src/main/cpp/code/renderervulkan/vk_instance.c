@@ -55,22 +55,9 @@ static const char *vk_requestedLayers[8];
 static uint32_t vk_numRequestedLayers;
 static VkDebugUtilsMessengerEXT vk_debugMessenger = VK_NULL_HANDLE;
 
-/* One row per DISTINCT message, then counters.
- *
- * This callback used to print every message the layer produced.  That is the
- * right shape only while the layer is quiet: the operator's 2026-10-15 09:28
- * run, the first with validation armed by the launcher, produced 105,618
- * copies of one VUID (the 2D bind's dynamicOffsetCount, fixed in this round)
- * and the run spent its own frame time inside this printf -- `[PERF:walk] ui'
- * read 4.82 ms with validation armed against 0.19 ms with it off, i.e. the
- * instrument was ~96% of the bucket it was being read through, and the log
- * grew to 74 MB.
- *
- * Deduping on the message id keeps what caught the bug -- the first occurrence
- * of every distinct VUID, printed in full, so a new class of error is never
- * hidden -- and makes the repeats cost a counter.  A repeated id still says so
- * on a geometric schedule, and the total is always rowed, so nothing is
- * silently dropped. */
+/* one row per DISTINCT message, then counters: printing every layer message was right only while the layer was quiet -- the first validation-armed
+   run produced 105,618 copies of one VUID and spent ~96% of the [PERF:walk] ui bucket inside this printf (74 MB of log).  Deduping on the message id keeps the
+   first occurrence of every distinct VUID in full, so a new class of error is never hidden, and repeats cost a counter on a geometric schedule. */
 #define VK_VALID_ID_MAX		64
 static uint32_t	s_validId[VK_VALID_ID_MAX];
 static int		s_validHits[VK_VALID_ID_MAX];

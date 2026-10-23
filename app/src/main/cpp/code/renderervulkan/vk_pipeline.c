@@ -46,14 +46,9 @@ typedef struct {
 
 static vkPipelineState_t vk_pipeline;
 
-/* The vertex attribute locations a shader stage actually consumes, as a bitmask.
-   Read out of the module's own SPIR-V: every Input-storage OpVariable whose id
-   carries a Location decoration (the vertex stream's layout is one fixed stride,
-   and an attribute the stage does not read may not be declared in the pipeline's
-   vertex input state -- "Vertex attribute at location N not consumed by vertex
-   shader", the OutputNotConsumed class the layer reported once per pipeline).
-   Returns 0xFFFFFFFF when the module cannot be read, so an unreadable module
-   keeps today's bind-everything behaviour rather than dropping a real input. */
+/* the vertex attribute locations a shader stage actually consumes, as a bitmask, read out of the module's own SPIR-V: an attribute the stage does
+   not read may not be declared in the pipeline's vertex input state ("Vertex attribute at location N not consumed by vertex shader").  Returns
+   0xFFFFFFFF when the module cannot be read, so an unreadable module keeps the bind-everything behaviour. */
 unsigned int VK_Pipeline_VertexInputMask( const unsigned int *code, unsigned int words )
 {
 	unsigned int mask = 0;
@@ -83,12 +78,8 @@ unsigned int VK_Pipeline_VertexInputMask( const unsigned int *code, unsigned int
 					break;
 				}
 
-				/* OpDecorate = 71, Decoration Location = 30.  The instruction
-				   is (wordCount << 16) | opcode, then target id, decoration,
-				   literal -- a Location decoration is FOUR words and the value
-				   is the fourth.  Reading it as five words with the operands
-				   shifted by one matched nothing and returned the
-				   bind-everything mask, which is the warning left unfixed. */
+				/* OpDecorate = 71, Decoration Location = 30: the instruction is (wordCount << 16) | opcode, then target id, decoration, literal -- a
+				   Location decoration is FOUR words and the value is the fourth.  Reading it as five words matched nothing and returned the bind-everything mask. */
 				if ( dop == 71 && dwc >= 4 && code[j + 1] == id && code[j + 2] == 30 ) {
 					if ( code[j + 3] < 32 ) {
 						mask |= ( 1u << code[j + 3] );

@@ -1129,12 +1129,9 @@ void TIKI_CacheAnim(const char *path)
     TIKI_RegisterAnim(path, qtrue);
 }
 
-/* Retail TIKI_RegisterTiki @0x000FC900:76-83 re-registers a warm alias whose
-   entry has no data or no users -- numusers is what carries the entry through
-   SkeletorCacheCleanCache, so skipping it hands the level's own animations to
-   the next unload.  Only a RESIDENT entry is re-registered: a resident slot is
-   still owned by its own path, a dropped slot may name another path, and an
-   unloaded alias keeps its paging-by-index shape. */
+/* retail TIKI_RegisterTiki @0x000FC900:76-83 re-registers a warm alias whose entry has no data or no users -- numusers is what carries the entry through
+   SkeletorCacheCleanCache, so skipping it hands the level's own animations to the next unload.  Only a RESIDENT entry is re-registered: a resident slot is still owned
+   by its own path, a dropped slot may name another. */
 int TIKI_Anim_RetainAlias(int alias)
 {
     if (alias < 0 || alias >= MAX_TIKI_ALIASES) {

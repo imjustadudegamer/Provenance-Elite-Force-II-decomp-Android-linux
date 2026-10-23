@@ -62,12 +62,8 @@ typedef struct {
 	float    deviceW, deviceH; 
 } touchControlState_t;
 
-/* A pill's key field is a KEY, not a command: sdl_input.c queues it as an
-   SE_KEY and the binding executor runs whatever that key's bind carries, so
-   each row rides the keyboard's own bind and must follow it when the pad rows
-   move.  TRICORDER rides '6' = warpinv 6, retail's own weapon-select row
-   (global/default.cfg) for the inventory group global/inventory.scr typedefs
-   as 6 -- Tricorder / Tricorder-stx / Tricorder-rom. */
+/* a pill's key field is a KEY, not a command: sdl_input.c queues it as an SE_KEY and the binding executor runs whatever that key's bind carries, so each
+   row rides the keyboard's own bind and must follow it when the pad rows move.  TRICORDER rides '6' = warpinv 6, retail's own weapon-select row for the inventory group. */
 static const tcActionButton_t tcActionButtons[] = {
 	{ 0.845f, 0.775f, 0.062f, 0.050f, K_MOUSE1,             "FIRE",     LCARS_MARS,      qfalse, qtrue  },
 	{ 0.945f, 0.640f, 0.042f, 0.034f, K_MOUSE2,             "ALT",      LCARS_ORANGE,    qfalse, qtrue  },

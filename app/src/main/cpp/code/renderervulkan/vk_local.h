@@ -111,12 +111,8 @@ typedef struct {
 	VkExtent2D currentExtent;
 } vkSwapchainPlan_t;
 
-/* The device side of the frame.  be= contains the frame-fence wait, but the wait
-   is the device draining a single pass that holds the clear, the world, the
-   sprites and the 2D batch; a fence number alone cannot say which of them to cut.
-   The walk writes a GPU timestamp whenever the work class changes, so the next
-   row attributes the pass.  There is one pass per frame, so these buckets are
-   that pass's phases; the terminal mark is end-of-pass and carries no bucket. */
+/* the device side of the frame: be= contains the frame-fence wait, but the wait is the device draining one pass that holds the clear, the world, the
+   sprites and the 2D batch.  The walk writes a GPU timestamp whenever the work class changes, so the row attributes the pass; the terminal mark is end-of-pass. */
 enum {
 	VK_GPU_CLEAR = 0,  /* pass open: the colour/depth clear and pass setup */
 	VK_GPU_WORLD,      /* RC_DRAW_SURFS: world/static surface geometry */
@@ -188,12 +184,8 @@ typedef struct {
 	VkDeviceMemory vertexMemory;
 	VkCommandBuffer uploadCmd;
 	VkCommandPool commandPool;
-	/* The walk's frame buffers come from commandPool.  Every transient upload,
-	   readback and arena bake comes from the CALLING THREAD's own one-shot pool
-	   (VK_Upload_Pool): a pool is host-synchronised for its whole lifetime
-	   including recording (Vulkan 1.4 s6.2, vkspec.txt:14741), and the arena
-	   bake records across a frame, so no transaction lock can cover a pool both
-	   threads share. */
+	/* the walk's frame buffers come from commandPool; every transient upload, readback and arena bake comes from the CALLING THREAD's own one-shot
+	   pool (VK_Upload_Pool), because a pool is host-synchronised for its whole lifetime including recording and the arena bake records across a frame. */
 	VkCommandBuffer commandBuffers[VK_FRAMES_IN_FLIGHT];
 	VkFence fences[VK_FRAMES_IN_FLIGHT];
 	/* A wait is only owed to a submission this engine made and has not retired:
@@ -314,12 +306,8 @@ int VK_Platform_Validation( void );
 int RB_FrameSmpFrame( void );
 int RB_FrameCount( void );
 
-/* ---- the object lifetime census (master gate) ----------------------------
-   Every object class the renderer owns is counted made/gone and reported with
-   the registration generation it belongs to, so a handle whose lifetime
-   crosses a map change is visible as a live count that never returns to zero.
-   The creation sites in the other lanes' files call VK_Life_NoteCreate/Destroy
-   with the kind that names them. */
+/* ---- the object lifetime census (master gate) ---------------------------- */
+/* every object class the renderer owns is counted made/gone with the registration generation it belongs to, so a handle whose lifetime crosses a map change reads as a live count that never returns to zero */
 enum {
 	VK_LIFE_IMAGE = 0,
 	VK_LIFE_PASS,
@@ -388,13 +376,8 @@ void VK_WalkStat_Req( int what );
 void VK_WalkStat_TakeElisions( long long *out, long long *reqOut );
 void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfsOut,
 					   long long *framesOut );
-/* -1 is "not timed", so a real reading of 0 is still a reading.  The reading
-   has to be 64-bit: BE_Microseconds truncates to int, so it goes negative once
-   the machine has been up 2^31 us -- 35.8 minutes -- and a sentinel compared
-   against a negative clock value discards every reading.  The differences stay
-   int-sized, so the engine's own
-   `BE_Microseconds() - t0` idiom is untouched; only the sentinel moves to a
-   clock that cannot collide with it. */
+/* -1 is "not timed", so a real reading of 0 is still a reading, and the reading has to be 64-bit: BE_Microseconds truncates to int and goes
+   negative after 2^31 us of uptime (35.8 minutes), where a sentinel compared against a negative clock discards every reading.  The differences stay int-sized. */
 #define VK_WALK_T0()        ( VK_WalkStatOn() ? BE_Microseconds64() : -1LL )
 #define VK_WALK_ADD(t0, ph) do { if ( (t0) >= 0 ) { VK_WalkStat_Add( (ph), BE_Microseconds64() - (t0) ); } } while ( 0 )
 

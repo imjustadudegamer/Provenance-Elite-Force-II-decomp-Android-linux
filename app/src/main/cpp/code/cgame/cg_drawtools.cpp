@@ -441,13 +441,6 @@ void CG_DrawCrosshair()
     }
 }
 
-//   * NOT customShader.  That is retail's FX-overlay image index (SDK q_shared.h:1734,
-//   * NOT infoIcon.  In retail that is the MULTIPLAYER info icon: SDK q_shared.h:1768
-//     Entity::UpdateInteractiveType (code/fgame/entity.cpp) -- a field retail has never
-
-
-
-// The box slots (+0xA3C74..+0xA3C80) and lastReveal (+0xA3D98) are NOT part of it, so
 static void CG_ResetTargetIdentifier(void)
 {
     cg_ident.entnum    = -1;

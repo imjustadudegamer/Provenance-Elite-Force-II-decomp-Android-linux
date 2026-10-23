@@ -388,23 +388,10 @@ static VkAccessFlags VK_Texture_LayoutAccess( VkImageLayout layout )
 
 /* ---- the staged upload lifecycle ----------------------------------------- */
 
-/* A chain's mips are staged into one buffer and copied in one submit, instead
-   of a buffer, a submit and a wait per mip.  Two lifetimes carry it and neither
-   free touches the other:
+/* a chain's mips are staged into one buffer and copied in one submit.  Two lifetimes carry it and neither free touches the other: `queue' the record array
+   (VK_Texture_QueueReserve / QueueFree) and `epoch' the staging buffer and its map (StagingReserve / StagingFree after the fence reads them). */
 
-     queue  the record array: grown by VK_Texture_QueueReserve before anything
-            is staged, released only by VK_Texture_QueueFree, whose only caller
-            is the texture's own destroy.  A path that appends a record cannot
-            run through an array it released itself.
-     epoch  the staging buffer and its map: opened by VK_Texture_StagingReserve,
-            which returns qtrue only with a map covering the bytes it was asked
-            for, closed by VK_Texture_StagingFree after the fence read them.
-
-   A record is queued only after both have succeeded, so at the memcpy and at
-   the append the map and the array are both live. */
-
-/* a mip chain is bounded by its largest level, and the region list rides the
-   stack below this count */
+/* a mip chain is bounded by its largest level, and the region list rides the stack below this count */
 #define VK_TEXTURE_FLUSH_REGIONS 16
 /* the copy's bufferOffset is a multiple of the format's texel block
    (VUID-vkCmdCopyBufferToImage-dstImage-07975); the widest block this module
@@ -700,12 +687,8 @@ static qboolean VK_Texture_UploadPerMip( vkTexture_t *tex, int mipLevel, int wid
 		goto done;
 	}
 
-	/* The copy wants TRANSFER_DST, and the image may be in any layout the boot
-	   already left it in: a refill hits SHADER_READ_ONLY, a later level of the
-	   same chain hits TRANSFER_DST.  One barrier from the TRACKED layout covers
-	   both, and its declared oldLayout is the layout the image actually holds
-	   -- declaring SHADER_READ_ONLY over an image that is in TRANSFER_DST is
-	   exactly the InvalidImageLayout the layer reported. */
+	/* the copy wants TRANSFER_DST and the image may be in any layout the boot already left it in (a refill hits SHADER_READ_ONLY, a later level
+	   hits TRANSFER_DST): one barrier from the TRACKED layout covers both, and its declared oldLayout is the layout the image actually holds. */
 	if ( tex->layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
 		VK_Texture_Barrier( cmd, tex->image, tex->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							VK_Texture_LayoutAccess( tex->layout ),
@@ -1241,15 +1224,9 @@ qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],
 		goto done;
 	}
 
-	/* A copy source must be in a transfer layout, and a texel of a
-	   block-compressed image lives inside a block: a 1x1 region at (x,y)
-	   violates the format's block extent, the queue family's transfer
-	   granularity, and the layout rule -- three VUIDs, one per baked surface.
-	   The image is copied where it is (the layout it is actually in, which this
-	   module tracks per texture) after a barrier into TRANSFER_SRC_OPTIMAL, the
-	   region is the block that holds the texel, aligned down and clipped to the
-	   subresource edge (the spec lets an extent that is not a whole number of
-	   blocks end there), and the bytes are picked apart on the CPU. */
+	/* a copy source must be in a transfer layout, and a texel of a block-compressed image lives inside a block: a 1x1 region at (x,y) violates the
+	   format's block extent, the queue family's transfer granularity and the layout rule -- three VUIDs, one per baked surface.  The image is copied where it is after a
+	   barrier into TRANSFER_SRC_OPTIMAL, the region is the block that holds the texel clipped to the subresource edge, and the bytes are picked apart on the CPU. */
 	{
 		VkImageMemoryBarrier	barrier;
 		int						bw = 1, bh = 1;

@@ -126,14 +126,8 @@ qboolean R_ProbeMarkOn( void )
 	return cached ? qtrue : qfalse;
 }
 
-/* The renderer's own clock.  It was `ri.Milliseconds() * 1000`, which is a
-   millisecond value scaled: every `usec=` row it feeds (the sync waits, the 2D
-   phases, the upload prices) was therefore quantised to a millisecond, and a
-   cost under one read as zero.  A stage bind is far below that, so the walk's
-   attribution had no resolution where the time actually goes.  CLOCK_MONOTONIC
-   is the real microsecond source; the 2^32 us range wraps in ~71 minutes and
-   every caller reads a difference, so the truncation is the engine's own
-   Milliseconds idiom, not a new trap. */
+/* the renderer's own clock: `ri.Milliseconds() * 1000' quantised every usec= row it feeds to a millisecond, so a cost under one read as zero
+   (a stage bind is far below that).  CLOCK_MONOTONIC is the real microsecond source; the 2^32 us range wraps in ~71 minutes and every caller reads a difference. */
 int BE_Microseconds( void )
 {
 	struct timespec ts;

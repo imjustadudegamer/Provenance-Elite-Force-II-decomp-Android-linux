@@ -616,12 +616,6 @@ typedef struct
 
 	// PORT-ONLY SLOTS -- appended, NOT part of retail's game_import_t.
 
-
-
-
-	// retail one-argument slot now serves them and this port-only slot is gone.
-	// FS_FOpenFileByMode), so the retail slot serves them and this port-only
-
    } game_import_t;
 
 typedef struct gameExport_s {

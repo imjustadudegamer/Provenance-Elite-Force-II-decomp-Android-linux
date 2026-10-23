@@ -183,13 +183,9 @@ void VKimp_FillConfig( glconfig_t *glconfig, int width, int height, float aspect
 }
 
 #ifdef __ANDROID__
-/* Android hands the app a DIFFERENT ANativeWindow after every suspend: SDL2's
-   onNativeSurfaceDestroyed releases the old one and onNativeSurfaceCreated fetches
-   the new one (SDL_android.c), and it recreates the EGL surface for GL itself while
-   doing nothing for Vulkan -- so the VkSurface built at first light from the old
-   window is dead after the first sleep, and every acquire/present on it fails
-   forever.  SDLActivity only signals resume once mIsSurfaceReady, so by the time
-   the engine sees the foreground the new window exists and this rebind is legal. */
+/* Android hands the app a DIFFERENT ANativeWindow after every suspend (SDL releases the old one and fetches a new one, recreating the EGL surface
+   for GL and nothing for Vulkan), so the VkSurface built at first light is dead after the first sleep and every acquire/present on it fails forever.
+   SDLActivity only signals resume once mIsSurfaceReady, so by the time the engine sees the foreground the new window exists and this rebind is legal. */
 qboolean VK_Surface_Refresh( void )
 {
 	/* Also the recovery path for a surface that a previous refresh already lost:
@@ -638,7 +634,8 @@ static void SMP_RLoadFlush( int window ) {
 	static const char *zoneName[SMP_RLZ_COUNT] = {
 		"world", "bspread", "shaders", "lightmap", "lods",
 		"reginit", "imginit", "setup", "findimg", "decode",
-		"transcode", "upload", "modelreg"
+		"transcode", "upload", "modelreg",
+		"shparse", "findsync", "texcreate"
 	};
 	char	line[1024], part[64];
 	int		i, mean10, frames, unacctW;
@@ -745,12 +742,9 @@ qboolean VK_EnsureBroughtUp( const char *where )
 	rmode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
 	mode = rmode ? rmode->integer : VK_PLATFORM_FALLBACK_MODE;
 
-	/* The entry row is informational, not a guard hit: the guard ledger answers
-	   "did a Vulkan call fail", and VK_INCOMPLETE here is a marker that reads as
-	   a failure result (site=device result=incomplete n=1) without one.  The
-	   real failure is the row below, which stays a hit. */
-	/* informational, and a quiet boot carries no informational rows: the failure
-	   below is the loud arm (guard hit + ri.Error) */
+	/* the entry row is informational, not a guard hit: the guard ledger answers "did a Vulkan call fail" and VK_INCOMPLETE here reads as a failure
+	   result without one.  The real failure is the row below, which stays a hit. */
+	/* informational, and a quiet boot carries no informational rows: the failure below is the loud arm (guard hit + ri.Error) */
 	if ( R_ProbeStatsOn() ) {
 		VK_Guard_Row( "VK:bringup", "site=%s entry", where );
 	}

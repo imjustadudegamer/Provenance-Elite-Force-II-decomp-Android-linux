@@ -737,12 +737,8 @@ void RB_FontRunDraw( VkCommandBuffer cb, fontString2DCommand_t *cmd, const fontG
 		return;
 	}
 
-	/* The surface opens first.  An earlier widget's 2D batch is usually still
-	   open at this record, and closing it replays the batch's spans -- each of
-	   which re-applies the BATCH's scissor.  Applying the run's own clip before
-	   that left the glyphs drawing under the previous widget's clip, which is
-	   the confirmation dialog whose panel drew and whose text rasterised
-	   nothing. */
+	/* the surface opens first: an earlier widget's 2D batch is usually still open at this record and closing it replays the batch's spans, each
+	   of which re-applies the BATCH's scissor -- applying the run's own clip before that left the glyphs drawing under the previous widget's clip. */
 	RB_BeginSurface( cmd->shader, 0 );
 
 	/* The run's own placement and clip, applied where the run draws: the flush

@@ -580,13 +580,8 @@ static int				vk_numProgModules;
 static vkProgram_t	vk_programs[VK_PROG_MAX];
 static int				vk_numPrograms;
 
-/* Every boot-persistent cache in this file is looked up by value and was
-   searched by walking the entries it had filled, so the per-draw cost grew with
-   the boot instead of staying flat.  VK_GetProgram is one of them: it is asked
-   once per stage of every surface, and its table is 256 long.  Each index below
-   stores the entry index plus one, so 0 is "empty", and the insert uses the same
-   probe the lookup starts at, so an inserted key is always found.  The index is
-   at least twice its table, so a full table still leaves an empty slot. */
+/* the value-keyed caches are indexed, not walked: each index stores entry+1 (0 = empty), the insert probes from
+   the lookup's start, and the index is twice its table, so a probe never runs off the end. */
 #define VK_PROG_HASH 512
 static int				s_programIndex[VK_PROG_HASH];
 
@@ -595,12 +590,8 @@ static unsigned VK_ProgramHash( unsigned defines )
 	return ( defines * 2654435761u ) & ( VK_PROG_HASH - 1u );
 }
 
-/* The module table is 682 entries and the permutation path asks for one
-   (family, defines, stage) triple per stage request -- 367 a frame in the
-   15:34 boot.  One open
-   addressed index, built once from the same table, answers in a probe or two.
-   The def's key is (family, defines-without-the-family-byte, isFragment), which
-   is exactly what the callers pass. */
+/* the module table is 682 entries and the permutation path asks one (family, defines, stage) triple per stage request; this
+   open-addressed index, keyed (family, defines-minus-the-family-byte, isFragment), answers in a probe or two. */
 #define VK_MODULE_HASH 2048
 static int				s_moduleIndex[VK_MODULE_HASH];	/* stored as slot + 1, 0 = empty */
 
@@ -659,12 +650,8 @@ static const vkShaderModuleDef_t *VK_Program_Find( int family, unsigned defines,
 	return ( slot >= 0 ) ? &vk_progModules[slot].def : NULL;
 }
 
-/* The lookup key is (family, permutation bits).  A program's defines bitmask
-   carries its family in the high byte, so the caller's key still holds those
-   bits; the offline table stores the family in its own field and keeps only the
-   permutation bits in defines.  Strip the family byte here, or every non-STAGE
-   family asks for a permutation the table never names -- STAGE hides the bug
-   because VKP_FAMILY_STAGE is zero. */
+/* the lookup key is (family, permutation bits): a program's defines carry the family in the high byte while the offline
+   table keeps it in its own field.  Strip the family byte here or every non-STAGE family asks a permutation the table never names. */
 static qboolean VK_Program_Modules( int family, unsigned defines, VkShaderModule *vert, VkShaderModule *frag )
 {
 	int v;
@@ -790,15 +777,8 @@ vkProgram_t *VK_GetProgram( unsigned defines )
 		}
 	}
 	if ( vk_numPrograms >= VK_PROG_MAX ) {
-		/* Every fixed-size table here answers exhaustion the same way: name it
-		   through the guard and hand back a failure the draw path already
-		   refuses -- VK_Shade_Pipeline returns VK_NULL_HANDLE, VK_Shade_Set
-		   returns VK_NULL_HANDLE, the UBO ring and the vertex ring return their
-		   own failure.
-		   NULL is safe end to end -- the uniform setters only fill the s_ubo
-		   staging block, and VK_Shade_Bind refuses on a NULL prog before it
-		   takes a UBO slice -- so the surface is dropped and refusals counts
-		   it, exactly like a pipeline miss. */
+		/* every fixed-size table answers exhaustion the same way: name it through the guard and return the failure the draw path
+		   already refuses -- VK_NULL_HANDLE from the pipeline, the set and both rings -- so the surface drops and refusals counts it. */
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "VK_GetProgram: program table full", VK_INCOMPLETE );
 		return NULL;
 	}
@@ -1124,13 +1104,8 @@ int						r_spriteListOpen = 0;
    scene's number and made the batch arithmetic read wrong */
 int						r_spriteWalkSurfs = 0;
 
-/* The alpha-test selector the fragment stage discards on.  It is a property of
-   the STAGE -- the state word's atest bits -- so it is derived from the state
-   bits at every use, never latched from "the last state block that ran".  An
-   iterator that publishes a state word of its own (the lightmapped-multitexture
-   pass forces depth on and carries no atest bits) therefore cannot leave a
-   surface whose shader asks for alphaFunc GT0 drawn with the test switched
-   off: the uniform is taken from the stage whose uniforms these are. */
+/* the alpha-test selector is a property of the STAGE (the state word's atest bits): derived at every use, never latched from the
+   last state block that ran, so an iterator publishing its own state word cannot leave a GT0 surface with the test switched off. */
 static int s_alphaTest;
 
 static int VK_AlphaTestForState( unsigned long stateBits )
@@ -1217,12 +1192,8 @@ void VK_StencilState( qboolean test, int func, int ref, unsigned mask )
 	(void)test; (void)func; (void)ref; (void)mask;
 }
 
-/* The 2D window's state block ran last.  The reference holds this gate shut so
-   the UI draws with depth test off regardless of what a UI shader's own state
-   bits say, and opens it the moment a 3D draw turns depth back on -- the UI
-   was being depth-tested against the world, and the nearest geometry (the
-   viewmodel) drew straight over the health bar while the pause menu lost
-   surfaces to whatever the world had left behind. */
+/* the 2D window's state block ran last: this gate holds depth test off for the UI whatever a UI shader's own state bits say and
+   opens on the next 3D draw, or the viewmodel draws over the health bar and the pause menu loses surfaces. */
 static qboolean	s_depthGate2D = qfalse;
 
 qboolean VK_DepthGate2D( void )
@@ -1242,10 +1213,7 @@ void VK_DepthGate3DOpen( void )
 
 /* ---- the blocking driver waits ------------------------------------------- */
 
-/* A hang stops making progress inside one of these, and a boot that stops here
-   otherwise says nothing.  Each wait names itself on the way in and on the way
-   out, with the thread and the caller's business, so the last row before a stop
-   is the wait that never returned and the side of the front end that asked. */
+/* each wait names itself in and out with its thread and the caller's business, so the last row before a stop is the wait that never returned. */
 static void VK_Sync_Row( const char *site, const char *why, qboolean leaving, long usec )
 {
 	VK_Guard_Row( "VK:sync", "site=%s why=%s phase=%s thr=%s id=%lu f=%d usec=%ld",
@@ -1305,18 +1273,8 @@ void VK_SelectTexture( int tmu )
 	s_shade.currentTmu = tmu;
 }
 
-/* The drawn colour of a stage's texture, read back off the device once per
-   image at the moment the walk first binds it.  The parse, the decode and the
-   colour maths can all be verified on the CPU and a surface still come out
-   wrong, because the one thing no offline reading answers is what the sampler
-   actually holds.  Bound (not uploaded) because that is when the image is
-   published and in SHADER_READ_ONLY, which is what the copy-source layout must
-   be.  One readback is a submit and a fence, so it rides the master qa_probe
-   gate rather than being always-on: a quiet build does none, and a diagnostic
-   boot (`+set qa_probe 1`) answers every image, once each.  Every image gets a
-   row, so a miscoloured surface the operator names on any screen is answered by
-   the same boot, not by a second instrument.  r_texelProbe 0 turns it off
-   inside an otherwise armed boot. */
+/* the drawn colour of a stage's texture, read back off the device once per image at first bind: what the sampler holds is the one
+   thing no offline reading answers.  Readback is a submit and a fence, so it rides qa_probe (r_texelProbe 0 disarms); every image gets a row. */
 #define VK_TEXEL_PROBE_MAX 4096
 static byte s_texelProbed[VK_TEXEL_PROBE_MAX];
 
@@ -1501,12 +1459,8 @@ void VK_Shade_RegistrationReset( void )
 	s_shade.waveView  = VK_NULL_HANDLE;
 }
 
-/* The view a latched unit may still write into a descriptor.  A level load
-   destroys world images out from under the latch, and a later stage that binds
-   only unit 0 never refreshes unit 1, so the latch is re-validated against the
-   slot's own view before it can reach vkUpdateDescriptorSets.  A destroyed slot
-   reads VK_NULL_HANDLE and a reused slot reads a different view; both disarm.
-   Reads no image_t field, so a freed image cannot be dereferenced here. */
+/* a latched unit may still write into a descriptor: a level load destroys world images out from under the latch, so it is re-validated
+   against the slot's own view before vkUpdateDescriptorSets (a NULL view or a reused view disarms); reads no image_t field. */
 /* the open world batch's own census: armed per batch, reset by BatchBegin */
 static qboolean			s_batchCensus;
 /* the open batch's disarmed-unit count: the world census owns the reset */
@@ -1577,14 +1531,8 @@ void VK_BindAnimatedImage( const textureBundle_t *bundle, int unit )
 		VK_Shade_BindImage( bundle->image[0], unit );
 		return;
 	}
-	/* R_BindAnimatedImage @0x00034190, raw words: `lfs f1,0x78(tr)' (refdef
-	   floatTime), `lfs f0,0xc(bundle)' (speed), `fmuls', `lfs f1,0(2048.0f)',
-	   `fmuls', `fctiwz', `srawi. r4,r4,0xb' -- FUNCTABLE_SIZE * (speed * time),
-	   shifted down by FUNCTABLE_SIZE2, negatives clamped to 0, then wrapped, or
-	   clamped to the last frame under BUNDLE_ANIMATE_ONCE (0x34204..0x3421c).
-	   The scale is the wave-table size, not 60: 60 fast-forwarded every animMap
-	   by 60x while the clock that feeds it stayed correct, which is why the
-	   shader-clock row read clean. */
+	/* R_BindAnimatedImage @0x00034190: the clock is FUNCTABLE_SIZE * (speed * time) shifted down by FUNCTABLE_SIZE2, negatives
+	   clamped to 0 then wrapped (BUNDLE_ANIMATE_ONCE clamps to the last frame).  The scale is the wave-table size, not 60: 60 fast-forwarded every animMap 60x. */
 	index = myftol( FUNCTABLE_SIZE * ( bundle->imageAnimationSpeed * backEnd.refdef.floatTime ) );
 	index >>= FUNCTABLE_SIZE2;
 
@@ -1743,12 +1691,8 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 	cpuColor = VK_StageNeedsCPUColor( pStage );
 	cpuTexCoords = VK_StageNeedsCPUTexCoords( pStage );
 
-	/* 2D carries Draw_SetColor in a_Color, so u_BaseColor stays 1 there for the
-	   gens that take their colour from the vertex.  Two gens read it anyway, and
-	   forcing 1 on them made every constant-colour 2D stage draw white: the
-	   retail viewmodes all tint through rgbGen const -- hud/structural 1 0.5 0,
-	   nightvision 0.15 1 0.25, phaseshift 1 0 0.8 -- so the tricorder's alternate
-	   viewmode came up with its CRT shader and no tint at all. */
+	/* 2D carries Draw_SetColor in a_Color, so u_BaseColor stays 1 there for the gens that read the vertex.  Forcing 1 on the two
+	   gens that read it anyway made every constant-colour 2D stage draw white: the retail viewmodes tint through rgbGen const. */
 	if ( backEnd.in2D && pStage->rgbGen != CGEN_CONSTANT
 		 && pStage->rgbGen != CGEN_MULTIPLY_BY_WAVEFORM )
 	{
@@ -2219,11 +2163,8 @@ void VK_BeginShadow( void )
 }
 
 /* ---- the tessellation stream --------------------------------------------- */
-/* vkStreamVertex_t and VK_STREAM_STRIDE are published by tr_vbo.h: the static
-   arena holds exactly the bytes VK_Stream_Pack writes here. */
-
-/* the census that names a draw whose own vertices cover half the frame; it is
-   defined below the shade state it reports and called from both tess arms */
+/* vkStreamVertex_t and VK_STREAM_STRIDE are published by tr_vbo.h: the static arena holds exactly the bytes VK_Stream_Pack writes here */
+/* the census that names a draw whose own vertices cover half the frame; defined below the shade state it reports, called from both tess arms */
 static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
 								   const vkIndex_t *indexes, int numIndexes );
 
@@ -2311,11 +2252,8 @@ void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
 }
 
 /* ---- the static arena's draw arm ----------------------------------------- */
-/* The reference renderer's static path: a batch whose every surface is already
-   resident in the device-local arena draws its index blocks directly instead of
-   re-packing the tess stream.  The signature is the lightmapped multitexture
-   iterator's own single call, so nothing else can reach it.  Item runs of at
-   least MIN_IBO_RUN draw where they lie; the rest are grouped, in index order. */
+/* a batch whose every surface is already arena-resident draws its index blocks directly instead of re-packing the tess stream; the
+   lightmapped-multitexture iterator is the only caller, and item runs of MIN_IBO_RUN or more draw where they lie. */
 static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 										const float *texcoord0, const float *texcoord1,
 										int tcStrideFloats, const unsigned char *colors,
@@ -2386,13 +2324,8 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 	s_fpArenaIdx = NULL;
 
 	{
-		/* The arena arm's bind and record are charged where the streaming arm
-		   charges its own.  Without this they landed in the enclosing SHADE
-		   window's residual, which is why `[PERF:shade] srf' read as one
-		   undifferentiated per-flush cost and the 1000 fps carrier could not be
-		   named.  The sum is unchanged -- VK_WalkStat_Nested() carries BIND and
-		   REC, so the enclosing window subtracts exactly what they gain -- only
-		   the attribution moves. */
+		/* the arena arm's bind and record are charged where the streaming arm charges its own, so they leave the enclosing SHADE
+		   window's residual instead of reading as one undifferentiated per-flush cost; the sum is unchanged, only the attribution. */
 		long long		walkT0 = VK_WALK_T0();
 
 		RB_VboStaticDrawRuns( cmd, input->numIndexes, items, numItems );
@@ -2402,12 +2335,8 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 	return qtrue;
 }
 
-/* The pack, as a JobPool range.  Order is preserved by construction: every
-   element reads and writes only its own index, so which worker runs which chunk
-   cannot move a byte.  The control docs/controls/jobwalk drives both forms over
-   many shapes and compares them byte for byte. */
-/* measured break-even: docs/controls/threadroot shows a surface this small
-   costs more to hand out than to run inline */
+/* the pack as a JobPool range: every element reads and writes only its own index, so which worker runs which chunk cannot move a byte */
+/* measured break-even: docs/controls/threadroot shows a surface this small costs more to hand out than to run inline */
 #define VK_PACK_CHUNK	2048
 
 typedef struct {
@@ -2526,16 +2455,9 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 	}
 	verts = ( vkStreamVertex_t * )( ( byte * )VK_VertexRing_Mapped() + base );
 	{
-		/* The one walk loop that is data-parallel by construction, and the
-		   JobPool contract (q_jobs.h) fits it element for element: the range is
-		   final before the batch is kicked (the ring slice is already reserved),
-		   vertex i is a pure function of i and the immutable sources, no two
-		   chunks write the same byte (each i writes its own stride-sized slot),
-		   the body calls nothing banned, and every element's expression order is
-		   unchanged -- so the parallel bytes are the sequential bytes, which is
-		   what the arena's bake and the ring's stream-store both then compare
-		   against.  Below VK_PACK_CHUNK vertices the pool runs it inline, so a
-		   small surface pays nothing for the dispatch. */
+		/* data-parallel by construction, and the JobPool contract fits it element for element: the range is final before the kick,
+		   vertex i is a pure function of i and no two chunks write the same byte, so the parallel bytes are the sequential bytes.
+		   Below VK_PACK_CHUNK vertices the pool runs it inline. */
 		vkPackCtx_t		packCtx;
 
 		packCtx.verts      = verts;
@@ -2603,22 +2525,9 @@ void RB_VBO_DrawTess( const shaderCommands_t *input )
 	RB_VBO_DrawTessIndexed( input, input->indexes, input->numIndexes );
 }
 
-/* ---- the immediate stream, pipeline and descriptor set -------------------
-   One layout: the uniform block at 0, the bundles and wave table at 1..3.
-
-   VK_SHADE_SETS lives in vk_local.h next to the pool budget that carries it.
-   The 1024 it replaced was a guess, and the first un-clipped world blew it:
-   143,383 "shade descriptor set table exhausted" refusals in one boot.  The
-   measurement that sizes it: a set is keyed on the frame slot and the three
-   image/sampler pairs a stage binds, the table is boot-persistent because
-   those keys are frame- and world-invariant while the views live, and a frame
-   can add at most one new key per draw -- so the working set is bounded by
-   2 * (draw-surfs in the busiest frame).  The same boot measured 1,887
-   draw-surfs in its busiest frame, 244 distinct textures and 284 distinct
-   (tex0,tex1) pairs in the sampled stage rows, and it exhausted 1024 -- so
-   4096 is four times the failure and twice the measured per-frame ceiling,
-   with [VK:shade] and the fill row below still naming the truth if a bigger
-   world ever asks for more. */
+/* ---- the immediate stream, pipeline and descriptor set ------------------ */
+/* one layout: the uniform block at 0, the bundles and wave table at 1..3.  VK_SHADE_SETS lives in vk_local.h beside the pool budget
+   that carries it; 4096 is sized off the boot that exhausted 1024 with 143,383 refusals (1,887 draw-surfs, 244 textures), and the fill row below names the truth. */
 
 typedef struct {
 	unsigned	stateBits;
@@ -2631,29 +2540,16 @@ typedef struct {
 	qboolean	used;
 } vkShadePipeline_t;
 
-/* The pipeline table is the same shape as the set table: keyed on what a draw
-   asks for, filled once per distinct answer, boot-persistent, and refusing the
-   draw on exhaustion.  Its key is wider -- state bits, family, defines, cull,
-   polygon offset, topology -- so its space is the product, not a single
-   census: the live boot measured 14 distinct state-bit values and a peak of
-   252 shade draws in one frame, and never reached this number, so 4096 is
-   headroom over the measured frame working set rather than a proven need.
-   VK_Shade_Descriptors_Init's row below names the fill, so a bigger world
-   asks for the number it needs instead of a guard row asking for a guess. */
+/* the pipeline table is the set table's shape: keyed on what a draw asks (state bits, family, defines, cull, polygon offset, topology),
+   boot-persistent and refusing the draw on exhaustion; the measured peak was 252 shade draws a frame, so 4096 is headroom, not a proven need. */
 #define VK_SHADE_PIPELINES 4096
 
 static vkShadePipeline_t	vk_shadePipelines[VK_SHADE_PIPELINES];
 static int					vk_numShadePipelines;
 
-/* Both cache tables below are looked up by binding, not by index, and both were
-   searched by walking every entry they had filled.  The bind cost therefore
-   grew with the boot: the operator's session filled the set table to 1792 of
-   4096, which is a 1792-entry chain of seven pointer compares on every bind,
-   every stage, every surface.  These indexes make a hit O(1).  Each stores the
-   entry index plus one, so 0 is "no entry", and the insert uses the same window
-   the lookup starts at, so a key that was inserted is always found.  The tables
-   hold at most VK_SHADE_SETS/VK_SHADE_PIPELINES entries and the index is twice
-   that, so there is always an empty slot and no probe can run off the end. */
+/* both cache tables are looked up by binding, not by index, and both were searched by walking every filled entry, so bind cost grew
+   with the boot (a 1792-entry chain of seven pointer compares per bind).  Each index stores entry+1 (0 = none), the insert probes the
+   lookup's own window, and the index is twice its table, so a key that was inserted is always found and no probe runs off the end. */
 #define VK_SHADE_HASH_BITS	13
 #define VK_SHADE_HASH_SIZE	( 1 << VK_SHADE_HASH_BITS )
 #define VK_SHADE_HASH_MASK	( VK_SHADE_HASH_SIZE - 1 )
@@ -2793,16 +2689,9 @@ qboolean VK_Shade_Descriptors_Init( void )
 		memset( &allocInfo, 0, sizeof( allocInfo ) );
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocInfo.allocationSize = reqs.size;
-		/* The ring is written per draw, so prefer the host-cached type and fall
-		   back to plain host-visible; HOST_COHERENT in either case keeps the
-		   device read correct without a flush.  FindType answers an int and -1
-		   means nothing matched: the checks must run on that int.  The field is
-		   unsigned, so storing -1 first made both the "< 0" fallback and the
-		   ">= 0" guard vacuous -- and the Mali-G715 carries no HOST_CACHED type
-		   in the ones this buffer's requirements select, so the first pass
-		   legitimately misses there.  The dead fallback turned that into a read
-		   of memoryTypes[0xFFFFFFFF]: the Pixel 8's bring-up SEGV.  VK_Memory_
-		   AllocFor already runs this shape the right way. */
+		/* the ring is written per draw, so prefer the host-cached type and fall back to plain host-visible (HOST_COHERENT either way
+		   keeps the device read correct).  FindType answers an int and -1 means no match: the field is unsigned, so storing -1 first made
+		   both guards vacuous and read memoryTypes[0xFFFFFFFF] -- the Pixel 8 bring-up SEGV.  VK_Memory_AllocFor runs this shape. */
 		memType = VK_Memory_FindType( reqs.memoryTypeBits,
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 				| VK_MEMORY_PROPERTY_HOST_CACHED_BIT );
@@ -2909,13 +2798,8 @@ VkCommandBuffer VK_Shade_CommandBuffer( void )
 	return vk.commandBuffers[slot];
 }
 
-/* copy the staging block into the next ring slice; -1 when the ring is out.
-   A draw whose staging block is byte-identical to the slice the previous draw
-   took shares that slice, which is also what lets the bind omit a repeated
-   descriptor set.  The test is the bytes and not the dirty flag: VK_DrawStage
-   rewrites the view and stage uniforms every draw whether or not they differ,
-   so `s_uboDirty' was always set here and the elision never fired
-   (elide_ubo=0.0/f with elide_set pinned at 2.0/f in the 2026-10-20 rows). */
+/* copy the staging block into the next ring slice; -1 when the ring is out.  A draw whose staging block is byte-identical to the
+   previous draw's slice shares it, which is also what lets the bind omit a repeated set: the test is the bytes, not the dirty flag. */
 static VkDeviceSize VK_Shade_WriteUBO( void )
 {
 	int			slot = VK_Shade_CommandBufferSlot();
@@ -2977,13 +2861,8 @@ static VkCullModeFlagBits VK_Shade_CullMode( cullType_t cull, qboolean mirrored 
 	}
 }
 
-/* The nibble arrives as its ordinal (VKS_DSTBLEND_x is VKS_SRCBLEND_x << 4), so
-   the two families need their own switches; one table over both resolves
-   dst=GL_SRC_COLOR to its DST_COLOR twin.  Retail: GL_State @0x0df0 feeds
-   0x30->0x300 and 0x40->0x301 to glBlendFunc, NameToDstBlendMode @0x37580 maps
-   "GL_SRC_COLOR"/"GL_ONE_MINUS_SRC_COLOR" to those ordinals, and the recorded
-   retail trace calls glBlendFunc(...,GL_SRC_COLOR) 571x and
-   (...,GL_ONE_MINUS_SRC_COLOR) 718x.  vk_draw.c agrees. */
+/* the nibble arrives as its ordinal (VKS_DSTBLEND_x is VKS_SRCBLEND_x << 4), so the two families need their own switches; one table
+   over both resolves dst=GL_SRC_COLOR to its DST_COLOR twin.  Retail GL_State @0x0df0 feeds 0x30->0x300 and 0x40->0x301 to glBlendFunc. */
 static VkBlendFactor VK_Shade_SrcBlendFactor( unsigned nibble )
 {
 	switch ( nibble ) {
@@ -3001,14 +2880,8 @@ static VkBlendFactor VK_Shade_SrcBlendFactor( unsigned nibble )
 	}
 }
 
-/* The nibble arrives as the ORDINAL (the call site shifts the stateBits down
-   by 4), so the cases are the VKS_DSTBLEND_* constants shifted to match.
-   Written unshifted -- as r33 first landed them -- every case missed and every
-   dst factor defaulted to ZERO, which made every blended stage REPLACE the
-   destination instead of blending: the black cone, the black hull, the black
-   vent gas and the black impact halos were this one switch.  Ordinals 3 and 4
-   are SRC_COLOR and ONE_MINUS_SRC_COLOR -- the retail factors the GL_State
-   decompile and the recorded retail trace both carry. */
+/* the cases are the VKS_DSTBLEND_* constants (the call site shifts the stateBits down by 4).  Written unshifted, as first landed, every
+   case missed and every dst factor defaulted to ZERO, so every blended stage REPLACE'd the destination: the black cone, hull, vent gas and halos. */
 static VkBlendFactor VK_Shade_DstBlendFactor( unsigned nibble )
 {
 	switch ( nibble ) {
@@ -3067,14 +2940,8 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 	pkey[4] = polygonOffset;  pkey[5] = (uintptr_t)topology;
 	phash = VK_Shade_HashWords( pkey, 6 ) & VK_SHADE_HASH_MASK;
 
-	/* The probe comes first, and a hit returns before the program lookup: this
-	   key carries the family and the permutation bits, which are the module
-	   lookup's whole input, so a pipeline that is already built proves the
-	   modules are (the table and the module cache are created and dropped
-	   together).  A bind per surface per frame is the hot path, and the two
-	   hash probes the lookup costs were paid on every one of them.  The
-	   permutation census is unchanged: a hit still counts a request, and the
-	   miss row still prints where the modules are actually missing. */
+	/* the probe comes first and a hit returns before the program lookup: the key carries the family and the permutation bits, the module
+	   lookup's whole input, so a built pipeline proves the modules.  The census is unchanged: a hit still counts a request. */
 	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
 		int at = vk_shadePipelineHash[( phash + probe ) & VK_SHADE_HASH_MASK];
 
@@ -3347,15 +3214,9 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 		}
 	}
 	if ( vk_numShadeSets >= VK_SHADE_SETS ) {
-		/* Exhaustion refuses the draw rather than aliasing a live set.  Slot 0
-		   is already bound inside the command buffer being recorded: rewriting
-		   it here retargets every earlier draw that bound it, and storing the
-		   new key over vk_shadeSetKeys[0] makes the original key miss forever,
-		   so slot 0 then thrashes for the rest of the boot.  VK_NULL_HANDLE is
-		   what VK_Shade_Pipeline, the UBO ring and the vertex ring all return
-		   when a table runs out, and VK_Shade_Bind turns it into the same
-		   s_frameShadeDrops++ refusal -- the surface drops, the frame stays
-		   correct, and the guard row names the reason. */
+		/* exhaustion refuses the draw rather than aliasing a live set: slot 0 is already bound inside the command buffer being recorded,
+		   and storing the new key over vk_shadeSetKeys[0] makes the original miss forever.  VK_NULL_HANDLE becomes the same
+		   s_frameShadeDrops++ refusal -- the surface drops, the frame stays correct, and the guard row names the reason. */
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade descriptor set table exhausted", VK_INCOMPLETE );
 		return VK_NULL_HANDLE;
 	}
@@ -3458,17 +3319,9 @@ static int s_framePermReq;      /* permutation lookups */
 static int s_framePermMiss;     /* lookups with no SPIR-V for the key */
 static int s_framePermMissRows; /* [VK:perm] rows this frame */
 
-/* The shader clock, one row per animated shader per second: the fields that
-   settle whether an animation runs at real seconds.  `tess.shaderTime` is the
-   value the stage's tcMod/gen actually advances on; `floatTime` is
-   refdef.time*0.001 and `start` is the entity/sprite/world shaderStartTime the
-   ANIMATE_ONCE arm subtracts.  A stage that advances ~1.0 per second of
-   refdef time is right whatever its unit; one that advances ~1000 is a unit
-   mix, and the tree's own producers disagree -- the model and tempmodel paths
-   write seconds (cg.time/1000.0) while the sprite path writes a negated
-   millisecond value, which the Mac CG_ModelAnim @0x00034F00 then divides by a
-   per-entity float.  The row names which of them the stage in front of the
-   operator is using. */
+/* the shader clock, one row per animated shader per second: tess.shaderTime is what the stage's tcMod/gen advances on, floatTime is
+   refdef.time*0.001 and start is the shaderStartTime the ANIMATE_ONCE arm subtracts.  ~1.0 per refdef second is right, ~1000 is a unit
+   mix: the model and tempmodel paths write seconds while the sprite path writes a negated millisecond value. */
 void VK_Shade_NoteShaderTime( const char *kind )
 {
 	static const void	*s_seenShader[24];
@@ -3740,12 +3593,8 @@ void VK_Shade_PermRow( const char *shader, int family, unsigned defines )
 	s_framePermMissRows++;
 }
 
-/* A refused bind loses the draw, and with it whatever geometry the batch carried
-   -- the one place in this lane where pixels vanish without a hole in the frame.
-   The `[VK:draw3d] refusals=' row only prints on a batch-count change, so a
-   refusal in a steady-state frame is invisible; the operator's real-GPU run is
-   exactly that shape. This names the refusing table at the refusal, rate
-   limited, so a silent loss becomes a diagnosis from one line. */
+/* a refused bind loses the batch's geometry -- pixels vanish without a hole in the frame -- and the refusals row only prints on a
+   batch-count change, so this names the refusing table at the refusal, rate limited. */
 static void VK_Shade_DropRow( const char *why )
 {
 	static int	s_rows;
@@ -3791,17 +3640,9 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	if ( s_shade.texBound[1] ) {
 		v1 = VK_Shade_LiveView( 1 );
 	}
-	/* A unit the stage's own bundles never name must not serve the previous
-	   stage's art.  The latch survives the stage boundary by design, and
-	   LiveView only disarms a dead or retargeted slot, so a live foreign view
-	   rode every following single-bundle stage's descriptor: the 14:54
-	   [VK:stagebound] rows show unit 1 still holding the rifle viewmodel's
-	   screen and later a world lightmap across a whole session of hud/radar and
-	   textures/lights stages, none of which resolves a second bundle.  Retail's
-	   single-texture stage never reads TMU1; this lane's layout declares the
-	   binding, so the neutral value is the default image, which is what an
-	   unbound slot already gets.  A program without VKP_LIGHTMAP does not
-	   declare u_Tex1 at all. */
+	/* a unit the stage's own bundles never name must not serve the previous stage's art: the latch survives the stage boundary and
+	   LiveView only disarms a dead or retargeted slot, so a live foreign view rode every following single-bundle stage's descriptor.
+	   Retail's single-texture stage never reads TMU1; a program without VKP_LIGHTMAP declares no u_Tex1 at all. */
 	if ( !( s_shade.prog->defines & VKP_LIGHTMAP ) ) {
 		v1 = VK_NULL_HANDLE;
 	}
@@ -4045,14 +3886,9 @@ static int VK_Shade_ClipTri( const float pj[16], const float *const v[3], float 
 	return n;
 }
 
-/* A draw whose clipped footprint covers a frame is the shape a wedge makes, and
-   the raw vertex box never saw it: a primitive whose corners all sit outside the
-   volume still crosses the frame, and that is exactly the class the whole-vertex
-   test missed.  So the triangles are clipped first and the survivor's screen
-   area is what gets measured.  A wall the camera stands next to fills the frame
-   too, so the row also carries the smallest box this shader drew this frame: a
-   stage whose own footprint is an outlier against its siblings is the broken
-   one, and a shader whose every draw is large is just close geometry. */
+/* a draw whose clipped footprint covers a frame is the wedge shape the raw vertex box never sees (corners outside the volume still
+   cross the frame), so the triangles are clipped first and the survivor's screen area is measured; the row also carries the smallest
+   box this shader drew, since a wall the camera stands beside fills the frame too. */
 typedef struct {
 	const shader_t	*shader;
 	int				 frame;
@@ -4098,15 +3934,8 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 	static int	s_frame = -1;
 	static int	s_lastToken;
 
-	/* Its own gate, default OFF.  The row exists to name a draw whose own
-	   vertices cover half the frame; that question was answered when the wedge
-	   closed (r12) and the row has read zero since, while the census still walks
-	   every triangle of every batch every frame -- the offline measurement is
-	   5.7 ns per triangle (docs/controls' r12 proof, personal/scratch/
-	   r12_footprint/micro.c), i.e. ~68 us of a 12000-triangle frame, 7% of the
-	   operator's 1 ms target, for a row that prints nothing.  qa_probe alone no
-	   longer buys that cost; `r_footprintProbe 1' arms it for the investigation
-	   that needs it. */
+	/* its own gate, default OFF: the row names a draw whose own vertices cover half the frame, a question the wedge already answered,
+	   and the census walks every triangle of every batch every frame for a row that reads zero.  `r_footprintProbe 1' arms it. */
 	{
 		static cvar_t	*s_fpCvar;
 
@@ -4128,13 +3957,8 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		memset( s_footprint, 0, sizeof( s_footprint ) );
 	}
 
-	/* One census a batch.  The stage walk reaches this for every stage of a
-	   batch, and every stage of a batch carries the same triangles, so the
-	   per-triangle clip ran three to five times over the same geometry --
-	   measured at 22500 clips a frame, 3.1 ms, against 6558 unique triangles
-	   and 0.9 ms.  The batch token is the same RB_BeginSurface identity the
-	   ring slice shares, so a repeat is the same batch and every number the row
-	   reports is unchanged. */
+	/* one census a batch: the stage walk reaches this for every stage of a batch and they all carry the same triangles, so the
+	   per-triangle clip ran three to five times over the same geometry.  The batch token is the RB_BeginSurface identity the ring slice shares. */
 	if ( s_lastToken && s_lastToken == VK_VertexRing_SliceToken() ) {
 		return;
 	}
@@ -4177,19 +4001,9 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		pj = m;
 	}
 
-	/* The census is the walk's most expensive probe.  It clipped every triangle
-	   of every batch once a frame, and the operator's 800x600 window drew
-	   19,433 of them (58,299 indexes, [VK:ring] beside the quoted
-	   [PERF:walk] row), which the clip loop's own measurement prices at
-	   0.138 us each (22500 clips = 3.1 ms, vk_shade.c:3248) -- 2.7 ms of that
-	   row's 3.55 ms shade window, for a row that has read zero since the wedge
-	   closed.  The row can only print on an out-of-range index or on a batch
-	   whose raw corners are all inside the volume, and both are decided without
-	   clipping a triangle: one projection pass gives the raw box, and the clip
-	   loop below runs only for a batch that can still print.  Offline replay
-	   (personal/scratch/r12_footprint/micro.c): 75.4 ns per triangle clipped
-	   against 5.7 ns for the pass, so a batch that cannot print costs 7% of
-	   what it did. */
+	/* the census is the walk's dearest probe: it clipped every triangle of every batch once a frame (19,433 in the 800x600 window,
+	   2.7 ms of that row's 3.55 ms shade window) for a row that has read zero since the wedge closed.  Both print conditions -- an
+	   out-of-range index, or a batch whose raw corners are all inside the volume -- are decided without clipping, so the clip loop runs only for a batch that can still print. */
 	{
 		float	px0 = 2.0f, py0 = 2.0f, px1 = -2.0f, py1 = -2.0f;
 		int		poob = 0;
@@ -4335,12 +4149,8 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 		sibling = clipArea;
 	}
 
-	/* A wall the camera stands beside fills the frame after the clip and its raw
-	   corners reach far past the volume, so area alone names ordinary geometry.
-	   A primitive that was never in world space has its corners inside the volume
-	   already -- but so does a wall seen from close by, and those cover up to
-	   about 1.2 of the 4 units a frame holds.  Half a frame is past what a close
-	   wall reaches and well under what a sheet across the frame covers. */
+	/* a wall the camera stands beside fills the frame after the clip, so area alone names ordinary geometry: a close wall covers about
+	   1.2 of the 4 units a frame holds, and half a frame is past that but well under a sheet across the frame. */
 	rawInside = ( bx0 >= -1.0f && by0 >= -1.0f && bx1 <= 1.0f && by1 <= 1.0f );
 
 	/* an index past the vertices, or a primitive already inside the volume whose
@@ -4402,12 +4212,8 @@ void VK_GlErrAt( const char *what )
 
 void VK_CensusShutdownAll( void ) { }
 
-/* One attempt, whatever the outcome.  This is called from VK_Shade_Bind, i.e.
-   once per draw; while the guard was only `s_waveTableHandle >= 0' a FAILED
-   creation left the handle at -1 and every later bind re-ran the whole LUT fill
-   plus vkCreateImage + an upload + a publish (a device copy and a fence wait) --
-   a per-flush cost that no walk bucket charges and no row named.  Now the
-   attempt happens once and says what it did. */
+/* one attempt, whatever the outcome: with only a `>= 0' guard a FAILED creation left the handle at -1 and every later bind re-ran the
+   whole LUT fill plus vkCreateImage + upload + publish.  Now the attempt happens once and says what it did. */
 static qboolean	s_waveTableTried;
 
 void VK_CreateWaveTable( void )
@@ -4476,12 +4282,8 @@ vkProgram_t *VK_FamilyProgram( unsigned family )  /* the draw's family, by name 
 	return VK_GetProgram( family );
 }
 
-/* the program a stage needs: the shade tree's defines, the stage's own texture
-   environment, and the caller's.  The texenv flags select vk_stage.frag's
-   second-bundle arm; leaving them out here compiled every two-bundle pass into
-   the MODULATE branch, so a merged ADD pass -- the star dome's, and every
-   world fx merge -- multiplied instead of adding.  GLES3_StageProgram ORs its
-   GLES3_TexEnvForStage in the same way. */
+/* the program a stage needs: the shade tree's defines, the stage's own texenv and the caller's.  The texenv flags select vk_stage.frag's
+   second-bundle arm; leaving them out compiled every two-bundle pass into MODULATE, so a merged ADD pass multiplied instead of adding. */
 vkProgram_t *VK_StageProgram( const shaderStage_t *pStage, const shader_t *shader, unsigned extraDefines )
 {
 	unsigned d = VK_StageDefines( pStage, shader );
@@ -4491,27 +4293,13 @@ vkProgram_t *VK_StageProgram( const shaderStage_t *pStage, const shader_t *shade
 
 /* ---- the world stage-set census ------------------------------------------ */
 
-/* The loss this lane hunts is silent by construction.  A stage the shader
-   defines that the walk never submits, and a stage submitted with a texture
-   other than the one it resolved to, both end in a valid draw: no refused bind,
-   no dropped table, no guard.  So the census records the EXPECTED set -- the
-   pass list in force and, per stage, its generators, its state word, both
-   bundles' tcGen and the image each bundle resolves to -- beside the
-   SUBMITTED one: one draw per stage actually taken, and the image_t each unit
-   really bound.  The difference is a row.  Gate: qa_probe (R_ProbeStatsOn). */
+/* the loss this lane hunts is silent by construction -- a stage never submitted, or submitted with a foreign texture, still draws -- so the census records the
+   EXPECTED set beside the SUBMITTED one and the difference is a row.  Gate: qa_probe (R_ProbeStatsOn). */
 
 /* WORLD_SET_CENSUS_BEGIN */
 
-/* Is this image one the bundle can bind?  The bundle's image set is image[0]
-   plus the animMap chain.  The parser stores a `map`/`clampmap` stage in
-   image[0] and only animMap advances numImageAnimations (tr_shader.c:869 and
-   :898 against :944-952), so an ordinary single-image bundle carries
-   numImageAnimations == 0 -- and a membership test bounded by that number
-   called the stage's own image foreign on every world and menu stage, which is
-   why `wanted` and `bound` named the same image and it still read MISS.  One
-   texture name can also resolve to more than one image_t (a different picmip
-   or wrap creates a second); the art is then still the stage's own, so the
-   name is a member too. */
+/* a bundle's image set is image[0] plus the animMap chain: only animMap advances numImageAnimations, so a single-image bundle carries 0, and a membership test
+   bounded by it called the stage's own image foreign on every world and menu stage.  One name can also resolve to two image_t (picmip or wrap); the art is still the stage's own. */
 static qboolean VK_StageImageOwned( const textureBundle_t *bundle, const image_t *image )
 {
 	int k, n;
@@ -4556,12 +4344,8 @@ static qboolean VK_WorldsetUnitExpected( const textureBundle_t *bundle )
 	return ( bundle && bundle->image[0] ) ? qtrue : qfalse;
 }
 
-/* The census's sampling cadence, in frames.  A batch that disagrees with the
-   census always emits; an agreeing batch emits while the table fills and then
-   once every VK_WORLDSET_SAMPLE_FRAMES frames, never twice in one frame.  The
-   batch-counted cadence this replaces fired once per 600 batches -- thousands
-   of times per frame in the world -- and bounded nothing a session could be
-   read against. */
+/* the census's sampling cadence, in frames: a batch that disagrees always emits, an agreeing one emits while the table fills and then
+   once every VK_WORLDSET_SAMPLE_FRAMES frames.  The batch-counted cadence this replaced fired once per 600 batches and bounded nothing. */
 #define VK_WORLDSET_SAMPLE_FRAMES	120
 #define VK_WORLDSET_FIRST_ROWS		24
 
@@ -4639,24 +4423,15 @@ void VK_Shade_BatchBegin( const shader_t *shader )
 	case 's': s_worldFlatBatches[2]++; break;
 	default:  s_worldFlatBatches[3]++; break;
 	}
-	/* Every 3D batch is censused, whichever entity last passed through.  Gating
-	   on `backEnd.currentEntity == &tr.worldEntity` here read the entity of the
-	   PREVIOUS surface, so every batch that opened on an entity->world
-	   transition was dropped -- and entity, static-model and sky batches, which
-	   are world geometry the operator can see lose its texture, could never
-	   reach the census at all.  The row names the class instead.  The device
-	   arm arms it too: a world surface reading the wrong lightmap is the same
-	   one-boot question as the decal rows. */
+	/* every 3D batch is censused, whichever entity last passed through: gating on `backEnd.currentEntity == &tr.worldEntity' here read
+	   the PREVIOUS surface's entity, so every batch opening on an entity->world transition was dropped and entity, static-model and sky
+	   batches never reached the census.  The row names the class instead. */
 	s_batchCensus      = ( R_ProbeMarkOn() && !backEnd.in2D && shader
 						   && shader != tr.shadowShader ) ? qtrue : qfalse;
 }
 
-/* The two fast iterators draw their one pass themselves instead of through
-   VK_DrawStage, so the census has to be told the pass was submitted: without
-   this every lightmapped-multitexture batch -- the world's commonest -- would
-   read as a batch that submitted nothing.  VK_DrawStage counts its own pass;
-   an iterator that calls this AND VK_DrawStage for one pass counts two, which
-   is what the 296 `expected=1 drawn=2` rows named. */
+/* the two fast iterators draw their one pass themselves instead of through VK_DrawStage, so the census must be told the pass was
+   submitted; an iterator that calls both for one pass counts two, which is what the 296 `expected=1 drawn=2' rows named. */
 void VK_Shade_NoteSubmitted( int stages )
 {
 	if ( s_batchCensus ) {
@@ -4782,13 +4557,9 @@ void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean subst
 	}
 }
 
-/* The dlight term's bind witness: the one pass that binds outside VK_DrawStage,
-   so the worldset census never names what it sampled.  Retail rebinds its dlight
-   texture before every dlight draw (ProjectDlightTexture @0x34F60: GL_Bind,
-   GL_State 0x823/0x824, R_DrawElements), so what convicts here is a latch
-   holding anything but *dlight, a slot another image_t took, or a view the slot
-   no longer owns -- the three shapes a foreign blob takes.  One row per frame
-   names the art; each anomaly names itself. */
+/* the dlight term's bind witness: the one pass that binds outside VK_DrawStage, so the worldset census never names what it sampled.
+   Retail rebinds its dlight texture before every dlight draw (ProjectDlightTexture @0x34F60), so what convicts is a latch holding
+   non-dlight art, a slot another image_t took, or a view the slot no longer owns. */
 void VK_Shade_DlightWitness( const dlight_t *dl, int light, int numIndexes )
 {
 	static int			s_rows;
@@ -5172,14 +4943,9 @@ static void VK_Shade_FeedRow( const shaderCommands_t *input,
 				  RB_FrameCount() );
 }
 
-/* The sprite walk's bind witness.  worldset covers world batches, VK:stagebind
-   samples the whole walk on a cadence, and DOCC:sprite names the shader's own
-   stage-0 art on a budget a two-frame flash can miss -- so the one draw path that
-   never named the art it sampled was the sprite list, and the light cones flash
-   between two beamflare shafts only the bound image can tell apart.  A sprite's
-   colour is per-vertex, so the row reports the whole batch's rgba range rather
-   than the one sprite the budget picked.  It fires on first sight of a shader,
-   on any bind anomaly, and whenever that rgba range moves, which is the flash. */
+/* the sprite walk's bind witness: worldset covers world batches and VK:stagebind samples on a cadence, so the sprite list was the one
+   draw path that never named its art, which is the light cones flashing between two beamflare shafts.  A sprite's colour is per-vertex,
+   so the row reports the whole batch's rgba range and fires on first sight, any bind anomaly, or a range move. */
 static void VK_Shade_SpriteBindWitness( const shaderCommands_t *input,
 										const shader_t *shader,
 										const shaderStage_t *pStage )
@@ -5428,33 +5194,9 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 		tc1 = input->texCoords[0][0] + 2;
 		tcStride = 4;
 	}
-	/* A CPU-colour stage takes the svars array.  In 2D every tess quad carries
-	   Draw_SetColor in vertexColors -- the font run writes it explicitly and the
-	   recorded 2D prims write it per vertex -- and VK_SetupStageUniforms pins
-	   u_BaseColor to 1 there expecting exactly that, so the array has to reach
-	   the pack: white here erased the pause menu's title and button labels while
-	   the same subtree's textured art stayed right.  In 3D a constant-colour
-	   stage never fills vertexColors, so the white pack is the one that is right.
-	   The three vertex gens are the exception: their u_ColorGen branches read
-	   a_Color (vk_stage.vert 278/281/284) and retail's own CPU bodies are exactly
-	   what those branches do -- 5 copies the array, 6 and 7 apply identityLight
-	   and the 1-x -- so the tess array reaches the pack raw and the shader does
-	   retail's transform.  Routing them through svars would apply identityLight
-	   twice, because ComputeColors only runs for VK_StageNeedsCPUColor stages.
-	   But only when the surface actually wrote the array: tess.vertexColorValid
-	   is seeded false per surface (tr_shade.c:197) and raised only by the
-	   handlers that fill it -- Polychain, Triangles, Terrain, Face, Grid,
-	   Sprite, sky.  A static model fills nothing: the smColors copy at
-	   tr_model.cpp:1880 sits inside #if 0 and tr.world has no smColors to
-	   load it from, so its tess array still holds the previous surface's
-	   colours.  Carrying that array turned every static model with a vertex
-	   gen -- the Voyager hull, the borg panels, borg-light beside the volume
-	   cone -- into the previous surface's colour, which under the retail dst
-	   factors multiplies straight to black.  2D keeps the array
-	   unconditionally: the 2D quads write Draw_SetColor and never raise the
-	   flag.  markShadow drew every mark at full-strength white instead of its
-	   own alpha modulate and read as a black blob three times retail's
-	   density. */
+	/* a CPU-colour stage takes the svars array (in 2D every tess quad carries Draw_SetColor in vertexColors); the three vertex gens instead read a_Color raw, the
+	   shader doing retail's own transform -- but only when the surface wrote the array: tess.vertexColorValid is raised solely by the handlers that fill it, and a static
+	   model fills nothing, so carrying its array drew the previous surface's colour, which under the retail dst factors multiplies to black.  2D keeps the array unconditionally. */
 	colors = cpuColor ? (const unsigned char *)input->svars.colors
 					  : ( backEnd.in2D
 						  || ( VK_StageReadsVertexColor( pStage ) && input->vertexColorValid ) )
@@ -5474,10 +5216,8 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 
 /* ---- the census seam the reference renderer carries ---------------------- */
 
-/* The world path's answer to VK:2ddraw: one row per stage pass that names the
-   shader, the stage, and the image each bundle resolves to.  A world surface
-   sampling a slot another texture has taken names itself here exactly the way a
-   menu tile does, which is the row that closes the patchy-world question. */
+/* the world path's answer to VK:2ddraw: one row per stage pass naming the shader, the stage and the image each bundle resolves to, so a
+   world surface sampling a slot another texture took names itself the way a menu tile does. */
 void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, int stageIndex,
 							qboolean in2D, unsigned tex0, unsigned tex1,
 							unsigned cur0, unsigned cur1 )
@@ -5499,14 +5239,9 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 		 ? pStage->bundle[1].image[0]->imgName : "";
 	t1 = pStage->bundle[1].image[0] ? (unsigned)pStage->bundle[1].image[0]->texnum : 0u;
 
-	/* The COLOR-family dst factors are the two ordinals whose meaning was settled
-	   by retail's own GL_State, and they are rare enough that the sampled cadence
-	   below can miss them for a whole boot.  These rows never sample: every pass
-	   whose dst nibble is 3 or 4 names itself with the fragment's own inputs --
-	   the gens and the const -- so a boot with the retail factors landed carries
-	   the full population and there is no second boot needed to find who drew.
-	   The population is bounded by the shipped shader text (24 stages), so this
-	   cannot flood. */
+	/* the COLOR-family dst factors are the two ordinals retail's own GL_State settles, and they are rare enough that the sampled cadence
+	   can miss them for a whole boot.  These rows never sample: every pass whose dst nibble is 3 or 4 names itself with the fragment's own
+	   inputs, bounded by the shipped shader text, so it cannot flood. */
 	if ( R_ProbeStatsOn() ) {
 		int dstNib = ( (unsigned)pStage->stateBits & VKS_DSTBLEND_BITS ) >> 4;
 
@@ -5528,14 +5263,9 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 		}
 	}
 
-	/* the other half of the row: what the two units actually hold.  A stage
-	   whose unit holds an image the stage never resolved to is the silent
-	   substitution class, so that always emits; an agreeing pair rides the same
-	   cadence as the row above rather than printing once per stage per surface.
-	   The scan answers nothing when the master probe is off -- its only consumer
-	   is the row below -- and it is the draw path's dearest per-stage work:
-	   VK_StageBindKnown walks 512 lightmap slots per call and
-	   VK_StageImageOwned strcmps names, three and two times a stage. */
+	/* what the two units actually hold: a stage whose unit holds an image the stage never resolved to is the silent substitution class
+	   and always emits, an agreeing pair rides the cadence above.  The scan is the draw path's dearest per-stage work (512 lightmap slots
+	   walked, name strcmps) and answers nothing when the master probe is off. */
 	s_rows++;
 	if ( R_ProbeStatsOn() )
 	{
@@ -5598,15 +5328,10 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 
 }
 
-/* One row per DISTINCT pass signature: shader, stage, stateBits, the blend
-   factors the builder resolves for that sb, the colour array the pack got and
-   whether the surface wrote one.  First occurrence only, so a whole boot
-   prints a bounded row set; the operator's RenderDoc pixel history names an
-   EID and this row names the pass behind it.  Blend factors are the VkBlend-
-   Factor enums: 0=ZERO 1=ONE 2=SRC_COLOR 3=ONE_MINUS_SRC_COLOR 4=DST_COLOR
-   5=ONE_MINUS_DST_COLOR 6=SRC_ALPHA 7=ONE_MINUS_SRC_ALPHA 8=DST_ALPHA
-   9=ONE_MINUS_DST_ALPHA 10=SRC_ALPHA_SATURATE.  col: 0=white(NULL) 1=svars
-   2=vertex array. */
+/* one row per DISTINCT pass signature: shader, stage, stateBits, the blend factors the builder resolves, the colour array the pack got
+   and whether the surface wrote one; first occurrence only, so a boot prints a bounded set.  Blend factors are the VkBlendFactor enums
+   (0=ZERO 1=ONE 2=SRC_COLOR 3=ONE_MINUS_SRC_COLOR 4=DST_COLOR 5=ONE_MINUS_DST_COLOR 6=SRC_ALPHA 7=ONE_MINUS_SRC_ALPHA 8=DST_ALPHA
+   9=ONE_MINUS_DST_ALPHA 10=SRC_ALPHA_SATURATE); col: 0=white(NULL) 1=svars 2=vertex array. */
 void VK_PassCensus( const shader_t *shader, const shaderStage_t *pStage, unsigned stateBits,
 					const shaderCommands_t *input, const unsigned char *colors,
 					qboolean in2D )
@@ -5733,13 +5458,8 @@ static void VK_Shade_FreeSwapPixels( void )
 
 /* ---- the presented frame's own map --------------------------------------- */
 
-/* Nine fixed samples cannot describe a shape: they name nine pixels and the
-   wedge between them is inferred, which is how a defect survives two rounds.
-   This reads the same host copy the sampler reads and answers the two
-   questions a shape asks -- what does the screen's coarse grid look like, and
-   which single colour covers the biggest box.  A flat translucent triangle
-   over half the viewport names itself in the second row: one colour, one
-   bounding box, and an extent a real scene never produces. */
+/* nine fixed samples cannot describe a shape -- they name nine pixels and the wedge between them is inferred.  This reads the same host
+   copy the sampler reads and answers what the screen's coarse grid looks like and which single colour covers the biggest box. */
 
 #define VK_GRID_COLS	32
 #define VK_GRID_ROWS	24
@@ -5755,13 +5475,9 @@ typedef struct {
    noise.  Linear probe, no allocation, rebuilt every sampled frame. */
 #define VK_FLAT_BUCKETS	4096
 
-/* A rendered frame carries far more than VK_FLAT_BUCKETS distinct colours, so
-   the table fills within the first few thousand samples.  Once it is full a
-   linear probe that runs to the capacity is O(4096) per sample, and the census
-   costs sampled-pixels x 4096: measured offline at 47 ms per 800x600 readback
-   and 253 ms per 1920x1200 one, which is the walk's whole residual bucket.  The
-   probe is therefore bounded, and insert and lookup use the SAME bound, so
-   every key that was inserted stays findable and a miss costs the bound. */
+/* a rendered frame carries far more than VK_FLAT_BUCKETS distinct colours, so the table fills within the first few thousand samples and
+   a probe run to capacity would cost sampled-pixels x 4096 (47 ms per 800x600 readback).  The probe is therefore bounded, and insert and
+   lookup use the SAME bound, so every key that was inserted stays findable and a miss costs the bound. */
 #define VK_FLAT_PROBE	32
 
 /* The census is an instrument, so its price must not scale with the resolution
@@ -5786,13 +5502,9 @@ static void VK_Shade_FlatReset( void )
 	memset( s_flat, 0, sizeof( s_flat ) );
 }
 
-/* The frame's hue census, over the same host copy the flat boxes read.  A shape
-   the nine fixed samples miss is answered by counting which primitive channel
-   dominates each pixel and where those pixels are: the radar cone is a green
-   texel under rgbGen const white, so the boot that opens the radar has to show
-   its pixels green-dominant, and a red-clustered box names the same defect with
-   no coordinate guessed in advance.  Position-independent on purpose, so it is
-   a class instrument and not one surface's probe. */
+/* the frame's hue census, over the same host copy the flat boxes read: which primitive channel dominates each pixel and where those
+   pixels are -- the radar cone is a green texel under rgbGen const white, so a red-clustered box names the same defect with no coordinate
+   guessed in advance.  Position-independent on purpose. */
 typedef struct {
 	unsigned long long	n;
 	int					minx, miny, maxx, maxy;
@@ -6179,12 +5891,8 @@ void VK_SetGhostImage( const char *name, image_t *image )
 
 /* ---- the 2D order transcript -------------------------------------------- */
 
-/* A widget's depth is the position it draws at, so the ordered shader names are
-   the z-order answer.  The rate-limited VK:2ddraw row cannot carry it: past the
-   fortieth draw the sampling throws the sequence away, and a frame's menu is
-   hundreds of draws.  This keeps the frame's names in order and NewFrame emits
-   them, deduped down the run so a widget that paints once reads as one entry.
-   Emitted when the sequence changes, so a still menu costs one row. */
+/* a widget's depth is the position it draws at, so the ordered shader names are the z-order answer, which the rate-limited VK:2ddraw row
+   cannot carry (past the fortieth draw the sampling throws the sequence away).  NewFrame emits the frame's names in order, deduped down the run. */
 #define VK_2DORDER_MAX	64
 static char		s_2dOrder[VK_2DORDER_MAX][64];
 static int		s_2dOrderCount;
@@ -6271,12 +5979,8 @@ void VK_Shade_NewFrame( void )
 
 		VK_Draw_RecordedDraws( &recorded, &recordedIdx );
 
-		/* a count that moves between frames is the vanish signature, so a
-		   transition is always named: a recorded count that drops while the
-		   batch count holds still is draws vanishing between the walk and the
-		   stream, which the batch-only trigger would have swallowed.  A refusal
-		   keeps its own loud row (VK_Shade_DropRow), so the census is the gated
-		   part. */
+		/* a count that moves between frames is the vanish signature, so a transition is always named: a recorded count that drops while the
+		   batch count holds still is draws vanishing between the walk and the stream.  A refusal keeps its own loud row. */
 		if ( R_ProbeStatsOn()
 			 && ( rows < 8 || s_frameShadeDraws != lastBatches || recorded != lastRecorded
 			 || recordedIdx != lastRecordedIdx || ( rows % 600 ) == 0 ) ) {

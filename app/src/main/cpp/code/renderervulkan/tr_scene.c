@@ -72,20 +72,9 @@ void R_InitNextFrame( void ) {
 	tr.frameCount++;
 	tr.frameSceneNum = 0;
 
-	/* The frame's pose arena, rewound ONCE per frame -- here, at the boundary --
-	   and never per view.  Every view a frame records poses its skinned models
-	   into TIKI_Skel_Bones_Arena[tr.smpFrame] and stamps the rows it used on the
-	   entity (`ent->e.bonestart'); the walk thread draws them later from those
-	   rows.  A reset inside RE_RenderScene therefore rewinds the cursor at the
-	   SECOND view of a frame, and that view's poses overwrite the first view's
-	   before the walk has read them: the first view draws with the second view's
-	   skeleton.  CONTROLS is the screen that shows it -- its two UIRenderModels
-	   (the background.inc stardome, posed first, and the player preview) leave the
-	   dome with no pixels while the preview is correct -- and any two-view
-	   gameplay frame (the world view plus a HUD 3D model) has the same shape.
-	   The arena is already doubled by smpFrame parity so the front end can pose
-	   frame N+1 while the walk reads frame N; the cursor is part of that buffer.
-	   Control: docs/controls/bonearm. */
+	/* the frame's pose arena, rewound ONCE per frame -- here, at the boundary -- and never per view: a reset inside RE_RenderScene rewinds
+	   the cursor at the second view of a frame, whose poses overwrite the first view's before the walk reads them, so the first view draws with
+	   the second view's skeleton (CONTROLS shows it: the stardome loses its pixels while the preview is correct).  Control: docs/controls/bonearm. */
 	TIKI_Reset_Caches_Arena( tr.smpFrame );
 
 	r_firstSceneDrawSurf = 0;
@@ -374,13 +363,9 @@ void RE_RenderScene( const refdef_t *fd ) {
 		VK_Shade_WarmArm();
 	}
 
-	/* in2D is the walk's flag and is cleared by the walk's own 3D passes
-	   (RB_BeginDrawingView, RB_SpriteSurfs); the reference wrote it here because
-	   its RE_RenderScene ran on the render thread.  Under r_smp this front-end
-	   write raced the walk's 2D pass, and a batch begun in the window read in2D
-	   false and took the 3D iterator. */
-	/* the window cache is the front end's own, and the view reopens depth: the
-	   next overlay draw has to record its state block again, not skip it */
+	/* in2D is the walk's flag and is cleared by the walk's own 3D passes; the reference wrote it here because its RE_RenderScene ran on the
+	   render thread, and under r_smp this front-end write raced the walk's 2D pass, so a batch begun in the window took the 3D iterator. */
+	/* the window cache is the front end's own, and the view reopens depth: the next overlay draw has to record its state block again, not skip it */
 	RB_2D_InvalidateWindow();
 	tr.refdef.x = fd->x;
 	tr.refdef.y = fd->y;

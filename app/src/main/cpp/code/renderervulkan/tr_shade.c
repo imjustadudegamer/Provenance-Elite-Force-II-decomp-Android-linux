@@ -427,12 +427,8 @@ void ProjectDlightTexture( void ) {
 	}
 }
 
-/* The 2D draw colour is the quad's own.  Every 2D quad carries the colour in
-   force at its append (RB_Color4bv(backEnd.color2D) in tr_draw.c's
-   RB_2D_StretchPic and friends), and a 2D batch now spans many widgets
-   (tr_draw.c RB_2D_Span*), so the two generators that read the draw colour have
-   to read it from the quad being drawn rather than from whatever the walk's
-   last Draw_SetColor left in backEnd.color2D. */
+/* the 2D draw colour is the quad's own: every 2D quad carries the colour in force at its append (RB_Color4bv(backEnd.color2D)) and a 2D batch
+   now spans many widgets, so the two generators that read the draw colour read it from the quad being drawn, not from the walk's last Draw_SetColor. */
 static qboolean s_2DColorFromVertex;
 
 static void ComputeColors( shaderStage_t *pStage )
@@ -1170,16 +1166,9 @@ static void ComputeTexCoords( shaderStage_t *pStage ) {
 	}
 }
 
-/* The 2D walk (RB_StageIterator2D) draws through the tess pipeline, whose only
-   colour input is the per-vertex one.  A stage whose rgbGen or alphaGen is not
-   one of the gens that vertex colour already carries therefore has to be
-   resolved into the colour array on the CPU, exactly as ComputeColors does for
-   the shade path: without it the stage draws with the vertex colour alone, so
-   every `rgbGen const` 2D stage came out white -- the retail viewmode tints
-   (hud/structural 1 0.5 0) and the whole inventory weapon bar (rgbGen const /
-   alphaGen const) among them.  The vertex-driven gens keep the array the 2D
-   quad wrote, which is what the engine's own 2D draws (arrows, sliders, the
-   logo) carry their tint in. */
+/* the 2D walk draws through the tess pipeline, whose only colour input is per-vertex, so a stage whose rgbGen/alphaGen is not one of the
+   vertex gens is resolved into the colour array on the CPU as ComputeColors does: without it every `rgbGen const` 2D stage came out white --
+   the retail viewmode tints and the whole inventory weapon bar among them. */
 static qboolean VK_StageNeedsCPUColor2D( const shaderStage_t *pStage )
 {
 	switch ( pStage->rgbGen ) {

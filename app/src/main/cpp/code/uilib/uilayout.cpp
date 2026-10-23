@@ -123,14 +123,8 @@ void UILayout::ProcessCommands(void)
                 className += newname;
                 widgetClass = getClass(className);
                 {
-                    /* The controls screen's RenderModel never reaches Draw, so
-                       either it was never constructed or it was constructed and
-                       never painted.  Naming every class the layout resolves,
-                       and whether it resolved, is what splits those two: a
-                       resolution the menu never asked for is a parse drop, and
-                       one that resolved but never drew is a paint drop.  The
-                       table has to survive every screen a boot loads, so the
-                       window is the whole layout, not the first screen. */
+                    /* the controls screen's RenderModel never reaches Draw, so naming every class the layout resolves, and whether it resolved, is what
+                       splits a parse drop (never asked for) from a paint drop (resolved but never drew).  The window is the whole layout, not the first screen. */
                     static int s_clsRows;
                     s_clsRows++;
                     if (s_clsRows <= 4096 || (s_clsRows % 200) == 0) {

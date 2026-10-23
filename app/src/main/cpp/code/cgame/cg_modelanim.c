@@ -291,14 +291,8 @@ static void CG_RunModelAnimation(
             state->base.frame    = framenum;
         }
 
-        /* The too-fast report needed a clock to read.  framenum is derived from
-           cg.time, so if animation runs ahead this row names which side moved:
-           tpf is the per-frame time the anim declares, cgt is the client clock
-           and dt is the real milliseconds since this state last emitted.  Keyed
-           on the entity alone the row aliased every channel and every anim
-           switch -- a frame reset by a new anim read as a backward clock -- so
-           it is keyed on the state and the anim, and `driven` names the
-           movement-driven channel whose frame steps legitimately without time. */
+        /* the too-fast report needed a clock to read: tpf is the anim's declared per-frame time, cgt the client clock, dt the real milliseconds since
+           this state last emitted.  Keyed on the entity alone it aliased every channel and anim switch; `driven' names the movement-driven channel. */
         if (PROBE_On()) {
             static const void *s_clockState = NULL;
             static int  s_clockAnim = -1;

@@ -148,26 +148,9 @@ static int	rd_buffersize;
 static void	(*rd_flush)( char *buffer );
 
 /* --- print-path liveness --------------------------------------------------
- * `Com_RealPrintf' holds a recursion guard across its whole body, and every
- * sink it calls sits inside that window: `Sys_Print' reaches the console
- * Containers, and the qconsole branch reaches `FS_Write', which reaches
- * `FS_FileForHandle' -- and that raises ERR_DROP on a dead handle.  A longjmp
- * out of the window used to leave the guard set, and from then on EVERY
- * Com_Printf in the process returned at the guard: both sinks silent, the
- * frame loop alive, and the error's own text eaten, because Com_Error's
- * ERR_DROP banner is itself a Com_Printf.  That is the menu-to-world silence
- * of 2026-10-19: the guard wedged at the frame the load was clicked and no
- * row reached game.log or qconsole.log again.
- *
- * The guard is therefore per-thread (the main thread and the render thread
- * print concurrently, and a shared counter let one thread consume another's
- * reservation, dropping unrelated rows), and `Com_PrintRecover' clears it
- * from `Com_Error' and once per `Com_Frame', so a wedge can never outlive a
- * frame.  `Com_PrintRecover' also abandons a redirect whose buffer is still
- * installed: `SVC_RemoteCommand' points `rd_buffer' at a 78 KiB stack frame
- * and `Com_EndRedirect' is the only thing that clears it, so a Com_Error
- * raised by the command it executed used to leave every later print writing
- * into a dead frame. */
+ * `Com_RealPrintf' holds a recursion guard across its whole body and every sink it calls sits inside that window, so a longjmp out of it used to leave the
+ * guard set and every later Com_Printf return at the guard -- both sinks silent and the error's own text eaten (the 2026-10-19 menu-to-world silence).  The
+ * guard is per-thread and `Com_PrintRecover' clears it from `Com_Error' and once per `Com_Frame', and abandons a redirect whose buffer is still installed. */
 static _Thread_local int	t_printRecursion = 0;
 static _Thread_local int	t_printOpeningLog = 0;
 static int					com_printRecovers = 0;
@@ -1561,21 +1544,9 @@ void Com_Init( char *commandLine ) {
 
 	Cbuf_Execute( 0 );
 
-	/* ONE boot cfg is exec'd, and it is not a defaults file: `global/game.cfg'
-	   ships inside the retail pak (pak0, 1222 B, 52 lines) and carries the
-	   game-side `setd' values the engine has nowhere else -- above all
-	   `setd introCommand "defaultSoundTrack none; cinematic paramount.roq;
-	   ... cinematic intro.roq; afterCinematic ... pushmenu main"', which is the
-	   ONLY thing that starts the intro (UI_StartIntro_f reads introCommand and
-	   nothing else), plus `ui_mainMenuModel', `cg_3rd_person', `r_znear',
-	   `g_statefile', `g_playermodel' and the mp_* defaults.  It is applied here,
-	   before config.cfg, exactly where retail applies it, so the archived config
-	   wins every value it names.  Removing this exec is what turned the intro
-	   into a black screen until ESC (operator run 2026-10-15 09:06): game.cfg is
-	   data, not a second source of the defaults.
-	   `exec global/default.cfg' stays gone: that IS the defaults file, it is the
-	   one a loose retail copy shadowed (loose-before-paks), and the compiled
-	   seed below folds it in once on both platforms. */
+	/* ONE boot cfg is exec'd, and it is not a defaults file: `global/game.cfg' ships inside the retail pak and carries the game-side `setd' values the engine has nowhere
+	   else -- above all `setd introCommand ...', the ONLY thing that starts the intro.  Applied here, before config.cfg, exactly where retail applies it, so the archived
+	   config wins; removing this exec turned the intro into a black screen until ESC.  `exec global/default.cfg' stays gone: that IS the defaults file, folded in below. */
 	Cmd_AddCommand( "setd", Cvar_SetD_f );
 	Cbuf_AddText( "exec global/game.cfg\n" );
 	Cbuf_Execute( 0 );
@@ -1651,38 +1622,9 @@ void Com_Init( char *commandLine ) {
 
 	Cbuf_Execute( 0 );
 
-	/* The port's one defaults source, folded in once on EVERY platform: the
-	   compiled EF2_ANDROID_DEFAULT_COMMANDS, whose retail-recovered text is the
-	   union of the shipped global/defaultcontrols.cfg and global/defaultoptions.cfg
-	   (zpak-android.pk3) and is platform-neutral where those two are not (its
-	   cl_renderer is the compiled renderer default, not the zpak's stale gles3).
-
-	   The gate is a cvar only THIS code writes.  `port_defaultsSeed' starts at 0
-	   on every install, is bumped only
-	   here, and cannot be outrun by a stray value.  `in_androidDefaults' is still
-	   written so an Android install keeps one continuous history of the seed.
-
-	   Seed 2 (2026-10-21): the Android block grows the frame-thread shape the
-	   desktop launcher has proven (r_smp 1, r_jobs -1, cl_jobs -1, r_vboStatic
-	   0).  A seed bump is the only way new rows reach an install that already
-	   archived seed 1, because this block is the one place that runs AFTER the
-	   config exec and therefore beats the archived value -- the compiled cvar
-	   default does not (r_smp 0 sat in the device's GLES-era config.cfg and
-	   serialized the front end and the walk for the whole Vulkan era).
-
-	   Seed 3 (2026-10-21): quiet + the frame pace (com_maxfps 60,
-	   r_swapInterval 0).
-
-	   Seed 4 (2026-10-21): the max-graphics rows.  Costs one fold on every
-	   install, so all 74 binds and every seta row re-execute once and a
-	   hand-tuned sensitivity or bind resets to the compiled value.
-
-	   Seed 5 (2026-10-21): the advanced-video rows (r_flares 2,
-	   r_dynamiclightmaps 1) and the controls page's deadzone slider.  Same
-	   one-fold cost as every bump.
-
-	   Seed 7 (2026-10-22): in_joystickUseAnalog 1 and the j_* stick rows -- the
-	   analog axes CL_JoystickMove consumes.  Same one-fold cost as every bump. */
+	/* the port's one defaults source, folded in once on EVERY platform: the compiled EF2_ANDROID_DEFAULT_COMMANDS (the union of the shipped defaultcontrols.cfg
+	   and defaultoptions.cfg, platform-neutral where those are not).  The gate is `port_defaultsSeed', a cvar only this code writes, so a seed bump is the only way
+	   new rows reach an install that already archived an older one -- this block runs AFTER the config exec and therefore beats the archived value. */
 #define PORT_DEFAULTS_SEED 8
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
@@ -3284,6 +3226,10 @@ void Com_DeleteSublevelFiles( const char *gameName )
 
 void Com_WipeSavegame( const char *savename, qboolean deep )
 {
+	char **list;
+	int    numfiles;
+	int    i;
+
 	Com_DPrintf( "Com_WipeSaveGame(%s)\n", savename );
 
 	if ( deep ) {
@@ -3298,7 +3244,27 @@ void Com_WipeSavegame( const char *savename, qboolean deep )
 
 	Com_DeleteSublevelFiles( savename );
 
-	FS_Remove_HomeData( Com_GetArchiveFileName( savename, NULL, NULL, qfalse ) );
+	/* retail closes with FS_DeleteDir; the ssb walk misses anything else, so
+	   sweep the rest before taking the directory itself. */
+	list = FS_ListFiles( Com_GetArchiveFileName( savename, NULL, NULL, qfalse ), NULL, qfalse, &numfiles );
+	for ( i = 0; list && i < numfiles; i++ ) {
+		SAVE_PROBE( "wipe", "slot %s leftover %s\n", savename, list[ i ] );
+		FS_Remove_HomeData( Com_GetArchiveFileName( savename, list[ i ], NULL, qfalse ) );
+	}
+
+	if ( list ) {
+		FS_FreeFileList( list );
+	}
+
+	FS_RemoveDir_HomeData( Com_GetArchiveFileName( savename, NULL, NULL, qfalse ) );
+
+	if ( FS_ReadFileEx( Com_GetArchiveFileName( savename, savename, "sav", qfalse ), NULL, qtrue ) != -1 ) {
+		SAVE_PROBE( "wipe", "slot %s still has its .sav after the wipe\n", savename );
+	}
+
+	if ( FS_ReadFileEx( Com_GetArchiveFileName( NULL, savename, "ssv", qfalse ), NULL, qtrue ) != -1 ) {
+		SAVE_PROBE( "wipe", "slot %s still has its .ssv after the wipe\n", savename );
+	}
 }
 
 qboolean Com_ShiftedStrStr(const char* shifted, const char* name, int offset) {
