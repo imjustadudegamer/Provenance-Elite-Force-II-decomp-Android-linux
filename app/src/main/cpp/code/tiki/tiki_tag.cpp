@@ -287,7 +287,9 @@ static void TIKI_Tag_SkelSolveBone(
     baseLen = VectorLength(skel->pBones[bone].offset);
     bindRow = skel->pBones[bone].hasBaseRow ? skel->pBones[bone].baseRow : NULL;
 
-    animRow = TIKI_Skan_RecordRow(hdr, frameRec, mapping, bone, baseLen, boneName, bindRow, &ratio);
+    animRow = TIKI_Skan_RecordRow(
+        hdr, frameRec, mapping, skel->numBones, bone, baseLen, boneName, bindRow, &ratio
+    );
 
     if (!animRow) {
         out_quat[0] = 0.0f;
@@ -306,7 +308,9 @@ static void TIKI_Tag_SkelSolveBone(
     }
 
     if (cbHdr && cbRec) {
-        cbRow = TIKI_Skan_RecordRow(cbHdr, cbRec, cbMapping, bone, baseLen, boneName, bindRow, &cbRatio);
+        cbRow = TIKI_Skan_RecordRow(
+            cbHdr, cbRec, cbMapping, skel->numBones, bone, baseLen, boneName, bindRow, &cbRatio
+        );
 
         if (!cbRow) {
             return;
@@ -937,7 +941,7 @@ static qboolean TIKI_Tag_LerpSkel_SolveRecord(
     float            ratio = 1.0f;
     int              i;
 
-    row = TIKI_Skan_RecordRow(hdr, rec, mapping, bone, baseLen, boneName, bindRow, &ratio);
+    row = TIKI_Skan_RecordRow(hdr, rec, mapping, skel->numBones, bone, baseLen, boneName, bindRow, &ratio);
     if (!row) {
         return qfalse;
     }

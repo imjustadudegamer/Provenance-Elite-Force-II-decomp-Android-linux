@@ -43,6 +43,7 @@ const short int *TIKI_Skan_RecordRow(
     skelAnimHeader_t *hdr,
     skelFrame_t      *frameRec,
     const int        *mapping,
+    int               numBones,
     int               bone,
     float             baseLen,
     const char       *boneName,
