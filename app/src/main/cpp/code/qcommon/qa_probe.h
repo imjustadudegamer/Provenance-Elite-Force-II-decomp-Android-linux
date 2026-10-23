@@ -30,12 +30,8 @@ root, for more details.
 #error "define PROBE_PRINT before including qa_probe.h"
 #endif
 
-/* `qa_probe' is the ONE switch: 0 (default) silences every row family, 1 arms
- * them all.  The family cvars are fine-grained overrides that only matter while
- * the master is on.  PC arms it with play_ef2_decomp.sh --diag; Android arms it
- * with the property `log.tag.ProvenanceEF2' (read once below, and also by
- * Sys_AndroidDiagOn and the Java LogGate).  Fault paths (ERR_DROP, Sys_Error,
- * Sys_FaultOutf, the signal handler, VK_Guard_Hit) stay ungated. */
+/* `qa_probe' is the ONE switch: 0 (default) silences every row family, 1 arms them all; the family cvars are fine-grained overrides.  PC arms it with
+ * play_ef2_decomp.sh --diag, Android with the property `log.tag.ProvenanceEF2'.  Fault paths (ERR_DROP, Sys_Error, the signal handler, VK_Guard_Hit) stay ungated. */
 #ifdef PROBE_ON_OVERRIDE
 static inline qboolean PROBE_On(void)
 {
@@ -126,6 +122,9 @@ static inline qboolean PROBE_Throttle(int *counter, int first, int every)
 #define WIDGETM1_PROBE(tag, ...) PROBE_EMIT("[WIDGET:M1:", tag, __VA_ARGS__)
 
 #define LOADSTALL_PROBE(tag, ...) PROBE_EMIT("[LOADSTALL:", tag, __VA_ARGS__)
+
+/* save slot delete / restore anomalies */
+#define SAVE_PROBE(tag, ...) PROBE_EMIT("[SAVE:", tag, __VA_ARGS__)
 
 #include <stdlib.h>
 

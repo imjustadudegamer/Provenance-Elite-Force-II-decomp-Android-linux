@@ -486,12 +486,8 @@ void R_SetupProjection( void ) {
 
 	tr.viewParms.projectionMatrix[2] = 0;
 	tr.viewParms.projectionMatrix[6] = 0;
-	/* Vulkan clips against 0 <= z <= w, so the z rows put the near plane on 0 and
-	   the far plane on 1.  The OpenGL rows -- -(zFar+zNear)/depth and
-	   -2*zFar*zNear/depth -- put the near plane on -1, which is the volume's
-	   outside face, and every vertex nearer than the frustum midpoint is
-	   rasteriser-clipped away.  The answer-key Vulkan renderer's
-	   R_SetupProjectionZ carries exactly these two rows under USE_VULKAN. */
+	/* Vulkan clips against 0 <= z <= w, so the z rows put the near plane on 0 and the far on 1; the OpenGL rows put it on -1, the volume's
+	   outside face, and every vertex nearer than the frustum midpoint is rasteriser-clipped away.  The answer-key renderer's R_SetupProjectionZ carries these rows under USE_VULKAN. */
 	tr.viewParms.projectionMatrix[10] = -zFar / depth;
 	tr.viewParms.projectionMatrix[14] = -zFar * zNear / depth;
 
@@ -1004,12 +1000,48 @@ static void R_RadixSort( drawSurf_t *source, int size )
 }
 
 
+/* boot max of the shader index any sort word actually carried */
+static int	s_sfMaxIndex;
+
+static void R_SortField_Note( shader_t *shader )
+{
+	if ( shader->sortedIndex > s_sfMaxIndex ) {
+		s_sfMaxIndex = shader->sortedIndex;
+	}
+}
+
+static void R_SortField_Row( int surfs, int sprites )
+{
+	static int	s_prev, s_rows, s_crossed, s_maxShaders;
+
+	if ( !R_ProbeStatsOn() || s_sfMaxIndex == s_prev ) {
+		return;
+	}
+	if ( tr.numShaders > s_maxShaders ) {
+		s_maxShaders = tr.numShaders;
+	}
+	s_prev = s_sfMaxIndex;
+	s_rows++;
+	if ( s_sfMaxIndex > QSORT_SHADERNUM_MASK ) {
+		s_crossed++;
+	}
+	if ( s_crossed == 1 || s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
+		VK_Guard_Row( "VK:sortfield",
+					  "maxidx=%d maxtable=%d cap=%d masked=%d surfs=%d spr=%d f=%d",
+					  s_sfMaxIndex, s_maxShaders, QSORT_SHADERNUM_MASK + 1,
+					  s_sfMaxIndex & QSORT_SHADERNUM_MASK, surfs, sprites,
+					  RB_FrameCount() );
+	}
+}
+
 void R_AddDrawSurf(surfaceType_t* surface, shader_t* shader, int fogNum, int dlightMap) {
 	int			index;
 
 	if ( !r_detailSurfaces->integer && shader->detailShader ) {
 		return;
 	}
+
+	R_SortField_Note( shader );
 
 	index = tr.refdef.numDrawSurfs & DRAWSURF_MASK;
 	tr.refdef.drawSurfs[index].sort = (shader->sortedIndex << QSORT_SHADERNUM_SHIFT)
@@ -1031,6 +1063,8 @@ void R_AddSpriteSurf(surfaceType_t* surface, shader_t* shader, float zDistance)
 		zDistance = MAX_SPRITE_DIST_SQUARED;
 	}
 
+	R_SortField_Note( shader );
+
 	index = tr.refdef.numSpriteSurfs % MAX_SPRITES;
     tr.refdef.spriteSurfs[index].sort = (int)(MAX_SPRITE_DIST_SQUARED - zDistance) | (shader->sortedIndex << QSORT_SHADERNUM_SHIFT);
     tr.refdef.spriteSurfs[index].surface   = surface;
@@ -1040,7 +1074,7 @@ void R_AddSpriteSurf(surfaceType_t* surface, shader_t* shader, float zDistance)
 }
 
 void R_DecomposeSort(unsigned int sort, int* entityNum, shader_t** shader, int* fogNum, int* dlightMap) {
-	int index = ( sort >> QSORT_SHADERNUM_SHIFT ) & (MAX_SHADERS-1);
+	int index = ( sort >> QSORT_SHADERNUM_SHIFT ) & QSORT_SHADERNUM_MASK;
 
 	/* The array is only filled to tr.numShaders, so a key past it dereferences
 	   null at shader->sort -- the in-map fault at R_SortDrawSurfs+0x188.  Naming
@@ -1116,6 +1150,8 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 
 	R_RadixSort (drawSurfs, numDrawSurfs );
 	R_RadixSort (spriteSurfs, numSpriteSurfs );
+
+	R_SortField_Row( numDrawSurfs, numSpriteSurfs );
 
 	R_Sky_Render();
 

@@ -116,15 +116,9 @@ static int				rb_frameCount = 0;
 static int				rb_issueRows = 0;
 static qboolean			rb_inlineFallback;
 
-/* Walk time, accumulated by whichever thread walked.  backEnd.backEndMsec was
-   only ever zeroed and read, so the fps row's be= was always 0 and a decline
-   could not be attributed to the back end at all.  Written on the walk thread
-   and drained by the front end once per row, which is a benign race for a
-   diagnostic that reports a five second window.  Microseconds, because the
-   phase split is microseconds: an integer-millisecond walk total left a
-   quantisation error of up to a millisecond per frame in the row's accounting
-   residual, and a residual that is the ruler's own error cannot show a bucket
-   that does not sum. */
+/* walk time, accumulated by whichever thread walked: backEnd.backEndMsec was only ever zeroed and read, so the fps row's be= was
+   always 0.  Written on the walk thread and drained once per row (a benign race for a five second window); microseconds, because an
+   integer-millisecond total left a quantisation error a residual cannot be read through. */
 static volatile long long	rb_walkUsec;
 
 cvar_t *r_smp;
@@ -147,15 +141,9 @@ long long RB_WalkUsec64( void )
 	return usec;
 }
 
-/* The walk's own cost attribution.  be= is the whole walk and it contains a
-   blocking frame-fence wait the device owns, so a saturated walk does not say
-   whether to cut CPU work or device work -- on the full-resolution operator
-   boot that wait was 8.9 ms of a ~20 ms frame.  These phases split the walk:
-   the surface generation (skinning and tessellation), the vertex pack into the
-   ring, the shader/descriptor bind, the command recording, and the fence wait.
-   Gated with the r_perfFps row that prints them; the counters are written on
-   the walk thread and drained by the front end, the same benign race rb_walkUsec
-   already carries. */
+/* the walk's own cost attribution: be= is the whole walk and contains a blocking frame-fence wait the device owns (8.9 ms of a ~20 ms
+   frame on the full-resolution boot), so these phases split surface generation, vertex pack, bind, record and fence wait.  Gated with
+   the r_perfFps row; the counters are written on the walk thread and drained by the front end. */
 static long long	s_walkPhaseUsec[VK_WP_PHASES];
 static long long	s_walkShadeUsec[VK_WS_PARTS];
 static long long	s_srfT0 = -1;
@@ -203,15 +191,9 @@ void VK_WalkStat_TakeShade( long long *usecOut )
 	}
 }
 
-/* The srf window's split.  srf= names the RB_EndSurface/RB_BeginSurface pair
-   the shader-change branch issues, and it is the largest shade part at about
-   3us per stage draw; these sub-parts name where it goes, the same way dec/
-   rot/mv already do for their own window.  The charge sites live inside the
-   two functions, which the sprite and world walks also call, so the window
-   arms around the pair and every site is one predictable test when it is not
-   armed.  Each part is charged net of the binds and records it flushes, the
-   same netting the window total applies, so the parts sum to srf= instead of
-   double-counting what the stage window hands to bind= and rec=. */
+/* the srf window's split: srf= names the RB_EndSurface/RB_BeginSurface pair the shader-change branch issues and is the largest shade
+   part at about 3us per stage draw.  The charge sites live inside the two functions, so the window arms around the pair; each part is
+   charged net of the binds and records it flushes, so the parts sum to srf= instead of double-counting bind= and rec=. */
 static long long	s_walkSrfUsec[VK_WSS_PARTS];
 static long long	s_walkSrfTotal;
 static long long	s_srfArmT0;
@@ -318,15 +300,8 @@ long long VK_WalkStat_Nested( void )
 	return s_walkPhaseUsec[VK_WP_BIND] + s_walkPhaseUsec[VK_WP_REC] + s_walkPhaseUsec[VK_WP_PACK];
 }
 
-/* The same reading as a window's own contribution.  The three counters are
-   cumulative since the last drain and the front end drains them at a 1 s
-   cadence, so `Nested() - n0` is negative whenever a drain landed between the
-   window's open and its close -- and a negative "nested" makes the window's
-   subtraction turn into an addition of the stale count, which is a bucket
-   inflated by an amount that never happened (the residual is then large and
-   negative, which the row reads as an accounting error).  After a drain the
-   counter holds exactly what was added since it, so in that case it IS the
-   window's contribution. */
+/* the same reading as a window's own contribution: the counters are cumulative since the last drain, so `Nested() - n0` goes negative
+   when a drain lands between the window's open and close, which turns the subtraction into an addition of a stale count.  After a drain the counter IS the window's contribution. */
 long long VK_WalkStat_NestedSince( long long n0 )
 {
 	long long n = VK_WalkStat_Nested();
@@ -447,13 +422,8 @@ qboolean R_PendingRenderCommands( void )
 
 qboolean vk_frameOpen = qfalse;
 
-/* The list goes to the walk whole, from RE_EndFrame: a frame is one pass from
-   RC_VK_BEGIN to RC_VK_PRESENT, so a mid-frame flush is held until it ends.
-   The GL twin replays whatever a load-time flush finds, because GL draws outside
-   begin/end just land on the bound framebuffer.  Here a between-frames fragment
-   has no pass to land in and the slot's own submission may still be in flight,
-   so walking it would record into a live command buffer -- the sublevel hang.
-   It is dropped and named instead; the next frame redraws it. */
+/* the list goes to the walk whole, from RE_EndFrame: a between-frames fragment has no pass to land in and the slot's own submission may
+   still be in flight, so walking it would record into a live command buffer -- the sublevel hang.  It is dropped and named instead. */
 void R_FlushRenderCommands( void )
 {
 	vkCommandList_t *list = RB_CommandList();
@@ -484,12 +454,8 @@ void R_IssuePendingRenderCommands( void )
 
 /* ---- the frame's paint order, as the walk meets it ----------------------- */
 
-/* The readback says what colour a rect holds; only the recorded order says
-   whether the fill that colour came from was walked before or after the 3D
-   batch it hid.  Every 2D box -- the widget fills, and the menu background wash
-   among them -- and every surface batch's own rect is noted here in walk order,
-   so one boot answers a composition question a target read cannot.  Gated like
-   the other rows and emitted when the sequence changes. */
+/* the readback says what colour a rect holds; only the recorded order says whether the fill came before or after the 3D batch it hid, so
+   every 2D box and every surface batch's own rect is noted here in walk order.  Gated like the other rows, emitted when the sequence changes. */
 #define VK_ORDER_MAX	28
 
 static char		s_orderLine[1024];
@@ -637,12 +603,8 @@ void RB_ExecuteRenderCommands( const void *data )
 			inFrame = qtrue;
 		}
 
-		/* The 2D batch is recorded when it flushes, not where its commands sit,
-		   so a 3D batch that follows one in the list would overtake it in the
-		   command buffer.  The front end paints a widget's background and then
-		   asks for that widget's 3D model, so the CONTROLS stardome landed
-		   under its own full-screen fill.  Flushing here restores the recorded
-		   order, and the flush is charged to the 2D class it belongs to. */
+		/* the 2D batch is recorded when it flushes, not where its commands sit: the front end paints a widget's background and then asks for
+		   that widget's 3D model, so the CONTROLS stardome landed under its own full-screen fill.  Flushing here restores the recorded order. */
 		if ( op == RC_DRAW_SURFS || op == RC_SPRITE_SURFS ) {
 			const drawSurfsCommand_t *ocmd = ( const drawSurfsCommand_t * )cmds;
 			long long flushT0 = VK_WALK_T0();
@@ -727,12 +689,8 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			setWindow2DCommand_t *cmd = ( setWindow2DCommand_t * )cmds;
 
-			/* The queued quads were authored under the window in force, so they
-			   close as a span and the new state opens as the next one: the batch
-			   does NOT end here.  Only the immediate run has to close, because
-			   its vertices carry no span -- and only one of the two is ever open.
-			   A split that cannot be represented falls back to the flush this
-			   case always did. */
+			/* the queued quads were authored under the window in force, so they close as a span and the new state opens as the next one -- the
+			   batch does NOT end here.  Only the immediate run has to close, since its vertices carry no span; an unrepresentable split falls back to the flush. */
 			RB_2D_FlushImmediate();
 			if ( !RB_2D_SpanBreak() ) {
 				RB_2D_Flush();

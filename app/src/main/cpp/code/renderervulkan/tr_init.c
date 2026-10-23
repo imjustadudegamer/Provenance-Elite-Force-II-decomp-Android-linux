@@ -579,17 +579,9 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 	vk_lifeGen = r_sequencenumber;
 
-	/* What a registration DESTROYS, which this lane used to leave standing.
-	   Retail's R_BeginRegistration @0x00028D50 resets tr.viewCluster to -1
-	   right after the generation bump (the decompile's `v2[1039] = -1`), and
-	   the GLES3 twin -- the same function, cited to that address -- additionally
-	   calls RE_ClearScene(), R_FreeNonTikiModels(), ri.Hunk_Clear() and
-	   R_ClearWorld().  This lane did none of it, so every handle the map change
-	   is supposed to drop stayed live: tr.world (and with it tr.world->fogs,
-	   ->models, ->lightmaps and the sky portal), tr.worldMapLoaded, the PVS
-	   cluster lock tr.viewCluster, and the model table.  A menu frame is then
-	   rendered against the previous mission's world instead of a cleared one.
-	   Kept in the twin's order, before any scene is registered. */
+	/* what a registration DESTROYS, which this lane used to leave standing: retail's R_BeginRegistration @0x00028D50 resets tr.viewCluster to
+	   -1 and the GLES3 twin additionally clears the scene, the non-tiki models, the hunk and the world, so tr.world, tr.worldMapLoaded, the
+	   PVS cluster lock and the model table all dropped.  Kept in the twin's order, before any scene is registered. */
 	tr.viewCluster = -1;
 
 	RE_ClearScene();
@@ -637,15 +629,8 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 		R_InitImages();
 		R_StartupShaders();
 	} else {
-		/* Retail re-runs the shader setup on every registration, not only the
-		   first.  R_SetupShaders clears shadertext_t::shader over the whole
-		   table and resets tr.numShaders, so every shader re-parses in the same
-		   order, takes the same index, and re-resolves its stage images with
-		   the new r_sequencenumber.  Without it a shader parsed before the load
-		   keeps image_t pointers into tr.images[] slots that R_FreeUnusedImages
-		   is about to free, and the next R_CreateImage hands that slot to some
-		   later texture: the shader then draws the wrong art and the row reads
-		   img='' while the slot is still empty. */
+		/* retail re-runs the shader setup on every registration, not only the first: R_SetupShaders clears shader over the whole table and
+		   resets tr.numShaders, so every shader re-parses in order and re-resolves its stage images.  Without it a shader keeps image_t pointers into slots R_FreeUnusedImages is about to free. */
 		R_SetupShaders();
 	}
 
@@ -817,13 +802,8 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 	(void)stereoFrame;
 
-	/* The front end is about to fill this slot's list, so it has to be the only
-	   writer of it.  Two frames in flight means the front end comes back to a
-	   slot while the walk thread may still be reading the frame before last, and
-	   both the byte offsets and the prologue position follow from that.  Waiting
-	   here is the ring's own back pressure, not a serialization: the walk is
-	   already one frame behind, and the front end keeps a full frame of work
-	   queued ahead of it. */
+	/* the front end is about to fill this slot's list, so it has to be the only writer: two frames in flight means it comes back to a slot
+	   while the walk may still be reading the frame before last.  Waiting here is the ring's back pressure, not a serialization. */
 	if ( vk.smpActive && !VKimp_IsRenderThread() ) {
 		VKimp_FrontEndWaitSlot( tr.smpFrame );
 	}
@@ -845,14 +825,8 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 
 
-/* The rate the operator sees, and which side is spending it.  The reported
-   decline -- 343 to 230 to 115 frames a second across one session -- was only
-   readable by diffing the probe rows, and no row named the split.  One row a
-   second gives the whole curve and names front end against back end, so the
-   next boot measures the decline directly.  A five second window produced no
-   row at all on a boot that only rendered 1.2 seconds of frames, which is why
-   this matches the one second cadence the rest of the probe family already
-   runs at.  r_perfFps 0 stops it. */
+/* the rate the operator sees, and which side is spending it: the reported decline (343 to 230 to 115 fps across one session) was only
+   readable by diffing probe rows.  One row a second names front end against back end; r_perfFps 0 stops it. */
 static cvar_t *s_perfFps;
 
 void VK_PerfFpsRow( void )
@@ -935,13 +909,8 @@ void VK_PerfFpsRow( void )
 			   fe, be, VKimp_ParkMsec(), frames, vk.smpActive ? 1 : 0,
 			   VK_Platform_Validation(), R_ProbeStatsOn() ? 1 : 0 );
 
-	/* be= is the whole walk and it contains the blocking frame-fence wait the
-	   device owns, so "the walk thread is busy" does not say which side to cut.
-	   This row splits it per frame, and every opcode the walk executes lands in
-	   one of the buckets, so `rest=` is the accounting error: a residual that is
-	   not near zero is the instrument's own defect and not a cost.  acq= is the
-	   image the device has to hand back and out= is the submit and present, so
-	   the device waits are named separately from the CPU. */
+	/* be= is the whole walk and contains the blocking frame-fence wait the device owns, so this row splits it per frame and every opcode the
+	   walk executes lands in one bucket: `rest=` is the accounting error, and ac=/out= name the device waits separately from the CPU. */
 	{
 		long long	gpuTotal;
 		long long	sum = 0, dev = 0, shadeSum = 0;
@@ -1033,13 +1002,8 @@ void VK_PerfFpsRow( void )
 				   (double)srfPart[VK_WSS_BEGIN] / perSurf,
 				   (double)srfOther / perSurf );
 
-		/* The pool the walk's parallel ranges actually ran on.  This module
-		   compiles q_jobs.c for itself (cmake/renderer_common.cmake), so its
-		   pool is not the client's and the row is the only place the name, the
-		   worker count and the refused-range count are readable in this lane --
-		   the GLES3 twin's [MT] row and CL_JobPoolStats_f both answer a
-		   different module.  refused>0 names a batch whose ranges were not all
-		   queued, which is the one shape that loses vertex work. */
+		/* the pool the walk's parallel ranges actually ran on: this module compiles q_jobs.c for itself (cmake/renderer_common.cmake), so its
+		   pool is not the client's and this row is the only place the name, worker count and refused-range count are readable here.  refused>0 names lost vertex work. */
 		{
 			static long long	batchesPrev;
 			jobpoolStats_t		st;
@@ -1093,20 +1057,10 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	   the pools drained once and stayed drained -- the entity pool hit its cap ~1.3s into the menu. */
 	R_InitNextFrame();
 
-	/* The 2D window/scissor elision cache belongs to the thread that RECORDS the
-	   commands: this one.  It is dropped here, at the frame boundary, so every
-	   frame's first Set2DWindow/RE_Scissor is recorded into that frame's fresh
-	   command buffer -- a fresh buffer has no viewport or scissor at all, and a
-	   command the front end elided because the PREVIOUS frame asked for the same
-	   rect draws with whatever the buffer happens to carry.  The reference twin
-	   drops it exactly here (renderergles3/tr_cmds.c, right after
-	   R_InitNextFrame in its frame boundary); this lane instead dropped it from
-	   RB_FrameOpen on the WALK thread, which is a different thread and a
-	   different frame under r_smp: whether the front end's first window request
-	   saw a valid or an invalid cache was a race, so the elision came and went
-	   frame by frame -- the flashing 2D the operator kept reporting.  Both
-	   R_AddDrawSurfCmd and R_AddSpriteSurfCmd drop it too, because a 3D pass
-	   overwrites the viewport and scissor a cached 2D rect describes. */
+	/* the 2D window/scissor elision cache belongs to the thread that RECORDS the commands, so it drops here at the frame boundary: a fresh
+	   command buffer carries no viewport or scissor, and a command elided against the previous frame's rect draws with whatever the buffer
+	   happens to carry.  The GLES3 twin drops it exactly here; dropping it from RB_FrameOpen on the walk thread was a race, which was the
+	   flashing 2D.  R_AddDrawSurfCmd and R_AddSpriteSurfCmd drop it too, because a 3D pass overwrites the viewport and scissor. */
 	R_Invalidate2DWindowCache();
 	R_2D_BeginFrame();
 

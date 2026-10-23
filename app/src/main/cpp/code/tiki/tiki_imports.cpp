@@ -73,13 +73,9 @@ void TIKI_UpdateScreen(void)
 #endif
 }
 
-/* ---- [TIKI:skel] the cold-animation split --------------------------------- A cold character
-   tiki costs 0.3-1.3 s of a restore and the only thing the model-leg row can say today is the
-   total. Every animation the skeletor cache loads comes through here, so the read (bytes, through
-   the compressed paks and the OBB's FUSE mount) and the convert (the channel/frame work) are
-   charged apart, and the roll prints once a second while a load is running. Which of the two owns
-   the second decides the optimisation: a read leg wants fewer or larger reads, a convert leg wants
-   parallelism or a cached conversion. */
+/* ---- [TIKI:skel] the cold-animation split --------------------------------- */
+/* a cold character tiki costs 0.3-1.3 s of a restore and the model-leg row can only say the total: every animation the skeletor cache loads comes through here, so the
+   read (bytes, through the compressed paks and the OBB's FUSE mount) and the convert are charged apart, and the roll prints once a second while a load runs. */
 typedef struct {
     int      loads;
     int      bytes;

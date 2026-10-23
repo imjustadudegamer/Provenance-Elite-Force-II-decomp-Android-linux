@@ -153,12 +153,8 @@ void load_sfx_info()
                     sfx_infos[number_of_sfx_infos - 1].max_number_playing = atoi(token);
                 }
             } else if (!Q_stricmp(token, "maxvolume")) {
-                /* All 11 occurrences in the one shipped table
-                   (pak0.pk3:global/sound1.txt) are loops with no `volume' line,
-                   so this IS their authored volume (1.3 x7, 1.5, 2.0 x3); it was
-                   dropped here and they played at the 1.0 default.  Folded into
-                   the field `volume' writes and deliberately not clamped to the
-                   [0,1] ceiling -- the ceiling was what ate them. */
+                /* all 11 occurrences in the one shipped table (pak0.pk3:global/sound1.txt) are loops with no `volume' line, so this IS their authored
+                   volume (1.3 x7, 1.5, 2.0 x3) -- it was dropped here and they played at the 1.0 default.  Folded into the field `volume' writes, deliberately not clamped. */
                 if (number_of_sfx_infos > 1 && tiki.TokenAvailable(qtrue)) {
                     sfx_info_t *pInfo = &sfx_infos[number_of_sfx_infos - 1];
                     float       fValue;

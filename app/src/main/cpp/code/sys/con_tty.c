@@ -45,13 +45,9 @@ static int ttycon_show_overdue = 0;
 static int TTY_erase;
 static int TTY_eof;
 
-/* SIGCONT asks for the tty to be set up again.  The old handler called
- * CON_Init() straight from the signal: CON_Init prints, and a print that
- * lands while the interrupted thread already holds the stderr stream's own
- * lock blocks that thread on its own lock forever.  From then on every
- * fputs(stderr) in the process blocks -- which is a stderr sink that goes
- * silent while the engine and the qconsole.log sink keep running.  The
- * handler now only raises a flag and the main loop does the work. */
+/* SIGCONT asks for the tty to be set up again.  The old handler called CON_Init() straight from the signal: CON_Init prints, and a print that lands while the
+ * interrupted thread already holds the stderr stream's own lock blocks that thread on its own lock forever -- a stderr sink that goes silent while the engine and
+ * qconsole.log keep running.  The handler now only raises a flag and the main loop does the work. */
 static volatile sig_atomic_t	ttycon_reinit = 0;
 static qboolean					ttycon_notice_done = qfalse;
 

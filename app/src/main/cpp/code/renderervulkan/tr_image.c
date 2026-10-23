@@ -639,15 +639,9 @@ static void SMP_RecordUploadLevel( int level, int w, int h )
 
 /* ---- the level-zero dimensions each upload path produces ----------------- */
 
-/* A Vulkan image has one extent and one mip count fixed at creation, where the
-   reference's glTexImage2D sized every level on its own.  R_CreateImageOld used
-   to create at the source extent and then upload the reduced chain, so
-   everything past the reduced level 0 was never written: undefined content in
-   the top-left corner of every picmipped and clamped texture, and 1,738
-   validation errors, because the copy's extent was not the level's extent.
-   These three are the level-zero arithmetic of the three upload paths, and the
-   paths themselves call them, so the image the create makes is the image the
-   upload fills by construction. */
+/* a Vulkan image has one extent and one mip count fixed at creation, where the reference's glTexImage2D sized every level on its own.
+   Creating at the source extent then uploading the reduced chain left everything past reduced level 0 unwritten and every copy's extent
+   short of the level's extent (1,738 validation errors); these are the level-zero arithmetic of the three upload paths, so the image the create makes is the image the upload fills. */
 
 static void Upload32Dims( int width, int height, int picmip,
 						  int *outW, int *outH )
@@ -1108,12 +1102,8 @@ static void UploadCompressed(
 	}
 }
 
-/* The device has no BC/ASTC format for this source, so the create made an
-   RGBA8 image.  Uploading the source blocks into it is a copy whose row length
-   is the block size against a four-byte-per-pixel image -- the GPU reads past
-   the staging buffer and the device is lost on the first upload.  The payload
-   therefore follows the format the device actually has: the DXT chain is
-   decoded to RGBA8 and the copy is pixels. */
+/* the device has no BC/ASTC format for this source, so the create made an RGBA8 image: uploading the source blocks into it reads past the
+   staging buffer and loses the device on the first upload, so the payload follows the format the device actually has -- the DXT chain is decoded to RGBA8. */
 static void UploadDecoded(
 	byte* data,
 	int width,
@@ -1453,13 +1443,8 @@ image_t* R_CreateImageOld(
 	qboolean	dynamicallyUpdated = qfalse;
 	int i;
 	long		hash;
-	/* `allowPicmip` is the flag that permits scaling, not the number of levels
-	   to drop: retail takes the count from r_picmip->integer under that flag
-	   (Upload32 @0x00013000: `if (a8) v28 = r_picmip`, and the uncompressed
-	   arm's `>> a5`).  Passing the flag itself as the count shifted every
-	   allowPicmip image by one level with r_picmip=0 -- the whole world
-	   corpus uploaded at half extent while the UI, loaded with the flag off,
-	   stayed full size. */
+	/* `allowPicmip' is the flag that permits scaling, not the number of levels to drop: retail takes the count from r_picmip->integer under
+	   that flag (Upload32 @0x00013000).  Passing the flag itself as the count shifted every allowPicmip image by one level with r_picmip=0, so the world uploaded at half extent while the UI stayed full size. */
 	int			picmip = allowPicmip ? r_picmip->integer : 0;
 
 	if (strlen(name) >= MAX_QPATH ) {
@@ -1495,19 +1480,20 @@ image_t* R_CreateImageOld(
 	}
 
 	/* every upload is a driver-resource op: without the park it no-ops */
-	R_IssuePendingRenderCommands();
+	{
+		SMP_RLOAD_BEGIN( findsync );
+		R_IssuePendingRenderCommands();
+		SMP_RLOAD_END( findsync );
+	}
 
 	image = &tr.images[i];
 
-	/* The texture object is created whole: Vulkan needs extent and mip count up
-	   front, and validation catches a wrong count.  Both come from the upload
-	   path's own level-zero arithmetic, not from the source extent -- the
-	   reference sized every glTexImage2D level on its own, so a create at the
-	   source extent left everything past the reduced level 0 never written, and
-	   every copy's extent was short of the level's extent. */
+	/* the texture object is created whole -- Vulkan needs extent and mip count up front and validation catches a wrong count -- and both
+	   come from the upload path's own level-zero arithmetic, not the source extent. */
 	{
 		qboolean	supported = qfalse;
 		qboolean	compressed = qfalse;
+		qboolean	createOk = qfalse;
 		VkFormat	format;
 		int			mipLevels = 1;
 		int			upW = width, upH = height;
@@ -1550,14 +1536,14 @@ image_t* R_CreateImageOld(
 			mipLevels = 1;
 		}
 
-		if ( !VK_Texture_Create( upW, upH, mipLevels, format, &s_vkUploadTex ) ) {
-			/* A failed creation leaves texnum 0 here, and 0 is a REAL slot
-			   (`*default`, the engine's own missing-texture image), so every
-			   stage that binds this image silently samples another texture
-			   instead of failing loudly -- the shape a streaked or
-			   whole-missing texture takes with no row that names it.  The
-			   fallback stays (it is the same one retail's GL default texture
-			   gives); what changes is that the image names itself once. */
+		{
+			SMP_RLOAD_BEGIN( texcreate );
+			createOk = VK_Texture_Create( upW, upH, mipLevels, format, &s_vkUploadTex );
+			SMP_RLOAD_END( texcreate );
+		}
+
+		if ( !createOk ) {
+			/* a failed creation leaves texnum 0 (a REAL slot: *default), so every stage silently samples another texture -- the fallback stays, the image names itself once */
 			static int	s_uploadFailRows;
 
 			s_vkUploadTex = -1;
@@ -1730,12 +1716,8 @@ image_t* R_CreateImageOld(
 		}
 		if ( !seen ) {
 			if ( s_smpImgupCount >= SMP_IMGUP_MAX ) {
-				/* The NAME table is full, not the census.  It stays the dedup
-				   set, so memory is bounded, and uploads naming an image outside
-				   it keep counting and keep rowing -- sampled -- so the lightmap
-				   and world uploads past the menu's first 512 names stay
-				   readable off the boot instead of vanishing behind a one-line
-				   notice. */
+				/* the NAME table is full, not the census: it stays the dedup set, and uploads naming an image outside it keep counting and
+				   keep rowing (sampled), so lightmap and world uploads past the menu's first 512 names stay readable off the boot. */
 				s_smpImgupOverflow++;
 				if ( !s_smpImgupNotice ) {
 					s_smpImgupNotice = qtrue;
@@ -2444,6 +2426,8 @@ static void LoadTGA ( const char *name, byte **pic, int *width, int *height)
   ri.FS_FreeFile (buffer);
 }
 
+static void SMP_ImageMissProbe( const char* name, int msec );
+
 static void R_LoadImage(const char* name, byte** pic, int* width, int* height, qboolean* hasAlpha, int* vkCompressMode, int* numMipmaps, int* piMipmapsAvailable) {
 	size_t	len;
 	char	tempName[MAX_STRING_TOKENS + 1];
@@ -2560,7 +2544,30 @@ image_t* R_FindImageFileOld(const char* name, qboolean mipmap, qboolean allowPic
 
 	ri.Free(pic);
 	SMP_RLOAD_END( findimg );
+	SMP_ImageMissProbe( name, smp_ra_findimg ? SMP_RLoadNow() - smp_rlt_findimg : 0 );
 	return image;
+}
+
+/* one row per name: an image the draw path had to create, not a hash hit */
+static void SMP_ImageMissProbe( const char* name, int msec ) {
+	static char	s_seen[256][64];
+	static int	s_count;
+
+	if ( !R_ProbeStatsOn() || tr.registrating || !msec ) {
+		return;
+	}
+	if ( s_count < 256 ) {
+		int i;
+
+		for ( i = 0; i < s_count; i++ ) {
+			if ( !strcmp( s_seen[i], name ) ) {
+				return;
+			}
+		}
+		Q_strncpyz( s_seen[s_count], name, sizeof( s_seen[0] ) );
+		s_count++;
+	}
+	VK_Guard_Row( "VK:imgmiss", "img='%s' ms=%d f=%d", name, msec, RB_FrameCount() );
 }
 
 image_t* R_RefreshImageFileOld(const char* name, qboolean mipmap, qboolean allowPicmip, qboolean force32bit, int textureMode) {

@@ -58,15 +58,10 @@ typedef struct {
 static tikidef_t s_tikis[TIKI_MAX_DEFS];
 static int       s_numTiKis;
 
-/* ---- the parse/build result outlives the level --------------------------- CL_ShutdownAll runs
-   on every map load and save restore and it called TIKI_FreeAll, which threw away every
-   dtikianim_t and dtiki_t. The next level then re-parsed and re-built the same models from
-   nothing, and the measured split put build -- TIKI_LoadTikiModel -- at about 70% of that leg and
-   parse at 25%. The retained set is bounded by the game's own model list, so keeping the two
-   caches costs a fixed few MB and turns a warm registration into a name lookup. What is still
-   dropped is everything per-level: tiki->skeletor (recreated on demand by TIKI_GetSkeletor) and
-   the whole skelcache, which is the 55 MB animation set. tiki_keepLoaded 0 restores retail's
-   teardown. */
+/* ---- the parse/build result outlives the level --------------------------- */
+/* CL_ShutdownAll runs on every map load and save restore and it called TIKI_FreeAll, throwing away every dtikianim_t and dtiki_t, so the next level re-parsed and
+   re-built the same models (build ~70% of that leg, parse 25%).  The retained set is bounded by the game's own model list, so keeping the two caches costs a fixed few
+   MB; what is still dropped is everything per-level -- tiki->skeletor and the whole skelcache, the 55 MB animation set.  tiki_keepLoaded 0 restores retail's teardown. */
 static cvar_t *s_tikiKeepLoaded;
 
 static qboolean TIKI_KeepLoaded(void)
@@ -393,12 +388,8 @@ void TIKI_FreeAll()
             kept++;
         }
 
-        /* The skeletons stay too.  Dropping them made every save restore re-read,
-           re-validate and re-repack every skb/skd/tan of every character model --
-           the measured 120ms-per-model leg inside a restore whose model work was
-           758ms over 141 setModels.  TIKI_RegisterSkel finds a retained row by
-           path, so a warm restore is a name lookup; TIKI_LoadSkelCache the cvar
-           below restores the retail teardown. */
+        /* the skeletons stay too: dropping them made every save restore re-read, re-validate and re-repack every skb/skd/tan of every character model (120 ms per
+           model, 758 ms of model work over 141 setModels).  TIKI_RegisterSkel finds a retained row by path; TIKI_LoadSkelCache below restores the retail teardown. */
         if (TIKI_KeepSkel()) {
             TIKI_TikiRollKeep(kept);
 

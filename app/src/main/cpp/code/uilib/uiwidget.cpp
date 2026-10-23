@@ -1408,37 +1408,10 @@ void UIWidget::set2D(void)
 {
     int limit_subT0 = LIMIT_SubT0();
 
-    /* ONE window for the whole 2D pass, and the widget clips with the scissor.
-       Retail's pass opens on the screen window -- retail-menu-solomatch-final.trace
-       10103-10109: glViewport(0, 0, 640, 480), glOrtho(0, 640, 480, 0, -1, 1),
-       with glVertex2f in screen space and glScissor(<the widget's clip>) -- and a
-       TEXT/BOX widget keeps it (the trace's clips are (49,51,320,26),
-       (424,53,123,26), (371,49,256,32), ...).  A MATERIAL widget does not: retail
-       gives it its own viewport and its own local ortho, one per widget, with a
-       matching scissor -- retail-menu-jul04.trace 12613-12620 for the first LCARS
-       tile is glViewport(0, 224, 256, 256) + glOrtho(0, 256, 256, 0) + glScissor
-       (0, 224, 256, 256), and 12645-12649 is the same for the next tile at x=256.
-       The widget's own window is exactly the widget's rect, which is what this
-       port reproduces with the constant screen window plus the placement it bakes
-       into the vertices, so both of retail's shapes land on the same screen rect.
-       Placement rides on the
-       vertices now (Rend_Set2DOrigin, added by the renderer's 2D vertex writers),
-       so the ortho is constant and can never degenerate, and a widget with a
-       zero-extent frame is merely clipped to nothing by its scissor, as it is in
-       retail. */
-    /* A zero-extent window is the whole 2D defect: the ortho the window carries
-       is degenerate (left == right), so every quad the widget queues is
-       transformed through an identity and lands at raw coordinates, and the
-       0-wide viewport and empty scissor then clip it away -- text misplaced and
-       fills missing, with no refusal anywhere.  Retail authors these windows
-       (dm_scoreboard.urc's `scrollbar_width 0', its `column "..." 0' in the
-       dmscore RowColumn, menu_startserver's 0-width map-file column, read from
-       the paks), and UIRowColumn::addItem @0x000866xx sets each cell's frame
-       width straight from the column width and then accepts it if
-       doesWidgetFit says it fits -- so the frame is faithful.  What the row does
-       with a zero-width cell is the question, and this row names the source:
-       the widget, its frame, the clipped frame, the authored frame the scale
-       was applied to, and the scale. */
+    /* ONE window for the whole 2D pass and the widget clips with the scissor.  Retail's TEXT/BOX widgets keep the screen window; a MATERIAL widget gets its own
+       viewport, local ortho and scissor, one per widget (retail-menu-jul04.trace 12613-12620, 12645-12649).  The constant screen window plus the vertex placement covers both shapes. */
+    /* a zero-extent window is the whole 2D defect: the ortho is degenerate, so every queued quad lands at raw coordinates and the 0-wide viewport and empty scissor
+       then clip it away -- text misplaced and fills missing, no refusal anywhere.  Retail authors these (dm_scoreboard.urc's zero-width columns); the row names the source. */
     if (m_screenframe.size.width == 0.0f || m_screenframe.size.height == 0.0f) {
         static int s_zeroRows;
 
@@ -1476,16 +1449,9 @@ void UIWidget::set2D(void)
         1.0
     );
 
-    /* The widget's own window, as the offset the vertex writers add: a local
-       vertex used to land at the widget's (screenframe.pos - clippedorigin)
-       inside a viewport placed at the widget's own frame, and it must land at
-       the same screen position inside the one screen window.  BOTH axes are
-       therefore screenframe.pos - clippedorigin.  The y term must NOT be the
-       frame's GL-viewport box (surfaceHeight - originY - h - pos.y, which is
-       what the per-widget window used to pass as its viewport y): the constant
-       window's ortho is y-down like retail's glOrtho(0, 640, 480, 0), so a
-       vertex y already counts down from the pass's own origin and a second
-       flip mirrors the widget about the middle of the screen. */
+    /* the widget's own window, as the offset the vertex writers add: a local vertex must land at the same screen position inside the one screen window, so BOTH
+       axes are screenframe.pos - clippedorigin.  The y term must NOT be the frame's GL-viewport box: the constant window's ortho is y-down like retail's glOrtho, so a
+       second flip mirrors the widget about the middle of the screen. */
     uii.Rend_Set2DOrigin(
         m_screenframe.pos.x - m_clippedorigin.x,
         m_screenframe.pos.y - m_clippedorigin.y
@@ -3941,13 +3907,9 @@ bool UIWidget::isHudFullScreen(void) const
     return m_authoredFrame.size.width >= 640.0f && m_authoredFrame.size.height >= 480.0f;
 }
 
-/* The HUD scope carries the factor and deliberately does NOT multiply `uid.scaleRes'. A HUD
-   element is authored `noresize', so `uid.scaleRes' is exactly the division noresize exists to
-   ignore: its authored frame is already in screen pixels. Multiplying the shared virtual space
-   instead left the geometry alone -- `ChangeResolution' returns early for a noresize widget --
-   while `uid.scaleRes' still reached the resolution-scaled widgets that read it, which rescaled
-   the inventory bar a second time and pushed it off the screen. The factor is therefore applied
-   once, to the authored frame of a noresize widget, and to the text drawn inside the scope. */
+/* the HUD scope carries the factor and deliberately does NOT multiply `uid.scaleRes': a HUD element is authored `noresize', so its authored frame is already in
+   screen pixels and `ChangeResolution' returns early for it.  Multiplying the shared virtual space instead rescaled the inventory bar a second time and pushed it off
+   the screen.  The factor is applied once, to the authored frame and to the text drawn inside the scope. */
 void UIWidget::HudScalePush(float scale)
 {
     if (s_hudScaleDepth == 0) {
@@ -4023,13 +3985,8 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
 
     UColor bgColor = getStateBackgroundColor();
     if (bgColor.a != 0.0) {
-        /* The opaque background wash a UIWidget paints is the only source of a
-           flat light-blue screen in the front end (background.inc's RenderModel
-           bgcolor 0.35 0.67 1.00).  Naming the writer, its class, its rect and
-           its place in the frame's draw order is what tells a composition
-           defect (the model that should cover the fill missing) from an order
-           defect (the fill painted over the model).  Gated and budgeted like
-           the other census rows. */
+        /* the opaque background wash a UIWidget paints is the only source of a flat light-blue screen in the front end (background.inc's RenderModel bgcolor
+           0.35 0.67 1.00): naming the writer, its class, its rect and its place in the draw order tells a composition defect from an order defect.  Gated and budgeted like the other census rows. */
         static int s_bgfillRows;
         s_bgfillRows++;
         if (s_bgfillRows <= 480 || (s_bgfillRows % 240) == 0) {

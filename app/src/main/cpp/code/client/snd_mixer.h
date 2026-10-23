@@ -26,17 +26,12 @@ extern "C" {
 
 struct openal_internal_t;
 
-/* The control plane of the r51 mixer (personal/handover/r51-audio-mixing-plan.md).
-   OpenAL stays the output and the spatialiser; this module owns the policy --
-   bus assignment, the dialog sidechain, the loudness anchor and the per-bus
-   instrumentation.  Every number it contributes is reachable from the console,
-   and `s_duckEnable 0' makes every one of them a no-op, which is today's
-   behaviour bit for bit. */
+/* the control plane of the r51 mixer (personal/handover/r51-audio-mixing-plan.md): OpenAL stays the output and the spatialiser, this module owns the
+   policy -- bus assignment, the dialog sidechain, the loudness anchor and the per-bus instrumentation.  `s_duckEnable 0' makes every number a no-op, which is
+   today's behaviour bit for bit. */
 
-/* DIALOG and MOVIE are both protected (operator decision: cinematics carry
-   lip-synced speech).  COMBAT is folded into SFX; the `s_combatvolume' cvar
-   stays registered and is aliased onto the SFX trim.  AMBIENT is the
-   S_AddLoopingSound pool: it keeps the SFX trim and takes the SFX depth. */
+/* DIALOG and MOVIE are both protected (operator decision: cinematics carry lip-synced speech); COMBAT is folded into SFX and `s_combatvolume' is aliased
+   onto the SFX trim; AMBIENT is the S_AddLoopingSound pool, which keeps the SFX trim and takes the SFX depth. */
 typedef enum {
     SNDBUS_DIALOG = 0,
     SNDBUS_MOVIE,

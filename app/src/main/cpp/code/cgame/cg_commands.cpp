@@ -4815,13 +4815,8 @@ void ClientGameCommandManager::LoopSound(Event *ev)
 
 Container<int> cg_CachedTikis;
 
-/* autoCacheTiki turns every model, sound and loop-sound command an animation carries into a
-   CacheResource call. It is reached once per .tik config string and once more for every tiki
-   cg_CachedTikis collects, and cg_CachedTikis is cleared between two top-level models, so a tiki
-   that several config strings reach is walked again for each of them. The commands of a tiki whose
-   animations are all loaded cannot change, so the first walk records what it cached and a later
-   walk replays that list: the CacheResource sequence, and with it the precache set, its order and
-   every handle, is the one the repeated walk produced, with the frame scan done once. */
+/* autoCacheTiki turns every model, sound and loop-sound command an animation carries into a CacheResource call, once per .tik config string and
+   once more per tiki cg_CachedTikis collects; a later walk replays the first walk's recorded list, so the precache set, its order and every handle are identical. */
 #define CGTIKI_WALK_MAX 96
 #define CGTIKI_NAME_MAX 512
 

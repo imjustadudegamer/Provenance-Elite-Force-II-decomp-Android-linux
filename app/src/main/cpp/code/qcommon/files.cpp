@@ -288,12 +288,8 @@ static FILE	*FS_FileForHandle( fileHandle_t f ) {
 	return fsh[f].handleFiles.file.o;
 }
 
-/* qtrue when `h' is a live non-zip FILE handle, without raising.  This is the
- * question `Com_RealPrintf' has to ask before it hands the qconsole.log
- * handle to `FS_Write', because `FS_FileForHandle' raises ERR_DROP on a dead
- * handle and Com_RealPrintf is the one caller in the engine that must never
- * raise: a longjmp out of it wedges its recursion guard and silences every
- * print in the process. */
+/* qtrue when `h' is a live non-zip FILE handle, without raising: `FS_FileForHandle' raises ERR_DROP on a dead handle and Com_RealPrintf is the one caller in
+ * the engine that must never raise -- a longjmp out of it wedges its recursion guard and silences every print in the process. */
 qboolean FS_WriteHandleLive( fileHandle_t h ) {
 	if ( !fs_searchpaths ) {
 		return qfalse;
@@ -536,6 +532,13 @@ void FS_Remove_HomeData( const char *homePath ) {
 	FS_CheckFilenameIsMutable( homePath, __func__ );
 
 	remove( FS_BuildOSPath( fs_homedatapath->string,
+			fs_gamedir, homePath ) );
+}
+
+void FS_RemoveDir_HomeData( const char *homePath ) {
+	FS_CheckFilenameIsMutable( homePath, __func__ );
+
+	rmdir( FS_BuildOSPath( fs_homedatapath->string,
 			fs_gamedir, homePath ) );
 }
 

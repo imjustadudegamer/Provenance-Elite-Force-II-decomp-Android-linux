@@ -97,17 +97,8 @@ static void Sys_AndroidFaultMirror( const char *text )
 #endif
 
 /*
- * The shipped build is silent: no logcat row, no stdout.txt/stderr.txt capture,
- * unless the operator asks for diagnostics.  The one arm is the standard
- * Android per-tag property, set before launch and read once at the first
- * routine row of the boot:
- *
- *     adb shell setprop log.tag.ProvenanceEF2 1
- *
- * The crash channel never consults this: Sys_Error, the signal handler and the
- * fault mirror log unconditionally, so a crash still reaches logcat and the
- * NDK tombstone exactly as before.
- */
+ * the shipped build is silent unless the operator asks for diagnostics: `adb shell setprop log.tag.ProvenanceEF2 1', read once at the first routine row.  The crash
+ * channel never consults this -- Sys_Error, the signal handler and the fault mirror log unconditionally. */
 qboolean Sys_AndroidDiagOn( void )
 {
 	static int cached = -1;
@@ -905,12 +896,8 @@ int main( int argc, char **argv )
 	SDL_SetHint( SDL_HINT_ANDROID_BLOCK_ON_PAUSE_PAUSEAUDIO, "1" );
 #endif
 
-	/* The operator's order is TOTAL silence on Android unless the diag arm is
-	   set: the old WARN floor still let the vendor's warning and error rows
-	   through, and a quiet logcat is the contract.  QUIET discards every SDL
-	   log row at the output function -- even a crash only reaches the OS's own
-	   tombstone, which is exactly the one log the operator wants -- and the
-	   arm restores the default output at the INFO floor. */
+	/* the operator's order is TOTAL silence on Android unless the diag arm is set: the old WARN floor still let the vendor's warning and error rows through.
+	   QUIET discards every SDL log row at the output function and the arm restores the default output at the INFO floor. */
 	if( Sys_AndroidDiagOn() ) {
 		SDL_LogSetAllPriority( SDL_LOG_PRIORITY_INFO );
 	} else {

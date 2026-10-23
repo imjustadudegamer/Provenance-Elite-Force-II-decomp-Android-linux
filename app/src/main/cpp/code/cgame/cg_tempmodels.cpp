@@ -1369,9 +1369,23 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         p->cgd.oldorigin = p->cgd.origin;
         p->modelname     = m_spawnthing->GetModel();
 
-        if (!(p->cgd.flags & T_DLIGHT) && !p->modelname.length()) {
-            FreeTempModel(p);
-            continue;
+        // SpawnTempModel @0x00017080 has no gate here: the name is copied, registered only
+        // when non-empty, and the record lives to its own expiry.
+        {
+            static int s_tm_nm_hits;
+            static int s_tm_nm_rows;
+
+            s_tm_nm_hits++;
+            if (PROBE_On() && PROBE_Throttle(&s_tm_nm_rows, 4, 512)) {
+                PROBE(
+                    "tmfree",
+                    "site=nomodelname hits=%d em='%s' flags=0x%x flags2=0x%x\n",
+                    s_tm_nm_hits,
+                    m_spawnthing->emittername.c_str(),
+                    (unsigned)p->cgd.flags,
+                    (unsigned)p->cgd.flags2
+                );
+            }
         }
 
         p->addedOnce    = qfalse;
@@ -1379,9 +1393,21 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
 
         if (p->modelname.length()) {
             ent.hModel = cgi.R_RegisterModel(p->modelname.c_str());
+
+            // SpawnTempModel @0x00017080 never checks the handle; a dead model still lives.
             if (!ent.hModel) {
-                FreeTempModel(p);
-                continue;
+                static int s_tm_rf_hits;
+                static int s_tm_rf_rows;
+
+                s_tm_rf_hits++;
+                if (PROBE_On() && PROBE_Throttle(&s_tm_rf_rows, 4, 512)) {
+                    PROBE(
+                        "tmfree",
+                        "site=regfail hits=%d model='%s'\n",
+                        s_tm_rf_hits,
+                        p->modelname.c_str()
+                    );
+                }
             }
         }
 
@@ -1802,10 +1828,21 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
             }
         }
 
+        // retail's tail is the globalfade block then the loop increment: no brush-model
+        // test, no printf, no break.
         if (!(p->cgd.flags & T_DLIGHT) && p->ent.reType == RT_MODEL && !p->ent.hModel) {
-            Com_Printf("^~^~^ not spawning tempmodel because it is using the world as a brush model\n");
-            FreeTempModel(p);
-            break;
+            static int s_tm_bm_hits;
+            static int s_tm_bm_rows;
+
+            s_tm_bm_hits++;
+            if (PROBE_On() && PROBE_Throttle(&s_tm_bm_rows, 4, 512)) {
+                PROBE(
+                    "tmfree",
+                    "site=brushmodel hits=%d model='%s'\n",
+                    s_tm_bm_hits,
+                    p->modelname.c_str()
+                );
+            }
         }
 
         if (m_spawnthing->cgd.flags2 & T2_RELATIVEANGLES) {

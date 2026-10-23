@@ -154,13 +154,8 @@ typedef struct {
 	void (*FreeRawImage)(byte *pic);
 	void (*Set2DInitialShaderTime)(float startTime);
 
-	/* The widget's placement in the pass's one screen-space 2D window.  Retail
-	   keeps glViewport/glOrtho constant for every widget and puts the widget's
-	   position in its vertices (retail-menu-solomatch-final.trace calls
-	   10103-10124: glViewport(0,0,640,480), glOrtho(0,640,480,0,-1,1), then
-	   glVertex2f in screen space clipped by glScissor), so the port does the same
-	   and the per-widget ortho that could degenerate is gone.  A port-only slot,
-	   after the retail 62, so the export table's layout is untouched. */
+	/* the widget's placement in the pass's one screen-space 2D window: retail keeps glViewport/glOrtho constant and puts the position in its vertices
+	   (retail-menu-solomatch-final.trace 10103-10124), so the port does the same and the per-widget ortho that could degenerate is gone.  A port-only slot, after the retail 62, so the export table's layout is untouched. */
 	void	(*Set2DOrigin)(float x, float y);
 
 	/* Port-only slot, after the retail 62, so the export table's layout is

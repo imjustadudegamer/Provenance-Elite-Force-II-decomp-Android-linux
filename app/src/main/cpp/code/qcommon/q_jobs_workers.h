@@ -21,13 +21,8 @@ root, for more details.
 /* The array the pool is declared with, never the size the rule hands out. */
 #define JOBPOOL_MAX_WORKERS			64
 
-/* One rule for every machine.  The frame's own threads are reserved first --
-   the main/sim thread and the render thread r_smp starts -- and every core
-   left is a worker; nothing else is hardcoded, because the compositor and
-   driver threads a device also runs are not a fixed count and the OS owns
-   them.  The critical (renderer) pool and the non-critical (client) pool are
-   separate modules' pools, so they split the headroom instead of each claiming
-   it and oversubscribing the machine when a load runs both. */
+/* one rule for every machine: the frame's own threads are reserved first and every core left is a worker, nothing hardcoded -- the critical (renderer) and
+   non-critical (client) pools are separate modules' pools and split the headroom instead of oversubscribing the machine when a load runs both. */
 static inline void JobPool_SplitWorkersRule( int coreCount, int isAndroid,
 											 int requested, int critical,
 											 int *outWorkers )

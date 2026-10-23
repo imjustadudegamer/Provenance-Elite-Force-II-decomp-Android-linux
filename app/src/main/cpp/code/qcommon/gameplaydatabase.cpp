@@ -121,33 +121,51 @@ const str GameplayProperty::getFloatValueStr()
 #ifdef GAME_DLL
 void GameplayProperty::Archive(Archiver &arc)
 {
-	if ( arc.Loading() )
+	if ( arc.Saving() )
 	{
-		return ;
+		/* retail's record (SDK GameplayDatabase.h:64) is name/valuestr/valuefloat/
+		   modified; the kind rides the string so one layout serves both ways. */
+		if ( _type == VALUE_VECTOR )
+		{
+			_valuestr = va( "%f %f %f", _valuevector.x, _valuevector.y, _valuevector.z );
+		}
+		else if ( _type == VALUE_FLOAT )
+		{
+			_valuestr = getFloatValueStr();
+		}
 	}
 
-	if ( arc.Saving() && isModified() )
+	arc.ArchiveString( &_name );
+	arc.ArchiveString( &_valuestr );
+	arc.ArchiveFloat( &_valuefloat );
+	arc.ArchiveBool( &_modified );
+
+	if ( arc.Loading() )
 	{
-		ArchiveEnum( _type, GameplayValueType );
-		arc.ArchiveString( &_name );
-		switch ( _type )
-		{
-		case VALUE_FLOAT:
-			arc.ArchiveFloat( &_valuefloat );
-			break ;
-		case VALUE_STRING:
-			arc.ArchiveString( &_valuestr );
-			break ;
-		case VALUE_VECTOR:
-			arc.ArchiveVector( &_valuevector );
-			break ;
-		default:
-			break;
-		}
+		retypeFromString( _valuestr );
 	}
 }
 
-#endif 
+void GameplayProperty::retypeFromString( const str& valuestr )
+{
+	float val1, val2, val3;
+
+	if ( sscanf( valuestr.c_str(), "%f %f %f", &val1, &val2, &val3 ) == 3 )
+	{
+		_valuevector = Vector( val1, val2, val3 );
+		_type        = VALUE_VECTOR ;
+	}
+	else if ( sscanf( valuestr.c_str(), "%f", &val1 ) == 1 )
+	{
+		_type = VALUE_FLOAT ;
+	}
+	else
+	{
+		_type = VALUE_STRING ;
+	}
+}
+
+#endif
 
 
 
@@ -941,6 +959,22 @@ void GameplayDatabase::Archive(Archiver &arc)
 				if ( modified )
 				{
 					setStringValue( scopedObjectName, propertyName, stringValue, true );
+
+					GameplayObject	*restoredObject = getObject( scopedObjectName );
+
+					if ( restoredObject )
+					{
+						GameplayProperty	*restoredProperty = restoredObject->getProperty( propertyName );
+
+						if ( restoredProperty )
+						{
+							/* the string form alone loses the value kind: a float
+							   came back as 1.0 and a vector as vec_zero */
+							restoredProperty->setFloatValue( floatValue );
+							restoredProperty->retypeFromString( stringValue );
+						}
+					}
+
 					_pendingDeltaList.AddObject( PendingDelta( scopedObjectName, propertyName, stringValue ) );
 				}
 			}

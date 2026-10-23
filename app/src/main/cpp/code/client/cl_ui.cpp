@@ -1181,15 +1181,9 @@ static void UI_Update_Impl(void)
                     view3d->setShow(false);
                 }
             } else if (cls.state == CA_DISCONNECTED && currentMenu) {
-                /* A front-end menu floats over the 3D view, and the 3D view is
-                   where the starfield and the ship live.  Retail leaves it
-                   behind the menu; hiding the view and filling black put a
-                   black rectangle behind every non-fullscreen menu, the controls
-                   screen among them.  Not hiding it is not enough: a fullscreen
-                   menu (the main menu's `fullscreen 1`) hides it every frame, so
-                   a menu that is not fullscreen has to ask for it back or it
-                   inherits that hidden state -- the boot row reads
-                   menu='controls' visible=0 against menu='main' visible=1. */
+                /* a front-end menu floats over the 3D view where the starfield and the ship live, and retail leaves it behind the menu: hiding the
+                   view and filling black put a black rectangle behind every non-fullscreen menu.  Not hiding it is not enough either -- a fullscreen
+                   menu hides it every frame, so a non-fullscreen menu has to ask for it back or it inherits that hidden state. */
                 if (!view3d->LetterboxActive()) {
                     view3d->setShow(true);
                 }
@@ -2027,13 +2021,8 @@ void UI_Cvar_Set(const char *var_name, const char *value)
     Cvar_Set2(var_name, value, qfalse);
 }
 
-/* One HUD scale factor for the in-game HUD only. The 640x480 virtual space that `uid.scaleRes'
-   resolves stays retail, so every 2D menu, dialog, loading screen and scoreboard is
-   pixel-identical; a HUD element's subtree is the only place `uid.scaleRes' is multiplied, and
-   each HUD menu keeps the edge its `align' declares. `ui_hudScale' 0 means auto: 1.0 on a desktop,
-   and on Android the display density over 160 clamped to [1,2] -- a 6.4" 720p panel (density 320)
-   and a 6.4" 1440p panel (density 560) both land on the cap and read the same size. The clamp is
-   the same on both ends. */
+/* one HUD scale factor for the in-game HUD only: the 640x480 virtual space `uid.scaleRes' resolves stays retail, so every 2D menu, dialog, loading
+   screen and scoreboard is pixel-identical.  `ui_hudScale' 0 means auto -- 1.0 on a desktop, on Android the density over 160 clamped to [1,2]. */
 #define HUD_SCALE_MIN	1.0f
 #define HUD_SCALE_MAX	2.0f
 /* A phone panel is at least an xhdpi one, so when neither density query answers
@@ -2120,14 +2109,9 @@ static void UI_LogHudScale( void )
     }
 }
 
-/* The in-game HUD is two sets that reach the screen by different routes, and both are scaled. The
-   first is `hudList': everything `ui_addhud' pushes there -- health, radar, inventory, item text,
-   mission objectives, the pause icon, the objective notices, the arena and match-mode status
-   boards, and the menus the game adds through `Player::addHud'. `dm_scoreboard' is the exception:
-   the multiplayer scoreboard is interface, not HUD, and stays retail-sized. The second is the
-   fixed set the client finds by name -- the weapon-ammo readouts (`weaphud*'), the dialogue/comm
-   box (`headhud', `headtexthud', `texthud') and the small HUD panels. Menus, dialogs, loading
-   screens, the mission-result screens and the scoreboard are in neither set. */
+/* the in-game HUD is two sets that reach the screen by different routes, and both are scaled: `hudList' (everything `ui_addhud' pushes there, and the
+   menus `Player::addHud' adds -- `dm_scoreboard' excepted, it is interface and stays retail-sized) and the fixed set the client finds by name
+   (`weaphud*', `headhud', `headtexthud', `texthud' and the small HUD panels).  Menus, dialogs, loading and result screens are in neither. */
 static qboolean UI_HudMenuScaled( const Menu *hud )
 {
     return hud && strcmp( hud->m_name.c_str(), "dm_scoreboard" ) != 0;

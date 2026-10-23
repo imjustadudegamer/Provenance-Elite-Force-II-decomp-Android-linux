@@ -85,14 +85,8 @@ static VkDeviceMemory	s_stageVboMem, s_stageIboMem;
 static byte				*s_stageVboMap;
 static vkIndex_t		*s_stageIboMap;
 
-/* The short-run compose, one per frame in flight.  The vertex/index rings
-   (vk_vertex.c) and this path's transfer command buffers are per slot for the
-   same reason: a slot's command buffer may be read by the GPU until its own
-   fence signals, and VK_Frame_Begin only waits the slot it is re-recording, so
-   the other slot's frame can still be in flight.  A compose the two slots
-   share is rewritten by the next slot's walk while that draw reads it, and the
-   draw then reads another batch's index block -- valid indices, wrong
-   triangles, and no row anywhere, because nothing about the draw is invalid. */
+/* the short-run compose, one per frame in flight: a slot's command buffer may be read by the GPU until its own fence signals and VK_Frame_Begin only
+   waits the slot it is re-recording, so a compose the two slots share is rewritten by the next slot's walk while that draw reads it -- valid indices, wrong triangles, and no row anywhere. */
 static VkBuffer			s_softIbo[VK_FRAMES_IN_FLIGHT];
 static VkDeviceMemory	s_softIboMem[VK_FRAMES_IN_FLIGHT];
 static vkIndex_t		*s_softMap[VK_FRAMES_IN_FLIGHT];
@@ -128,11 +122,8 @@ static int				s_bakeRefused;
 
 /* ---- the bake's transfers ------------------------------------------------- */
 
-/* The bake's copies cannot record inside the frame's render pass
-   (VUID-vkCmdCopyBuffer-renderpass), so they take their own buffer, submitted
-   first in the frame's submission.  Submission order defines no dependency
-   (vkspec.txt:21527) -- the barrier in VK_VboStaticXferClose does
-   (vkspec.txt:26884, scopes by submission order, :17333). */
+/* the bake's copies cannot record inside the frame's render pass (VUID-vkCmdCopyBuffer-renderpass), so they take their own buffer submitted first; submission
+   order defines no dependency (vkspec.txt:21527) -- the barrier in VK_VboStaticXferClose does (vkspec.txt:26884, scopes by submission order, :17333). */
 static VkCommandBuffer	s_xferCmd[VK_FRAMES_IN_FLIGHT];
 static qboolean			s_xferReady[VK_FRAMES_IN_FLIGHT];
 static qboolean			s_xferOpen[VK_FRAMES_IN_FLIGHT];
@@ -524,16 +515,11 @@ static qboolean VK_StaticBake( const vkStaticRec_t *r, const vkIndex_t *indexes,
 				+ (size_t)r->vertStart * VK_STREAM_STRIDE,
 			(size_t)r->numVerts * VK_STREAM_STRIDE );
 
-	/* the rebase the streaming pack would have made, written once.  Every
-	   rebased index must land inside this region's own vertex span: one outside
-	   it is a surface drawn from another surface's geometry, which is the
-	   silent class -- the batch draws, covers nothing, and no row says why.  A
-	   bad rebase refuses the bake and the surface keeps streaming. */
+	/* the rebase the streaming pack would have made, written once: every rebased index must land inside this region's own vertex span, and one
+	   outside it is a surface drawn from another surface's geometry -- the silent class.  A bad rebase refuses the bake. */
 
-	/* the positions are what the arena draws with for the rest of the session,
-	   and a non-finite one covers nothing while every index stays valid -- the
-	   one class a rebase check cannot see, since it reads only index
-	   arithmetic.  Walk them all: a bake is once per surface. */
+	/* the positions are what the arena draws with for the rest of the session, and a non-finite one covers nothing while every index stays valid --
+	   the one class a rebase check cannot see.  Walk them all: a bake is once per surface. */
 	{
 		const float	*p = (const float *)( s_stageVboMap
 										 + (size_t)e->first * VK_STREAM_STRIDE );

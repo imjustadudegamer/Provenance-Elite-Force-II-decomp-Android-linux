@@ -50,12 +50,8 @@ void R_InitNextFrame( void ) {
 	backEndData = backEndDataBuf[tr.smpFrame];
 	backEndData->commands.used = 0;
 
-	/* The frame's pose arena, rewound ONCE per frame -- here, at the boundary --
-	   and never per view.  A reset inside RE_RenderScene rewinds the cursor at the
-	   second view of a frame, and that view's poses overwrite the first view's
-	   before the walk has read them, so the first view draws with the second
-	   view's skeleton.  Kept in step with renderervulkan/tr_scene.c; control:
-	   docs/controls/bonearm. */
+	/* the frame's pose arena, rewound ONCE per frame -- here, at the boundary -- and never per view: a reset inside RE_RenderScene rewinds the cursor at the
+	   second view of a frame, whose poses overwrite the first view's before the walk reads them.  Kept in step with renderervulkan/tr_scene.c; control: docs/controls/bonearm. */
 	TIKI_Reset_Caches_Arena( tr.smpFrame );
 
 	r_firstSceneDrawSurf = 0;

@@ -1185,6 +1185,7 @@ extern	refimport_t		ri;
 #define MAX_SPRITE_DIST_SQUARED		(MAX_SPRITE_DIST * MAX_SPRITE_DIST)
 
 #define	QSORT_SHADERNUM_SHIFT	21
+#define	QSORT_SHADERNUM_MASK	( ( 1 << ( 32 - QSORT_SHADERNUM_SHIFT ) ) - 1 )
 #define	QSORT_ENTITYNUM_SHIFT	11
 #define	QSORT_ENTITYNUM_MASK	0x3FF
 #define	QSORT_FOGNUM_SHIFT		3
@@ -1678,19 +1679,9 @@ void	VK_Cull( int cullType );
 
 #define VKS_DEFAULT			VKS_DEPTHMASK_TRUE
 
-/* The engine's clip-space arithmetic was written for the OpenGL clip volume,
-   -w <= z <= w.  Vulkan clips against 0 <= z <= w (Vulkan spec, "Primitive
-   Clipping"), so a vertex the OpenGL matrix puts at the near plane sits on the
-   volume's outside face and everything nearer than the frustum midpoint is
-   discarded by the rasteriser.  With r_znear 4 and a several-thousand-unit far
-   plane that bubble is about 2*zNear wide, which is the width of a corridor in
-   the shipped Borg maps: the near walls, floor and ceiling vanish and a blended
-   surface spanning the corridor keeps only its far half.  The answer-key Vulkan
-   renderer carries the same split -- renderervk/tr_main.c R_SetupProjectionZ
-   builds -zFar/depth and -zFar*zNear/depth under USE_VULKAN where the OpenGL
-   arm builds -(zFar+zNear)/depth and -2*zFar*zNear/depth -- so the projection
-   rows, the ortho rows, the CPU clip-volume tests and the clip->window depth
-   all go through these two helpers rather than restating the convention. */
+/* the engine's clip-space arithmetic was written for the OpenGL clip volume (-w <= z <= w) and Vulkan clips against 0 <= z <= w, so a
+   vertex at the GL near plane is discarded -- a bubble about 2*zNear wide, the width of a corridor in the Borg maps.  The answer-key Vulkan
+   renderer (renderervk/tr_main.c R_SetupProjectionZ) carries the same split, so the projection/ortho rows, the CPU clip tests and the clip->window depth all go through these two helpers. */
 static inline float VK_ClipZToDepth( float clipZ, float clipW )
 {
 	return clipZ / clipW;
@@ -2364,12 +2355,8 @@ typedef struct {
 	int			x, y, width, height;
 } scissor2DCommand_t;
 
-/* The widget's placement inside the pass's one screen-space 2D window.  Retail
-   keeps glViewport/glOrtho constant for every widget and puts the placement in
-   the vertices (retail-menu-solomatch-final.trace calls 10103-10124:
-   glViewport(0,0,640,480), glOrtho(0,640,480,0,-1,1), glVertex2f in screen space
-   clipped by glScissor), so this record carries the offset the 2D vertex writers
-   add, and the per-widget ortho is gone. */
+/* the widget's placement inside the pass's one screen-space 2D window: retail keeps glViewport/glOrtho constant for every widget and puts
+   the placement in the vertices (retail-menu-solomatch-final.trace 10103-10124), so this record carries the offset the 2D vertex writers add. */
 typedef struct {
 	int			commandId;
 	float		x, y;
@@ -2519,7 +2506,10 @@ void UI_LoadResource(const char* name);
 #define SMP_RLZ_transcode	10
 #define SMP_RLZ_upload		11
 #define SMP_RLZ_modelreg	12
-#define SMP_RLZ_COUNT		13
+#define SMP_RLZ_shparse	13
+#define SMP_RLZ_findsync	14
+#define SMP_RLZ_texcreate	15
+#define SMP_RLZ_COUNT		16
 
 extern	int		smp_rloadDepth;	
 extern	cvar_t	*smp_rloadStats;	
@@ -2889,20 +2879,9 @@ typedef struct {
 } vkTessVertex_t;
 
 #define VK_TESS_VERTEX_BYTES ( (int)sizeof( vkTessVertex_t ) )
-/* A level frame, not a menu frame, is the demand the ring has to hold, and the
-   demand is set by the frame's draw-surf count, which the engine does not
-   bound.  The ceiling is therefore checked against the frames that actually
-   happen, and it has now been raised twice by that check:
-     - a boot measuring 1,481 draw surfs refused 155 reserves at 24,000 slots;
-     - a boot measuring 3,596 draw surfs refused 529 at 72,000, and the pair
-       `slots + refused-slots` put that frame's demand at 111,259 slots, i.e.
-       37.1 of the engine's 3,000-vertex batches.
-   Streaming efficiency did not change between those boots: the ring used 21.0
-   slots per draw surf in the frames that refused and 26.1 in the frames that
-   fit, so this is capacity and not a re-pack, and the multiple has to cover the
-   demand the engine produces.  48 batches is 144,000 slots, 29% over the
-   measured worst frame; `demand=` and `peak=` on the [VK:ring] frame row name
-   both numbers on every boot so the next correction is read, not guessed. */
+/* a level frame, not a menu frame, is the demand the ring has to hold, and the engine does not bound the draw-surf count that sets it.  The
+   ceiling has been raised twice by that check (1,481 draw surfs refused 155 at 24,000 slots; 3,596 refused 529 at 72,000, that frame's demand
+   111,259 slots) while streaming efficiency stayed flat, so 48 batches / 144,000 slots is capacity 29% over the measured worst frame; `demand=` and `peak=` name both numbers every boot. */
 #define VK_RING_MAX_VERTEXES ( SHADER_MAX_VERTEXES * 48 )
 #define VK_RING_MAX_INDEXES  ( SHADER_MAX_INDEXES * 48 )
 
@@ -2920,12 +2899,8 @@ VkBuffer  VK_VertexRing_IndexBuffer( void );
 int       VK_VertexRing_Used( void );
 int       VK_VertexRing_Flushed( void );
 
-/* One surface's packed slice, reused by the surface's remaining stages. Retail locks a surface's v
-   ertex array once and issues every stage's draw against it (the traced menu frame calls glLockArr
-   aysEXT five times and draws thirteen times); reserving and repacking per stage multiplied the ri
-   ng's demand by each shader's stage count. The key is the whole pack source tuple, so a slice is
-   shared only when every stage packs byte-identical vertices: identical source pointers plus a nul
-   l colour array, which is the case where nothing the stage recomputes reaches the pack. */
+/* one surface's packed slice, reused by the surface's remaining stages: retail locks a surface's vertex array once and issues every stage's
+   draw against it (the traced menu frame calls glLockArraysEXT five times and draws thirteen times), and reserving per stage multiplied the ring's demand by the stage count.  The key is the whole pack source tuple, so a slice is shared only when every stage packs byte-identical vertices. */
 qboolean  VK_VertexRing_StreamMatch( int vertexes, int indexes,
                                      const void *tc0, const void *tc1, int tcStride,
                                      const void *colors, const void *normals,
@@ -3016,13 +2991,8 @@ typedef struct {
 	   s7.9.2: `oldLayout` must match the layout the image is actually in, or be
 	   VK_IMAGE_LAYOUT_UNDEFINED). */
 	VkImageLayout layout;
-	/* A chain's uploads are staged, not submitted: the epoch holds the bytes and
-	   the queue names the copies, and the flush is what runs both.  Two
-	   lifetimes with separate owners (see vk_texture.c): a path that writes a
-	   record cannot release the pointer it writes through, and a record is never
-	   queued without a mapped buffer behind it.  One thread queues a chain at a
-	   time -- the same single-writer assumption the layout field carries -- and
-	   stagingOwner names it, so another thread's flush is refused whole. */
+	/* a chain's uploads are staged, not submitted: the epoch holds the bytes, the queue names the copies, the flush runs both.  Two lifetimes
+	   with separate owners; a record is never queued without a mapped buffer behind it, and one thread queues a chain at a time, which stagingOwner names. */
 	VkBuffer			staging;
 	VkDeviceMemory		stagingMemory;
 	byte				*stagingMapped;

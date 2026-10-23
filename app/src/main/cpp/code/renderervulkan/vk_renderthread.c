@@ -210,12 +210,8 @@ int VKimp_ParkMsec( void )
 	return msec;
 }
 
-/* Handing a frame to the walk thread releases the front end, so the front end
-   can come back to this slot while the walk is still reading it.  With two
-   slots that is the very next frame, and the walk reads byte offsets the front
-   end is appending to -- which is how a walk saw a frame body that continued
-   into the next frame's prologue and then left its pass without a present.
-   These three make "the walk thread owns this list" a testable state. */
+/* handing a frame to the walk thread releases the front end, so it can come back to this slot while the walk is still reading it -- with two
+   slots that is the very next frame, and the walk reads byte offsets the front end is appending to.  These three make "the walk thread owns this list" a testable state. */
 
 void VKimp_WalkBegin( int slot )
 {
@@ -280,13 +276,8 @@ void VKimp_WakeRenderer( void *data )
 
 	SDL_LockMutex( vk_smpMutex );
 
-	/* A frame the render thread has picked up but not finished is normal; a
-	   frame it has not picked up yet is the only reason a wake would be
-	   illegal, and turning the front end away is a deadlock by construction
-	   whenever the render thread is slower than one frame -- the front end has
-	   nothing else to do but offer the next frame and be refused forever.
-	   Wait for the handoff slot instead, so a wake is always legal when the
-	   render thread is free to take one. */
+	/* a frame the render thread has picked up but not finished is normal; a frame it has not picked up yet is the only illegal wake, and turning
+	   the front end away is a deadlock by construction whenever the render thread is slower than one frame.  Wait for the handoff slot instead. */
 	while ( vk_smpData != NULL && !vk_smpShutdown ) {
 		if ( !parking ) {
 			parking = qtrue;
@@ -337,28 +328,10 @@ int VKimp_HandshakeViolations( void )
 	return vk_handshakeViolations;
 }
 
-/* ---- command pools: one pool per producer, one lock per pool ---------------
+/* ---- command pools: one pool per producer, one lock per pool -------------- */
 
-   Vulkan 1.4 s6.2, "Command Pools" (vkspec.txt:14741-14745): "Command pools are
-   externally synchronized, meaning that a command pool must not be used
-   concurrently in multiple threads.  That includes use via recording commands
-   on any command buffers allocated from the pool, as well as operations that
-   allocate, free, and reset command buffers or the pool itself."  The per-call
-   Host Synchronization clauses repeat it for every pool operation
-   (vkspec.txt:15000, :15067, :15160, :15277, :15340, :15440 and :18948-18953).
-
-   One shared upload pool therefore cannot be guarded by a lock held only around
-   one-shot transactions, because one of its command buffers -- the static
-   arena's transfer buffer -- records ACROSS a frame, so its recording window is
-   the frame.  Locking that window would serialise the walk behind every upload;
-   leaving it out is the "VkCommandPool is simultaneously used in current thread
-   ... and thread ..." the layer reported at vkAllocateCommandBuffers.  Two
-   mutexes do not fix it either: they do not exclude each other.
-
-   The port instead gives each thread its own pool.  Within a thread use is
-   sequential by construction and across threads the pools are disjoint, so
-   every pool has exactly one owner and the whole-lifetime rule is met with one
-   lock per pool and no frame-long critical section. */
+/* Vulkan 1.4 s6.2: a command pool must not be used concurrently in multiple threads, recording included, and the static arena's transfer buffer records ACROSS a frame --
+   which is exactly the "VkCommandPool is simultaneously used in current thread ... and thread ..." the layer reported.  Each thread gets its own pool, so every pool has one owner. */
 
 #define VK_POOL_OWNERS	16
 
@@ -576,12 +549,8 @@ void VK_Upload_End( void )
 	}
 }
 
-/* A layout transition is a write to the image, so an image the walk thread may
-   still sample has to be quiesced first: the walk thread parked and holding no
-   frame is the only state in which no command buffer that references the image
-   can still be recorded-and-unsubmitted (Vulkan 1.4 s7.7/s7.9: a resource in
-   use by a pending submission must not be written).  Called from the render
-   thread it would wait on its own walk, so it is a no-op there. */
+/* a layout transition is a write to the image, so an image the walk thread may still sample has to be quiesced first: the walk thread parked
+   and holding no frame is the only state in which no command buffer referencing the image can still be recorded-and-unsubmitted.  A no-op from the render thread, which would wait on its own walk. */
 void VK_Upload_Quiesce( void )
 {
 	if ( !vk.smpActive || VKimp_IsRenderThread() ) {
@@ -598,12 +567,8 @@ unsigned long VK_Upload_ThreadID( void )
 	return ( unsigned long )SDL_ThreadID();
 }
 
-/* The graphics queue is host-synchronised, and under r_smp two threads reach
-   it: the walk thread submits frames while the main thread submits texture
-   uploads, publishes and readbacks.  The validation layer named it -- "object
-   of type VkQueue is simultaneously used in current thread ... and thread ...".
-   These three are every way the port touches a queue, so the lock lives here
-   and no call site has to remember it. */
+/* the graphics queue is host-synchronised and under r_smp two threads reach it: the walk submits frames while the main thread submits texture
+   uploads, publishes and readbacks ("object of type VkQueue is simultaneously used in current thread ... and thread ...").  These three are every way the port touches a queue, so the lock lives here. */
 static SDL_mutex *vk_queueMutex;
 
 /* Fences are the same shape: the walk's frame fence and the readback fence are

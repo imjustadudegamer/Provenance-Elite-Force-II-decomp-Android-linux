@@ -1123,20 +1123,9 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 				stage->colorConst[0] = 255 * color[0];
 				stage->colorConst[1] = 255 * color[1];
 				stage->colorConst[2] = 255 * color[2];
-				/* Three components name no alpha, so the constant is opaque.  The
-				   field is the stage's colour constant and its alpha belongs with
-				   the colour: RB_CalcColorFromConstant copies all four bytes into
-				   the vertex colours, and alphaGen const is the only thing that
-				   has any business writing the fourth.  Shipped content depends on
-				   it -- 438 `rgbGen const` stages across the paks and not one
-				   carries a fourth component -- and with this left at the stage's
-				   zero every one of them draws with a zero vertex alpha, which is
-				   invisible under GL_SRC_ALPHA blending and discarded outright by
-				   an alphaFunc GT0.  The radar fov cone is exactly that stage:
-				   `blendFunc GL_SRC_ALPHA GL_ONE`, `alphaFunc GT0`, `rgbGen const
-				   1.0 1.0 1.0` over a green 51,199,0 texture, and it never draws.
-				   Guarded rather than unconditional so the order of this line and
-				   an explicit `alphaGen const` in the same stage cannot matter. */
+				/* three components name no alpha, so the constant is opaque: RB_CalcColorFromConstant copies all four bytes and 438 shipped `rgbGen const' stages carry
+				   no fourth component, so a zero here drew them all invisible under GL_SRC_ALPHA and discarded by alphaFunc GT0 (the radar fov cone never drew).
+				   Guarded, so the order of this line and an explicit `alphaGen const' cannot matter. */
 				if ( stage->alphaGen != AGEN_CONSTANT ) {
 					stage->colorConst[3] = 255;
 				}
@@ -3315,6 +3304,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 	shader.needsColor = qtrue;
 
 	if ( currentShader->text ) {
+		SMP_RLOAD_BEGIN( shparse );
 		shaderText = currentShader->text;
 		if ( r_printShaders->integer ) {
 			ri.Printf( PRINT_ALL, "*SHADER* %s\n", name );
@@ -3336,6 +3326,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		}
 
 		sh = FinishShader();
+		SMP_RLOAD_END( shparse );
 		return sh;
 	}
 
@@ -3432,8 +3423,32 @@ shader_t* R_FindShaderForceAlpha(const char* name) {
 	return R_FindShaderForceAlphaLM( name, -1 );
 }
 
+/* one row per name: a fade variant the draw path had to build, not a hit */
+static void SMP_FadeParseProbe( const char* name, int msec ) {
+	static char	s_seen[128][64];
+	static int	s_count;
+
+	if ( !R_ProbeStatsOn() || tr.registrating ) {
+		return;
+	}
+	if ( s_count < 128 ) {
+		int i;
+
+		for ( i = 0; i < s_count; i++ ) {
+			if ( !strcmp( s_seen[i], name ) ) {
+				return;
+			}
+		}
+		Q_strncpyz( s_seen[s_count], name, sizeof( s_seen[0] ) );
+		s_count++;
+	}
+	VK_Guard_Row( "VK:fadeparse", "shader='%s' ms=%d f=%d", name, msec, RB_FrameCount() );
+}
+
 shader_t* R_FindShaderForceAlphaLM(const char* name, int lightmapIndex) {
 	shader_t	*sh;
+	int			before = tr.numShaders;
+	int			t0 = SMP_RLoadArmed() ? SMP_RLoadNow() : 0;
 
 	sh = R_RealFindShader( name, lightmapIndex, qtrue, qtrue, qtrue, qtrue, 0 );
 	if ( !sh ) {
@@ -3442,7 +3457,11 @@ shader_t* R_FindShaderForceAlphaLM(const char* name, int lightmapIndex) {
 	if ( sh->forcedAlphaShader[0] ) {
 		return R_RealFindShader( sh->forcedAlphaShader, lightmapIndex, qtrue, qtrue, qtrue, qtrue, 0 );
 	}
-	return R_RealFindShader( name, lightmapIndex, qtrue, qtrue, qtrue, qtrue, 1 );
+	sh = R_RealFindShader( name, lightmapIndex, qtrue, qtrue, qtrue, qtrue, 1 );
+	if ( sh && tr.numShaders != before ) {
+		SMP_FadeParseProbe( sh->name, t0 ? SMP_RLoadNow() - t0 : 0 );
+	}
+	return sh;
 }
 
 

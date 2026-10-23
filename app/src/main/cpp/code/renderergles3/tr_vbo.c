@@ -147,12 +147,9 @@ static cvar_t	*s_mapCvar;
 /* The arm as the cvars ask for it, before the store's own verdict; `fall='
  * counts against this, for a store asked for and refused every batch. */
 static qboolean	s_arenaArmed;
-/* The ring's own send shape. 1 is the fresh-orphan `glBufferData' per send and the default: the
-   same-view A/B measured 47,093 us/window against 381,283 for the sub-data shape, because Mali
-   prices a write into a buffer the GPU last read eight batches ago as a drain. The storage
-   re-specification now happens with the default VAO bound and the slot's own VAO opens after it,
-   which is the order bc60397 gave the store and the one the 0.3.19 session found the old shape
-   missing. 0 is the sub-data shape, kept for the A/B. */
+/* the ring's own send shape; 1 is the fresh-orphan `glBufferData' per send and the default: the same-view A/B measured 47,093 us/window against 381,283 for
+   the sub-data shape, because Mali prices a write into a buffer the GPU last read eight batches ago as a drain.  The re-specification happens with the default
+   VAO bound and the slot's own VAO opens after it.  0 is the sub-data shape, kept for the A/B. */
 static cvar_t	*s_freshCvar;
 /* Latched at the first send: the two shapes are not mixable within a session,
  * so flipping r_tessFresh mid-session does nothing until the next map load. */
@@ -491,12 +488,8 @@ void RB_VBO_Shutdown( void )
 	s_vboInitialised = qfalse;
 }
 
-/* One batch's two sends. `slot` rotates per batch, and the vertex and index sends of a batch share
-   their slot, so the pair a draw reads is the pair just written and the pair the next send writes
-   is eight batches old. Both sizes and both payloads are the batch's exact values, no padding: the
-   allocation is the structural maximum and the upload is the batch. The fresh arm's call set is
-   two glBufferData plus the same bind calls; the subdata arm's is two glBufferSubData. Neither
-   maps and neither fences. */
+/* one batch's two sends: `slot' rotates per batch and a batch's vertex and index sends share it, so the pair a draw reads is the pair just written.  Both sizes
+   and both payloads are the batch's exact values, no padding; the fresh arm's call set is two glBufferData, the subdata arm's two glBufferSubData, and neither maps nor fences. */
 static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIndexes )
 {
 	int		slot = s_tessRingNext;
@@ -1385,12 +1378,8 @@ void RB_VBO_BeginFrame( void ) {
 	s_arenaVbo = s_vboArena[s_arenaNext];
 	s_arenaEbo = s_eboArena[s_arenaNext];
 
-	/* The store's VAO is opened for a frame that uses it, and after its storage is decided: the
-	   orphan arm below re-specifies that storage, and the 0.3.19 session caught a driver leaving a
-	   VAO's pointers behind a storage that was replaced under it. When the store is refused the frame
-	   must not be left standing on it either: `s_vboArena[0]' has no storage on the mapped arm until
-	   the map succeeds, so the pointers `RB_VboArenaInit' captured name nothing. The state on entry
-	   is put back instead. */
+	/* the store's VAO is opened for a frame that uses it, and after its storage is decided: the orphan arm re-specifies that storage, and a driver was caught
+	   leaving a VAO's pointers behind a storage replaced under it.  When the store is refused the frame must not stand on it either, so the state on entry is put back. */
 	vaoOnEntry = r_vaoBound;
 
 	/* The previous mapped store is closed out and its fence planted before this
@@ -1619,12 +1608,9 @@ static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
 	for ( i = 0; i < 5; i++ ) {
 		qglGetVertexAttribiv( ATTR_POSITION + i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &attr[i] );
 	}
-	/* The gates a colour readback cannot see, and what is left now that state, bytes, winding and
-	   attributes all came back clean. `depth` is what the depth buffer holds at this pixel: a clear
-	   that never landed, or a surface that wrote near zero ahead of this one, rejects every fragment
-	   through LEQUAL while every queried state reads correct. `dr` is the range the fragments are
-	   squeezed into, `clear` the last glClearDepth, `atest` the fragment-stage discard that fires
-	   before the depth test at all. */
+	/* the gates a colour readback cannot see, and what is left now that state, bytes, winding and attributes all came back clean: `depth' is what the depth
+	   buffer holds at this pixel (a clear that never landed, or a surface that wrote near zero, rejects every fragment through LEQUAL), `dr' the range the
+	   fragments are squeezed into, `clear' the last glClearDepth, `atest' the discard that fires before the depth test. */
 	qglGetFloatv( GL_DEPTH_RANGE, drange );
 	qglGetFloatv( GL_DEPTH_CLEAR_VALUE, &dclear );
 	qglGetIntegerv( GL_DEPTH_BITS, &dbits );
@@ -1838,12 +1824,9 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		subT1 = BE_On() ? BE_Microseconds() : 0;
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_upload, subT1 - subT0 );
 
-		/* [BE:send] probe: the upload phase is the one place inside the walk where the CPU can block on
-		   the driver. A phase that is long only when it follows a long gap is a drain of the previous
-		   frame; a phase that is long inside a run, where the gap is short, is the send itself blocking.
-		   `big` counts the phases whose batch exceeded the old 512-vertex chunk. Every read is behind
-		   BE_On(), so a release run reads no clock. Values are microseconds. The row is printed by
-		   BE_MaybeRoll() so it shares the [BE:ds]/[BE:be] window. */
+		/* [BE:send] probe: the upload phase is the one place inside the walk where the CPU can block on the driver.  A phase long only when it follows a long gap is
+		   a drain of the previous frame; one long inside a run is the send itself blocking.  `big' counts phases whose batch exceeded the old 512-vertex chunk.
+		   Every read is behind BE_On(); values are microseconds; the row is printed by BE_MaybeRoll(). */
 		if ( BE_On() ) {
 			int			phase;
 			int			gap;

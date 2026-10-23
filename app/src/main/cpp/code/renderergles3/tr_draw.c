@@ -55,12 +55,9 @@ void RB_2D_InvalidateWindow( void ) {
 	r_scissor2DValid = qfalse;
 }
 
-/* ---- [2D:stall] per-call accounting of the 2D entry points ---------------- A menu frame's cost
-   is charged to whichever widget calls in here, and the widget probe only sees the widget's total.
-   This splits that total per entry point and separates the flush prefix -- which, with a
-   single-threaded back end, executes the recorded frame inline -- from the immediate body, so one
-   device run names the blocking call instead of inferring it from widget self-times. Every read is
-   behind the master probe gate. */
+/* ---- [2D:stall] per-call accounting of the 2D entry points ---------------- */
+/* a menu frame's cost is charged to whichever widget calls in here and the widget probe only sees the widget's total, so this splits it per entry point and
+   separates the flush prefix from the immediate body, naming the blocking call instead of inferring it.  Every read is behind the master probe gate. */
 typedef enum {
 	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
 	D2P_tilepicoffset, D2P_trianglepic, D2P_bgsub, D2P_bgpixels, D2P_box,
@@ -212,13 +209,9 @@ static void D2_Roll( void ) {
 /* ---- the 2D bodies: run directly when the back end is single-threaded, and
  * replayed on the render thread when the same call was recorded ---- */
 
-/* ---- the 2D batch --------------------------------------------------------- A UI pass issued
-   400-650 of these calls a frame and every one was a complete surface of its own: program and
-   state setup, a buffer re-specification and a draw. That per-call price is the menu's whole frame
-   -- 70-115 us typical, single calls spiking into milliseconds -- so quads now append to one open
-   surface and the surface is ended only when the shader, the primitive kind or the view changes.
-   Draw order survives because every change flushes first; colour never flushes, because it is
-   baked per vertex. */
+/* ---- the 2D batch --------------------------------------------------------- */
+/* a UI pass issued 400-650 of these calls a frame and every one was a complete surface of its own -- 70-115 us typical, spiking into milliseconds -- so quads
+   now append to one open surface, ended only when the shader, the primitive kind or the view changes.  Draw order survives because every change flushes first; colour never flushes, it is baked per vertex. */
 
 static shader_t *s_2dBatchShader;
 static qboolean  s_2dBatchOpen;
@@ -578,15 +571,9 @@ void Set2DOrigin( float x, float y ) {
 	gles3_2dOrigin[1] = y;
 }
 
-/* retail's overlay phase is one state block issued at its start, not a choice
-   each draw makes (the traced frame: glDepthMask FALSE then glDisable(GL_DEPTH_TEST)
-   right after the ortho, and the view restores both).  A drawer that appends quads
-   without entering the phase inherits the view's depth and lands behind the wall
-   in front of the camera -- the in-game counter that only shows over playback.
-   The block it re-issues is the screen window: the last widget's own rect is the
-   widget's state, and re-arming it here put a screen-level string inside that
-   widget's viewport and scissor a few seconds in, once the in-game panels began
-   naming their own. */
+/* retail's overlay phase is one state block issued at its start, not a choice each draw makes; a drawer that appends quads without entering the phase
+   inherits the view's depth and lands behind the wall in front of the camera (the in-game counter that only shows over playback).  The block it re-issues is the
+   screen window, not the last widget's own rect -- re-arming that put a screen-level string inside a widget's viewport and scissor. */
 void RB_2D_EnterPhase( void ) {
 	if ( GLES3_DepthGate2D() && r_window2DValid && r_scissor2DValid ) {
 		return;

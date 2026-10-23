@@ -83,45 +83,12 @@ void RB_InitBackend( void )
 /* the tessellation store lives in tr_shade.c, as in the reference renderer */
 
 
-/* ---- the 2D coverage census ---------------------------------------------- *
- *
- * WHY.  The main menu's six LCARS background tiles are each a one-quad batch
- * with its own shader and its own clip, and the frame's transcript says all six
- * were issued; the operator's screen shows one of them.  "Issued" and
- * "rasterised" are different claims, and the gap between them is this census.
- *
- * The scissor test is the mechanism that produces the gap: a sample outside the
- * scissor rectangle "will have [its] coverage set to 0" (vkspec.txt:202812-202816,
- * section 35.2 "Scissor Test"), and the rect Vulkan is given is the clamped one
- * VK_Draw_SetScissor handed it (offset >= 0, VUID-vkCmdSetScissor-x-00595,
- * vkspec.txt:202864).  The rect a draw runs under is dynamic state that a batch
- * replays per span, so it is readable only here, beside the draw -- which is
- * where this census reads it, rather than recomputing it.
- *
- * For every span the frame draws it names the pipeline bound, the scissor rect
- * ACTUALLY in force (read back from the clamp), the ortho the push constant
- * carried, the ring slice and descriptor set the draw read, the blend/depth/
- * alpha-test tuple, the index range, the texture sampled, the quad's own screen
- * rect, and the pixel area of
- *     quad rect  INTERSECT  applied scissor  INTERSECT  render area.
- * px=0 is proof that the draw cannot rasterise a pixel.  Each row also carries
- * the three rects that say where the state came from: `authoredscn` is the span
- * table's copy (the state the quad's batch recorded it under), `appliedscn` is
- * what VK_Draw_2DStateApply re-issued for this draw, and `walkscn` is the walk's
- * live 2D mirror at the flush -- which under the defect that hid the LCARS tiles
- * held the PREVIOUS widget's clip.  The frame summary then names every shader
- * with its issued/covered counts, which is the whole-frame answer.
- * vk_2dCover 2 adds a readback cross-check over the presented frame's own host
- * copy: a span whose intersection is non-empty but whose readback holds only the
- * clear colour is the OTHER failure class (a rejected fragment, a blend that
- * resolves to nothing, a sampler that never landed), which the scissor cannot
- * explain.
- *
- * Gate: qa_probe AND vk_2dCover, default 0.  A default build emits none of it.
- * ------------------------------------------------------------------------- */
+/* ---- the 2D coverage census ---------------------------------------------- */
+/* "issued" and "rasterised" are different claims and the scissor is what makes the gap: the census reads the rect beside the draw and
+   reports quad INTERSECT scissor INTERSECT render area (px=0 proves no raster) plus the three rects that say where the state came from.
+   vk_2dCover 2 adds a readback cross-check over the presented frame.  Gate: qa_probe AND vk_2dCover, default 0. */
 
-/* Declared here rather than in tr_local.h: the accessors live in vk_draw.c and
-   tr_backend.c is their only consumer. */
+/* Declared here rather than in tr_local.h: the accessors live in vk_draw.c and tr_backend.c is their only consumer. */
 void	 VK_Draw_LastScissorRect( int out[4] );
 qboolean VK_Draw_LastScissorValid( void );
 qboolean VK_Draw_2DAppliedGet( int *win, int *scn );
@@ -695,12 +662,8 @@ static void RB_StageDrawSpan( VkCommandBuffer cmd, int indexBase, int vertexBase
 			} else {
 				memset( clip, 0, sizeof( clip ) );
 			}
-			/* No span state to apply: the draw runs under the command buffer's
-			   scissor, which is the last rect VK_Draw_ScissorRect was given, and
-			   that is what the coverage is measured against.  A one-shot writer
-			   (the glyph run, the triangle fan) is drawn where it is written, so
-			   this IS its authored state; a batch lands here only when its run
-			   could not be named. */
+			/* no span state to apply: the draw runs under the command buffer's scissor, the last rect VK_Draw_ScissorRect was given, which is
+			   what the coverage is measured against -- a one-shot writer is drawn where it is written, so this IS its authored state. */
 			RB_2DCoverQuadRect( 0, numIndexes, quad );
 			px = RB_2DCoverArea( quad, clip, area );
 
@@ -896,14 +859,9 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 			if ( tess.xyz[v][1] > y1 ) y1 = tess.xyz[v][1];
 		}
 
-		/* The rect the quad actually lands in, in the SAME space the trace logs:
-		   a vertex carries its widget's placement (RB_2DPlaceVertex), the window
-		   maps its ortho onto its viewport, and retail's glVertex2f/glScissor are
-		   bottom-left.  The ortho range is recovered from the pushed matrix
-		   (m[0] = 2/(r-l), m[12] = -(r+l)/(r-l), m[5] = -2/(t-b),
-		   m[13] = (t+b)/(t-b)), so the row is right for a pillarboxed or a
-		   window-sized window too, and `srect` diffs call for call against the
-		   trace's stream and against `win`/`scn` below. */
+		/* the rect the quad actually lands in, in the same space the trace logs: the ortho range is recovered from the pushed matrix
+		   (m[0] = 2/(r-l), m[12] = -(r+l)/(r-l)), so the row is right for a pillarboxed or window-sized window too, and `srect' diffs
+		   call for call against the trace's stream and against `win'/`scn' below. */
 		{
 			const float	*o = VK_Draw_CurrentOrtho();
 			float		winX = (float)vk_2dWindow[0];
@@ -1008,13 +966,9 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 	VK_Draw_BindPipeline( vk.commandBuffers[s_rbSlot], pipeline );
 	VK_Draw_SetAlphaTest( vk.commandBuffers[s_rbSlot], stage->stateBits );
 
-	/* wrapClampModeX/Y hold the legacy wrap enum: REPEAT is 10497, not 0, and the
-	   loader sets them from `clampmap' -- the GLES3 twin's whole 2D pass samples
-	   by exactly this mode.  Testing only IMGFLAG_CLAMPTOEDGE, a flag the font
-	   atlas alone carries, left every 2D clampmap stage on REPEAT, so a
-	   linear-sampled panel bled its opposite edge into the border and left the
-	   seam between neighbours.  clampTime is not a wrap: it is a tcMod clock and
-	   no shipped shader sets it. */
+	/* wrapClampModeX/Y hold the legacy wrap enum (REPEAT is 10497, not 0) and come from `clampmap', which the GLES3 twin's whole 2D pass samples by;
+	   testing only IMGFLAG_CLAMPTOEDGE left every 2D clampmap stage on REPEAT, so a linear-sampled panel bled its opposite edge into the border.
+	   clampTime is not a wrap: it is a tcMod clock and no shipped shader sets it. */
 	clamp = ( image->flags & IMGFLAG_CLAMPTOEDGE )
 			|| ( image->wrapClampModeX != VK_TWRAP_REPEAT )
 			|| ( image->wrapClampModeY != VK_TWRAP_REPEAT ) ? qtrue : qfalse;
@@ -1119,12 +1073,9 @@ void RB_FrameOpen( int slot )
 	RB_2D_SpanReset();
 	s_rbSlot = -1;
 
-	/* No 2D window/scissor invalidation here.  That cache belongs to the FRONT
-	   END's recording stream, and this runs on the walk thread for a frame the
-	   front end recorded earlier: dropping it from here raced the front end's
-	   recording of the NEXT frame, which is what made a frame's first 2D window
-	   be elided on some frames and recorded on others.  The front end drops it
-	   at its own frame boundary (RE_EndFrame) and after every 3D command. */
+	/* no 2D window/scissor invalidation here: that cache belongs to the front end's recording stream and this runs on the walk thread for a
+	   frame the front end recorded earlier -- dropping it here raced the front end's recording of the NEXT frame.  The front end drops it at
+	   its own frame boundary (RE_EndFrame) and after every 3D command. */
 }
 
 qboolean RB_RecordSurfaces( VkCommandBuffer cmd )
@@ -1220,12 +1171,8 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	key.depthTest = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
 	key.depthWrite = ( stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
 
-	/* The ortho is recorded on every run, at function scope: a run that trusted
-	   the previous run's push drew with a stale ortho, and a 2D quad under a
-	   stale ortho lands as a garbage sheet across the frame.  Which ortho it
-	   carries depends on the space the run draws in -- inside 2D it is the
-	   window's own, the same value the window setup pushed, and the 3D getters
-	   do not hold it -- but the recording itself is unconditional. */
+	/* the ortho is recorded on every run, at function scope: a run that trusted the previous run's push drew with a stale ortho, and a 2D quad
+	   under a stale ortho lands as a garbage sheet across the frame.  Which ortho it carries depends on the space the run draws in; the recording itself is unconditional. */
 	struct { float ortho[16]; float alphaTest[4]; } push;	/* vk_draw.c's layout */
 	const float *window, *proj, *view;
 	int r, c, k;
@@ -1288,13 +1235,8 @@ void RB_ImmEndDeferred( void )
 {
 }
 
-/* A run reaches the ring whole: the setters rewrite the slice, so an early
-   commit would miss vertices.  A commit consumes exactly the slice it drew,
-   so a second commit of the same run draws what came after the first, not the
-   run again.  Re-issuing the run put every earlier quad of a run back on the
-   screen at the last commit's position in the command buffer -- after any 3D
-   batch that ran in between -- which is the menu fill over its own star dome
-   and the flashing the operator reported. */
+/* a run reaches the ring whole and a commit consumes exactly the slice it drew, so a second commit draws what came after the first, not the
+   run again -- re-issuing the run put every earlier quad back on screen after any 3D batch that ran in between. */
 void RB_ImmCommit( void )
 {
 	vkImmRun_t *run = &s_imm;
@@ -1925,7 +1867,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			R_DecomposeSort(drawSurf->sort, &entityNum, &fogShader, &fogNum, &dlightMap);
 			shader = ( drawSurf->shaderGen == tr.shaderGen ) ? drawSurf->shader : NULL;
 			RB_NoteIndexDesync( "drawsurf", shader,
-								( drawSurf->sort >> QSORT_SHADERNUM_SHIFT ) & ( MAX_SHADERS - 1 ) );
+								( drawSurf->sort >> QSORT_SHADERNUM_SHIFT ) & QSORT_SHADERNUM_MASK );
 			bStaticModel = qfalse;
 		} else {
 			refSprite_t *spr = (refSprite_t*)drawSurf->surface;

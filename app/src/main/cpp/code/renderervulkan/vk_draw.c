@@ -89,13 +89,9 @@ static VkBuffer			s_vertexBound[VK_FRAMES_IN_FLIGHT];
 static int				s_vertexBoundFrame[VK_FRAMES_IN_FLIGHT];
 static VkDeviceSize		s_vertexBoundOffset[VK_FRAMES_IN_FLIGHT];
 
-/* The pipeline and the set bound at set 0 are command-buffer state, so binding
-   values that are already in force is a no-op the driver still charges for: the
-   menu's frame is 145 to 331 draws and most repeats follow one another.  Every
-   bind in the renderer goes through these two functions -- the 2D lane binds its
-   own layout at set 0, so a cache that only the shade path maintained would
-   serve a stale pipeline to a 3D draw that followed a 2D one.  Keyed on the
-   frame as well as the slot: a fresh command buffer has no state at all. */
+/* the pipeline and the set bound at set 0 are command-buffer state, so binding values already in force is a no-op the driver still charges for
+   (the menu's frame is 145 to 331 draws and most repeats follow one another).  Every bind goes through these two functions -- the 2D lane binds
+   its own layout at set 0, so a shade-only cache would serve a stale pipeline to a 3D draw that followed a 2D one.  Keyed on the frame as well as the slot. */
 static VkCommandBuffer	s_boundPipeCmd[VK_FRAMES_IN_FLIGHT];
 static VkCommandBuffer	s_boundSetCmd[VK_FRAMES_IN_FLIGHT];
 static VkPipeline		s_boundPipeline[VK_FRAMES_IN_FLIGHT];
@@ -133,26 +129,8 @@ void VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline )
 	s_boundPipelineFrame[slot] = frame;
 }
 
-/* `dynamicCount' is the number of DYNAMIC descriptors the BOUND SET's own layout
-   declares, and it must match it exactly (VUID-vkCmdBindDescriptorSets-
-   dynamicOffsetCount-00359).  It is a parameter because this renderer has two
-   descriptor layouts and they differ precisely here: the shade layout declares
-   its uniform block VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC (the ring slice
-   rides the dynamic offset), while the 2D/immediate layout declares a single
-   COMBINED_IMAGE_SAMPLER and nothing dynamic at all.  Passing 1 for the 2D
-   layout -- which this function did for every 2D bind, offset 0 included -- is
-   an API error, and the operator's validation run caught it 105,618 times: an
-   invalid bind is not the bind the caller asked for, so the set the draw needs
-   is not the set the GPU has.
-
-   The spec is explicit (Vulkan 1.3, vkspec.txt line 95811):
-   `VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359  dynamicOffsetCount
-   must be equal to the total number of dynamic descriptors in pDescriptorSets',
-   and lines 95756-95766 give the effective offset as `the sum of the relative
-   offset taken from pDynamicOffsets, and the base address of the buffer plus
-   base offset in the descriptor set' -- which is how the ring slice reaches the
-   shade layout's uniform block, and why the 2D layout (no dynamic descriptor,
-   nothing to add) must be bound with no offsets at all. */
+/* `dynamicCount' must equal the DYNAMIC descriptors the BOUND SET's layout declares (VUID-...-00359): the shade layout declares its uniform block
+   UNIFORM_BUFFER_DYNAMIC, the 2D/immediate layout nothing dynamic at all.  Passing 1 for the 2D layout was caught 105,618 times by validation. */
 void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
 					  uint32_t dynamicOffset, uint32_t dynamicCount )
 {
@@ -839,13 +817,9 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	tb = top - bottom;
 	fn = f - n;
 
-	/* The 2D pass has ONE window for every widget -- the screen -- and a widget
-	   clips with the scissor, which is retail's own shape
-	   (retail-menu-solomatch-final.trace 10103-10124: constant glViewport and
-	   glOrtho(0, 640, 480, 0, -1, 1), glVertex2f in screen space, per-widget
-	   glScissor).  The widget's placement is a vertex origin now, so this ortho is
-	   the screen ortho and cannot degenerate; the guards keep a caller that does
-	   pass a zero range from producing a non-finite matrix. */
+	/* the 2D pass has ONE window for every widget -- the screen -- and a widget clips with the scissor, which is retail's own shape
+	   (retail-menu-solomatch-final.trace 10103-10124: constant glViewport and glOrtho(0,640,480,0,-1,1), per-widget glScissor).  The placement is a
+	   vertex origin now, so this ortho cannot degenerate; the guards keep a zero range from producing a non-finite matrix. */
 	if ( rl == 0.0f ) { rl = 1.0f; }
 	if ( tb == 0.0f ) { tb = 1.0f; }
 	if ( fn == 0.0f ) { fn = 1.0f; }
@@ -908,14 +882,8 @@ void VK_Draw_SetAlphaTest( VkCommandBuffer cmd, unsigned stateBits )
 
 	memset( values, 0, sizeof( values ) );
 
-	/* The selector rides a push constant and the fragment stage discards on it,
-	   so the value is command-buffer state that outlives the draw that set it.
-	   Returning early on "no alpha test" therefore left the PREVIOUS stage's
-	   selector in force, and a stage that never asked for one drew under it --
-	   the reference's own trace shows the logo's additive passes as
-	   glDisable(GL_ALPHA_TEST) (retail-menu-jul04.trace 12833, 12877) while the
-	   stage before them enabled it (:12634/:12635).  Zero is therefore
-	   PUBLISHED, not skipped, exactly as the reference's glDisable does. */
+	/* the selector rides a push constant and the fragment stage discards on it, so the value is command-buffer state that outlives the draw that
+	   set it: returning early on "no alpha test" left the PREVIOUS stage's selector in force.  Zero is PUBLISHED, not skipped, exactly as the reference's glDisable(GL_ALPHA_TEST) does. */
 	switch ( stateBits & VKS_ATEST_BITS ) {
 	case VKS_ATEST_GT_0:	values[0] = 1.0f;			break;
 	case VKS_ATEST_LT_80:	values[0] = 2.0f;			break;
@@ -966,15 +934,9 @@ void VK_Draw_DisableScissor( VkCommandBuffer cmd )
 
 /* ---- the 2D state a span carries ----------------------------------------- */
 
-/* The window command sets a viewport AND a scissor, and a later RE_Scissor
-   replaces the scissor alone, so the state in force is the window's rect and
-   the scissor the last of the two left.  Both globals above hold it, and the
-   ortho is the push constant VK_Draw_Set2D wrote.  A batch that crosses a
-   window or scissor change keeps one span per state instead of ending the
-   surface: the walk copies the state here and re-applies it before each span's
-   draw, which is the same three calls in the same order the change itself made.
-   qfalse when no window has been set, which is the case that cannot be named
-   and so cannot be spanned. */
+/* the window command sets a viewport AND a scissor and a later RE_Scissor replaces the scissor alone, so the state in force is the window's rect
+   and the scissor the last of the two left; the ortho is the push constant VK_Draw_Set2D wrote.  A batch that crosses a change keeps one span per
+   state instead of ending the surface, re-applying the same three calls in the same order; qfalse when no window has been set, which cannot be spanned. */
 qboolean VK_Draw_2DStateGet( float *ortho, int *win, int *scn )
 {
 	if ( !vk_currentValid ) {
@@ -1032,15 +994,9 @@ void VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *w
 		VK_Draw_Window2D( cmd, win[0], win[1], win[2], win[3] );
 	}
 
-	/* scn == win does NOT mean the scissor is already in force.  The buffer's
-	   scissor is the last one anybody issued, and a raw RE_Scissor from another
-	   pass -- the tricorder's own 256x64 screen, which is why the structural
-	   overlay landed in a strip at the bottom left -- updates the issued-scn
-	   mirror while leaving the issued-window mirror at the screen window.  With
-	   the window judged unchanged and the scissor branch skipped, the overlay
-	   drew under the other pass's clip.  The converse holds too: a window that
-	   IS re-issued sets the scissor to the window, so a differing scn after it
-	   must be issued whatever the scn mirror says. */
+	/* scn == win does NOT mean the scissor is already in force: the buffer's scissor is the last one anybody issued, and a raw RE_Scissor from
+	   another pass -- the tricorder's 256x64 screen -- updates the issued-scn mirror while the issued-window mirror stays at the screen window, so
+	   the overlay drew under the other pass's clip.  A window that IS re-issued sets the scissor to the window, so a differing scn must be issued. */
 	if ( scn[0] != win[0] || scn[1] != win[1] || scn[2] != win[2] || scn[3] != win[3] ) {
 		if ( !winSame || !scnSame ) {
 			VK_Draw_SetScissor( cmd, scn[0], scn[1], scn[2], scn[3] );
@@ -1086,15 +1042,9 @@ int VK_Draw_TopY( int y, int h )
 	return (int)top;
 }
 
-/* The reference hands the client's window straight to glScissor, and GL clamps
-   the box to the framebuffer for free: a tile that hangs off the bottom of the
-   screen rasterises the part that lands.  Vulkan does not clamp, and a
-   negative scissor offset is undefined rasterization -- 6,743 of them in one
-   boot, every one a 2D window taller than the screen it sits on.  This is the
-   reference's clamp, written out: the box is cut to the render area, and a box
-   that lands entirely outside becomes the empty extent, which rasterises
-   nothing exactly as GL's zero-area box does.  The corners are held wide
-   because the box's own origin overflows an int. */
+/* the reference hands the client's window straight to glScissor and GL clamps the box to the framebuffer for free; Vulkan does not clamp and a
+   negative scissor offset is undefined rasterization (6,743 of them in one boot, every one a 2D window taller than the screen).  This is the
+   reference's clamp written out: cut to the render area, an entirely-outside box becomes the empty extent, and the corners are held wide because the box's own origin overflows an int. */
 static void VK_Draw_ScissorRect( VkCommandBuffer cmd, int x, int y, int w, int h )
 {
 	VkRect2D	 scissor;
@@ -1170,12 +1120,9 @@ int VK_Draw_LastSetIndex( void )
 	return s_2dLastSetIndex;
 }
 
-/* The viewport has no framebuffer to be cut to, but it does have a device
-   range, and a coordinate outside it is undefined too.  The rect is held inside
-   what the device said it takes.  Every CmdSetViewport in this lane goes through
-   here, so no site can invent an out-of-range origin. */
-/* the range the lane last issued through VK_Draw_ViewportRect: the decal row
-   reads it, so a draw under the viewmodel's 0.3 names itself */
+/* the viewport has no framebuffer to be cut to but it does have a device range, and a coordinate outside it is undefined too; every
+   CmdSetViewport in this lane goes through here, so no site can invent an out-of-range origin. */
+/* the range the lane last issued through VK_Draw_ViewportRect: the decal row reads it, so a draw under the viewmodel's 0.3 names itself */
 static float	s_depthRangeLast[2] = { 0.0f, 1.0f };
 
 void VK_Draw_DepthRangeLast( float *n, float *f )
@@ -1278,12 +1225,8 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 		}
 	}
 
-	/* The index buffer never moves: it is the ring's own, always at offset 0, and
-	   this is the only CmdBindIndexBuffer in the renderer.  Binding it once per
-	   command buffer instead of once per draw halves the driver calls this
-	   function makes, and the offset means the vertex bind cannot be skipped.
-	   The cache is keyed on the frame as well as the slot because a fresh
-	   command buffer has no state at all. */
+	/* the index buffer never moves: it is the ring's own, always at offset 0, and this is the only CmdBindIndexBuffer in the renderer.  Binding it
+	   once per command buffer instead of once per draw halves the driver calls, and the cache is keyed on the frame as well as the slot. */
 	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
 		slot = 0;
 	}

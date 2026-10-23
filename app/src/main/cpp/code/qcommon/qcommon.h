@@ -569,6 +569,7 @@ qboolean FS_ComparePaks( char *neededpaks, int len, qboolean dlstring );
 
 void FS_Remove( const char *osPath );
 void FS_Remove_HomeData( const char *homePath );
+void FS_RemoveDir_HomeData( const char *homePath );
 
 void	FS_FilenameCompletion( const char *dir, const char *ext,
 		qboolean stripExt, void(*callback)(const char *s), qboolean allowNonPureFilesOnDisk );

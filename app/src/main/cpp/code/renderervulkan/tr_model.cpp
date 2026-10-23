@@ -1108,14 +1108,9 @@ static int R_SkelCullBoxVerdict(const vec3_t bounds[2])
     return anyBack ? CULL_CLIP : CULL_IN;
 }
 
-/* A `cull' drop is only a defect if the entity was inside the view.  This names
-   where it actually was, in the same three axes the cull and the cgame shadow
-   gate both test, so a log says "4000 units behind the eye" -- a correct drop --
-   or "12 units in front and 30 wide" -- a model the operator could see vanishing.
-   r54: it also replays the two tests R_CullSkelModel ran, on the same inputs, so
-   a row says for itself whether the sphere bound was violated.  The sphere point
-   is R_LocalPointToWorld(localOrg) -- the entity-axis rotation the old row's
-   printed origin did not carry -- and the box is the same frame-bounds union. */
+/* a `cull' drop is only a defect if the entity was inside the view, so this names where it actually was in the same three axes the cull and
+   the cgame shadow gate test ("4000 units behind the eye" = correct; "12 units in front and 30 wide" = a model the operator could see
+   vanishing).  It also replays the two tests R_CullSkelModel ran, on the entity-axis sphere point R_LocalPointToWorld(localOrg). */
 static void R_SkelCullWhere(
     const refEntity_t *e, const skelFrame_t *nf, const skelFrame_t *of, float fScale,
     const vec3_t worldOrg, const vec3_t localOrg
