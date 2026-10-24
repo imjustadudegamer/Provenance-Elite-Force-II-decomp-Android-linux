@@ -11,6 +11,18 @@ Inspired by and building on [VoyagerNX](https://github.com/faithvoid/VoyagerNX),
 faithvoid's Nintendo Switch port of the first game, and the sibling
 [Voyager Elite Force: SP for Android](https://github.com/imjustadudegamer/VoyagerSP-Android).
 
+## Why "Provenance"?
+
+Every function, struct, table and constant in this port is held to a witness.
+Where the original source was published, that source is the authority: id
+Software's GPL engine release, and Ritual's own Elite Force II fgame code.
+Everything else is read out of the shipping retail binaries, the little known Mac
+PPC release first and the PC build as a secondary corroboration, and every value
+is checked against the retail data that ships with the game. A claim that cannot
+be tied to one of those is recorded as open rather than asserted. The name says
+that the code carries its own evidence chain. Ask where a behaviour comes from
+and there is an answer.
+
 ## Features
 
 - Vulkan renderer, written for this port — the only shipping renderer.
