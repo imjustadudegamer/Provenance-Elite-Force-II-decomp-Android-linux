@@ -525,8 +525,9 @@ extern "C" {
     void CG_TileClear(void);
     void CG_Precache(void);                 
     void CG_Draw2D(void);
-    void CG_UpdateTargetIdentifier(const centity_t *cent); 
-    void CG_DrawTargetIdentifier(void);    
+    void CG_UpdateTargetIdentifier(const centity_t *cent);
+    void CG_DrawTargetIdentifier(void);
+    void CG_TargetInitialize(void);
 
     void CG_AddLagometerFrameInfo(void);
     void CG_AddLagometerSnapshotInfo(snapshot_t *snap);
