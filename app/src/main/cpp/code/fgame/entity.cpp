@@ -5167,6 +5167,24 @@ void Entity::SetControllerAngles(int num, const vec3_t newAngles)
         return;
     }
 
+    {
+        static int aim_rows;
+
+        /* head and torso slots: player HEAD/TORSO 0/1, actor MOUTH/HEAD/TORSO 0/1/2 */
+        if (num <= 2 && aim_rows < 200 && gi.cvar("qa_probe", "0", 0)->integer) {
+            aim_rows++;
+            gi.Printf(
+                "[AIM:head] ent=%d slot=%d tag=%d aim=(%.2f,%.2f,%.2f)\n",
+                edict->s.number,
+                num,
+                edict->s.bone_tag[num],
+                newAngles[0],
+                newAngles[1],
+                newAngles[2]
+            );
+        }
+    }
+
     VectorCopy(newAngles, edict->s.bone_angles[num]);
     EulerToQuat(edict->s.bone_angles[num], edict->s.bone_quat[num]);
 }

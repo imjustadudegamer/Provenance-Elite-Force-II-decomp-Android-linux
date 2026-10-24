@@ -548,6 +548,104 @@ static void TIKI_Skan_QuatLenProbe(
     }
 }
 
+/* A wrong-but-unit rotation carries no length anomaly, so the head's controller
+   and its composed pose are read as axis-angle here. */
+static void TIKI_Skan_QuatAxisAngle(const float *q, float *axis, float *deg)
+{
+    float s;
+    float w;
+
+    w = q[3];
+    if (w > 1.0f) {
+        w = 1.0f;
+    } else if (w < -1.0f) {
+        w = -1.0f;
+    }
+    *deg = 2.0f * acos(w) * (180.0f / M_PI);
+    s = sqrt(1.0f - w * w);
+    if (s < 1e-6f) {
+        axis[0] = 0.0f;
+        axis[1] = 0.0f;
+        axis[2] = 1.0f;
+    } else {
+        axis[0] = q[0] / s;
+        axis[1] = q[1] / s;
+        axis[2] = q[2] / s;
+    }
+}
+
+/* The upper chain the tilt can be carried by: head-only is the head aim
+   controller, Neck is the neck row or blend, Pelvis..Spine2 is the torso arm. */
+static qboolean TIKI_Skan_RotChainBone(const char *boneName)
+{
+    static const char *const chain[] = {
+        "Bip01 Pelvis", "Bip01 Spine", "Bip01 Spine1", "Bip01 Spine2", "Bip01 Neck", "Bip01 Head"
+    };
+    int i;
+
+    if (!boneName) {
+        return qfalse;
+    }
+    for (i = 0; i < (int)(sizeof(chain) / sizeof(chain[0])); i++) {
+        if (!stricmp(boneName, chain[i])) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+static void TIKI_Skan_RotProbe(
+    dtiki_t          *tiki,
+    int               bone,
+    const char       *boneName,
+    int               slot,
+    const float      *cq,
+    const float      *w
+)
+{
+    float caxis[3];
+    float waxis[3];
+    float cdeg;
+    float wdeg;
+    float cang[3];
+    float wang[3];
+
+    if (!TIKI_Skan_RotChainBone(boneName)) {
+        return;
+    }
+
+    TIKI_Skan_QuatAxisAngle(cq, caxis, &cdeg);
+    TIKI_Skan_QuatAxisAngle(w, waxis, &wdeg);
+    QuatToAngles(cq, cang);
+    QuatToAngles(w, wang);
+
+    CHAN_PROBE(
+        "head",
+        "why=rot tiki=%s bone=%d name='%s' slot=%d ent=%d "
+        "caxis=(%.3f,%.3f,%.3f) cdeg=%.2f cang=(%.2f,%.2f,%.2f) "
+        "waxis=(%.3f,%.3f,%.3f) wdeg=%.2f wang=(%.2f,%.2f,%.2f)\n",
+        tiki->name,
+        bone,
+        boneName,
+        slot,
+        s_probeEnt,
+        caxis[0],
+        caxis[1],
+        caxis[2],
+        cdeg,
+        cang[0],
+        cang[1],
+        cang[2],
+        waxis[0],
+        waxis[1],
+        waxis[2],
+        wdeg,
+        wang[0],
+        wang[1],
+        wang[2]
+    );
+}
+
 /* Walks the ancestors of a short quat so one row names the bone that creates
    the shortening and every bone that merely inherits it. */
 static void TIKI_Skan_ChainProbe(
@@ -618,7 +716,7 @@ static void TIKI_Skan_HeadCantProbe(
 
     lay = (layout == 0) ? "player" : (layout == 1) ? "actor" : "none";
 
-    if (!boneName || stricmp(boneName, "Bip01 Head")) {
+    if (!boneName || (stricmp(boneName, "Bip01 Head") && stricmp(boneName, "Bip01 Neck"))) {
         if (slotRows < 24) {
             slotRows++;
             CHAN_PROBE(
@@ -1112,6 +1210,7 @@ int TIKI_SkelBonesFromRecords(
             cq[1] = bone_quat[n][1];
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
+            TIKI_Skan_RotProbe(tiki, b, boneName, n, cq, w);
             TIKI_Skan_QuatLenProbe(
                 tiki, skel, b, boneName, n, cq, w, ch, chan, row, localQuat, parent, parentQuat,
                 legs, anim, frame, oldanim, oldframe, framelerp, crossblend_lerp

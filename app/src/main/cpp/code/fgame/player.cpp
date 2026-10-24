@@ -5123,7 +5123,9 @@ Vector Player::GetAngleToTarget(Entity *ent, str tag, float yawclamp, float pitc
 
         angs = delta.toAngles();
 
-        AnglesSubtract(angs, baseangles, angs);
+        /* retail ships the plain subtract: its own AnglesSubtract line is commented
+           out, so the wrap case keeps its sign instead of flipping past +-180 */
+        angs -= baseangles;
 
         angs[PITCH] = AngleNormalize180(angs[PITCH]);
         angs[YAW]   = AngleNormalize180(angs[YAW]);
