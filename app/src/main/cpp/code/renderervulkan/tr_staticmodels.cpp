@@ -122,6 +122,8 @@ void R_InitStaticModels(void)
             }
         }
 
+        ri.TIKI_Skan_SetProbeSubject(-1, NULL);
+
         if (!ri.TIKI_SkelBonesFromRecords(
                 pSM->tiki,
                 0,

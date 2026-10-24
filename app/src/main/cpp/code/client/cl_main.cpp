@@ -2004,6 +2004,7 @@ void CL_InitRef( void ) {
     ri.TIKI_Anim_FrameTime = TIKI_Frame_Time;
     ri.TIKI_Anim_TanFrames = TIKI_Anim_TanFrames;
     ri.TIKI_Skan_FindByAnim = TIKI_Skan_FindByAnim;
+    ri.TIKI_Skan_SetProbeSubject = TIKI_Skan_SetProbeSubject;
     ri.TIKI_SkelBonesFromRecords = TIKI_SkelBonesFromRecords;
     ri.TIKI_SetPoseChannelsInternal = TIKI_SetPoseChannelsInternal;
 
