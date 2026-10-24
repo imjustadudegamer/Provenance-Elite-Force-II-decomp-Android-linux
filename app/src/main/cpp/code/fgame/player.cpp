@@ -3516,6 +3516,9 @@ void Player::CheckForTargetedEntity(void)
 void Player::SetTargetedEntity(Entity *entity)
 {
     if (_targetedEntity) {
+        PROBE_CENSUS_EMIT("[G:", "target",
+                          "drop ent=%d classname='%s'\n", _targetedEntity->entnum,
+                          _targetedEntity->getClassname());
         _targetedEntity->edict->s.eFlags &=
             ~(EF_DISPLAY_INFO | EF_DISPLAY_DESC1 | EF_DISPLAY_DESC2 | EF_DISPLAY_DESC3);
     }
@@ -3523,6 +3526,9 @@ void Player::SetTargetedEntity(Entity *entity)
     _targetedEntity = entity;
 
     if (_targetedEntity) {
+        PROBE_CENSUS_EMIT("[G:", "target",
+                          "acquire ent=%d classname='%s' health=%.0f\n", _targetedEntity->entnum,
+                          _targetedEntity->getClassname(), _targetedEntity->health);
         _targetedEntity->edict->s.eFlags |= EF_DISPLAY_INFO;
     }
 }
