@@ -310,21 +310,40 @@ static void TIKI_Skan_QuatMul(const float *q, const float *p, float *r)
     r[3] = q[3] * p[3] - q[0] * p[0] - q[1] * p[1] - q[2] * p[2];
 }
 
-/* A missing anim->bone map is only the identity when the two tables are the
-   same size; otherwise the skeleton index is not a channel index at all. */
-static int TIKI_Skan_ChannelForBone(const int *mapping, skelAnimHeader_t *hdr, int numBones, int bone)
+/* No map means the name tables matched positionally at registration, so retail's
+   bone-index read is exact; -1 stays the out-of-table guard. */
+static int TIKI_Skan_ChannelForBone(const int *mapping, skelAnimHeader_t *hdr, int bone)
 {
     if (mapping) {
         return mapping[bone];
     }
-    if (hdr && numBones == hdr->numbones && bone >= 0 && bone < hdr->numbones) {
+    if (hdr && bone >= 0 && bone < hdr->numbones) {
         return bone;
     }
     return -1;
 }
 
-/* slot 1 is the head controller (fgame ACTOR_HEAD_TAG); names the row the head
-   bone actually sampled.  A correct build resolves it to its own name. */
+/* fgame binds the head per class: player HEAD_TAG=0, actor ACTOR_HEAD_TAG=1. */
+static int TIKI_Skan_HeadLayout(skelHeaderGame_t *skel, const int *bone_tag)
+{
+    static const char *head = "Bip01 Head";
+    int                n;
+    int                b;
+
+    for (n = 0; n < 2; n++) {
+        b = bone_tag[n];
+        if (b < 0 || b >= skel->numBones) {
+            continue;
+        }
+        const char *nm = skel_BoneNames.FindName(skel->pBones[b].channel);
+        if (nm && !stricmp(nm, head)) {
+            return n;
+        }
+    }
+    return -1;
+}
+
+/* Names the head bone's sampled row, and each controller slot's bone once. */
 static void TIKI_Skan_HeadCantProbe(
     dtiki_t                *tiki,
     skelHeaderGame_t       *skel,
@@ -332,40 +351,55 @@ static void TIKI_Skan_HeadCantProbe(
     const char             *boneName,
     const int              *mapping,
     skelAnimHeader_t       *hdr,
+    int                     slot,
+    int                     layout,
     const float            *cq,
     const float            *w)
 {
+    static int  slotRows;
     const char *chanName;
+    const char *lay;
+    int         headchan;
     int         mapped;
+    int         j;
     vec3_t      head;
 
     if (!PROBE_On()) {
         return;
     }
 
+    lay = (layout == 0) ? "player" : (layout == 1) ? "actor" : "none";
+
     if (!boneName || stricmp(boneName, "Bip01 Head")) {
-        CHAN_PROBE(
-            "head",
-            "why=bone tiki=%s slot1bone=%d name='%s' bones=%d\n",
-            tiki->name,
-            bone,
-            boneName ? boneName : "?",
-            skel->numBones
-        );
+        if (slotRows < 24) {
+            slotRows++;
+            CHAN_PROBE(
+                "head",
+                "why=slot tiki=%s slot=%d bone=%d name='%s' layout=%s bones=%d\n",
+                tiki->name,
+                slot,
+                bone,
+                boneName ? boneName : "?",
+                lay,
+                skel->numBones
+            );
+        }
         return;
     }
 
     /* A bone absent from the anim maps to -1 by design and takes its base row;
-       only a lost mapping makes the skeleton index stand in for a channel. */
-    if (!mapping && hdr && skel->numBones != hdr->numbones) {
+       -1 with the index out of the channel table is the only lost-map shape. */
+    if (!mapping && hdr && bone >= hdr->numbones) {
         QuatToAngles(w, head);
         CHAN_PROBE(
             "head",
-            "why=nomap tiki=%s bone=%d head='%s' bones=%d chans=%d "
+            "why=nomap tiki=%s bone=%d head='%s' slot=%d layout=%s bones=%d chans=%d "
             "ctl=(%.1f,%.1f,%.1f) headang=(%.1f,%.1f,%.1f)\n",
             tiki->name,
             bone,
             boneName,
+            slot,
+            lay,
             skel->numBones,
             hdr->numbones,
             cq[0],
@@ -378,21 +412,34 @@ static void TIKI_Skan_HeadCantProbe(
         return;
     }
 
-    mapped   = TIKI_Skan_ChannelForBone(mapping, hdr, skel->numBones, bone);
+    mapped   = TIKI_Skan_ChannelForBone(mapping, hdr, bone);
     chanName = NULL;
     if (mapped >= 0 && hdr) {
         chanName = (const char *)hdr + hdr->ofsChannelNames + 36 * mapped + 4;
     }
 
     if (mapped >= 0 && (!chanName || stricmp(chanName, boneName))) {
+        headchan = -1;
+        if (hdr) {
+            for (j = 0; j < hdr->numbones; j++) {
+                if (!stricmp(boneName, (const char *)hdr + hdr->ofsChannelNames + 36 * j + 4)) {
+                    headchan = j;
+                    break;
+                }
+            }
+        }
         CHAN_PROBE(
             "head",
-            "why=chan tiki=%s bone=%d head='%s' chan=%d chan='%s' bones=%d chans=%d\n",
+            "why=chan tiki=%s bone=%d head='%s' chan=%d chan='%s' headchan=%d slot=%d layout=%s "
+            "bones=%d chans=%d\n",
             tiki->name,
             bone,
             boneName,
             mapped,
             chanName ? chanName : "?",
+            headchan,
+            slot,
+            lay,
             skel->numBones,
             hdr ? hdr->numbones : -1
         );
@@ -403,7 +450,6 @@ const short int *TIKI_Skan_RecordRow(
     skelAnimHeader_t *hdr,
     skelFrame_t      *frameRec,
     const int        *mapping,
-    int               numBones,
     int               bone,
     float             baseLen,
     const char       *boneName,
@@ -415,7 +461,7 @@ const short int *TIKI_Skan_RecordRow(
     float            ratio = 1.0f;
     int              mapped;
 
-    mapped = TIKI_Skan_ChannelForBone(mapping, hdr, numBones, bone);
+    mapped = TIKI_Skan_ChannelForBone(mapping, hdr, bone);
 
     if (mapped != -1 && hdr) {
         float chanLen = *(const float *)((const byte *)hdr + hdr->ofsChannelNames + 36 * mapped);
@@ -553,7 +599,7 @@ static void TIKI_Skan_SolveChannelBone(
     int              i;
 
     row = TIKI_Skan_RecordRow(
-        ch->mainHdr, ch->mainRec, ch->mainMap, skel->numBones, bone, baseLen, boneName, bindRow, &ratio
+        ch->mainHdr, ch->mainRec, ch->mainMap, bone, baseLen, boneName, bindRow, &ratio
     );
 
     if (!row) {
@@ -572,7 +618,7 @@ static void TIKI_Skan_SolveChannelBone(
 
     if (ch->mode != 1) {
         row = TIKI_Skan_RecordRow(
-            ch->aHdr, ch->aRec, ch->aMap, skel->numBones, bone, baseLen, boneName, bindRow, &ratio
+            ch->aHdr, ch->aRec, ch->aMap, bone, baseLen, boneName, bindRow, &ratio
         );
 
         if (!row) {
@@ -597,7 +643,7 @@ static void TIKI_Skan_SolveChannelBone(
 
     if (ch->mode == 3) {
         row = TIKI_Skan_RecordRow(
-            ch->crossHdr, ch->crossRec, ch->crossMap, skel->numBones, bone, baseLen, boneName, bindRow, &ratio
+            ch->crossHdr, ch->crossRec, ch->crossMap, bone, baseLen, boneName, bindRow, &ratio
         );
 
         if (!row) {
@@ -669,6 +715,7 @@ int TIKI_SkelBonesFromRecords(
     qboolean            legs;
     int                 parent;
     int                 numBones;
+    int                 headLayout;
     int                 b;
     int                 i;
     int                 n;
@@ -747,6 +794,8 @@ int TIKI_SkelBonesFromRecords(
     }
     memset(world, 0, numBones * 7 * sizeof(float));
 
+    headLayout = PROBE_On() ? TIKI_Skan_HeadLayout(skel, bone_tag) : -1;
+
     for (b = 0; b < numBones; b++) {
         float *w = &world[b * 7];
 
@@ -811,11 +860,9 @@ int TIKI_SkelBonesFromRecords(
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
             TIKI_Skan_QuatMul(w, cq, w);
-            if (n == 1) {
-                TIKI_Skan_HeadCantProbe(
-                    tiki, skel, b, boneName, ch->mainMap, ch->mainHdr, cq, w
-                );
-            }
+            TIKI_Skan_HeadCantProbe(
+                tiki, skel, b, boneName, ch->mainMap, ch->mainHdr, n, headLayout, cq, w
+            );
             break;
         }
 
