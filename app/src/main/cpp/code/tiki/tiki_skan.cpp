@@ -344,6 +344,21 @@ static int TIKI_Skan_HeadLayout(skelHeaderGame_t *skel, const int *bone_tag)
     return -1;
 }
 
+/* Every bone_quat writer is unit-preserving, so the value's shape names the site. */
+const char *TIKI_Skan_QuatWriter(const float *q)
+{
+    float len2;
+
+    len2 = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (len2 != len2) {
+        return "e2q"; /* msg.cpp:1412 / entity.cpp:5171 / level.cpp:797 */
+    }
+    if (len2 == 0.0f) {
+        return "gate";
+    }
+    return "slerp"; /* cg_modelanim.c:884 */
+}
+
 /* A non-unit quat reaching QuatToMat scales and shears the bone, so both the
    controller quat and the composed world quat are measured here. */
 static void TIKI_Skan_QuatLenProbe(
@@ -355,9 +370,11 @@ static void TIKI_Skan_QuatLenProbe(
     const float       *cq,
     const float       *w)
 {
-    static int baseline;
-    float      clen;
-    float      wlen;
+    static int  baseline;
+    float       clen;
+    float       wlen;
+    const char *cw;
+    const char *ww;
 
     if (!PROBE_On()) {
         return;
@@ -366,10 +383,12 @@ static void TIKI_Skan_QuatLenProbe(
     clen = sqrt(cq[0] * cq[0] + cq[1] * cq[1] + cq[2] * cq[2] + cq[3] * cq[3]);
     wlen = sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2] + w[3] * w[3]);
 
-    if (clen < 0.999f || clen > 1.001f) {
+    /* negated range, not the positive pair: a NaN length must fire */
+    if (!(clen >= 0.999f && clen <= 1.001f)) {
+        cw = TIKI_Skan_QuatWriter(cq);
         CHAN_PROBE(
             "head",
-            "why=ctl tiki=%s slot=%d bone=%d name='%s' clen=%.4f ctl=(%.3f,%.3f,%.3f,%.3f)\n",
+            "why=ctl tiki=%s slot=%d bone=%d name='%s' clen=%.4f ctl=(%.3f,%.3f,%.3f,%.3f) writer=%s\n",
             tiki->name,
             slot,
             bone,
@@ -378,19 +397,22 @@ static void TIKI_Skan_QuatLenProbe(
             cq[0],
             cq[1],
             cq[2],
-            cq[3]
+            cq[3],
+            cw
         );
     }
-    if (wlen < 0.999f || wlen > 1.001f) {
+    if (!(wlen >= 0.999f && wlen <= 1.001f)) {
+        ww = TIKI_Skan_QuatWriter(w);
         CHAN_PROBE(
             "head",
-            "why=nonunit tiki=%s bone=%d name='%s' slot=%d clen=%.4f wlen=%.4f\n",
+            "why=nonunit tiki=%s bone=%d name='%s' slot=%d clen=%.4f wlen=%.4f src=%s\n",
             tiki->name,
             bone,
             boneName ? boneName : "?",
             slot,
             clen,
-            wlen
+            wlen,
+            ww
         );
         return;
     }

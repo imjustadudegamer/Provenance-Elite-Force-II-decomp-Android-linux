@@ -81,6 +81,9 @@ int TIKI_SkelBonesFromRecords(
 
 skelMorphHeader_t *TIKI_BuildMorphHeader(const void *morphData, size_t *outSize);
 
+/* Names the only writer that can have produced a quat of this shape. */
+const char *TIKI_Skan_QuatWriter(const float *q);
+
 qboolean TIKI_ValidateSkelAnimAndFrame(
     dtiki_t            *tiki,
     int                 animnum,
