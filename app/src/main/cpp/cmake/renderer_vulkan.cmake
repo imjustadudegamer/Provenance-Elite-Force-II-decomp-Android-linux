@@ -1,4 +1,4 @@
-# renderer_vulkan.cmake -- the Vulkan renderer (vulkan-m0).
+# renderer_vulkan.cmake -- the Vulkan renderer.
 #
 # The second renderer target.  Its organisation mirrors renderergles3/ file
 # for file (tr_init.c / tr_cmds.c / the platform layer / the loader / the
@@ -58,7 +58,7 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/tr_ghost.cpp
     ${SOURCE_DIR}/renderervulkan/vk_shade.c
     ${SOURCE_DIR}/renderervulkan/vk_vbo.c
-    ${SOURCE_DIR}/renderervulkan/vk_m3_surface.c
+    ${SOURCE_DIR}/renderervulkan/vk_probeplumb.c
     ${SOURCE_DIR}/renderervulkan/tr_util.cpp
     # the Vulkan substrate
     ${SOURCE_DIR}/renderervulkan/vk_procs.c

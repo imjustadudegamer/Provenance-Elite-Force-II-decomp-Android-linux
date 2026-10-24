@@ -2118,7 +2118,7 @@ void VK_WireEnd( int mode )
 	(void)mode;
 	/* the wire families are the debug overlays: the rows name the site */
 	if ( s_wire.count ) {
-		VK_M3_Touched( "wire overlay draw" );
+		VK_IteratorTouched( "wire overlay draw" );
 	}
 	s_wire.count = 0;
 }
@@ -5308,7 +5308,7 @@ void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, in
 
 	/* the bind row is pure telemetry: without this gate the cadence test above
 	   reads s_rows==0 forever in a quiet boot and the row prints on EVERY bind
-	   (the r38 round kept the scan gated but left the print unconditional) */
+	   (an earlier pass kept the scan gated but left the print unconditional) */
 	if ( R_ProbeStatsOn() && ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) ) {
 		VK_Guard_Row( "VK:stagebind",
 					  "n=%d d=%d shader='%s' stage=%d prog=0x%06x sb=0x%x mt=%d "

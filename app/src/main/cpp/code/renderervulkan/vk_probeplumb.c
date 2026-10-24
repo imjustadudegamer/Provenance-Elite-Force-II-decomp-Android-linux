@@ -32,14 +32,12 @@ root, for more details.
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * vk_m3_surface.c -- the 3D stage iterators' reserved seats.
+ * vk_probeplumb.c -- the back end's probe plumbing and reserved seats.
  *
  * The shader compiler hands every shader an `optimalStageIteratorFunc`, so the
  * data model names the 3D iterators before they draw anything.  These bodies
  * are the guard, not a silent stub: reaching one prints a [VK:guard] row that
- * names the site.  M3 replaces each body with its real walk; nothing in the
- * M2 boot path reaches them, because RE_RenderScene never builds a 3D scene
- * in this milestone and logs its own [VK:stub] row when called.
+ * names the site.
  */
 
 #include "tr_local.h"
@@ -51,7 +49,7 @@ root, for more details.
 
 /* Named in the header: the back end reaches it for a shader that carries 3D
    terms the 2D walk does not evaluate. */
-void VK_M3_Touched( const char *what )
+void VK_IteratorTouched( const char *what )
 {
 	static int rows;
 
@@ -160,7 +158,7 @@ int BE_Armed( void )
 }
 
 
-/* the ghost overlay surface: the image layer names it, M3 draws it */
+/* the ghost overlay surface: the image layer names it */
 
 
 

@@ -40,7 +40,7 @@
          (Android/obb/com.provenanceef2), which requires no storage permission at
          any targetSdk.
 
-         r59 netloop: single player rides the in-memory loopbacks[] queue
+         netloop: single player rides the in-memory loopbacks[] queue
          (qcommon/net_chan.c) and never touches a socket, and the real UDP socket
          is no longer opened at boot either: qcommon/net_ip.c NET_Init builds
          only the local address table, and the socket appears on the first packet

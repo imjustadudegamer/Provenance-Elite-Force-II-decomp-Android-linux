@@ -479,7 +479,7 @@ void S_StartLocalSoundChannel(const char *sound_name, qboolean force_load, sound
 
     sfxHandle = S_RegisterSoundExt(name, qfalse, force_load);
 
-    /* r54: the UI sound census.  handle 0 is a silent load failure (retail
+    /* the UI sound census.  handle 0 is a silent load failure (retail
        warns through Com_WDPrintf, which a quiet boot never prints) and a
        non-CHAN_MENU channel arms instead of starting, so this row plus
        [SND:menuflush] is the whole chain a --diag boot needs. */

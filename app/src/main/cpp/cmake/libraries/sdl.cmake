@@ -40,7 +40,7 @@ set(INTERNAL_SDL_DIR ${SOURCE_DIR}/thirdparty/SDL2-2.32.8)
 # SDL_OPENGL (DESKTOP GL) stays OFF -- Android is ES/EGL only.  The option
 # mapping is SDL's own: SDL_OPENGLES -> SDL_VIDEO_OPENGL_ES2 +
 # SDL_VIDEO_OPENGL_EGL (thirdparty/SDL2-2.30.9/CMakeLists.txt:2000-2002).
-# SDL_VULKAN is ON: renderer_vulkan (vulkan-m0) opens its window with
+# SDL_VULKAN is ON: renderer_vulkan opens its window with
 # SDL_WINDOW_VULKAN and its surface with SDL_Vulkan_CreateSurface on Android
 # too, which needs SDL's android/SDL_androidvulkan.c compiled in.
 # ---------------------------------------------------------------------------

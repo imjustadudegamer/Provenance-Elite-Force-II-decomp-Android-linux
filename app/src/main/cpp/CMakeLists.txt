@@ -94,7 +94,7 @@ option(BUILD_CLIENT "Build client" ON)
 # what `cl_renderer` defaults to; EF2_RENDERER is a one-value switch kept so a
 # stale cache entry fails loudly.
 option(BUILD_RENDERER_GLES3 "Build GLES 3.0 renderer" ${_EF2_BUILD_GLES3})
-option(BUILD_RENDERER_VULKAN "Build the Vulkan renderer (vulkan-m0)" ON)
+option(BUILD_RENDERER_VULKAN "Build the Vulkan renderer" ON)
 option(BUILD_GAME_LIBRARIES "Build game module libraries" ON)
 option(BUILD_GAME_QVMS "Build game module qvms" ON)
 option(BUILD_STANDALONE "Build binaries for standalone games" OFF)

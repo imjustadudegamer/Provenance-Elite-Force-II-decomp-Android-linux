@@ -1713,7 +1713,7 @@ static shader_t *RB_SpriteModelShader( const refSprite_t *spr )
 	return model->d.sprite->shader;
 }
 
-/* a vertex-colour stage whose stream is pure magenta is the r50 rollback arm, not an authored fade */
+/* a vertex-colour stage whose stream is pure magenta is the rollback arm, not an authored fade */
 static void RB_ColorStreamProbe( shader_t *shader, const char *fam, int index )
 {
 	const byte		*c;

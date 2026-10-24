@@ -63,7 +63,7 @@ cvar_t *s_checkObstructions;
 cvar_t *s_openaldriver;
 cvar_t *s_alAvailableDevices;
 
-/* r54: retail arms a non-CHAN_MENU start (S_MILES_StartSound @0x001F1700, slot[1]=1,
+/* retail arms a non-CHAN_MENU start (S_MILES_StartSound @0x001F1700, slot[1]=1,
    no AIL_start) and starts it only in S_MILES_Respatialize @0x001F2CC0, which the
    port reaches only from cgame (cg_view.c:861) -- so a UI click, which retail plays
    on CHAN_MENU2 (UIButtonBase::Released @0x00050710) as a .wav, armed and never
@@ -120,7 +120,7 @@ static float      s_fFadeStartTime;
 static float      s_fFadeStopTime;
 static char       current_soundtrack[128];
 
-/* The pre-r52 duck state is gone: `s_bRetailDuckDriver' was initialised false
+/* The old duck state is gone: `s_bRetailDuckDriver' was initialised false
    and never written again, so `s_bDucking' could never become true and
    `s_fDuckVolume' never moved off 1.0 -- the whole block in S_OPENAL_Update was
    unreachable.  Ducking now lives in snd_mixer.cpp behind `s_duckEnable'. */
@@ -2383,7 +2383,7 @@ void S_OPENAL_SetReverb(int iType, float fLevel)
     s_bReverbChanged = true;
 }
 
-/* r54: the flush half of S_OPENAL_Respatialize, lifted into the per-frame pass:
+/* the flush half of S_OPENAL_Respatialize, lifted into the per-frame pass:
    the UI is the one place Respatialize never runs, because its only caller is
    cgame and the main menu has no cgame.  In game it finds nothing -- Respatialize
    already ran this frame, inside SCR_UpdateScreen, before CL_Frame's S_Update. */
@@ -2482,7 +2482,7 @@ void S_OPENAL_Update()
     }
 
     /* the mixer advances its envelope here and latches the same two dirty
-       flags the unreachable pre-r52 ramp used: `bLevelsChanged' re-gains the 3D
+       flags the unreachable old ramp used: `bLevelsChanged' re-gains the 3D
        pool and `music_volume_changed' re-gains the song pool, so a duck that
        moves this frame is audible this frame */
     {
@@ -2581,7 +2581,7 @@ void S_OPENAL_Update()
         Com_DPrintf("Number of active sounds = %d\n", num);
     }
 
-    /* r54: the per-frame flush the UI was missing (see the comment at
+    /* the per-frame flush the UI was missing (see the comment at
        S_OPENAL_FlushPendingStarts).  In game it finds nothing: Respatialize
        already ran inside this frame's SCR_UpdateScreen. */
     S_OPENAL_FlushPendingStarts();

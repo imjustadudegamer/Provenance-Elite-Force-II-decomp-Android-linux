@@ -506,7 +506,7 @@ void SndMix_FrameAdvance(int iNowMs, float fFadeVolume, qboolean *pbLevelsChange
                 continue;
             }
 
-            /* r54: armed but never started is the silent-slot signature -- a
+            /* armed but never started is the silent-slot signature -- a
                0.5 s UI click cannot be alive at two 1 Hz samples, so a voice
                that shows up here without playing is the flush that never came. */
             if (pChannel->bPendingStart && !pChannel->is_playing()) {

@@ -26,7 +26,7 @@ extern "C" {
 
 struct openal_internal_t;
 
-/* the control plane of the r51 mixer (personal/handover/r51-audio-mixing-plan.md): OpenAL stays the output and the spatialiser, this module owns the
+/* the control plane of the mixer: OpenAL stays the output and the spatialiser, this module owns the
    policy -- bus assignment, the dialog sidechain, the loudness anchor and the per-bus instrumentation.  `s_duckEnable 0' makes every number a no-op, which is
    today's behaviour bit for bit. */
 

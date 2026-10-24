@@ -2706,7 +2706,7 @@ void R_CreateBuiltinImages( void );
 void R_LoadBMP( const char *name, byte **pic, int *width, int *height );
 void R_LoadTGA( const char *name, byte **pic, int *width, int *height );
 void	R_DumpTextureMemory(void);
-void	 VK_M3_Touched( const char *what );
+void	 VK_IteratorTouched( const char *what );
 void	 ProjectDlightTexture( void );
 void	R_SetupShaders( void );
 void	R_StartupShaders( void );

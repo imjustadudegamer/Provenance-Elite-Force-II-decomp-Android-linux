@@ -110,7 +110,7 @@ static struct sockaddr	socksRelayAddr;
 static SOCKET	ip_socket = INVALID_SOCKET;
 static SOCKET	socks_socket = INVALID_SOCKET;
 
-// r59 netloop: the socket is opened lazily, on the first non-loopback packet.
+// netloop: the socket is opened lazily, on the first non-loopback packet.
 // Boot builds only the local-address table, so an install without Android's
 // INTERNET permission never calls socket() during single player -- that channel
 // is the loopbacks[] memory queue and never reaches Sys_SendPacket at all.

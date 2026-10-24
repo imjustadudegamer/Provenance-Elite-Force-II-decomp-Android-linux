@@ -360,7 +360,7 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
             } else if (mod->type == MOD_SPRITE && mod->d.sprite
                        && mod->spriteShaderGen != tr.shaderGen) {
                 /* a surviving sprite model must re-resolve its raw shader
-                   pointer after a table wipe (the r41 class) */
+                   pointer after a table wipe (the stale-pointer class) */
                 sprite_t      *spr = mod->d.sprite;
                 shader_t      *prev = spr->shader;
                 shader_t      *fresh;
