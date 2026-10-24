@@ -22,6 +22,7 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #include "../qcommon/qa_probe.h"
 
 #include <stddef.h>
+#include <math.h>
 
 extern "C" void TIKI_Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
@@ -341,6 +342,71 @@ static int TIKI_Skan_HeadLayout(skelHeaderGame_t *skel, const int *bone_tag)
         }
     }
     return -1;
+}
+
+/* A non-unit quat reaching QuatToMat scales and shears the bone, so both the
+   controller quat and the composed world quat are measured here. */
+static void TIKI_Skan_QuatLenProbe(
+    dtiki_t           *tiki,
+    skelHeaderGame_t  *skel,
+    int                bone,
+    const char        *boneName,
+    int                slot,
+    const float       *cq,
+    const float       *w)
+{
+    static int baseline;
+    float      clen;
+    float      wlen;
+
+    if (!PROBE_On()) {
+        return;
+    }
+
+    clen = sqrt(cq[0] * cq[0] + cq[1] * cq[1] + cq[2] * cq[2] + cq[3] * cq[3]);
+    wlen = sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2] + w[3] * w[3]);
+
+    if (clen < 0.999f || clen > 1.001f) {
+        CHAN_PROBE(
+            "head",
+            "why=ctl tiki=%s slot=%d bone=%d name='%s' clen=%.4f ctl=(%.3f,%.3f,%.3f,%.3f)\n",
+            tiki->name,
+            slot,
+            bone,
+            boneName ? boneName : "?",
+            clen,
+            cq[0],
+            cq[1],
+            cq[2],
+            cq[3]
+        );
+    }
+    if (wlen < 0.999f || wlen > 1.001f) {
+        CHAN_PROBE(
+            "head",
+            "why=nonunit tiki=%s bone=%d name='%s' slot=%d clen=%.4f wlen=%.4f\n",
+            tiki->name,
+            bone,
+            boneName ? boneName : "?",
+            slot,
+            clen,
+            wlen
+        );
+        return;
+    }
+    if (boneName && !stricmp(boneName, "Bip01 Head") && baseline < 8) {
+        baseline++;
+        CHAN_PROBE(
+            "head",
+            "why=len tiki=%s bone=%d name='%s' slot=%d clen=%.4f wlen=%.4f\n",
+            tiki->name,
+            bone,
+            boneName,
+            slot,
+            clen,
+            wlen
+        );
+    }
 }
 
 /* Names the head bone's sampled row, and each controller slot's bone once. */
@@ -859,6 +925,7 @@ int TIKI_SkelBonesFromRecords(
             cq[1] = bone_quat[n][1];
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
+            TIKI_Skan_QuatLenProbe(tiki, skel, b, boneName, n, cq, w);
             TIKI_Skan_QuatMul(w, cq, w);
             TIKI_Skan_HeadCantProbe(
                 tiki, skel, b, boneName, ch->mainMap, ch->mainHdr, n, headLayout, cq, w
