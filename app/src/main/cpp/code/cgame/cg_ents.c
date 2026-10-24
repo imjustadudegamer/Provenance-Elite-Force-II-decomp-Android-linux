@@ -954,6 +954,9 @@ void CG_AddPacketEntities(void)
 
     CG_UpdateRadarMode();
 
+    // retail CG_AddPacketEntities calls CG_TargetInitialize here, every frame
+    CG_TargetInitialize();
+
     for (num = 0; num < cg.snap->numEntities; num++) {
         CG_AddCEntity(&cg_entities[cg.snap->entities[num].number]);
     }
