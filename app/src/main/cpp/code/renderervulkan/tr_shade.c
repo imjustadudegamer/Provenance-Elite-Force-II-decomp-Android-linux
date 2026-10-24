@@ -1214,6 +1214,46 @@ qboolean VK_StageResolve2DColor( shaderStage_t *pStage )
 	return qtrue;
 }
 
+/* The 2D lane's tcMod arm.  Retail has no 2D iterator (ComputeStageIteratorFunc
+   @0x0003BA50 only ever names the three generic ones), so its UI quads run the
+   generic walk and its tcMods are CPU.  This lane's tess shader carries no
+   tcMod code, so the stage's chain has to land in the vertex ST. */
+qboolean VK_Stage2DResolveTexCoords( shaderStage_t *pStage )
+{
+	int i;
+
+	if ( !pStage || !pStage->bundle[0].image[0] || pStage->bundle[0].numTexMods == 0 ) {
+		return qfalse;
+	}
+
+	ComputeTexCoords( pStage );
+
+	for ( i = 0; i < tess.numVertexes; i++ ) {
+		tess.texCoords[i][0][0] = tess.svars.texcoords[0][i][0];
+		tess.texCoords[i][0][1] = tess.svars.texcoords[0][i][1];
+	}
+
+	if ( R_ProbeMarkOn() ) {
+		static int s_rows;
+
+		s_rows++;
+		if ( s_rows <= 24 || ( s_rows % 256 ) == 0 ) {
+			VK_Guard_Row( "UIVK:trimod",
+						  "tcmod shader='%s' mods=%d scroll=%.3f,%.3f time=%.3f st0=(%.3f,%.3f) stN=(%.3f,%.3f)",
+						  tess.shader ? tess.shader->name : "?",
+						  pStage->bundle[0].numTexMods,
+						  (double)pStage->bundle[0].texMods[0].scroll[0],
+						  (double)pStage->bundle[0].texMods[0].scroll[1],
+						  (double)tess.shaderTime,
+						  (double)tess.texCoords[0][0][0], (double)tess.texCoords[0][0][1],
+						  (double)tess.texCoords[tess.numVertexes - 1][0][0],
+						  (double)tess.texCoords[tess.numVertexes - 1][0][1] );
+		}
+	}
+
+	return qtrue;
+}
+
 static void RB_IterateStagesGeneric( shaderCommands_t *input )
 {
 	int stage;
