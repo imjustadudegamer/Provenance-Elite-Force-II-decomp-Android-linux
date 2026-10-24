@@ -2423,6 +2423,20 @@ void UIWidget::Layout_TextureCoordinates(Event *ev)
     m_textureCoordinates[1] = ev->GetFloat(2);
     m_textureCoordinates[2] = ev->GetFloat(3);
     m_textureCoordinates[3] = ev->GetFloat(4);
+
+    /* the puzzle's only lever on the wave art: name the tick and the values */
+    if (PROBE_On() && getName() && !strncmp(getName(), "tri_mod_", 8)) {
+        static int s_trimod;
+
+        if (PROBE_Throttle(&s_trimod, 24, 256)) {
+            UIVK_PROBE(
+                "trimod",
+                "texcmd widget='%s' class='%s' st=(%.3f,%.3f)-(%.3f,%.3f)",
+                getName(), getClassname() ? getClassname() : "?",
+                (double)m_textureCoordinates[0], (double)m_textureCoordinates[1],
+                (double)m_textureCoordinates[2], (double)m_textureCoordinates[3]);
+        }
+    }
 }
 
 void UIWidget::LayoutFadeIn(Event *ev)
@@ -4080,8 +4094,25 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
                 uii.Rend_DrawPicTiled(0, 0, m_frame.size.width, m_frame.size.height, statematerial->GetMaterial());
             }
         } else {
+            /* Display @0x000A47F0 loads +0x63c..+0x648 into the four ST args: the
+               widget's own texcoords, so `texturecoordinates' reaches the quad. */
+            if (PROBE_On() && getName() && !strncmp(getName(), "tri_mod_", 8)) {
+                static int s_trimod;
+
+                if (PROBE_Throttle(&s_trimod, 24, 256)) {
+                    UIVK_PROBE(
+                        "trimod",
+                        "draw widget='%s' class='%s' st=(%.3f,%.3f)-(%.3f,%.3f)",
+                        getName(), getClassname() ? getClassname() : "?",
+                        (double)m_textureCoordinates[0], (double)m_textureCoordinates[1],
+                        (double)m_textureCoordinates[2], (double)m_textureCoordinates[3]);
+                }
+            }
+
             uii.Rend_DrawPicStretched(
-                0, 0, m_frame.size.width, m_frame.size.height, 0, 0, 1, 1, statematerial->GetMaterial()
+                0, 0, m_frame.size.width, m_frame.size.height,
+                m_textureCoordinates[0], m_textureCoordinates[1],
+                m_textureCoordinates[2], m_textureCoordinates[3], statematerial->GetMaterial()
             );
         }
     }

@@ -179,6 +179,23 @@ void UILayout::ProcessCommands(void)
 
                     // LAYOUT FIX) -- which is what fixes the widgets that are NEVER passed
                 }
+
+                /* the tricorder minigame is plain Widget/Label/Button in the URC, so naming
+                   what each tri_mod_ resource resolved to splits a class miss from a
+                   behaviour miss */
+                if (widget->getName() && !strncmp(widget->getName(), "tri_mod_", 8)) {
+                    static int s_cls;
+
+                    if (PROBE_Throttle(&s_cls, 32, 128)) {
+                        UIVK_PROBE(
+                            "trimod",
+                            "class widget='%s' class='%s' enabled=%d show=%d",
+                            widget->getName(),
+                            widget->getClassname() ? widget->getClassname() : "?",
+                            widget->isEnabled() ? 1 : 0,
+                            widget->getShow() ? 1 : 0);
+                    }
+                }
             } else {
                 if (ValidEvent(token)) {
                     ev = new Event(token);
