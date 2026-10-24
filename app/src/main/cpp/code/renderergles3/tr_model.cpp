@@ -1092,6 +1092,8 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
         fogNum = R_CalcFogNum(fogOrigin, fogRadius);
     }
 
+    ri.TIKI_Skan_SetProbeSubject(ent->e.entityNumber, ent->e.origin);
+
     boneCount = ri.TIKI_SkelBonesFromRecords(
         tiki,
         ent->e.anim,

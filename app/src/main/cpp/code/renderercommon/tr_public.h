@@ -305,6 +305,7 @@ typedef struct {
     float (*TIKI_Anim_FrameTime)(dtiki_t *tiki, int animnum, int framenum);
     struct tikiFrame_s *(*TIKI_Anim_TanFrames)(dtiki_t *tiki, int animnum, int *pNumFrames);
     struct skelAnimHeader_s *(*TIKI_Skan_FindByAnim)(dtiki_t *tiki, int animnum);
+    void (*TIKI_Skan_SetProbeSubject)(int entnum, const vec3_t origin);
     int (*TIKI_SkelBonesFromRecords)(
         dtiki_t      *tiki,
         int           anim,

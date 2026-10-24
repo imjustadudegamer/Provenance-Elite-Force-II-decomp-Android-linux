@@ -45,9 +45,10 @@ struct skanRetained_t {
 static skanRetained_t m_skanRetained[MAX_TIKI_ALIASES];
 static int            m_skanRetainedCount;
 
-skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes)
+skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, const char *path)
 {
     skelAnimHeaderRec_t *copy;
+    int                  version;
     int                  numFrames;
     int                  numbones;
     int                  ofsChannelNames;
@@ -58,38 +59,36 @@ skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes)
         return NULL;
     }
 
+    version         = LittleLong(*(const int *)((const byte *)image + 4));
     numFrames       = LittleLong(*(const int *)((const byte *)image + 76));
     numbones        = LittleLong(*(const int *)((const byte *)image + 80));
     ofsChannelNames = LittleLong(*(const int *)((const byte *)image + 104));
     ofsFrames       = LittleLong(*(const int *)((const byte *)image + 108));
 
-    if (numFrames <= 0 || numbones <= 0 || numbones > TIKI_MAX_BONES || ofsFrames <= 0
-        || (size_t)ofsFrames >= bytes) {
+    /* retail TIKI_LoadAnimSkel @0x000F4120: version 4 only, the exact size
+       equation, and no clamp -- a frame count the bytes cannot hold is a load
+       error, because reading it walks past the buffer into whatever the
+       allocator left there, and that lands in the bone rows as a quat. */
+    if (version != 4) {
+        TIKI_Error("TIKI_LoadAnimSkel: %s has wrong version (%i should be 4)\n", path, version);
         return NULL;
     }
 
-    if (ofsChannelNames < 112 || (size_t)ofsChannelNames + (size_t)numbones * 36 > bytes) {
+    if (numFrames <= 0 || numbones <= 0 || numbones > TIKI_MAX_BONES) {
+        TIKI_Error("TIKI_LoadAnimSkel: %s has no frames or too many bones (%i)\n", path, numbones);
         return NULL;
     }
 
-    {
-        const size_t stride = SKAN_FRAME_HEADER_SIZE + (size_t)numbones * sizeof(skelBone_t);
-
-        if ((size_t)numFrames > ((size_t)bytes - (size_t)ofsFrames) / stride) {
-            const int maxFull = (int)(((size_t)bytes - (size_t)ofsFrames) / stride);
-
-            if (maxFull <= 0) {
-                return NULL;
-            }
-
-            numFrames = maxFull;
-        }
-
-        need = (size_t)ofsFrames + (size_t)numFrames * stride;
-        if (need > bytes || need < (size_t)ofsFrames
-            || (size_t)ofsChannelNames + (size_t)numbones * 36 > need) {
-            return NULL;
-        }
+    need = (size_t)numFrames * (SKAN_FRAME_HEADER_SIZE + (size_t)numbones * sizeof(skelBone_t))
+         + (size_t)numbones * 36 + 112;
+    if (need != bytes || ofsFrames != (int)(numbones * 36 + 112) || ofsChannelNames != 112) {
+        TIKI_Error("TIKI_LoadAnimSkel: %s is %u bytes, wants %u (frames %i bones %i)\n",
+                   path,
+                   (unsigned)bytes,
+                   (unsigned)need,
+                   numFrames,
+                   numbones);
+        return NULL;
     }
 
     if (m_skanRetainedCount >= MAX_TIKI_ALIASES) {
@@ -344,6 +343,38 @@ static int TIKI_Skan_HeadLayout(skelHeaderGame_t *skel, const int *bone_tag)
     return -1;
 }
 
+/* The renderer latches who is being posed so the rows can name their subject. */
+static int   s_probeEnt = -1;
+static vec3_t s_probeOrg;
+
+void TIKI_Skan_SetProbeSubject(int entnum, const vec3_t origin)
+{
+    s_probeEnt = entnum;
+    if (origin) {
+        VectorCopy(origin, s_probeOrg);
+    } else {
+        VectorClear(s_probeOrg);
+    }
+}
+
+typedef struct {
+    skelAnimHeader_t *mainHdr;
+    skelFrame_t      *mainRec;
+    const int        *mainMap;
+
+    skelAnimHeader_t *aHdr;    
+    skelFrame_t      *aRec;
+    const int        *aMap;
+
+    skelAnimHeader_t *crossHdr;
+    skelFrame_t      *crossRec;
+    const int        *crossMap;
+
+    int               mode;     
+    float             innerT;  
+    float             outerT;  
+} skelSolveChannel_t;
+
 /* Every bone_quat writer is unit-preserving, so the value's shape names the site. */
 const char *TIKI_Skan_QuatWriter(const float *q)
 {
@@ -360,21 +391,40 @@ const char *TIKI_Skan_QuatWriter(const float *q)
 }
 
 /* A non-unit quat reaching QuatToMat scales and shears the bone, so both the
-   controller quat and the composed world quat are measured here. */
+   controller quat and the composed world quat are measured here.  The nonunit
+   row carries the whole chain so one boot names the site: the sampled row, the
+   solved local quat or the parent's stored quat. */
 static void TIKI_Skan_QuatLenProbe(
-    dtiki_t           *tiki,
-    skelHeaderGame_t  *skel,
-    int                bone,
-    const char        *boneName,
-    int                slot,
-    const float       *cq,
-    const float       *w)
+    dtiki_t                  *tiki,
+    skelHeaderGame_t         *skel,
+    int                       bone,
+    const char               *boneName,
+    int                       slot,
+    const float              *cq,
+    const float              *w,
+    const skelSolveChannel_t *ch,
+    int                       chan,
+    const short int          *row,
+    const float              *localQuat,
+    int                       parent,
+    const float              *parentQuat,
+    int                       legs,
+    int                       anim,
+    int                       frame,
+    int                       oldanim,
+    int                       oldframe,
+    float                     framelerp,
+    float                     cblerp)
 {
     static int  baseline;
     float       clen;
     float       wlen;
+    float       llen;
+    float       plen;
     const char *cw;
     const char *ww;
+    const char *chanName;
+    const char *parName;
 
     if (!PROBE_On()) {
         return;
@@ -402,17 +452,76 @@ static void TIKI_Skan_QuatLenProbe(
         );
     }
     if (!(wlen >= 0.999f && wlen <= 1.001f)) {
+        llen = sqrt(localQuat[0] * localQuat[0] + localQuat[1] * localQuat[1] + localQuat[2] * localQuat[2]
+                    + localQuat[3] * localQuat[3]);
         ww = TIKI_Skan_QuatWriter(w);
+        chanName = NULL;
+        if (ch && ch->mainHdr && chan >= 0 && chan < ch->mainHdr->numbones) {
+            chanName = (const char *)ch->mainHdr + ch->mainHdr->ofsChannelNames + 36 * chan + 4;
+        }
+        parName = NULL;
+        if (parent >= 0 && parent < skel->numBones) {
+            parName = skeletor_c::m_boneNames.FindName(skel->pBones[parent].channel);
+        }
+        plen = parentQuat ? sqrt(parentQuat[0] * parentQuat[0] + parentQuat[1] * parentQuat[1]
+                                 + parentQuat[2] * parentQuat[2] + parentQuat[3] * parentQuat[3])
+                          : 0.0f;
         CHAN_PROBE(
             "head",
-            "why=nonunit tiki=%s bone=%d name='%s' slot=%d clen=%.4f wlen=%.4f src=%s\n",
+            "why=nonunit tiki=%s bone=%d name='%s' slot=%d clen=%.4f wlen=%.4f src=%s "
+            "ent=%d org=(%.1f,%.1f,%.1f) ch=%s mode=%d t=%.3f anim=%d frame=%d oldanim=%d oldframe=%d "
+            "flerp=%.3f cb=%.3f\n",
             tiki->name,
             bone,
             boneName ? boneName : "?",
             slot,
             clen,
             wlen,
-            ww
+            ww,
+            s_probeEnt,
+            s_probeOrg[0],
+            s_probeOrg[1],
+            s_probeOrg[2],
+            legs ? "legs" : "torso",
+            ch ? ch->mode : -1,
+            ch ? ((ch->mode == 3) ? ch->outerT : ch->innerT) : 0.0f,
+            anim,
+            frame,
+            oldanim,
+            oldframe,
+            framelerp,
+            cblerp
+        );
+        CHAN_PROBE(
+            "head",
+            "why=row tiki=%s bone=%d chan=%d channame='%s' row=(%d,%d,%d,%d) "
+            "lq=(%.4f,%.4f,%.4f,%.4f) llen=%.4f\n",
+            tiki->name,
+            bone,
+            chan,
+            chanName ? chanName : "?",
+            row ? row[0] : 0,
+            row ? row[1] : 0,
+            row ? row[2] : 0,
+            row ? row[3] : 0,
+            localQuat[0],
+            localQuat[1],
+            localQuat[2],
+            localQuat[3],
+            llen
+        );
+        CHAN_PROBE(
+            "head",
+            "why=par tiki=%s bone=%d par=%d parname='%s' pq=(%.4f,%.4f,%.4f,%.4f) plen=%.4f\n",
+            tiki->name,
+            bone,
+            parent,
+            parName ? parName : "?",
+            parentQuat ? parentQuat[0] : 0.0f,
+            parentQuat ? parentQuat[1] : 0.0f,
+            parentQuat ? parentQuat[2] : 0.0f,
+            parentQuat ? parentQuat[3] : 0.0f,
+            plen
         );
         return;
     }
@@ -574,23 +683,6 @@ const short int *TIKI_Skan_RecordRow(
     return row;
 }
 
-typedef struct {
-    skelAnimHeader_t *mainHdr;
-    skelFrame_t      *mainRec;
-    const int        *mainMap;
-
-    skelAnimHeader_t *aHdr;    
-    skelFrame_t      *aRec;
-    const int        *aMap;
-
-    skelAnimHeader_t *crossHdr;
-    skelFrame_t      *crossRec;
-    const int        *crossMap;
-
-    int               mode;     
-    float             innerT;  
-    float             outerT;  
-} skelSolveChannel_t;
 
 static qboolean TIKI_Skan_SetupChannel(
     dtiki_t            *tiki,
@@ -672,7 +764,9 @@ static void TIKI_Skan_SolveChannelBone(
     const char               *boneName,
     const skelSolveChannel_t *ch,
     float                    *out_quat,
-    float                    *out_offset
+    float                    *out_offset,
+    int                      *out_chan,
+    const short int         **out_row
 )
 {
     const short int *bindRow = skel->pBones[bone].hasBaseRow ? skel->pBones[bone].baseRow : NULL;
@@ -689,6 +783,12 @@ static void TIKI_Skan_SolveChannelBone(
     row = TIKI_Skan_RecordRow(
         ch->mainHdr, ch->mainRec, ch->mainMap, bone, baseLen, boneName, bindRow, &ratio
     );
+    if (out_chan) {
+        *out_chan = TIKI_Skan_ChannelForBone(ch->mainMap, ch->mainHdr, bone);
+    }
+    if (out_row) {
+        *out_row = row;
+    }
 
     if (!row) {
         out_quat[0] = 0.0f;
@@ -885,7 +985,9 @@ int TIKI_SkelBonesFromRecords(
     headLayout = PROBE_On() ? TIKI_Skan_HeadLayout(skel, bone_tag) : -1;
 
     for (b = 0; b < numBones; b++) {
-        float *w = &world[b * 7];
+        float           *w = &world[b * 7];
+        const short int *row = NULL;
+        int              chan = -1;
 
         boneName = skeletor_c::m_boneNames.FindName(skel->pBones[b].channel);
 
@@ -897,14 +999,18 @@ int TIKI_SkelBonesFromRecords(
             legs = qfalse;
         }
 
+        ch = legs ? &legsCh : &torsoCh;
+
         TIKI_Skan_SolveChannelBone(
             skel,
             b,
             VectorLength(skel->pBones[b].offset),
             boneName,
-            legs ? &legsCh : &torsoCh,
+            ch,
             localQuat,
-            localOffset
+            localOffset,
+            &chan,
+            &row
         );
 
         parent = skel->pBones[b].skelParent;
@@ -914,6 +1020,10 @@ int TIKI_SkelBonesFromRecords(
             w[4] = localOffset[0];
             w[5] = localOffset[1];
             w[6] = localOffset[2];
+            parentQuat[0] = 0.0f;
+            parentQuat[1] = 0.0f;
+            parentQuat[2] = 0.0f;
+            parentQuat[3] = 0.0f;
         } else {
             pw = localQuat[3];
             for (i = 0; i < 4; i++) {
@@ -940,14 +1050,20 @@ int TIKI_SkelBonesFromRecords(
         }
 
         for (n = NUM_BONE_CONTROLLERS - 1; n >= 0; n--) {
-            if (bone_tag[n] != b) {
+            if (!bone_tag || !bone_quat || bone_tag[n] != b) {
+                if (!bone_tag || !bone_quat) {
+                    break;
+                }
                 continue;
             }
             cq[0] = bone_quat[n][0];
             cq[1] = bone_quat[n][1];
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
-            TIKI_Skan_QuatLenProbe(tiki, skel, b, boneName, n, cq, w);
+            TIKI_Skan_QuatLenProbe(
+                tiki, skel, b, boneName, n, cq, w, ch, chan, row, localQuat, parent, parentQuat,
+                legs, anim, frame, oldanim, oldframe, framelerp, crossblend_lerp
+            );
             TIKI_Skan_QuatMul(w, cq, w);
             TIKI_Skan_HeadCantProbe(
                 tiki, skel, b, boneName, ch->mainMap, ch->mainHdr, n, headLayout, cq, w
