@@ -1925,7 +1925,6 @@ void RB_CheckOverflow( int verts, int indexes );
 void RB_StageIteratorGeneric( void );
 void RB_StageIterator2D( void );
 qboolean VK_StageResolve2DColor( shaderStage_t *pStage );
-qboolean VK_Stage2DResolveTexCoords( shaderStage_t *pStage );
 void RB_StageIteratorVertexLitTextureUnfogged_2D( void );
 void RB_StageIteratorSky( void );
 void RB_StageIteratorVertexLitTextureUnfogged( void );
