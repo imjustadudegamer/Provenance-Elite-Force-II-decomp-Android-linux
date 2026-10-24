@@ -553,8 +553,16 @@ float PM_CmdScale
 
 qboolean PM_CheckJump( void ) {
 
-	if(pm->ps->pm_flags & PMF_DUCKED)
-		return qfalse;
+	if ( !pm->easyJump )
+	{
+		if(pm->ps->pm_flags & PMF_DUCKED)
+		{
+			if ( pm->cmd.upmove >= 10 && !( pm->ps->pm_flags & PMF_JUMP_HELD ) )
+				pm->jumpResult = 2;
+
+			return qfalse;
+		}
+	}
 
 
 	if ( pm->cmd.upmove < 10 ) {
@@ -571,6 +579,7 @@ qboolean PM_CheckJump( void ) {
 
 	pm->ps->groundEntityNum = ENTITYNUM_NONE;
 	pm->ps->velocity[2] = pm->ps->jumpvelocity;
+	pm->jumpResult = 1;
 
 	return qtrue;
 }
@@ -1481,6 +1490,13 @@ void PM_CheckDuck
 
 void PM_CheckCrouchJump(void)
 {
+	if ( pm->easyJump )
+	{
+		pm->ps->crouchjumpset = qfalse;
+		pm->ps->pm_flags &= ~PMF_TIME_CROUCH_JUMP;
+		return;
+	}
+
 	if ( pm->ps->jumped && 
 		 ( ( ( pm->ps->pm_flags & PMF_DUCKED ) && ( pm->ps->pm_flags & PMF_TIME_JUMP_START ) ) || 
 		   ( !( pm->ps->pm_flags & PMF_TIME_JUMP_START ) && ( pm->ps->pm_flags & PMF_JUMP_HELD ) ) ) )
@@ -1821,6 +1837,7 @@ void PmoveSingle (pmove_t *pmove)
 	pm->watertype = 0;
 	pm->waterlevel = 0;
 	pm->landed = qfalse;
+	pm->jumpResult = 0;
 
 	if(pm->ps->groundPlane)
 	{

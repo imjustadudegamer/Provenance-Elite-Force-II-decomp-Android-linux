@@ -83,6 +83,7 @@ extern cvar_t *sv_useanimmovespeed;
 extern cvar_t *sv_cancrouch;
 extern cvar_t *sv_defaultFov;
 extern cvar_t *sv_strafeJumpingAllowed;
+extern cvar_t *cl_easyJump;
 extern cvar_t *g_showmem;
 extern cvar_t *g_timeents;
 extern cvar_t *g_showaxis;
