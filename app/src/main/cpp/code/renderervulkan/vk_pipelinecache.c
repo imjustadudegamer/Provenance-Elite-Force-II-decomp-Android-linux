@@ -85,6 +85,24 @@ typedef struct {
 	uint8_t pipelineCacheUUID[VK_UUID_SIZE];
 } vkPcacheHeader_t;
 
+/* fs_homepath is the desktop launcher's var; the port keeps the write root in
+   fs_homedatapath, and on Android fs_homepath is empty. */
+static const char *VK_PCache_Home( void )
+{
+	cvar_t *cv;
+
+	cv = ri.Cvar_Get( "fs_homepath", "", 0 );
+	if ( cv && cv->string[0] ) {
+		return cv->string;
+	}
+	cv = ri.Cvar_Get( "fs_homedatapath", "", 0 );
+	if ( cv && cv->string[0] ) {
+		return cv->string;
+	}
+	cv = ri.Cvar_Get( "fs_homeconfigpath", "", 0 );
+	return ( cv && cv->string[0] ) ? cv->string : NULL;
+}
+
 qboolean VK_PipelineCache_Open( void )
 {
 	VkPipelineCacheCreateInfo createInfo;
@@ -107,6 +125,9 @@ qboolean VK_PipelineCache_Open( void )
 
 	homeCvar = ri.Cvar_Get( "fs_homepath", "", 0 );
 	home = homeCvar ? homeCvar->string : NULL;
+	if ( !home || !home[0] ) {
+		home = VK_PCache_Home();
+	}
 
 	/* Loaded by default on the phone, opt-in on the desktop.  Mesa's ANV 25.2.8
 	   segfaults inside vkCreatePipelineCache parsing a blob it saved itself
@@ -244,6 +265,9 @@ void VK_PipelineCache_Save( void )
 
 	homeCvar = ri.Cvar_Get( "fs_homepath", "", 0 );
 	home = homeCvar ? homeCvar->string : NULL;
+	if ( !home || !home[0] ) {
+		home = VK_PCache_Home();
+	}
 	if ( !home || !home[0] ) {
 		free( blob );
 		return;

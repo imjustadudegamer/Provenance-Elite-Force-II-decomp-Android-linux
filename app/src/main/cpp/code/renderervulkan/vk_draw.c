@@ -79,6 +79,7 @@ static int				vk_numPipelines;
 
 static int				s_pipelineIndex[VK_DRAW_PIPELINE_HASH];
 static int				s_setIndex[VK_DRAW_SET_HASH];
+static long long		s_buildT0;
 
 /* the ring's index buffer, per frame slot: it is bound once per command buffer */
 static VkBuffer			s_indexBound[VK_FRAMES_IN_FLIGHT];
@@ -659,9 +660,13 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 		return VK_NULL_HANDLE;
 	}
 
+	s_buildT0 = BE_Microseconds64();
 	if ( !VK_Draw_Build( key, &vk_pipelines[i].pipeline ) ) {
 		return VK_NULL_HANDLE;
 	}
+
+	VK_Shade_WarmNoteBuild( tess.shader ? tess.shader->name : "(2d)",
+							key->stateBits, BE_Microseconds64() - s_buildT0 );
 
 	vk_pipelines[i].key = *key;
 	vk_pipelines[i].used = qtrue;
@@ -677,8 +682,6 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 			break;
 		}
 	}
-
-	VK_PipelineCache_Save();
 
 	return vk_pipelines[i].pipeline;
 }
