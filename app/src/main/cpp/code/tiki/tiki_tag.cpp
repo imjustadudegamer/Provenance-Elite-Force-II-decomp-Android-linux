@@ -32,6 +32,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tiki_skel.h"
 #include "tiki_tag.h"
 
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
+
+#include <math.h>
+
 static qboolean CHAN_TagProbeOn(void)
 {
 	static cvar_t *chan_qa;
@@ -1158,12 +1164,36 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
     memcpy(out->axis, mat.val, sizeof(out->axis));
 
     if (developer->integer || CHAN_TagProbeOn()) {
+        float qlen = sqrt(accQuat[0] * accQuat[0] + accQuat[1] * accQuat[1] + accQuat[2] * accQuat[2]
+                          + accQuat[3] * accQuat[3]);
+
+        if (qlen < 0.99f || qlen > 1.01f) {
+            CHAN_PROBE(
+                "head",
+                "why=tagunit tiki=%s tag=%d ent=%d qlen=%.4f quat=(%.3f,%.3f,%.3f,%.3f) "
+                "ctl1=(%.3f,%.3f,%.3f,%.3f) anim=%d frame=%d\n",
+                tiki->name,
+                tagnum,
+                ent->entityNumber,
+                qlen,
+                accQuat[0],
+                accQuat[1],
+                accQuat[2],
+                accQuat[3],
+                ent->bone_quat[1][0],
+                ent->bone_quat[1][1],
+                ent->bone_quat[1][2],
+                ent->bone_quat[1][3],
+                ent->anim,
+                ent->frame
+            );
+        }
         static int lerpskel_tag;
         if (++lerpskel_tag % 240 == 1) {
             Com_Printf(
                 "[LERPSKEL:tag:lerpskel] tiki=%s tag=%d ent=%d skel=1 modeL=%d modeT=%d "
                 "lerp=%.3f crosslerp=%.3f legs=%d torso=%d anim=%d frame=%d oldanim=%d oldframe=%d "
-                "off=(%.2f,%.2f,%.2f) axis0=(%.3f,%.3f,%.3f) zero=%d\n",
+                "off=(%.2f,%.2f,%.2f) axis0=(%.3f,%.3f,%.3f) len=%.4f zero=%d\n",
                 tiki->name,
                 tagnum,
                 ent->entityNumber,
@@ -1183,6 +1213,7 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
                 out->axis[0][0],
                 out->axis[0][1],
                 out->axis[0][2],
+                qlen,
                 (VectorCompare(out->origin, vec3_origin)
                  && out->axis[0][0] == 1.0f && out->axis[1][1] == 1.0f && out->axis[2][2] == 1.0f)
                     ? 1
