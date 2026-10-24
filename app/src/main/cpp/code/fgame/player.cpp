@@ -2767,6 +2767,7 @@ qboolean TryPush(int entnum, vec3_t move_origin, vec3_t move_end)
 
 void Player::SetMoveInfo( pmove_t *pmove, const usercmd_t *ucmd )
 {
+	static int lastEasyJump = -1;
 	Vector move;
 	
 	memset( pmove, 0, sizeof( pmove_t ) );
@@ -2780,6 +2781,14 @@ void Player::SetMoveInfo( pmove_t *pmove, const usercmd_t *ucmd )
 		pmove->cmd            = *ucmd;
 	}
 	
+	pmove->easyJump       = cl_easyJump->integer ? qtrue : qfalse;
+
+	if ( PROBE_On() && lastEasyJump != pmove->easyJump )
+	{
+		PROBE( "easyjump", "srv state easy=%d was=%d\n", (int)pmove->easyJump, lastEasyJump );
+		lastEasyJump = pmove->easyJump;
+	}
+
 	pmove->tracemask      = edict->clipmask;
 pmove->trace          = gi.trace;
 	pmove->pointcontents  = gi.pointcontents;
@@ -3402,6 +3411,13 @@ void Player::ClientMove(usercmd_t *ucmd)
     SetMoveInfo(&pmove, ucmd);
     Pmove(&pmove);
     GetMoveInfo(&pmove);
+    if (pmove.jumpResult == 1) {
+        PROBE("jump", "srv takeoff easy=%d duck=%d up=%d vz=%d\n", (int)pmove.easyJump,
+              (client->ps.pm_flags & PMF_DUCKED) ? 1 : 0, (int)ucmd->upmove, (int)client->ps.velocity[2]);
+    } else if (pmove.jumpResult == 2) {
+        PROBE("jump", "srv eaten easy=%d duck=1 up=%d vz=%d\n", (int)pmove.easyJump, (int)ucmd->upmove,
+              (int)client->ps.velocity[2]);
+    }
     ProcessPmoveEvents(pmove.pmoveEvent);
 
     if ((getMoveType() == MOVETYPE_NOCLIP) || !(client->ps.pm_flags & PMF_NO_PREDICTION)) {

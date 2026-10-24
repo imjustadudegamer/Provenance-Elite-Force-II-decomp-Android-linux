@@ -29,6 +29,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 static pmove_t cg_pmove;
 
+/* the server owns this one; the client prediction must agree with it */
+static cvar_t *cg_easyJump;
+static int     cg_easyJumpLast = -1;
+
 static int        cg_numSolidEntities;
 static centity_t *cg_solidEntities[MAX_ENTITIES_IN_SNAPSHOT];
 static int        cg_numTriggerEntities;
@@ -440,6 +444,16 @@ void CG_PredictPlayerState(void)
 
     cg_pmove.noFootsteps = (cgs.mp_flags & MP_FLAG_NO_FOOTSTEPS) > 0;
 
+    if (!cg_easyJump) {
+        cg_easyJump = cgi.Cvar_Get("cl_easyJump", "0", 0);
+    }
+    cg_pmove.easyJump = cg_easyJump->integer ? qtrue : qfalse;
+
+    if (PROBE_On() && cg_easyJumpLast != cg_pmove.easyJump) {
+        PROBE("easyjump", "cgame state easy=%d was=%d\n", (int)cg_pmove.easyJump, cg_easyJumpLast);
+        cg_easyJumpLast = cg_pmove.easyJump;
+    }
+
 
 
     oldPlayerState = cg.predicted_player_state;
@@ -526,6 +540,15 @@ void CG_PredictPlayerState(void)
 
 
         Pmove(&cg_pmove);
+
+        if (cg_pmove.jumpResult == 1) {
+            PROBE("jump", "cgame takeoff easy=%d duck=%d up=%d vz=%d\n", (int)cg_pmove.easyJump,
+                  (cg.predicted_player_state.pm_flags & PMF_DUCKED) ? 1 : 0, (int)cg_pmove.cmd.upmove,
+                  (int)cg.predicted_player_state.velocity[2]);
+        } else if (cg_pmove.jumpResult == 2) {
+            PROBE("jump", "cgame eaten easy=%d duck=1 up=%d vz=%d\n", (int)cg_pmove.easyJump,
+                  (int)cg_pmove.cmd.upmove, (int)cg.predicted_player_state.velocity[2]);
+        }
 
         moved = qtrue;
 

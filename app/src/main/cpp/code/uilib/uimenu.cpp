@@ -1651,7 +1651,8 @@ static void AdaptTouchSection(UIWidget *container)
     UIWidget *box;
 
     if (container->FindWidget("TouchLook")    // built once; a reload re-runs the pass
-        || !UI_FindCvar("cl_touchLook")) {    // the touch layer owns these cvars
+        || !UI_FindCvar("cl_touchLook")       // the touch layer owns these cvars
+        || !UI_FindCvar("cl_easyJump")) {
         return;
     }
 
@@ -1661,7 +1662,7 @@ static void AdaptTouchSection(UIWidget *container)
     AdaptCommand(header, "bgcolor", "0.278", "0.365", "0.510", "1.000", NULL);
     AdaptCommand(header, "borderstyle", "3D_BORDER", NULL);
 
-    box = AdaptWidget(container, "Widget", "TouchSectionBox", 46, 107, 325, 84);
+    box = AdaptWidget(container, "Widget", "TouchSectionBox", 46, 107, 325, 108);
     AdaptCommand(box, "fgcolor", "1", "1", "1", "1", NULL);
     AdaptCommand(box, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
     AdaptCommand(box, "borderstyle", "OUTLINE_BORDER", NULL);
@@ -1676,6 +1677,8 @@ static void AdaptTouchSection(UIWidget *container)
                      "0.05", "0.35", "0.01", "How far the stick must move before it responds");
     AdaptTouchCheckbox(container, "TouchCrouchToggle", 163, "Crouch Toggle", "cl_crouchToggle",
                        "Tap crouch to hold it down");
+    AdaptTouchCheckbox(container, "TouchEasyJump", 187, "Easy Jump", "cl_easyJump",
+                       "Jump is plain and immediate");
 }
 #endif /* __ANDROID__ */
 
