@@ -262,6 +262,9 @@ typedef struct {
 	int			watertype;
 	int			waterlevel;
 
+	qboolean		easyJump;		/* cl_easyJump: plain immediate jump */
+	int			jumpResult;		/* 0 none, 1 jumped, 2 the duck gate ate the press */
+
 	void        (*trace)( trace_t *result, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask, qboolean cylinder );
 	int			(*pointcontents)( const vec3_t point, int passEntityNum );
 	qboolean		(*trypush)( int entnum, vec3_t move_origin, vec3_t move_end );

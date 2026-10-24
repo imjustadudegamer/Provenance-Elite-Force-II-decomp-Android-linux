@@ -115,6 +115,7 @@ static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
 
 static cvar_t *cl_crouchToggle      = NULL;   
+static cvar_t *cl_easyJump          = NULL;
 static qboolean tc_crouchToggled    = qfalse; 
 
 static int vidRestartTime = 0;
@@ -1982,6 +1983,13 @@ void IN_Init( void *windowData )
 		touchControl.deviceW = ( dw > 0 ) ? (float)dw : 0.0f;
 		touchControl.deviceH = ( dh > 0 ) ? (float)dh : 0.0f;
 	}
+#endif
+
+	/* easy jump: on by default on the hand-held, retail jump on the desktop */
+#ifdef __ANDROID__
+	cl_easyJump = Cvar_Get( "cl_easyJump", "1", CVAR_ARCHIVE );
+#else
+	cl_easyJump = Cvar_Get( "cl_easyJump", "0", CVAR_ARCHIVE );
 #endif
 
 
