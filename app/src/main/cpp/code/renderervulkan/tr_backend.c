@@ -2480,9 +2480,6 @@ void RB_StageIterator2D( void )
 		   own colour (see VK_StageResolve2DColor). */
 		colors = VK_StageResolve2DColor( pStage ) ? tess.svars.colors : tess.vertexColors;
 
-		/* the stage's tcMods land in the vertex ST: the tess shader has no tcMod arm */
-		VK_Stage2DResolveTexCoords( pStage );
-
 		/* the 2D walk was the one iterator that never reported into the frame's
 		   stage census, so a menu-heavy frame under-counted its own stages */
 		VK_Shade_NoteStage( tess.shader );
