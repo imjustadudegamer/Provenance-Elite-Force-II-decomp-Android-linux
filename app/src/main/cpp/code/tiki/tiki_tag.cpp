@@ -177,7 +177,6 @@ static void TIKI_Tag_ApplyControllers(
     int       b;
     int       i;
     int       n;
-    int       ctrlSlot;
     vec4_t    cq;
     SkelMat4  acc;
     SkelMat4  parentInv;
@@ -221,8 +220,11 @@ static void TIKI_Tag_ApplyControllers(
             factor = cur;
         }
 
-        ctrlSlot = -1;
-        for (n = NUM_BONE_CONTROLLERS - 1; n >= 0; n--) {
+        prev = acc;
+        acc.Multiply(prev, factor);
+
+        /* retail folds every matching slot ascending (@0x101400, no break) */
+        for (n = 0; n < NUM_BONE_CONTROLLERS; n++) {
             if (bone_tag[n] != chain[i]) {
                 continue;
             }
@@ -233,14 +235,6 @@ static void TIKI_Tag_ApplyControllers(
             cq[3] = bone_quat[n][3];
             q.Set(cq);
             q.GetMat3(rot);
-            ctrlSlot = n;
-            break;
-        }
-
-        prev = acc;
-        acc.Multiply(prev, factor);
-
-        if (ctrlSlot >= 0) {
             acc.RotateBy(rot);
         }
     }
@@ -1164,14 +1158,16 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
     memcpy(out->axis, mat.val, sizeof(out->axis));
 
     if (developer->integer || CHAN_TagProbeOn()) {
-        float qlen = sqrt(accQuat[0] * accQuat[0] + accQuat[1] * accQuat[1] + accQuat[2] * accQuat[2]
+        float       qlen = sqrt(accQuat[0] * accQuat[0] + accQuat[1] * accQuat[1] + accQuat[2] * accQuat[2]
                           + accQuat[3] * accQuat[3]);
+        const char *qsrc = TIKI_Skan_QuatWriter(accQuat);
 
-        if (qlen < 0.99f || qlen > 1.01f) {
+        /* negated range, not the positive pair: a NaN length must fire */
+        if (!(qlen >= 0.99f && qlen <= 1.01f)) {
             CHAN_PROBE(
                 "head",
                 "why=tagunit tiki=%s tag=%d ent=%d qlen=%.4f quat=(%.3f,%.3f,%.3f,%.3f) "
-                "ctl1=(%.3f,%.3f,%.3f,%.3f) anim=%d frame=%d\n",
+                "ctl1=(%.3f,%.3f,%.3f,%.3f) src=%s anim=%d frame=%d\n",
                 tiki->name,
                 tagnum,
                 ent->entityNumber,
@@ -1184,6 +1180,7 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
                 ent->bone_quat[1][1],
                 ent->bone_quat[1][2],
                 ent->bone_quat[1][3],
+                qsrc,
                 ent->anim,
                 ent->frame
             );
