@@ -311,11 +311,19 @@ static void TIKI_Skan_QuatMul(const float *q, const float *p, float *r)
 }
 
 /* No map means the name tables matched positionally at registration, so retail's
-   bone-index read is exact; -1 stays the out-of-table guard. */
+   bone-index read is exact.  A mapped channel past this anim's own table is the
+   same "no such channel" case as -1: it takes the base row, never a byte from
+   the next frame record. */
 static int TIKI_Skan_ChannelForBone(const int *mapping, skelAnimHeader_t *hdr, int bone)
 {
     if (mapping) {
-        return mapping[bone];
+        if (hdr && bone >= 0 && bone < hdr->numbones) {
+            int chan = mapping[bone];
+            if (chan >= 0 && chan < hdr->numbones) {
+                return chan;
+            }
+        }
+        return -1;
     }
     if (hdr && bone >= 0 && bone < hdr->numbones) {
         return bone;
@@ -540,6 +548,49 @@ static void TIKI_Skan_QuatLenProbe(
     }
 }
 
+/* Walks the ancestors of a short quat so one row names the bone that creates
+   the shortening and every bone that merely inherits it. */
+static void TIKI_Skan_ChainProbe(
+    dtiki_t          *tiki,
+    skelHeaderGame_t *skel,
+    const float      *world,
+    int               bone,
+    int               slot
+)
+{
+    char  chain[192];
+    int   b;
+    int   n;
+    float len;
+
+    chain[0] = 0;
+    n = 0;
+    b = skel->pBones[bone].skelParent;
+    while (b >= 0 && b < skel->numBones && n < 8) {
+        const float *q = &world[b * 7];
+        const char  *nm = skeletor_c::m_boneNames.FindName(skel->pBones[b].channel);
+
+        len = sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+        Q_strcat(
+            chain,
+            sizeof(chain),
+            va("%s%d'%s'=%.4f", n ? " " : "", b, nm ? nm : "?", len)
+        );
+        n++;
+        b = skel->pBones[b].skelParent;
+    }
+
+    CHAN_PROBE(
+        "head",
+        "why=chain tiki=%s bone=%d slot=%d ent=%d chain=\"%s\"\n",
+        tiki->name,
+        bone,
+        slot,
+        s_probeEnt,
+        chain
+    );
+}
+
 /* Names the head bone's sampled row, and each controller slot's bone once. */
 static void TIKI_Skan_HeadCantProbe(
     dtiki_t                *tiki,
@@ -747,6 +798,7 @@ static qboolean TIKI_Skan_SetupChannel(
         ch->mode   = 2;
         ch->aHdr   = ch->crossHdr;
         ch->aRec   = ch->crossRec;
+        ch->aMap   = ch->crossMap;
         ch->innerT = cbLerp;
     } else {
         ch->mode   = 3;
@@ -1065,6 +1117,10 @@ int TIKI_SkelBonesFromRecords(
                 legs, anim, frame, oldanim, oldframe, framelerp, crossblend_lerp
             );
             TIKI_Skan_QuatMul(w, cq, w);
+            if (!(w[0] * w[0] + w[1] * w[1] + w[2] * w[2] + w[3] * w[3] >= 0.998f
+                  && w[0] * w[0] + w[1] * w[1] + w[2] * w[2] + w[3] * w[3] <= 1.002f)) {
+                TIKI_Skan_ChainProbe(tiki, skel, world, b, n);
+            }
             TIKI_Skan_HeadCantProbe(
                 tiki, skel, b, boneName, ch->mainMap, ch->mainHdr, n, headLayout, cq, w
             );
