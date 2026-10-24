@@ -204,7 +204,7 @@ void CVAR_Init( void )
 	sv_cancrouch				= gi.cvar( "sv_cancrouch",		"1",		CVAR_ROM );
 	sv_defaultFov				= gi.cvar( "sv_defaultFov",		"90",		0 );
 	sv_strafeJumpingAllowed				= gi.cvar( "sv_strafeJumpingAllowed",		"1",		0 );
-	cl_easyJump				= gi.cvar( "cl_easyJump",		"0",		0 );
+	cl_easyJump				= gi.cvar( "cl_easyJump",		"1",		0 );
 	g_showmem				= gi.cvar( "g_showmem",		"0",		0 );
 	g_timeents				= gi.cvar( "g_timeents",		"0",		0 );
 	g_showaxis				= gi.cvar( "g_showaxis",		"0",		0 );

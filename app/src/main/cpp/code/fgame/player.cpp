@@ -3412,8 +3412,17 @@ void Player::ClientMove(usercmd_t *ucmd)
     Pmove(&pmove);
     GetMoveInfo(&pmove);
     if (pmove.jumpResult == 1) {
-        PROBE("jump", "srv takeoff easy=%d duck=%d up=%d vz=%d\n", (int)pmove.easyJump,
-              (client->ps.pm_flags & PMF_DUCKED) ? 1 : 0, (int)ucmd->upmove, (int)client->ps.velocity[2]);
+        /* ent-training1's crate lesson: the grey case2 pair tops 108 over the z-172 floor
+           and the walkway 112 more, so with STEPSIZE 33 the two rises need 75 and 79 */
+        float v0   = (float)client->ps.jumpvelocity
+                     + (pmove.easyJump ? (float)client->ps.crouchjumpvelocity : 0.0f);
+        float apex = v0 * v0 / (2.0f * (float)client->ps.gravity);
+        float hop  = apex - (108.0f - 33.0f);
+        float gate = apex - (112.0f - 33.0f);
+
+        PROBE("jump", "srv takeoff easy=%d duck=%d up=%d vz=%d v0=%d apex=%.2f hop=%+.2f gate=%+.2f\n",
+              (int)pmove.easyJump, (client->ps.pm_flags & PMF_DUCKED) ? 1 : 0, (int)ucmd->upmove,
+              (int)client->ps.velocity[2], (int)v0, apex, hop, gate);
     } else if (pmove.jumpResult == 2) {
         PROBE("jump", "srv eaten easy=%d duck=1 up=%d vz=%d\n", (int)pmove.easyJump, (int)ucmd->upmove,
               (int)client->ps.velocity[2]);

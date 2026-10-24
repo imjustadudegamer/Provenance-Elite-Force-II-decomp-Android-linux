@@ -1985,12 +1985,8 @@ void IN_Init( void *windowData )
 	}
 #endif
 
-	/* easy jump: on by default on the hand-held, retail jump on the desktop */
-#ifdef __ANDROID__
+	/* easy jump: the operator ordered it on everywhere; the checkbox turns it back */
 	cl_easyJump = Cvar_Get( "cl_easyJump", "1", CVAR_ARCHIVE );
-#else
-	cl_easyJump = Cvar_Get( "cl_easyJump", "0", CVAR_ARCHIVE );
-#endif
 
 
 #ifdef __ANDROID__

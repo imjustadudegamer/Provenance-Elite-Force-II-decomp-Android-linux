@@ -542,9 +542,17 @@ void CG_PredictPlayerState(void)
         Pmove(&cg_pmove);
 
         if (cg_pmove.jumpResult == 1) {
-            PROBE("jump", "cgame takeoff easy=%d duck=%d up=%d vz=%d\n", (int)cg_pmove.easyJump,
-                  (cg.predicted_player_state.pm_flags & PMF_DUCKED) ? 1 : 0, (int)cg_pmove.cmd.upmove,
-                  (int)cg.predicted_player_state.velocity[2]);
+            /* same row as the server side: both sides must agree on v0 and apex */
+            float v0   = (float)cg.predicted_player_state.jumpvelocity
+                         + (cg_pmove.easyJump ? (float)cg.predicted_player_state.crouchjumpvelocity : 0.0f);
+            float apex = v0 * v0 / (2.0f * (float)cg.predicted_player_state.gravity);
+            float hop  = apex - (108.0f - 33.0f);
+            float gate = apex - (112.0f - 33.0f);
+
+            PROBE("jump", "cgame takeoff easy=%d duck=%d up=%d vz=%d v0=%d apex=%.2f hop=%+.2f gate=%+.2f\n",
+                  (int)cg_pmove.easyJump, (cg.predicted_player_state.pm_flags & PMF_DUCKED) ? 1 : 0,
+                  (int)cg_pmove.cmd.upmove, (int)cg.predicted_player_state.velocity[2], (int)v0, apex,
+                  hop, gate);
         } else if (cg_pmove.jumpResult == 2) {
             PROBE("jump", "cgame eaten easy=%d duck=1 up=%d vz=%d\n", (int)cg_pmove.easyJump,
                   (int)cg_pmove.cmd.upmove, (int)cg.predicted_player_state.velocity[2]);
