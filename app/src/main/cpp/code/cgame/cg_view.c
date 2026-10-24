@@ -721,7 +721,6 @@ static int cg_targetNameTime = 0;
 
 static void CG_AddTargetName(void)
 {
-    static char lastName[MAX_QPATH] = {0};
     vec3_t      forward, end;
     trace_t     tr;
     const char *name;
@@ -735,6 +734,10 @@ static void CG_AddTargetName(void)
 
     CG_Trace(&tr, cg.refdef.vieworg, NULL, NULL, end, ENTITYNUM_NONE, MASK_SHOT, qfalse, qtrue, "CG_AddTargetName");
 
+    /* retail CG_AddTargetName @0x00044AB0: no hit means an empty name, which
+       empties the cvar once 500ms have passed since the last hit */
+    name = "";
+
     if (tr.entityNum < MAX_CLIENTS && tr.entityNum != cg.snap->ps.clientNum) {
         name = CG_ConfigString(CS_PLAYERS + tr.entityNum);
 
@@ -742,12 +745,12 @@ static void CG_AddTargetName(void)
             name += 5;
         }
 
-        if (strcmp(name, lastName)) {
-            Q_strncpyz(lastName, name, sizeof(lastName));
-            cg_targetNameTime = cg.time;
-        } else if (cg_targetNameTime + 500 < cg.time) {
+        cg_targetNameTime = cg.time;
+    }
+
+    if (strcmp(name, cg_targetedPlayerName->string)) {
+        if (name[0] || cg_targetNameTime + 500 < cg.time) {
             cgi.Cvar_Set("cg_targetedPlayerName", name);
-            cg_targetNameTime = cg.time;
         }
     }
 }
