@@ -578,7 +578,8 @@ qboolean PM_CheckJump( void ) {
 	pm->ps->pm_flags |= PMF_JUMP_HELD;
 
 	pm->ps->groundEntityNum = ENTITYNUM_NONE;
-	pm->ps->velocity[2] = pm->ps->jumpvelocity;
+	/* easy folds retail's crouch-jump bonus into the takeoff: no hold, same ceiling */
+	pm->ps->velocity[2] = pm->ps->jumpvelocity + ( pm->easyJump ? pm->ps->crouchjumpvelocity : 0 );
 	pm->jumpResult = 1;
 
 	return qtrue;
