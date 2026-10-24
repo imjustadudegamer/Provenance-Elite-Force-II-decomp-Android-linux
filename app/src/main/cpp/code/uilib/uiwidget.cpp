@@ -1172,6 +1172,13 @@ UIWidget::UIWidget()
     m_drawRegion = UIRect2D(0.0f, 0.0f, 0.0f, 0.0f);
     m_parent          = NULL;
     m_hovercommandCol = 0;
+    /* retail's ctor writes identity texture coords (UIWidget ctor @0x9E9A0:
+       0x63c-0x648 from its default table) -- left zeroed, a widget that never
+       parses texturecoordinates draws a single texel */
+    m_textureCoordinates[0] = 0.0f;
+    m_textureCoordinates[1] = 0.0f;
+    m_textureCoordinates[2] = 1.0f;
+    m_textureCoordinates[3] = 1.0f;
     // restores retail for every widget that does not get one.
     m_frame           = UIRect2D(0.0f, 0.0f, 0.0f, 0.0f);
     m_drawRegion      = UIRect2D(0.0f, 0.0f, 0.0f, 0.0f);
