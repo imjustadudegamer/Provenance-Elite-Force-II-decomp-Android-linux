@@ -2789,6 +2789,16 @@ void		VK_Shade_Shutdown( void );
 void		VK_Shade_NewFrame( void );
 /* drop the walk's texture latch: a registration recycles every slot */
 void		VK_Shade_RegistrationReset( void );
+/* build a shader's stage pipelines before the draw that would build them */
+VkPipeline	VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family,
+							   unsigned defines, cullType_t cull,
+							   qboolean polygonOffset, int topology );
+void		VK_Shade_WarmReset( void );
+void		VK_Shade_WarmArm( void );
+int			VK_Shade_WarmRegistration( int budgetMsec );
+void		VK_Shade_WarmFrameStep( int budgetMsec );
+int			VK_Shade_WarmTakeNewPipelines( void );
+void		VK_Shade_WarmNoteBuild( const char *shader, unsigned stateBits, long long usec );
 void		VK_2DOrder_Note( const char *shader );
 void		VK_Shade_NoteDraw( int shade );
 void		VK_Shade_NoteSurfCmds( int surfs );

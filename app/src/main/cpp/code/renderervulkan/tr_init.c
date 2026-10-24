@@ -623,6 +623,8 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 	VK_Life_Census( "begin-registration" );
 
+	VK_Shade_WarmReset();
+
 	tr.registrating = qtrue;
 
 	if ( !tr.registered ) {
@@ -668,6 +670,16 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 static void RE_EndRegistration( void )
 {
+	/* build the pipelines the load's shaders will ask for while the walk is
+	   parked, so the first draw of each never compiles one mid-frame */
+	if ( vk.smpActive && !VKimp_IsRenderThread() ) {
+		VKimp_FrontEndWaitIdle();
+	}
+	VK_Shade_WarmRegistration( 0 );
+	if ( VK_Shade_WarmTakeNewPipelines() ) {
+		VK_PipelineCache_Save();
+	}
+
 	tr.registrating = qfalse;
 	R_IssuePendingRenderCommands();
 	R_FreeUnusedImages();

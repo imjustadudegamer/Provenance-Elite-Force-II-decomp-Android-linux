@@ -3027,9 +3027,12 @@ static VkBlendFactor VK_Shade_DstBlendFactor( unsigned nibble )
 
 void VK_Shade_PermRow( const char *shader, int family, unsigned defines );
 
-static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family,
-									 unsigned defines, cullType_t cull,
-									 qboolean polygonOffset, int topology )
+static void VK_Shade_BuildNote( const char *shader, unsigned stateBits, int family,
+								unsigned defines, long long usec );
+
+VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family,
+							  unsigned defines, cullType_t cull,
+							  qboolean polygonOffset, int topology )
 {
 	VkGraphicsPipelineCreateInfo info;
 	VkPipelineShaderStageCreateInfo stages[2];
@@ -3048,6 +3051,7 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE;
 	vkShadePipeline_t	*slot = NULL;
 	VkResult result;
+	long long buildT0;
 	unsigned srcNibble, dstNibble;
 	uint32_t attribCount;
 	uintptr_t pkey[6];
@@ -3228,10 +3232,12 @@ static VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int
 	info.renderPass = vk.renderPass;
 	info.subpass = 0;
 
+	buildT0 = BE_Microseconds64();
 	result = qvk.CreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &info, NULL, &slot->pipeline );
 	if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkCreateGraphicsPipelines(shade)" ) ) {
 		return VK_NULL_HANDLE;
 	}
+	VK_Shade_BuildNote( shader, stateBits, family, defines, BE_Microseconds64() - buildT0 );
 	slot->stateBits = stateBits;
 	slot->family = family;
 	slot->defines = defines;
@@ -6310,4 +6316,250 @@ void VK_Shade_NewFrame( void )
 		vk_shadeUboNext[slot] = 0;
 		vk_shadeUboLastValid[slot] = qfalse;
 	}
+}
+
+/* ---- the pipeline warm pass ---------------------------------------------- */
+/* A missing pipeline is built inside the draw that asks for it, on the walk
+   thread.  This pass asks first, at registration, so the build lands in the
+   load instead of the fight. */
+
+#define VK_WARM_GRACE_FRAMES	60
+#define VK_WARM_LATE_MIN_USEC	2000
+
+static cvar_t *r_vkShadeWarm;
+static cvar_t *r_vkShadeWarmBudget;
+
+static int		s_warmCursor;
+static int		s_warmArmFrame = -1;
+static qboolean	s_warmInPass;
+static int		s_warmBuilt;
+static int		s_warmSkipped;
+static int		s_warmLateBuilds;
+static int		s_warmLateRows;
+static long long s_warmLateUsec;
+static int		s_warmNewPipelines;
+
+static void VK_Shade_BuildNote( const char *shader, unsigned stateBits, int family,
+								unsigned defines, long long usec )
+{
+	s_warmNewPipelines++;
+	if ( s_warmInPass || usec < VK_WARM_LATE_MIN_USEC ) {
+		return;
+	}
+	if ( s_warmArmFrame < 0
+		 || RB_FrameCount() <= s_warmArmFrame + VK_WARM_GRACE_FRAMES ) {
+		return;
+	}
+
+	s_warmLateBuilds++;
+	s_warmLateUsec += usec;
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
+	s_warmLateRows++;
+	if ( s_warmLateRows > 32 && ( s_warmLateRows % 200 ) != 0 ) {
+		return;
+	}
+	VK_Guard_Row( "VK:warmmiss",
+				  "shader='%s' st=0x%lx fam=%d defines=0x%06x usec=%lld n=%d totms=%d f=%d",
+				  shader ? shader : "(null)", (unsigned long)stateBits, family,
+				  defines & ~VKP_FAMILY_MASK, usec, s_warmLateBuilds,
+				  ( int )( s_warmLateUsec / 1000LL ), RB_FrameCount() );
+}
+
+static qboolean VK_Shade_WarmKey( const char *name, unsigned stateBits, unsigned defines,
+								  cullType_t cull, qboolean polygonOffset, int topology )
+{
+	VkShaderModule v, f;
+
+	if ( !VK_Program_Modules( VK_Family_Of( defines ), defines & ~VKP_FAMILY_MASK, &v, &f ) ) {
+		/* no such permutation in the offline table; the walk would miss too */
+		s_warmSkipped++;
+		return qfalse;
+	}
+	if ( VK_Shade_Pipeline( name, stateBits, VK_Family_Of( defines ), defines,
+							cull, polygonOffset, topology ) != VK_NULL_HANDLE ) {
+		s_warmBuilt++;
+		return qtrue;
+	}
+	return qfalse;
+}
+
+static void VK_Shade_WarmShader2D( const shader_t *shader );
+
+/* the state word the walk substitutes when the entity fades, minus the
+   backEnd read: RF_ForceAlphaStateBits @tr_backend.c:2508 */
+static unsigned VK_Shade_WarmFadeBits( unsigned stateBits )
+{
+	return ( stateBits & ~( VKS_SRCBLEND_BITS | VKS_DSTBLEND_BITS | VKS_DEPTHMASK_TRUE ) )
+		   | VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+}
+
+/* the tess pipeline a 2D stage draws with: RB_StagePass @tr_backend.c:988 */
+static void VK_Shade_WarmShader2D( const shader_t *shader )
+{
+	int s;
+
+	for ( s = 0; s < shader->numUnfoggedPasses && s < MAX_SHADER_STAGES; s++ ) {
+		const shaderStage_t	*pStage = shader->unfoggedStages[s];
+		vkPipelineKey_t		key;
+
+		if ( !pStage || !pStage->active || !pStage->bundle[0].image[0] ) {
+			continue;
+		}
+
+		memset( &key, 0, sizeof( key ) );
+		key.topology = VK_IMM_TRIANGLES;
+		key.stateBits = pStage->stateBits;
+		key.cull = CT_TWO_SIDED;
+		key.depthTest = ( pStage->stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
+		key.depthWrite = ( pStage->stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+		VK_Draw_Pipeline( &key );
+	}
+}
+
+static void VK_Shade_WarmShader( const shader_t *shader )
+{
+	int s;
+
+	if ( !shader || shader->defaultShader ) {
+		return;
+	}
+
+	/* 2D shaders draw through the tess pipeline, not this one */
+	if ( shader->lightmapIndex == LIGHTMAP_2D ) {
+		VK_Shade_WarmShader2D( shader );
+		return;
+	}
+
+	for ( s = 0; s < shader->numUnfoggedPasses && s < MAX_SHADER_STAGES; s++ ) {
+		const shaderStage_t	*pStage = shader->unfoggedStages[s];
+		unsigned			defines;
+
+		if ( !pStage || !pStage->active ) {
+			continue;
+		}
+
+		defines = VK_StageDefines_Full( pStage, shader, 0, 0, 0, 0 )
+				  | VK_TexEnvForStage( pStage, shader );
+
+		if ( shader->optimalStageIteratorFunc == RB_StageIteratorLightmappedMultitextureUnfogged ) {
+			/* single pass, single state word, its own permutation */
+			if ( s == 0 ) {
+				VK_Shade_WarmKey( shader->name, VKS_DEPTHMASK_TRUE,
+								  defines | VKP_LIGHTMAP_MT, shader->cullType,
+								  shader->polygonOffset, VK_IMM_TRIANGLES );
+			}
+			continue;
+		}
+
+		VK_Shade_WarmKey( shader->name, pStage->stateBits, defines, shader->cullType,
+						  shader->polygonOffset, VK_IMM_TRIANGLES );
+		VK_Shade_WarmKey( shader->name, VK_Shade_WarmFadeBits( pStage->stateBits ), defines,
+						  shader->cullType, shader->polygonOffset, VK_IMM_TRIANGLES );
+	}
+}
+
+void VK_Shade_WarmReset( void )
+{
+	s_warmCursor = 1;
+	s_warmBuilt = 0;
+	s_warmSkipped = 0;
+	s_warmArmFrame = -1;
+}
+
+/* the detector arms at the first world scene after a registration, so the
+   loading screen's own builds are exempt and a mid-combat build is not */
+void VK_Shade_WarmArm( void )
+{
+	if ( s_warmArmFrame < 0 ) {
+		s_warmArmFrame = RB_FrameCount();
+	}
+}
+
+static qboolean VK_Shade_WarmRoom( void )
+{
+	return vk.device != VK_NULL_HANDLE
+		   && vk_numShadePipelines < VK_SHADE_PIPELINES - 256;
+}
+
+/* Returns 1 when every registered shader has been walked. */
+int VK_Shade_WarmRegistration( int budgetMsec )
+{
+	long long t0;
+
+	if ( !r_vkShadeWarm ) {
+		r_vkShadeWarm = ri.Cvar_Get( "r_vkShadeWarm", "1", 0 );
+		r_vkShadeWarmBudget = ri.Cvar_Get( "r_vkShadeWarmBudget", "1500", 0 );
+	}
+	if ( !r_vkShadeWarm->integer || !VK_Shade_WarmRoom() ) {
+		return 1;
+	}
+	if ( budgetMsec <= 0 ) {
+		budgetMsec = r_vkShadeWarmBudget->integer;
+	}
+
+	t0 = BE_Microseconds64();
+	s_warmInPass = qtrue;
+
+	for ( ; s_warmCursor < tr.numShaders; s_warmCursor++ ) {
+		if ( ( s_warmCursor & 31 ) == 0
+			 && ( BE_Microseconds64() - t0 >= ( long long )budgetMsec * 1000LL
+				  || !VK_Shade_WarmRoom() ) ) {
+			s_warmInPass = qfalse;
+			return 0;
+		}
+		VK_Shade_WarmShader( tr.shaders[s_warmCursor] );
+	}
+
+	s_warmInPass = qfalse;
+	if ( !R_ProbeStatsOn() ) {
+		return 0;
+	}
+	VK_Guard_Row( "VK:warm", "status=done built=%d skipped=%d ms=%d shaders=%d pipes=%d",
+				  s_warmBuilt, s_warmSkipped,
+				  ( int )( ( BE_Microseconds64() - t0 ) / 1000LL ), tr.numShaders - 1,
+				  vk_numShadePipelines );
+	return 1;
+}
+
+/* Leftover of a budget that ran out, drained on the walk thread. */
+void VK_Shade_WarmFrameStep( int budgetMsec )
+{
+	long long t0;
+
+	if ( s_warmCursor >= tr.numShaders || !VK_Shade_WarmRoom() ) {
+		return;
+	}
+	if ( !r_vkShadeWarm || !r_vkShadeWarm->integer ) {
+		s_warmCursor = tr.numShaders;
+		return;
+	}
+
+	t0 = BE_Microseconds64();
+	s_warmInPass = qtrue;
+	for ( ; s_warmCursor < tr.numShaders; s_warmCursor++ ) {
+		if ( ( s_warmCursor & 7 ) == 0
+			 && ( BE_Microseconds64() - t0 >= ( long long )budgetMsec * 1000LL
+				  || !VK_Shade_WarmRoom() ) ) {
+			break;
+		}
+		VK_Shade_WarmShader( tr.shaders[s_warmCursor] );
+	}
+	s_warmInPass = qfalse;
+}
+
+/* pipelines created since the last call, so a save only runs when the blob grew */
+int VK_Shade_WarmTakeNewPipelines( void )
+{
+	int n = s_warmNewPipelines;
+
+	s_warmNewPipelines = 0;
+	return n;
+}
+
+/* the tess family's builds report through the same detector */
+void VK_Shade_WarmNoteBuild( const char *shader, unsigned stateBits, long long usec )
+{
+	VK_Shade_BuildNote( shader, stateBits, -1, 0, usec );
 }

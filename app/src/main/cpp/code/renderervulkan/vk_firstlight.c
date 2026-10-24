@@ -231,6 +231,9 @@ void VK_BringDown( void )
 	VK_Descriptor_Shutdown();
 	VK_Frame_Shutdown();
 	VK_Target_Shutdown();
+	if ( VK_Shade_WarmTakeNewPipelines() ) {
+		VK_PipelineCache_Save();
+	}
 	VK_PipelineCache_Close();
 	VK_Swapchain_Destroy();
 	VK_Surface_Destroy();

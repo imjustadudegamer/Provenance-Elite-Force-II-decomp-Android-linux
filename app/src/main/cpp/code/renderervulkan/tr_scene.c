@@ -369,6 +369,11 @@ void RE_RenderScene( const refdef_t *fd ) {
 		ri.Error (ERR_DROP, "R_RenderScene: NULL worldmodel");
 	}
 
+	/* the first world scene after a load is where the warm detector starts counting */
+	if ( !( fd->rdflags & RDF_NOWORLDMODEL ) ) {
+		VK_Shade_WarmArm();
+	}
+
 	/* in2D is the walk's flag and is cleared by the walk's own 3D passes
 	   (RB_BeginDrawingView, RB_SpriteSurfs); the reference wrote it here because
 	   its RE_RenderScene ran on the render thread.  Under r_smp this front-end

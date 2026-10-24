@@ -614,6 +614,9 @@ void RB_ExecuteRenderCommands( const void *data )
 	qboolean inFrame = qfalse;
 	int gpuLastCat = -1;
 
+	/* a registration whose warm budget ran out finishes here, a slice a frame */
+	VK_Shade_WarmFrameStep( 2 );
+
 	while ( 1 ) {
 		/* A draw that leaked out of the frame window sits ahead of the frame
 		   marker: RE_BeginFrame appends RC_VK_BEGIN after it.  Recording it would
