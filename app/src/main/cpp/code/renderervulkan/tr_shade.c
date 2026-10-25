@@ -197,8 +197,9 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;
 	tess.shader = state;
-	tess.dlightBits = 0;		
+	tess.dlightBits = 0;
 	RB_VboStaticReset();
+	RB_ClearFeedSurf();
 	tess.vertexColorValid = (r_vertexLight->integer != 0) || (vkConfig.hardwareType == 4);
 	tess.entityFade = 1.0f;
 	tess.shaderTime = 1.0f;

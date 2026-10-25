@@ -1910,6 +1910,9 @@ typedef struct shaderCommands_s
 extern	shaderCommands_t	tess;
 
 void RB_BeginSurface(shader_t *shader, int fogNum );
+void RB_NoteFeedSurf( const void *surf, int kind );
+const void *RB_FeedSurf( int *kind );
+void RB_ClearFeedSurf( void );
 void RB_EndSurface(void);
 extern qboolean vk_frameOpen;
 void RB_BeginDrawingView( void );

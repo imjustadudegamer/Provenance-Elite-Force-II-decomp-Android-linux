@@ -215,6 +215,31 @@ static float R_CalcStaticModelLodDist( const staticLodModel_t *rec ) {
 	return r_lodscale->value * perCent;
 }
 
+/* The batch's own surface, for the colour census at the pack seam.  First one in
+   a batch wins; RB_BeginSurface clears it, so a stale pointer cannot cross. */
+static const void *s_feedSurf;
+static int s_feedKind;   /* 0 none, 1 grid, 2 tris, 3 arena */
+
+void RB_NoteFeedSurf( const void *surf, int kind ) {
+	if ( s_feedSurf ) {
+		return;
+	}
+	s_feedSurf = surf;
+	s_feedKind = kind;
+}
+
+const void *RB_FeedSurf( int *kind ) {
+	if ( kind ) {
+		*kind = s_feedKind;
+	}
+	return s_feedSurf;
+}
+
+void RB_ClearFeedSurf( void ) {
+	s_feedSurf = NULL;
+	s_feedKind = 0;
+}
+
 void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 	int			i, j;
 	drawVert_t	*dv;
@@ -230,6 +255,8 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 	if ( srf->numVerts > 1200 ) {
 		return;
 	}
+
+	RB_NoteFeedSurf( srf, 2 );
 
 	dlightBits = srf->dlightBits[ RB_FrameSmpFrame() ];
 	tess.dlightBits |= dlightBits;
@@ -384,35 +411,6 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 		tess.vertexDlightBits[ vertBase + j ] = dlightBits;
 	}
 
-	/* a vertex-lit surface whose whole colour array came out black is the black-world
-	   root: the row names which of the two feeds ran and what the source byte was */
-	if ( R_ProbeStatsOn() && numVerts > 0 && tess.shader->lightmapIndex == LIGHTMAP_NONE ) {
-		int k, zero = 1;
-		for ( k = 0; k < numVerts; k++ ) {
-			const byte *c = tess.vertexColors[ vertBase + k ];
-			if ( c[0] | c[1] | c[2] ) { zero = 0; break; }
-		}
-		if ( zero ) {
-			static int s_vcolRows;
-			s_vcolRows++;
-			if ( s_vcolRows <= 16 || ( s_vcolRows % 500 ) == 0 ) {
-				ri.Printf( PRINT_ALL,
-					"[VK:vcol] f=%d shader='%s' tris verts=%d srfcolor=%d "
-					"srccolor=%d,%d,%d dv=%d,%d,%d,%d lightgrp=%d,%d,%d fr=%d\n",
-					RB_FrameCount(), tess.shader->name, numVerts,
-					srf->color ? 1 : 0,
-					srf->color ? srf->color[0] : -1,
-					srf->color ? srf->color[1] : -1,
-					srf->color ? srf->color[2] : -1,
-					srf->verts[0].color[0], srf->verts[0].color[1],
-					srf->verts[0].color[2], srf->verts[0].color[3],
-					tr.refdef.lightGroupIntensity[0],
-					tr.refdef.lightGroupIntensity[1],
-					tr.refdef.lightGroupIntensity[2], tr.frameCount );
-			}
-		}
-	}
-
 	// W31-HOLO: this is retail's ENTITY-FADE slot, not the waveform clock.
 	tess.entityFade = srf->shaderTime;
 
@@ -422,36 +420,6 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 	if ( backEnd.currentEntity == &tr.worldEntity && dlightBits == 0
 		 && tess.currentStageIteratorFunc == RB_StageIteratorLightmappedMultitextureUnfogged ) {
 		RB_VboStaticRecord( srf, vertBase, numVerts, idxBase, tess.numIndexes - idxBase );
-	}
-
-	/* the grid twin of the vcol row: the lightmapped-multitexture batches never reach
-	   here once they are resident, so a vertex-lit grid surface going black names its
-	   own feed instead of hiding behind the arena */
-	if ( R_ProbeStatsOn() && numVerts > 0 && tess.shader->lightmapIndex == LIGHTMAP_NONE ) {
-		int k, zero = 1;
-		for ( k = 0; k < numVerts; k++ ) {
-			const byte *c = tess.vertexColors[ vertBase + k ];
-			if ( c[0] | c[1] | c[2] ) { zero = 0; break; }
-		}
-		if ( zero ) {
-			static int s_vcolGridRows;
-			s_vcolGridRows++;
-			if ( s_vcolGridRows <= 16 || ( s_vcolGridRows % 500 ) == 0 ) {
-				ri.Printf( PRINT_ALL,
-					"[VK:vcol] f=%d shader='%s' grid verts=%d srfcolor=%d "
-					"srccolor=%d,%d,%d dv=%d,%d,%d,%d lightgrp=%d,%d,%d fr=%d\n",
-					RB_FrameCount(), tess.shader->name, numVerts,
-					srf->color ? 1 : 0,
-					srf->color ? srf->color[0] : -1,
-					srf->color ? srf->color[1] : -1,
-					srf->color ? srf->color[2] : -1,
-					srf->verts[0].color[0], srf->verts[0].color[1],
-					srf->verts[0].color[2], srf->verts[0].color[3],
-					tr.refdef.lightGroupIntensity[0],
-					tr.refdef.lightGroupIntensity[1],
-					tr.refdef.lightGroupIntensity[2], tr.frameCount );
-			}
-		}
 	}
 }
 
@@ -725,6 +693,8 @@ void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 	int		dlightBits;
 	int		*vDlightBits;
 	qboolean	needsNormal;
+
+	RB_NoteFeedSurf( cv, 1 );
 
 	dlightBits = cv->dlightBits[RB_FrameSmpFrame()];
 	tess.dlightBits |= dlightBits;

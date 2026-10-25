@@ -28,6 +28,22 @@ public class EF2Activity extends SDLActivity {
     private static final String GAME_DIR = "base";
 
     /**
+     * The launcher's own pin file name: the engine writes it fresh each boot and
+     * execs it after config.cfg, so the pins beat the archived values without ever
+     * rewriting them.
+     */
+    private static final String PINS_CFG = "ef2-launcher.cfg";
+
+    /**
+     * The launcher's pin chain, transported: the same +set the desktop launcher
+     * appends, carried in SDL's argv.
+     */
+    @Override
+    protected String[] getArguments() {
+        return new String[] { "+set", "com_execAfterConfig", PINS_CFG };
+    }
+
+    /**
      * touched -- never the live unified config, never retail data in the paks.
      */
     private static final String[] STALE_BASE_FILES = {

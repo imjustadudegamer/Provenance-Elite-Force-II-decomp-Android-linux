@@ -4807,13 +4807,20 @@ void VK_Shade_BatchEnd( void )
 	}
 }
 
-/* The colour stream the pack reads, bounded per channel; mark-gated. */
+/* The colour stream the pack reads, bounded per channel; mark-gated.  The same
+   row names the batch's own feed: srccolor is the base-lighting work buffer the
+   group feed binds, dv is the file's own bytes, feed is the handler the batch is
+   in -- an arena batch drew the arena's copy, not this array. */
 static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
 									 const unsigned char *colors, const shader_t *shader,
 									 const shaderStage_t *pStage )
 {
+	static const char *const feedName[] = { "none", "grid", "tris", "arena" };
 	static int s_rows;
 	int rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0, aMin = 255, aMax = 0;
+	int sc[3] = { -1, -1, -1 }, dv[4] = { -1, -1, -1, -1 };
+	int feedKind = 0;
+	const void *feed;
 	int v;
 
 	if ( !colors || input->numVertexes <= 0 ) {
@@ -4840,12 +4847,33 @@ static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
 		 || ( rMin == rMax && gMin == gMax && bMin == bMax && aMin == aMax
 			  && !( rMin == 255 && gMin == 255 && bMin == 255 && aMin == 255 ) ) ) {
 		if ( s_rows <= 24 || ( s_rows % 400 ) == 0 ) {
+			feed = RB_FeedSurf( &feedKind );
+			if ( feed ) {
+				int type = *(const int *)feed;
+
+				if ( type == SF_TRIANGLES ) {
+					const srfTriangles_t *srf = (const srfTriangles_t *)feed;
+
+					if ( srf->color ) {
+						sc[0] = srf->color[0]; sc[1] = srf->color[1]; sc[2] = srf->color[2];
+					}
+					dv[0] = srf->verts[0].color[0]; dv[1] = srf->verts[0].color[1];
+					dv[2] = srf->verts[0].color[2]; dv[3] = srf->verts[0].color[3];
+				} else if ( type == SF_GRID ) {
+					const srfGridMesh_t *cv = (const srfGridMesh_t *)feed;
+
+					dv[0] = cv->verts[0].color[0]; dv[1] = cv->verts[0].color[1];
+					dv[2] = cv->verts[0].color[2]; dv[3] = cv->verts[0].color[3];
+				}
+			}
 			VK_Guard_Row( "DOCC:color",
 						  "shader='%s' rg=%d ag=%d n=%d rgba=%d..%d,%d..%d,%d..%d,%d..%d "
-						  "f=%d",
+						  "feed=%s srccolor=%d,%d,%d dv=%d,%d,%d,%d f=%d",
 						  shader ? shader->name : "?", (int)pStage->rgbGen,
 						  (int)pStage->alphaGen, input->numVertexes,
 						  rMin, rMax, gMin, gMax, bMin, bMax, aMin, aMax,
+						  feedName[ feedKind & 3 ], sc[0], sc[1], sc[2],
+						  dv[0], dv[1], dv[2], dv[3],
 						  RB_FrameCount() );
 		}
 	}

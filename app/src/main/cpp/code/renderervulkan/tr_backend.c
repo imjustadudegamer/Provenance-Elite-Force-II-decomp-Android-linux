@@ -1874,6 +1874,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			VK_Shade_NoteBatchSurf();
 			if ( !RB_VboStaticTrySurface( drawSurf->surface, *drawSurf->surface ) ) {
 				rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			} else {
+				RB_NoteFeedSurf( drawSurf->surface, 3 );
 			}
 			VK_WALK_ADD_NET( walkT0, walkNest0, VK_WP_GEN );
 			continue;
@@ -2207,6 +2209,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			VK_Shade_NoteBatchSurf();
 			if ( !RB_VboStaticTrySurface( drawSurf->surface, *drawSurf->surface ) ) {
 				rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
+			} else {
+				RB_NoteFeedSurf( drawSurf->surface, 3 );
 			}
 			VK_WALK_ADD_NET( walkT0, walkNest0, VK_WP_GEN );
 		}

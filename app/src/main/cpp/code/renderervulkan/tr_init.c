@@ -778,9 +778,10 @@ void R_LightConfigRow( void )
 		return;
 	}
 
-	PROBE_CENSUS_EMIT( "", "LIGHT:cfg",
-					  "dlm=%d dlight=%d vlight=%d lmap=%d groups=%d g0=%d g1=%d g2=%d "
+	PROBE_CENSUS_EMIT( "[", "LIGHT:cfg",
+					  "map='%s' dlm=%d dlight=%d vlight=%d lmap=%d groups=%d g0=%d g1=%d g2=%d "
 					  "ndl=%d slights=%d blsurfs=%d blverts=%d identityLight=%.4f",
+					  tr.world ? tr.world->name : "-",
 					  r_dynamiclightmaps->integer, r_dynamiclight->integer,
 					  r_vertexLight->integer, r_lightmap->integer,
 					  tr.world ? tr.world->numLightingVertSurfs : -1,
