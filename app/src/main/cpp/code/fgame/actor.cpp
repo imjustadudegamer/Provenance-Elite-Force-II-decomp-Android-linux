@@ -5809,6 +5809,22 @@ void Actor::ChangeAnim(void)
             animate->SetAnimDoneEvent(newTorsoAnimEvent, torso);
         } else {
             TorsoAnimName = newTorsoAnim;
+            {
+                static int torso_sel_rows;
+
+                /* names the torso anim selection itself: which state or behavior
+                   resolved what, and to which alias index */
+                if (torso_sel_rows < 4000 && gi.cvar("qa_probe", "0", 0)->integer) {
+                    torso_sel_rows++;
+                    gi.Printf(
+                        "[AIM:torso] ent=%d name='%s' num=%d prev=%d\n",
+                        entnum,
+                        newTorsoAnim.c_str(),
+                        newTorsoAnimNum,
+                        CurrentAnim(torso)
+                    );
+                }
+            }
             animate->NewAnim(newTorsoAnimNum, newTorsoAnimEvent, torso);
         }
 
