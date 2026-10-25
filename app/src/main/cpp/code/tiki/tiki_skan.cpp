@@ -365,6 +365,8 @@ void TIKI_Skan_SetProbeSubject(int entnum, const vec3_t origin)
     }
 }
 
+static const float skanIdentityQuat[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
 typedef struct {
     skelAnimHeader_t *mainHdr;
     skelFrame_t      *mainRec;
@@ -474,8 +476,8 @@ static void TIKI_Skan_QuatLenProbe(
         plen = parentQuat ? sqrt(parentQuat[0] * parentQuat[0] + parentQuat[1] * parentQuat[1]
                                  + parentQuat[2] * parentQuat[2] + parentQuat[3] * parentQuat[3])
                           : 0.0f;
-        CHAN_PROBE(
-            "head",
+        PROBE_CENSUS_EMIT(
+            "[CHAN:", "head",
             "why=nonunit tiki=%s bone=%d name='%s' slot=%d clen=%.4f wlen=%.4f src=%s "
             "ent=%d org=(%.1f,%.1f,%.1f) ch=%s mode=%d t=%.3f anim=%d frame=%d oldanim=%d oldframe=%d "
             "flerp=%.3f cb=%.3f\n",
@@ -500,8 +502,8 @@ static void TIKI_Skan_QuatLenProbe(
             framelerp,
             cblerp
         );
-        CHAN_PROBE(
-            "head",
+        PROBE_CENSUS_EMIT(
+            "[CHAN:", "head",
             "why=row tiki=%s bone=%d chan=%d channame='%s' row=(%d,%d,%d,%d) "
             "lq=(%.4f,%.4f,%.4f,%.4f) llen=%.4f\n",
             tiki->name,
@@ -518,8 +520,8 @@ static void TIKI_Skan_QuatLenProbe(
             localQuat[3],
             llen
         );
-        CHAN_PROBE(
-            "head",
+        PROBE_CENSUS_EMIT(
+            "[CHAN:", "head",
             "why=par tiki=%s bone=%d par=%d parname='%s' pq=(%.4f,%.4f,%.4f,%.4f) plen=%.4f\n",
             tiki->name,
             bone,
@@ -621,6 +623,7 @@ static void TIKI_Skan_RotProbe(
     static int      s_tail[TIKI_MAX_BONES];
     static int      s_rows;
     static qboolean s_noted;
+    static qboolean s_armed;
     qboolean        tail;
     qboolean        moved;
     int             i;
@@ -629,6 +632,18 @@ static void TIKI_Skan_RotProbe(
 
     if (!TIKI_Skan_RotChainBone(boneName)) {
         return;
+    }
+
+    /* the arm prints its own arming once, so a log that has no rot rows is a log
+       where the arm did not take and not a log where the pose never moved */
+    if (!s_armed) {
+        s_armed = qtrue;
+        PROBE_CENSUS_EMIT(
+            "[CHAN:", "head",
+            "why=rotarm bones=6 budget=20000000 tails=30 trigger=5 ent=%d tiki=%s\n",
+            s_probeEnt,
+            tiki->name
+        );
     }
 
     /* a wrong-but-unit rotation never trips a length test, so this arm samples
@@ -665,12 +680,12 @@ static void TIKI_Skan_RotProbe(
     tail = (s_tail[key] > 0);
 
     if (!tail) {
-        if (s_rows >= 2000000) {
+        if (s_rows >= 20000000) {
             if (!s_noted) {
                 s_noted = qtrue;
                 CHAN_PROBE(
                     "head",
-                    "why=rotcap note=every-frame rot rows capped at 2000000; change-triggered tails still print\n"
+                    "why=rotcap note=every-frame rot rows capped at 20000000 frames=%d; change-triggered tails still print\n", s_rows
                 );
             }
             return;
@@ -1276,6 +1291,22 @@ int TIKI_SkelBonesFromRecords(
             }
         }
 
+        b_anim = legs ? anim : torso_anim;
+        b_frame = legs ? frame : torso_frame;
+        b_oldanim = legs ? oldanim : torso_oldanim;
+        b_oldframe = legs ? oldframe : torso_oldframe;
+        b_flerp = legs ? framelerp : torso_framelerp;
+        b_cb = legs ? crossblend_lerp : torso_crossblend_lerp;
+
+        /* the rotation arm samples the whole upper chain and the length arm covers
+           every bone; both run before the slot loop so a bone no slot names is not
+           blind, and the length rows stay anomaly-gated so the stream is bounded */
+        TIKI_Skan_QuatLenProbe(
+            tiki, skel, b, boneName, -1, skanIdentityQuat, w, ch, chan, row, localQuat, parent,
+            parentQuat, legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp, b_cb
+        );
+        TIKI_Skan_RotProbe(tiki, b, boneName, -1, w, w, legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp);
+
         for (n = NUM_BONE_CONTROLLERS - 1; n >= 0; n--) {
             if (!bone_tag || !bone_quat || bone_tag[n] != b) {
                 if (!bone_tag || !bone_quat) {
@@ -1287,15 +1318,6 @@ int TIKI_SkelBonesFromRecords(
             cq[1] = bone_quat[n][1];
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
-            b_anim = legs ? anim : torso_anim;
-            b_frame = legs ? frame : torso_frame;
-            b_oldanim = legs ? oldanim : torso_oldanim;
-            b_oldframe = legs ? oldframe : torso_oldframe;
-            b_flerp = legs ? framelerp : torso_framelerp;
-            b_cb = legs ? crossblend_lerp : torso_crossblend_lerp;
-            TIKI_Skan_RotProbe(
-                tiki, b, boneName, n, cq, w, legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp
-            );
             TIKI_Skan_QuatLenProbe(
                 tiki, skel, b, boneName, n, cq, w, ch, chan, row, localQuat, parent, parentQuat,
                 legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp, b_cb
