@@ -1769,6 +1769,28 @@ static void RB_ColorStreamProbe( shader_t *shader, const char *fam, int index )
 	}
 }
 
+/* retail resolves the index and drops nothing: a stale record takes the live slot */
+shader_t *RB_ResolveStaleShader( const char *walk, int gen, int index )
+{
+	static int	s_rows;
+
+	if ( index < 0 || index >= tr.numShaders ) {
+		return NULL;
+	}
+
+	if ( R_ProbeMarkOn() ) {
+		s_rows++;
+		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:staledraw",
+						  "walk=%s gen=%d live=%d index=%d shader='%s' f=%d",
+						  walk, gen, tr.shaderGen, index, tr.sortedShaders[ index ]->name,
+						  RB_FrameCount() );
+		}
+	}
+
+	return tr.sortedShaders[ index ];
+}
+
 /* names a draw whose carried index no longer matches its shader's live sortedIndex */
 void RB_NoteIndexDesync( const char *walk, shader_t *shader, int carriedIndex )
 {
@@ -1871,17 +1893,23 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		partNested0 = VK_WalkStat_Nested();
 
 		if (*drawSurf->surface != SF_SPRITE) {
+			int carriedIndex;
+
 			/* sort decomposes for entity/fog/dlight; the shader comes from the
 			   pack-time pointer, not the mutable index. */
 			R_DecomposeSort(drawSurf->sort, &entityNum, &fogShader, &fogNum, &dlightMap);
-			shader = ( drawSurf->shaderGen == tr.shaderGen ) ? drawSurf->shader : NULL;
-			RB_NoteIndexDesync( "drawsurf", shader,
-								( drawSurf->sort >> QSORT_SHADERNUM_SHIFT ) & QSORT_SHADERNUM_MASK );
+			carriedIndex = ( drawSurf->sort >> QSORT_SHADERNUM_SHIFT ) & QSORT_SHADERNUM_MASK;
+			shader = ( drawSurf->shaderGen == tr.shaderGen )
+				   ? drawSurf->shader
+				   : RB_ResolveStaleShader( "drawsurf", drawSurf->shaderGen, carriedIndex );
+			RB_NoteIndexDesync( "drawsurf", shader, carriedIndex );
 			bStaticModel = qfalse;
 		} else {
 			refSprite_t *spr = (refSprite_t*)drawSurf->surface;
 
-			shader = ( spr->shaderGen == tr.shaderGen ) ? spr->shader : NULL;
+			shader = ( spr->shaderGen == tr.shaderGen )
+				   ? spr->shader
+				   : RB_ResolveStaleShader( "sprite", spr->shaderGen, spr->shaderNum );
 			RB_NoteIndexDesync( "sprite", shader, spr->shaderNum );
 			entityNum = ENTITYNUM_WORLD;
 			fogNum = spr->fogNum;
@@ -2234,9 +2262,11 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 			refSprite_t *spr = (refSprite_t*)drawSurf->surface;
 
 			if (spr->shaderNum < 0 || spr->shaderNum >= tr.numShaders) continue;
-			shader = ( spr->shaderGen == tr.shaderGen ) ? spr->shader : NULL;
+			shader = ( spr->shaderGen == tr.shaderGen )
+				   ? spr->shader
+				   : RB_ResolveStaleShader( "sprite", spr->shaderGen, spr->shaderNum );
 			if ( shader == NULL ) {
-				continue;	/* the record carries no art this generation */
+				continue;	/* the record names a slot outside the live table */
 			}
 			/* a record whose index no longer names its own shader's slot.  The
 			   draw above already took the pointer, so this is pure witness: it

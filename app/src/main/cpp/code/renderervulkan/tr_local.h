@@ -1915,6 +1915,11 @@ void RB_BeginDrawingView( void );
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
 void RB_RenderSpriteSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
 void RB_NoteIndexDesync( const char *walk, shader_t *shader, int carriedIndex );
+shader_t *RB_ResolveStaleShader( const char *walk, int gen, int index );
+/* why the last R_AddSkelSurfaces produced nothing, or NULL when it drew */
+extern const char *r_skelDropWhy;
+void R_NoteEntitySurfStart( void );
+void R_NoteEntitySurfEnd( const trRefEntity_t *ent );
 void RB_SetupFog( void );
 const void *RB_DrawSurfs( const void *data );
 const void *RB_SpriteSurfs( const void *data );

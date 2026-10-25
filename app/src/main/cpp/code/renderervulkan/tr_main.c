@@ -1233,6 +1233,8 @@ void R_AddEntitySurfaces (void) {
 
 		tr.shiftedEntityNum = tr.currentEntityNum << QSORT_ENTITYNUM_SHIFT;
 
+		R_NoteEntitySurfStart();
+
 		if ( (ent->e.renderfx & RF_FIRST_PERSON) && tr.viewParms.isPortal) {
 			continue;
 		}
@@ -1315,6 +1317,59 @@ void R_AddEntitySurfaces (void) {
 			break;
 		default:
 			ri.Error( ERR_DROP, "R_AddEntitySurfaces: Bad reType" );
+		}
+
+		R_NoteEntitySurfEnd( ent );
+	}
+}
+
+/* an entity in the refdef that produced no surface this frame: the whole-body vanish */
+static unsigned short	s_entLastDraw[MAX_ENTITIES];
+static int				s_feViewAddsAtEntity;
+static qboolean			s_entViewCounts;
+
+void R_NoteEntitySurfStart( void )
+{
+	r_skelDropWhy = NULL;
+	s_feViewAddsAtEntity = s_feViewAdds;
+	/* a portal or sky sub-view culls by its own frustum */
+	s_entViewCounts = !tr.viewParms.isPortal && !tr.viewParms.isPortalSky;
+}
+
+void R_NoteEntitySurfEnd( const trRefEntity_t *ent )
+{
+	int n = ent->e.entityNumber;
+
+	if ( s_feViewAdds != s_feViewAddsAtEntity ) {
+		if ( s_entViewCounts && n >= 0 && n < MAX_ENTITIES ) {
+			s_entLastDraw[n] = (unsigned short)( RB_FrameCount() & 0xffff );
+		}
+		return;
+	}
+
+	if ( !s_entViewCounts ) {
+		return;
+	}
+
+	if ( !R_ProbeStatsOn() ) {
+		return;
+	}
+
+	if ( n < 0 || n >= MAX_ENTITIES ) {
+		return;
+	}
+
+	/* visible the frame before, gone now */
+	if ( s_entLastDraw[n] == (unsigned short)( ( RB_FrameCount() - 1 ) & 0xffff ) ) {
+		static int rows;
+
+		rows++;
+		if ( rows <= 32 || ( rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:entdrop",
+						  "ent=%d reType=%d model=%d why=%s f=%d",
+						  n, ent->e.reType, ent->e.hModel,
+						  r_skelDropWhy ? r_skelDropWhy : "none",
+						  RB_FrameCount() );
 		}
 	}
 }
