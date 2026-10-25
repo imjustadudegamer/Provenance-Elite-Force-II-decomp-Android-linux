@@ -1034,11 +1034,18 @@ void CL_InitCGame( void ) {
 
 	if( !com_sv_running->integer && !cls.vid_restart )
 	{
+		PROBE( "BOUND:tiki", "map='%s' clear=1 tiki=%d skel=%d ent=%d vidrestart=0",
+			  mapname, TIKI_CacheTikiCount(), TIKI_CacheSkelCount(), TIKI_EntityCacheLive() );
 		TIKI_End();
 		TIKI_Begin();
 		// alias state (TIKI_FreeLevelData @0x00107E30), never the model cache.
 		TIKI_FreeLevelData();
 		CL_InitClientSavedData();
+	}
+	else
+	{
+		PROBE( "BOUND:tiki", "map='%s' clear=0 tiki=%d skel=%d ent=%d vidrestart=1",
+			  mapname, TIKI_CacheTikiCount(), TIKI_CacheSkelCount(), TIKI_EntityCacheLive() );
 	}
 
 	// sent just before a gamestate are not dropped" has no retail counterpart and

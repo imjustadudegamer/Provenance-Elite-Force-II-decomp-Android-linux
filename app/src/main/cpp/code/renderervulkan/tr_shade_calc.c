@@ -1989,7 +1989,8 @@ void RB_CalcAlphaFogBlend( unsigned char *dstColors ) {
 	int			i;
 
 	if ( tess.fogNum == 9999 ) {
-		colorInt = (unsigned)tr.viewParms.fogColorInt;
+		/* the walk's own frame copy, not the front end's live struct */
+		colorInt = (unsigned)backEnd.viewParms.fogColorInt;
 	} else {
 		colorInt = tr.world->fogs[tess.fogNum].colorInt;
 	}

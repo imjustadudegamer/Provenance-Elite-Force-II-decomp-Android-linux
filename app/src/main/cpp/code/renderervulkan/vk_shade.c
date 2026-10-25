@@ -1994,12 +1994,46 @@ void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 
 	if ( fogNum == 9999 )
 	{
-		unsigned colorInt = (unsigned)tr.viewParms.fogColorInt;
+		/* the walk's own frame copy -- RB_SetupFog writes the colour here and every
+		   other field this function reads comes from backEnd.viewParms */
+		unsigned colorInt = (unsigned)backEnd.viewParms.fogColorInt;
 
 		Com_Memcpy( color, &colorInt, sizeof( colorInt ) );
 		VK_SetUniform4fv( p, VK_U_FOGCOLOR, color );
-		VK_SetUniform1f( p, VK_U_FOGOOLEN, tr.viewParms.fog.oolen );
+		VK_SetUniform1f( p, VK_U_FOGOOLEN, backEnd.viewParms.fog.oolen );
 		VK_SetUniform1i( p, VK_U_FOGDENSITYARM, fogDensityArm ? 1 : 0 );
+
+		{
+			/* the global fog pass names its own arming: the farplane the frame came in
+			   with, the flag the promotion read, and the colour bytes actually uploaded.
+			   A black blend over a lit surface is this row's job to explain. */
+			static int s_fogRows;
+			const byte *c = ( const byte * )&colorInt;
+			int			black;
+
+			black = ( c[0] == 0 && c[1] == 0 && c[2] == 0 );
+			if ( R_ProbeStatsOn() ) {
+				s_fogRows++;
+				if ( black || s_fogRows <= 12 || ( s_fogRows % 400 ) == 0 ) {
+					VK_Guard_Row( "VK:fog",
+								  "f=%d fpdist=%.1f fpc=%.3f,%.3f,%.3f en=%d xl=%d fogNum=%d "
+								  "col=%d,%d,%d,%d idl=%.3f dens=%d oolen=%.5f%s",
+								  RB_FrameCount(),
+								  backEnd.viewParms.farplane_distance,
+								  backEnd.viewParms.farplane_color[0],
+								  backEnd.viewParms.farplane_color[1],
+								  backEnd.viewParms.farplane_color[2],
+								  backEnd.viewParms.fog.enabled,
+								  ( vkState.externalSetState & VKS_FOG ) ? 1 : 0,
+								  fogNum,
+								  c[0], c[1], c[2], c[3],
+								  tr.identityLight,
+								  fogDensityArm ? 1 : 0,
+								  backEnd.viewParms.fog.oolen,
+								  black ? " BLACK" : "" );
+				}
+			}
+		}
 		return;
 	}
 
@@ -5177,6 +5211,15 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 		{
 			VK_BindAnimatedImage( &pStage->bundle[1], 1 );
 		}
+	}
+	else if ( prog && prog->linked && ( prog->defines & VKP_LIGHTMAP ) )
+	{
+		/* retail leaves TMU1 bound but the stage's env for that unit is GL_DISABLE, so
+		   the unit is never sampled; a descriptor has no disable, so the neutral bind
+		   is the same effect -- otherwise the pass samples the last two-texture draw */
+		VK_SelectTexture( 1 );
+		VK_Bind( tr.whiteImage );
+		sub1 = qtrue;
 	}
 
 	VK_Shade_BindWitness( pStage, 0, sub0 );

@@ -1633,6 +1633,38 @@ int TIKI_SkelBonesFromRecords(
         }
     }
 
+    {
+        /* the split the whole solve hangs on: every bone takes legs or torso by
+           ef2BodyPart alone, so a degenerate count while both channels are live is
+           one channel painted over the whole skeleton -- the flattened sprawl */
+        int legsBones = 0;
+        int torsoBones = 0;
+
+        for (b = 0; b < numBones; b++) {
+            if (skel->pBones[b].ef2BodyPart == 1) {
+                legsBones++;
+            } else {
+                torsoBones++;
+            }
+        }
+
+        if (uselegs && usetorso && (legsBones == 0 || torsoBones == 0)) {
+            static int s_splitRows;
+            if (PROBE_Throttle(&s_splitRows, 8, 600)) {
+                PROBE(
+                    "SKEL:split",
+                    "model='%s' bones=%d legs=%d torso=%d legsbp1=%d split=%s",
+                    tiki->a ? tiki->a->name : "?",
+                    numBones,
+                    legsBones,
+                    torsoBones,
+                    (int)skel->pBones[0].ef2BodyPart,
+                    legsBones == 0 ? "all-torso" : "all-legs"
+                );
+            }
+        }
+    }
+
     for (b = 0; b < numBones; b++) {
         float       *w = &world[b * 7];
         SkelQuat     q;

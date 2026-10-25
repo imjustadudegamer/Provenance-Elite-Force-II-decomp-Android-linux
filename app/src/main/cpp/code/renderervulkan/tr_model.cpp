@@ -1544,6 +1544,7 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
     for (mesh = 0; mesh < tiki->numMeshes; mesh++) {
         skelHeaderGame_t *sm = ri.TIKI_GetSkel(tiki->mesh[mesh]);
         skelSurfaceGame_t *s;
+        static int s_lodRows;
 
         if (!sm) {
             continue;
@@ -1551,6 +1552,29 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
         for (s = sm->pSurfaces, i = 0; i < sm->numSurfaces; s = s->pNext, i++) {
             s->numModelVerts = lodMaxStep;
+
+            /* the thinning witness: a surface that draws fewer verts than it owns names
+               the threshold and the collapse step that cut it, so a partially drawn
+               actor is a row rather than a guess */
+            if (PROBE_On() && s->pCollapse && s->numVerts > 0) {
+                int cutoff = GetLodCutoff(s, ent->lodpercentage[0]);
+
+                if (cutoff < s->numVerts) {
+                    s_lodRows++;
+                    if (s_lodRows <= 12 || (s_lodRows % 800) == 0) {
+                        ri.Printf(
+                            PRINT_ALL,
+                            "[VK:lod] f=%d model='%s' ent=%d surf='%s' verts=%d cutoff=%d "
+                            "step=%d numModelVerts=%d lodpct=%.4f\n",
+                            RB_FrameCount(), tiki->a ? tiki->a->name : "?",
+                            ent->e.entityNumber, s->name,
+                            s->numVerts, cutoff,
+                            (int)((unsigned)s->pCollapse[s->numVerts - 1] >> 16),
+                            s->numModelVerts, ent->lodpercentage[0]
+                        );
+                    }
+                }
+            }
         }
     }
 

@@ -604,11 +604,45 @@ void TIKI_End(void)
 {
     int i;
 
-    for (i = 0; i < MAX_GENTITIES; i++) {
+    /* the cache is keyed entnum % TIKI_MAX_ENTITIES, so the walk must cover that key
+       space; MAX_GENTITIES is 1024 and the table is 2048 keys x 2 slots */
+    for (i = 0; i < TIKI_MAX_ENTITIES; i++) {
         TIKI_DeleteSkeletor(i);
     }
 
     tiki_started = false;
+}
+
+/* the boundary row's census: what each cache holds as a load crosses it */
+int TIKI_CacheTikiCount(void)
+{
+    return tikicache ? tikicache->size() : 0;
+}
+
+int TIKI_CacheSkelCount(void)
+{
+    int i, n = 0;
+
+    for (i = 0; i < cache_maxskel; i++) {
+        if (skelcache[i].skel) {
+            n++;
+        }
+    }
+
+    return n;
+}
+
+int TIKI_EntityCacheLive(void)
+{
+    int i, n = 0;
+
+    for (i = 0; i < TIKI_MAX_ENTITY_CACHE; i++) {
+        if (skel_entity_cache[i]) {
+            n++;
+        }
+    }
+
+    return n;
 }
 
 void TIKI_FinishLoad(void)

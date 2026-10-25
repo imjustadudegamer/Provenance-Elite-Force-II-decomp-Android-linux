@@ -69,6 +69,9 @@ extern "C" {
     void        *TIKI_GetSkeletor(dtiki_t *tiki, int entnum);
     void         TIKI_Begin(void);
     void         TIKI_End(void);
+    int          TIKI_CacheTikiCount(void);
+    int          TIKI_CacheSkelCount(void);
+    int          TIKI_EntityCacheLive(void);
     void         TIKI_FinishLoad(void);
     void         TIKI_FreeImages(void);
     void         TIKI_TikiAnimList_f(void);
