@@ -960,6 +960,37 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
         }
 
         tiki = cgi.R_Model_GetHandle(parent->hModel);
+        {
+            static int widget_modelatt;
+
+            if (WIDGET_On() && WIDGET_Throttle(&widget_modelatt, 8, 600)) {
+                orientation_t widget_or;
+
+                cgi.TIKI_Tag_LerpOrientation(&widget_or, tiki, parent, s1->tag_num & TAG_MASK);
+                WIDGET_A1_PROBE(
+                    "tag:modelattach",
+                    "child=%d parent=%d tagnum=%d or=(%.2f,%.2f,%.2f) porg=(%.1f,%.1f,%.1f) "
+                    "useang=%d off=(%.1f,%.1f,%.1f) ang=(%.1f,%.1f,%.1f) model=%d cg.time=%d\n",
+                    s1->number,
+                    s1->parent,
+                    s1->tag_num & TAG_MASK,
+                    widget_or.origin[0],
+                    widget_or.origin[1],
+                    widget_or.origin[2],
+                    parent->origin[0],
+                    parent->origin[1],
+                    parent->origin[2],
+                    s1->attach_use_angles,
+                    s1->attach_offset[0],
+                    s1->attach_offset[1],
+                    s1->attach_offset[2],
+                    s1->attach_angles_offset[0],
+                    s1->attach_angles_offset[1],
+                    s1->attach_angles_offset[2],
+                    modelindex,
+                    cg.time);
+            }
+        }
         CG_AttachEntity(&model, parent, tiki, s1->tag_num & TAG_MASK, s1->attach_use_angles, s1->attach_offset, s1->attach_angles_offset);
 
         if ((s1->renderfx & RF_WEAPONMODEL) && (parent->renderfx & RF_THIRD_PERSON)
