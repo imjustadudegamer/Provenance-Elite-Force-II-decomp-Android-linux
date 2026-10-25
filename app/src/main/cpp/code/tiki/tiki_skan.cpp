@@ -24,6 +24,10 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #include <stddef.h>
 #include <math.h>
 
+/* The rotation stream IS the evidence for the tilt, so it carries its own budget
+   instead of sharing the census window the anomaly families use. */
+#define ROT_PROBE(tag, ...) PROBE_EMIT_N("[CHAN:", tag, 20000000, __VA_ARGS__)
+
 extern "C" void TIKI_Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 extern "C" const char *TIKI_Anim_NameForNum(dtiki_t *pmdl, int animnum);
@@ -461,7 +465,10 @@ static void TIKI_Skan_QuatLenProbe(
             cw
         );
     }
-    if (!(wlen >= 0.999f && wlen <= 1.001f)) {
+    /* 0.99, not 0.999: dequant rounding over a 7-bone chain wobbles to 0.998-0.999
+       on every bone every frame, and the artifact class this row exists for
+       measured 0.95 and 1.42, so 0.999 fired constantly and starved the log */
+    if (!(wlen >= 0.99f && wlen <= 1.01f)) {
         llen = sqrt(localQuat[0] * localQuat[0] + localQuat[1] * localQuat[1] + localQuat[2] * localQuat[2]
                     + localQuat[3] * localQuat[3]);
         ww = TIKI_Skan_QuatWriter(w);
@@ -638,8 +645,8 @@ static void TIKI_Skan_RotProbe(
        where the arm did not take and not a log where the pose never moved */
     if (!s_armed) {
         s_armed = qtrue;
-        PROBE_CENSUS_EMIT(
-            "[CHAN:", "head",
+        ROT_PROBE(
+            "head",
             "why=rotarm bones=6 budget=20000000 tails=30 trigger=5 ent=%d tiki=%s\n",
             s_probeEnt,
             tiki->name
@@ -683,7 +690,7 @@ static void TIKI_Skan_RotProbe(
         if (s_rows >= 20000000) {
             if (!s_noted) {
                 s_noted = qtrue;
-                CHAN_PROBE(
+                ROT_PROBE(
                     "head",
                     "why=rotcap note=every-frame rot rows capped at 20000000 frames=%d; change-triggered tails still print\n", s_rows
                 );
@@ -698,7 +705,7 @@ static void TIKI_Skan_RotProbe(
     QuatToAngles(cq, cang);
     QuatToAngles(w, wang);
 
-    CHAN_PROBE(
+    ROT_PROBE(
         "head",
         "why=rot tiki=%s bone=%d name='%s' slot=%d ent=%d ch=%s anim=%d frame=%d oldanim=%d "
         "oldframe=%d flerp=%.3f "
