@@ -7,9 +7,14 @@ renderer written for this port. The game runs on your own retail installation �
 **no game data is included**, and the DLL that ships with the game is used only
 as a proof-of-ownership check. It is never executed.
 
-Inspired by and building on [VoyagerNX](https://github.com/faithvoid/VoyagerNX),
-faithvoid's Nintendo Switch port of the first game, and the sibling
-[Voyager Elite Force: SP for Android](https://github.com/imjustadudegamer/VoyagerSP-Android).
+A follow-up to my own Android ports —
+[Voyager Elite Force: SP for Android](https://github.com/imjustadudegamer/VoyagerSP-Android)
+(the first game) and
+[Klingon Honor Guard: Android](https://github.com/imjustadudegamer/Klingon-Honor-GUARD-Android) —
+and inspired by [VoyagerNX](https://github.com/faithvoid/VoyagerNX), faithvoid's Nintendo
+Switch port of the first game.
+
+![The tricorder in action — Android, touch controls](docs/img/tricorder-720p.png)
 
 ## Why "Provenance"?
 
