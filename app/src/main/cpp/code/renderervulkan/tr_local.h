@@ -1446,6 +1446,7 @@ extern cvar_t	*r_dynamiclight;
 void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities );
 void R_DetachLightGroups( void );
 void R_InitLightGroups( void );
+void R_LightConfigRow( void );
 void RE_SetWindDirection( vec3_t direction );
 void RE_SetWindIntensity( float intensity );
 void RE_SetTimeScale( float timeScale );

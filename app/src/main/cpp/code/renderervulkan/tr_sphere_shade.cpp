@@ -1067,6 +1067,7 @@ void R_Sphere_InitLights()
     backEnd.numExactDLights     = 0;
 
     R_InitLightGroups();
+    R_LightConfigRow();
 
     while (ents) {
         ret = COM_Parse((char **)&ents);

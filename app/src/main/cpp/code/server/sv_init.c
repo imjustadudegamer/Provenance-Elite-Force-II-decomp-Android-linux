@@ -463,6 +463,14 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	Q_strncpyz( last_mapname, map, sizeof( last_mapname ) );
 
+	/* the boundary row survives the ring: one per spawn, naming which class of load
+	   this is, so a boundary that never reaches CL_InitCGame still answers */
+	PROBE_CENSUS_EMIT( "", "BOUND:spawn",
+					  "map='%s' loadgame=%d restart=%d sublevel=%d areSublevels=%d "
+					  "differentmap=%d ge=%d",
+					  map, loadgame, restart, sublevelLoad, areSublevels, differentmap,
+					  ge ? 1 : 0 );
+
 	SPAWN_WIN_END( SPAWN_WIN_NAME );
 
 	SPAWN_LEG_BEGIN( 0 );

@@ -751,6 +751,29 @@ void R_InitLightGroups( void )
 	R_DetachLightGroups();
 }
 
+/* the lighting switches the world's vertex light actually rides, once per map: an
+   install's own config.cfg can outrun the compiled default and this is the row that
+   says which of the two feeds a black world came from */
+void R_LightConfigRow( void )
+{
+	if ( !PROBE_On() ) {
+		return;
+	}
+
+	PROBE_CENSUS_EMIT( "", "LIGHT:cfg",
+					  "dlm=%d dlight=%d vlight=%d lmap=%d groups=%d g0=%d g1=%d g2=%d "
+					  "ndl=%d slights=%d blsurfs=%d blverts=%d identityLight=%.4f",
+					  r_dynamiclightmaps->integer, r_dynamiclight->integer,
+					  r_vertexLight->integer, r_lightmap->integer,
+					  tr.world ? tr.world->numLightingVertSurfs : -1,
+					  tr.refdef.lightGroupIntensity[0], tr.refdef.lightGroupIntensity[1],
+					  tr.refdef.lightGroupIntensity[2],
+					  tr.refdef.num_dlights, tr.numSLights,
+					  tr.world ? tr.world->numBaseLightingSurfs : -1,
+					  tr.world && tr.world->baseLightingVerts ? 1 : 0,
+					  tr.identityLight );
+}
+
 static vec3_t s_windDirection;
 
 void RE_SetWindDirection( vec3_t direction )

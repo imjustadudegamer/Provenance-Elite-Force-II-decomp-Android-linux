@@ -1651,7 +1651,8 @@ int TIKI_SkelBonesFromRecords(
         if (uselegs && usetorso && (legsBones == 0 || torsoBones == 0)) {
             static int s_splitRows;
             if (PROBE_Throttle(&s_splitRows, 8, 600)) {
-                PROBE(
+                PROBE_CENSUS_EMIT(
+                    "",
                     "SKEL:split",
                     "model='%s' bones=%d legs=%d torso=%d legsbp1=%d split=%s",
                     tiki->a ? tiki->a->name : "?",
