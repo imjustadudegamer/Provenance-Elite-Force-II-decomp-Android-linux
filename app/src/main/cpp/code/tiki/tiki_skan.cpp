@@ -986,11 +986,12 @@ static void TIKI_Skan_AttachCensus(
         PROBE_EMIT(
             "[SKEL:",
             "attach",
-            "tiki=%s surf='%s' verts=%d bone=%d name='%s' bind=(%.2f,%.2f,%.2f) "
+            "tiki=%s skel='%s' surf='%s' verts=%d bone=%d name='%s' bind=(%.2f,%.2f,%.2f) "
             "bonepos=(%.3f,%.3f,%.3f) bonequat=(%.4f,%.4f,%.4f,%.4f) qlen=%.5f "
             "mat=(%.4f %.4f %.4f|%.4f %.4f %.4f|%.4f %.4f %.4f) "
             "anim=%d/%d frame=%d torso=%d/%d mode=%d innerT=%.3f outerT=%.3f ent=%d entorg=(%.2f,%.2f,%.2f)\n",
             tiki->name ? tiki->name : "?",
+            skel->name ? skel->name : "?",
             s->name ? s->name : "?",
             s->numVerts,
             bone,

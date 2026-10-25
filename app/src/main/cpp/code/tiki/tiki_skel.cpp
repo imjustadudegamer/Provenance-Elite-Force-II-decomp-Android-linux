@@ -142,7 +142,7 @@ void LoadBoneFromBuffer2(boneFileData_t *fileData, boneData_t *boneData)
    start, and on 55 of the 259 shipped .skb the copy pass needed up to 24 bytes more, writing past
    the surfaces region into the bone block (the memset below erased it, which is why it never
    showed). Measured by personal/scratch/vk_m3_skb_audit.c pass 4. */
-static size_t TIKI_SurfaceGameBytes(skelSurface_t *pSurf, size_t *nVertBytesOut)
+static size_t TIKI_SurfaceGameBytes(skelSurface_t *pSurf, size_t *nVertBytesOut, size_t baseOffset)
 {
     skeletorVertex_t *pVert    = (skeletorVertex_t *)((byte *)pSurf + LongNoSwapPtr(&pSurf->ofsVerts));
     const int         numVerts = LongNoSwapPtr(&pSurf->numVerts);
@@ -163,12 +163,16 @@ static size_t TIKI_SurfaceGameBytes(skelSurface_t *pSurf, size_t *nVertBytesOut)
         pVert = (skeletorVertex_t *)((byte *)pVert + iOffset);
     }
 
-    nBytes  = sizeof(skelSurfaceGame_t);
+    nBytes  = baseOffset + sizeof(skelSurfaceGame_t);
     nBytes += LongNoSwapPtr(&pSurf->numTriangles) * sizeof(skelIndex_t) * 3;
+    /* pad from the ABSOLUTE offset: the copy pass places this surface at an
+       arbitrary alignment (the previous surface's end), so a fresh-base PAD
+       under-reserves and the bone memset then erases the last surface's tail */
     nBytes  = PAD(nBytes, sizeof(void *));
     nBytes += nVertBytes;
     nBytes  = PAD(nBytes, sizeof(void *));
     nBytes += numVerts * sizeof(int);
+    nBytes -= baseOffset;
 
     if (nVertBytesOut) {
         *nVertBytesOut = nVertBytes;
@@ -196,7 +200,9 @@ void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
     nSurfBytes = 0;
 
     for (i = 0; i < pHeader->numSurfaces; i++) {
-        nSurfBytes += TIKI_SurfaceGameBytes(pSurf, NULL);
+        /* the copy pass places each surface at the previous one's end, so the
+           size pass must pad from that same running offset, not from zero */
+        nSurfBytes += TIKI_SurfaceGameBytes(pSurf, NULL, nSurfBytes);
 
         pSurf = (skelSurface_t *)((byte *)pSurf + LongNoSwapPtr(&pSurf->ofsEnd));
     }
@@ -290,7 +296,7 @@ void TIKI_CacheFileSkel(skelHeader_t *pHeader, skelcache_t *cache, int length)
         nTriBytes  = numTriangles * sizeof(skelIndex_t) * 3;
         nSurfBytes = numVerts * sizeof(int);
 
-        TIKI_SurfaceGameBytes(pSurf, &nVertBytes);
+        TIKI_SurfaceGameBytes(pSurf, &nVertBytes, 0);
 
         start_gs_ptr = (byte *)pGameSurf;
         gs_ptr       = start_gs_ptr + sizeof(skelSurfaceGame_t);
