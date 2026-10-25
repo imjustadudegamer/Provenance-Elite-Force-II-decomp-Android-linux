@@ -381,7 +381,7 @@ static const UColor *ConsolePrintColor(int color)
     }
 }
 
-void UI_PrintConsole(const char *msg, int color)
+static void UI_DeliverConsoleText(const char *msg, int color)
 {
     const UColor *pColor = NULL;
     const char   *pszString;
@@ -427,16 +427,21 @@ void UI_PrintConsole(const char *msg, int color)
         if (mini_console) {
             mini_console->Print(pszString, msgColor);
         }
-    } else {
-        intermediate_console_text_t *record;
-
-        record        = new intermediate_console_text_t;
-        record->text  = new str(pszString);
-        record->color = color;
-        SDL_LockMutex(s_intermediateconsoleLock);
-        s_intermediateconsole.AddObject(record);
-        SDL_UnlockMutex(s_intermediateconsoleLock);
     }
+}
+
+void UI_PrintConsole(const char *msg, int color)
+{
+    /* every print queues, and the UI frame thread delivers: the console's
+       strings are not thread-safe, so no other thread may touch them */
+    intermediate_console_text_t *record;
+
+    record        = new intermediate_console_text_t;
+    record->text  = new str(msg);
+    record->color = color;
+    SDL_LockMutex(s_intermediateconsoleLock);
+    s_intermediateconsole.AddObject(record);
+    SDL_UnlockMutex(s_intermediateconsoleLock);
 }
 
 
@@ -966,6 +971,30 @@ void UI_Update(void)
 
 static void UI_Update_Impl(void)
 {
+    /* deliver the queued prints first: the mirror runs on this thread, so the
+       console's strings are only ever touched here */
+    if ((fakk_console || mini_console) && s_intermediateconsole.NumObjects()) {
+        while (s_intermediateconsole.NumObjects()) {
+            intermediate_console_text_t *record;
+
+            SDL_LockMutex(s_intermediateconsoleLock);
+            if (!s_intermediateconsole.NumObjects()) {
+                SDL_UnlockMutex(s_intermediateconsoleLock);
+                break;
+            }
+            record = s_intermediateconsole.ObjectAt(1);
+            s_intermediateconsole.RemoveObjectAt(1);
+            SDL_UnlockMutex(s_intermediateconsoleLock);
+
+            UI_DeliverConsoleText(record->text->c_str(), record->color);
+
+            if (record->text) {
+                delete record->text;
+            }
+            delete record;
+        }
+    }
+
     Menu        *currentMenu;
     UIRect2D     frame;
     const char  *weapHud;
