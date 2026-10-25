@@ -398,12 +398,17 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 			if ( s_vcolRows <= 16 || ( s_vcolRows % 500 ) == 0 ) {
 				ri.Printf( PRINT_ALL,
 					"[VK:vcol] f=%d shader='%s' tris verts=%d srfcolor=%d "
-					"dv=%d,%d,%d,%d lightgrp=%d fr=%d\n",
+					"srccolor=%d,%d,%d dv=%d,%d,%d,%d lightgrp=%d,%d,%d fr=%d\n",
 					RB_FrameCount(), tess.shader->name, numVerts,
 					srf->color ? 1 : 0,
+					srf->color ? srf->color[0] : -1,
+					srf->color ? srf->color[1] : -1,
+					srf->color ? srf->color[2] : -1,
 					srf->verts[0].color[0], srf->verts[0].color[1],
 					srf->verts[0].color[2], srf->verts[0].color[3],
-					tr.refdef.lightGroupIntensity[0], tr.frameCount );
+					tr.refdef.lightGroupIntensity[0],
+					tr.refdef.lightGroupIntensity[1],
+					tr.refdef.lightGroupIntensity[2], tr.frameCount );
 			}
 		}
 	}
@@ -434,12 +439,17 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 			if ( s_vcolGridRows <= 16 || ( s_vcolGridRows % 500 ) == 0 ) {
 				ri.Printf( PRINT_ALL,
 					"[VK:vcol] f=%d shader='%s' grid verts=%d srfcolor=%d "
-					"dv=%d,%d,%d,%d lightgrp=%d fr=%d\n",
+					"srccolor=%d,%d,%d dv=%d,%d,%d,%d lightgrp=%d,%d,%d fr=%d\n",
 					RB_FrameCount(), tess.shader->name, numVerts,
 					srf->color ? 1 : 0,
+					srf->color ? srf->color[0] : -1,
+					srf->color ? srf->color[1] : -1,
+					srf->color ? srf->color[2] : -1,
 					srf->verts[0].color[0], srf->verts[0].color[1],
 					srf->verts[0].color[2], srf->verts[0].color[3],
-					tr.refdef.lightGroupIntensity[0], tr.frameCount );
+					tr.refdef.lightGroupIntensity[0],
+					tr.refdef.lightGroupIntensity[1],
+					tr.refdef.lightGroupIntensity[2], tr.frameCount );
 			}
 		}
 	}
