@@ -81,7 +81,7 @@ static inline qboolean PROBE_Throttle(int *counter, int first, int every)
  * exactly what the window hides.  PROBE_CENSUS_EMIT gives those sites the wide
  * window; both windows answer to the master qa_probe gate. */
 #define PROBE_ROW_CAP 200
-#define PROBE_ROW_CAP_WIDE 4096
+#define PROBE_ROW_CAP_WIDE 200000
 
 #define PROBE_EMIT_N(prefix, tag, cap, ...) \
 	do { \
