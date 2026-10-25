@@ -610,7 +610,14 @@ static void TIKI_Skan_RotProbe(
     float cang[3];
     float wang[3];
 
+    static int cadence;
+
     if (!TIKI_Skan_RotChainBone(boneName)) {
+        return;
+    }
+    /* a wrong-but-unit rotation never trips the length test, so this arm samples
+       on a cadence instead of waiting to be triggered */
+    if (!PROBE_Throttle(&cadence, 48, 48)) {
         return;
     }
 
@@ -1138,6 +1145,12 @@ int TIKI_SkelBonesFromRecords(
         float           *w = &world[b * 7];
         const short int *row = NULL;
         int              chan = -1;
+        int              b_anim;
+        int              b_frame;
+        int              b_oldanim;
+        int              b_oldframe;
+        float            b_flerp;
+        float            b_cb;
 
         boneName = skeletor_c::m_boneNames.FindName(skel->pBones[b].channel);
 
@@ -1210,10 +1223,16 @@ int TIKI_SkelBonesFromRecords(
             cq[1] = bone_quat[n][1];
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
+            b_anim = legs ? anim : torso_anim;
+            b_frame = legs ? frame : torso_frame;
+            b_oldanim = legs ? oldanim : torso_oldanim;
+            b_oldframe = legs ? oldframe : torso_oldframe;
+            b_flerp = legs ? framelerp : torso_framelerp;
+            b_cb = legs ? crossblend_lerp : torso_crossblend_lerp;
             TIKI_Skan_RotProbe(tiki, b, boneName, n, cq, w);
             TIKI_Skan_QuatLenProbe(
                 tiki, skel, b, boneName, n, cq, w, ch, chan, row, localQuat, parent, parentQuat,
-                legs, anim, frame, oldanim, oldframe, framelerp, crossblend_lerp
+                legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp, b_cb
             );
             TIKI_Skan_QuatMul(w, cq, w);
             if (!(w[0] * w[0] + w[1] * w[1] + w[2] * w[2] + w[3] * w[3] >= 0.998f
