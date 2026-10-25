@@ -908,6 +908,105 @@ static void TIKI_Skan_SkinProbe(dtiki_t *tiki, skelHeaderGame_t *skel, int bone,
     );
 }
 
+/* Once per (tiki, single-bone screen-class surface): the bind offsets, the live
+   world slot and the anim, so a boot reads against the shipped bind data. */
+static void TIKI_Skan_AttachCensus(
+    dtiki_t            *tiki,
+    skelHeaderGame_t   *skel,
+    const float        *world,
+    int                 anim,
+    int                 frame,
+    int                 torsoAnim,
+    int                 torsoFrame)
+{
+    static int             done[TIKI_MAX_BONES];
+    static const dtiki_t  *doneTiki;
+    static int             rearm;
+    skelSurfaceGame_t     *s;
+    const skeletorVertex_t *v;
+    const skeletorVertex_t *next;
+
+    if (!PROBE_On()) {
+        return;
+    }
+    if (doneTiki != tiki) {
+        doneTiki = tiki;
+        memset(done, 0, sizeof(done));
+        rearm = 0;
+    }
+    if (rearm && (rearm % 600) != 0) {
+        rearm++;
+        return;
+    }
+    rearm++;
+
+    for (s = skel->pSurfaces; s; s = s->pNext) {
+        const skelWeight_t     *w;
+        const float            *slot;
+        float                   cx, cy, cz;
+        int                     bone, multi, i, k;
+        const char             *name;
+
+        if (!s->pVerts || s->numVerts <= 0 || s->numVerts > 8) {
+            continue;
+        }
+        bone  = -1;
+        multi = 0;
+        cx = cy = cz = 0.0f;
+        v = s->pVerts;
+        for (i = 0; i < s->numVerts; i++, v = next) {
+            const byte *p = (const byte *)v;
+
+            p += sizeof(skeletorVertex_t) + (size_t)v->numMorphs * sizeof(skeletorMorph_t);
+            w = (const skelWeight_t *)p;
+            next = (const skeletorVertex_t *)(p + (size_t)v->numWeights * sizeof(skelWeight_t));
+            for (k = 0; k < v->numWeights; k++) {
+                if (bone == -1) {
+                    bone = w[k].boneIndex;
+                } else if (bone != w[k].boneIndex) {
+                    multi = 1;
+                }
+                cx += w[k].offset[0];
+                cy += w[k].offset[1];
+                cz += w[k].offset[2];
+            }
+        }
+        if (multi || bone < 0 || bone >= skel->numBones || bone >= TIKI_MAX_BONES || done[bone]) {
+            continue;
+        }
+        done[bone] = 1;
+        slot = &world[bone * 7];
+        name = skeletor_c::m_boneNames.FindName(skel->pBones[bone].channel);
+        PROBE_EMIT(
+            "[SKEL:",
+            "attach",
+            "tiki=%s surf='%s' verts=%d bone=%d name='%s' bind=(%.2f,%.2f,%.2f) "
+            "bonepos=(%.3f,%.3f,%.3f) bonequat=(%.4f,%.4f,%.4f,%.4f) qlen=%.5f "
+            "anim=%d frame=%d torso=%d/%d\n",
+            tiki->name ? tiki->name : "?",
+            s->name ? s->name : "?",
+            s->numVerts,
+            bone,
+            name ? name : "?",
+            cx / s->numVerts,
+            cy / s->numVerts,
+            cz / s->numVerts,
+            slot[4],
+            slot[5],
+            slot[6],
+            slot[0],
+            slot[1],
+            slot[2],
+            slot[3],
+            sqrt(slot[0] * slot[0] + slot[1] * slot[1] + slot[2] * slot[2] + slot[3] * slot[3]),
+            anim,
+            frame,
+            torsoAnim,
+            torsoFrame
+        );
+    }
+}
+
 /* Names the head bone's sampled row, and each controller slot's bone once. */
 static void TIKI_Skan_HeadCantProbe(
     dtiki_t                *tiki,
@@ -1504,6 +1603,8 @@ int TIKI_SkelBonesFromRecords(
             out->matrix[r][3] = 0.0f;
         }
     }
+
+    TIKI_Skan_AttachCensus(tiki, skel, world, anim, frame, torso_anim, torso_frame);
 
     Skel_Free(world);
     (void)pw;
