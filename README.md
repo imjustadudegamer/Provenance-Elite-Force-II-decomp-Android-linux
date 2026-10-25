@@ -86,8 +86,6 @@ end. The big stuff is listed here rather than left to discover:
   retail in places; occasional texture and overlay glitches remain.
 - **Game mechanic issues** — some routines reconstructed from the retail binaries
   still have unresolved details, so a few behaviours may differ from retail.
-- **Character head pose** — a character's head can cant or squash in certain
-  circumstances (mostly scripted/cutscene poses). Under active investigation.
 - **No PortMaster** support.
 - **The OpenGL ES 3.2 renderer is broken and disabled** — Vulkan is the only
   shipping renderer.
