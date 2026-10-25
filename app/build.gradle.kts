@@ -66,6 +66,8 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
+            // -Pef2rd=true: debuggable release for RenderDoc injection (same keystore, install -r safe)
+            isDebuggable = project.hasProperty("ef2rd")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
             signingConfig = if (project.hasProperty("RELEASE_STORE_FILE")) {
