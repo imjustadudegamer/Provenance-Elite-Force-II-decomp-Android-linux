@@ -445,6 +445,7 @@ cvar_t  *Cvar_Unset(cvar_t *cv);
 
 extern	int			cvar_modifiedFlags;
 extern	qboolean	cvar_global_force;
+extern	qboolean	cvar_inConfig;
 
 
 #define FS_GENERAL_REF	0x01

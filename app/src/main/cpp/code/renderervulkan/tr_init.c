@@ -120,7 +120,7 @@ static const vidmode_t r_vidModes[] = {
 	{ "Mode 11: 856x480 (wide)",856,	480,	1 },
 
 	/* modes 0-11 are retail's table verbatim, and every config's r_mode keeps
-	   its retail meaning; 12-14 are this port's operator-ordered widescreen
+	   its retail meaning; 12-14 are this port's widescreen
 	   additions.  The video menu's rows (uilib/uimenu.cpp
 	   MENU3DVideoMenuResolutionFixup) cite these indices -- keep the two in
 	   step. */
@@ -165,6 +165,20 @@ cvar_t *r_detailtextures;
 
 
 
+/* global/game.cfg execs before the renderer loads and its `setd' rewrites both the value
+   and the reset string, so it owns a cvar the config has no value for.  These rows take
+   the code's own default there; a value from config.cfg clears the marker and wins. */
+static cvar_t *R_RegisterLightCvar( const char *name, const char *value )
+{
+	cvar_t *cv = ri.Cvar_Get( name, value, CVAR_ARCHIVE );
+
+	if ( cv->defaultRecorded ) {
+		ri.Cvar_Set( name, value );
+	}
+
+	return cv;
+}
+
 void R_RegisterCvars( void )
 {
 	r_picmip              = ri.Cvar_Get( "r_picmip", "0", CVAR_ARCHIVE | CVAR_LATCH );
@@ -195,11 +209,11 @@ void R_RegisterCvars( void )
 	r_lerpmodels = ri.Cvar_Get( "r_lerpmodels", "1", 0 );
 	r_lodCurveError = ri.Cvar_Get( "r_lodCurveError", "250", CVAR_ARCHIVE|CVAR_CHEAT  );
 	r_lodbias = ri.Cvar_Get( "r_lodbias", "1", CVAR_ARCHIVE );
-	r_flares = ri.Cvar_Get( "r_flares", "1", CVAR_ARCHIVE  );
+	r_flares = R_RegisterLightCvar( "r_flares", "1" );
 	r_flaresMaxDist = ri.Cvar_Get( "r_flaresMaxDist", "768", CVAR_ARCHIVE  );
 	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT  );
 	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", 0  );
-	r_dynamiclight = ri.Cvar_Get( "r_dynamiclight", "1", CVAR_ARCHIVE  );
+	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "1" );
 	r_facePlaneCull = ri.Cvar_Get( "r_facePlaneCull", "1", CVAR_ARCHIVE  );
 	r_showlod = ri.Cvar_Get( "r_showlod", "0", CVAR_TEMP | CVAR_CHEAT );
 	r_debugSort = ri.Cvar_Get( "r_debugSort", "0", CVAR_CHEAT  );
@@ -848,7 +862,7 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 
 
 
-/* the rate the operator sees, and which side is spending it: the reported decline (343 to 230 to 115 fps across one session) was only
+/* the rate on screen, and which side is spending it: the reported decline (343 to 230 to 115 fps across one session) was only
    readable by diffing probe rows.  One row a second names front end against back end; r_perfFps 0 stops it. */
 static cvar_t *s_perfFps;
 

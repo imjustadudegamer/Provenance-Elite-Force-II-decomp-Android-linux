@@ -41,6 +41,7 @@ int			cvar_numIndexes;
 static	cvar_t	*hashTable[FILE_HASH_SIZE];
 
 qboolean cvar_global_force = qfalse;
+qboolean cvar_inConfig = qfalse;
 
 static void Cvar_FlagsCheck(int flags);
 
@@ -498,6 +499,12 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 		} else {
 			return Cvar_Get (var_name, value, 0);
 		}
+	}
+
+	/* a value out of config.cfg is the player's own, not a default: a pak `setd' must
+	   not outrank it and neither may a later code registration */
+	if ( cvar_inConfig ) {
+		var->defaultRecorded = qfalse;
 	}
 
 	if (!value ) {

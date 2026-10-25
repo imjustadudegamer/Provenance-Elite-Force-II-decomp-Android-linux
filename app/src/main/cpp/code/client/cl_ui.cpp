@@ -686,9 +686,9 @@ void UI_CharEvent(int ch)
 
 void UI_ClearBackground(void)
 {
-    /* g_color_table[0] is opaque black, so this is the full-screen fill the
-       operator reads as "the bgcolor fill".  Naming the branch that took it is
-       what separates a real background from a wash painted under one. */
+    /* g_color_table[0] is opaque black, so this is the full-screen fill I
+       read as "the bgcolor fill".  Naming the branch that took it is what
+       separates a real background from a wash painted under one. */
     {
         static int rows;
         rows++;
@@ -1723,7 +1723,9 @@ void UI_MenuEscape(const char *name)
                        "key='ESCAPE' MenuEscape arm=PopMenu '%s' State=%d",
                        cur->m_name.c_str(),
                        cls.state);
-            menuManager.PopMenu(qtrue);
+            /* retail's own MenuEscape pops 0 (@0x00194A00): a page owns the cvars it
+               read at open, so leaving it never writes them back */
+            menuManager.PopMenu(qfalse);
         } else {
             UIVK_PROBE("key",
                        "key='ESCAPE' MenuEscape arm=noEscape '%s' -> focus pass only State=%d",

@@ -1623,7 +1623,9 @@ void Com_Init( char *commandLine ) {
 
 	Com_Printf( "Config: %s \n", configname );
 
+	cvar_inConfig = qtrue;
 	Cbuf_Execute( 0 );
+	cvar_inConfig = qfalse;
 
 	/* the port's one defaults source, folded in once on EVERY platform: the compiled EF2_ANDROID_DEFAULT_COMMANDS (the union of the shipped defaultcontrols.cfg
 	   and defaultoptions.cfg, platform-neutral where those are not).  The gate is `port_defaultsSeed', a cvar only this code writes, so a seed bump is the only way
@@ -1714,7 +1716,7 @@ void Com_Init( char *commandLine ) {
 		 || Cvar_VariableIntegerValue( "in_androidDefaults" ) )
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 
-	/* the operator's standing 60, not the shipped 85 */
+	/* the standing 60, not the shipped 85 */
 	com_maxfps = Cvar_Get( "com_maxfps", "60", CVAR_ARCHIVE );
 	com_maxfpsMinimized = Cvar_Get( "com_maxfpsMinimized", "0", CVAR_ARCHIVE );
 	com_maxfpsUnfocused = Cvar_Get( "com_maxfpsUnfocused", "0", CVAR_ARCHIVE );
@@ -1870,7 +1872,7 @@ void Com_WriteConfiguration( void ) {
 	}
 	cvar_modifiedFlags &= ~CVAR_ARCHIVE;
 
-	// cfg-mt P5: the ONE unified file, not config->string (retail's OS-operator
+	// cfg-mt P5: the ONE unified file, not config->string.
 	Com_WriteConfigToFile( EF2_CONFIG_FILE );
 
 #ifndef DEDICATED

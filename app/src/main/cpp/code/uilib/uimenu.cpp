@@ -1692,25 +1692,12 @@ struct settingsGeom_s {
     float rowh;
 };
 
-/* x 34..606 and the 4-unit label pad are the shipped pages' own content band
-   (menu_gameoption.urc 34 103 320 104 / 359 103 247 104, labels at 38; menu_advancedvideo
-   34/251).  A band's row fills it: pitch == rowh, so the panel carries no loose strip and
-   its tail is the shipped 4 under the last row. */
-static const settingsGeom_s s_videoCol[2] = {
-    {"VidL", 38.0f, 160.0f, 198.0f, 115.0f, 34.0f, 283.0f, 26.0f, 26.0f},
-    {"VidR", 327.0f, 160.0f, 487.0f, 115.0f, 323.0f, 283.0f, 26.0f, 26.0f}
-};
-
-/* The touch page's own band is the shipped controls page's content area, 46..372
-   (menu_controls.urc tabs 46 87 .. 372 120, the right column at 374).  No shipped page
-   carries it, so the rows take the band: pitch = rowh = (395 - 103 - 18 - 4) / 6 = 45,
-   six rows a page, and the box ends on the video page's own bottom line. */
-static const settingsGeom_s s_touchCol = {
-    "Touch", 50.0f, 170.0f, 220.0f, 147.0f, 46.0f, 325.0f, 45.0f, 45.0f
-};
-
-#define SET_HEAD_H   14.0f
-#define SET_HEAD_GAP 4.0f
+/* The shipped pages' own seams: every settings header is 16 tall and its panel starts on
+   the header's own bottom edge, a panel ends 4 under its tallest column and 4 above the
+   next header (menu_video.urc 157 87 326 16 / 157 103 326 105, menu_gameoption.urc
+   34 87 321 16 / 34 103 320 104, menu_advancedvideo.urc 34 87 215 16 / 34 103 214 144). */
+#define SET_HEAD_H   16.0f
+#define SET_HEAD_GAP 0.0f
 
 /* the shipped box tail under its tallest column, and the gap it leaves before the next
    header (menu_advancedvideo.urc: box 103..247, next header 251) */
@@ -1721,6 +1708,40 @@ static const settingsGeom_s s_touchCol = {
    header there (menu_video.urc 157 87 326 16), and the densest one (menu_advancedvideo.urc
    34 267 567 129) bottoms out at 396, seven above the description bar at 403 */
 #define SET_PAGE_Y 87.0f
+
+/* the controls page's own five-slot tab row (menu_controls.urc tabs 46 87, 16 tall) */
+#define SET_TAB_X   46.0f
+#define SET_TAB_Y   87.0f
+#define SET_TAB_W   64.0f
+#define SET_TAB_H   16.0f
+#define SET_TAB_GAP 1.0f
+
+/* x 34..606 and the 4-unit label pad are the shipped pages' own content band
+   (menu_gameoption.urc 34 103 320 104 / 359 103 247 104, labels at 38; menu_advancedvideo
+   34/251).  Nine bands take what the band leaves after the shipped headers, tails and
+   seams: (395 - 87 - 3*16 - 3*4 - 2*4) / 9.  A band's row fills it, so the panel carries
+   no loose strip and its tail is the shipped 4 under the last row.  The left column's own
+   control ends 12 before the right column's first label -- the shipped two-column pages'
+   seam (menu_gameoption.urc value 194..350 against label 362, menu_advancedvideo.urc
+   value+arrow 223..379 against label 391) -- so valx+valw pins that edge. */
+#define SET_VIDEO_PITCH \
+    (((395.0f - SET_PAGE_Y) - 3 * (SET_HEAD_H + SET_HEAD_GAP) - 3 * SET_BOX_PAD - 2 * SET_SECT_GAP) / 9.0f)
+
+static const settingsGeom_s s_videoCol[2] = {
+    {"VidL", 38.0f, 160.0f, 198.0f, 117.0f, 34.0f, 283.0f, SET_VIDEO_PITCH, SET_VIDEO_PITCH},
+    {"VidR", 327.0f, 160.0f, 487.0f, 115.0f, 323.0f, 283.0f, SET_VIDEO_PITCH, SET_VIDEO_PITCH}
+};
+
+/* The touch page's own band is the shipped controls page's content area, 46..372
+   (menu_controls.urc tabs 46 87 .. 372 120, the right column at 374).  No shipped page
+   carries it, so the rows take the band: six rows over the 395 - 103 - 16 - 4 = 272 its
+   header and tail leave, and the box ends on the video page's own bottom line. */
+#define SET_TOUCH_PITCH \
+    (((395.0f - (SET_TAB_Y + SET_TAB_H)) - (SET_HEAD_H + SET_HEAD_GAP) - SET_BOX_PAD) / 6.0f)
+
+static const settingsGeom_s s_touchCol = {
+    "Touch", 50.0f, 170.0f, 220.0f, 147.0f, 46.0f, 325.0f, SET_TOUCH_PITCH, SET_TOUCH_PITCH
+};
 
 #ifdef __ANDROID__
 #define SET_TARGET "android"
@@ -2229,15 +2250,19 @@ static settingsRow_s s_videoRows[] = {
     {NULL, "$$DynamicLights$$", "r_dynamiclight", "CheckBox",
      {{0}}, 0, 0, 0, 0, NULL, 0, "The weapon and muzzle lights"},
 
+    /* both option lists are the shipped pages' own (menu_advancedvideo.urc: shadows
+       447..449, flares 527..529), in the shipped order and at the shipped values. */
     {NULL, "$$Shadows$$", "cg_shadows", "SwitchBox",
      {{"$$None$$", "set cg_shadows 0", "0"},
-      {"$$Simple$$", "set cg_shadows 1", "1"}},
-     2, 0, 0, 0, NULL, 0, "The blob under a character"},
+      {"$$Simple$$", "set cg_shadows 1", "1"},
+      {"$$Stencil$$", "set cg_shadows 2", "2"}},
+     3, 0, 0, 0, NULL, 0, "The blob under a character"},
 
     {NULL, "$$Flares$$", "r_flares", "SwitchBox",
      {{"$$None$$", "set r_flares 0", "0"},
-      {"$$On$$", "set r_flares 1", "1"}},
-     2, 0, 0, 0, NULL, 0, "The light halos"},
+      {"$$Simple$$", "set r_flares 1", "1"},
+      {"$$Precise$$", "set r_flares 2", "2"}},
+     3, 0, 0, 0, NULL, 0, "The light halos"},
 
     {"Effects & Detail", "Geometry Detail", "r_subdivisions", "SwitchBox",
      {{"$$Low$$", "set r_subdivisions 8", "8"},
@@ -2380,12 +2405,6 @@ static const char *const s_controlTabs[] = {
 static const char *const s_controlTabNames[] = {
     "WeaponBind", "AttackLookBind", "MovementBind", "GameplayBind", "TouchBind"
 };
-
-#define SET_TAB_X   46.0f
-#define SET_TAB_Y   87.0f
-#define SET_TAB_W   64.0f
-#define SET_TAB_H   16.0f
-#define SET_TAB_GAP 1.0f
 
 static void SettingsTabCommand(int index)
 {

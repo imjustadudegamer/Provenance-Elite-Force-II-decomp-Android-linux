@@ -62,10 +62,12 @@ Retail's rows are hidden (`Disable` → hide), never deleted from the pak. The p
 boxes and headers are re-authored to the new section list.
 
 Row geometry (authored 640x480): two columns spanning x 34..606, label x=38/327 w=160,
-control to a 4-unit pad at each panel's right edge (109 wide); band pitch 26 = row height 26;
-section headers 14 + a 4 gap; content y=87..395 with the shipped 4-unit box tail and a 4-unit
-gap between a box and the next header (DESIGN-MENU-GRAMMAR.md 4.1 carries the shipped .urc
-the numbers come from). The shipped Apply (424,401) and Main Menu (435,428) buttons stay
+value box to the shipped column seam (the left column's own control ends 315, 12 before the
+right column's first label at 327, and the right one ends 602, 4 inside the panel at 606);
+band pitch = row height = 240/9 = 26.67; section headers 16 tall with the panel on the
+header's own bottom edge; content y=87..395 with the shipped 4-unit box tail and the shipped
+4-unit gap between a box and the next header (DESIGN-MENU-GRAMMAR.md 4.1 carries the shipped
+.urc the numbers come from). The shipped Apply (424,401) and Main Menu (435,428) buttons stay
 where retail put them.
 
 ### 2.1 Kept
@@ -81,9 +83,9 @@ where retail put them.
 | Lighting | Simple Lighting | CheckBox | `r_light_simple` | live (`tr_sphere_shade.cpp:790` gates RF_EXTRALIGHT on it) |
 | | Simple Lighting Reach | SwitchBox | `r_light_simple_dist` | Close 100 / Near 2500 / Far 5000 |
 | | Vertex Lighting | CheckBox | `r_vertexLight` | LATCH (`tr_bsp.c:370`) |
-| | Dynamic Lights | CheckBox | `r_dynamiclight` | live (`tr_scene.c:437`) |
-| | Shadows | SwitchBox | `cg_shadows` | None 0 / Simple 1 |
-| | Flares | SwitchBox | `r_flares` | None 0 / On 1 |
+| | Dynamic Lights | CheckBox | `r_dynamiclight` | live (`tr_scene.c:437`), default **on** — see 2.4 |
+| | Shadows | SwitchBox | `cg_shadows` | None 0 / Simple 1 / Stencil 2 — the shipped page's own list |
+| | Flares | SwitchBox | `r_flares` | None 0 / Simple 1 / Precise 2 — the shipped page's own list, default **on** (see 2.4) |
 | Effects & Detail | Effect Detail | SwitchBox | `cg_effectdetail` | Low 0.5 / Medium 0.8 / High 1.0 |
 | | Curve Detail | SwitchBox | `r_lodCurveError` | Low 10 / Medium 125 / High 250 |
 | | Deform Geometry | CheckBox | `r_allowGeometryDeforms` | live (`tr_shade_calc.c:701`) |
@@ -160,6 +162,40 @@ So, per target:
 The brief's premise that the bars cover a full-surface menu is refuted — the menu has been
 scissored into the rect since the rect landed; the desktop defect was the mode arithmetic on
 a 4:3 window, not the draw path.
+
+### 2.4 Dynamic Lights and Flares are on by default, and the shipped data had buried one of them
+
+Both rows drive the shipped registrations: `r_flares "1"` (`tr_init.c:212`) and
+`r_dynamiclight "1"` (`tr_init.c:216`) — the same defaults retail's renderer carries. Neither
+the unified defaults nor the desktop launcher pins either to 0 (`ef2_android_defaults.h:221`
+carries `seta r_flares 2`, Precise, the row's own top option; `play_ef2_decomp.sh:328`
+carries `r_flares=2 r_dynamiclight=1`).
+
+One of the two still opened off. `global/game.cfg` ships in `pak0.pk3` and is exec'd once at
+boot, before the config and long before the renderer loads (`common.c:1554`), and it carries
+`setd r_dynamiclight 0`. `setd` sets the value *and* rewrites the cvar's reset string
+(`Cvar_SetD_f`, `cvar.c:831` — retail's own is byte-for-byte the same shape at `0xCD100` in
+the Mac engine), and it runs while the cvar does not exist, so it creates it: by the time the
+renderer registers `r_dynamiclight "1"`, `Cvar_Get` sees `defaultRecorded` already set and
+keeps the earlier default (`cvar.c:368`). A fresh config therefore opened with dynamic lights
+off and the row unchecked, with the registration default never read. EF1's own answer key
+carries the same registration (`VoyagerNX_Android renderervk/tr_init.c:1659`).
+
+Two facts give the registration its answer back. `defaultRecorded` is the only marker a pak
+`setd` leaves and it means exactly "this default came from data, not from code"; and a value
+out of config.cfg is not a default at all, it is mine — so the config exec marks itself and
+`Cvar_Set2` clears the marker on everything it writes while it is set (`cvar_inConfig`,
+`common.c:1626`, `cvar.c:44`, `cvar.c:506`). What still carries the marker once the config
+has had its say is a cvar the shipped data defaulted and nothing else has ever touched, and
+there — and only there — the code default owns the value: `R_RegisterLightCvar`
+(`tr_init.c:171`, and the GLES 3.0 twin at `tr_init.c:1124`) applies it for both rows. A
+fresh config opens at `r_dynamiclight 1` and `r_flares 2`; either row I archive clears the
+marker during the config exec and nothing touches it afterwards.
+
+And the reason the row kept reading off no matter what the default said is 13.0: leaving the
+screen restored what it had read at open, so the `setd`'s 0 came back over my toggle. The
+default fix above and the restore fix in 13.0 are the two halves of one answer — without the
+restore fix the fresh default only lasted until the first visit to the page.
 
 ## 3. The controls page
 
@@ -463,7 +499,7 @@ early:
   label width while every other row carried the measured one.
 
 The slot is now read back out of what the build pass recorded (`rowy[]`/`rowcol[]`,
-uimenu.cpp:2036) instead of being recounted, so there is one walk and one counter and no
+uimenu.cpp:2057) instead of being recounted, so there is one walk and one counter and no
 way for a section boundary to move a row. Measured against the screenshot: label x=51 w=156,
 value x=213 w=94 in the left column and x=325/x=487 in the right, every band full, eighteen
 rows, no empty cell, content ending at authored y=398 against the description bar's 403.
@@ -473,7 +509,7 @@ widget *draws* text in, which for a virtual widget is screen pixels
 (`UIFont::getFloatWidth`, uifont.cpp:322 -- `x uid.scaleRes[0]`); the frames here are authored
 in 640x480. On my desktop that inflated the label column by x1.2536 and on the
 Pixel 8 by x3.135, squeezing the value column to a sliver and pressing the boxes into each
-other. `SettingsTitleWidth` (uimenu.cpp:1791) is the one conversion point.
+other. `SettingsTitleWidth` (uimenu.cpp:1812) is the one conversion point.
 
 **Full Screen is back, scoped per target.** Retail's own row (menu_video.urc
 `rect 162 188 120 16`, `linkcvar r_fullscreen`) returns as a Full Screen / Windowed switch in
@@ -490,7 +526,7 @@ per target.
 
 **The rebuild guard was dead.** It tested `FindWidget("VidRow0Ctl")`, a name nothing was ever
 given, so every UI re-init -- every `vid_restart` -- built the page again on top of itself.
-It now tests the first section header it actually creates (`VidLHead1`, uimenu.cpp:2293), the
+It now tests the first section header it actually creates (`VidLHead1`, uimenu.cpp:2318), the
 same shape the controls page's guard uses (`TouchBind`).
 
 **Sections are square now.** Eighteen rows in three sections of six, so every band is full
@@ -534,7 +570,7 @@ child list.** `SettingsAdaptVideo`'s grey loop read `lbl` in its own `for` condi
 (`for (c = 0; c < 2 && !lbl; c++)`) before the body ever wrote it, so whether the walk ran at
 all depended on stack garbage. On the handheld boot the slot held the rodata literal
 `"tooltip_video"` — the same function materialises it two lines earlier
-(`s_settingsTooltipBar`, uimenu.cpp:2290) — so `!lbl` was false, the walk never ran, and the
+(`s_settingsTooltipBar`, uimenu.cpp:2315) — so `!lbl` was false, the walk never ran, and the
 two garbage pointers passed the `if (lbl && ctl)` test straight into `SettingsGreyRow` →
 `AdaptCommand` → `Listener::ValidEvent`, whose virtual `classinfo()` call dereferenced the
 literal's bytes as a vtable (`this` = base+0xB7707, the tombstone's exact fault). `UIWidget::
@@ -567,7 +603,7 @@ nothing else:
 
 The two-column pages run them edge to edge and this rebuild is the two-column shape carrying
 `menu_advancedvideo`'s rows, so the value box now opens on the label plate's own right edge
-(`SET_LABEL_GAP 0`, uimenu.cpp:1737). Nothing else in the row moved: the label column is
+(`SET_LABEL_GAP 0`, uimenu.cpp:1758). Nothing else in the row moved: the label column is
 still the measured longest title plus its 8-unit pad (156 on this page's own strings), and
 the value column keeps its landed right edges — 313 in the left column and 602 in the right,
 4 inside the panel's 606. The row reads as one plate now, which is also what the 26 = 26
@@ -601,3 +637,94 @@ enabled over the four bind tables.
 `DESIGN-MENU-GRAMMAR.md` §4 carries the shipped label→value column in the geometry table and
 the rule it gives, §4.1 carries the touch page's band and pitch, and §8 carries the
 `cols[1]` contract.
+
+## 13. The sixth round (my OPSCREENSHOT6 verdict)
+
+### 13.0 Item zero: the page was rewriting the rows' cvars on the way out
+
+My own sequence proved it. I toggled Dynamic Lights on and Flares in the menu — the config
+then held `r_dynamiclight "1"`, `r_flares "1"` — closed and reopened the page, and the config
+came back `r_dynamiclight "0"`, `r_flares "2"`, with `r_gamma` resaved `1.200000` → `1.2` and
+nothing else moved. Those three numbers are the page's own open-time state: `0` is what
+`global/game.cfg`'s `setd` leaves `r_dynamiclight` at, `2` is what the unified defaults pin
+`r_flares` to, and `1.2` is the Brightness slider's own float formatting. Something was
+writing the rows' displayed state over the live cvars, and it was not the build — the build
+only reads (`SettingsSwitchBox` clears and adds options, `UISwitchBox::addOption`
+`uiswitchbox.cpp:131` stuffs nothing; `UICheckBox` reads its cvar in `UpdateData`
+`uicheckbox.cpp:286`; a slider writes only on press, release, arrow step and drag
+(`uislider.cpp:157-256`).
+
+The writer is the menu's own save/restore, driven on the wrong arm. `Menu::SaveCVars`
+(`uimenu.cpp:446`) copies every linked cvar's string into its widget when a menu is pushed;
+`Menu::RestoreCVars` (`uimenu.cpp:470`) sets them back; `MenuManager::PopMenu`
+(`uimenu.cpp:1278`) restores only when its caller says so. Every shipped settings page
+leaves through `popmenu 0` — the Back/Main Menu button of `menu_video.urc`,
+`menu_advancedvideo.urc`, `menu_audio.urc`, `menu_gameoption.urc` and `menu_controls.urc` —
+and retail's own escape key agrees: `UI_MenuEscape @0x00194A00` calls `PopMenu(this, 0)`.
+This port's escape arm popped 1 (`cl_ui.cpp:1728` before this round), so leaving the screen
+rewrote every row with what it had read at open. My toggles went with it, and a row whose
+boot value came from the shipped data went back to the shipped data — which is also why
+Dynamic Lights kept reading as off no matter what the defaults said.
+
+The fix is retail's own argument: `PopMenu(qfalse)`. Nothing in the shipped data ever asks
+for a restore on the way out, so nothing loses the behaviour it wanted; `popmenu 1` stays a
+console command and `MenuManager::ResetCVars` stays where retail put it. With the restore
+gone the page owns what it read, which is the contract this round's other items are checked
+against: with `r_dynamiclight 1` and `r_flares 1` in the config, opening the page shows both
+on and leaves the config byte-identical but for a float-format resave.
+
+One more trap recorded rather than changed, because retail has it too: `UICheckBox::Draw`
+(`uicheckbox.cpp:139`) calls `UpdateCvar` while the widget is **disabled**, and `UpdateCvar`
+zeroes `m_checked` first (`uicheckbox.cpp:214`) — so a greyed checkbox would zero its own
+cvar every frame it drew. Retail's `UICheckBox::Draw @0x00054E70` does the same, so it
+stands; both greyed rows in this port are SwitchBoxes, whose `Draw` only reads. Never grey a
+CheckBox row.
+
+
+
+**The defaults.** Dynamic Lights and Flares open on a fresh config: 2.4 above carries the
+whole chain, and the short version is that retail's own `global/game.cfg` buries the
+`r_dynamiclight` registration with `setd r_dynamiclight 0` before the renderer has
+registered it, so the row opened at 0 on a fresh config with the registered default never
+read. The registration now answers it for a cvar nothing has archived.
+
+**The option lists are the shipped page's.** Retail's own rows
+(`menu_advancedvideo.urc:447-449` shadows, `:527-529` flares) carry three options each —
+None / Simple / Stencil for `cg_shadows`, None / Simple / Precise for `r_flares` — and mine
+carried two of each. A SwitchBox cannot show a value it has no option for
+(`UISwitchBox::Draw`, `uiswitchbox.cpp:361-403`), so my Flares row could not have named the
+`r_flares 2` the defaults pin on a fresh install. Both lists are whole now, in the shipped
+order, at the shipped values, with the shipped labels.
+
+**The vertical space was the header slit, and the number it should be is zero.** Measured
+against the 640x480 model (`scaleRes = (3.0, 2.25)`, origin 0,0 on Fill): the label plates
+ran y 105.3…129.8, 131.6…155.6, 157.3…181.8 in the first band and the same shape in the
+other two, the section headers landed at 191.6 and 295.6, and the panel's bottom border sat
+at 394.7 — the whole landed model, to a tenth of a unit. What the shot also showed is where
+the model still diverges from the shipped pages: my header was 14 tall and left a 4-unit
+strip of page background between itself and its panel, where every shipped page runs a
+16-tall header with the panel starting on the header's own bottom edge
+(`menu_video.urc` 157 87 326 16 / 157 103 326 105; `menu_gameoption.urc` 34 87 321 16 /
+34 103 320 104; `menu_advancedvideo.urc` 34 87 215 16 / 34 103 214 144). That slit is gone
+(`SET_HEAD_H 16`, `SET_HEAD_GAP 0`, `uimenu.cpp:1699`), the pitch is what the band hands out
+after the shipped numbers — `(395 − 87 − 3×16 − 3×4 − 2×4) / 9` = 26.67 a band
+(`uimenu.cpp:1727`) — and the page still ends at 395, 8 above the description bar at 403
+against retail's own densest 396 and 7. What is left below the last row is retail's own: the
+shipped 4-unit tail inside the box, then the shipped 4-unit gap and the description bar
+where retail put it. The touch page takes the same two changes: header 16, panel on its
+bottom edge, six rows over `(395 − 103 − 16 − 4) / 6` = 45.33 (`uimenu.cpp:1739`), box
+119…395.
+
+**The horizontal space between the columns is retail's own 12, and mine was 14.** Measured in
+the same shot: the left value box ran x 194…313 and the right label plates opened at 327.3 —
+a 14-unit seam. The shipped two-column pages put 12 there: `menu_gameoption.urc`'s left value
+box runs 194…350 against a right label at 362, and `menu_advancedvideo.urc` §3's left
+value+arrow runs 223…379 against a right label at 391. Retail never stretches a value box
+across the seam — `menu_advancedvideo` §3's 28-unit value-to-label gap is the widest it
+ships — so the left column takes the two units and the seam is 12
+(`s_videoCol[0].valw` 115 → 117, `uimenu.cpp:1731`); the right column and both right edges
+are exactly where they were.
+
+Gates: ninja clean 0/0 on the Linux reference and the Android NDK 27 arm64-v8a target,
+`ldd -r` zero undefined on all six Linux artefacts and the five Android .so,
+ship_text_lint GREEN, license_lint GREEN (1430 files). Confirm greps below.

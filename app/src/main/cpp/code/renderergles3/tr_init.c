@@ -1118,6 +1118,20 @@ static void R_FirstLight_f(void)
 	RB_BindVAO(0);
 }
 
+/* global/game.cfg execs before the renderer loads and its `setd' rewrites both the value
+   and the reset string, so it owns a cvar the config has no value for.  These rows take
+   the code's own default there; a value from config.cfg clears the marker and wins. */
+static cvar_t *R_RegisterLightCvar( const char *name, const char *value )
+{
+	cvar_t *cv = ri.Cvar_Get( name, value, CVAR_ARCHIVE );
+
+	if ( cv->defaultRecorded ) {
+		ri.Cvar_Set( name, value );
+	}
+
+	return cv;
+}
+
 void R_Register( void )
 {
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
@@ -1178,7 +1192,7 @@ void R_Register( void )
 	r_lodCurveError = ri.Cvar_Get( "r_lodCurveError", "250", CVAR_ARCHIVE|CVAR_CHEAT );
 	// 0x18f14 stw into TOC slot 0x227FB8.  "1", not the "0" this line carried -- and
 	r_lodbias = ri.Cvar_Get("r_lodbias", "1", CVAR_ARCHIVE);
-	r_flares = ri.Cvar_Get ("r_flares", "1", CVAR_ARCHIVE );
+	r_flares = R_RegisterLightCvar( "r_flares", "1" );
 	r_flaresMaxDist = ri.Cvar_Get ("r_flaresMaxDist", "768", CVAR_ARCHIVE );
 	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT );
 	ri.Cvar_CheckRange( r_znear, 0.001f, 200, qtrue );
@@ -1187,7 +1201,7 @@ void R_Register( void )
 	r_fastdlights = ri.Cvar_Get("r_fastdlights", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	r_drawSun = ri.Cvar_Get( "r_drawSun", "0", CVAR_ARCHIVE );
 	r_dlightBacks = ri.Cvar_Get( "r_dlightBacks", "1", CVAR_ARCHIVE );
-	r_dynamiclight = ri.Cvar_Get( "r_dynamiclight", "1", CVAR_ARCHIVE );
+	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "1" );
 	r_dynamiclightmaps = ri.Cvar_Get( "r_dynamiclightmaps", "1", CVAR_ARCHIVE );
 	r_finish = ri.Cvar_Get ("r_finish", "0", CVAR_ARCHIVE);
 	r_textureMode = ri.Cvar_Get( "r_textureMode", "GL_LINEAR_MIPMAP_NEAREST", CVAR_ARCHIVE );
