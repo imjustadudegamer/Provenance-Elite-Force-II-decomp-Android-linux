@@ -360,6 +360,7 @@ static qboolean TIKI_Tag_OrientationSkelBody(
     float              acc[TIKI_TAG_MAX_CHAIN][7];
     float              accQuat[4];
     float              newAcc[4];
+    float              folded[4];
     float              origin[3];
     SkelMat3           mat;
     SkelQuat           sq;
@@ -464,7 +465,9 @@ static qboolean TIKI_Tag_OrientationSkelBody(
         cq[1] = bone_quat[n][1];
         cq[2] = bone_quat[n][2];
         cq[3] = bone_quat[n][3];
-        TIKI_Tag_QuatMul(accQuat, cq, accQuat);
+        /* retail folds into the second of a ping-pong pair, never in place */
+        TIKI_Tag_QuatMul(accQuat, cq, folded);
+        Vector4Copy(folded, accQuat);
     }
 
     sq.Set(accQuat);
@@ -490,7 +493,8 @@ static qboolean TIKI_Tag_OrientationSkelBody(
             cq[1] = bone_quat[n][1];
             cq[2] = bone_quat[n][2];
             cq[3] = bone_quat[n][3];
-            TIKI_Tag_QuatMul(newAcc, cq, newAcc);
+            TIKI_Tag_QuatMul(newAcc, cq, folded);
+            Vector4Copy(folded, newAcc);
         }
 
         MatrixTransformVector(acc[i] + 4, mat.val, transformed);
@@ -1027,6 +1031,7 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
     int                         n;
     float                       accQuat[4];
     float                       newAcc[4];
+    float                       folded[4];
     float                       origin[3];
     vec3_t                      transformed;
     SkelQuat                    sq;
@@ -1115,7 +1120,8 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
         cq[1] = ent->bone_quat[n][1];
         cq[2] = ent->bone_quat[n][2];
         cq[3] = ent->bone_quat[n][3];
-        TIKI_Tag_QuatMul(accQuat, cq, accQuat);
+        TIKI_Tag_QuatMul(accQuat, cq, folded);
+        Vector4Copy(folded, accQuat);
     }
 
     sq.Set(accQuat);
@@ -1139,7 +1145,8 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
             cq[1] = ent->bone_quat[n][1];
             cq[2] = ent->bone_quat[n][2];
             cq[3] = ent->bone_quat[n][3];
-            TIKI_Tag_QuatMul(newAcc, cq, newAcc);
+            TIKI_Tag_QuatMul(newAcc, cq, folded);
+            Vector4Copy(folded, newAcc);
         }
 
         MatrixTransformVector(acc[i] + 4, mat.val, transformed);

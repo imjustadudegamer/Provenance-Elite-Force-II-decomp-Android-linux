@@ -782,6 +782,132 @@ static void TIKI_Skan_ChainProbe(
     );
 }
 
+/* A non-unit quat after the controller fold, with every ancestor unit, convicts
+   the fold itself; this row names the slot, the loss and the bones that inherit. */
+static void TIKI_Skan_FoldProbe(
+    dtiki_t          *tiki,
+    skelHeaderGame_t *skel,
+    int               bone,
+    const char       *boneName,
+    int               slot,
+    const float      *pre,
+    const float      *post,
+    const float      *cq
+)
+{
+    static int rows;
+    char       kids[192];
+    float      plen;
+    float      qlen;
+    int        b;
+    int        n;
+
+    if (!PROBE_On() || rows >= 64) {
+        return;
+    }
+    rows++;
+
+    plen = sqrt(pre[0] * pre[0] + pre[1] * pre[1] + pre[2] * pre[2] + pre[3] * pre[3]);
+    qlen = sqrt(post[0] * post[0] + post[1] * post[1] + post[2] * post[2] + post[3] * post[3]);
+
+    kids[0] = 0;
+    n = 0;
+    for (b = 0; b < skel->numBones && n < 8; b++) {
+        const char *nm;
+
+        if (skel->pBones[b].skelParent != bone) {
+            continue;
+        }
+        nm = skeletor_c::m_boneNames.FindName(skel->pBones[b].channel);
+        Q_strcat(kids, sizeof(kids), va("%s%d'%s'", n ? " " : "", b, nm ? nm : "?"));
+        n++;
+    }
+
+    CHAN_PROBE(
+        "head",
+        "why=fold tiki=%s bone=%d name='%s' slot=%d ent=%d pre=%.4f post=%.4f "
+        "cq=(%.4f,%.4f,%.4f,%.4f) clen=%.4f kids=\"%s\"\n",
+        tiki->name,
+        bone,
+        boneName ? boneName : "?",
+        slot,
+        s_probeEnt,
+        plen,
+        qlen,
+        cq[0],
+        cq[1],
+        cq[2],
+        cq[3],
+        sqrt(cq[0] * cq[0] + cq[1] * cq[1] + cq[2] * cq[2] + cq[3] * cq[3]),
+        kids
+    );
+}
+
+/* One row per folded bone naming the surfaces skinned to it, so the row says
+   which visible geometry the corrupt matrix reaches. */
+static void TIKI_Skan_SkinProbe(dtiki_t *tiki, skelHeaderGame_t *skel, int bone, const char *boneName)
+{
+    static int         done[TIKI_MAX_BONES];
+    static const dtiki_t *doneTiki;
+    char               surf[256];
+    skelSurfaceGame_t *s;
+    int                n;
+
+    if (!PROBE_On() || bone < 0 || bone >= TIKI_MAX_BONES) {
+        return;
+    }
+    if (doneTiki != tiki) {
+        doneTiki = tiki;
+        memset(done, 0, sizeof(done));
+    }
+    if (done[bone]) {
+        return;
+    }
+    done[bone] = 1;
+
+    surf[0] = 0;
+    n = 0;
+    for (s = skel->pSurfaces; s && n < 6; s = s->pNext) {
+        const byte         *v;
+        const skelWeight_t *w;
+        int                 i;
+        int                 hits;
+
+        if (!s->pVerts || s->numVerts <= 0) {
+            continue;
+        }
+        hits = 0;
+        v = (const byte *)s->pVerts;
+        for (i = 0; i < s->numVerts; i++) {
+            const skeletorVertex_t *vert = (const skeletorVertex_t *)v;
+            const byte             *p = v + sizeof(skeletorVertex_t);
+            int                     k;
+
+            p += (size_t)vert->numMorphs * sizeof(skeletorMorph_t);
+            w = (const skelWeight_t *)p;
+            for (k = 0; k < vert->numWeights; k++) {
+                if (w[k].boneIndex == bone) {
+                    hits++;
+                }
+            }
+            v = p + (size_t)vert->numWeights * sizeof(skelWeight_t);
+        }
+        if (hits) {
+            Q_strcat(surf, sizeof(surf), va("%s'%s'=%dv", n ? " " : "", s->name, hits));
+            n++;
+        }
+    }
+
+    CHAN_PROBE(
+        "head",
+        "why=skin tiki=%s bone=%d name='%s' surf=\"%s\"\n",
+        tiki->name,
+        bone,
+        boneName ? boneName : "?",
+        surf
+    );
+}
+
 /* Names the head bone's sampled row, and each controller slot's bone once. */
 static void TIKI_Skan_HeadCantProbe(
     dtiki_t                *tiki,
@@ -1142,6 +1268,8 @@ int TIKI_SkelBonesFromRecords(
     float               parentQuat[4];
     float               parentOffset[3];
     float               cq[4];
+    float               folded[4];
+    float               preFold[4];
     float               pw;
     qboolean            legs;
     int                 parent;
@@ -1329,11 +1457,17 @@ int TIKI_SkelBonesFromRecords(
                 tiki, skel, b, boneName, n, cq, w, ch, chan, row, localQuat, parent, parentQuat,
                 legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp, b_cb
             );
-            TIKI_Skan_QuatMul(w, cq, w);
+            /* never in place: r[0] lands before r[1..3] read q[0]; retail reads temps */
+            Vector4Copy(w, preFold);
+            TIKI_Skan_QuatMul(w, cq, folded);
+            Vector4Copy(folded, w);
             if (!(w[0] * w[0] + w[1] * w[1] + w[2] * w[2] + w[3] * w[3] >= 0.998f
                   && w[0] * w[0] + w[1] * w[1] + w[2] * w[2] + w[3] * w[3] <= 1.002f)) {
                 TIKI_Skan_ChainProbe(tiki, skel, world, b, n);
+                TIKI_Skan_FoldProbe(tiki, skel, b, boneName, n, preFold, w, cq);
             }
+            /* once per folded bone: the row that names the geometry it carries */
+            TIKI_Skan_SkinProbe(tiki, skel, b, boneName);
             TIKI_Skan_HeadCantProbe(
                 tiki, skel, b, boneName, ch->mainMap, ch->mainHdr, n, headLayout, cq, w
             );
