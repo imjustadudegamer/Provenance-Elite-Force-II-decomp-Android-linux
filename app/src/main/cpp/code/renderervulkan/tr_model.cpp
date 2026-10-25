@@ -2130,13 +2130,17 @@ void RB_SkelMesh(skelSurfaceGame_t *sf)
         if (PROBE_Throttle(&s_attachRows, 24, 600)) {
             const float *pv = &tess.xyz[baseVertex][0];
             ri.Printf(PRINT_ALL,
-                      "[VK:meshattach] model='%s' surf='%s' verts=%d bone0=%d lod=%d "
+                      "[VK:meshattach] model='%s' surf='%s' verts=%d bone0=%d lod=%d scale=%.4f org=(%.2f,%.2f,%.2f) "
                       "v0=(%.3f,%.3f,%.3f) v1=(%.3f,%.3f,%.3f) v2=(%.3f,%.3f,%.3f) v3=(%.3f,%.3f,%.3f) f=%d\n",
                       skelmodel ? skelmodel->name : "?",
                       sf->name,
                       sf->numVerts,
                       sf->pVerts ? ((skelWeight_t *)((byte *)sf->pVerts + sizeof(skeletorVertex_t)))->boneIndex : -1,
                       lod_cutoff,
+                      backEnd.currentEntity ? backEnd.currentEntity->e.scale : 0.0f,
+                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[0] : 0.0f,
+                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[1] : 0.0f,
+                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[2] : 0.0f,
                       pv[0], pv[1], pv[2],
                       pv[4], pv[5], pv[6],
                       pv[8], pv[9], pv[10],
