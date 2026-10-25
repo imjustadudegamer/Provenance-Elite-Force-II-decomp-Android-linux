@@ -1247,7 +1247,7 @@ extern "C" void convertStringResourceIds(const char *text, char *out, int size)
     StringResource::getInstance()->convertStringResourceIds(buffer);
 
     if (out && size > 0) {
-        strncpy(out, buffer.c_str(), size);
+        Q_strncpyz(out, buffer.c_str(), size);
     }
 }
 
