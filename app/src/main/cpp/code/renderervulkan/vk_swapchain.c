@@ -75,22 +75,66 @@ static void VK_PickSurfaceFormat( vkSwapchainPlan_t *plan, VkSurfaceFormatKHR *f
 	}
 }
 
-static void VK_PickPresentMode( vkSwapchainPlan_t *plan, VkPresentModeKHR *modes, uint32_t count )
+/* The probe row names the mode: a raw enum makes the boot log useless for the
+   question of which side owns the pace. */
+static const char *VK_PresentModeName( VkPresentModeKHR mode )
 {
-	extern cvar_t *r_swapInterval;	/* vk_platform.c */
-	uint32_t i;
-	qboolean vsync;
-	VkPresentModeKHR want;
+	switch ( mode ) {
+	case VK_PRESENT_MODE_IMMEDIATE_KHR:		return "IMMEDIATE";
+	case VK_PRESENT_MODE_MAILBOX_KHR:		return "MAILBOX";
+	case VK_PRESENT_MODE_FIFO_RELAXED_KHR:	return "FIFO_RELAXED";
+	default:								return "FIFO";
+	}
+}
 
-	vsync = ( r_swapInterval == NULL ) || ( r_swapInterval->integer != 0 );
-	/* fifo is the only mode every surface must report */
-	want = vsync ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
-	plan->presentMode = VK_PRESENT_MODE_FIFO_KHR;
+/* The first mode in the preference list the surface actually reports, FIFO last: it is
+   the one mode every surface must report, so the walk never falls off the list. */static qboolean VK_PickFirstPresentMode( VkPresentModeKHR *modes, uint32_t count,
+										 const VkPresentModeKHR *want, uint32_t wants )
+{
+	uint32_t i, j;
 
 	for ( i = 0; i < count; i++ ) {
-		if ( modes[i] == want ) {
-			plan->presentMode = want;
-			return;
+		for ( j = 0; j < wants; j++ ) {
+			if ( modes[i] == want[j] ) {
+				return qtrue;
+			}
+		}
+	}
+
+	return qfalse;
+}
+
+static void VK_PickPresentMode( vkSwapchainPlan_t *plan, VkPresentModeKHR *modes, uint32_t count )
+{
+	uint32_t i;
+	VkPresentModeKHR want[3];
+	uint32_t wants = 0;
+
+#ifdef __ANDROID__
+	/* EF1's r_swapInterval 0 arm (renderervk/vk.c:773-781): the uncapped rung, and the
+	 * com_maxfps budget is the only pace.  r_swapInterval is not read on this target. */
+	want[wants++] = VK_PRESENT_MODE_IMMEDIATE_KHR;
+	want[wants++] = VK_PRESENT_MODE_MAILBOX_KHR;
+	want[wants++] = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+#else
+	extern cvar_t *r_swapInterval;	/* vk_platform.c */
+	qboolean vsync = ( r_swapInterval == NULL ) || ( r_swapInterval->integer != 0 );
+
+	/* fifo is the only mode every surface must report */
+	want[wants++] = vsync ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
+#endif
+
+	plan->presentMode = VK_PRESENT_MODE_FIFO_KHR;
+	if ( VK_PickFirstPresentMode( modes, count, want, wants ) ) {
+		for ( i = 0; i < count; i++ ) {
+			uint32_t j;
+
+			for ( j = 0; j < wants; j++ ) {
+				if ( modes[i] == want[j] ) {
+					plan->presentMode = want[j];
+					return;
+				}
+			}
 		}
 	}
 }
@@ -305,10 +349,10 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 
 	if ( R_ProbeStatsOn() ) {
 		VK_Guard_Row( "VK:swapchain",
-					  "created images=%u %ux%u format=%d present=%d currentExtent=%ux%u currentTransform=0x%x supportedTransforms=0x%x preTransform=0x%x",
+					  "created images=%u %ux%u format=%d present=%s currentExtent=%ux%u currentTransform=0x%x supportedTransforms=0x%x preTransform=0x%x",
 					  vk.swapchainImageCount,
 					  plan->extent.width, plan->extent.height,
-					  (int)plan->format.format, (int)plan->presentMode,
+					  (int)plan->format.format, VK_PresentModeName( plan->presentMode ),
 					  plan->currentExtent.width, plan->currentExtent.height,
 					  (unsigned)plan->currentTransform, (unsigned)plan->supportedTransforms,
 					  (unsigned)plan->preTransform );

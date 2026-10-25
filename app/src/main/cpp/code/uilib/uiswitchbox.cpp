@@ -230,8 +230,10 @@ void UISwitchBox::displayOption(int index, bool bStuff)
     if (opt->command.length() && bStuff) {
         str stuff = opt->command + "\n";
         if (PROBE_On()) {
-            PROBE_PRINT("[UI:switchopt] %s='%s'\n", m_cvarname.c_str(),
-                        opt->command.c_str());
+            PROBE_PRINT("[UI:switchopt] cvar='%s' cmd='%s' label='%s'\n",
+                        m_cvarname.c_str(),
+                        opt->command.c_str(),
+                        opt->label.c_str());
         }
         uii.Cmd_Stuff(stuff.c_str());
     }
@@ -357,10 +359,33 @@ void UISwitchBox::Draw(void)
             const char *value = cvar->latchedString ? cvar->latchedString : cvar->string;
 
             if (value && str::icmp(value, m_currentValue.c_str())) {
-                for (int i = 1; i <= m_options.NumObjects(); i++) {
+                int    found = 0;
+                int    i;
+                cvar_t *mine = uii.Cvar_Find(m_cvarname.c_str());
+
+                for (i = 1; i <= m_options.NumObjects() && !found; i++) {
                     switchoption_t *opt = m_options.ObjectAt(i);
 
                     if (!str::icmp(value, opt->name.c_str())) {
+                        found = i;
+                    }
+                }
+
+                /* A float cvar comes back from a config in whatever digits it was
+                   written with ("1" against an option named "1.0"), so the second
+                   pass reads them as numbers. */
+                for (i = 1; i <= m_options.NumObjects() && !found; i++) {
+                    switchoption_t *opt = m_options.ObjectAt(i);
+
+                    if ((float)atof(opt->name.c_str()) == (mine ? mine->value : 0.0f)) {
+                        found = i;
+                    }
+                }
+
+                for (i = 1; i <= m_options.NumObjects(); i++) {
+                    if (i == found) {
+                        switchoption_t *opt = m_options.ObjectAt(i);
+
                         if (opt->isImage) {
                             setMaterial(uWinMan.RegisterShader(opt->imagename), WIDGET_STATE_NORMAL);
                         } else {
@@ -368,7 +393,6 @@ void UISwitchBox::Draw(void)
                         }
 
                         m_current = i;
-                        break;
                     }
                 }
 

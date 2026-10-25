@@ -86,6 +86,7 @@ UICheckBox::UICheckBox()
     AllowActivate(qtrue);
     m_check_height       = 16.0;
     m_check_width        = 16.0;
+    m_check_scale        = 1.0;
     m_indent             = 16.0;
     m_depressed          = qfalse;
     m_checked_material   = NULL;
@@ -111,9 +112,19 @@ void UICheckBox::ChangeResolution(void)
 {
     UIWidget::ChangeResolution();
 
-    m_check_width  = 16.0f * uid.scaleRes[0];
-    m_check_height = 16.0f * uid.scaleRes[1];
+    m_check_width  = 16.0f * m_check_scale * uid.scaleRes[0];
+    m_check_height = 16.0f * m_check_scale * uid.scaleRes[1];
     m_indent       = 16.0f * uid.scaleRes[0];
+
+    calculateTextBox();
+}
+
+void UICheckBox::setCheckScale(float scale)
+{
+    m_check_scale = scale;
+
+    m_check_width  = 16.0f * m_check_scale;
+    m_check_height = 16.0f * m_check_scale;
 
     calculateTextBox();
 }

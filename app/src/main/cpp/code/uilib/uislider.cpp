@@ -24,6 +24,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "ui_local.h"
 #include <string.h>
 
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)
+#include "../qcommon/qa_probe.h"
+
 Event EV_AutoIncrement
 (
     "autoinc",
@@ -287,6 +292,19 @@ void UISlider::MouseEntered(Event *ev)
 void UISlider::UpdateData(void)
 {
     if (m_cvarname.length()) {
+        if (PROBE_On()) {
+            static int s_sliderRows;
+
+            if (PROBE_Throttle(&s_sliderRows, 24, 200)) {
+                UIVK_PROBE("slider",
+                           "cvar='%s' old=%.3f new=%.3f step=%.3f",
+                           m_cvarname.c_str(),
+                           UI_GetCvarFloat(m_cvarname, 0.0f),
+                           m_value,
+                           m_stepsize);
+            }
+        }
+
         if (m_slidertype == SLIDER_INTEGER) {
             UI_SetCvarInt(m_cvarname, m_value);
         } else {

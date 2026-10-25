@@ -1625,7 +1625,7 @@ void Com_Init( char *commandLine ) {
 	/* the port's one defaults source, folded in once on EVERY platform: the compiled EF2_ANDROID_DEFAULT_COMMANDS (the union of the shipped defaultcontrols.cfg
 	   and defaultoptions.cfg, platform-neutral where those are not).  The gate is `port_defaultsSeed', a cvar only this code writes, so a seed bump is the only way
 	   new rows reach an install that already archived an older one -- this block runs AFTER the config exec and therefore beats the archived value. */
-#define PORT_DEFAULTS_SEED 8
+#define PORT_DEFAULTS_SEED 9
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );
@@ -1711,7 +1711,8 @@ void Com_Init( char *commandLine ) {
 		 || Cvar_VariableIntegerValue( "in_androidDefaults" ) )
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 
-	com_maxfps = Cvar_Get( "com_maxfps", "85", CVAR_ARCHIVE );
+	/* the operator's standing 60, not the shipped 85 */
+	com_maxfps = Cvar_Get( "com_maxfps", "60", CVAR_ARCHIVE );
 	/* limit-pace: PORT-ONLY, beyond retail's list above.  Safe defaults and NOT
 	   or experiment must opt out explicitly rather than inherit a stored value. */
 	com_frameWait       = Cvar_Get( "com_frameWait", "1", 0 );
@@ -2391,29 +2392,44 @@ static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int t
 }
 
 
-static int LIMIT_WaitDecision( int minMsec, int elapsed, int margin, int minimized ) {
+/* The pace clock: microseconds of monotonic time.  Sys_Milliseconds stays the game's
+   clock; the frame budget only ever reads deltas off this one. */
+static int64_t Com_PaceUsec( void ) {
+#ifdef _WIN32
+	return (int64_t)Sys_Milliseconds() * 1000;
+#else
+	struct timespec ts;
+
+	clock_gettime( CLOCK_MONOTONIC, &ts );
+	return (int64_t)ts.tv_sec * 1000000ll + (int64_t)ts.tv_nsec / 1000ll;
+#endif
+}
+
+/* The one frame-budget wait: the whole milliseconds go to the OS and the spin loop
+   takes the sub-millisecond tail, so a 60 budget is 16667us and not a 16ms floor. */
+static int LIMIT_WaitDecision( int minUsec, int elapsed, int marginUsec, int minimized ) {
 	int remain;
 
-	if ( minMsec <= 0 ) {
+	if ( minUsec <= 0 ) {
 		return 0;
 	}
 	if ( elapsed < 0 ) {
-		elapsed = 0;			
+		elapsed = 0;
 	}
-	remain = minMsec - elapsed;
+	remain = minUsec - elapsed;
 	if ( remain <= 0 ) {
-		return 0;				
+		return 0;
 	}
-	if ( margin < 0 ) {
-		margin = 0;
+	if ( marginUsec < 0 ) {
+		marginUsec = 0;
 	}
 	if ( minimized ) {
-		return remain;			
+		return remain;
 	}
-	if ( remain <= margin ) {
-		return 0;				
+	if ( remain <= marginUsec ) {
+		return 0;
 	}
-	return remain - margin;
+	return remain - marginUsec;
 }
 
 #define UI_WINDOW_MS		1000
@@ -2719,7 +2735,10 @@ static void UI_PaceAdd( int *sum, int *max, int units ) {
 
 void Com_Frame( void ) {
 
-	int		msec, minMsec;
+	int		msec;
+	int64_t		minUsec;
+	int64_t		paceNow, paceSpent;
+	static int64_t	lastPace = 0;
 	static int	lastTime = 0;
 
 	int		timeBeforeFirstEvents;
@@ -2736,7 +2755,7 @@ void Com_Frame( void ) {
 	int		ui_cfgUsec = 0, ui_vlogUsec = 0, ui_fnumUsec = 0;
 	int		ui_evUsec = 0, ui_spinIters = 0;
 
-	int		ui_waitMsec = 0, ui_minimized = 0;
+	int		ui_minimized = 0;
 	int		ui_waitUsec = 0, ui_spinUsec = 0, ui_periodUsec = 0;
 
 	if ( setjmp (abortframe) ) {
@@ -2790,40 +2809,48 @@ void Com_Frame( void ) {
 		timeBeforeFirstEvents = Sys_Milliseconds ();
 	}
 
-#ifdef __ANDROID__
-    /* Android: uncapped by order.  The 60 re-lock was the menuhunt fix for a
-     * swing whose cause is now the batched 2D path, so the limiter no longer
-     * earns its frame.  minMsec 1 is the engine's own "no limit" and leaves the
-     * swap as the only governor; the archived com_maxfps 85 is not read here. */
-    minMsec = 1;
-#else
-    if ( com_dedicated->integer || com_maxfps->integer <= 0 || com_timedemo->integer ) {
-        minMsec = 1;
-    } else {
-        minMsec = 1000 / com_maxfps->integer;
-    }
-#endif
-
-    if ( minMsec < 1 ) {
-        minMsec = 1;
+    /* EF1's frame budget (VoyagerNX common.c:3248-3266) in usec, so 60 is 16667us and
+     * not a 16ms floor; the present is uncapped on Android, so this is the only pace. */
+    paceNow = Com_PaceUsec();
+    paceSpent = paceNow - lastPace;
+    if ( paceSpent < 0 ) {
+        paceSpent = 0;
     }
 
-    if ( com_frameWait && com_frameWait->integer && !com_dedicated->integer ) {
-        int limitElapsed;
+    minUsec = ( com_dedicated->integer || com_maxfps->integer <= 0 || com_timedemo->integer )
+                  ? 0
+                  : 1000000ll / com_maxfps->integer;
+
+    if ( minUsec > 0 ) {
+        static int limitBias;
+
+        limitBias += (int)( paceSpent - minUsec );
+        if ( limitBias > (int)minUsec ) {
+            limitBias = (int)minUsec;    /* EF1's clamp: one frame of catch-up, no more */
+        }
+
+        minUsec -= limitBias;
+        if ( minUsec < 1000 ) {
+            minUsec = 1000;    /* a spent budget is a fast frame, never a hot loop */
+        }
+    }
+
+    if ( minUsec > 0 && com_frameWait && com_frameWait->integer && !com_dedicated->integer ) {
+        int limitRemain;
 
         if ( !com_minimizedCvar ) {
             com_minimizedCvar = Cvar_Get( "com_minimized", "0", 0 );
         }
         ui_minimized = ( com_minimizedCvar && com_minimizedCvar->integer ) ? 1 : 0;
 
-        limitElapsed = Sys_Milliseconds() - lastTime;
-        ui_waitMsec = LIMIT_WaitDecision( minMsec, limitElapsed,
-                                           com_frameWaitMargin->integer,
-                                           ui_minimized );
-        if ( ui_waitMsec > 0 ) {
+        limitRemain = LIMIT_WaitDecision( (int)minUsec, (int)paceSpent,
+                                          com_frameWaitMargin->integer * 1000,
+                                          ui_minimized );
+        if ( limitRemain > 0 ) {
             int limitT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
 
-            Sys_Sleep( ui_waitMsec );
+            /* whole milliseconds to the OS, the spin loop takes the tail */
+            Sys_Sleep( limitRemain / 1000 );
 
             if ( ui_statsOn ) { ui_waitUsec = UI_Microseconds() - limitT0; }
         }
@@ -2848,12 +2875,29 @@ void Com_Frame( void ) {
         }
 
         msec = com_frameTime - lastTime;
-    } while ( msec < minMsec );
+    } while ( minUsec > 0 && Com_PaceUsec() - paceNow < minUsec );
 
     if ( ui_statsOn ) { ui_spinUsec = UI_Microseconds() - limitSpinT0; }
     }
 
+    lastPace = Com_PaceUsec();
     lastTime = com_frameTime;
+
+	if ( PROBE_On() && minUsec > 0 ) {
+		static int        s_limitRows;
+		static int64_t    s_limitLast;
+		int64_t           s_limitNow = Com_PaceUsec();
+		int               s_limitGap = ( s_limitLast && s_limitNow > s_limitLast )
+										   ? (int)( s_limitNow - s_limitLast ) : 0;
+
+		s_limitLast = s_limitNow;
+		if ( PROBE_Throttle( &s_limitRows, 12, 300 ) ) {
+			PROBE( "limit",
+				   "maxfps=%d budget=%dusec measured=%dusec spin=%d governor=%s\n",
+				   com_maxfps->integer, (int)minUsec, s_limitGap, ui_spinIters,
+				   ui_spinIters > 1 ? "budget" : "work" );
+		}
+	}
 
 	smpAfterSpin = Sys_Milliseconds();
 
@@ -2881,7 +2925,7 @@ void Com_Frame( void ) {
 		if ( ui_spinIters > 1 ) {
 			UI_Bump( UI_FAM_SPIN, UI_SC_limited, 1 );
 		}
-		UI_Bump( UI_FAM_SPIN, UI_SC_min, minMsec );
+		UI_Bump( UI_FAM_SPIN, UI_SC_min, (int)( minUsec / 1000 ) );
 
 		UI_PaceAdd( &ui_waitSum,   &ui_waitMax,   ui_waitUsec / 100 );
 		UI_PaceAdd( &ui_spinSum,   &ui_spinMax,   ui_spinUsec / 100 );

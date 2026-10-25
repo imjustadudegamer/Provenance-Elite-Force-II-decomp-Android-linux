@@ -96,7 +96,8 @@ typedef struct vkPhysDevice_s {
 
 typedef struct {
 	VkSurfaceFormatKHR format;
-	/* r_swapInterval: the present mode is the only vsync this lane has */
+	/* the present rung: com_maxfps owns the pace, the present only decides whether the
+	   display may cap it (desktop reads r_swapInterval, Android takes the uncapped rung) */
 	VkPresentModeKHR presentMode;
 	VkExtent2D extent;
 	uint32_t imageCount;

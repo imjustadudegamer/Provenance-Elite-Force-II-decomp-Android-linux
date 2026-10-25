@@ -129,6 +129,10 @@ extern MenuManager menuManager;
 // Handheld adaptation of the shipped settings pages; runs before the menus exist.
 void UI_AdaptSettingsMenus(void);
 
+// A settings row moved a LATCH cvar: restart the renderer when it left its baseline.
+void UI_SettingsAutoApply(void);
+void UI_SettingsAutoApplyFrame(void);
+
 extern Event EV_PushMenu;
 extern Event EV_LockMenus;
 extern Event EV_UnlockMenus;

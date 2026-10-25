@@ -33,7 +33,8 @@ class UICheckBox : public UIWidget
     bool              m_depressed;
     float             m_check_width;
     float             m_check_height;
-    int               m_cvarbit; 
+    float             m_check_scale;
+    int               m_cvarbit;
     UIRect2D          m_textRect;
 
 public:
@@ -59,6 +60,7 @@ public:
 
     void UpdateData(void) override;
     void ChangeResolution(void) override;
+    void setCheckScale(float scale);
     bool isChecked(void);
 };
 

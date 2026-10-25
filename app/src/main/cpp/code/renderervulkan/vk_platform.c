@@ -445,6 +445,8 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 	r_customwidth = ri.Cvar_Get( "r_customwidth", "1280", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customheight = ri.Cvar_Get( "r_customheight", "720", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customaspect = ri.Cvar_Get( "r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	/* Desktop reads this to pick the present rung; Android does not (vk_swapchain.c),
+	   where the engine's com_maxfps budget is the only pace a player sets. */
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "1", CVAR_ARCHIVE );
 	/* A diagnostic is not a setting: an archived one leaks into config.cfg. */
 

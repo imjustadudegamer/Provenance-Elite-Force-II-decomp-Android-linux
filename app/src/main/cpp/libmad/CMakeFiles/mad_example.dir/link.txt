@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -flto=auto -fno-fat-lto-objects -Wno-stringop-overflow -Werror=odr -Werror=lto-type-mismatch CMakeFiles/mad_example.dir/minimad.c.o -o mad_example  libmad.a 

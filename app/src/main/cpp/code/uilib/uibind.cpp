@@ -25,6 +25,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../qcommon/stringresource.h"
 
+#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
+#define PROBE_PRINT                       Com_Printf
+#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)
+#include "../qcommon/qa_probe.h"
+
 Event EV_Bind_NewItem
 (
     "binditem",
@@ -298,7 +303,38 @@ void UIBindButton::setData(const str& data)
     setTitle(keyname);
 }
 
-void UIBindButton::Pressed(Event *ev) {}
+/* A tap arms the row exactly as the pad's ENTER does; the next raw key assigns it,
+   because the pad keeps its own keycodes while a grab is live.  A second tap on the
+   row that holds the grab releases it -- the keyboard's ESC, which a pad has no
+   equal for once the buttons have gone raw. */
+void UIBindButton::Pressed(Event *ev)
+{
+    if (m_widgetState == WIDGET_STATE_DISABLED) {
+        return;
+    }
+
+    if (m_getkey) {
+        m_getkey = false;
+        uWinMan.SetBindActive(NULL);
+        Cbuf_ExecuteText(0, "globalwidgetcommand PressKey disable\n");
+        return;
+    }
+
+    if (uWinMan.BindActive()) {
+        UIButtonBase::Pressed(ev);
+        return;
+    }
+
+    m_getkey = true;
+    uWinMan.SetBindActive(this);
+    Cbuf_ExecuteText(0, "globalwidgetcommand PressKey enable\n");
+
+    if (m_clicksound.length()) {
+        uii.Snd_PlaySound(m_clicksound, CHAN_MENU2);
+    }
+
+    UIButtonBase::Pressed(ev);
+}
 
 qboolean UIBindButton::KeyEvent(int key, unsigned int time)
 {
@@ -309,6 +345,15 @@ qboolean UIBindButton::KeyEvent(int key, unsigned int time)
             uWinMan.BindKeyToCommand(m_bindcommand, key, m_bindindex, m_alternate);
             keyname = uWinMan.GetKeyStringForCommand(m_bindcommand, m_bindindex, m_alternate, NULL, NULL);
             setTitle(keyname);
+
+            if (PROBE_On()) {
+                UIVK_PROBE("settings",
+                           "op=rebind cmd='%s' key=%d alt=%d -> '%s'",
+                           m_bindcommand.c_str(),
+                           key,
+                           m_alternate ? 1 : 0,
+                           keyname.c_str());
+            }
         }
 
         m_getkey = false;

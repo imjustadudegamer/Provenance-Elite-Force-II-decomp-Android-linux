@@ -959,6 +959,7 @@ void UI_Update(void)
     /* One update descent per UI update: the stamp is what stops the window
        manager's walk repeating the descent the menu manager's walk already did. */
     UIWidget::FrameStampBump();
+    UI_SettingsAutoApplyFrame();
 
     UI_ROOT_BEGIN(UI_FAM_UI);
 
@@ -2976,6 +2977,7 @@ void CL_ShutdownUI(void)
     Cmd_RemoveCommand("ui_setrangecvar");
     Cmd_RemoveCommand("ui_verifycvarrange");
     Cmd_RemoveCommand("ui_checkrestart");
+    Cmd_RemoveCommand("ui_settingsautoapply");
     Cmd_RemoveCommand("dointro");
     Cmd_RemoveCommand("_intro");
     Cmd_RemoveCommand("centerprint");
@@ -5858,6 +5860,7 @@ void CL_InitializeUI(void)
     Cmd_AddCommand("ui_setrangecvar", UI_SetRangeCvar);
     Cmd_AddCommand("ui_verifycvarrange", UI_VerifyCvarRange);
     Cmd_AddCommand("ui_checkrestart", UI_CheckRestart);
+    Cmd_AddCommand("ui_settingsautoapply", UI_SettingsAutoApply);
     Cmd_AddCommand("dointro", UI_StartIntro_f);
     Cmd_AddCommand("_intro", UI_DoIntro_f);
     Cmd_AddCommand("centerprint", UI_CenterPrint_f);

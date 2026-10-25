@@ -4073,6 +4073,22 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
 
     if (statematerial) {
 
+        /* the LCARS chrome is the menu/ namespace: the row says whether its quads went
+           out at all, which is how a disabled widget reads as a broken draw */
+        if (PROBE_On() && statematerial->GetName().c_str()
+            && !strncmp(statematerial->GetName().c_str(), "menu/", 5)) {
+            static int s_artRows;
+
+            if (PROBE_Throttle(&s_artRows, 8, 60)) {
+                UIVK_PROBE("art",
+                           "draw widget='%s' shader='%s' alpha=%.3f show=%d",
+                           getName() ? getName() : "?",
+                           statematerial->GetName().c_str(),
+                           (double)(getStateShaderColor().a * m_local_alpha),
+                           getShow() ? 1 : 0);
+            }
+        }
+
         UColor shaderColor = getStateShaderColor();
         col[0] = shaderColor.r;
         col[1] = shaderColor.g;

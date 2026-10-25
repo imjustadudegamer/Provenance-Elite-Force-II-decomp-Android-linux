@@ -56,9 +56,9 @@ root, for more details.
    default.  Directions verified in this lane:
      r_flares 2 is the page's top option and the lane only tests the value, so 1
        and 2 draw identically.
-     r_dynamiclightmaps 1 is DISPLAY ONLY -- renderervulkan declares it extern
-       (tr_local.h) and neither defines nor reads it; without a row the checkbox
-       reads an unregistered cvar and shows unchecked.
+     r_dynamiclightmaps 1 is the maximum and it IS read: RE_SetDynamicLights
+       (tr_init.c) gates the per-light-group intensities on it, so 0 forces the
+       map's own defaults.
      r_allowExtensions 1 opens the page's master gate: the checkbox and the three
        sub-rows it gates (r_arb_multisample, r_ext_nv_multisample_filter,
        r_anisotropicFiltering) read unregistered cvars and grey out while it sits
@@ -74,7 +74,8 @@ root, for more details.
        lower values, and the launcher's overrides only protect rows it names.
      cg_shadows Stencil (2) renders nothing here (the depth picker prefers
        D32_SFLOAT, stencilBits 0), so Simple IS this lane's maximum.
-     r_swapInterval is deliberately absent: operator order leaves it alone.
+     r_swapInterval 0 is inert on Android now (vk_swapchain.c takes the uncapped rung);
+       desktop still reads it.  com_maxfps 60 is the standing order.
      Pad roles: Y nightvision (EV_Player_Nightvision), d-pad sides +leanleft/+leanright, shoulders nextinv/previnv alone, and the left trigger stays +attackright -- the sniper's controlZoom. */
 #define EF2_ANDROID_DEFAULT_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
