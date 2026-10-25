@@ -1233,7 +1233,7 @@ renderervulkan/vk_guard.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	
 renderervulkan/vk_guard.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_instance.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_local.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-renderervulkan/vk_m3_surface.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderervulkan/vk_probeplumb.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_memory.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_offscreen.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderervulkan/vk_pipeline.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
