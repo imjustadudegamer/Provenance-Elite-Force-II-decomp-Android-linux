@@ -463,7 +463,7 @@ early:
   label width while every other row carried the measured one.
 
 The slot is now read back out of what the build pass recorded (`rowy[]`/`rowcol[]`,
-uimenu.cpp:2029) instead of being recounted, so there is one walk and one counter and no
+uimenu.cpp:2036) instead of being recounted, so there is one walk and one counter and no
 way for a section boundary to move a row. Measured against the screenshot: label x=51 w=156,
 value x=213 w=94 in the left column and x=325/x=487 in the right, every band full, eighteen
 rows, no empty cell, content ending at authored y=398 against the description bar's 403.
@@ -473,7 +473,7 @@ widget *draws* text in, which for a virtual widget is screen pixels
 (`UIFont::getFloatWidth`, uifont.cpp:322 -- `x uid.scaleRes[0]`); the frames here are authored
 in 640x480. On my desktop that inflated the label column by x1.2536 and on the
 Pixel 8 by x3.135, squeezing the value column to a sliver and pressing the boxes into each
-other. `SettingsTitleWidth` (uimenu.cpp:1784) is the one conversion point.
+other. `SettingsTitleWidth` (uimenu.cpp:1791) is the one conversion point.
 
 **Full Screen is back, scoped per target.** Retail's own row (menu_video.urc
 `rect 162 188 120 16`, `linkcvar r_fullscreen`) returns as a Full Screen / Windowed switch in
@@ -490,7 +490,7 @@ per target.
 
 **The rebuild guard was dead.** It tested `FindWidget("VidRow0Ctl")`, a name nothing was ever
 given, so every UI re-init -- every `vid_restart` -- built the page again on top of itself.
-It now tests the first section header it actually creates (`VidLHead1`, uimenu.cpp:2286), the
+It now tests the first section header it actually creates (`VidLHead1`, uimenu.cpp:2293), the
 same shape the controls page's guard uses (`TouchBind`).
 
 **Sections are square now.** Eighteen rows in three sections of six, so every band is full
@@ -534,7 +534,7 @@ child list.** `SettingsAdaptVideo`'s grey loop read `lbl` in its own `for` condi
 (`for (c = 0; c < 2 && !lbl; c++)`) before the body ever wrote it, so whether the walk ran at
 all depended on stack garbage. On the handheld boot the slot held the rodata literal
 `"tooltip_video"` — the same function materialises it two lines earlier
-(`s_settingsTooltipBar`, uimenu.cpp:2283) — so `!lbl` was false, the walk never ran, and the
+(`s_settingsTooltipBar`, uimenu.cpp:2290) — so `!lbl` was false, the walk never ran, and the
 two garbage pointers passed the `if (lbl && ctl)` test straight into `SettingsGreyRow` →
 `AdaptCommand` → `Listener::ValidEvent`, whose virtual `classinfo()` call dereferenced the
 literal's bytes as a vtable (`this` = base+0xB7707, the tombstone's exact fault). `UIWidget::
@@ -549,3 +549,55 @@ it. Both finds are `= NULL` now, and the same shape was swept: `UISwitchBox`'s `
 
 **The Aspect row is the handheld's and is greyed on the desktop** — see 2.3. The row keeps
 its name and its three values; the desktop's window keeps retail's own geometry owner.
+
+## 12. The fifth round (my OPSCREENSHOT5 verdict)
+
+**The dead space I was still seeing was the slit inside the row, and it is closed to the
+shipped number: zero.** Each row is two boxes — a label plate and a value box — and the value
+box opened 6 units of page background later (`SET_LABEL_GAP 6`). Measured off my own shot
+against the 640x480 model (`scaleRes = (3.0, 2.25)`, origin 0,0 on Fill): the label plates
+run x 38…194 and 327…483, the value boxes open at 201 and 490 — a 7-unit slit as drawn, 6 as
+authored, on every row of both pages. The shipped pages run the pair at 0 or at 4 and at
+nothing else:
+
+| page | label | value | offset |
+|---|---|---|---|
+| `menu_video`, `menu_audio` | 162 w 156 → 318 | at 322 | **+4** |
+| `menu_advancedvideo`, `menu_gameoption` | 38 w 185 → 223 | at 223 | **0** |
+
+The two-column pages run them edge to edge and this rebuild is the two-column shape carrying
+`menu_advancedvideo`'s rows, so the value box now opens on the label plate's own right edge
+(`SET_LABEL_GAP 0`, uimenu.cpp:1737). Nothing else in the row moved: the label column is
+still the measured longest title plus its 8-unit pad (156 on this page's own strings), and
+the value column keeps its landed right edges — 313 in the left column and 602 in the right,
+4 inside the panel's 606. The row reads as one plate now, which is also what the 26 = 26
+pitch already wanted: the page has no loose strip anywhere, inside a band or inside a row.
+
+**The touch page had the same slit and an 87-unit hole under its sixth row, and it had a
+second defect under that one.** The rows ended at 306 with the box at 316 against a
+description bar at 403 — the same not-filled frame the video page had before the fourth
+round. The page is mine to lay out (retail ships no touch rows), so it now follows the same
+five rules with one band of its own: its content area is the shipped controls page's own
+x 46…371 (the shipped tabs run to 372, the page's right column opens at 374), its one header
+opens on its own tab row's bottom — 103, `SET_TAB_Y + SET_TAB_H`, the same top-anchor rule
+the shipped pages follow with theirs — and the six rows take the whole band, pitch = rowh =
+(395 − 103 − 18 − 4) / 6 = 45. Six 45-unit rows fill 121…395 and end on the video page's own
+bottom line; the row *is* the tap area, and the checkbox mark keeps its own
+`16 × checkScale` size centred in it (`uicheckbox.cpp:122`), so a taller row is a bigger
+target and not a bigger mark. The other four Controls tabs are retail's own pages and are
+untouched.
+
+The second defect was why the page had been reading as six floating plates with nothing
+behind them. `SettingsBuildRows` takes every width it lays out from `cols[1]` — the section
+header's and the box's width is `cols[1].boxx + cols[1].boxw − cols[0].boxx`, whatever
+`ncols` says, because a one-column page is two names for one column. The touch call handed
+it the one-element `&s_touchCol`, so both widths were read past the array, from whatever the
+linker put after it: the six rows drew and neither the header nor the box did. It now hands
+the same column twice (`touchCols[2]`), the page's own header and box are real widgets with
+real frames, and they are disabled with the rows right after the build — the tab commands
+they belong to all ran before the widgets existed, so without that they would have sat
+enabled over the four bind tables.
+
+`DESIGN-MENU-GRAMMAR.md` §4 carries the shipped label→value column in the geometry table and
+the rule it gives, §4.1 carries the touch page's band and pitch, and §8 carries the
+`cols[1]` contract.

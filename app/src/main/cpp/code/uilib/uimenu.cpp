@@ -1697,12 +1697,16 @@ struct settingsGeom_s {
    34/251).  A band's row fills it: pitch == rowh, so the panel carries no loose strip and
    its tail is the shipped 4 under the last row. */
 static const settingsGeom_s s_videoCol[2] = {
-    {"VidL", 38.0f, 160.0f, 204.0f, 109.0f, 34.0f, 283.0f, 26.0f, 26.0f},
-    {"VidR", 327.0f, 160.0f, 493.0f, 109.0f, 323.0f, 283.0f, 26.0f, 26.0f}
+    {"VidL", 38.0f, 160.0f, 198.0f, 115.0f, 34.0f, 283.0f, 26.0f, 26.0f},
+    {"VidR", 327.0f, 160.0f, 487.0f, 115.0f, 323.0f, 283.0f, 26.0f, 26.0f}
 };
 
+/* The touch page's own band is the shipped controls page's content area, 46..372
+   (menu_controls.urc tabs 46 87 .. 372 120, the right column at 374).  No shipped page
+   carries it, so the rows take the band: pitch = rowh = (395 - 103 - 18 - 4) / 6 = 45,
+   six rows a page, and the box ends on the video page's own bottom line. */
 static const settingsGeom_s s_touchCol = {
-    "Touch", 50.0f, 170.0f, 226.0f, 139.0f, 46.0f, 325.0f, 28.0f, 22.0f
+    "Touch", 50.0f, 170.0f, 220.0f, 147.0f, 46.0f, 325.0f, 45.0f, 45.0f
 };
 
 #define SET_HEAD_H   14.0f
@@ -1725,9 +1729,12 @@ static const settingsGeom_s s_touchCol = {
 #endif
 
 /* the label column is one width everywhere; the longest label in the page's own font
-   sets it, so a translated string can never be cut by a width this table guessed */
+   sets it, so a translated string can never be cut by a width this table guessed.
+   The value box opens on the label box's own right edge: the shipped two-column pages
+   run the pair edge to edge (menu_advancedvideo 38+185=223 with its value at 223,
+   menu_gameoption 38+156=194 with its value at 194; menu_video/menu_audio leave 4). */
 #define SET_LABEL_PAD 8.0f
-#define SET_LABEL_GAP 6.0f
+#define SET_LABEL_GAP 0.0f
 
 /* Each target greys the one row it cannot honour: the handheld's surface is the whole
    window, so r_fullscreen has nothing to change, and the desktop's window is already the
@@ -2408,10 +2415,11 @@ static void SettingsTabCommand(int index)
 
 static void SettingsAdaptControls(UIWidget *container)
 {
-    UIWidget *tab;
-    float     bottom = 0.0f;
-    int       i;
-    int       built;
+    const settingsGeom_s touchCols[2] = {s_touchCol, s_touchCol};
+    UIWidget             *tab;
+    float                 bottom = 0.0f;
+    int                   i;
+    int                   built;
 
     s_settingsTooltipBar = "tooltip_controls";
 
@@ -2448,12 +2456,25 @@ static void SettingsAdaptControls(UIWidget *container)
         SettingsTabCommand(i);
     }
 
+    /* every width the helper lays out comes from cols[1]; a one-column page hands the
+       same column twice, and the header opens on the tab row's own bottom */
     built = SettingsBuildRows(container, s_touchRows,
                               (int)(sizeof(s_touchRows) / sizeof(s_touchRows[0])),
-                              &s_touchCol, 1, 126.0f, &bottom);
+                              touchCols, 1, SET_TAB_Y + SET_TAB_H, &bottom);
 
     /* hidden until the touch tab takes them: the shipped page showcommand only knows
-       the four bind tables, so the default tab stays Weapons */
+       the four bind tables, so the default tab stays Weapons.  The header and the box
+       are created after the tab commands ran, so they owe the same hide here. */
+    static const char *const touchFrame[] = {"TouchHead1", "TouchBox1", NULL};
+
+    for (i = 0; touchFrame[i]; i++) {
+        UIWidget *wid = container->FindWidget(touchFrame[i]);
+
+        if (wid) {
+            wid->Disable();
+        }
+    }
+
     for (i = 0; i < ( int )( sizeof( s_touchRows ) / sizeof( s_touchRows[0] ) ); i++) {
         UIWidget *lbl = container->FindWidget(va("Touch_%s_label", s_touchRows[i].cvar));
         UIWidget *ctl = container->FindWidget(va("Touch_%s", s_touchRows[i].cvar));
@@ -2532,7 +2553,7 @@ void UI_AdaptSettingsMenus(void)
 #endif
 
 #ifdef __ANDROID__
-        /* the controls page is the handheld's; the operator scoped the unified
+        /* the controls page is the handheld's; my order scoped the unified
            graphics page to graphics */
 #else
         /* the Linux build hides only the rows no renderer reads; the video page is

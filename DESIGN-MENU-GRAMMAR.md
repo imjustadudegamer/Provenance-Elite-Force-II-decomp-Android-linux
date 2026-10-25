@@ -53,13 +53,13 @@ end.
 
 `menu_video.urc:1-7`. The name is what everything else addresses: `transitionmenu video 0`
 (`menu_gameoption.urc`, the Video tab's `stuffcommand`), `Menu::GetContainerWidget`, and
-`UI_AdaptSettingsMenus`'s page test (`uimenu.cpp:2541`, `stricmp(container->getName(), "video")`).
+`UI_AdaptSettingsMenus`'s page test (`uimenu.cpp:2562`, `stricmp(container->getName(), "video")`).
 
 `background.inc` ships six `Widget` resources (`main_bkg_01` … `main_bkg_06`) and the `logo`,
 each with a **name and no title** (`personal/evidence/urc_retail2/background.inc`). That is
 the "titleless widget" convention: a pure paint resource. It matters twice — it draws before
 everything after it in the file, and any pass that keeps pages by *title* will drop it
-(which is what the first round of this lane did; `s_videoKeepNames` in `uimenu.cpp:2082`
+(which is what the first round of this lane did; `s_videoKeepNames` in `uimenu.cpp:2089`
 keeps them by name now).
 
 ---
@@ -107,7 +107,7 @@ its frame is authored in.** `UIWidget::getTitleWidth()` (`uiwidget.cpp:4195`) ca
 `uid.scaleRes[0]` when the widget is virtual (`uifont.cpp:322-328`). On my desktop
 that is x1.2536, on the Pixel 8 x3.135. Feed that straight into a `rect` and every label box is
 1.25x (or 3.1x) too wide, the value column is pushed off the page, and neighbouring boxes
-overlap. `SettingsTitleWidth` (`uimenu.cpp:1784`) is the port's one conversion point: measure,
+overlap. `SettingsTitleWidth` (`uimenu.cpp:1791`) is the port's one conversion point: measure,
 then divide by `uid.scaleRes[0]` if the widget is resizeable.
 
 Worked example, from my own screenshot (`OPSCREENSHOT3.png`, a desktop window):
@@ -208,16 +208,25 @@ another.** There is no "row" object. A row is two widgets that happen to share a
 
 The shipped geometry conventions, per page (authored units, from the parsed resources):
 
-| page | label | value | arrow | pitch |
-|---|---|---|---|---|
-| `menu_video` | x 162 w 156 | x 322 w 140 | x 462 w 16 | 20 (y 108, 128, 148, 168, 188) |
-| `menu_advancedvideo` | x 38 w 210 (left panel) / x 255 w 185 (right) | x 440 w 140 / x 223 w 140 | x 580 w 16 | 20 |
-| `menu_audio` | x 162 w 156 | x 322 w 156 (slider) or 140 (switch) | x 462 w 16 | 20 (y 107…207) |
-| `menu_gameoption` | x 38 w 156 / x 362 w 120 | x 194 w 156 / x 482 w 104 | x 586 w 16 | 20 |
-| `menu_controls` | four `Table`s at `46 124 325 255`, one per tab | — | — | the table's `itemheight` |
+| page | label | value | label→value | arrow | pitch |
+|---|---|---|---|---|---|
+| `menu_video` | x 162 w 156 | x 322 w 140 | **+4** | x 462 w 16 | 20 (y 108, 128, 148, 168, 188) |
+| `menu_audio` | x 162 w 156 | x 322 w 156 (slider) or 140 (switch) | **+4** | x 462 w 16 | 20 (y 107…207) |
+| `menu_advancedvideo` | x 38 w 185 / x 255 w 185 | x 223 w 140 / x 440 w 140 | **0** | x 580 w 16 | 20 |
+| `menu_gameoption` | x 38 w 156 / x 362 w 120 | x 194 w 156 / x 482 w 104 | **0** | x 586 w 16 | 20 |
+| `menu_controls` | four `Table`s at `46 124 325 255`, one per tab | — | — | — | the table's `itemheight` |
 
-Three things to copy from those numbers:
+Four things to copy from those numbers:
 
+* **The label box and the value box are one plate.** The value box's left edge sits on the
+  label box's own right edge on the two-column pages (`menu_advancedvideo` 38 + 185 = 223
+  with its value at 223, `menu_gameoption` 38 + 156 = 194 with its value at 194) and 4 past
+  it on the one-column pages (`menu_video`, `menu_audio`: 162 + 156 = 318, value at 322).
+  No shipped page puts a strip of page background between the two, and none overlaps the
+  pair — the two numbers above are the whole shipped range. This port's rebuild is the
+  two-column shape and carries `menu_advancedvideo`'s rows, so it takes the edge-to-edge rule
+  (`SET_LABEL_GAP 0`, `uimenu.cpp:1737`); a value box that opens 4 past the label plate is
+  the one-column pages' slack, not a rule.
 * **20 is the shipped row pitch, 16 is the shipped row height.** A page that needs more rows
   than fit uses a taller pitch and taller rows (this port's rebuild uses 26/26 — see the fill
   rule below — to fit eighteen rows in the same space, `uimenu.cpp:1699`).
@@ -271,6 +280,21 @@ against the description bar at 403.
 `SET_PAGE_Y + 3 × (14 + 4 + 3 × pitch + 4) + 2 × 4` = 395 at pitch 26 (three headers, three
 boxes, two inter-section gaps); if a row is added, the pitch is what gives, not the box.
 
+**The handheld's touch page follows the same rules with one band of its own.** It has no
+shipped page to copy (`menu_controls.urc` ships bind tables, not label+value rows), so the
+band it fills is the shipped controls page's own content area: x 46…371 — the shipped tabs run
+`46 87 162 16` … `209 104 163 16`, so 46…372, and the page's right column opens at 374 — with
+the same 4-unit pad before the first label (`s_touchCol`, `uimenu.cpp:1708`). Its one header
+opens on its own tab row's bottom, `SET_TAB_Y + SET_TAB_H` = 103, which is the same
+top-anchor rule the shipped pages follow with their own tab row. The six rows then take the
+whole band: **pitch = rowh = (395 − 103 − 18 − 4) / 6 = 45**, six rows a page, one section —
+so its box ends on the video page's own bottom line, 395, eight above the description bar at
+403. That is the one rule this page adds to the five: *the pitch is the band divided by the
+rows the page actually carries*, which is why its rows are 45 where the video page's are 26
+and both pages end on the same line. Six 45-unit rows are a finger target by construction —
+the row *is* the tap area, and the checkbox mark stays its own 16 × checkScale size
+(`uicheckbox.cpp:122`) centred in it.
+
 ---
 
 ## 5. Titles, `$$token$$`, and the two ways text resolves
@@ -280,7 +304,7 @@ boxes, two inter-section gaps); if a row is added, the pitch is what gives, not 
 the token. Two consequences:
 
 * a keep/hide test written in tokens will not match what `getTitle()` returns. Test **both**
-  (the port's `SettingsVideoKeeps`, `uimenu.cpp:2109`, compares the title *and* the token's
+  (the port's `SettingsVideoKeeps`, `uimenu.cpp:2116`, compares the title *and* the token's
   resolution).
 * a token that resolves to nothing leaves the title **empty**, and an empty title must never
   match a keep rule — otherwise every titleless background panel is "kept" by accident.
@@ -330,7 +354,7 @@ EF1's answer too: `s_video_fullscreen_list.generic.flags |= QMF_GRAYED`
 row leaves a hole in the grid and I cannot see that the setting exists.
 
 The grey set is **per target in both directions** (`SettingsRowIsGreyed`,
-`uimenu.cpp:1758`): the handheld greys `r_fullscreen` (its surface is the whole window, so
+`uimenu.cpp:1765`): the handheld greys `r_fullscreen` (its surface is the whole window, so
 the choice has nothing to change) and the desktop greys `android_aspect` (its window is
 already the video mode's own shape, and the rect consumer ignores the cvar there — see
 section 2). Each target's list is `s_videoDesktopRows` / `s_videoAndroidRows`; a row goes on
@@ -349,7 +373,7 @@ Two mechanisms that come with that, both paid for:
   `for` condition before the body writes it (`for (c = 0; c < 2 && !lbl; c++)`), so an
   uninitialised slot is a non-NULL "widget" that skips the walk and is then handed to
   `SettingsGreyRow`. That is how the 0.8.4 Android boot died in `Listener::ValidEvent` with
-  `this` = the rodata literal `"tooltip_video"` (`uimenu.cpp:2283` materialises it two lines
+  `this` = the rodata literal `"tooltip_video"` (`uimenu.cpp:2290` materialises it two lines
   above the loop): `UIWidget::FindWidget` (`uiwidget.cpp:4371`) can only return a live child
   or `NULL`, so the literal came from the stack, not the child list. Both compilers flag the
   shape (`-Wconditional-uninitialized` / `-Wmaybe-uninitialized` on the reduced loop); the
@@ -360,23 +384,30 @@ Two mechanisms that come with that, both paid for:
 
 ## 8. The port's own layer: adapt, keep, build
 
-`UI_AdaptSettingsMenus` (`uimenu.cpp:2498`) walks every top-level container once per UI init
+`UI_AdaptSettingsMenus` (`uimenu.cpp:2519`) walks every top-level container once per UI init
 and, per page:
 
 1. `AdaptHideRow` — the static per-page hide tables (`s_adaptRows`, `s_adaptRowsAndroid`,
    `uimenu.cpp:1551`): rows a renderer never reads, hidden by cvar name, widget name or
    shader name.
-2. `SettingsAdaptVideo` (`uimenu.cpp:2277`) — the graphics page is *rebuilt*: retail's own rows
-   are hidden by a keep list (`SettingsHideVideoRetail`, `uimenu.cpp:2142`), then the port's
-   own rows are created from one declarative table (`s_videoRows`, `uimenu.cpp:2177`) by
-   `SettingsBuildRows` (`uimenu.cpp:1941`).
+2. `SettingsAdaptVideo` (`uimenu.cpp:2290`) — the graphics page is *rebuilt*: retail's own rows
+   are hidden by a keep list (`SettingsHideVideoRetail`, `uimenu.cpp:2149`), then the port's
+   own rows are created from one declarative table (`s_videoRows`, `uimenu.cpp:2183`) by
+   `SettingsBuildRows` (`uimenu.cpp:1948`).
+3. `SettingsAdaptControls` (`uimenu.cpp:2416`, handheld only) — the controls page keeps its
+   four shipped bind tables and adds the fifth tab plus the touch rows, through the same
+   `SettingsBuildRows` and `s_touchRows`. A page built this way is *not* rebuilt on tab
+   switch: the tab command only enables its own rows and disables the rest
+   (`SettingsTabCommand`), and the header, the box and every row are created hidden and left
+   to that command — which is why they are disabled right after the build, since the tab
+   commands all ran *before* the widgets existed.
 
 `SettingsBuildRows` is the layout model, and it is deliberately one model:
 
 * the table is walked once; a `section` entry opens a full-width header plus a panel box and
   resets the row counter; each row takes the next slot — left, right, left, right — one band
-  per two rows (`uimenu.cpp:1997`);
-* each built row **remembers its slot** (`rowy[]`, `rowcol[]`, `uimenu.cpp:2029`), so the
+  per two rows (`uimenu.cpp:2005`);
+* each built row **remembers its slot** (`rowy[]`, `rowcol[]`, `uimenu.cpp:2036`), so the
   second half of the pass re-issues the final rectangles from the recorded slot instead of
   recounting the table. The original code recounted it and dropped a slot at every section
   boundary: every row after a section header was re-issued one slot early, which walked
@@ -385,11 +416,22 @@ and, per page:
   Detail Surfaces and Detail Textures at the same rectangle. **A pass that lays out rows must
   not walk the row table twice with two counters.**
 * the label column is one width for the whole page, taken from the longest label the page
-  carries, measured in authored units (`SettingsTitleWidth`, `uimenu.cpp:1784`); the value
+  carries, measured in authored units (`SettingsTitleWidth`, `uimenu.cpp:1791`); the value
   column keeps its right edge and gives up the difference. One label width, one value width,
-  per column pair, is what makes the columns line up across bands.
+  per column pair, is what makes the columns line up across bands — and it is why the
+  label→value offset is a constant: the value box opens on the label box's right edge
+  (`SET_LABEL_GAP`, section 4), so the measured label width cannot open a slit.
+* **every width the helper lays out comes from `cols[1]`** — the section header's and the
+  panel box's width is `cols[1].boxx + cols[1].boxw − cols[0].boxx`, whatever `ncols` says,
+  because a one-column page is two names for one column. A one-column page must therefore
+  hand it the same column twice (`const settingsGeom_s cols[2] = {s_touchCol, s_touchCol}`);
+  handing it the one-element array reads past the array, and the header and the box take
+  their width from whatever the linker put next. On the touch page that was the whole
+  defect's second half: the six rows drew and neither the header nor the box did, so the
+  page read as six floating plates over a hole. **A caller's array must have the elements
+  the callee's contract names, not the ones this call happens to read.**
 * a page builds once. The guard must test a widget that is actually created
-  (`VidLHead1`, the first section header, `uimenu.cpp:2286`) — the previous guard tested a name
+  (`VidLHead1`, the first section header, `uimenu.cpp:2293`) — the previous guard tested a name
   nothing was ever given, so every UI re-init (every `vid_restart`) built the page again on top
   of itself.
 
@@ -423,7 +465,7 @@ The short path, on the graphics page (any other page: same steps, different tabl
    row is a lie — that is how `r_texturebits`, `r_texturemode`, `r_allowExtensions`,
    `r_arb_multisample`, `r_ext_nv_multisample_filter` and `r_anisotropicFiltering` were all
    cut (DESIGN.md 2.2 carries the proof per cvar). Note whether it is `CVAR_LATCH`.
-2. **Add the row to `s_videoRows`** (`uimenu.cpp:2177`). A SwitchBox needs one
+2. **Add the row to `s_videoRows`** (`uimenu.cpp:2184`). A SwitchBox needs one
    `{"<label>", "set <cvar> <value>", "<value>"}` triple per choice; a CheckBox needs nothing
    but the label; a Slider needs `lo, hi, step, type`. Set `latched = 1` when the cvar is
    `CVAR_LATCH` — that is what attaches the auto-apply restart.
@@ -432,12 +474,12 @@ The short path, on the graphics page (any other page: same steps, different tabl
    the hole on purpose.
 4. **If the row is per-target**, add its cvar to the list of the target that *cannot* honour
    it — `s_videoDesktopRows` (greyed on the handheld) or `s_videoAndroidRows` (greyed on the
-   desktop), both next to `SettingsRowIsGreyed` (`uimenu.cpp:1738`). It is then built on both
+   desktop), both next to `SettingsRowIsGreyed` (`uimenu.cpp:1745`). It is then built on both
    targets and greyed on one — not hidden, so the page keeps its shape — and if the row's
    cvar changes geometry, gate the consumer the same way (`SCR_AndroidDisplayRect`,
    `cg_view.c`), because a greyed row's cvar is still archived. Look the row's widgets up
    through the prefix of the column it actually landed in (`SettingsAdaptVideo`,
-   `uimenu.cpp:2309`): the widget name carries the column prefix, so a row that landed right
+   `uimenu.cpp:2316`): the widget name carries the column prefix, so a row that landed right
    is `VidR_<cvar>`, not `VidL_<cvar>`.
 5. **Never invent a cvar.** Every row drives one the engine already registers, so the
    launcher's per-boot override chain (`personal/scripts/play_ef2_decomp.sh`) and
