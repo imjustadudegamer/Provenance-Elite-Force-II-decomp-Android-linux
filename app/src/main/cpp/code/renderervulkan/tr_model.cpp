@@ -1019,9 +1019,13 @@ static void R_SkelCullWhere(
 
 /* The drop sites here are silent in the reference: PRINT_DEVELOPER never reaches
    a device log, so every gate answers through one of these two rows instead. */
+const char *r_skelDropWhy;
+
 static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
 {
     static int rows;
+
+    r_skelDropWhy = why;
 
     /* fade0 happens on every weapon switch: master gate */
     if (!PROBE_On()) {
@@ -1029,8 +1033,8 @@ static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
     }
 
     if (rows < 8 || (rows % 600) == 0) {
-        ri.Printf(PRINT_ALL, "[VK:skeldrop] why=%s model='%s' anim=%d frame=%d oldanim=%d oldframe=%d f=%d\n",
-                  why, tiki->a->name ? tiki->a->name : "?",
+        ri.Printf(PRINT_ALL, "[VK:skeldrop] ent=%d why=%s model='%s' anim=%d frame=%d oldanim=%d oldframe=%d f=%d\n",
+                  ent->e.entityNumber, why, tiki->a->name ? tiki->a->name : "?",
                   ent->e.anim, (int)ent->e.frame,
                   ent->e.oldanim, (int)ent->e.oldframe, RB_FrameCount());
     }
@@ -1087,7 +1091,8 @@ static int R_SkelCullBoxVerdict(const vec3_t bounds[2])
         int front = 0, back = 0;
 
         for (j = 0; j < 8; j++) {
-            float d = DotProduct(transformed[j], frust->normal) - frust->dist;
+            /* R_CullLocalBoxOffset compares the raw dot against frust->dist */
+            float d = DotProduct(transformed[j], frust->normal);
 
             if (d > frust->dist) {
                 front = 1;
@@ -1172,9 +1177,10 @@ static void R_SkelCullWhere(
 
         ri.Printf(
             PRINT_ALL,
-            "[VK:skelcull] model='%s' org=(%.1f,%.1f,%.1f) radius=%.1f dist=%.1f "
+            "[VK:skelcull] ent=%d model='%s' org=(%.1f,%.1f,%.1f) radius=%.1f dist=%.1f "
             "fwd=%.1f side=%.1f up=%.1f behind=%d"
             " plane=%.1f sphere=%s box=%s nna=%d xb=%d ofr=%.1f\n",
+            e->entityNumber,
             e->tiki && e->tiki->a->name ? e->tiki->a->name : "?",
             worldOrg[0], worldOrg[1], worldOrg[2], radius,
             sqrtf(delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]),
@@ -1195,6 +1201,8 @@ static void R_SkelDropFrame(const char *why, dtiki_t *tiki, trRefEntity_t *ent){
     int numSkan     = 0;
     skelAnimHeaderRec_t *hdr = ri.TIKI_Skan_FindByAnim(tiki, ent->e.anim);
 
+    r_skelDropWhy = why;
+
     if (hdr) {
         numSkan = hdr->numFrames;
     }
@@ -1205,8 +1213,8 @@ static void R_SkelDropFrame(const char *why, dtiki_t *tiki, trRefEntity_t *ent){
 
         if (PROBE_On() && (rows < 8 || (rows % 600) == 0)) {
             ri.Printf(PRINT_ALL,
-                      "[VK:skeldrop] why=%s model='%s' anim=%d frame=%d skanframes=%d tanframes=%d animframes=%d f=%d\n",
-                      why, tiki->a->name ? tiki->a->name : "?",
+                      "[VK:skeldrop] ent=%d why=%s model='%s' anim=%d frame=%d skanframes=%d tanframes=%d animframes=%d f=%d\n",
+                      ent->e.entityNumber, why, tiki->a->name ? tiki->a->name : "?",
                       ent->e.anim, (int)ent->e.frame, numSkan, numTan, numFrames, RB_FrameCount());
         }
         rows++;
