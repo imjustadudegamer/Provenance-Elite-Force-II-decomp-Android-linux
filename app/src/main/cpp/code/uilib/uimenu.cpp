@@ -504,6 +504,16 @@ void Menu::ResetCVars(void)
         UIWidget *wid = m_itemlist.ObjectAt(i);
 
         if (wid->m_cvarname.length()) {
+            /* the dlight hunt: a reset lands on the cvar's reset string, which a
+               pak `setd' may have rewritten -- name the pair */
+            if (PROBE_On()) {
+                cvar_t *cv = uii.Cvar_Find(wid->m_cvarname.c_str());
+
+                PROBE_PRINT("[UI:cvarreset] menu='%s' %s -> '%s'\n", m_name.c_str(),
+                            wid->m_cvarname.c_str(),
+                            cv ? (cv->latchedString ? cv->latchedString : cv->resetString) : "-");
+            }
+
             uii.Cvar_Reset(wid->m_cvarname);
         }
     }
@@ -1911,9 +1921,11 @@ static UIWidget *SettingsCheckBox(
     AdaptCommand(wid, "horizontaljustify", "left", NULL);
     AdaptCommand(wid, "clicksound", "sound/misc/menu/click.wav", NULL);
 
-    /* the mark fills the row instead of sitting 16px inside a taller one */
+    /* the mark fills the row instead of sitting 16px inside a taller one, and it
+       starts at the cvar: a row built from a table has no state of its own */
     if (wid->isSubclassOf(UICheckBox)) {
         ((UICheckBox *)wid)->setCheckScale(1.3f);
+        ((UICheckBox *)wid)->UpdateData();
     }
 
     if (row->latched) {

@@ -673,12 +673,29 @@ gone the page owns what it read, which is the contract this round's other items 
 against: with `r_dynamiclight 1` and `r_flares 1` in the config, opening the page shows both
 on and leaves the config byte-identical but for a float-format resave.
 
+**Round 4, on my own boot chain:** with `r_dynamiclight 1` patched into the config and no
+menu visit at all, the session ran and the config came back 0 — so the boot chain is not the
+writer and the row is exonerated as the black root. The read that closes the defaults
+question: `global/game.cfg` execs before config.cfg by design (`common.c:1550-1554`, "so the
+archived config wins"), `cvar_inConfig` clears the `setd` marker on everything the config
+writes (`cvar.c:504`), and `R_RegisterLightCvar` (`tr_init.c:171`) re-applies the code
+default only while the marker stands — once a boot, because the apply consumes it. What a
+`0` on this one row has to explain is the selectivity: every other checkbox cvar held. This
+row is the only one whose **reset string** the shipped data rewrote, and `Cvar_Reset`
+(`cvar.c:646`) lands on the reset string — so a reset-to-reset-string path reads as "every
+row held, this one went back to 0". Nothing in the tree fires one today, so the writes are
+instrumented instead of guessed: `[UIVK:dlight]` names every write to the cvar and who made
+it, and the `cvar_set2` choke point prints the writer's own return address, so one boot
+closes it.
+
 One more trap recorded rather than changed, because retail has it too: `UICheckBox::Draw`
 (`uicheckbox.cpp:139`) calls `UpdateCvar` while the widget is **disabled**, and `UpdateCvar`
 zeroes `m_checked` first (`uicheckbox.cpp:214`) — so a greyed checkbox would zero its own
-cvar every frame it drew. Retail's `UICheckBox::Draw @0x00054E70` does the same, so it
-stands; both greyed rows in this port are SwitchBoxes, whose `Draw` only reads. Never grey a
-CheckBox row.
+cvar every frame it drew. Retail's `UICheckBox::Draw @0x00054E70` and `UpdateCvar
+@0x00054770` are the same shape, so they stand; both greyed rows in this port are
+SwitchBoxes, whose `Draw` only reads. Never grey a CheckBox row, and a row built from a
+table seeds its mark from the cvar at build (`uimenu.cpp:1928`) so the page never writes a
+state it invented.
 
 
 

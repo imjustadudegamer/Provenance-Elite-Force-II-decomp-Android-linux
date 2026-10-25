@@ -23,6 +23,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 #include "tr_vbo.h"
+
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
 #include "tr_program.h"
 #include "gles3_firstlight.h"
 
@@ -1127,6 +1131,10 @@ static cvar_t *R_RegisterLightCvar( const char *name, const char *value )
 
 	if ( cv->defaultRecorded ) {
 		ri.Cvar_Set( name, value );
+		cv->defaultRecorded = qfalse;    /* once a boot: my own session value owns the rest of it */
+		if ( PROBE_On() ) {
+			PROBE_EMIT( "[GLES3:", "dlight", "site=register %s='%s'\n", name, value );
+		}
 	}
 
 	return cv;

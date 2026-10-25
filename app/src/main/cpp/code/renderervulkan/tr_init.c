@@ -174,6 +174,10 @@ static cvar_t *R_RegisterLightCvar( const char *name, const char *value )
 
 	if ( cv->defaultRecorded ) {
 		ri.Cvar_Set( name, value );
+		cv->defaultRecorded = qfalse;    /* once a boot: my own session value owns the rest of it */
+		if ( PROBE_On() ) {
+			PROBE_EMIT( "[UIVK:", "dlight", "site=register %s='%s'\n", name, value );
+		}
 	}
 
 	return cv;

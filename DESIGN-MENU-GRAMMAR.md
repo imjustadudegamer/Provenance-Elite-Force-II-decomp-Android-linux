@@ -377,6 +377,24 @@ value came from the shipped data went back to the shipped data's value. That is 
 "my toggles do not hold" shape, and it is one flag: `PopMenu(qfalse)`
 (`cl_ui.cpp:1728`), retail's own argument.
 
+The boot chain is not one of the writers, and the read of it is the reason: `global/game.cfg`
+execs before config.cfg by design (`common.c:1550-1554`, "so the archived config wins"),
+`cvar_inConfig` clears the `setd` marker on everything the config writes (`cvar.c:504`), and
+`R_RegisterLightCvar` re-applies the code default only while that marker stands
+(`tr_init.c:171`) — once a boot, because the apply consumes it. A config carrying 1 therefore
+runs the session at 1, which is what makes the one row that still came back 0 a writer hunt
+and not a defaults question.
+
+What a writer of `0` on this one row has to explain is the selectivity: every other checkbox
+cvar on the page held its value through the same visit. `r_dynamiclight` is the only row whose
+**reset string** the shipped data rewrote — `Cvar_Reset` lands on `resetString`
+(`cvar.c:646`), and `global/game.cfg`'s `setd r_dynamiclight 0` made that string `0`, while
+the other rows' reset strings are their own held values. So any path that resets to the reset
+string reads as "every row held, this one went back to 0". Nothing in the tree fires one today
+(`ui_resetcvars` has no caller, and `Menu::ResetCVars` prints now so a boot can rule it in),
+which is why the writes are instrumented instead of guessed: one boot names every write to
+this cvar and who made it.
+
 Two more writers live in the widget classes and both are retail's own, so they are recorded
 here rather than changed:
 
@@ -388,9 +406,11 @@ here rather than changed:
 * `UICheckBox::Draw` (`uicheckbox.cpp:139`) calls `UpdateCvar` while the widget is
   **disabled** — and `UpdateCvar` (`uicheckbox.cpp:214`) forces `m_checked` to 0 first, so a
   greyed checkbox zeroes its own cvar every frame it draws. Retail's `UICheckBox::Draw`
-  @0x00054E70 does exactly the same, so it stays; the rule it imposes is never to grey a
-  CheckBox row. Both greyed rows in this port are SwitchBoxes, whose `Draw`
-  (`uiswitchbox.cpp:349`) only reads.
+  @0x00054E70 and `UpdateCvar` @0x00054770 are byte-for-byte the same shape, so both stay;
+  the rule they impose is never to grey a CheckBox row, and a row built from a table seeds
+  its mark from the cvar at build (`SettingsCheckBox` calls `UpdateData` after `linkcvar`,
+  `uimenu.cpp:1928`), so the page never writes a state it invented. Both greyed rows in this
+  port are SwitchBoxes, whose `Draw` (`uiswitchbox.cpp:349`) only reads.
 
 ### 6.1 A row's options and a row's default are both shipped facts
 
@@ -556,6 +576,9 @@ show:
 | `[UI:switchopt] cvar= cmd= label=` | every SwitchBox selection |
 | `[UI:cvarsave] menu= <cvar>='<v>'` | what a page snapshotted at push — one row per linked cvar |
 | `[UI:cvarrestore] menu= <cvar>='<v>'` | a page writing its snapshot back. **Leaving a settings page must print none of these**; the only arm left that restores is the console's own `popmenu 1` |
+| `[UI:cvarreset] menu= <cvar> -> '<reset string>'` | a page resetting its rows — the string a pak `setd` may have rewritten, so what it names is not the shipped default |
+| `[UIVK:dlight] site=drawread cvar=N state=S` | what the Dynamic Lights row read and the widget state it drew in (`4` = disabled, the one state that writes) |
+| `[UIVK:dlight] site=<who> write=N state=S`, `site=cvar_set2 old= new= force= from=<addr>` | every write to `r_dynamiclight`, named: `draw-disabled`, `charevent`, `released`, the renderer's `register`, and the `cvar_set2` choke point whose `from` is the writer's own return address — one boot names a writer no other probe owns |
 
 ---
 

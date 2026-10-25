@@ -46,7 +46,7 @@ private:
     void CharEvent(int ch) override;
     void Pressed(Event *ev) override;
     void Released(Event *ev);
-    void UpdateCvar(void);
+    void UpdateCvar(const char *from);
     void MouseEntered(Event *ev) override;
     void MouseExited(Event *ev) override;
     void SetCheckedCommand(Event *ev);

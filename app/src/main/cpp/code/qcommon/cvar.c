@@ -24,6 +24,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "q_shared.h"
 #include "qcommon.h"
 
+#define PROBE_GET(name, def, flags) Cvar_FindVar(name)
+#define PROBE_PRINT                 Com_Printf
+#include "qa_probe.h"
+
 cvar_t		*cvar_vars = NULL;
 cvar_t		*cvar_cheats;
 int			cvar_modifiedFlags;
@@ -509,6 +513,13 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 
 	if (!value ) {
 		value = var->resetString;
+	}
+
+	/* the dlight hunt: the one cvar's writes, named at the choke point */
+	if ( PROBE_On() && !strcmp( var_name, "r_dynamiclight" ) ) {
+		PROBE_EMIT( "[UIVK:", "dlight",
+			    "site=cvar_set2 old='%s' new='%s' force=%i from=%p",
+			    var->string, value, force, __builtin_return_address(0) );
 	}
 
 	value = Cvar_Validate(var, value, qtrue);
