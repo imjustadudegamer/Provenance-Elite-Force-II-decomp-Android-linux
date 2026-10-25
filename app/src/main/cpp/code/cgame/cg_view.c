@@ -32,20 +32,24 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 void CG_AndroidDisplayRect( int surfaceW, int surfaceH, int *outX, int *outY, int *outW, int *outH )
 {
-    int   mode   = cg_android_aspect ? cg_android_aspect->integer : 0;
-    float target = 0.0f;
-
     if ( outX ) *outX = 0;
     if ( outY ) *outY = 0;
     if ( outW ) *outW = surfaceW;
     if ( outH ) *outH = surfaceH;
+
+#ifndef __ANDROID__
+    /* same rule as SCR_AndroidDisplayRect: the handheld's letterbox, ignored on desktop */
+    return;
+#else
+    int   mode   = cg_android_aspect ? cg_android_aspect->integer : 0;
+    float target = 0.0f;
 
     if ( mode == 1 ) {
         target = 16.0f / 9.0f;
     } else if ( mode == 2 ) {
         target = 4.0f / 3.0f;
     } else {
-        return;    
+        return;
     }
 
     if ( surfaceW <= 0 || surfaceH <= 0 ) {
@@ -65,6 +69,7 @@ void CG_AndroidDisplayRect( int surfaceW, int surfaceH, int *outX, int *outY, in
         if ( outH ) *outH = h;
         if ( outY ) *outY = ( surfaceH - h ) / 2;
     }
+#endif
 }
 
 static void CG_CalcVrect(void)

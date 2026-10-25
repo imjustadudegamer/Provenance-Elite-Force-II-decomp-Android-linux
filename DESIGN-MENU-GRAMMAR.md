@@ -53,13 +53,13 @@ end.
 
 `menu_video.urc:1-7`. The name is what everything else addresses: `transitionmenu video 0`
 (`menu_gameoption.urc`, the Video tab's `stuffcommand`), `Menu::GetContainerWidget`, and
-`UI_AdaptSettingsMenus`'s page test (`uimenu.cpp:2496`, `stricmp(container->getName(), "video")`).
+`UI_AdaptSettingsMenus`'s page test (`uimenu.cpp:2541`, `stricmp(container->getName(), "video")`).
 
 `background.inc` ships six `Widget` resources (`main_bkg_01` … `main_bkg_06`) and the `logo`,
 each with a **name and no title** (`personal/evidence/urc_retail2/background.inc`). That is
 the "titleless widget" convention: a pure paint resource. It matters twice — it draws before
 everything after it in the file, and any pass that keeps pages by *title* will drop it
-(which is what the first round of this lane did; `s_videoKeepNames` in `uimenu.cpp:2049`
+(which is what the first round of this lane did; `s_videoKeepNames` in `uimenu.cpp:2082`
 keeps them by name now).
 
 ---
@@ -77,11 +77,17 @@ uid.scaleRes[0] = (float)uid.vidWidth  / 640.0f;
 uid.scaleRes[1] = (float)uid.vidHeight / 480.0f;
 ```
 
-`dw/dh` come from `SCR_AndroidDisplayRect` (`cl_scrn.cpp:51-86`): the whole surface, unless
-`android_aspect` asks for 16:9 or 4:3, in which case a centred rect of that aspect. **The two
-axes scale independently** — a 1600x1000 window gives `scaleRes = (2.484, 2.066)`. Nothing in
-the authored data may assume a square scale; a length measured on one axis is not valid on
-the other.
+`dw/dh` come from `SCR_AndroidDisplayRect` (`cl_scrn.cpp:51`): the whole surface, unless
+`android_aspect` asks for 16:9 or 4:3, in which case a centred rect of that aspect. **The
+rect is the handheld's only** — on the desktop the function returns the whole window
+unconditionally (`cl_scrn.cpp:58-61`, and `CG_AndroidDisplayRect` the same at
+`cg_view.c:40-41`), because the desktop window is already the video mode's own shape
+(`r_mode` owns it, retail ships no aspect row) and a letterbox inside a window this page
+cannot resize only squashes the page. Inside the rect **the two axes scale independently**
+— a 1600x1000 window gives `scaleRes = (2.484, 2.066)`. Nothing in the authored data may
+assume a square scale; a length measured on one axis is not valid on the other. (A 4:3
+request on the handheld yields a square scale, which is why the row is live there: the
+640x480 page lands undistorted inside the bars.)
 
 A widget's authored frame is latched once and re-scaled on every resolution change
 (`UIWidget::ChangeResolution`, `uilib/uiwidget.cpp:2984`):
@@ -101,7 +107,7 @@ its frame is authored in.** `UIWidget::getTitleWidth()` (`uiwidget.cpp:4195`) ca
 `uid.scaleRes[0]` when the widget is virtual (`uifont.cpp:322-328`). On the operator's desktop
 that is x1.2536, on the Pixel 8 x3.135. Feed that straight into a `rect` and every label box is
 1.25x (or 3.1x) too wide, the value column is pushed off the page, and neighbouring boxes
-overlap. `SettingsTitleWidth` (`uimenu.cpp:1758`) is the port's one conversion point: measure,
+overlap. `SettingsTitleWidth` (`uimenu.cpp:1784`) is the port's one conversion point: measure,
 then divide by `uid.scaleRes[0]` if the widget is resizeable.
 
 Worked example, from the operator's own screenshot (`OPSCREENSHOT3.png`, a desktop window):
@@ -213,8 +219,8 @@ The shipped geometry conventions, per page (authored units, from the parsed reso
 Three things to copy from those numbers:
 
 * **20 is the shipped row pitch, 16 is the shipped row height.** A page that needs more rows
-  than fit uses a taller pitch and taller rows (this port's rebuild uses 28/22 to fit
-  eighteen rows in the same space, `uimenu.cpp:1683-1738`).
+  than fit uses a taller pitch and taller rows (this port's rebuild uses 26/26 — see the fill
+  rule below — to fit eighteen rows in the same space, `uimenu.cpp:1699`).
 * **a section is a pair of widgets: a `Label` header with a background colour, and a `Widget`
   box behind its rows.** `menu_video.urc:11-35` (`VideoBackground`, `rect 157 87 326 16` then
   `rect 157 103 326 105`); the header is 16 tall, the box starts 16 below the header's top and
@@ -226,7 +232,44 @@ Three things to copy from those numbers:
   button at `rect 424 401 123 26` (`stuffcommand "ui_checkrestart"`), the Back/Main Menu
   button at `rect 435 428 96 32`, and an unamed `widget` at `rect 371 399 256 32` holding the
   `menu/main/credits` shader. Anything a rebuild adds must fit between the tab row and the
-  description bar: **authored y 92 … 398** is the whole usable band.
+  description bar: **authored y 87 … 399** is the whole usable band.
+
+### 4.1 The fill rule (where the shipped data puts every edge)
+
+The shipped pages answer every layout question the same way, and none of them stretches or
+centres a row to fill space:
+
+* **The content band is top-anchored at the tab row's bottom.** The tab row is
+  `y 55 … 87` and the first section header of all four settings pages is at `y 87`
+  (`menu_video` 157/87, `menu_advancedvideo` 34/87 and 251/87, `menu_audio` 157/87,
+  `menu_gameoption` 34/87 and 359/87). Nothing floats; there is no centred page anywhere.
+* **The content band is x 34 … 606, with a 4-unit pad before the first label.** The widest
+  shipped content is `menu_gameoption` (`34 103 320 104` and `359 103 247 104` → 34…606) and
+  `menu_advancedvideo` (`34 …` and `251 103 349 144` → 34…600); the first label inside each
+  panel sits at x 38. The LCARS art's interior runs ~17…622, so that band is retail's own
+  17-unit margin on each side.
+* **A panel box is set by what follows it, never by its own rows.** A box ends 4 units above
+  the next section header (`menu_advancedvideo` box `103…247`, next header 251) and the last
+  section's box ends 4 under its tallest column (`menu_advancedvideo` §1 right: rows
+  107…243, box `103…247`). Side-by-side panels share one bottom edge and the taller column
+  sets it (`menu_advancedvideo` §1: both panels `103…247`, the right one's 7 rows against the
+  left one's 5; `menu_gameoption` §1/§3 both `103…207`).
+* **The shipped dead space is authored.** A short column leaves its tail inside the box:
+  `menu_video` §2's box runs to 333 over a last row at 301, `menu_audio`'s single box runs to
+  303 over a last row at 223. Retail never tightens the pitch to close it.
+* **The pitch never varies within a page.** Every settings page is 20/16 end to end.
+
+This port's rebuild follows all five: content x 34…606 (`s_videoCol`,
+`uimenu.cpp:1699`), first header at 87 (`SET_PAGE_Y`), section = header 14 + gap 4, box
+hugging its rows with the shipped 4-unit tail, and a **pitch of 26 with a row height of 26** —
+the pitch is set to the row height, because eighteen rows in the 87…399 band leave room for
+exactly 9 × 26 and the shipped ratio (row 16 of a 20 band) would otherwise put 6 loose units
+inside every band. The page bottoms out at 395, one unit off `menu_advancedvideo`'s own 396,
+against the description bar at 403.
+
+**Do not re-derive the page's bottom by eye.** The band is
+`SET_PAGE_Y + 3 × (14 + 4 + 3 × pitch + 4) + 2 × 4` = 395 at pitch 26 (three headers, three
+boxes, two inter-section gaps); if a row is added, the pitch is what gives, not the box.
 
 ---
 
@@ -237,7 +280,7 @@ Three things to copy from those numbers:
 the token. Two consequences:
 
 * a keep/hide test written in tokens will not match what `getTitle()` returns. Test **both**
-  (the port's `SettingsVideoKeeps`, `uimenu.cpp:2076`, compares the title *and* the token's
+  (the port's `SettingsVideoKeeps`, `uimenu.cpp:2109`, compares the title *and* the token's
   resolution).
 * a token that resolves to nothing leaves the title **empty**, and an empty title must never
   match a keep rule — otherwise every titleless background panel is "kept" by accident.
@@ -264,7 +307,7 @@ comes down, and `vid_restart` is the only thing that brings it down
 (`CL_Vid_Restart_f`, `cl_main.cpp:1003` → `CL_ShutdownRef`/`CL_InitRef` → `R_SetMode` again,
 which is what recreates the SDL window with the new `r_fullscreen`,
 `vk_platform.c:456`/`:492`/`369-371`). Retail's own Apply button ran `ui_checkrestart`
-(`menu_video.urc:208`); this port's shape is the auto-apply (`uimenu.cpp:757`): every latched
+(`menu_video.urc:208`); this port's shape is the auto-apply (`uimenu.cpp:754`): every latched
 row records what its cvar read when the page was built (`SettingsBaselineRecord`,
 `uimenu.cpp:722`), a row write pokes `ui_settingsautoapply`, and a settle window later the
 restart lands once (`UI_SettingsAutoApplyFrame`, `uimenu.cpp:785`). Cycling a row back to its
@@ -286,27 +329,54 @@ EF1's answer too: `s_video_fullscreen_list.generic.flags |= QMF_GRAYED`
 (`VoyagerNX_Android .../efgame/src/ui/ui_video.cpp:410`). **Hiding is not greying** — a hidden
 row leaves a hole in the grid and the operator cannot see that the setting exists.
 
+The grey set is **per target in both directions** (`SettingsRowIsGreyed`,
+`uimenu.cpp:1758`): the handheld greys `r_fullscreen` (its surface is the whole window, so
+the choice has nothing to change) and the desktop greys `android_aspect` (its window is
+already the video mode's own shape, and the rect consumer ignores the cvar there — see
+section 2). Each target's list is `s_videoDesktopRows` / `s_videoAndroidRows`; a row goes on
+the list of the target that cannot honour it, and the row is still built on both, so the
+page keeps its shape. One row, one list, and the row's state is the only thing that is per
+target.
+
+Two mechanisms that come with that, both paid for:
+
+* **The consumer is gated with the row.** A greyed row is inert but its cvar is still
+  archived, so a value saved on the other target must not keep working here —
+  `SCR_AndroidDisplayRect`/`CG_AndroidDisplayRect` return the whole surface off-Android
+  (`cl_scrn.cpp:61`, `cg_view.c:41`), which is also what makes the desktop's bars and mouse
+  mapping bit-identical to a build without the feature.
+* **The walk that greys must initialise its finds.** The grey loop reads `lbl` in its own
+  `for` condition before the body writes it (`for (c = 0; c < 2 && !lbl; c++)`), so an
+  uninitialised slot is a non-NULL "widget" that skips the walk and is then handed to
+  `SettingsGreyRow`. That is how the 0.8.4 Android boot died in `Listener::ValidEvent` with
+  `this` = the rodata literal `"tooltip_video"` (`uimenu.cpp:2283` materialises it two lines
+  above the loop): `UIWidget::FindWidget` (`uiwidget.cpp:4371`) can only return a live child
+  or `NULL`, so the literal came from the stack, not the child list. Both compilers flag the
+  shape (`-Wconditional-uninitialized` / `-Wmaybe-uninitialized` on the reduced loop); the
+  full function is too tangled for either, which is why the gate missed it. Declare the
+  finds `= NULL`.
+
 ---
 
 ## 8. The port's own layer: adapt, keep, build
 
-`UI_AdaptSettingsMenus` (`uimenu.cpp:2455`) walks every top-level container once per UI init
+`UI_AdaptSettingsMenus` (`uimenu.cpp:2498`) walks every top-level container once per UI init
 and, per page:
 
 1. `AdaptHideRow` — the static per-page hide tables (`s_adaptRows`, `s_adaptRowsAndroid`,
-   `uimenu.cpp:1550-1556`): rows a renderer never reads, hidden by cvar name, widget name or
+   `uimenu.cpp:1551`): rows a renderer never reads, hidden by cvar name, widget name or
    shader name.
-2. `SettingsAdaptVideo` (`uimenu.cpp:2244`) — the graphics page is *rebuilt*: retail's own rows
-   are hidden by a keep list (`SettingsHideVideoRetail`, `uimenu.cpp:2109`), then the port's
-   own rows are created from one declarative table (`s_videoRows`, `uimenu.cpp:2144`) by
-   `SettingsBuildRows` (`uimenu.cpp:1915`).
+2. `SettingsAdaptVideo` (`uimenu.cpp:2277`) — the graphics page is *rebuilt*: retail's own rows
+   are hidden by a keep list (`SettingsHideVideoRetail`, `uimenu.cpp:2142`), then the port's
+   own rows are created from one declarative table (`s_videoRows`, `uimenu.cpp:2177`) by
+   `SettingsBuildRows` (`uimenu.cpp:1941`).
 
 `SettingsBuildRows` is the layout model, and it is deliberately one model:
 
 * the table is walked once; a `section` entry opens a full-width header plus a panel box and
   resets the row counter; each row takes the next slot — left, right, left, right — one band
-  per two rows (`uimenu.cpp:1958-1960`);
-* each built row **remembers its slot** (`rowy[]`, `rowcol[]`, `uimenu.cpp:1998-1999`), so the
+  per two rows (`uimenu.cpp:1997`);
+* each built row **remembers its slot** (`rowy[]`, `rowcol[]`, `uimenu.cpp:2029`), so the
   second half of the pass re-issues the final rectangles from the recorded slot instead of
   recounting the table. The original code recounted it and dropped a slot at every section
   boundary: every row after a section header was re-issued one slot early, which walked
@@ -315,11 +385,11 @@ and, per page:
   Detail Surfaces and Detail Textures at the same rectangle. **A pass that lays out rows must
   not walk the row table twice with two counters.**
 * the label column is one width for the whole page, taken from the longest label the page
-  carries, measured in authored units (`SettingsTitleWidth`, `uimenu.cpp:1750`); the value
+  carries, measured in authored units (`SettingsTitleWidth`, `uimenu.cpp:1784`); the value
   column keeps its right edge and gives up the difference. One label width, one value width,
   per column pair, is what makes the columns line up across bands.
 * a page builds once. The guard must test a widget that is actually created
-  (`VidLHead1`, the first section header, `uimenu.cpp:2255`) — the previous guard tested a name
+  (`VidLHead1`, the first section header, `uimenu.cpp:2286`) — the previous guard tested a name
   nothing was ever given, so every UI re-init (every `vid_restart`) built the page again on top
   of itself.
 
@@ -338,7 +408,7 @@ show:
 | `[UIVK:settings] op=hide menu='video' hidden=N art=N` | the shipped rows going away, and the LCARS art kept |
 | `[UIVK:settings] op=build menu='video' rows=N bottom=M` | the rebuild, and where its content ends (the description bar is at 403) |
 | `[UIVK:settings] op=labelw authored=A measured=M` | the label column was widened past the authored guess |
-| `[UIVK:settings] op=row cvar=<cvar> state=live\|greyed target=desktop\|android` | the target-scoped row's state |
+| `[UIVK:settings] op=row cvar=<cvar> state=live\|greyed target=desktop\|android` | each per-target row's state on this target: `r_fullscreen` is greyed on Android, `android_aspect` on the desktop, and the other one prints `live` |
 | `[UIVK:settings] op=autoapply cvar=<cvar> old=A new=N` then `op=autoapply restart=vid_restart` | a latched row moved and the renderer is coming down once |
 | `[UIVK:padnav] to=<name>` | each row the pad walked onto |
 | `[UI:switchopt] cvar= cmd= label=` | every SwitchBox selection |
@@ -353,18 +423,22 @@ The short path, on the graphics page (any other page: same steps, different tabl
    row is a lie — that is how `r_texturebits`, `r_texturemode`, `r_allowExtensions`,
    `r_arb_multisample`, `r_ext_nv_multisample_filter` and `r_anisotropicFiltering` were all
    cut (DESIGN.md 2.2 carries the proof per cvar). Note whether it is `CVAR_LATCH`.
-2. **Add the row to `s_videoRows`** (`uimenu.cpp:2142`). A SwitchBox needs one
+2. **Add the row to `s_videoRows`** (`uimenu.cpp:2177`). A SwitchBox needs one
    `{"<label>", "set <cvar> <value>", "<value>"}` triple per choice; a CheckBox needs nothing
    but the label; a Slider needs `lo, hi, step, type`. Set `latched = 1` when the cvar is
    `CVAR_LATCH` — that is what attaches the auto-apply restart.
 3. **Keep the bands square.** The page is two columns; a section with an odd number of rows
    leaves its last right cell empty. Put the new row where the section stays even, or accept
    the hole on purpose.
-4. **If the row is per-target**, add its cvar to `s_videoDesktopRows` (`uimenu.cpp:1716`), tested by `SettingsRowIsGreyed`. It
-   will then be built on both targets and greyed on the handheld — not hidden, so the page
-   keeps its shape. Look the row's widgets up through the prefix of the column it actually
-   landed in (`SettingsAdaptVideo`, `uimenu.cpp:2266`): the widget name carries the column
-   prefix, so a row that landed right is `VidR_<cvar>`, not `VidL_<cvar>`.
+4. **If the row is per-target**, add its cvar to the list of the target that *cannot* honour
+   it — `s_videoDesktopRows` (greyed on the handheld) or `s_videoAndroidRows` (greyed on the
+   desktop), both next to `SettingsRowIsGreyed` (`uimenu.cpp:1738`). It is then built on both
+   targets and greyed on one — not hidden, so the page keeps its shape — and if the row's
+   cvar changes geometry, gate the consumer the same way (`SCR_AndroidDisplayRect`,
+   `cg_view.c`), because a greyed row's cvar is still archived. Look the row's widgets up
+   through the prefix of the column it actually landed in (`SettingsAdaptVideo`,
+   `uimenu.cpp:2309`): the widget name carries the column prefix, so a row that landed right
+   is `VidR_<cvar>`, not `VidL_<cvar>`.
 5. **Never invent a cvar.** Every row drives one the engine already registers, so the
    launcher's per-boot override chain (`personal/scripts/play_ef2_decomp.sh`) and
    `defaultoptions.cfg` cannot re-pin it out from under its own toggle.

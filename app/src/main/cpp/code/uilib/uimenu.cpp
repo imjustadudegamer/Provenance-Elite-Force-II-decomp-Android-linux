@@ -1692,9 +1692,13 @@ struct settingsGeom_s {
     float rowh;
 };
 
+/* x 34..606 and the 4-unit label pad are the shipped pages' own content band
+   (menu_gameoption.urc 34 103 320 104 / 359 103 247 104, labels at 38; menu_advancedvideo
+   34/251).  A band's row fills it: pitch == rowh, so the panel carries no loose strip and
+   its tail is the shipped 4 under the last row. */
 static const settingsGeom_s s_videoCol[2] = {
-    {"VidL", 51.0f, 160.0f, 217.0f, 90.0f, 45.0f, 268.0f, 28.0f, 22.0f},
-    {"VidR", 325.0f, 160.0f, 491.0f, 90.0f, 319.0f, 268.0f, 28.0f, 22.0f}
+    {"VidL", 38.0f, 160.0f, 204.0f, 109.0f, 34.0f, 283.0f, 26.0f, 26.0f},
+    {"VidR", 327.0f, 160.0f, 493.0f, 109.0f, 323.0f, 283.0f, 26.0f, 26.0f}
 };
 
 static const settingsGeom_s s_touchCol = {
@@ -1704,38 +1708,60 @@ static const settingsGeom_s s_touchCol = {
 #define SET_HEAD_H   14.0f
 #define SET_HEAD_GAP 4.0f
 
+/* the shipped box tail under its tallest column, and the gap it leaves before the next
+   header (menu_advancedvideo.urc: box 103..247, next header 251) */
+#define SET_BOX_PAD  4.0f
+#define SET_SECT_GAP 4.0f
+
+/* the page's content band: the tab row ends at 87 and every shipped page opens its first
+   header there (menu_video.urc 157 87 326 16), and the densest one (menu_advancedvideo.urc
+   34 267 567 129) bottoms out at 396, seven above the description bar at 403 */
+#define SET_PAGE_Y 87.0f
+
+#ifdef __ANDROID__
+#define SET_TARGET "android"
+#else
+#define SET_TARGET "desktop"
+#endif
+
 /* the label column is one width everywhere; the longest label in the page's own font
    sets it, so a translated string can never be cut by a width this table guessed */
 #define SET_LABEL_PAD 8.0f
 #define SET_LABEL_GAP 6.0f
 
-/* The one row the handheld cannot honour: the Android surface is the whole window, so
-   the choice has nothing to change.  The row still ships on both targets -- the page is
-   one page -- and the handheld greys it, which is EF1's own shape of that answer
-   (ui_video.cpp:410, QMF_GRAYED). */
-static const char *const s_videoDesktopRows[] = {
-    "r_fullscreen", NULL
-};
+/* Each target greys the one row it cannot honour: the handheld's surface is the whole
+   window, so r_fullscreen has nothing to change, and the desktop's window is already the
+   video mode's own shape (r_mode owns it, retail ships no aspect row), so a letterbox
+   inside that window only squashes the page.  The row still ships on both targets -- the
+   page is one page -- and greying is EF1's own shape of that answer (ui_video.cpp:410,
+   QMF_GRAYED). */
+static const char *const s_videoDesktopRows[] = {"r_fullscreen", NULL};
+static const char *const s_videoAndroidRows[] = {"android_aspect", NULL};
 
-static qboolean SettingsRowIsGreyed(const char *cvar)
+static qboolean SettingsRowInList(const char *cvar, const char *const *list)
 {
+    int i;
+
     if (!cvar) {
         return qfalse;
     }
 
-#ifdef __ANDROID__
-    int i;
-
-    for (i = 0; s_videoDesktopRows[i]; i++) {
-        if (!stricmp(cvar, s_videoDesktopRows[i])) {
+    for (i = 0; list[i]; i++) {
+        if (!stricmp(cvar, list[i])) {
             return qtrue;
         }
     }
-#else
-    /* the desktop honours every row it shows */
-#endif
 
     return qfalse;
+}
+
+static qboolean SettingsRowIsGreyed(const char *cvar)
+{
+#ifdef __ANDROID__
+    return SettingsRowInList(cvar, s_videoDesktopRows);
+#else
+    return SettingsRowInList(cvar, s_videoAndroidRows);
+#endif
 }
 
 static void SettingsRect(UIWidget *wid, float x, float y, float w, float h)
@@ -1929,10 +1955,12 @@ static int SettingsBuildRows(
     int       rowcol[SET_ROWS_MAX];
     float     labelw   = 0.0f;
     float     paneltop = 0.0f;
+    float     boxh;
     int       i;
     int       built   = 0;
     int       section = 0;
     int       secrow  = 0;
+    int       bands   = 0;
 
     for (i = 0; i < count; i++) {
         const settingsRow_s  *row = &rows[i];
@@ -1945,8 +1973,10 @@ static int SettingsBuildRows(
 
         if (row->section) {
             if (panel) {
+                boxh = bands * cols[0].pitch + SET_BOX_PAD;
                 SettingsRect(panel, cols[0].boxx, paneltop, cols[1].boxx + cols[1].boxw - cols[0].boxx,
-                             y - paneltop + 4.0f);
+                             boxh);
+                y = paneltop + boxh + SET_SECT_GAP;
             }
 
             SettingsHeader(container, va("%sHead%d", cols[0].prefix, ++section), row->section,
@@ -1957,6 +1987,7 @@ static int SettingsBuildRows(
                                   cols[0].boxx, paneltop,
                                   cols[1].boxx + cols[1].boxw - cols[0].boxx, 10.0f);
             secrow = 0;
+            bands  = 0;
         }
 
         if (!row->widget || built >= SET_ROWS_MAX) {
@@ -1999,7 +2030,7 @@ static int SettingsBuildRows(
         rowcol[built] = col;
         built++;
         secrow++;
-        y = paneltop + (band + 1) * g->pitch;
+        bands = (ncols > 1) ? (secrow + 1) / 2 : secrow;
     }
 
     /* One width for the label column, taken from the longest label the page carries.
@@ -2028,8 +2059,10 @@ static int SettingsBuildRows(
     }
 
     if (panel) {
+        boxh = bands * cols[0].pitch + SET_BOX_PAD;
         SettingsRect(panel, cols[0].boxx, paneltop, cols[1].boxx + cols[1].boxw - cols[0].boxx,
-                     y - paneltop + 4.0f);
+                     boxh);
+        y = paneltop + boxh;
     }
 
     *bottom = y;
@@ -2231,7 +2264,6 @@ static settingsRow_s s_videoRows[] = {
    pad walk.  `widgetstate disable' is this uilib's greyed state -- the switch and the
    check both refuse it and the disabled palette greys it -- and AllowActivate takes it
    out of moveFocus, which stops on CanActivate widgets only. */
-#ifdef __ANDROID__
 static void SettingsGreyRow(UIWidget *label, UIWidget *ctl)
 {
     AdaptCommand(label, "widgetstate", "disable", NULL);
@@ -2241,7 +2273,6 @@ static void SettingsGreyRow(UIWidget *label, UIWidget *ctl)
     AdaptCommand(ctl, "disabledshadercolor", "0.400", "0.400", "0.450", "1.000", NULL);
     ctl->AllowActivate(false);
 }
-#endif
 
 static void SettingsAdaptVideo(UIWidget *container)
 {
@@ -2261,12 +2292,13 @@ static void SettingsAdaptVideo(UIWidget *container)
 
     built = SettingsBuildRows(container, s_videoRows,
                               (int)(sizeof(s_videoRows) / sizeof(s_videoRows[0])),
-                              s_videoCol, 2, 92.0f, &bottom);
+                              s_videoCol, 2, SET_PAGE_Y, &bottom);
 
-#ifdef __ANDROID__
     for (i = 0; i < (int)(sizeof(s_videoRows) / sizeof(s_videoRows[0])); i++) {
-        UIWidget *lbl;
-        UIWidget *ctl;
+        /* both are read by the walk's own condition before the body writes them, so an
+           uninitialised slot is the "widget" the grey pass would hand on */
+        UIWidget *lbl = NULL;
+        UIWidget *ctl = NULL;
         int       c;
 
         if (!s_videoRows[i].cvar || !SettingsRowIsGreyed(s_videoRows[i].cvar)) {
@@ -2281,19 +2313,23 @@ static void SettingsAdaptVideo(UIWidget *container)
 
         if (lbl && ctl) {
             SettingsGreyRow(lbl, ctl);
-            UIVK_PROBE("settings", "op=row cvar=%s state=greyed target=android",
+            UIVK_PROBE("settings", "op=row cvar=%s state=greyed target=" SET_TARGET,
                        s_videoRows[i].cvar);
         } else {
-            UIVK_PROBE("settings", "op=row cvar=%s state=MISSING target=android",
+            UIVK_PROBE("settings", "op=row cvar=%s state=MISSING target=" SET_TARGET,
                        s_videoRows[i].cvar);
         }
     }
-#else
-    for (i = 0; i < (int)(sizeof(s_videoDesktopRows) / sizeof(s_videoDesktopRows[0])) - 1; i++) {
-        UIVK_PROBE("settings", "op=row cvar=%s state=live target=desktop",
-                   s_videoDesktopRows[i]);
+
+    for (i = 0; i < 2; i++) {
+        const char *const *list = i ? s_videoAndroidRows : s_videoDesktopRows;
+        int                j;
+
+        for (j = 0; list[j]; j++) {
+            UIVK_PROBE("settings", "op=row cvar=%s state=%s target=" SET_TARGET, list[j],
+                       SettingsRowIsGreyed(list[j]) ? "greyed" : "live");
+        }
     }
-#endif
 
     UIVK_PROBE("settings", "op=build menu='video' rows=%d bottom=%.0f", built, bottom);
 }

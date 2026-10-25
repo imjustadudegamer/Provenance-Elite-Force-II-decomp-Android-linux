@@ -61,15 +61,18 @@ Rebuilt in code at menu load, from one declarative row table, in the shipped pag
 Retail's rows are hidden (`Disable` → hide), never deleted from the pak. The page's own panel
 boxes and headers are re-authored to the new section list.
 
-Row geometry (authored 640x480): full-width rows, label x=53 w=250, control x=313 w=270,
-16 px pitch; section headers 14 px; content y=85..393; the shipped Apply (424,401) and
-Main Menu (435,428) buttons stay where retail put them.
+Row geometry (authored 640x480): two columns spanning x 34..606, label x=38/327 w=160,
+control to a 4-unit pad at each panel's right edge (109 wide); band pitch 26 = row height 26;
+section headers 14 + a 4 gap; content y=87..395 with the shipped 4-unit box tail and a 4-unit
+gap between a box and the next header (DESIGN-MENU-GRAMMAR.md 4.1 carries the shipped .urc
+the numbers come from). The shipped Apply (424,401) and Main Menu (435,428) buttons stay
+where retail put them.
 
 ### 2.1 Kept
 
 | section | row | widget | cvar | values |
 |---|---|---|---|---|
-| Display & Quality | Aspect | SwitchBox | `android_aspect` | Fill / 16:9 / 4:3 |
+| Display & Quality | Aspect | SwitchBox | `android_aspect` | Fill / 16:9 / 4:3 — live on the handheld, greyed on the desktop (see 2.3) |
 | | FPS Counter | CheckBox | `cg_drawFPS` | the corner readout, on by default |
 | | Frame Rate Limit | SwitchBox | `com_maxfps` | Off 0 / 60 / 120 (see section 6) |
 | | Brightness | Slider 0.5..3.0 step 0.1 | `r_gamma` | live |
@@ -119,6 +122,44 @@ Note on the quality preset row: EF1's most-used control is the preset chooser, b
 templates here would write a *lower* quality over the operator's max-graphics pins on an
 install that only touched the preset. It is deliberately **not** carried; Restore Defaults is
 the one way back to the pins.
+
+### 2.3 The Aspect row is the handheld's, and its two halves agree
+
+`android_aspect` is port-authored: the shipped `menu_video.urc` carries no aspect row (its
+rows are `r_mode`, `r_texturebits`, `r_picmip`, `r_texturemode`, `r_gamma`,
+`r_fullscreen`), so retail-exact governs each **mode's** mechanism, not the row's existence.
+EF1's own answer key is the same shape — `cg_forceAspect`, "the video-menu Aspect toggle",
+pillarboxes the *menu* into a centred 4:3 box and maps hit-testing into the same box
+(`VoyagerNX_Android .../client/cl_ui.c:621`, `CL_GetUIScreenPlacement`), with Fill as the
+default stretch.
+
+So, per target:
+
+* **Android (live).** `0` = the whole surface; `1`/`2` = the presentation constrained into
+  the centred rect, and everything that draws inside the constrained view draws inside it:
+  the world (`CG_CalcVrect` sets `cg.refdef.x/y/width/height`, `cg_view.c:77`, and the
+  renderer takes them as the viewport, `tr_scene.c:447`), the HUD (`cgs.screenXScale` from
+  the rect's *size*, `cg_main.c:401`, drawn inside the View3D panel that already carries the
+  origin), and the menus (`UIWidgetContainer::Draw` sets the 2D window **and the scissor** to
+  the rect, `uiwidget.cpp:4855-4867`, with `uid.mouseX -= uid.originX` for hit-testing,
+  `cl_ui.cpp:2293`). A 4:3 request gives a square `scaleRes`, so the 640x480 page lands
+  undistorted inside the bars. The touch pad and the pills are the one thing outside the
+  rect, deliberately: they are laid out in full-surface coordinates and drawn after the bars
+  (`cl_scrn.cpp:560` then `:567`), so the handheld's controls stay reachable in the band.
+* **Desktop (greyed).** The window is already the video mode's own shape — `r_mode` owns it
+  and the launcher pins `r_mode=-1 r_customwidth=800 r_customheight=600`
+  (`personal/scripts/play_ef2_decomp.sh:277`), a 4:3 window. In that window `4:3` is
+  arithmetically identical to Fill and `16:9` letterboxes the *menu* into a squashed
+  800x450 band, which is the "the switch has an issue" the operator saw. The row is greyed
+  (the same `QMF_GRAYED` shape the Full Screen row uses on the handheld) and the consumer is
+  gated with it: `SCR_AndroidDisplayRect`/`CG_AndroidDisplayRect` return the whole surface
+  off-Android, so a value archived while experimenting cannot leave the desktop stuck in a
+  letterbox it can no longer turn off. Desktop geometry stays where retail puts it: the
+  window, via `r_mode`.
+
+The brief's premise that the bars cover a full-surface menu is refuted — the menu has been
+scissored into the rect since the rect landed; the desktop defect was the mode arithmetic on
+a 4:3 window, not the draw path.
 
 ## 3. The controls page
 
@@ -369,7 +410,7 @@ target-neutral files, so the same file:line holds for both devices:
 
 | row | cvar | consumer |
 |---|---|---|
-| Aspect | `android_aspect` | `SCR_AndroidDisplayRect` (`cl_scrn.cpp:51`), called from `cl_scrn.cpp:92/126`, `cl_input.cpp:767`, `cl_ui.cpp:989/2251` — no target gate on any of them |
+| Aspect | `android_aspect` | `SCR_AndroidDisplayRect` (`cl_scrn.cpp:51`) and `CG_AndroidDisplayRect` (`cg_view.c:33`) — **handheld only**: both return the whole surface off-Android (`cl_scrn.cpp:61`, `cg_view.c:41`), so a value archived on the handheld cannot letterbox the desktop's window |
 | FPS Counter | `cg_drawFPS` | `cl_scrn.cpp:307` registers, `:193` gates, `:247` adds the budget line |
 | Frame Rate Limit | `com_maxfps` | `Com_Frame`'s budget (`common.c`), the only pace on both targets now |
 | Brightness | `r_gamma` | `R_SetColorMappings` (`tr_image.c`) → `s_gammatable` → `R_LightScaleTexture` (`tr_image.c:498`) at upload. **Not live**: the table is baked into already-uploaded textures, so a new value reaches nothing on the card. It is in the restart class now. |
@@ -422,7 +463,7 @@ early:
   label width while every other row carried the measured one.
 
 The slot is now read back out of what the build pass recorded (`rowy[]`/`rowcol[]`,
-uimenu.cpp:1987-1990) instead of being recounted, so there is one walk and one counter and no
+uimenu.cpp:2029) instead of being recounted, so there is one walk and one counter and no
 way for a section boundary to move a row. Measured against the screenshot: label x=51 w=156,
 value x=213 w=94 in the left column and x=325/x=487 in the right, every band full, eighteen
 rows, no empty cell, content ending at authored y=398 against the description bar's 403.
@@ -432,7 +473,7 @@ widget *draws* text in, which for a virtual widget is screen pixels
 (`UIFont::getFloatWidth`, uifont.cpp:322 -- `x uid.scaleRes[0]`); the frames here are authored
 in 640x480. On the operator's desktop that inflated the label column by x1.2536 and on the
 Pixel 8 by x3.135, squeezing the value column to a sliver and pressing the boxes into each
-other. `SettingsTitleWidth` (uimenu.cpp:1758) is the one conversion point.
+other. `SettingsTitleWidth` (uimenu.cpp:1784) is the one conversion point.
 
 **Full Screen is back, scoped per target.** Retail's own row (menu_video.urc
 `rect 162 188 120 16`, `linkcvar r_fullscreen`) returns as a Full Screen / Windowed switch in
@@ -449,7 +490,7 @@ per target.
 
 **The rebuild guard was dead.** It tested `FindWidget("VidRow0Ctl")`, a name nothing was ever
 given, so every UI re-init -- every `vid_restart` -- built the page again on top of itself.
-It now tests the first section header it actually creates (`VidLHead1`, uimenu.cpp:2255), the
+It now tests the first section header it actually creates (`VidLHead1`, uimenu.cpp:2286), the
 same shape the controls page's guard uses (`TouchBind`).
 
 **Sections are square now.** Eighteen rows in three sections of six, so every band is full
@@ -462,3 +503,49 @@ Texture Quality stays with the display rows it shares the LATCH class with).
 grammar, the 640x480 coordinate model with the scale worked out from this round's own
 screenshot, the resource-to-widget parse, the row class table with the fields each reads, the
 hide/grey/present states, the probe rows, and the recipe for adding a row to any page.
+
+## 11. The fourth round (the operator's OPSCREENSHOT4 verdict + the 0.8.4 boot crash)
+
+**The page fills its frame by the shipped pages' own rule.** The dead space was three gaps
+the shipped data sizes explicitly, and all three came from this port guessing instead of
+reading `menu_*.urc`:
+
+* **the left gutter.** Retail's content band is x 34…606 with the first label at 38
+  (`menu_gameoption.urc 34 103 320 104` / `359 103 247 104`; `menu_advancedvideo.urc` 34 and
+  251). The rebuild was at x 45…587 with labels at 51 — 28 units of LCARS interior on the
+  left and 35 on the right, and the label column's right-aligned text left the wide
+  navy plates looking emptier still. The columns now span 34…317 and 323…606, labels at
+  38/327, and the value boxes give up the difference down to a 4-unit pad at the panel's
+  right edge (109 wide against retail's own 104…140).
+* **the loose band inside every panel.** The shipped ratio is a row of 16 in a band of 20 —
+  the row fills its band to a 4-unit pad. The rebuild had 22 in a 28 band, so every band
+  carried 6 loose units and every box a 10-unit tail. The pitch is now the row height (26 =
+  26), the band is tight, and the box's tail is the shipped 4.
+* **the page's top and bottom.** Every shipped page opens its first header at y 87 — the tab
+  row's own bottom — and the densest one bottoms out at 396, seven above the description bar
+  at 403. The rebuild started at 92 and ran to 402. It now starts at 87 and runs 87…395 with
+  the shipped 4-unit gap between a box and the next header.
+
+`DESIGN-MENU-GRAMMAR.md` §4.1 carries the rule and the shipped geometry it comes from; the
+row/label/column arithmetic that already worked is untouched.
+
+**The 0.8.4 Android boot crash was an uninitialised pair of widget pointers, not a corrupt
+child list.** `SettingsAdaptVideo`'s grey loop read `lbl` in its own `for` condition
+(`for (c = 0; c < 2 && !lbl; c++)`) before the body ever wrote it, so whether the walk ran at
+all depended on stack garbage. On the handheld boot the slot held the rodata literal
+`"tooltip_video"` — the same function materialises it two lines earlier
+(`s_settingsTooltipBar`, uimenu.cpp:2283) — so `!lbl` was false, the walk never ran, and the
+two garbage pointers passed the `if (lbl && ctl)` test straight into `SettingsGreyRow` →
+`AdaptCommand` → `Listener::ValidEvent`, whose virtual `classinfo()` call dereferenced the
+literal's bytes as a vtable (`this` = base+0xB7707, the tombstone's exact fault). `UIWidget::
+FindWidget` (uiwidget.cpp:4371) can only return a live child or `NULL`, so the child list was
+never the suspect: `setParent` → `addChild` (uiwidget.cpp:2772) owns every widget
+`AdaptWidget` creates. Both compilers flag the shape on the reduced loop (clang
+`-Wconditional-uninitialized`, gcc `-Wmaybe-uninitialized`, one warning each on the guard and
+on the `lbl && ctl` test); neither fires on the full function, which is why the gate passed
+it. Both finds are `= NULL` now, and the same shape was swept: `UISwitchBox`'s `found`
+(uiswitchbox.cpp:362) and `UIWindowManager::DeactivateCurrentSmart`'s `toset`
+(uiwinman.cpp:1154) are both initialised.
+
+**The Aspect row is the handheld's and is greyed on the desktop** — see 2.3. The row keeps
+its name and its three values; the desktop's window keeps retail's own geometry owner.

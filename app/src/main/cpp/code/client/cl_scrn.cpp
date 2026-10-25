@@ -50,20 +50,26 @@ void SCR_DrawNamedPic( float x, float y, float width, float height, const char *
 
 void SCR_AndroidDisplayRect( int surfaceW, int surfaceH, int *outX, int *outY, int *outW, int *outH )
 {
-	int   mode   = android_aspect ? android_aspect->integer : 0;
-	float target = 0.0f;
-
 	if ( outX ) *outX = 0;
 	if ( outY ) *outY = 0;
 	if ( outW ) *outW = surfaceW;
 	if ( outH ) *outH = surfaceH;
+
+#ifndef __ANDROID__
+	/* the desktop window is the display: r_mode owns its shape, retail ships no aspect
+	   row, and the archived handheld cvar must not letterbox a window it cannot resize */
+	return;
+#else
+	/* the handheld's letterbox */
+	int   mode   = android_aspect ? android_aspect->integer : 0;
+	float target = 0.0f;
 
 	if ( mode == 1 ) {
 		target = 16.0f / 9.0f;
 	} else if ( mode == 2 ) {
 		target = 4.0f / 3.0f;
 	} else {
-		return;    
+		return;
 	}
 
 	if ( surfaceW <= 0 || surfaceH <= 0 ) {
@@ -83,6 +89,7 @@ void SCR_AndroidDisplayRect( int surfaceW, int surfaceH, int *outX, int *outY, i
 		if ( outH ) *outH = h;
 		if ( outY ) *outY = ( surfaceH - h ) / 2;
 	}
+#endif
 }
 
 void SCR_DrawAndroidBars( void ) {
