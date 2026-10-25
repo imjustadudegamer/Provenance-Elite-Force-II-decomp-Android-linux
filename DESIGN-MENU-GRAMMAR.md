@@ -104,13 +104,13 @@ This is the single most important trap in the whole file, and it is the one this
 into: **a metric that comes back from a widget is in the unit its text draws in, not the unit
 its frame is authored in.** `UIWidget::getTitleWidth()` (`uiwidget.cpp:4195`) calls
 `UIFont::getFloatWidth(text, -1, m_bVirtual)` (`uilib/uifont.cpp:312`), which multiplies by
-`uid.scaleRes[0]` when the widget is virtual (`uifont.cpp:322-328`). On the user's desktop
+`uid.scaleRes[0]` when the widget is virtual (`uifont.cpp:322-328`). On my desktop
 that is x1.2536, on the Pixel 8 x3.135. Feed that straight into a `rect` and every label box is
 1.25x (or 3.1x) too wide, the value column is pushed off the page, and neighbouring boxes
 overlap. `SettingsTitleWidth` (`uimenu.cpp:1784`) is the port's one conversion point: measure,
 then divide by `uid.scaleRes[0]` if the widget is resizeable.
 
-Worked example, from the user's own screenshot (`OPSCREENSHOT3.png`, a desktop window):
+Worked example, from my own screenshot (`OPSCREENSHOT3.png`, a desktop window):
 
 ```
 scaleRes = (1.2536, 1.2500)      origin = (559.4, 333.75) screen px
@@ -327,7 +327,7 @@ Greyed is what retail's own data uses for a row that must be seen but not used
 (`disabledfgcolor`/`disabledshadercolor` ship in the settings pages, 6 uses each), and it is
 EF1's answer too: `s_video_fullscreen_list.generic.flags |= QMF_GRAYED`
 (`VoyagerNX_Android .../efgame/src/ui/ui_video.cpp:410`). **Hiding is not greying** — a hidden
-row leaves a hole in the grid and the user cannot see that the setting exists.
+row leaves a hole in the grid and I cannot see that the setting exists.
 
 The grey set is **per target in both directions** (`SettingsRowIsGreyed`,
 `uimenu.cpp:1758`): the handheld greys `r_fullscreen` (its surface is the whole window, so
