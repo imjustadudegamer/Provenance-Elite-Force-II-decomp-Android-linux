@@ -1829,6 +1829,28 @@ void RB_SkelMesh(skelSurfaceGame_t *sf)
         }
     }
 
+    /* what the mesh path actually wrote, for the screen-class surfaces: the
+       tiki-lib census recomputes, this one reads the submitted verts */
+    if (PROBE_On() && sf->numVerts <= 8 && (int)render_count == sf->numVerts) {
+        static int s_attachRows;
+        if (PROBE_Throttle(&s_attachRows, 24, 600)) {
+            const float *pv = &tess.xyz[baseVertex][0];
+            ri.Printf(PRINT_ALL,
+                      "[GLES3:meshattach] model='%s' surf='%s' verts=%d bone0=%d lod=%d "
+                      "v0=(%.3f,%.3f,%.3f) v1=(%.3f,%.3f,%.3f) v2=(%.3f,%.3f,%.3f) v3=(%.3f,%.3f,%.3f) f=%d\n",
+                      skelmodel ? skelmodel->name : "?",
+                      sf->name,
+                      sf->numVerts,
+                      sf->pVerts ? ((skelWeight_t *)((byte *)sf->pVerts + sizeof(skeletorVertex_t)))->boneIndex : -1,
+                      lod_cutoff,
+                      pv[0], pv[1], pv[2],
+                      pv[4], pv[5], pv[6],
+                      pv[8], pv[9], pv[10],
+                      pv[12], pv[13], pv[14],
+                      RB_FrameCount());
+        }
+    }
+
 
 #if 0
 	if( backEnd.currentEntity->e.staticModelIndex ) {

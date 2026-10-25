@@ -909,15 +909,18 @@ static void TIKI_Skan_SkinProbe(dtiki_t *tiki, skelHeaderGame_t *skel, int bone,
 }
 
 /* Once per (tiki, single-bone screen-class surface): the bind offsets, the live
-   world slot and the anim, so a boot reads against the shipped bind data. */
+   world slot, the posed verts and the blend state, so a boot reads against the
+   shipped bind data and against the offline pose. */
 static void TIKI_Skan_AttachCensus(
     dtiki_t            *tiki,
     skelHeaderGame_t   *skel,
     const float        *world,
+    const int          *legsAnim,
     int                 anim,
     int                 frame,
     int                 torsoAnim,
-    int                 torsoFrame)
+    int                 torsoFrame,
+    const skelSolveChannel_t *ch)
 {
     static int             done[TIKI_MAX_BONES];
     static const dtiki_t  *doneTiki;
@@ -943,7 +946,8 @@ static void TIKI_Skan_AttachCensus(
     for (s = skel->pSurfaces; s; s = s->pNext) {
         const skelWeight_t     *w;
         const float            *slot;
-        float                   cx, cy, cz;
+        float                   cx, cy, cz, px, py, pz;
+        SkelMat3                m;
         int                     bone, multi, i, k;
         const char             *name;
 
@@ -977,12 +981,15 @@ static void TIKI_Skan_AttachCensus(
         done[bone] = 1;
         slot = &world[bone * 7];
         name = skeletor_c::m_boneNames.FindName(skel->pBones[bone].channel);
+        SkelQuat                q(slot);
+        q.GetMat3(m);
         PROBE_EMIT(
             "[SKEL:",
             "attach",
             "tiki=%s surf='%s' verts=%d bone=%d name='%s' bind=(%.2f,%.2f,%.2f) "
             "bonepos=(%.3f,%.3f,%.3f) bonequat=(%.4f,%.4f,%.4f,%.4f) qlen=%.5f "
-            "anim=%d frame=%d torso=%d/%d\n",
+            "mat=(%.4f %.4f %.4f|%.4f %.4f %.4f|%.4f %.4f %.4f) "
+            "anim=%d/%d frame=%d torso=%d/%d mode=%d innerT=%.3f outerT=%.3f ent=%d entorg=(%.2f,%.2f,%.2f)\n",
             tiki->name ? tiki->name : "?",
             s->name ? s->name : "?",
             s->numVerts,
@@ -999,11 +1006,56 @@ static void TIKI_Skan_AttachCensus(
             slot[2],
             slot[3],
             sqrt(slot[0] * slot[0] + slot[1] * slot[1] + slot[2] * slot[2] + slot[3] * slot[3]),
+            m.val[0][0], m.val[0][1], m.val[0][2],
+            m.val[1][0], m.val[1][1], m.val[1][2],
+            m.val[2][0], m.val[2][1], m.val[2][2],
+            legsAnim ? *legsAnim : -1,
             anim,
             frame,
             torsoAnim,
-            torsoFrame
+            torsoFrame,
+            ch ? ch->mode : -1,
+            ch ? ch->innerT : 0.0f,
+            ch ? ch->outerT : 0.0f,
+            s_probeEnt,
+            s_probeOrg[0],
+            s_probeOrg[1],
+            s_probeOrg[2]
         );
+
+        /* the posed verts, in the order the surface lists them */
+        px = py = pz = 0.0f;
+        v = s->pVerts;
+        for (i = 0; i < s->numVerts; i++, v = next) {
+            const byte   *p = (const byte *)v;
+            const float  *ps;
+
+            p += sizeof(skeletorVertex_t) + (size_t)v->numMorphs * sizeof(skeletorMorph_t);
+            w = (const skelWeight_t *)p;
+            next = (const skeletorVertex_t *)(p + (size_t)v->numWeights * sizeof(skelWeight_t));
+            px = py = pz = 0.0f;
+            for (k = 0; k < v->numWeights; k++) {
+                const float *wo = w[k].offset;
+
+                ps = &world[w[k].boneIndex * 7];
+                px += (wo[0] * m.val[0][0] + wo[1] * m.val[1][0] + wo[2] * m.val[2][0] + ps[4]) * w[k].boneWeight;
+                py += (wo[0] * m.val[0][1] + wo[1] * m.val[1][1] + wo[2] * m.val[2][1] + ps[5]) * w[k].boneWeight;
+                pz += (wo[0] * m.val[0][2] + wo[1] * m.val[1][2] + wo[2] * m.val[2][2] + ps[6]) * w[k].boneWeight;
+            }
+            PROBE_EMIT(
+                "[SKEL:",
+                "attachvert",
+                "tiki=%s surf='%s' v%d=(%.3f,%.3f,%.3f) anim=%d frame=%d\n",
+                tiki->name ? tiki->name : "?",
+                s->name ? s->name : "?",
+                i,
+                px,
+                py,
+                pz,
+                anim,
+                frame
+            );
+        }
     }
 }
 
@@ -1604,7 +1656,17 @@ int TIKI_SkelBonesFromRecords(
         }
     }
 
-    TIKI_Skan_AttachCensus(tiki, skel, world, anim, frame, torso_anim, torso_frame);
+    TIKI_Skan_AttachCensus(
+        tiki,
+        skel,
+        world,
+        uselegs ? &anim : &torso_anim,
+        anim,
+        frame,
+        torso_anim,
+        torso_frame,
+        uselegs ? &legsCh : &torsoCh
+    );
 
     Skel_Free(world);
     (void)pw;
