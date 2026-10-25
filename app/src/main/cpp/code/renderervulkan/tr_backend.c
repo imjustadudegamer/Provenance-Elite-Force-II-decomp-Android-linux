@@ -896,14 +896,21 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 
 		s_rows++;
 		if ( s_rows <= 40 || ( s_rows % 64 ) == 0 ) {
+			int stg;
+
+			for ( stg = 0; stg < MAX_SHADER_STAGES && tess.xstages[stg] != stage; stg++ ) {
+			}
+
 			VK_Guard_Row( "VK:2ddraw",
-						  "n=%d shader='%s' img='%s' tex=%d verts=%d idx=%d "
+						  "n=%d shader='%s' stg=%d img='%s' tex=%d verts=%d idx=%d "
 						  "srect=(%.1f,%.1f)-(%.1f,%.1f) st=(%.3f,%.3f)-(%.3f,%.3f) "
 						  "sb=0x%x col=%d,%d,%d,%d vert=%d,%d,%d,%d rgbGen=%d "
 						  "const=%d,%d,%d,%d alphaGen=%d "
+						  "fb=%d nv=%d "
 						  "win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d) wrap=%d,%d clamp=%d",
 						  s_rows,
 						  tess.shader ? tess.shader->name : "?",
+						  stg,
 						  image->imgName,
 						  (int)image->texnum,
 						  tess.numVertexes, tess.numIndexes,
@@ -920,6 +927,8 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 						  stage->colorConst[0], stage->colorConst[1],
 						  stage->colorConst[2], stage->colorConst[3],
 						  (int)stage->alphaGen,
+						  ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) ? 1 : 0,
+						  ( backEnd.refdef.rdflags & RDF_NIGHTVISION ) ? 1 : 0,
 						  vk_2dWindow[0], vk_2dWindow[1], vk_2dWindow[2], vk_2dWindow[3],
 						  vk_2dScissor[0], vk_2dScissor[1], vk_2dScissor[2], vk_2dScissor[3],
 						  (int)image->wrapClampModeX, (int)image->wrapClampModeY,
@@ -2466,6 +2475,9 @@ void RB_StageIterator2D( void )
 	   the same tess.shaderTime. */
 	tess.shaderTime = backEnd.refdef.floatTime;
 	VK_Shade_NoteShaderTime( "2d" );
+
+	/* the quad's own ST, before any stage's chain lands in it */
+	VK_Stage2DAuthorST();
 
 	for ( stage = 0; stage < tess.numPasses; stage++ ) {
 		shaderStage_t *pStage = tess.xstages[stage];

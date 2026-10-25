@@ -1218,13 +1218,27 @@ qboolean VK_StageResolve2DColor( shaderStage_t *pStage )
    @0x0003BA50 only ever names the three generic ones), so its UI quads run the
    generic walk and its tcMods are CPU.  This lane's tess shader carries no
    tcMod code, so the stage's chain has to land in the vertex ST. */
+
+/* The quad's authored ST: every stage resolves from this, never from the stage
+   before it. */
+static vec2_t s_2DAuthoredST[SHADER_MAX_VERTEXES][NUM_TEXTURE_BUNDLES];
+
+void VK_Stage2DAuthorST( void )
+{
+	Com_Memcpy( s_2DAuthoredST, tess.texCoords,
+				(size_t)tess.numVertexes * sizeof( s_2DAuthoredST[0] ) );
+}
+
 qboolean VK_Stage2DResolveTexCoords( shaderStage_t *pStage )
 {
 	int i;
 
-	if ( !pStage || !pStage->bundle[0].image[0] || pStage->bundle[0].numTexMods == 0 ) {
+	if ( !pStage || !pStage->bundle[0].image[0] ) {
 		return qfalse;
 	}
+
+	Com_Memcpy( tess.texCoords, s_2DAuthoredST,
+				( size_t )tess.numVertexes * sizeof( s_2DAuthoredST[0] ) );
 
 	ComputeTexCoords( pStage );
 
