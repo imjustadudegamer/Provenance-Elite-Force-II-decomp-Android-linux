@@ -30,7 +30,8 @@ import struct
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  '..', '..', '..', '..', '..'))
 GLSL = os.path.join(ROOT, "app/src/main/cpp/code/renderervulkan/shaders")
 TABLE = os.path.join(ROOT, "app/src/main/cpp/code/renderergles3/tr_program_table.inc")
 OUT = os.path.join(ROOT, "app/src/main/cpp/code/renderervulkan/vk_shaders_embedded3d.h")

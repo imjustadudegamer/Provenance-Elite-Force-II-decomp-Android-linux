@@ -45,7 +45,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_TREE = os.path.abspath(os.path.join(HERE, ".."))
+DEFAULT_TREE = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 sys.path.insert(0, HERE)
 # One licence-marker definition for the whole suite: the budget's "licence

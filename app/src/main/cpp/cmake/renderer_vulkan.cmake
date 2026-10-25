@@ -86,12 +86,12 @@ set(RENDERER_VULKAN_BINARY ${RENDERER_VULKAN_BASENAME})
 
 # The shade layer's SPIR-V is compiled offline and embedded, so the build has
 # to refuse a module whose embedded blobs were compiled from other shader
-# sources: tools/build_vk_spirv.py --check compares the digest the header
+# sources: the vk_spirv tool beside this cmake --check compares the digest the header
 # records against the sources on disk and fails the build on drift.  No
 # compiler is needed to run it, so it gates every build, desktop and Android.
 find_program(PYTHON3_EXECUTABLE NAMES python3)
-# this file sits at <root>/app/src/main/cpp, the tool at <root>/tools
-set(VK_SPIRV_TOOL ${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/build_vk_spirv.py)
+# this file sits at <root>/app/src/main/cpp, the tool beside it
+set(VK_SPIRV_TOOL ${CMAKE_CURRENT_SOURCE_DIR}/tools/build_vk_spirv.py)
 get_filename_component(VK_SPIRV_TOOL "${VK_SPIRV_TOOL}" ABSOLUTE)
 
 list(APPEND RENDERER_VULKAN_BINARY_SOURCES

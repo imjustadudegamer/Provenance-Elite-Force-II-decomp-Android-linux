@@ -46,7 +46,7 @@ The Vulkan substrate is:
 ## Shaders
 
 `renderervulkan/shaders/*.vert` and `*.frag` are the sources of truth. The module
-has no runtime shader compiler: `tools/build_vk_spirv.py` compiles every
+has no runtime shader compiler: `app/src/main/cpp/tools/build_vk_spirv.py` compiles every
 permutation offline to SPIR-V and embeds it in `vk_shaders_embedded3d.h` (the
 stage families) and `vk_shaders_embedded.h` (the fixed 2D and first-light
 programs). The stage uniform block is spliced in at a marker and its member
@@ -55,7 +55,7 @@ checked against the compiler's own layout. The permutation set is the shipped
 census the GLES 3.0 twin carries in `tr_program_table.inc`, and the census is a
 build input on the same footing as the sources: the generated header records the
 digest of everything the embedded SPIR-V is a function of, and
-`python3 tools/build_vk_spirv.py --check` compares that digest against the shader
+`python3 app/src/main/cpp/tools/build_vk_spirv.py --check` compares that digest against the shader
 sources and the permutation census on disk and fails on drift.
 
 ## Texture uploads

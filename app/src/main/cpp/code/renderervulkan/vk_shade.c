@@ -46,7 +46,7 @@ root, for more details.
  *   VK_DrawStage / RB_VBO_DrawTessArrays    ->  pack, bind, draw
  *
  * The uniform block's layout is read back out of the compiled SPIR-V by
- * tools/build_vk_spirv.py and emitted as the VK_UBO_OFF_* constants this file
+ * app/src/main/cpp/tools/build_vk_spirv.py and emitted as the VK_UBO_OFF_* constants this file
  * packs at, so the CPU side and the shader cannot drift.
  */
 

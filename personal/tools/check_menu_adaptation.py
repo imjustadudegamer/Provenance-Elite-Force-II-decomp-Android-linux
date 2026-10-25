@@ -11,7 +11,7 @@ import os
 import re
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # The extracted shipped menus, a read-only reference the repo does not carry.
 # Point EF2_MENU_REF at them when they do not sit beside the checkout.

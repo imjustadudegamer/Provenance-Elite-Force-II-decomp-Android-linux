@@ -57,8 +57,8 @@ Every change must pass, on a clean rebuild:
 
 - `ninja -j16`, 0 warnings / 0 errors;
 - `ldd -r`, 0 undefined on all six binaries;
-- `tools/license_lint.py`, `tools/ship_text_lint.py`,
-  `tools/comment_budget.py` and `tools/provenance_ledger.py --check`, all green.
+- the project's local verification scripts (license, shipped-text and
+  comment-budget checks, plus the provenance ledger `--check`), all green.
 
 ## What ships in the APK
 

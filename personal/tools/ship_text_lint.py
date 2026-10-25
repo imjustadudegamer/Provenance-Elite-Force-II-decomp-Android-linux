@@ -17,7 +17,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.abspath(os.path.join(HERE, ".."))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 FIRST_PERSON = re.compile(r"\b(we|us|our|ours|ourselves)\b", re.I)
 
