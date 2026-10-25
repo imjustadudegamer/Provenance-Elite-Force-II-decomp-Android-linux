@@ -93,10 +93,13 @@ cvar_t	*com_fixedtime;
 cvar_t	*com_dropsim;		
 cvar_t	*com_journal;
 cvar_t	*com_maxfps;
+cvar_t	*com_maxfpsMinimized;	/* EF1's background rungs, common.c:2904-2907 */
+cvar_t	*com_maxfpsUnfocused;
 cvar_t	*com_timedemo;
 static cvar_t	*com_frameWait;
 static cvar_t	*com_frameWaitMargin;
 static cvar_t	*com_minimizedCvar;
+static cvar_t	*com_unfocusedCvar;
 cvar_t	*com_sv_running;
 cvar_t	*com_cl_running;
 cvar_t	*com_viewlog;
@@ -1713,6 +1716,8 @@ void Com_Init( char *commandLine ) {
 
 	/* the operator's standing 60, not the shipped 85 */
 	com_maxfps = Cvar_Get( "com_maxfps", "60", CVAR_ARCHIVE );
+	com_maxfpsMinimized = Cvar_Get( "com_maxfpsMinimized", "0", CVAR_ARCHIVE );
+	com_maxfpsUnfocused = Cvar_Get( "com_maxfpsUnfocused", "0", CVAR_ARCHIVE );
 	/* limit-pace: PORT-ONLY, beyond retail's list above.  Safe defaults and NOT
 	   or experiment must opt out explicitly rather than inherit a stored value. */
 	com_frameWait       = Cvar_Get( "com_frameWait", "1", 0 );
@@ -2737,9 +2742,13 @@ void Com_Frame( void ) {
 
 	int		msec;
 	int64_t		minUsec;
-	int64_t		paceNow, paceSpent;
-	static int64_t	lastPace = 0;
+	int64_t		paceSpent;
+	static int64_t	lastPace = 0;	/* the pace deadline: the end of the last spin */
+	static int	s_pacePeriod = 0;	/* last full period, what the budget governs */
+	static int	limitBias = 0;	/* drift accumulator, one budget each way */
 	static int	lastTime = 0;
+	int		limitRemain = 0;
+	int		ui_unfocused = 0;
 
 	int		timeBeforeFirstEvents;
 	int		timeBeforeServer;
@@ -2809,24 +2818,37 @@ void Com_Frame( void ) {
 		timeBeforeFirstEvents = Sys_Milliseconds ();
 	}
 
-    /* EF1's frame budget (VoyagerNX common.c:3248-3266) in usec, so 60 is 16667us and
-     * not a 16ms floor; the present is uncapped on Android, so this is the only pace. */
-    paceNow = Com_PaceUsec();
-    paceSpent = paceNow - lastPace;
-    if ( paceSpent < 0 ) {
-        paceSpent = 0;
+    /* EF1's frame budget (VoyagerNX common.c:3248-3266) in usec; the base is
+     * recomputed every frame and the bias reads the last full period, never the
+     * work window a budget does not govern. */
+    if ( !com_minimizedCvar ) {
+        com_minimizedCvar = Cvar_Get( "com_minimized", "0", 0 );
+    }
+    if ( !com_unfocusedCvar ) {
+        com_unfocusedCvar = Cvar_Get( "com_unfocused", "0", 0 );
+    }
+    ui_minimized  = ( com_minimizedCvar && com_minimizedCvar->integer ) ? 1 : 0;
+    ui_unfocused  = ( com_unfocusedCvar && com_unfocusedCvar->integer ) ? 1 : 0;
+
+    if ( com_dedicated->integer || com_timedemo->integer ) {
+        minUsec = 0;
+    } else if ( ui_minimized && com_maxfpsMinimized->integer > 0 ) {
+        minUsec = 1000000ll / com_maxfpsMinimized->integer;
+    } else if ( ui_unfocused && com_maxfpsUnfocused->integer > 0 ) {
+        minUsec = 1000000ll / com_maxfpsUnfocused->integer;
+    } else if ( com_maxfps->integer > 0 ) {
+        minUsec = 1000000ll / com_maxfps->integer;
+    } else {
+        minUsec = 0;
     }
 
-    minUsec = ( com_dedicated->integer || com_maxfps->integer <= 0 || com_timedemo->integer )
-                  ? 0
-                  : 1000000ll / com_maxfps->integer;
-
-    if ( minUsec > 0 ) {
-        static int limitBias;
-
-        limitBias += (int)( paceSpent - minUsec );
+    if ( minUsec > 0 && s_pacePeriod > 0 ) {
+        limitBias += s_pacePeriod - (int)minUsec;
         if ( limitBias > (int)minUsec ) {
             limitBias = (int)minUsec;    /* EF1's clamp: one frame of catch-up, no more */
+        }
+        if ( limitBias < -(int)minUsec ) {
+            limitBias = -(int)minUsec;   /* and one frame of slack the other way */
         }
 
         minUsec -= limitBias;
@@ -2835,14 +2857,12 @@ void Com_Frame( void ) {
         }
     }
 
+    paceSpent = Com_PaceUsec() - lastPace;    /* work already spent of this window */
+    if ( paceSpent < 0 ) {
+        paceSpent = 0;
+    }
+
     if ( minUsec > 0 && com_frameWait && com_frameWait->integer && !com_dedicated->integer ) {
-        int limitRemain;
-
-        if ( !com_minimizedCvar ) {
-            com_minimizedCvar = Cvar_Get( "com_minimized", "0", 0 );
-        }
-        ui_minimized = ( com_minimizedCvar && com_minimizedCvar->integer ) ? 1 : 0;
-
         limitRemain = LIMIT_WaitDecision( (int)minUsec, (int)paceSpent,
                                           com_frameWaitMargin->integer * 1000,
                                           ui_minimized );
@@ -2875,27 +2895,35 @@ void Com_Frame( void ) {
         }
 
         msec = com_frameTime - lastTime;
-    } while ( minUsec > 0 && Com_PaceUsec() - paceNow < minUsec );
+    } while ( minUsec > 0 && Com_PaceUsec() - lastPace < minUsec );
 
     if ( ui_statsOn ) { ui_spinUsec = UI_Microseconds() - limitSpinT0; }
     }
 
-    lastPace = Com_PaceUsec();
+    {
+    int64_t paceEnd = Com_PaceUsec();
+
+    /* the period the budget governs: deadline to deadline, EF1's com_frameTime - lastTime */
+    s_pacePeriod = ( lastPace > 0 && paceEnd > lastPace ) ? (int)( paceEnd - lastPace ) : 0;
+    if ( s_pacePeriod > 1000000 ) {
+        s_pacePeriod = 1000000;    /* a stall is not a frame */
+    }
+    lastPace = paceEnd;
+    }
     lastTime = com_frameTime;
 
-	if ( PROBE_On() && minUsec > 0 ) {
-		static int        s_limitRows;
-		static int64_t    s_limitLast;
-		int64_t           s_limitNow = Com_PaceUsec();
-		int               s_limitGap = ( s_limitLast && s_limitNow > s_limitLast )
-										   ? (int)( s_limitNow - s_limitLast ) : 0;
+	if ( PROBE_On() ) {
+		static int s_limitRows, s_limitOffRows;
 
-		s_limitLast = s_limitNow;
-		if ( PROBE_Throttle( &s_limitRows, 12, 300 ) ) {
-			PROBE( "limit",
-				   "maxfps=%d budget=%dusec measured=%dusec spin=%d governor=%s\n",
-				   com_maxfps->integer, (int)minUsec, s_limitGap, ui_spinIters,
-				   ui_spinIters > 1 ? "budget" : "work" );
+		if ( minUsec > 0 ) {
+			if ( PROBE_Throttle( &s_limitRows, 12, 60 ) ) {
+				PROBE( "limit",
+					   "maxfps=%d budget=%dusec measured=%dusec bias=%dusec spin=%d governor=%s\n",
+					   com_maxfps->integer, (int)minUsec, s_pacePeriod, limitBias, ui_spinIters,
+					   limitRemain > 0 ? "sleep" : ( ui_spinIters > 1 ? "spin" : "work" ) );
+			}
+		} else if ( PROBE_Throttle( &s_limitOffRows, 0, 300 ) ) {
+			PROBE( "limit", "maxfps=0 budget=0usec measured=%dusec governor=off\n", s_pacePeriod );
 		}
 	}
 
