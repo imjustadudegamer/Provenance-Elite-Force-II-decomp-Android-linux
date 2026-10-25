@@ -398,3 +398,67 @@ stale; line 283 is `r_swapInterval`), so the Frame Rate row is live on the deskt
 **Layout.** The page is authored in the shipped 640x480 space and scaled by `uid.scaleRes`
 like every other menu, so a desktop window and the handheld surface take the same geometry;
 the measured label width and the 22px rows are in authored units and scale with it.
+
+## 10. The third round (the operator's OPSCREENSHOT3 verdict)
+
+**The overlaps had one root: the layout pass walked the row table twice with two counters.**
+`SettingsBuildRows` built the rows from the table, then re-issued their rectangles from a
+second walk of the same table with a second row counter. That second walk `continue`d on a
+section row *before* re-issuing the row it carries -- and all three section entries in
+`s_videoRows` carry their section's first row -- so the second walk's counter fell one behind
+the first's at every section, and every widget after a section header was re-issued one slot
+early:
+
+* Geometry Detail left Display & Quality's empty right cell and landed in the Lighting band's
+  first left cell, **under** the Lighting panel, which is created after it -- so it drew
+  dimmed, which is what the screenshot showed;
+* Shadows and Flares left the Lighting band and landed in the Effects band, dimmed the same
+  way;
+* Effect Detail and Deform Geometry were buried under Detail Surfaces and Detail Textures,
+  which were re-issued onto the same rectangle -- the "High" value box and the second
+  checkbox the operator saw at Detail Surfaces / Detailed Textures were Effect Detail's and
+  Deform Geometry's, drawn beneath;
+* Wall Decals, the last row, was never re-issued at all, so it alone kept the authored 160px
+  label width while every other row carried the measured one.
+
+The slot is now read back out of what the build pass recorded (`rowy[]`/`rowcol[]`,
+uimenu.cpp:1987-1990) instead of being recounted, so there is one walk and one counter and no
+way for a section boundary to move a row. Measured against the screenshot: label x=51 w=156,
+value x=213 w=94 in the left column and x=325/x=487 in the right, every band full, eighteen
+rows, no empty cell, content ending at authored y=398 against the description bar's 403.
+
+**The label column was measured in the wrong unit.** `getTitleWidth` answers in the unit the
+widget *draws* text in, which for a virtual widget is screen pixels
+(`UIFont::getFloatWidth`, uifont.cpp:322 -- `x uid.scaleRes[0]`); the frames here are authored
+in 640x480. On the operator's desktop that inflated the label column by x1.2536 and on the
+Pixel 8 by x3.135, squeezing the value column to a sliver and pressing the boxes into each
+other. `SettingsTitleWidth` (uimenu.cpp:1758) is the one conversion point.
+
+**Full Screen is back, scoped per target.** Retail's own row (menu_video.urc
+`rect 162 188 120 16`, `linkcvar r_fullscreen`) returns as a Full Screen / Windowed switch in
+Display & Quality. `r_fullscreen` is `CVAR_LATCH` (vk_platform.c:439) and is read when the
+window is created (`VKimp_WindowCreate`, vk_platform.c:369-371 takes it as `SDL_WINDOW_FULLSCREEN`),
+so the row is latched and the landed auto-apply is what applies it: a change schedules one
+`vid_restart` (uimenu.cpp:785), which re-runs `R_SetMode` and rebuilds the window windowed or
+fullscreen. On the handheld the same row is built but greyed -- `widgetstate disable` plus
+`AllowActivate(false)`, this uilib's shape of EF1's own `QMF_GRAYED`
+(VoyagerNX_Android efgame/src/ui/ui_video.cpp:410): shown, greyed, refused by the switch and
+out of the pad walk, because the Android surface is the whole window and there is nothing to
+change. The page is still one page; the arithmetic is shared and only the row's state is
+per target.
+
+**The rebuild guard was dead.** It tested `FindWidget("VidRow0Ctl")`, a name nothing was ever
+given, so every UI re-init -- every `vid_restart` -- built the page again on top of itself.
+It now tests the first section header it actually creates (`VidLHead1`, uimenu.cpp:2255), the
+same shape the controls page's guard uses (`TouchBind`).
+
+**Sections are square now.** Eighteen rows in three sections of six, so every band is full
+and no column ends on a hole: Display & Quality carries Aspect, Full Screen, Brightness, FPS
+Counter, Frame Rate Limit, Texture Quality; Lighting is unchanged; Geometry Detail moved to
+Effects & Detail, where the rest of the detail rows live (it is the tessellation row, and
+Texture Quality stays with the display rows it shares the LATCH class with).
+
+**The settings-page manual is `DESIGN-MENU-GRAMMAR.md`** in this directory: the page file
+grammar, the 640x480 coordinate model with the scale worked out from this round's own
+screenshot, the resource-to-widget parse, the row class table with the fields each reads, the
+hide/grey/present states, the probe rows, and the recipe for adding a row to any page.

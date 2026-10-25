@@ -21,7 +21,6 @@ MENUS = os.environ.get("EF2_MENU_REF") or os.path.join(
 ROWS = [
     ("video",         "$$VideoMode$$",              "r_mode",                      "reslist",     None),
     ("video",         "$$ColorDepth$$",             "r_texturebits",               "colorlist",   None),
-    ("video",         "$$FullScreen$$",             "r_fullscreen",                None,          None),
     ("advancedvideo", "$$FullScreenAntialiasing$$", "r_arb_multisample",           None,          None),
     ("advancedvideo", "$$NvidiaAntiAliasing$$",     "r_ext_nv_multisample_filter", None,          None),
     ("audio",         "$$SoundDriver$$",            "s_milesdriver",               "sounddriver", None),
@@ -29,6 +28,10 @@ ROWS = [
     ("GameOptions",   "$$LowBandwidth$$",           "mp_lowBandwidth",             None,          None),
     ("controls",      None,                         None,                          None,          "menu/mp/bar-fix"),
 ]
+
+# $$FullScreen$$ / r_fullscreen left the hide table: the settings-menu3 lane builds the row
+# (s_videoRows), greyed on Android, so the shipped resource is kept as ground truth only.
+BUILT_VIDEO_ROWS = [("$$FullScreen$$", "r_fullscreen")]
 
 BIND = ["WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList",
         "WeaponBind", "AttackLookBind", "MovementBind", "GameplayBind", "PressKey"]
@@ -93,6 +96,11 @@ def main():
             print("   repoint: %d widget(s) -> %s" % (len(gate), [(w["title"], w["stuff"]) for w in gate]))
             if len(gate) != 1:
                 problems.append("repoint matched %d widgets" % len(gate))
+            for token, cvar in BUILT_VIDEO_ROWS:
+                hits = [w for w in widgets if w["title"] == token or (w["cvar"] or "").lower() == cvar]
+                print("   built: %s" % [(w["class"], (w["rect"] or "").strip()) for w in hits])
+                if not hits:
+                    problems.append("built row missing from shipped data: %s" % cvar)
         if menu == "GameOptions":
             orphan = [w for w in widgets if w["class"].lower() == "pulldownmenucontainer"
                       and (w["rect"] or "").split()[:3] == ["586", "231", "16"]]

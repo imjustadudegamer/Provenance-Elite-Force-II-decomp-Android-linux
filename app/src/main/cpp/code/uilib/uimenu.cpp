@@ -1709,6 +1709,35 @@ static const settingsGeom_s s_touchCol = {
 #define SET_LABEL_PAD 8.0f
 #define SET_LABEL_GAP 6.0f
 
+/* The one row the handheld cannot honour: the Android surface is the whole window, so
+   the choice has nothing to change.  The row still ships on both targets -- the page is
+   one page -- and the handheld greys it, which is EF1's own shape of that answer
+   (ui_video.cpp:410, QMF_GRAYED). */
+static const char *const s_videoDesktopRows[] = {
+    "r_fullscreen", NULL
+};
+
+static qboolean SettingsRowIsGreyed(const char *cvar)
+{
+    if (!cvar) {
+        return qfalse;
+    }
+
+#ifdef __ANDROID__
+    int i;
+
+    for (i = 0; s_videoDesktopRows[i]; i++) {
+        if (!stricmp(cvar, s_videoDesktopRows[i])) {
+            return qtrue;
+        }
+    }
+#else
+    /* the desktop honours every row it shows */
+#endif
+
+    return qfalse;
+}
+
 static void SettingsRect(UIWidget *wid, float x, float y, float w, float h)
 {
     Event *ev = new Event(EV_Layout_Rect);
@@ -1720,6 +1749,21 @@ static void SettingsRect(UIWidget *wid, float x, float y, float w, float h)
     ev->AddFloat(h);
     ev->AddFloat(1.0f);
     wid->ProcessEvent(ev);
+}
+
+/* getTitleWidth answers in the unit the widget draws its text in: a virtual widget is
+   authored in 640x480 and its font metrics come back multiplied by the display scale,
+   while every frame here is authored.  Dividing the metric back is what keeps the label
+   column a 640x480 width instead of a screen-pixel one. */
+static float SettingsTitleWidth(UIWidget *wid)
+{
+    float w = wid->getTitleWidth();
+
+    if (w > 0.0f && wid->isResizeable()) {
+        w /= uid.scaleRes[0];
+    }
+
+    return w;
 }
 
 static UIWidget *SettingsHeader(
@@ -1881,9 +1925,10 @@ static int SettingsBuildRows(
     UIWidget *panel    = NULL;
     UIWidget *labels[SET_ROWS_MAX];
     UIWidget *ctls[SET_ROWS_MAX];
+    float     rowy[SET_ROWS_MAX];
+    int       rowcol[SET_ROWS_MAX];
     float     labelw   = 0.0f;
     float     paneltop = 0.0f;
-    float     y0       = y;
     int       i;
     int       built   = 0;
     int       section = 0;
@@ -1943,20 +1988,25 @@ static int SettingsBuildRows(
 
         AdaptTouchTooltip(ctl, row->tooltip);
 
-        if (row->latched) {
+        /* a row this target greys cannot move, so it owes no restart */
+        if (row->latched && !SettingsRowIsGreyed(row->cvar)) {
             SettingsBaselineRecord(row->cvar);
         }
 
         labels[built] = label;
         ctls[built]   = ctl;
+        rowy[built]   = paneltop + band * g->pitch;
+        rowcol[built] = col;
         built++;
         secrow++;
         y = paneltop + (band + 1) * g->pitch;
     }
 
-    /* one width for the label column, taken from the longest label the page carries */
+    /* One width for the label column, taken from the longest label the page carries.
+       The row keeps the slot the build pass gave it -- the slot is read back out of
+       rowy/rowcol, never recounted, so a section boundary cannot move a row. */
     for (i = 0; i < built; i++) {
-        float w = labels[i]->getTitleWidth();
+        float w = SettingsTitleWidth(labels[i]);
 
         if (w > labelw) {
             labelw = w;
@@ -1965,46 +2015,16 @@ static int SettingsBuildRows(
     labelw += SET_LABEL_PAD;
 
     if (labelw > cols[0].labelw) {
-        int k = 0;
-
         UIVK_PROBE("settings", "op=labelw authored=%.0f measured=%.0f",
                    cols[0].labelw, labelw);
+    }
 
-        y = y0;
-        secrow = 0;
-        for (i = 0; i < count; i++) {
-            const settingsRow_s  *row = &rows[i];
-            const settingsGeom_s *g;
-            float                 rowy;
-            float                 valx;
-            int                   band;
-            int                   col;
+    for (i = 0; i < built; i++) {
+        const settingsGeom_s *g = &cols[rowcol[i]];
+        float                 valx = g->labelx + labelw + SET_LABEL_GAP;
 
-            if (row->section) {
-                y += SET_HEAD_H + SET_HEAD_GAP;
-                paneltop = y;
-                secrow = 0;
-                continue;
-            }
-
-            if (!row->widget || k >= built) {
-                continue;
-            }
-
-            col  = (ncols > 1) ? (secrow & 1) : 0;
-            band = (ncols > 1) ? (secrow >> 1) : secrow;
-            g    = &cols[col];
-            rowy = paneltop + band * g->pitch;
-
-            SettingsRect(labels[k], g->labelx, rowy, labelw, g->rowh);
-
-            valx = g->labelx + labelw + SET_LABEL_GAP;
-            SettingsRect(ctls[k], valx, rowy, g->valx + g->valw - valx, g->rowh);
-
-            k++;
-            secrow++;
-            y = paneltop + (band + 1) * g->pitch;
-        }
+        SettingsRect(labels[i], g->labelx, rowy[i], labelw, g->rowh);
+        SettingsRect(ctls[i], valx, rowy[i], g->valx + g->valw - valx, g->rowh);
     }
 
     if (panel) {
@@ -2118,13 +2138,22 @@ static void SettingsHideVideoRetail(UIWidget *container)
     UIVK_PROBE("settings", "op=hide menu='video' hidden=%d art=%d", hidden, art);
 }
 
-/* The kept rows.  DESIGN.md 2.1 carries the cvar each one drives and why it stayed. */
+/* The kept rows.  DESIGN.md 2.1 carries the cvar each one drives and why it stayed.
+   Three sections of six: two columns a band, three bands a section, one band shape
+   everywhere -- so no band ever has an empty cell to drift against. */
 static settingsRow_s s_videoRows[] = {
     {"Display & Quality", "Aspect", "android_aspect", "SwitchBox",
      {{"Fill", "set android_aspect 0", "0"},
       {"16:9", "set android_aspect 1", "1"},
       {"4:3", "set android_aspect 2", "2"}},
      3, 0, 0, 0, NULL, 0, "The shape of the picture"},
+
+    /* retail's own row (menu_video.urc rect 162 188 120 16, linkcvar r_fullscreen):
+       CVAR_LATCH, so a change lands when the auto-apply restarts the renderer. */
+    {NULL, "$$FullScreen$$", "r_fullscreen", "SwitchBox",
+     {{"Full Screen", "set r_fullscreen 1", "1"},
+      {"Windowed", "set r_fullscreen 0", "0"}},
+     2, 0, 0, 0, NULL, 1, "$$SetFullScreen$$"},
 
     {NULL, "$$Brightness$$", "r_gamma", "Slider",
      {{0}}, 0, 0.5f, 3.0f, 0.1f, "float", 1,
@@ -2144,12 +2173,6 @@ static settingsRow_s s_videoRows[] = {
       {"$$Medium$$", "set r_picmip 1", "1"},
       {"$$High$$", "set r_picmip 0", "0"}},
      3, 0, 0, 0, NULL, 1, "How far textures are shrunk.  Changing it restarts the renderer."},
-
-    {NULL, "Geometry Detail", "r_subdivisions", "SwitchBox",
-     {{"$$Low$$", "set r_subdivisions 8", "8"},
-      {"$$Medium$$", "set r_subdivisions 4", "4"},
-      {"$$High$$", "set r_subdivisions 2", "2"}},
-     3, 0, 0, 0, NULL, 1, "How finely curves are cut.  Changing it restarts the renderer."},
 
     {"Lighting", "Simple Lighting", "r_light_simple", "CheckBox",
      {{0}}, 0, 0, 0, 0, NULL, 0, "Flat light instead of the lit path"},
@@ -2176,7 +2199,13 @@ static settingsRow_s s_videoRows[] = {
       {"$$On$$", "set r_flares 1", "1"}},
      2, 0, 0, 0, NULL, 0, "The light halos"},
 
-    {"Effects & Detail", "Effect Detail", "cg_effectdetail", "SwitchBox",
+    {"Effects & Detail", "Geometry Detail", "r_subdivisions", "SwitchBox",
+     {{"$$Low$$", "set r_subdivisions 8", "8"},
+      {"$$Medium$$", "set r_subdivisions 4", "4"},
+      {"$$High$$", "set r_subdivisions 2", "2"}},
+     3, 0, 0, 0, NULL, 1, "How finely curves are cut.  Changing it restarts the renderer."},
+
+    {NULL, "Effect Detail", "cg_effectdetail", "SwitchBox",
      {{"$$Low$$", "set cg_effectdetail 0.5", "0.5"},
       {"$$Medium$$", "set cg_effectdetail 0.8", "0.8"},
       {"$$High$$", "set cg_effectdetail 1.0", "1.0"}},
@@ -2198,14 +2227,32 @@ static settingsRow_s s_videoRows[] = {
      {{0}}, 0, 0, 0, 0, NULL, 0, "Bullet holes and scorch marks"},
 };
 
+/* The one row the handheld cannot honour is greyed, not hidden: shown, inert, out of the
+   pad walk.  `widgetstate disable' is this uilib's greyed state -- the switch and the
+   check both refuse it and the disabled palette greys it -- and AllowActivate takes it
+   out of moveFocus, which stops on CanActivate widgets only. */
+#ifdef __ANDROID__
+static void SettingsGreyRow(UIWidget *label, UIWidget *ctl)
+{
+    AdaptCommand(label, "widgetstate", "disable", NULL);
+    AdaptCommand(label, "disabledfgcolor", "0.400", "0.400", "0.450", "1.000", NULL);
+    AdaptCommand(ctl, "widgetstate", "disable", NULL);
+    AdaptCommand(ctl, "disabledfgcolor", "0.400", "0.400", "0.450", "1.000", NULL);
+    AdaptCommand(ctl, "disabledshadercolor", "0.400", "0.400", "0.450", "1.000", NULL);
+    ctl->AllowActivate(false);
+}
+#endif
+
 static void SettingsAdaptVideo(UIWidget *container)
 {
     float bottom = 0.0f;
     int   built;
+    int   i;
 
     s_settingsTooltipBar = "tooltip_video";
 
-    if (container->FindWidget("VidRow0Ctl")) {
+    /* the first section header: a real widget, so the guard actually holds */
+    if (container->FindWidget(va("%sHead1", s_videoCol[0].prefix))) {
         return;    // built once; a reload re-runs the pass
     }
 
@@ -2215,6 +2262,38 @@ static void SettingsAdaptVideo(UIWidget *container)
     built = SettingsBuildRows(container, s_videoRows,
                               (int)(sizeof(s_videoRows) / sizeof(s_videoRows[0])),
                               s_videoCol, 2, 92.0f, &bottom);
+
+#ifdef __ANDROID__
+    for (i = 0; i < (int)(sizeof(s_videoRows) / sizeof(s_videoRows[0])); i++) {
+        UIWidget *lbl;
+        UIWidget *ctl;
+        int       c;
+
+        if (!s_videoRows[i].cvar || !SettingsRowIsGreyed(s_videoRows[i].cvar)) {
+            continue;
+        }
+
+        /* the column the row landed in, not the one the table guessed */
+        for (c = 0; c < 2 && !lbl; c++) {
+            lbl = container->FindWidget(va("%s_%s_label", s_videoCol[c].prefix, s_videoRows[i].cvar));
+            ctl = container->FindWidget(va("%s_%s", s_videoCol[c].prefix, s_videoRows[i].cvar));
+        }
+
+        if (lbl && ctl) {
+            SettingsGreyRow(lbl, ctl);
+            UIVK_PROBE("settings", "op=row cvar=%s state=greyed target=android",
+                       s_videoRows[i].cvar);
+        } else {
+            UIVK_PROBE("settings", "op=row cvar=%s state=MISSING target=android",
+                       s_videoRows[i].cvar);
+        }
+    }
+#else
+    for (i = 0; i < (int)(sizeof(s_videoDesktopRows) / sizeof(s_videoDesktopRows[0])) - 1; i++) {
+        UIVK_PROBE("settings", "op=row cvar=%s state=live target=desktop",
+                   s_videoDesktopRows[i]);
+    }
+#endif
 
     UIVK_PROBE("settings", "op=build menu='video' rows=%d bottom=%.0f", built, bottom);
 }
