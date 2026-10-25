@@ -60,12 +60,12 @@ when a corpus is absent.
   static reads, raw-word assertions and shipped-asset censuses; the `docs/controls/`
   rigs are the one exception, and they are host programs built for the check, not
   the tree's own binaries.
-- **No log carries a network address.** Diagnostics keep the port, the state and
+- **No log carries a network address.** Probe rows keep the port, the state and
   the failure reason; the address-free form is `NET_AdrToLogString`.
 - **Startup logging is minimal.** The engine prints the device model and the CPU
   model, and nothing further. On Android the instrument set is silent unless a
   crash prints or a probe family is armed explicitly.
-- **A performance number comes from a quiet boot.** A diagnostic boot runs under
+- **A performance number comes from a quiet boot.** A probe-armed boot runs under
   the Vulkan validation layer with the probe families, the engine log and the
   host monitors on, so it measures the cost of being measured. Frame timings
   quoted as performance are taken without that instrumentation.

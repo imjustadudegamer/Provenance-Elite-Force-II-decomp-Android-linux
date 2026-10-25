@@ -90,7 +90,7 @@ owns the per-boot config override: a fresh `ef2-launcher.cfg` is written and
 handed to the engine through `com_execAfterConfig` with `setx` values, so the
 launcher's overrides win over the `config.cfg` the engine execs, on every boot,
 regardless of what that config carried last. `--legacy-audio` flips the mixer
-off. Quiet is the default on every target: `--diag` is the only arm (validation,
+off. Quiet is the default on every target: the qa_probe arm is the only arm (validation,
 probe families, engine log, host monitors), and `--quiet` is kept as the explicit
 no-op.
 

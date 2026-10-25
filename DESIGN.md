@@ -4,7 +4,7 @@ Branch `settings-menu`, base `5a461d57`. The two pages this lane owns are `video
 `controls`; the other two settings pages (`audio`, `GameOptions`) stay retail's own and keep
 the rows they already carry.
 
-## 0. What the reference actually does (EF1, the operator's own SP port)
+## 0. What the reference actually does (EF1, the user's own SP port)
 
 Read exhaustively at `/home/adam/Desktop/PORTS/VoyagerNX_Android/android-port-Single-Player/efgame/src/ui/`:
 
@@ -109,7 +109,7 @@ not offered.
 | Full Screen Antialiasing | `r_arb_multisample` | never read; every pipeline is `VK_SAMPLE_COUNT_1_BIT`. Already hidden. |
 | Nvidia Antialiasing | `r_ext_nv_multisample_filter` | never read. Already hidden. |
 | Anisotropic Filtering | `r_anisotropicFiltering` | `info.anisotropyEnable = VK_FALSE`, hard off (`vk_texture.c:1554`). |
-| Monitor Sync | `r_swapInterval` | registered and honored, but the operator order is explicit: leave it alone (it is deliberately absent from the defaults). |
+| Monitor Sync | `r_swapInterval` | registered and honored, but the standing order is explicit: leave it alone (it is deliberately absent from the defaults). |
 | Dynamic Lightmaps | `r_dynamiclightmaps` | **kept, moved** — see the note below. |
 | Level of Detail Distance | `r_lodScaleDistance` | inert while `r_lodbias > 0.5`: the LOD early-out returns before it is ever read, and this menu offers no control that clears the early-out. |
 
@@ -119,7 +119,7 @@ intensity gate), so the row is **kept** on the Lighting section and the stale co
 corrected in place. Toggling it is live (not latched).
 
 Note on the quality preset row: EF1's most-used control is the preset chooser, but its
-templates here would write a *lower* quality over the operator's max-graphics pins on an
+templates here would write a *lower* quality over the user's max-graphics pins on an
 install that only touched the preset. It is deliberately **not** carried; Restore Defaults is
 the one way back to the pins.
 
@@ -150,7 +150,7 @@ So, per target:
   and the launcher pins `r_mode=-1 r_customwidth=800 r_customheight=600`
   (`personal/scripts/play_ef2_decomp.sh:277`), a 4:3 window. In that window `4:3` is
   arithmetically identical to Fill and `16:9` letterboxes the *menu* into a squashed
-  800x450 band, which is the "the switch has an issue" the operator saw. The row is greyed
+  800x450 band, which is the "the switch has an issue" the user saw. The row is greyed
   (the same `QMF_GRAYED` shape the Full Screen row uses on the handheld) and the consumer is
   gated with it: `SCR_AndroidDisplayRect`/`CG_AndroidDisplayRect` return the whole surface
   off-Android, so a value archived while experimenting cannot leave the desktop stuck in a
@@ -259,7 +259,7 @@ pages; walk the pad down the video page (every row names itself in `[UIVK:padnav
 press ENTER on a SwitchBox and on a slider; transition to Controls; switch all five tabs
 (`[INV:gwc]` names each panel); arm a bind row and assign a pad button (`op=rebind`); leave.
 
-## 6. The fix round (the operator's Pixel 8 boot, APK `0.8.0+29a405a4-dirty`)
+## 6. The fix round (the user's Pixel 8 boot, APK `0.8.0+29a405a4-dirty`)
 
 **The leak, and the two mechanisms behind it.** The screenshot shows the video page with no
 page switcher and no Apply: `UIWidget::getTitle()` hands back the *translated* string, not the
@@ -300,11 +300,11 @@ had compiled the limiter out entirely — `minMsec = 1`, "uncapped by order"), t
 correction clamped to `[0, minMsec]`, and this engine's own `LIMIT_WaitDecision` + event-loop spin in
 place of EF1's `NET_Sleep`, which is the same sleep-most/spin-the-tail shape with
 `com_frameWaitMargin` for the margin. Adapted: present mode is this port's own swapchain and
-`r_swapInterval` stays untouched by operator order, so the proof row names the *measured*
+`r_swapInterval` stays untouched by standing order, so the proof row names the *measured*
 period and the display's ceiling is visible in it rather than claimed past.
 
 **Superseded by the paragraph above** — the earlier round found the limiter compiled out
-and shipped no row; the operator's standing order is that the limiter itself work, so it now
+and shipped no row; the user's standing order is that the limiter itself work, so it now
 does (`Frame Rate Limit`, `com_maxfps` Off / 60 / 120, in Display & Quality). What that audit
 turned up and still stands:: `common.c:2800` compiles the limiter out on Android —
 `minMsec = 1` with the comment *"Android: uncapped by order … the archived com_maxfps 85 is not
@@ -315,7 +315,7 @@ handheld does not use that launcher, so the row is live where this menu ships, a
 the coordinator's to drop.
 
 **The FPS counter row is real and is wired to the cvar that actually gates the draw the
-operator sees.** The corner readout is `SCR_DrawFPS` (`cl_scrn.cpp:247`, `"%ifps"` — the
+user sees.** The corner readout is `SCR_DrawFPS` (`cl_scrn.cpp:247`, `"%ifps"` — the
 "57fps" in the screenshot), gated at `cl_scrn.cpp:193` on **`cg_drawFPS`**, registered
 `Cvar_Get("cg_drawFPS", "1", CVAR_ARCHIVE)` at `cl_scrn.cpp:307` — on by default, and 2 adds
 the scheduler budget line. The other counter, `View3D::DrawFPS` ("FPS 57.0" plus tri/vert
@@ -336,7 +336,7 @@ stats), is a different cvar (`fps`, default 0) and stays where retail put it.
   enough that a pad nudge moves the thumb visibly. `cl_yawspeed` / `cl_pitchspeed` are
   integer-stepped at 15 per notch for the same reason EF1 gives at `ui_controls2.cpp:2903`.
 
-## 8. The second round (the operator's OPSCREENSHOT2 verdict)
+## 8. The second round (the user's OPSCREENSHOT2 verdict)
 
 **No Apply.** The row goes with the keep list that protected it, and retail's own restart
 test moves into the write path: `ui_settingsautoapply` compares each LATCH cvar against what
@@ -384,7 +384,7 @@ its shader and its show state.
 
 ## 9. The graphics page is the graphics page on both targets
 
-The operator's order: one unified graphics settings page, not an Android overlay. The
+The standing order: one unified graphics settings page, not an Android overlay. The
 builders, the row table, the keep pass and `SettingsAdaptVideo` run on the Linux build now;
 the controls page stays the handheld's (the order scoped the unification to graphics), and
 the Linux build keeps its own `s_adaptRows` for the two advancedvideo rows no renderer reads.
@@ -440,7 +440,7 @@ stale; line 283 is `r_swapInterval`), so the Frame Rate row is live on the deskt
 like every other menu, so a desktop window and the handheld surface take the same geometry;
 the measured label width and the 22px rows are in authored units and scale with it.
 
-## 10. The third round (the operator's OPSCREENSHOT3 verdict)
+## 10. The third round (the user's OPSCREENSHOT3 verdict)
 
 **The overlaps had one root: the layout pass walked the row table twice with two counters.**
 `SettingsBuildRows` built the rows from the table, then re-issued their rectangles from a
@@ -457,7 +457,7 @@ early:
   way;
 * Effect Detail and Deform Geometry were buried under Detail Surfaces and Detail Textures,
   which were re-issued onto the same rectangle -- the "High" value box and the second
-  checkbox the operator saw at Detail Surfaces / Detailed Textures were Effect Detail's and
+  checkbox the user saw at Detail Surfaces / Detailed Textures were Effect Detail's and
   Deform Geometry's, drawn beneath;
 * Wall Decals, the last row, was never re-issued at all, so it alone kept the authored 160px
   label width while every other row carried the measured one.
@@ -471,7 +471,7 @@ rows, no empty cell, content ending at authored y=398 against the description ba
 **The label column was measured in the wrong unit.** `getTitleWidth` answers in the unit the
 widget *draws* text in, which for a virtual widget is screen pixels
 (`UIFont::getFloatWidth`, uifont.cpp:322 -- `x uid.scaleRes[0]`); the frames here are authored
-in 640x480. On the operator's desktop that inflated the label column by x1.2536 and on the
+in 640x480. On the user's desktop that inflated the label column by x1.2536 and on the
 Pixel 8 by x3.135, squeezing the value column to a sliver and pressing the boxes into each
 other. `SettingsTitleWidth` (uimenu.cpp:1784) is the one conversion point.
 
@@ -504,7 +504,7 @@ grammar, the 640x480 coordinate model with the scale worked out from this round'
 screenshot, the resource-to-widget parse, the row class table with the fields each reads, the
 hide/grey/present states, the probe rows, and the recipe for adding a row to any page.
 
-## 11. The fourth round (the operator's OPSCREENSHOT4 verdict + the 0.8.4 boot crash)
+## 11. The fourth round (the user's OPSCREENSHOT4 verdict + the 0.8.4 boot crash)
 
 **The page fills its frame by the shipped pages' own rule.** The dead space was three gaps
 the shipped data sizes explicitly, and all three came from this port guessing instead of

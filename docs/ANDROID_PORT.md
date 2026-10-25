@@ -292,8 +292,8 @@ something arms a probe family explicitly. There is no ambient logging on the
 device.
 
 The desktop launcher (untracked, `personal/scripts/play_ef2_decomp.sh`) arms the
-instrument set with `--diag` and disarms it with `--quiet` or `--clean`. A
-diagnostic boot runs under the Vulkan validation layer with every probe family,
+instrument set with the qa_probe arm and disarms it with `--quiet` or `--clean`. A
+probe-armed boot runs under the Vulkan validation layer with every probe family,
 the engine log and the host monitors on, so its frame timings are not
 performance numbers: the measurements it takes are the cost of being measured.
 Any performance claim is taken from a quiet boot.
