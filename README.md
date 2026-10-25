@@ -14,7 +14,7 @@ A follow-up to my own Android ports —
 and inspired by [VoyagerNX](https://github.com/faithvoid/VoyagerNX), faithvoid's Nintendo
 Switch port of the first game.
 
-![The tricorder in action — Android, touch controls](docs/img/tricorder-720p.png)
+![Gameplay on Android, with the touch controls](docs/img/gameplay-720p.png)
 
 ## Why "Provenance"?
 
