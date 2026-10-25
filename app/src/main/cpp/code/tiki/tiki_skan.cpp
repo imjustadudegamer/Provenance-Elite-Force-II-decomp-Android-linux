@@ -600,7 +600,13 @@ static void TIKI_Skan_RotProbe(
     const char       *boneName,
     int               slot,
     const float      *cq,
-    const float      *w
+    const float      *w,
+    qboolean          legs,
+    int               anim,
+    int               frame,
+    int               oldanim,
+    int               oldframe,
+    float             framelerp
 )
 {
     float caxis[3];
@@ -610,16 +616,67 @@ static void TIKI_Skan_RotProbe(
     float cang[3];
     float wang[3];
 
-    static int cadence;
+    static float    s_prev[TIKI_MAX_BONES][3];
+    static qboolean s_have[TIKI_MAX_BONES];
+    static int      s_tail[TIKI_MAX_BONES];
+    static int      s_rows;
+    static qboolean s_noted;
+    qboolean        tail;
+    qboolean        moved;
+    int             i;
+    int             key;
+    float           d;
 
     if (!TIKI_Skan_RotChainBone(boneName)) {
         return;
     }
-    /* a wrong-but-unit rotation never trips the length test, so this arm samples
-       on a cadence instead of waiting to be triggered */
-    if (!PROBE_Throttle(&cadence, 48, 48)) {
-        return;
+
+    /* a wrong-but-unit rotation never trips a length test, so this arm samples
+       every armed frame and additionally latches a tail whenever the pose moves,
+       because the cant is a transition into a held pose and a cadence can land
+       on either side of it.  Static state only: nothing is allocated per frame. */
+    key = (int)(((unsigned)s_probeEnt * 31u + (unsigned)bone) % TIKI_MAX_BONES);
+
+    moved = qfalse;
+    if (s_have[key]) {
+        for (i = 0; i < 3; i++) {
+            d = wang[i] - s_prev[key][i];
+            if (d < 0.0f) {
+                d = -d;
+            }
+            if (d > 180.0f) {
+                d = 360.0f - d;
+            }
+            if (d > 5.0f) {
+                moved = qtrue;
+            }
+        }
     }
+    for (i = 0; i < 3; i++) {
+        s_prev[key][i] = wang[i];
+    }
+    s_have[key] = qtrue;
+
+    if (moved) {
+        s_tail[key] = 30;
+    } else if (s_tail[key] > 0) {
+        s_tail[slot]--;
+    }
+    tail = (s_tail[key] > 0);
+
+    if (!tail) {
+        if (s_rows >= 2000000) {
+            if (!s_noted) {
+                s_noted = qtrue;
+                CHAN_PROBE(
+                    "head",
+                    "why=rotcap note=every-frame rot rows capped at 2000000; change-triggered tails still print\n"
+                );
+            }
+            return;
+        }
+    }
+    s_rows++;
 
     TIKI_Skan_QuatAxisAngle(cq, caxis, &cdeg);
     TIKI_Skan_QuatAxisAngle(w, waxis, &wdeg);
@@ -628,7 +685,8 @@ static void TIKI_Skan_RotProbe(
 
     CHAN_PROBE(
         "head",
-        "why=rot tiki=%s bone=%d name='%s' slot=%d ent=%d "
+        "why=rot tiki=%s bone=%d name='%s' slot=%d ent=%d ch=%s anim=%d frame=%d oldanim=%d "
+        "oldframe=%d flerp=%.3f "
         "caxis=(%.3f,%.3f,%.3f) cdeg=%.2f cang=(%.2f,%.2f,%.2f) "
         "waxis=(%.3f,%.3f,%.3f) wdeg=%.2f wang=(%.2f,%.2f,%.2f)\n",
         tiki->name,
@@ -636,6 +694,12 @@ static void TIKI_Skan_RotProbe(
         boneName,
         slot,
         s_probeEnt,
+        legs ? "legs" : "torso",
+        anim,
+        frame,
+        oldanim,
+        oldframe,
+        framelerp,
         caxis[0],
         caxis[1],
         caxis[2],
@@ -1229,7 +1293,9 @@ int TIKI_SkelBonesFromRecords(
             b_oldframe = legs ? oldframe : torso_oldframe;
             b_flerp = legs ? framelerp : torso_framelerp;
             b_cb = legs ? crossblend_lerp : torso_crossblend_lerp;
-            TIKI_Skan_RotProbe(tiki, b, boneName, n, cq, w);
+            TIKI_Skan_RotProbe(
+                tiki, b, boneName, n, cq, w, legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp
+            );
             TIKI_Skan_QuatLenProbe(
                 tiki, skel, b, boneName, n, cq, w, ch, chan, row, localQuat, parent, parentQuat,
                 legs, b_anim, b_frame, b_oldanim, b_oldframe, b_flerp, b_cb
