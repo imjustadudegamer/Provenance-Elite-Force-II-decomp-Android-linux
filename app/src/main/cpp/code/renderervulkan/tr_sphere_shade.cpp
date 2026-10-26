@@ -747,6 +747,9 @@ void R_Sphere_SetupEntity()
     vec3_t     vLightDir;
     spherel_t *lightlist[MAX_MAP_SPHERE_LIGHTS_EF2];
 
+    /* retail fills the entity-lighting record before anything draws from it */
+    R_SetupEntityLighting( &backEnd.refdef, backEnd.currentEntity );
+
     backEnd.currentSphere->TessFunction = &RB_Light_Sphere;
 
     if ((backEnd.currentEntity->e.renderfx & RF_FULLBRIGHT) || r_light_nolight->integer) {
@@ -816,7 +819,7 @@ void R_Sphere_SetupEntity()
         vec3_t vAmbient;
 
         s_sphereWroteAmbient = 1;
-        backEnd.currentSphere->TessFunction = &RB_CalcColorFromEntity;
+        backEnd.currentSphere->TessFunction = &RB_CalcColorFromEntityLighting;
 
         VectorClear(vAmbient);
         for (i = 0; i < SPHERE_NUM_BASIS; i++) {

@@ -761,6 +761,25 @@ void RB_CalcColorFromEntity( unsigned char *dstColors )
 	}
 }
 
+/* the entity-lighting record R_SetupEntityLighting computed, not the render
+   entity's modulate -- the sphere's non-extralight arm draws this one */
+void RB_CalcColorFromEntityLighting( unsigned char *dstColors )
+{
+	int   i;
+	int  *pColors = ( int * ) dstColors;
+	int   c;
+
+	if ( !backEnd.currentEntity ) {
+		return;
+	}
+
+	c = backEnd.currentEntity->ambientLightInt;
+
+	for ( i = 0; i < tess.numVertexes; i++, pColors++ ) {
+		*pColors = c;
+	}
+}
+
 void RB_CalcColorFromOneMinusEntity( unsigned char *dstColors )
 {
 	int	i;

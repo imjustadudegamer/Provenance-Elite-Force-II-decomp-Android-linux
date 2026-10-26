@@ -249,6 +249,51 @@ int R_LightForPoint(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec
     return 0;
 }
 
+/* retail R_SetupEntityLighting: the record every entity colour reads.  A world
+   with no base-lighting surfs (every shipped EF2 map) takes the lit fallback --
+   ambient = directed = identityLight * 255 -- plus the in-range sphere lights. */
+void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
+    float   identity = tr.identityLight * 255.0f;
+    float   max;
+    int     i;
+
+    if ( ( refdef->rdflags & RDF_NOWORLDMODEL )
+            || !tr.world->numBaseLightingSurfs
+            || ( ent->e.renderfx & RF_FULLBRIGHT ) ) {
+        VectorSet( ent->ambientLight, identity, identity, identity );
+        VectorSet( ent->directedLight, identity, identity, identity );
+        VectorSet( ent->lightDir, 0.0f, 0.0f, 1.0f );
+    }
+
+    for ( i = 0; i < tr.numSLights; i++ ) {
+        const spherel_t *pl = &tr.sLights[ i ];
+        vec3_t           delta;
+        float            dist, falloff;
+
+        VectorSubtract( pl->origin, ent->e.origin, delta );
+        dist = VectorLength( delta );
+        if ( dist <= pl->falloff_end_dist ) {
+            falloff = tr.identityLight * pl->falloff_end_dist / ( dist * dist );
+            ent->directedLight[0] += pl->color[0] * falloff;
+            ent->directedLight[1] += pl->color[1] * falloff;
+            ent->directedLight[2] += pl->color[2] * falloff;
+        }
+    }
+
+    max = ent->ambientLight[0];
+    if ( ent->ambientLight[1] > max ) max = ent->ambientLight[1];
+    if ( ent->ambientLight[2] > max ) max = ent->ambientLight[2];
+    if ( max > 255.0f ) {
+        VectorScale( ent->ambientLight, 255.0f / max, ent->ambientLight );
+        VectorScale( ent->directedLight, 255.0f / max, ent->directedLight );
+    }
+
+    ( (byte *)&ent->ambientLightInt )[0] = (byte)Q_min( ent->ambientLight[0], 255.0f );
+    ( (byte *)&ent->ambientLightInt )[1] = (byte)Q_min( ent->ambientLight[1], 255.0f );
+    ( (byte *)&ent->ambientLightInt )[2] = (byte)Q_min( ent->ambientLight[2], 255.0f );
+    ( (byte *)&ent->ambientLightInt )[3] = 0xFF;
+}
+
 /* One row per frame whose dlight feed moved on a light that did not: a stationary light going black or changing hue is a wrong slot, not the level. */
 void RB_DLightFeedCensus( void )
 {

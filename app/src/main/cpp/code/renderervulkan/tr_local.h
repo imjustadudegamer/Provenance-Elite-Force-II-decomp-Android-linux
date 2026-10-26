@@ -2163,6 +2163,7 @@ void	RB_CalcAlphaFromEntity( unsigned char *dstColors );
 void	RB_CalcAlphaFromOneMinusEntity( unsigned char *dstColors );
 void	RB_CalcStretchTexCoords( const waveForm_t *wf, float *texCoords );
 void	RB_CalcColorFromEntity( unsigned char *dstColors );
+void	RB_CalcColorFromEntityLighting( unsigned char *dstColors );
 void	RB_CalcColorFromOneMinusEntity( unsigned char *dstColors );
 void	RB_CalcColorFromConstant(unsigned char* dstColors, unsigned char* constantColor);
 void	RB_CalcRGBFromDot(unsigned char* colors, float alphaMin, float alphaMax);
