@@ -4815,7 +4815,8 @@ static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
 									 const unsigned char *colors, const shader_t *shader,
 									 const shaderStage_t *pStage )
 {
-	static const char *const feedName[] = { "none", "grid", "tris", "arena" };
+	static const char *const feedName[] = { "none", "grid", "tris", "arena", "face",
+	                                       "bad", "bad", "bad" };
 	static int s_rows;
 	int rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0, aMin = 255, aMax = 0;
 	int sc[3] = { -1, -1, -1 }, dv[4] = { -1, -1, -1, -1 };
@@ -4864,15 +4865,24 @@ static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
 
 					dv[0] = cv->verts[0].color[0]; dv[1] = cv->verts[0].color[1];
 					dv[2] = cv->verts[0].color[2]; dv[3] = cv->verts[0].color[3];
+				} else if ( type == SF_FACE ) {
+					/* the loaded copy: ParseFace colour-shifted the file bytes into points[i][7] */
+					const srfSurfaceFace_t *face = (const srfSurfaceFace_t *)feed;
+					const byte *p0 = (const byte *)&face->points[0][7];
+
+					if ( face->color ) {
+						sc[0] = face->color[0]; sc[1] = face->color[1]; sc[2] = face->color[2];
+					}
+					dv[0] = p0[0]; dv[1] = p0[1]; dv[2] = p0[2]; dv[3] = p0[3];
 				}
 			}
 			VK_Guard_Row( "DOCC:color",
 						  "shader='%s' rg=%d ag=%d n=%d rgba=%d..%d,%d..%d,%d..%d,%d..%d "
-						  "feed=%s srccolor=%d,%d,%d dv=%d,%d,%d,%d f=%d",
+						  "feed=%s lmidx=%d srccolor=%d,%d,%d dv=%d,%d,%d,%d f=%d",
 						  shader ? shader->name : "?", (int)pStage->rgbGen,
 						  (int)pStage->alphaGen, input->numVertexes,
 						  rMin, rMax, gMin, gMax, bMin, bMax, aMin, aMax,
-						  feedName[ feedKind & 3 ], sc[0], sc[1], sc[2],
+						  feedName[ feedKind & 7 ], (int)shader->lightmapIndex, sc[0], sc[1], sc[2],
 						  dv[0], dv[1], dv[2], dv[3],
 						  RB_FrameCount() );
 		}

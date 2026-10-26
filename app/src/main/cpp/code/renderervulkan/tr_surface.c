@@ -577,6 +577,8 @@ void RB_SurfaceFace( srfSurfaceFace_t *surf ) {
 
 	RB_CHECKOVERFLOW( surf->numPoints, surf->numIndices );
 
+	RB_NoteFeedSurf( surf, 4 );
+
 	dlightBits = surf->dlightBits[RB_FrameSmpFrame()];
 	tess.dlightBits |= dlightBits;
 
