@@ -571,7 +571,7 @@ static qboolean R_Sphere_ResetPointColors(void)
         }
     }
 
-    VectorClear(backEnd.currentSphere->ambient);
+    VectorSet( backEnd.currentSphere->ambient, ambientlight[0], ambientlight[1], ambientlight[2] );
 
     if (tr.numSLights && !r_fullbright->integer && backEnd.currentSphere->leaves[0]) {
         for (i = 0; i < SPHERE_NUM_BASIS; i++) {
@@ -747,10 +747,10 @@ void R_Sphere_SetupEntity()
     vec3_t     vLightDir;
     spherel_t *lightlist[MAX_MAP_SPHERE_LIGHTS_EF2];
 
-    /* retail fills the entity-lighting record before anything draws from it */
+    /* retail fills the entity-lighting record first, and the record is the
+       default draw: an early return must never leave a zero sphere reading */
     R_SetupEntityLighting( &backEnd.refdef, backEnd.currentEntity );
-
-    backEnd.currentSphere->TessFunction = &RB_Light_Sphere;
+    backEnd.currentSphere->TessFunction = &RB_CalcColorFromEntityLighting;
 
     if ((backEnd.currentEntity->e.renderfx & RF_FULLBRIGHT) || r_light_nolight->integer) {
         backEnd.currentSphere->TessFunction = &RB_Light_FullbrightSphere;
@@ -796,6 +796,7 @@ void R_Sphere_SetupEntity()
 
         /* retail draws this branch from the sphere itself and leaves the record alone; the row still names which one ran */
         s_sphereWroteAmbient = 0;
+        backEnd.currentSphere->TessFunction = &RB_Light_Sphere;
 
         VectorClear(backEnd.currentSphere->ambient);
         for (i = 0; i < SPHERE_NUM_BASIS; i++) {
@@ -1063,7 +1064,9 @@ void R_Sphere_InitLights()
     s_sun.szFlareName[0] = 0;
     s_sun.exists         = qfalse;
 
-    VectorClear(ambientlight);
+    /* retail seeds the sphere's ambient light from its own default before the
+       entity string can override it: a map without the key is still lit */
+    VectorSet( ambientlight, tr.identityLightByte, tr.identityLightByte, tr.identityLightByte );
     backEnd.sphere.TessFunction = &RB_Light_Sphere;
     backEnd.currentSphere       = &backEnd.sphere;
     backEnd.bExactDLights       = qfalse;

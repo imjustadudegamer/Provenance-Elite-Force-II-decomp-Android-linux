@@ -2481,13 +2481,10 @@ void VKimp_LogComment(char *comment)
 
 unsigned long RF_ForceAlphaStateBits( unsigned long stateBits )
 {
-	if ( backEnd.currentEntity && ( backEnd.currentEntity->e.renderfx & RF_FORCE_ALPHA )
-		&& backEnd.currentEntity->e.shaderRGBA[3] < 255 )
-	{
-		return ( stateBits & ~( VKS_SRCBLEND_BITS | VKS_DSTBLEND_BITS | VKS_DEPTHMASK_TRUE ) )
-		       | VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
-	}
-
+	/* retail never touches the blend for RF_FORCE_ALPHA: the fade rides the
+	   entity's own alpha in the colour (R_AddSkelSurfaces), so the shader's
+	   blendFunc survives -- an additive flash stays additive.  Rewriting the
+	   factors here turned every forced fade into an alpha-blend box. */
 	return stateBits;
 }
 
