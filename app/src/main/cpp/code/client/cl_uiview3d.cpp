@@ -114,7 +114,10 @@ void View3D::OnActivate(Event *ev)
         return;
     }
 
+    /* A HUD the pad can walk keeps the bit: the game view coming back does not
+       hand the pad back to the world while the tricorder is open. */
     Key_SetCatcher(Key_GetCatcher() & ~KEYCATCH_UI);
+    UI_SyncPadCatcher();
     uWinMan.sortWidgetContainers();
 }
 
@@ -318,6 +321,7 @@ void View3D::CenterPrint(void)
     qhandle_t   mat;
     float       x, y;
     float       w, h;
+    float       scale;
 
     if (!m_printfadetime) {
         return;
@@ -334,23 +338,30 @@ void View3D::CenterPrint(void)
 
     fAlpha = Q_clamp_float(fAlpha, 0, 1);
 
+    /* This family draws at retail's own pixel size and nothing rescales it, so on a hand-held
+       panel it is a few millimetres tall.  It takes the HUD factor, the same one the readouts and
+       the touch labels resolve to; a desktop resolves to 1.0 and keeps retail's size.  At 1.0 the
+       scaled print is the same arithmetic as PrintJustified -- the renderer treats a {1,1} vector
+       exactly like no vector at all. */
+    scale = UI_HudTextScale();
+
     if (!m_print_mat) {
         UIRect2D frame;
         m_font->setColor(UColor(0, fAlpha, fAlpha, fAlpha));
 
         frame = getClientFrame();
 
-        m_font->PrintJustified(
+        m_font->PrintJustifiedScaled(
             UIRect2D(frame.pos.x + 1, frame.pos.y + 1, frame.size.width, frame.size.height),
             m_iFontAlignmentHorizontal,
             m_iFontAlignmentVertical,
-            p, UColor(0.0f, 0.0f, 0.0f, 0.0f), 0);
+            p, UColor(0.0f, 0.0f, 0.0f, 0.0f), scale);
 
         m_font->setColor(UColor(1, fAlpha, fAlpha, fAlpha));
 
         frame = getClientFrame();
 
-        m_font->PrintJustified(frame, m_iFontAlignmentHorizontal, m_iFontAlignmentVertical, p, UColor(0.0f, 0.0f, 0.0f, 0.0f), 0);
+        m_font->PrintJustifiedScaled(frame, m_iFontAlignmentHorizontal, m_iFontAlignmentVertical, p, UColor(0.0f, 0.0f, 0.0f, 0.0f), scale);
 
         m_font->setColor(UBlack);
     } else if ((mat = m_print_mat->GetMaterial())) {
@@ -358,8 +369,8 @@ void View3D::CenterPrint(void)
 
         re.SetColor(col);
 
-        w = re.GetShaderWidth(mat);
-        h = re.GetShaderHeight(mat);
+        w = re.GetShaderWidth(mat) * scale;
+        h = re.GetShaderHeight(mat) * scale;
         x = (m_frame.pos.x + m_frame.size.width - w) * 0.5f;
         y = (m_frame.pos.y + m_frame.size.height - h) * 0.5f;
 

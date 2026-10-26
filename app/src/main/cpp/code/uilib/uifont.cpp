@@ -309,6 +309,84 @@ void UIFont::PrintJustified(
     }
 }
 
+/* Retail's layout at a larger glyph size, for the notification family: the metrics scale with the
+   glyphs so the justification stays on the same centre.  The widget path does not need this -- its
+   frames are already scaled, so its left-justified rows land right with the raw metrics and a
+   divided origin, which is what Print does.  Same wrap width, so the same words land on the same
+   lines as retail's. */
+void UIFont::PrintJustifiedScaled(
+    const UIRect2D&   rect,
+    fonthorzjustify_t horz,
+    fontvertjustify_t vert,
+    const char       *text,
+    UColor            shadowColor,
+    float             scale
+)
+{
+    float    newx, newy;
+    float    textheight;
+    UIRect2D sizedRect;
+    float    vs[2];
+
+    if (scale <= 0.0f) {
+        return;
+    }
+
+    sizedRect   = rect;
+    textheight  = (float)getHeight(text, -1, false) * scale;
+
+    switch (vert) {
+    case FONT_JUSTVERT_TOP:
+        newy = sizedRect.pos.y;
+        break;
+    case FONT_JUSTVERT_CENTER:
+        newy = sizedRect.pos.y + (sizedRect.size.height - textheight) * 0.5;
+        break;
+    case FONT_JUSTVERT_BOTTOM:
+        newy = sizedRect.pos.y + sizedRect.size.height - textheight;
+        break;
+    default:
+        newy = 0;
+        break;
+    }
+
+    Container<str> lines;
+    UIFont_WrapLines(this, text, sizedRect.size.width, false, lines);
+
+    vs[0] = scale;
+    vs[1] = scale;
+
+    for (int li = 1; li <= lines.NumObjects(); li++) {
+        const char *string  = lines.ObjectAt(li).c_str();
+        float       lineLen = (float)(int)getFloatWidth(string, -1, false) * scale;
+
+        switch (horz) {
+        case FONT_JUSTHORZ_CENTER:
+            newx = sizedRect.pos.x + (sizedRect.size.width - lineLen) * 0.5f;
+            break;
+        case FONT_JUSTHORZ_LEFT:
+            newx = (float)(int)sizedRect.pos.x + 2.0f;
+            break;
+        case FONT_JUSTHORZ_RIGHT:
+            newx = (float)(int)(sizedRect.pos.x + sizedRect.size.width - lineLen) - 2.0f;
+            break;
+        default:
+            newx = 0.0f;
+            break;
+        }
+
+        if (shadowColor.a != 0.0f) {
+            uii.Rend_SetColor(shadowColor);
+            uii.Rend_DrawString(m_font, string, (int)(newx / scale) - 1, (int)(newy / scale) + 1, -1, vs);
+        }
+
+        uii.Rend_SetColor(color);
+        uii.Rend_DrawString(m_font, string, (int)(newx / scale), (int)(newy / scale), -1, vs);
+
+        newy += (float)getHeight(string, -1, false) * scale;
+    }
+}
+
 float UIFont::getFloatWidth(const char *text, int maxlen, bool virtualScale)
 {
     float width    = 0.0f;

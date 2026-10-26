@@ -463,6 +463,47 @@ qboolean UI_IsHudActive(void)
     return qfalse;
 }
 
+/* A HUD the pad can walk: the tricorder's own screens, the terminals and the conversation card.
+   They are the noEscape HUDs that carry a row the pad can act on, and they are the ones that take
+   the keyboard away from the game -- the mouse is already theirs. */
+static qboolean UI_PadHudActive(void)
+{
+    for (int i = 1; i <= hudList.NumObjects(); i++) {
+        Menu              *menu = hudList.ObjectAt(i);
+        UIWidget          *cont;
+
+        if (!menu || !menu->isNoEscape()) {
+            continue;
+        }
+
+        cont = menu->GetContainerWidget();
+
+        if (cont && cont->isSubclassOf(UIWidgetContainer) && ((UIWidgetContainer *)cont)->hasPadStop()) {
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
+/* One writer of the UI catcher bit: a menu takes it as it always did, and so does a HUD the pad
+   can walk.  Without the bit the pad's D-pad stays game input and the tricorder never hears it. */
+void UI_SyncPadCatcher(void)
+{
+    int catcher = Key_GetCatcher();
+
+    if (menuManager.CurrentMenu() || UI_PadHudActive()) {
+        if (!(catcher & KEYCATCH_UI)) {
+            Key_SetCatcher(catcher | KEYCATCH_UI);
+        }
+        return;
+    }
+
+    if ((catcher & KEYCATCH_UI) && !UI_BindActive() && !(catcher & KEYCATCH_CONSOLE)) {
+        Key_SetCatcher(catcher & ~KEYCATCH_UI);
+    }
+}
+
 int UI_HudCount(void)
 {
     return hudList.NumObjects();
@@ -2120,6 +2161,13 @@ static float UI_EffectiveHudScale( void )
     return s_uiHudScaleAuto;
 }
 
+/* The same factor the HUD readouts and the touch labels resolve to, for the one notification
+   family that draws outside any HUD menu.  A desktop resolves to 1.0 and keeps retail's size. */
+float UI_HudTextScale( void )
+{
+    return UI_EffectiveHudScale();
+}
+
 /* One startup line, always, with the inputs that produced the scale: the resolved factor, the path
    it came from, the raw density and the pre-clamp ratio. Without it a device round cannot tell a
    working scale from a silent 1.0. */
@@ -2837,6 +2885,7 @@ void UI_AddHud(const char *name, int show)
 
     UI_ApplyHudScale(hud);
     UI_RelayoutHudMenu(hud);
+    UI_SyncPadCatcher();
 }
 
 void UI_RemoveHud(const char *name)
@@ -2851,6 +2900,8 @@ void UI_RemoveHud(const char *name)
             hud->GetContainerWidget()->setHudScale(1.0f);
         }
     }
+
+    UI_SyncPadCatcher();
 }
 
 void UI_AddHud_f(void)

@@ -683,7 +683,9 @@ public:
     UIWidget *getFocusWidget(void) const;
     void      setFocusWidget(UIWidget *wid);
     void      clearFocusWidget(void);
+    qboolean  hasPadStop(void);
     qboolean  moveFocus(int dir);
+    qboolean  moveFocus(int dir, int key, qboolean directional);
 };
 
 extern Event W_Destroyed;

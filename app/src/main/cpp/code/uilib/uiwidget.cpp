@@ -4983,44 +4983,85 @@ void UIWidgetContainer::clearFocusWidget(void)
     setFocusWidget(NULL);
 }
 
+/* A row the pad cannot act on is not a stop: retail's own activation test, the slider, which
+   retail never marks activatable, and a selectable list, which carries its own selection instead
+   of a stop per row. */
+static qboolean Widget_IsPadStop(UIWidget *child)
+{
+    UIRowColumn *list = NULL;
+
+    if (!child || !child->isEnabled() || !child->getShow()) {
+        return qfalse;
+    }
+
+    if (child->isSubclassOf(UITable)) {
+        list = ((UITable *)child)->getRowColumn();
+    } else if (child->isSubclassOf(UIRowColumn)) {
+        list = (UIRowColumn *)child;
+    }
+
+    return child->CanActivate() || child->isSubclassOf(UISlider) || (list && !list->getNoRowSelect());
+}
+
+qboolean UIWidgetContainer::hasPadStop(void)
+{
+    int i;
+
+    for (i = 1; i <= m_children.NumObjects(); i++) {
+        if (Widget_IsPadStop(m_children.ObjectAt(i))) {
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
 qboolean UIWidgetContainer::moveFocus(int dir)
+{
+    return moveFocus(dir, 0, qfalse);
+}
+
+/* `key' is the navigation key itself and `directional' says the walk may go by direction.  The
+   menus keep the child-order step: there a screen-ordered walk is the whole model and a
+   directional one would take the focus sideways off a row.  A HUD whose stops span three columns
+   and three rows is a board (the tricorder route board, a keypad) and there the walk picks the
+   nearest stop in the direction pressed and clamps at the edge instead of wrapping into the next
+   row. */
+qboolean UIWidgetContainer::moveFocus(int dir, int key, qboolean directional)
 {
     /* Visual order: activation restacks the child list, so the list is not a walk order. */
     struct FocusRow {
         UIWidget *wid;
         float     y;
         float     x;
+        float     w;
+        float     h;
     };
-    FocusRow   rows[128];
+    FocusRow   rows[256];
     int        count = 0;
     int        i;
     int        cur;
     int        next;
+    int        cols = 0;
+    int        rowNums = 0;
+    float      lastx;
+    float      lasty;
 
     if (!dir) {
         return qfalse;
     }
 
     for (i = 1; i <= m_children.NumObjects() && count < ( int )( sizeof( rows ) / sizeof( rows[0] ) ); i++) {
-        UIWidget    *child = m_children.ObjectAt(i);
-        UIRowColumn *list  = NULL;
+        UIWidget *child = m_children.ObjectAt(i);
 
-        if (child && child->isSubclassOf(UITable)) {
-            list = ((UITable *)child)->getRowColumn();
-        } else if (child && child->isSubclassOf(UIRowColumn)) {
-            list = (UIRowColumn *)child;
-        }
-
-        /* A row the pad cannot act on is not a stop: retail's own activation test,
-           the slider, which retail never marks activatable, and a selectable list,
-           which carries its own selection instead of a stop per row. */
-        if (child && child->isEnabled() && child->getShow()
-            && (child->CanActivate() || child->isSubclassOf(UISlider) || (list && !list->getNoRowSelect()))) {
+        if (Widget_IsPadStop(child)) {
             UIRect2D frame = child->getFrame();
 
             rows[count].wid = child;
             rows[count].y   = frame.pos.y + frame.size.height * 0.5f;
             rows[count].x   = frame.pos.x;
+            rows[count].w   = frame.size.width;
+            rows[count].h   = frame.size.height;
             count++;
         }
     }
@@ -5030,14 +5071,31 @@ qboolean UIWidgetContainer::moveFocus(int dir)
     }
 
     for (i = 1; i < count; i++) {
-        FocusRow  key = rows[i];
-        int       j   = i - 1;
+        FocusRow  swap = rows[i];
+        int       j    = i - 1;
 
-        while (j >= 0 && (rows[j].y > key.y || (rows[j].y == key.y && rows[j].x > key.x))) {
+        while (j >= 0 && (rows[j].y > swap.y || (rows[j].y == swap.y && rows[j].x > swap.x))) {
             rows[j + 1] = rows[j];
             j--;
         }
-        rows[j + 1] = key;
+        rows[j + 1] = swap;
+    }
+
+    /* The grid test is on the stops, not the children: a board with a hundred cells and a
+       caption is still a board. */
+    lastx   = rows[0].x;
+    lasty   = rows[0].y;
+    cols    = 1;
+    rowNums = 1;
+    for (i = 1; i < count; i++) {
+        if (rows[i].x != lastx) {
+            cols++;
+            lastx = rows[i].x;
+        }
+        if (rows[i].y != lasty) {
+            rowNums++;
+            lasty = rows[i].y;
+        }
     }
 
     cur = -1;
@@ -5048,10 +5106,63 @@ qboolean UIWidgetContainer::moveFocus(int dir)
         }
     }
 
-    if (cur < 0) {
-        next = (dir > 0) ? 0 : count - 1;
-    } else {
-        next = cur + ((dir > 0) ? 1 : -1);
+    next = -1;
+
+    if (cur >= 0 && directional && key && cols >= 3 && rowNums >= 3) {
+        /* Nearest stop whose centre lies in the pressed direction, tie-broken by the
+           distance across it. */
+        int    best = -1;
+        float  bestd = 0.0f;
+        int    vertical = (key == K_UPARROW || key == K_DOWNARROW || key == K_PAD0_LEFTSTICK_UP
+                          || key == K_PAD0_LEFTSTICK_DOWN);
+        float  fx  = rows[cur].x + rows[cur].w * 0.5f;
+        float  fy  = rows[cur].y;
+        int    k;
+
+        for (k = 0; k < count; k++) {
+            float  kx = rows[k].x + rows[k].w * 0.5f;
+            float  ky = rows[k].y;
+            float  along;
+            float  across;
+            float  d;
+            qboolean ok;
+
+            if (k == cur) {
+                continue;
+            }
+
+            if (vertical) {
+                along = ky - fy;
+                across = kx - fx;
+                ok = (key == K_UPARROW || key == K_PAD0_LEFTSTICK_UP) ? (along < -1.0f) : (along > 1.0f);
+            } else {
+                along = kx - fx;
+                across = ky - fy;
+                ok = (key == K_LEFTARROW || key == K_PAD0_LEFTSTICK_LEFT) ? (along < -1.0f) : (along > 1.0f);
+            }
+
+            if (!ok) {
+                continue;
+            }
+
+            d = (along < 0.0f ? -along : along) + (across < 0.0f ? -across : across) * 2.0f;
+            if (best < 0 || d < bestd) {
+                best = k;
+                bestd = d;
+            }
+        }
+
+        if (best >= 0) {
+            next = best;
+        }
+    }
+
+    if (next < 0) {
+        if (cur < 0) {
+            next = (dir > 0) ? 0 : count - 1;
+        } else {
+            next = cur + ((dir > 0) ? 1 : -1);
+        }
     }
 
     if (next < 0) {
@@ -5076,8 +5187,10 @@ qboolean UIWidgetContainer::moveFocus(int dir)
         s_navRows++;
         if (s_navRows <= 16 || (s_navRows % 200) == 0) {
             UIVK_PROBE("padnav",
-                       "dir=%d rows=%d from='%s' to='%s'%s%s active='%s' menu='%s'",
+                       "dir=%d key=%d grid=%d rows=%d from='%s' to='%s'%s%s active='%s' menu='%s'",
                        dir,
+                       key,
+                       (directional && cols >= 3 && rowNums >= 3) ? 1 : 0,
                        count,
                        m_focusWidget && m_focusWidget->getName() ? m_focusWidget->getName() : "(null)",
                        rows[next].wid->getName() ? rows[next].wid->getName() : "(null)",

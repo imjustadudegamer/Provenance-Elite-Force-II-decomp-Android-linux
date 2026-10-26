@@ -2301,14 +2301,12 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
             iPan = S_OPENAL_SpatializeStereoSound(vListenerOrigin, vTempAxis, vOrigin);
         }
 
+        /* No distance term here: retail's 2D arm (S_MILES_Respatialize @0x001F2CC0) sets the pan
+           and S_GetChanVolume and nothing else -- S_MILES_Spatialize @0x001F52F0 returns a pan
+           alone.  The min_dist/dist multiply below was folding the speaker's world distance into
+           campaign dialog (mindist defaults to 160), which is what buried it under the unattenuated
+           song bed in the wide arenas. */
         fVolume = pChannel->fVolume * S_EF2_ChannelVolume(pChannel->iEntChannel);
-        if (!(pChannel->iFlags & CHANNEL_FLAG_LOCAL_LISTENER)) {
-            VectorSubtract(vOrigin, vListenerOrigin, vDir);
-            fDist = VectorLength(vDir);
-            if (fDist > pChannel->fMinDist) {
-                fVolume = pChannel->fMinDist * fVolume / fDist;
-            }
-        }
 
         pChannel->set_gain_3d(fVolume);
         pChannel->set_sample_pan(iPan);

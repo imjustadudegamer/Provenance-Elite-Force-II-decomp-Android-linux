@@ -99,6 +99,8 @@ qboolean UI_MenuUp(void);
 void     UI_FocusMenuIfExists(void);
 int      UI_HudCount(void);
 const char *UI_HudNames(char *buf, int buflen);
+float    UI_HudTextScale(void);
+void     UI_SyncPadCatcher(void);
 void     UI_DrawConnect(void);
 void     UI_ShowDisconnectMessage(const char *msg);
 void     UI_CreateDialog(

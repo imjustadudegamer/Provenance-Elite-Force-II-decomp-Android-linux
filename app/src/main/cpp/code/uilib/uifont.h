@@ -64,6 +64,14 @@ public:
         UColor            shadowColor,
         int               virtualScreen
     );
+    void PrintJustifiedScaled(
+        const UIRect2D&   rect,
+        fonthorzjustify_t horz,
+        fontvertjustify_t vert,
+        const char       *text,
+        UColor            shadowColor,
+        float             scale
+    );
     void setColor(UColor col);
     void setAlpha(float alpha);
     void setFont(const char *fontname);

@@ -459,7 +459,7 @@ void UIWindowManager::ServiceEvents(void)
             m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT;
 
             if (dir != 0 && !PadFocusRepeat(m_padRepeatKey)) {
-                MovePadFocus(dir);
+                MovePadFocus(dir, m_padRepeatKey);
             }
         }
     }
@@ -766,22 +766,53 @@ int UIWindowManager::PadNavDirection(int key)
     return 0;
 }
 
+/* The pad's container.  A menu owns it while one is up; with no menu the walk goes to the HUD the
+   game added -- the tricorder's own screens are HUDs (`ui_addhud TricorderKeypad'), so without
+   this the pad had no surface to walk at all.  The HUD is the frontmost one that has a stop, so a
+   button-less overlay under it (a help card) never traps the walk. */
+UIWidgetContainer *UIWindowManager::PadContainer(void)
+{
+    Menu              *menu = menuManager.CurrentMenu();
+    UIWidget          *cont;
+    int                i;
+
+    if (menu) {
+        cont = menu->GetContainerWidget();
+
+        if (cont && cont->isSubclassOf(UIWidgetContainer)) {
+            return (UIWidgetContainer *)cont;
+        }
+
+        return NULL;
+    }
+
+    for (i = m_children.NumObjects(); i >= 1; i--) {
+        UIWidget          *child = m_children.ObjectAt(i);
+        UIWidgetContainer *hud;
+
+        if (!child || !child->isSubclassOf(UIWidgetContainer) || !child->getShow()) {
+            continue;
+        }
+
+        hud = (UIWidgetContainer *)child;
+
+        if (hud->hasPadStop()) {
+            return hud;
+        }
+    }
+
+    return NULL;
+}
+
 UIWidget *UIWindowManager::PadFocusedWidget(void)
 {
-    Menu     *menu = menuManager.CurrentMenu();
-    UIWidget *cont;
+    UIWidgetContainer *cont = PadContainer();
 
-    if (!menu) {
+    if (!cont) {
         return NULL;
     }
 
-    cont = menu->GetContainerWidget();
-
-    if (!cont || !cont->isSubclassOf(UIWidgetContainer)) {
-        return NULL;
-    }
-
-    return ((UIWidgetContainer *)cont)->getFocusWidget();
+    return cont->getFocusWidget();
 }
 
 /* Held on a row that owns its horizontal, the row keeps the key: the slider steps,
@@ -804,57 +835,54 @@ bool UIWindowManager::PadFocusRepeat(int key)
 /* The pad's row follows the widget that took a key while the pad had none. */
 bool UIWindowManager::MovePadFocusTo(UIWidget *wid)
 {
-    Menu     *menu = menuManager.CurrentMenu();
-    UIWidget *cont;
+    UIWidgetContainer *cont = PadContainer();
 
-    if (!menu || !wid) {
+    if (!cont || !wid) {
         return false;
     }
 
-    cont = menu->GetContainerWidget();
-
-    if (!cont || !cont->isSubclassOf(UIWidgetContainer)) {
-        return false;
-    }
-
-    ((UIWidgetContainer *)cont)->setFocusWidget(wid);
+    cont->setFocusWidget(wid);
     return true;
 }
 
-bool UIWindowManager::MovePadFocus(int dir)
+bool UIWindowManager::MovePadFocus(int dir, int key)
 {
-    Menu      *menu = menuManager.CurrentMenu();
-    UIWidget  *cont;
+    UIWidgetContainer *cont = PadContainer();
 
-    if (!menu) {
+    if (!cont) {
         return false;
     }
 
-    cont = menu->GetContainerWidget();
-
-    if (!cont || !cont->isSubclassOf(UIWidgetContainer)) {
-        return false;
-    }
-
-    return ((UIWidgetContainer *)cont)->moveFocus(dir) ? true : false;
+    /* Directional movement is the HUD's alone: a menu keeps the screen-order
+       step it already had. */
+    return cont->moveFocus(dir, key, menuManager.CurrentMenu() ? qfalse : qtrue) ? true : false;
 }
 
 void UIWindowManager::ClearPadFocus(void)
 {
-    Menu     *menu = menuManager.CurrentMenu();
-    UIWidget *cont;
+    UIWidgetContainer *cont;
+    int                i;
 
     m_padNavActive  = false;
     m_padRepeatKey  = 0;
 
-    if (!menu) {
+    if (menuManager.CurrentMenu()) {
+        cont = PadContainer();
+
+        if (cont) {
+            cont->clearFocusWidget();
+        }
         return;
     }
 
-    cont = menu->GetContainerWidget();
+    /* No menu owns the highlight, so every HUD it may sit on is cleared: a help
+       card closing must not leave a hover state behind on the screen under it. */
+    for (i = 1; i <= m_children.NumObjects(); i++) {
+        UIWidget *child = m_children.ObjectAt(i);
 
-    if (cont && cont->isSubclassOf(UIWidgetContainer)) {
-        ((UIWidgetContainer *)cont)->clearFocusWidget();
+        if (child && child->isSubclassOf(UIWidgetContainer)) {
+            ((UIWidgetContainer *)child)->clearFocusWidget();
+        }
     }
 }
 
@@ -864,24 +892,18 @@ void UIWindowManager::ClearPadFocus(void)
    so on. Nothing new is added to the widget layer for activation. */
 bool UIWindowManager::ActivateFocusedWidget(void)
 {
-    Menu              *menu = menuManager.CurrentMenu();
     UIWidgetContainer *cont;
     UIWidget          *focused;
     UIPoint2D          pos;
     Event              down(W_LeftMouseDown);
     Event              up(W_LeftMouseUp);
 
-    if (!menu) {
+    cont = PadContainer();
+
+    if (!cont) {
         return false;
     }
 
-    UIWidget *containerWidget = menu->GetContainerWidget();
-
-    if (!containerWidget || !containerWidget->isSubclassOf(UIWidgetContainer)) {
-        return false;
-    }
-
-    cont    = (UIWidgetContainer *)containerWidget;
     focused = cont->getFocusWidget();
 
     if (!focused || !focused->isEnabled() || !focused->getShow()) {
@@ -923,8 +945,8 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 
     dir = PadNavDirection(key);
 
-    /* menus walk by screen order; TAB joins the walk only where a menu owns the key */
-    if ((dir != 0 || key == K_TAB) && menuManager.CurrentMenu()) {
+    /* A menu or a HUD with a stop owns the walk; TAB joins it only where one does. */
+    if ((dir != 0 || key == K_TAB) && PadContainer()) {
         UIWidget *focused;
         UIWidget *owner;
 
@@ -970,7 +992,7 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
             return true;
         }
 
-        if (MovePadFocus(dir)) {
+        if (MovePadFocus(dir, key)) {
             m_padRepeatKey  = key;
             m_padNextRepeat = uid.time + UI_PAD_NAV_REPEAT_DELAY;
         }

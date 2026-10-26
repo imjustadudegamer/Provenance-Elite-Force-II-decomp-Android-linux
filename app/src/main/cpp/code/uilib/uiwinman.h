@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #pragma once
 
+class UIWidgetContainer;
+
 class Binding
 {
 public:
@@ -105,13 +107,15 @@ public:
     bool              DialogExists(void);
     void              RemoveAllDialogBoxes(void);
 
-    /* The focused widget lives on the current menu's container; these drive it
-       from the pad's arrow keys and the pad's activation key. */
+    /* The focused widget lives on the current menu's container, or on the HUD the
+       game added when no menu is up; these drive it from the pad's arrow keys and
+       the pad's activation key. */
     static int        PadNavDirection(int key);
+    UIWidgetContainer *PadContainer(void);
     UIWidget         *PadFocusedWidget(void);
     bool              PadFocusRepeat(int key);
     bool              MovePadFocusTo(UIWidget *wid);
-    bool              MovePadFocus(int dir);
+    bool              MovePadFocus(int dir, int key);
     bool              ActivateFocusedWidget(void);
     void              ClearPadFocus(void);
 };
