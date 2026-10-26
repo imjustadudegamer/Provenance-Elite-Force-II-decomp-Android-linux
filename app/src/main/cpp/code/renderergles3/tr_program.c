@@ -1568,7 +1568,11 @@ void GLES3_SetupViewUniforms( gles3Program_t *p )
 
 	GLES3_SetUniformMat4( p, GLES3_U_MVP, mvp );
 	GLES3_SetUniformMat4( p, GLES3_U_MODELMATRIX, mv );
-	GLES3_SetUniform3fv( p, GLES3_U_VIEWORIGIN, backEnd.viewParms.ori.origin );
+	/* the view origin in the space a_Position and tess.xyz live in, which is what
+	   retail's own RB_Calc* arms read (tr_shade_calc.c) and what the shader's
+	   viewer-vector arms need on entity geometry -- the world pass passes both
+	   names the same value */
+	GLES3_SetUniform3fv( p, GLES3_U_VIEWORIGIN, backEnd.ori.viewOrigin );
 	GLES3_SetUniform3fv( p, GLES3_U_VIEWAXIS0, tr.refdef.viewaxis[0] );
 	GLES3_SetUniform3f( p, GLES3_U_LOCALVIEWORIGIN,
 						tr.refdef.vieworg[0], tr.refdef.vieworg[1], tr.refdef.vieworg[2] );
@@ -1852,7 +1856,6 @@ void GLES3_SetupStageUniforms( gles3Program_t *p, const shaderStage_t *pStage, c
 
 void GLES3_SetupFogUniforms( gles3Program_t *p, int fogNum, qboolean fogDensityArm )
 {
-	float	color[4];
 	float	fixColor[3];
 	int		densityArm = 0;
 
@@ -1884,9 +1887,13 @@ void GLES3_SetupFogUniforms( gles3Program_t *p, int fogNum, qboolean fogDensityA
 	if ( fogNum == 9999 )
 	{
 		unsigned colorInt = (unsigned)tr.viewParms.fogColorInt;
+		const byte *byteColor = ( const byte * )&colorInt;
 
-		Com_Memcpy( color, &colorInt, sizeof( colorInt ) );
-		GLES3_SetUniform4fv( p, GLES3_U_FOGCOLOR, color );
+		/* the shader does floor(u_FogColor * 255) for both fog colour gens, so the
+		   bytes have to arrive divided by 255 -- a raw u32 copy reinterpreted the
+		   first byte as a float and left the other three at whatever the block held */
+		GLES3_SetUniform4f( p, GLES3_U_FOGCOLOR, byteColor[0] / 255.0f, byteColor[1] / 255.0f,
+							byteColor[2] / 255.0f, byteColor[3] / 255.0f );
 		GLES3_SetUniform1f( p, GLES3_U_FOGOOLEN, tr.viewParms.fog.oolen );
 		GLES3_SetUniform1i( p, GLES3_U_FOGDENSITYARM, fogDensityArm ? 1 : 0 );
 		return;
@@ -1899,9 +1906,10 @@ void GLES3_SetupFogUniforms( gles3Program_t *p, int fogNum, qboolean fogDensityA
 		float	sConstant, tConstant, viewOutside;
 		vec3_t	delta;
 		unsigned colorInt = fog->colorInt;
+		const byte *byteColor = ( const byte * )&colorInt;
 
-		Com_Memcpy( color, &colorInt, sizeof( colorInt ) );
-		GLES3_SetUniform4fv( p, GLES3_U_FOGCOLOR, color );
+		GLES3_SetUniform4f( p, GLES3_U_FOGCOLOR, byteColor[0] / 255.0f, byteColor[1] / 255.0f,
+							byteColor[2] / 255.0f, byteColor[3] / 255.0f );
 
 		if ( fog->parms.wave.func )
 		{

@@ -1568,7 +1568,11 @@ void VK_SetupViewUniforms( vkProgram_t *p )
 
 	VK_SetUniformMat4( p, VK_U_MVP, mvp );
 	VK_SetUniformMat4( p, VK_U_MODELMATRIX, mv );
-	VK_SetUniform3fv( p, VK_U_VIEWORIGIN, backEnd.viewParms.ori.origin );
+	/* the view origin in the space a_Position and tess.xyz live in, which is what
+	   retail's own RB_Calc* arms read (tr_shade_calc.c) and what the shader's
+	   viewer-vector arms need on entity geometry -- the world pass passes both
+	   names the same value */
+	VK_SetUniform3fv( p, VK_U_VIEWORIGIN, backEnd.ori.viewOrigin );
 	/* frame-carry: read the record's refdef, not the live one */
 	VK_SetUniform3fv( p, VK_U_VIEWAXIS0, backEnd.refdef.viewaxis[0] );
 	VK_SetUniform3f( p, VK_U_LOCALVIEWORIGIN,
@@ -1963,7 +1967,6 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 
 void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 {
-	float	color[4];
 	float	fixColor[3];
 	int		densityArm = 0;
 
@@ -1997,9 +2000,13 @@ void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 		/* the walk's own frame copy -- RB_SetupFog writes the colour here and every
 		   other field this function reads comes from backEnd.viewParms */
 		unsigned colorInt = (unsigned)backEnd.viewParms.fogColorInt;
+		const byte *byteColor = ( const byte * )&colorInt;
 
-		Com_Memcpy( color, &colorInt, sizeof( colorInt ) );
-		VK_SetUniform4fv( p, VK_U_FOGCOLOR, color );
+		/* the shader does floor(u_FogColor * 255) for both fog colour gens, so the
+		   bytes have to arrive divided by 255 -- a raw u32 copy reinterpreted the
+		   first byte as a float and left the other three at whatever the block held */
+		VK_SetUniform4f( p, VK_U_FOGCOLOR, byteColor[0] / 255.0f, byteColor[1] / 255.0f,
+						 byteColor[2] / 255.0f, byteColor[3] / 255.0f );
 		VK_SetUniform1f( p, VK_U_FOGOOLEN, backEnd.viewParms.fog.oolen );
 		VK_SetUniform1i( p, VK_U_FOGDENSITYARM, fogDensityArm ? 1 : 0 );
 
@@ -2017,7 +2024,7 @@ void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 				if ( black || s_fogRows <= 12 || ( s_fogRows % 400 ) == 0 ) {
 					VK_Guard_Row( "VK:fog",
 								  "f=%d fpdist=%.1f fpc=%.3f,%.3f,%.3f en=%d xl=%d fogNum=%d "
-								  "col=%d,%d,%d,%d idl=%.3f dens=%d oolen=%.5f%s",
+								  "col=%d,%d,%d,%d uplo=%.3f,%.3f,%.3f,%.3f idl=%.3f dens=%d oolen=%.5f%s",
 								  RB_FrameCount(),
 								  backEnd.viewParms.farplane_distance,
 								  backEnd.viewParms.farplane_color[0],
@@ -2027,6 +2034,8 @@ void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 								  ( vkState.externalSetState & VKS_FOG ) ? 1 : 0,
 								  fogNum,
 								  c[0], c[1], c[2], c[3],
+								  byteColor[0] / 255.0f, byteColor[1] / 255.0f,
+								  byteColor[2] / 255.0f, byteColor[3] / 255.0f,
 								  tr.identityLight,
 								  fogDensityArm ? 1 : 0,
 								  backEnd.viewParms.fog.oolen,
@@ -2044,9 +2053,10 @@ void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 		float	sConstant, tConstant, viewOutside;
 		vec3_t	delta;
 		unsigned colorInt = fog->colorInt;
+		const byte *byteColor = ( const byte * )&colorInt;
 
-		Com_Memcpy( color, &colorInt, sizeof( colorInt ) );
-		VK_SetUniform4fv( p, VK_U_FOGCOLOR, color );
+		VK_SetUniform4f( p, VK_U_FOGCOLOR, byteColor[0] / 255.0f, byteColor[1] / 255.0f,
+						 byteColor[2] / 255.0f, byteColor[3] / 255.0f );
 
 		if ( fog->parms.wave.func )
 		{

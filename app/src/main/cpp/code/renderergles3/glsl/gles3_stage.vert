@@ -410,6 +410,12 @@ void main()
 	else if (u_AlphaGen == 16) {				/* AGEN_GLOBAL_ALPHA :1183 */
 		color.a = floor(u_BaseColor.a * 255.0);
 	}
+	else if (u_AlphaGen == 18) {				/* AGEN_FOG_GLOBAL :315, FinishShader's global pass */
+		/* RB_CalcAlphaFogBlend @0x30420 writes 255 * the density, and the 9999
+		   arm of RB_CalcAlphaFogDensities is min(fog.oolen * |pos - viewOrigin|,
+		   1) -- a viewmodel at one unit is 0.04% fogged, a far wall fully. */
+		color.a = floor(255.0 * min(u_FogOolen * length(pos - u_ViewOrigin), 1.0));
+	}
 	else if (u_AlphaGen == 19) {				/* AGEN_SKYALPHA :1186 */
 		color.a = floor(u_SkyAlpha * 255.0);
 	}

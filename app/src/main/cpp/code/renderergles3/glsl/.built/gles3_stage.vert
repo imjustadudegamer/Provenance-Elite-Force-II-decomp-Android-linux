@@ -601,6 +601,10 @@ void main()
 	else if (u_AlphaGen == 16) {				
 		color.a = floor(u_BaseColor.a * 255.0);
 	}
+	else if (u_AlphaGen == 18) {				
+		
+		color.a = floor(255.0 * min(u_FogOolen * length(pos - u_ViewOrigin), 1.0));
+	}
 	else if (u_AlphaGen == 19) {				
 		color.a = floor(u_SkyAlpha * 255.0);
 	}
