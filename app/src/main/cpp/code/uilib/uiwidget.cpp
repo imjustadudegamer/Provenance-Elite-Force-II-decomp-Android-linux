@@ -5154,6 +5154,23 @@ qboolean UIWidgetContainer::moveFocus(int dir, int key, qboolean directional)
 
         if (best >= 0) {
             next = best;
+        } else {
+            /* Nothing lies in the pressed direction, so the board holds the row: the
+               sorted-neighbour step would wrap a 9x11 board onto the next row. */
+            static int s_edgeRows;
+
+            s_edgeRows++;
+            if (s_edgeRows <= 16 || (s_edgeRows % 200) == 0) {
+                UIVK_PROBE(
+                    "padnav:edge",
+                    "key=%d at='%s' cols=%d rows=%d",
+                    key,
+                    rows[cur].wid->getName() ? rows[cur].wid->getName() : "(null)",
+                    cols,
+                    rowNums);
+            }
+
+            return qfalse;
         }
     }
 

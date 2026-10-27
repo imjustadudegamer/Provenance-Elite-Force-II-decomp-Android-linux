@@ -407,6 +407,24 @@ void UIWindowManager::UpdateViews(void)
         UI_ZONE_END(UI_FAM_DISP, UI_DZ_printstr);
     }
 
+    /* The pad has no pointer, and a HUD stop may draw nothing for hover at all -- the
+       routing board's 99 cells are transparent unnamed hotspots -- so the walk paints
+       its own cursor.  Menus keep the look retail gives them. */
+    if (m_padNavActive && !menuManager.CurrentMenu()) {
+        UIWidget *pad = PadFocusedWidget();
+
+        if (pad && pad->getFrame().size.width > 0.0f && pad->getFrame().size.height > 0.0f) {
+            UIRect2D f(pad->getGlobalPoint(UIPoint2D(0.0f, 0.0f)), pad->getFrame().size);
+            UColor  ring(0.35f, 0.67f, 1.0f, 1.0f);
+
+            set2D();
+            DrawBox(f.pos.x - 2.0f, f.pos.y - 2.0f, f.size.width + 4.0f, 2.0f, ring, 1.0f);
+            DrawBox(f.pos.x - 2.0f, f.pos.y + f.size.height, f.size.width + 4.0f, 2.0f, ring, 1.0f);
+            DrawBox(f.pos.x - 2.0f, f.pos.y, 2.0f, f.size.height, ring, 1.0f);
+            DrawBox(f.pos.x + f.size.width, f.pos.y, 2.0f, f.size.height, ring, 1.0f);
+        }
+    }
+
     UI_ZONE_END(UI_FAM_DISP, UI_DZ_cursor);
 
     UI_ROOT_END(UI_FAM_DISP);
@@ -980,6 +998,23 @@ bool UIWindowManager::ActivateFocusedWidget(void)
     }
 
     pos = focused->getGlobalPoint(UIPoint2D(focused->getSize().width * 0.5f, focused->getSize().height * 0.5f));
+
+    {
+        static int s_actRows;
+        UIRect2D   f = focused->getFrame();
+
+        s_actRows++;
+        if (s_actRows <= 16 || (s_actRows % 200) == 0) {
+            UIVK_PROBE(
+                "padact",
+                "widget='%s' class='%s' frame=%.0f,%.0f %.0fx%.0f enabled=%d show=%d",
+                focused->getName() ? focused->getName() : "(null)",
+                focused->getClassname() ? focused->getClassname() : "?",
+                (double)f.pos.x, (double)f.pos.y, (double)f.size.width, (double)f.size.height,
+                focused->isEnabled() ? 1 : 0,
+                focused->getShow() ? 1 : 0);
+        }
+    }
 
     ViewEvent(focused, down, pos, 1);
     ViewEvent(focused, up, pos, 0);
