@@ -5436,7 +5436,7 @@ void Actor::Killed(Event *ev)
             attackerToSelf *= deathKnockbackHorizontalValue;
             velocity = attackerToSelf;
 
-            if (getenv("EF2_KNOCKBACK") && gi.cvar("qa_probe", "0", 0)->integer) {
+            if (gi.cvar("qa_probe", "0", 0)->integer) {   /* qa_probe is the one switch; the old getenv arm was unarmanable off-PC */
                 Vector uivk_kb_raw = origin - attacker->origin;
                 int    uivk_kb_ge  = -1;
 

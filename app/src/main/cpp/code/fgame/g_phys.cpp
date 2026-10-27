@@ -900,7 +900,7 @@ void G_Physics_Step(Entity *ent)
             }
             uivk_kb_frame[ent->entnum] = level.framenum;
 
-            if (uivk_kb_left[ent->entnum] > 0 && getenv("EF2_KNOCKBACK") && PROBE_On()) {
+            if (uivk_kb_left[ent->entnum] > 0 && PROBE_On()) {   /* qa_probe is the one switch; the old getenv arm was unarmanable off-PC */
                 int uivk_kb_ge = -1;
 
                 if (ent->groundentity) {
