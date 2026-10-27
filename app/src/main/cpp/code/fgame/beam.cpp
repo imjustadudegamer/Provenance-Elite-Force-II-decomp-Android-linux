@@ -456,7 +456,7 @@ void FuncBeam::Activate(Event *ev)
 
     if (end) {
         VectorCopy(end->origin, edict->s.origin2);
-        PostEvent(EV_FuncBeam_UpdateEndpoint, level.frametime);
+        PostEvent(EV_FuncBeam_UpdateEndpoint, FRAMETIME);
     } else if (use_angles) {
         angles.AngleVectors(&forward, NULL, NULL);
 
@@ -481,7 +481,7 @@ void FuncBeam::Activate(Event *ev)
     }
 
     if (origin_target) {
-        PostEvent(EV_FuncBeam_UpdateOrigin, level.frametime);
+        PostEvent(EV_FuncBeam_UpdateOrigin, FRAMETIME);
     }
 
     if (damage) {
@@ -500,7 +500,7 @@ void FuncBeam::UpdateEndpoint(Event *ev)
         Event *ev1 = new Event(std::move(*ev));
 
         VectorCopy(end->origin, edict->s.origin2);
-        PostEvent(ev1, level.frametime);
+        PostEvent(ev1, FRAMETIME);
     }
 }
 
@@ -510,7 +510,7 @@ void FuncBeam::UpdateOrigin(Event *ev)
         Event *ev1 = new Event(std::move(*ev));
 
         setOrigin(origin_target->centroid);
-        PostEvent(ev1, level.frametime);
+        PostEvent(ev1, FRAMETIME);
     }
 }
 
