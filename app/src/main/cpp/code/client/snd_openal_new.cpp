@@ -1442,15 +1442,18 @@ void S_OPENAL_StartSound(
         pSfx->iFlags |= SFX_FLAG_STREAMED;
     }
 
-    if (!S_OPENAL_ShouldPlay(pSfx)) {
-        Com_DPrintf("OpenAL: ^~^~^ Not playing sound '%s'\n", pSfx->name);
-        SND_SndRow("reject=maxnumber", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
+    /* Retail tests .mp3 before the voice gate: S_MILES_StartSound @0x1F178C strstr's the sfx
+       name for ".mp3" and goes straight to S_MILES_Start2DSound @0x1F1470; S_MILES_ShouldPlay
+       @0x1F4250 only runs on the 3D arm.  No global/sound*.txt entry names an mp3, so dialog
+       takes the default max_number_playing 8 -- the gate must not refuse dialog. */
+    if (strstr(pSfx->name, ".mp3")) {
+        S_OPENAL_Start2DSound(vOrigin, iEntNum, iEntChannel, pSfx, fVolume, fMinDist, fPitch, fMaxDist);
         return;
     }
 
-    // .wav (menu click, `play x.wav`) belongs in the 64-handle 3D pool in retail, not the
-    if (strstr(pSfx->name, ".mp3")) {
-        S_OPENAL_Start2DSound(vOrigin, iEntNum, iEntChannel, pSfx, fVolume, fMinDist, fPitch, fMaxDist);
+    if (!S_OPENAL_ShouldPlay(pSfx)) {
+        Com_DPrintf("OpenAL: ^~^~^ Not playing sound '%s'\n", pSfx->name);
+        SND_SndRow("reject=maxnumber", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
         return;
     }
 
