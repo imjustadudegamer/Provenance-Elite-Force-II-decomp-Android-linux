@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "qa_probe.h"
 
 #define CLIP_PROBE(tag, ...) PROBE_EMIT("[CLIP:", tag, __VA_ARGS__)
+#define CLIP_CENSUS_PROBE(tag, ...) PROBE_CENSUS_EMIT("[CLIP:", tag, __VA_ARGS__)
 
 static int s_clipReenter;
 /* CM_TransformedBoxTrace hands CM_BoxTrace model-space coordinates; these carry the
@@ -168,12 +169,16 @@ void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
 	tw->trace.contents = brush->contents;
 	{
 		static int s_clipInside;
-		if (PROBE_Throttle(&s_clipInside, 12, 400)) {
-			CLIP_PROBE("inside", "b=%d sh=%s cont=0x%x box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) org=(%.1f %.1f %.1f)\n",
+		if (PROBE_Throttle(&s_clipInside, 4000, 100000)) {
+			CLIP_CENSUS_PROBE("inside", "b=%d sh=%s cont=0x%x "
+				"box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) org=(%.1f %.1f %.1f) "
+				"brush=(%.0f %.0f %.0f)-(%.0f %.0f %.0f)\n",
 				(int)(brush - cm.brushes), cm.shaders[brush->shaderNum].shader, brush->contents,
 				tw->rawMins[0], tw->rawMins[1], tw->rawMins[2],
 				tw->rawMaxs[0], tw->rawMaxs[1], tw->rawMaxs[2],
-				tw->rawStart[0], tw->rawStart[1], tw->rawStart[2]);
+				tw->rawStart[0], tw->rawStart[1], tw->rawStart[2],
+				brush->bounds[0][0], brush->bounds[0][1], brush->bounds[0][2],
+				brush->bounds[1][0], brush->bounds[1][1], brush->bounds[1][2]);
 		}
 	}
 }
@@ -530,8 +535,14 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 				tw->trace.surfaceFlags = leadside->surfaceFlags;
 				tw->trace.contents = brush->contents;
 				{
+					/* A flat plane under a feet-at-origin box is the floor answering a ground
+					   trace, not a blocker; it gets no row at all, so the budget stays for the
+					   volumes that actually stop somebody. */
+					if ( clipplane->normal[2] > 0.99f && tw->rawMins[2] == 0.0f ) {
+						return;
+					}
 					static int s_clipRows;
-					if (PROBE_Throttle(&s_clipRows, 24, 400)) {
+					if (PROBE_Throttle(&s_clipRows, 4000, 100000)) {
 						const char *crouch = "n/a";
 						vec3_t		cmins, cmaxs;
 						trace_t		ct;
@@ -549,14 +560,17 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 							s_clipReenter = qfalse;
 							crouch = ( ct.fraction > tw->trace.fraction + 0.001f ) ? "crouch-clears" : "crouch-blocked";
 						}
-						CLIP_PROBE("block", "b=%d sh=%s cont=0x%x side=%d n=(%.3f %.3f %.3f) d=%.2f "
-							"org=(%.1f %.1f %.1f) box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) f=%.3f end=(%.1f %.1f %.1f) %s\n",
+						CLIP_CENSUS_PROBE("block", "b=%d sh=%s cont=0x%x side=%d n=(%.3f %.3f %.3f) d=%.2f "
+							"org=(%.1f %.1f %.1f) box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) "
+							"brush=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) f=%.3f end=(%.1f %.1f %.1f) %s\n",
 							(int)(brush - cm.brushes), cm.shaders[brush->shaderNum].shader, brush->contents,
 							(int)(leadside - brush->sides),
 							clipplane->normal[0], clipplane->normal[1], clipplane->normal[2], clipplane->dist,
 							tw->rawStart[0], tw->rawStart[1], tw->rawStart[2],
 							tw->rawMins[0], tw->rawMins[1], tw->rawMins[2],
 							tw->rawMaxs[0], tw->rawMaxs[1], tw->rawMaxs[2],
+							brush->bounds[0][0], brush->bounds[0][1], brush->bounds[0][2],
+							brush->bounds[1][0], brush->bounds[1][1], brush->bounds[1][2],
 							tw->trace.fraction,
 							tw->rawStart[0] + tw->trace.fraction * (tw->rawEnd[0] - tw->rawStart[0]),
 							tw->rawStart[1] + tw->trace.fraction * (tw->rawEnd[1] - tw->rawStart[1]),
