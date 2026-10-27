@@ -1380,8 +1380,8 @@ static void Com_AndroidAdoptRetailSaveUser( char *configname, int confignameSize
 	int    nSaveDirs = 0, i;
 	char  *adopted = NULL;
 
-	if ( Q_stricmp( configname, "config.cfg" ) ) {
-		return;		 
+	if ( Q_stricmp( configname, "config.cfg" ) && Q_stricmp( configname, "Android.cfg" ) ) {
+		return;
 	}
 
 	saveDirs = FS_ListFiles( "save", "/", qfalse, &nSaveDirs );
@@ -1558,7 +1558,13 @@ void Com_Init( char *commandLine ) {
 			Q_strncpyz( configname, cfguser, sizeof( configname ) );
 			Q_strcat( configname, sizeof( configname ), ".cfg" );
 		} else {
+#ifdef __ANDROID__
+			/* no OS user to name a profile after; retail's own fallback is the
+			   literal "config", which names no profile anyone can share */
+			Q_strncpyz( configname, "Android", sizeof( configname ) );
+#else
 			Q_strncpyz( configname, "config", sizeof( configname ) );
+#endif
 		}
 	}
 

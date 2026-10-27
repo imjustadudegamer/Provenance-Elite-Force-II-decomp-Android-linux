@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "server.h"
 
+#include "../qcommon/stringresource.h"
+
 char *Com_GetGameTypeName( int gametype, char *buf, int bufsize );
 
 #ifndef DEDICATED
@@ -659,6 +661,25 @@ void SV_CopyArchiveFile( const char *src, const char *dst )
 	FS_FreeFile( buf );
 }
 
+/* Com_GetArchiveFileName answers with one shared buffer, so a copy between two
+   of its results has to take each name before asking for the next one, or the
+   source and the destination are the same path and nothing is copied. */
+void SV_CopyPersistantFile( const char *slot, qboolean toSlot )
+{
+	char from[ 256 ];
+	char to[ 256 ];
+
+	if ( toSlot ) {
+		Q_strncpyz( from, Com_GetArchiveFileName( NULL, "current", "spv", qtrue ), sizeof( from ) );
+		Q_strncpyz( to, Com_GetArchiveFileName( slot, slot, "spv", qfalse ), sizeof( to ) );
+	} else {
+		Q_strncpyz( from, Com_GetArchiveFileName( slot, slot, "spv", qfalse ), sizeof( from ) );
+		Q_strncpyz( to, Com_GetArchiveFileName( NULL, "current", "spv", qtrue ), sizeof( to ) );
+	}
+
+	SV_CopyArchiveFile( from, to );
+}
+
 void SV_CopySublevelFiles( qboolean slotToLive )
 {
 	const char **list;
@@ -887,6 +908,9 @@ qboolean SV_ArchiveServerFile( const char *serverExt, qboolean loading, qboolean
 			}
 		}
 
+		/* retail stores the resolved title, never the raw $$KEY$$ */
+		convertStringResourceIds( comment, comment, sizeof( comment ) );
+
 		Q_strncpyz( save.comment, comment, sizeof( save.comment ) );
 
 		save.time = aclock;
@@ -967,8 +991,7 @@ void SV_Loadgame_f( void )
 		if ( SV_ArchiveServerFile( "ssv", qtrue, qfalse ) ) {
 			SV_DeleteTempSublevelFiles();
 
-			SV_CopyArchiveFile( Com_GetArchiveFileName( name, name, "spv", qfalse ),
-			                    Com_GetArchiveFileName( NULL, "current", "spv", qtrue ) );
+			SV_CopyPersistantFile( name, qfalse );
 
 			SV_CopySublevelFiles( qtrue );
 
@@ -1003,8 +1026,7 @@ void SV_Loadbrokengame_f( void )
 		return;
 	}
 
-	SV_CopyArchiveFile( Com_GetArchiveFileName( name, name, "spv", qfalse ),
-	                    Com_GetArchiveFileName( NULL, "current", "spv", qtrue ) );
+	SV_CopyPersistantFile( name, qfalse );
 
 	SV_CopySublevelFiles( qtrue );
 
@@ -1100,8 +1122,7 @@ void SV_SaveGame( const char *gamename, qboolean autosave )
 
 	Q_strncpyz( svs.gameName, name, sizeof( svs.gameName ) );
 
-	SV_CopyArchiveFile( Com_GetArchiveFileName( NULL, "current", "spv", qtrue ),
-	                    Com_GetArchiveFileName( svs.gameName, svs.gameName, "spv", qfalse ) );
+	SV_CopyPersistantFile( svs.gameName, qtrue );
 
 	Com_DeleteSublevelFiles( svs.gameName );
 
