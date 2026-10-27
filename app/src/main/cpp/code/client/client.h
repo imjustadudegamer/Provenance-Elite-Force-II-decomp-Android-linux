@@ -245,6 +245,8 @@ typedef struct {
 	qboolean		cddialog;			
 	qboolean		no_menus;
 	int				saveShotFrames;		/* frames since the save shot was asked for */
+	char			saveShotCmd[MAX_OSPATH];	/* the shot rides the next world frame */
+	float			saveShotDrawModel;	/* r_drawviewmodel, held out of the shot */
 
 	qboolean	rendererRegistered;
 	qboolean	cgameStarted;

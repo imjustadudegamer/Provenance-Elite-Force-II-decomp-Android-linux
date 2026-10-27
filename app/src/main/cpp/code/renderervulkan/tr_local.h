@@ -1814,7 +1814,7 @@ void	R_Unregister( void );
 void	R_Screenshot_Request( const char *name, int width, int height );
 qboolean	R_Screenshot_Pending( void );
 void	R_Screenshot_Flush( unsigned imageIndex );
-byte	*RB_ReadPixels( int x, int y, int width, int height, size_t *offset, int *padlen );
+byte	*RB_ReadPixels( uint32_t imageIndex, int x, int y, int width, int height, size_t *offset, int *padlen );
 
 void	R_InitImages( void );
 void	R_FreeImage(image_t* image);

@@ -25,9 +25,9 @@ root, for more details.
 #include <string.h>
 
 /* ---- the save-game screenshot ------------------------------------------- */
-/* SV_Savegame writes the thumbnail by executing `saveshot <file> 256 256' (sv_ccmds.c), which forwards to `screenshot', and this lane had
-   declared R_ScreenShot_f and registered no renderer command at all.  The read runs at the present seam, because a swap image is only readable
-   once the frame that drew it has been submitted and presented -- the one readback in the lane that is fence-synchronised and returns the composited frame. */
+/* SV_Savegame writes the thumbnail by executing `saveshot <file> 256 256' (sv_ccmds.c), which forwards to `screenshot'; the client holds the
+   request until it is drawing the suppressed world frame, and the read runs between that frame's submit and its present -- the one window in
+   which the image still belongs to us and holds exactly what was drawn. */
 
 #define VK_SHOT_MAXNAME	256
 
@@ -54,7 +54,7 @@ qboolean R_Screenshot_Pending( void )
 /* GL's read contract: RGB, three bytes a pixel, row 0 the window's bottom row.
    Every screenshot writer in the reference renderer is written against that
    shape, so this is where the swapchain's top-down RGBA is turned. */
-byte *RB_ReadPixels( int x, int y, int width, int height, size_t *offset, int *padlen )
+byte *RB_ReadPixels( uint32_t imageIndex, int x, int y, int width, int height, size_t *offset, int *padlen )
 {
 	unsigned char	*rgba, *out, *dst;
 	size_t			rgbaBytes, srcRow;
@@ -76,7 +76,7 @@ byte *RB_ReadPixels( int x, int y, int width, int height, size_t *offset, int *p
 
 	rgbaBytes = (size_t)vk.swapchainExtent.width * vk.swapchainExtent.height * 4;
 	rgba = ri.Hunk_AllocateTempMemory( rgbaBytes );
-	if ( !VK_Swapchain_ReadPixels( vk.lastPresentedImage, rgba, rgbaBytes ) ) {
+	if ( !VK_Swapchain_ReadPixels( imageIndex, rgba, rgbaBytes ) ) {
 		ri.Hunk_FreeTempMemory( rgba );
 		return out;
 	}
@@ -115,7 +115,7 @@ byte *RB_ReadPixels( int x, int y, int width, int height, size_t *offset, int *p
 
 /* A four-by-three box filter over the window, exactly the reference
    resampler's shape: twelve samples a destination pixel, BGR out. */
-static void VK_Shot_Resample( const char *filename, int destWidth, int destHeight )
+static void VK_Shot_Resample( const char *filename, int destWidth, int destHeight, uint32_t imageIndex )
 {
 	byte	*buffer, *source, *allsource, *src, *dst;
 	size_t	offset = 0;
@@ -127,7 +127,7 @@ static void VK_Shot_Resample( const char *filename, int destWidth, int destHeigh
 	srcW = vkConfig.vidWidth;
 	srcH = vkConfig.vidHeight;
 
-	allsource = RB_ReadPixels( 0, 0, srcW, srcH, &offset, &padlen );
+	allsource = RB_ReadPixels( imageIndex, 0, 0, srcW, srcH, &offset, &padlen );
 	source = allsource + offset;
 
 	buffer = ri.Hunk_AllocateTempMemory( destHeight * destWidth * 3 + 18 );
@@ -166,14 +166,14 @@ static void VK_Shot_Resample( const char *filename, int destWidth, int destHeigh
 	ri.Hunk_FreeTempMemory( allsource );
 }
 
-static void VK_Shot_Full( const char *filename, int width, int height )
+static void VK_Shot_Full( const char *filename, int width, int height, uint32_t imageIndex )
 {
 	byte	*allbuf, *buffer, *srcptr, *destptr, *endline, *endmem, *endrow;
 	byte	temp;
 	size_t	offset = 18, memcount;
 	int		linelen, padlen;
 
-	allbuf = RB_ReadPixels( 0, 0, width, height, &offset, &padlen );
+	allbuf = RB_ReadPixels( imageIndex, 0, 0, width, height, &offset, &padlen );
 	buffer = allbuf + offset - 18;
 
 	memset( buffer, 0, 18 );
@@ -210,9 +210,6 @@ static void VK_Shot_Full( const char *filename, int width, int height )
 
 void R_Screenshot_Flush( uint32_t imageIndex )
 {
-	unsigned char	*rgba;
-	size_t			bytes;
-
 	if ( !s_shotPending ) {
 		return;
 	}
@@ -226,22 +223,15 @@ void R_Screenshot_Flush( uint32_t imageIndex )
 		return;
 	}
 
-	/* the swapchain image is only readable once the present has been queued:
-	   answer the request there, against the image that was just presented */
-	bytes = (size_t)vk.swapchainExtent.width * vk.swapchainExtent.height * 4;
-	rgba = ri.Hunk_AllocateTempMemory( bytes );
-	if ( VK_Swapchain_ReadPixels( imageIndex, rgba, bytes ) ) {
-		ri.Hunk_FreeTempMemory( rgba );
-
-		if ( s_shotWidth > 0 && s_shotHeight > 0
-			 && ( s_shotWidth != vkConfig.vidWidth || s_shotHeight != vkConfig.vidHeight ) ) {
-			VK_Shot_Resample( s_shotName, s_shotWidth, s_shotHeight );
-		} else {
-			VK_Shot_Full( s_shotName, vkConfig.vidWidth, vkConfig.vidHeight );
-		}
-		return;
+	/* one read of the one image, handed to the writer: a second read here was
+	   answering the request twice, and the second answer was whatever the
+	   presentation engine had done with the image in between */
+	if ( s_shotWidth > 0 && s_shotHeight > 0
+		 && ( s_shotWidth != vkConfig.vidWidth || s_shotHeight != vkConfig.vidHeight ) ) {
+		VK_Shot_Resample( s_shotName, s_shotWidth, s_shotHeight, imageIndex );
+	} else {
+		VK_Shot_Full( s_shotName, vkConfig.vidWidth, vkConfig.vidHeight, imageIndex );
 	}
-	ri.Hunk_FreeTempMemory( rgba );
 }
 
 void R_ScreenShot_f( void )

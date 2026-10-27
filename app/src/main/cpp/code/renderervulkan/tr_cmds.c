@@ -887,6 +887,16 @@ void RB_ExecuteRenderCommands( const void *data )
 				{
 					long long seamT0 = VK_WALK_T0();
 
+					/* the thumbnail is read while this frame is still ours: past
+					   the present the image belongs to the presentation engine,
+					   and a read there answers with whatever it left behind */
+					if ( R_Screenshot_Pending() ) {
+						long long shotT0 = VK_WALK_T0();
+
+						R_Screenshot_Flush( vk.acquiredImage );
+						VK_WALK_ADD( shotT0, VK_WP_PIX );
+					}
+
 					if ( !VK_Frame_Present( slot ) ) {
 						VK_WALK_ADD_SUB( seamT0, VK_WSUB_PRESENT );
 						VK_WALK_ADD( outT0, VK_WP_OUT );
@@ -904,14 +914,6 @@ void RB_ExecuteRenderCommands( const void *data )
 					VK_Shade_ReadbackFrame( vk.acquiredImage );
 					VK_WALK_ADD( pixT0, VK_WP_PIX );
 				}
-					/* the save-game thumbnail rides the same seam: a swap image is only
-					   readable once the frame that drew it has been presented */
-					if ( R_Screenshot_Pending() ) {
-						long long shotT0 = VK_WALK_T0();
-
-						R_Screenshot_Flush( vk.acquiredImage );
-						VK_WALK_ADD( shotT0, VK_WP_PIX );
-					}
 			}
 			/* Anything after the present belongs to the next pass, not this one. */
 			inFrame = qfalse;

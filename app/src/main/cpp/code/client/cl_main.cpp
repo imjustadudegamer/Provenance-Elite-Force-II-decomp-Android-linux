@@ -2226,9 +2226,11 @@ void CL_Init( void ) {
 	CL_ClearState ();
 	S_StopAllSounds2( qtrue );
 
-	cls.state = CA_DISCONNECTED;	
+	cls.state = CA_DISCONNECTED;
 	Key_SetCatcher(KEYCATCH_UI);
 	cls.realtime = 0;
+	cls.saveShotCmd[0] = 0;
+	cls.saveShotDrawModel = -1.0f;
 
 	CL_InitInput ();
 
@@ -3281,7 +3283,6 @@ void CL_SaveShot_f( void ) {
 	int i;
 	char expanded[ 1024 ];
 	cvar_t *drawviewmodel;
-	float old_drawviewmodel;
 
 	if( !cls.rendererRegistered ) {
 		return;
@@ -3300,18 +3301,19 @@ void CL_SaveShot_f( void ) {
 	cls.no_menus = qtrue;
 	cls.saveShotFrames = 0;
 
+	/* The thumbnail is the world frame the player was looking at, so the request
+	   rides the next frame the suppression actually draws instead of firing
+	   here: the frames that follow a save are whatever the client is showing --
+	   a sublevel's loading screen, a menu, a frame with no world in it. */
+	Q_strncpyz( cls.saveShotCmd, expanded, sizeof( cls.saveShotCmd ) );
+
 	drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
 	if ( drawviewmodel ) {
-		old_drawviewmodel = drawviewmodel->value;
+		cls.saveShotDrawModel = drawviewmodel->value;
 		Cvar_SetValue( "r_drawviewmodel", 0.0f );
 	}
 
 	UpdateStereoSide( STEREO_CENTER );
-	Cbuf_ExecuteText( EXEC_NOW, expanded );
-
-	if ( drawviewmodel ) {
-		Cvar_SetValue( "r_drawviewmodel", old_drawviewmodel );
-	}
 
 	/* The UI stays off until the renderer has taken the shot: restoring it here
 	   would let the next frame draw the pause menu, and that is the frame the

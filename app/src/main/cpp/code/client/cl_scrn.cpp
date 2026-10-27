@@ -620,18 +620,49 @@ void SCR_UpdateScreen( void ) {
 	SMP_LOAD_BEGIN( scr );
 
 	CL_StartHunkUsers(qfalse);
+
+	/* The thumbnail is the world frame the player was looking at, so the request
+	   rides the frame the suppression is drawing: issued here it lands on the
+	   frame below, never on a loading screen, a menu, or a frame with no world
+	   in it -- the frames that follow an autosave across a sublevel edge. */
+	if ( cls.no_menus && cls.state == CA_ACTIVE && cls.saveShotCmd[0] ) {
+		Cbuf_ExecuteText( EXEC_NOW, cls.saveShotCmd );
+		cls.saveShotCmd[0] = 0;
+	}
+
 	SCR_SimpleUpdateScreen();
 
-	/* The save shot must come from a frame the pause menu did not composite
-	   over, so the UI stays suppressed until the renderer reports the shot was
-	   taken; a frame cap bounds the wait so the menu can never be lost. */
+	/* The UI stays suppressed until the renderer reports the shot was taken.  A
+	   world that never comes -- quit to menu while the request was held -- still
+	   has to give the screen back, so the hold is bounded by frames actually
+	   drawn in the world, not by the wall clock. */
 	if ( cls.no_menus ) {
 		if ( re.ScreenshotPending && !re.ScreenshotPending() ) {
 			cls.no_menus = qfalse;
 			cls.saveShotFrames = 0;
-		} else if ( ++cls.saveShotFrames > 8 ) {
+			cls.saveShotCmd[0] = 0;
+			if ( cls.saveShotDrawModel >= 0.0f ) {
+				cvar_t *drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
+
+				if ( drawviewmodel ) {
+					Cvar_SetValue( "r_drawviewmodel", cls.saveShotDrawModel );
+				}
+				cls.saveShotDrawModel = -1.0f;
+			}
+		} else if ( cls.state != CA_ACTIVE ) {
+			cls.saveShotFrames = 0;
+		} else if ( ++cls.saveShotFrames > 600 ) {
 			cls.no_menus = qfalse;
 			cls.saveShotFrames = 0;
+			cls.saveShotCmd[0] = 0;
+			if ( cls.saveShotDrawModel >= 0.0f ) {
+				cvar_t *drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
+
+				if ( drawviewmodel ) {
+					Cvar_SetValue( "r_drawviewmodel", cls.saveShotDrawModel );
+				}
+				cls.saveShotDrawModel = -1.0f;
+			}
 		}
 	}
 
