@@ -1163,6 +1163,9 @@ bool MenuManager::TransitionMenu(str name)
     if (head) {
         m_menustack.Pop();
         maxouttime = head->GetMaxMotionTime();
+        /* the page leaving through a transition owns the same popcommand retail's
+           PopMenu runs; skipping it leaves the shipped ui_hidemouse undelivered */
+        head->NotifyPopMenu();
         head->ProcessEvent(Event("hidemenu"));
     }
 
@@ -1327,18 +1330,32 @@ void MenuManager::PopMenu(qboolean restore_cvars)
     }
 }
 
+/* Push, Pop, Show and Transition all show the head they install and hide the one
+   they retire, so once the motion lock has dropped a hidden head is a stack entry
+   left behind -- and answering for it holds the catcher, the touch overlay and the
+   pointer with nothing on screen. */
 Menu *MenuManager::CurrentMenu(void)
 {
-    Menu *head;
+    Stack<Menu *> *stacks[2] = { &m_showmenustack, &m_menustack };
+    Menu          *head;
+    int            i;
 
-    head = m_showmenustack.Head();
-    if (head) {
-        return head;
-    }
+    for (i = 0; i < 2; i++) {
+        while (!m_lock) {
+            head = stacks[i]->Head();
+            if (!head) {
+                break;
+            }
+            if (!head->GetContainerWidget() || head->isVisible()) {
+                return head;
+            }
+            stacks[i]->Pop();
+        }
 
-    head = m_menustack.Head();
-    if (head) {
-        return head;
+        head = stacks[i]->Head();
+        if (head) {
+            return head;
+        }
     }
 
     return NULL;

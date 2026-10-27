@@ -1011,8 +1011,23 @@ void UI_Update(void)
     LIMIT_UiFrameEnd();
 }
 
+/* Per-frame convergence: the shipped pages hand the pointer and the catcher back
+   through their own popcommand, so this only ever restores the state retail ends a
+   menu with -- no menu and no pad HUD means the game view owns them. */
+static void UI_SyncPointer(void)
+{
+    UI_SyncPadCatcher();
+
+    if (!menuManager.CurrentMenu() && !UI_IsHudActive() && !UI_BindActive()
+        && !UI_ConsoleIsOpen() && in_guimouse) {
+        IN_MouseOff();
+    }
+}
+
 static void UI_Update_Impl(void)
 {
+    UI_SyncPointer();
+
     /* deliver the queued prints first: the mirror runs on this thread, so the
        console's strings are only ever touched here */
     if ((fakk_console || mini_console) && s_intermediateconsole.NumObjects()) {
