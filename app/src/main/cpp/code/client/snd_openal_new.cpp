@@ -2301,12 +2301,23 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
             iPan = S_OPENAL_SpatializeStereoSound(vListenerOrigin, vTempAxis, vOrigin);
         }
 
-        /* No distance term here: retail's 2D arm (S_MILES_Respatialize @0x001F2CC0) sets the pan
-           and S_GetChanVolume and nothing else -- S_MILES_Spatialize @0x001F52F0 returns a pan
-           alone.  The min_dist/dist multiply below was folding the speaker's world distance into
-           campaign dialog (mindist defaults to 160), which is what buried it under the unattenuated
-           song bed in the wide arenas. */
+        /* Retail's 2D arm does attenuate: S_MILES_Respatialize @0x1F3418 loads the channel,
+           multiplies the slot volume by S_GetChanVolume @0x1F54A0, and for a non-localsound
+           slot takes VectorLength @0x1E5AD0 of listener minus source and scales the gain by
+           min_dist/dist when dist > min_dist (@0x1F3440-0x1F3498) before handing both to
+           AIL_set_sample_volume_pan @0x2168F4.  The decompile hides the term -- Hex-Rays drops
+           AIL_set_sample_volume_pan's second argument and leaves the VectorLength looking dead.
+           Level-wide lines are immune: the scripts pass min_dist 10000, Entity::Sound and
+           Actor::PlayDialog clamp that to LEVEL_WIDE_MIN_DIST, so dist never exceeds min_dist. */
         fVolume = pChannel->fVolume * S_EF2_ChannelVolume(pChannel->iEntChannel);
+
+        if (!(pChannel->iFlags & CHANNEL_FLAG_LOCAL_LISTENER)) {
+            VectorSubtract(vListenerOrigin, vOrigin, vDir);
+            fDist = VectorLength(vDir);
+            if (fDist > pChannel->fMinDist) {
+                fVolume = fVolume * pChannel->fMinDist / fDist;
+            }
+        }
 
         pChannel->set_gain_3d(fVolume);
         pChannel->set_sample_pan(iPan);
