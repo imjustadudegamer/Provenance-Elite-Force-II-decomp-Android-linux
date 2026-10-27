@@ -27,7 +27,7 @@ struct skelFrame_s;
 typedef struct skelAnimHeader_s skelAnimHeaderRec_t;
 typedef struct skelFrame_s     skelFrameRec_t;
 
-skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, const char *path);
+skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, int decodedFrames, const char *path);
 
 void TIKI_Skan_Bind(skelAnimDataGameHeader_t *owner, skelAnimHeaderRec_t *hdr);
 

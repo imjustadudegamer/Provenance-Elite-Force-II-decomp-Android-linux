@@ -2435,8 +2435,16 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
 
     tiki = ent->e.tiki;
 
+    /* The entity's copy is a client-side cache of a fact this switch already
+       established: the model is a TIKI, so its own dtiki_t is the tiki.  An
+       entity whose copy did not survive the client's own resolution used to
+       leave through here and add no surface at all -- the whole-body vanish the
+       scene-gate census records as an unnamed drop. */
     if (!tiki) {
-        return;
+        tiki = tr.currentModel ? tr.currentModel->d.tiki : NULL;
+        if (!tiki) {
+            return;
+        }
     }
 
     skelmodel = (tiki->numMeshes > 0) ? ri.TIKI_GetSkel(tiki->mesh[0]) : NULL;

@@ -536,7 +536,7 @@ skelAnimDataGameHeader_t *skeletor_c::ConvertEF2SkanToGame(void *buffer, int iBu
 
     if (enAnim) {
         enAnim->skan = TIKI_Skan_RetainNative(
-            pEF2, (size_t)ofsFrames + (size_t)numFrames * frameStride, path);
+            pEF2, (size_t)ofsFrames + (size_t)numFrames * frameStride, numFrames, path);
         TIKI_Skan_Bind(enAnim, enAnim->skan);
     }
 

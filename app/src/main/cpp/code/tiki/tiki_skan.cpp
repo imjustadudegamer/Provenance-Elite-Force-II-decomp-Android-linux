@@ -69,7 +69,7 @@ struct skanRetained_t {
 static skanRetained_t m_skanRetained[MAX_TIKI_ALIASES];
 static int            m_skanRetainedCount;
 
-skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, const char *path)
+skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, int decodedFrames, const char *path)
 {
     skelAnimHeaderRec_t *copy;
     int                  version;
@@ -84,7 +84,7 @@ skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, con
     }
 
     version         = LittleLong(*(const int *)((const byte *)image + 4));
-    numFrames       = LittleLong(*(const int *)((const byte *)image + 76));
+    numFrames       = decodedFrames;
     numbones        = LittleLong(*(const int *)((const byte *)image + 80));
     ofsChannelNames = LittleLong(*(const int *)((const byte *)image + 104));
     ofsFrames       = LittleLong(*(const int *)((const byte *)image + 108));
@@ -92,7 +92,12 @@ skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, con
     /* retail TIKI_LoadAnimSkel @0x000F4120: version 4 only, the exact size
        equation, and no clamp -- a frame count the bytes cannot hold is a load
        error, because reading it walks past the buffer into whatever the
-       allocator left there, and that lands in the bone rows as a quat. */
+       allocator left there, and that lands in the bone rows as a quat.
+       The frame count is the one the loader decoded: it clamps a short file to
+       the frames it holds, and a count taken back from the header word would
+       fail the equation below and leave the animation with no native rows,
+       which the pose validator reads as "no such animation" and refuses the
+       draw for every character playing it. */
     if (version != 4) {
         TIKI_Error("TIKI_LoadAnimSkel: %s has wrong version (%i should be 4)\n", path, version);
         return NULL;
