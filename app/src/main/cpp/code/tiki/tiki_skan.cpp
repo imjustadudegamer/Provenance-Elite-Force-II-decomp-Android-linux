@@ -310,68 +310,6 @@ const int *TIKI_Skan_AnimBoneMapping(dtiki_t *tiki, int anim)
     return TIKI_GetAnimBoneMapping(mapped);
 }
 
-/* retail TIKI_RefreshCachedTIKI @0x000FBE60 rewrites every anim bone mapping from the
-   live data on a warm hit.  Divergence: this one only fills a slot still unset, so a
-   warm hit does not pay Calc again; the walk in TIKI_Skan_AnimBoneMapping holds the
-   same guarantee retail's unconditional rewrite bought. */
-void TIKI_RefreshAnimBoneMapping(dtiki_t *tiki, int animnum)
-{
-    skelAnimHeaderRec_t *hdr;
-    const char          *name;
-    int                  verdict = TIKI_MAPV_NOSKEL;
-    int                  mapped;
-
-    if (!tiki || !tiki->a || !tiki->boneMappings) {
-        return;
-    }
-
-    if (animnum < 0 || animnum >= tiki->a->num_anims) {
-        return;
-    }
-
-    if (tiki->boneMappings[animnum] != TIKI_BONEMAP_UNSET) {
-        return;
-    }
-
-    /* only a slot whose data is already paged in: this path is load time, not the
-       walk, and the walk pages in and fills whatever this one left */
-    if (!SkeletorCacheEntryLoaded(tiki->a->m_aliases[animnum])) {
-        return;
-    }
-
-    hdr  = TIKI_Skan_FindByAnim(tiki, animnum);
-    name = TIKI_Anim_NameForNum(tiki, animnum);
-
-    if (!hdr || hdr->ident != TIKI_SKC_HEADER_IDENT) {
-        TIKI_PROBE(
-            "map",
-            "fill tiki=%s anim=%d name='%s' handle=-1 calc=%s\n",
-            tiki->name ? tiki->name : "?",
-            animnum,
-            name ? name : "?",
-            hdr ? "ident" : "nohdr"
-        );
-        return;
-    }
-
-    mapped = TIKI_RegisterAnimBoneMappingV(hdr, tiki->skelIndex, &verdict);
-    if (verdict == TIKI_MAPV_IDENTITY) {
-        tiki->boneMappings[animnum] = TIKI_BONEMAP_IDENTITY;
-    } else if (mapped >= 0) {
-        tiki->boneMappings[animnum] = mapped;
-    }
-
-    TIKI_PROBE(
-        "map",
-        "fill tiki=%s anim=%d name='%s' handle=%d calc=%s\n",
-        tiki->name ? tiki->name : "?",
-        animnum,
-        name ? name : "?",
-        tiki->boneMappings[animnum],
-        TIKI_Skan_MapVerdictName(verdict)
-    );
-}
-
 void TIKI_SwapAnimSkel(skelAnimHeaderRec_t *hdr)
 {
     skelFrame_t *frame;

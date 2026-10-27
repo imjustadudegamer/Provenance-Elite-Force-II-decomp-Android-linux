@@ -314,13 +314,15 @@ int TIKI_RegisterTiki(const char *path)
                 for (j = 0; j < s_tikis[i].tiki->a->num_anims; j++) {
                     s_tikis[i].tiki->a->m_aliases[j] =
                         TIKI_Anim_RetainAlias(s_tikis[i].tiki->a->m_aliases[j]);
-
-                    /* retail TIKI_RefreshCachedTIKI @0x000FBE60 rewrites the anim bone
-                       mapping whenever it forces an animation back in; this is the warm
-                       hit that re-pages it, and the slot it fills is the one the build
-                       left -1.  Self-guards on a live handle. */
-                    TIKI_RefreshAnimBoneMapping(s_tikis[i].tiki, j);
                 }
+
+                /* no mapping registration here.  Retail's TIKI_RefreshCachedTIKI
+                   @0x000FBE60 runs from TIKI_LoadCachedTIKIfile @0x000FC460 alone --
+                   the .cik load, which this port does not read -- and retail's other
+                   registration site is TIKI_SetupTikiAnim @0x000F4400 on first use.
+                   Registering every anim on every warm hit was the eager build pass
+                   again, one level later: a holodeck mission wants ~173
+                   (skeleton, channel set) pairs and retail's table holds 128. */
             }
 
             return i;
@@ -371,6 +373,43 @@ int TIKI_ReloadTiki(const char *name)
     return TIKI_HandleForTiki(tiki);
 }
 
+/* Nothing resets the anim bone mapping table wholesale and its 128 slots turn
+   over only through TIKI_FreeTiki @0x000FD240's per-entry release, so a table
+   entry lives as long as some tiki holds it.  tiki_keepLoaded keeps the parse
+   and build results alive across a level load, which pins every entry every
+   tiki ever took: one holodeck assault-range session then wants ~173
+   (skeleton, channel set) pairs against retail's 128 and the actors spawning
+   later read by bone index.  Drop the entries here, at the boundary retail
+   frees its tikis, so the table holds the current level's live pairs again.
+   The survivors re-heal on first pose, which is retail's own first-use site. */
+static void TIKI_DropAnimBoneMappings(void)
+{
+    dtiki_t **entry;
+
+    if (!tikicache) {
+        return;
+    }
+
+    con_map_enum<pchar, dtiki_t *> en = *tikicache;
+
+    for (entry = en.NextValue(); entry != NULL; entry = en.NextValue()) {
+        dtiki_t *tiki = *entry;
+        int      i;
+
+        if (!tiki || !tiki->boneMappings || !tiki->a) {
+            continue;
+        }
+
+        for (i = 0; i < tiki->a->num_anims; i++) {
+            if (tiki->boneMappings[i] >= 0) {
+                TIKI_ReleaseAnimBoneMapping(tiki->boneMappings[i]);
+            }
+
+            tiki->boneMappings[i] = TIKI_BONEMAP_UNSET;
+        }
+    }
+}
+
 void TIKI_FreeAll()
 {
     dtiki_t     **entry;
@@ -379,6 +418,8 @@ void TIKI_FreeAll()
     dtikianim_t  *tikianim;
     int           i;
     int           kept = 0;
+
+    TIKI_DropAnimBoneMappings();
 
     if (tikicache && TIKI_KeepLoaded()) {
         con_map_enum<pchar, dtiki_t *> en = *tikicache;

@@ -38,7 +38,6 @@ skelAnimHeaderRec_t *TIKI_Skan_Find(const skelAnimDataGameHeader_t *owner);
 skelAnimHeaderRec_t *TIKI_Skan_FindByAnim(dtiki_t *tiki, int animnum);
 const int           *TIKI_Skan_AnimBoneMapping(dtiki_t *tiki, int anim);
 const char          *TIKI_Skan_MapVerdictName(int verdict);
-void                 TIKI_RefreshAnimBoneMapping(dtiki_t *tiki, int animnum);
 
 void TIKI_Skan_SetProbeSubject(int entnum, const vec3_t origin);
 
