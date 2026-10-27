@@ -184,10 +184,6 @@ static void Com_PrintRecover( void ) {
 	}
 }
 
-qboolean Com_PrintAlive( void ) {
-	return ( t_printRecursion == 0 && rd_buffer == NULL ) ? qtrue : qfalse;
-}
-
 /* Gated heartbeat: one row every `sec' seconds from the frame loop, so a boot
  * that goes quiet PROVES it instead of leaving a hole that looks like a load
  * that never happened.  Silent by default; `qa_probe' is the master switch. */
@@ -912,14 +908,6 @@ char *CopyString( const char *in ) {
 	out = ( char * )Z_Malloc( strlen( in ) + 1 );
 	strcpy( out, in );
 	return out;
-}
-
-void *B_Malloc( size_t size ) {
-	return Z_Malloc( size );
-}
-
-void B_Free( void *ptr ) {
-	return Z_Free( ptr );
 }
 
 void CL_ShutdownCGame( void );

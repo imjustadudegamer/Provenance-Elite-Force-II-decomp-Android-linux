@@ -642,17 +642,6 @@ void Cvar_SetValue( const char *var_name, float value) {
 	Cvar_Set (var_name, val);
 }
 
-void Cvar_SetValueSafe( const char *var_name, float value )
-{
-	char val[32];
-
-	if( Q_isintegral( value ) )
-		Com_sprintf( val, sizeof(val), "%i", (int)value );
-	else
-		Com_sprintf( val, sizeof(val), "%f", value );
-	Cvar_SetSafe( var_name, val );
-}
-
 void Cvar_Reset( const char *var_name ) {
 	Cvar_Set2( var_name, NULL, qfalse );
 }
@@ -698,27 +687,6 @@ qboolean Cvar_Command( void ) {
 	return qtrue;
 }
 
-
-void Cvar_Print_f(void)
-{
-	char *name;
-	cvar_t *cv;
-	
-	if(Cmd_Argc() != 2)
-	{
-		Com_Printf ("usage: print <variable>\n");
-		return;
-	}
-
-	name = Cmd_Argv(1);
-
-	cv = Cvar_FindVar(name);
-	
-	if(cv)
-		Cvar_Print(cv);
-	else
-		Com_Printf ("Cvar %s does not exist.\n", name);
-}
 
 void Cvar_Toggle_f( void ) {
 	int		i, c = Cmd_Argc();

@@ -627,10 +627,6 @@ static void CMod_LoadTerrainEF2( gamelump_t *rawSurfs, gamelump_t *verts ) {
 
 
 
-unsigned CM_Checksum( dheader_t *header ) {
-	return LittleLong(header->checksum);
-}
-
 static byte       *cm_bspFileBuffer;
 static int         cm_bspFileLength;
 static const char *cm_bspFileName;   

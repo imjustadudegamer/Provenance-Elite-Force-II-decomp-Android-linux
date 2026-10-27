@@ -157,11 +157,6 @@ void CG_RegisterCvars(void)
     temp            = cgi.Cvar_Get("sv_running", "0", 0);
     cgs.localServer = temp->integer;
 }
-int qsort_compare_strings(const void *s1, const void *s2)
-{
-    return Q_stricmp(*(const char **)s1, *(const char **)s2);
-}
-
 /* CG_GameStateReceived is one zone worth ~3.5 s on the device: every call in it
  * is bracketed, and the counters name the precache class each config string drives. */
 #define CGG_LEG_COUNT 10

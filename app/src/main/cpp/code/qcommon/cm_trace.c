@@ -41,20 +41,6 @@ static int s_clipRawCyl, s_clipRawValid;
 sphere_t sphere;
 
 
-void RotatePoint(vec3_t point,  vec3_t matrix[3]) { 
-	vec3_t tvec;
-
-	VectorCopy(point, tvec);
-	point[0] = DotProduct(matrix[0], tvec);
-	point[1] = DotProduct(matrix[1], tvec);
-	point[2] = DotProduct(matrix[2], tvec);
-}
-
-void CreateRotationMatrix(const vec3_t angles, vec3_t matrix[3]) {
-	AngleVectorsLeft(angles, matrix[0], matrix[1], matrix[2]);
-	VectorInverse(matrix[1]);
-}
-
 void CM_ProjectPointOntoVector( vec3_t point, vec3_t vStart, vec3_t vDir, vec3_t vProj )
 {
 	vec3_t pVec;
@@ -81,13 +67,6 @@ float CM_DistanceFromLineSquared(vec3_t p, vec3_t lp1, vec3_t lp2, vec3_t dir) {
 	}
 	VectorSubtract(p, proj, t);
 	return VectorLengthSquared(t);
-}
-
-float CM_VectorDistanceSquared(vec3_t p1, vec3_t p2) {
-	vec3_t dir;
-
-	VectorSubtract(p2, p1, dir);
-	return VectorLengthSquared(dir);
 }
 
 float SquareRootFloat(float number) {
@@ -252,89 +231,6 @@ void CM_TestInLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 			}
 		}
 	}
-}
-
-void CM_TestCapsuleInCapsule( traceWork_t *tw, clipHandle_t model ) {
-	int i;
-	vec3_t mins, maxs;
-	vec3_t top, bottom;
-	vec3_t p1, p2, tmp;
-	vec3_t offset, symetricSize[2];
-	float radius, halfwidth, halfheight, offs, r;
-
-	CM_ModelBounds(model, mins, maxs);
-
-	VectorAdd(tw->start, sphere.offset, top);
-	VectorSubtract(tw->start, sphere.offset, bottom);
-	for ( i = 0 ; i < 3 ; i++ ) {
-		offset[i] = ( mins[i] + maxs[i] ) * 0.5;
-		symetricSize[0][i] = mins[i] - offset[i];
-		symetricSize[1][i] = maxs[i] - offset[i];
-	}
-	halfwidth = symetricSize[ 1 ][ 0 ];
-	halfheight = symetricSize[ 1 ][ 2 ];
-	radius = ( halfwidth > halfheight ) ? halfheight : halfwidth;
-	offs = halfheight - radius;
-
-	r = Square(sphere.radius + radius);
-	VectorCopy(offset, p1);
-	p1[2] += offs;
-	VectorSubtract(p1, top, tmp);
-	if ( VectorLengthSquared(tmp) < r ) {
-		tw->trace.startsolid = tw->trace.allsolid = qtrue;
-		tw->trace.fraction = 0;
-	}
-	VectorSubtract(p1, bottom, tmp);
-	if ( VectorLengthSquared(tmp) < r ) {
-		tw->trace.startsolid = tw->trace.allsolid = qtrue;
-		tw->trace.fraction = 0;
-	}
-	VectorCopy(offset, p2);
-	p2[2] -= offs;
-	VectorSubtract(p2, top, tmp);
-	if ( VectorLengthSquared(tmp) < r ) {
-		tw->trace.startsolid = tw->trace.allsolid = qtrue;
-		tw->trace.fraction = 0;
-	}
-	VectorSubtract(p2, bottom, tmp);
-	if ( VectorLengthSquared(tmp) < r ) {
-		tw->trace.startsolid = tw->trace.allsolid = qtrue;
-		tw->trace.fraction = 0;
-	}
-	if ( (top[2] >= p1[2] && top[2] <= p2[2]) ||
-		(bottom[2] >= p1[2] && bottom[2] <= p2[2]) ) {
-		top[2] = p1[2] = 0;
-		VectorSubtract(top, p1, tmp);
-		if ( VectorLengthSquared(tmp) < r ) {
-			tw->trace.startsolid = tw->trace.allsolid = qtrue;
-			tw->trace.fraction = 0;
-		}
-	}
-}
-
-void CM_TestBoundingBoxInCapsule( traceWork_t *tw, clipHandle_t model ) {
-	vec3_t mins, maxs, offset, size[2];
-	clipHandle_t h;
-	cmodel_t *cmod;
-	int i;
-
-	CM_ModelBounds(model, mins, maxs);
-
-	for ( i = 0 ; i < 3 ; i++ ) {
-		offset[i] = ( mins[i] + maxs[i] ) * 0.5;
-		size[0][i] = mins[i] - offset[i];
-		size[1][i] = maxs[i] - offset[i];
-		tw->start[i] -= offset[i];
-		tw->end[i] -= offset[i];
-	}
-
-	sphere.use = qtrue;
-	sphere.radius = ( size[1][0] > size[1][2] ) ? size[1][2]: size[1][0];
-	VectorSet( sphere.offset, 0, 0, size[1][2] - sphere.radius );
-
-	h = CM_TempBoxModel(tw->size[0], tw->size[1], qfalse);
-	cmod = CM_ClipHandleToModel( h );
-	CM_TestInLeaf( tw, &cmod->leaf );
 }
 
 #define	MAX_POSITION_LEAFS	1024
@@ -938,78 +834,6 @@ void CM_TraceThroughVerticalCylinder( traceWork_t *tw, vec3_t origin, float radi
 	else if (d == 0) {
 	}
 }
-
-void CM_TraceCapsuleThroughCapsule( traceWork_t *tw, clipHandle_t model ) {
-	int i;
-	vec3_t mins, maxs;
-	vec3_t top, bottom, starttop, startbottom, endtop, endbottom;
-	vec3_t offset, symetricSize[2];
-	float radius, halfwidth, halfheight, offs, h;
-
-	CM_ModelBounds(model, mins, maxs);
-	if ( tw->bounds[0][0] > maxs[0] + RADIUS_EPSILON
-		|| tw->bounds[0][1] > maxs[1] + RADIUS_EPSILON
-		|| tw->bounds[0][2] > maxs[2] + RADIUS_EPSILON
-		|| tw->bounds[1][0] < mins[0] - RADIUS_EPSILON
-		|| tw->bounds[1][1] < mins[1] - RADIUS_EPSILON
-		|| tw->bounds[1][2] < mins[2] - RADIUS_EPSILON
-		) {
-		return;
-	}
-	VectorAdd(tw->start, sphere.offset, starttop);
-	VectorSubtract(tw->start, sphere.offset, startbottom);
-	VectorAdd(tw->end, sphere.offset, endtop);
-	VectorSubtract(tw->end, sphere.offset, endbottom);
-
-	for ( i = 0 ; i < 3 ; i++ ) {
-		offset[i] = ( mins[i] + maxs[i] ) * 0.5;
-		symetricSize[0][i] = mins[i] - offset[i];
-		symetricSize[1][i] = maxs[i] - offset[i];
-	}
-	halfwidth = symetricSize[ 1 ][ 0 ];
-	halfheight = symetricSize[ 1 ][ 2 ];
-	radius = ( halfwidth > halfheight ) ? halfheight : halfwidth;
-	offs = halfheight - radius;
-	VectorCopy(offset, top);
-	top[2] += offs;
-	VectorCopy(offset, bottom);
-	bottom[2] -= offs;
-	radius += sphere.radius;
-	if ( tw->start[0] != tw->end[0] || tw->start[1] != tw->end[1] ) {
-		h = halfheight - radius;
-		if ( h > 0 ) {
-			CM_TraceThroughVerticalCylinder(tw, offset, radius, h, tw->start, tw->end);
-		}
-	}
-	CM_TraceThroughSphere(tw, top, radius, startbottom, endbottom);
-	CM_TraceThroughSphere(tw, bottom, radius, starttop, endtop);
-}
-
-void CM_TraceBoundingBoxThroughCapsule( traceWork_t *tw, clipHandle_t model ) {
-	vec3_t mins, maxs, offset, size[2];
-	clipHandle_t h;
-	cmodel_t *cmod;
-	int i;
-
-	CM_ModelBounds(model, mins, maxs);
-
-	for ( i = 0 ; i < 3 ; i++ ) {
-		offset[i] = ( mins[i] + maxs[i] ) * 0.5;
-		size[0][i] = mins[i] - offset[i];
-		size[1][i] = maxs[i] - offset[i];
-		tw->start[i] -= offset[i];
-		tw->end[i] -= offset[i];
-	}
-
-	sphere.use = qtrue;
-	sphere.radius = ( size[1][0] > size[1][2] ) ? size[1][2]: size[1][0];
-	VectorSet( sphere.offset, 0, 0, size[1][2] - sphere.radius );
-
-	h = CM_TempBoxModel(tw->size[0], tw->size[1], qfalse);
-	cmod = CM_ClipHandleToModel( h );
-	CM_TraceToLeaf( tw, &cmod->leaf, 0 );
-}
-
 
 void CM_TraceThroughTree( traceWork_t *tw, int num, float p1f, float p2f, vec3_t p1, vec3_t p2, int leafFlags ) {
 	cNode_t		*node;

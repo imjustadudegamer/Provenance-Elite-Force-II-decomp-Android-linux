@@ -509,21 +509,6 @@ void CG_General(centity_t *cent)
     }
 }
 
-void CG_Speaker(centity_t *cent)
-{
-    if (!cent->currentState.clientNum) 
-    {
-        return; 
-    }
-
-    if (cg.time < cent->miscTime) {
-        return;
-    }
-
-
-    cent->miscTime = cg.time + cent->currentState.clientNum * 100 * crandom();
-}
-
 void CG_Mover(centity_t *cent)
 {
     refEntity_t    ent;

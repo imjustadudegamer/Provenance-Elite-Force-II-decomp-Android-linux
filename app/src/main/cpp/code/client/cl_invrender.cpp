@@ -342,12 +342,6 @@ void CL_Draw3DModel(
     re.RenderScene(&inv_refdef);
 }
 
-bool CL_DoIHaveThisItem(const char *name)
-{
-    return CL_HasInventoryItem(name) ? true : false;
-}
-
-
 void UI_NextInventory_f(void)
 {
     PROBE("inv:cmd", "nextinv -> InventoryBar inventorynextitem");

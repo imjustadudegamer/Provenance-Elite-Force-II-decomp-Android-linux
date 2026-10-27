@@ -156,25 +156,6 @@ void FindChunk(const char *name)
     FindNextChunk(name);
 }
 
-void DumpChunks()
-{
-    char str[5];
-
-    str[4] = 0;
-
-    data_p = iff_data;
-    do {
-        memcpy(str, data_p, 4);
-        data_p += 4;
-
-        iff_chunk_len = GetLittleLong();
-
-        Com_Printf("0x%p : %s (%d)\n", data_p - 4, str, iff_chunk_len);
-
-        data_p += (iff_chunk_len + 1) & ~1;
-    } while (data_p < (byte *)iff_end);
-}
-
 wavinfo_t GetWavinfo(const char *name, byte *wav, int wavlength)
 {
     wavinfo_t info;
