@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+#  gen_event_order.py -- emit fgame/eventorder.cpp, retail EF2's script event
+#  registry order.
+#
+#  Why: a save stores the event number inside every archived script function
+#  (program.cpp, dfunction_t::Archive), and that number is the event registry's
+#  insertion order -- static-init and link order, build local.  Two builds that
+#  register in a different order mis-dispatch every script call a save replays.
+#
+#  Inputs (all under analysis/, produced by the offline harnesses):
+#    evref.json   -- slot -> name for the 1542 script-callable events, read back
+#                    from 114 retail saves of the 116-save retail corpus; every
+#                    save agrees, so this is one stable table.  Built by
+#                    evref.py out of the save-oracle worktree's savwalk.py.
+#    evdefs.json  -- every Event definition in fgame (name, flags, file, line),
+#                    built by evscan.py.  Its code-only names (no documentation,
+#                    so no function def and no slot in any save) fill the 22
+#                    slots no save can name.
+#    dllorder/order.tsv (optional) -- the same order read out of the retail DLL's
+#                    own static initialisers; when present it decides which
+#                    code-only name takes which unnamed slot.
+#
+#  Usage: python3 tools/gen_event_order.py  (run from app/src/main/cpp)
+import json, os, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CODE = os.path.dirname(HERE)
+ANA = os.path.join(CODE, '..', '..', '..', '..', 'analysis')
+ANA = os.path.normpath(ANA)
+OUT = os.path.join(CODE, 'code', 'fgame', 'eventorder.cpp')
+HDR = os.path.join(CODE, 'code', 'fgame', 'eventorder.h')
+
+
+def main():
+    ref = json.load(open(os.path.join(ANA, 'evref.json')))
+    defs = json.load(open(os.path.join(ANA, 'evdefs.json')))
+
+    documented = sorted((int(k), v[0]) for k, v in ref['bynum'].items())
+    gaps = ref['gaps']
+
+    docnames = set(n for _, n in documented)
+    codeonly = sorted(set(r['name'] for r in defs
+                          if not r['hasdoc'] or r['name'].startswith('_'))
+                      - docnames)
+    assert len(codeonly) == len(gaps), (len(codeonly), len(gaps))
+
+    tsv = os.path.join(ANA, 'dllorder', 'order.tsv')
+    if os.path.exists(tsv):
+        binslot = {}
+        for line in open(tsv):
+            p = line.rstrip('\n').split('\t')
+            if len(p) >= 2 and p[0].isdigit():
+                binslot[int(p[0])] = p[1]
+        fill = [n for s, n in sorted(binslot.items()) if s in set(gaps)]
+        src = 'the retail DLL\'s own initialiser order'
+        if sorted(fill) != sorted(codeonly):
+            sys.exit('dllorder gaps %d do not match the code-only set %d'
+                     % (len(fill), len(codeonly)))
+        for s, n in documented:
+            if binslot.get(s) != n:
+                sys.exit('the DLL order disagrees with the saves at slot %d: %s vs %s'
+                         % (s, n, binslot.get(s)))
+    else:
+        byname = {}
+        for r in defs:
+            if r['name'] in codeonly:
+                byname.setdefault(r['name'], (r['file'], r['line']))
+        fill = sorted(codeonly, key=lambda n: byname[n])
+        src = 'the definitions\' file/line order (analysis/evdefs.json)'
+
+    slots = dict(documented)
+    for slot, name in zip(gaps, fill):
+        slots[slot] = name
+    assert sorted(slots) == list(range(min(slots), max(slots) + 1))
+
+    with open(OUT, 'w') as f:
+        f.write('''/*
+===========================================================================
+Reconstructed from the retail Star Trek: Voyager -- Elite Force II binaries.
+The publisher released no source for this file.  This port asserts no copyright
+in it and grants no rights to it: it remains the property of its respective
+rights holders, and it is covered neither by the GNU GPL nor by the Ritual
+Elite Force II SDK agreement.  See LICENSING.md.
+===========================================================================
+*/
+// SPDX-License-Identifier: LicenseRef-EF2-Retail-Reconstruction
+//-----------------------------------------------------------------------------
+// Retail EF2's script event registry order.
+//
+// A save stores the event number inside every archived script function
+// (program.cpp, dfunction_t::Archive).  That number is the registry's insertion
+// order -- static-init and link order, build local -- so a build that registers
+// in any other order mis-dispatches every script call a save replays.  114
+// retail saves give one stable table, and the retail DLL's own static
+// initialisers name every slot the same way; the %d slots no save can name are
+// code-only events, taken from %s.
+//
+// initCommandList registers this table before any Event object constructs, so
+// every event lands on retail's number and a port-added event appends after
+// retail's last slot.  Event::VerifyRegistryOrder checks the live registry
+// against it at every game start.
+//
+// Generated by tools/gen_event_order.py -- edit that, not this.
+//-----------------------------------------------------------------------------
+
+#include "eventorder.h"
+
+#if defined( GAME_DLL )
+
+''' % (len(gaps), src))
+        f.write('/* commandList slots %d..%d; slot 1 is the engine\'s own "NULL". */\n'
+                % (min(slots), max(slots)))
+        f.write('const char *const g_EventOrder[] =\n{\n')
+        for s in range(min(slots), max(slots) + 1):
+            f.write('\t/* %4d */ "%s",\n' % (s, slots[s]))
+        f.write('};\n\n')
+        f.write('const int g_EventOrderNum = %d;\n\n' % max(slots))
+        f.write('/* the script-callable subset: these must all exist as events. */\n')
+        f.write('const char *const g_EventOrderDoc[] =\n{\n')
+        for s, n in documented:
+            f.write('\t"%s",\n' % n)
+        f.write('};\n\n')
+        f.write('const int g_EventOrderDocNum = %d;\n\n' % len(documented))
+        f.write('#endif\n')
+
+    with open(HDR, 'w') as f:
+        f.write('''/*
+===========================================================================
+Reconstructed from the retail Star Trek: Voyager -- Elite Force II binaries.
+The publisher released no source for this file.  This port asserts no copyright
+in it and grants no rights to it: it remains the property of its respective
+rights holders, and it is covered neither by the GNU GPL nor by the Ritual
+Elite Force II SDK agreement.  See LICENSING.md.
+===========================================================================
+*/
+// SPDX-License-Identifier: LicenseRef-EF2-Retail-Reconstruction
+// Retail EF2's script event registry order, see eventorder.cpp.
+#if !defined( __EVENTORDER_H__ )
+#define __EVENTORDER_H__
+
+#if defined( GAME_DLL )
+
+extern const char *const g_EventOrder[];
+extern const int         g_EventOrderNum;
+extern const char *const g_EventOrderDoc[];
+extern const int         g_EventOrderDocNum;
+
+#endif
+
+#endif
+''')
+    print('wrote %s (%d slots, %d documented, %d code-only)'
+          % (OUT, len(slots), len(documented), len(codeonly)))
+
+
+main()

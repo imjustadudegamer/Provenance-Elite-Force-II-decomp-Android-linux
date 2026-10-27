@@ -27,6 +27,7 @@
 #include "listener.h"
 
 #include "scriptthread.h"
+#include "eventorder.h"
 #include <qcommon/output.h>
 
 #if defined( GAME_DLL )
@@ -1666,6 +1667,7 @@ void Event::initCommandList( void )
 {
 	int flags;
 	str *n;
+	int  i;
 	
 	flags = 0;
 	commandList = new Container<str *>;
@@ -1679,9 +1681,20 @@ void Event::initCommandList( void )
 	sortedList = new Container<int>;
 	sortedList->AddObject( NullEvent.eventnum );
 
+	/* Retail's registry order (eventorder.cpp).  A save stores this number in
+	   every archived function, so the order is part of the format; registering
+	   it here, before any Event object constructs, puts every event on its
+	   retail number and lets a port-added event append after retail's last. */
+	for ( i = 0; i < g_EventOrderNum - 1; i++ )
+	{
+		commandList->AddObject( new str( g_EventOrder[ i ] ) );
+		flagList->AddObject( flags );
+		sortedList->AddObject( commandList->NumObjects() );
+	}
+
 	eventDefList = new Container<Event *>;
 
-	dirtylist = false;
+	dirtylist = true;
 
 	ResetEventHash();
 
@@ -1691,6 +1704,72 @@ void Event::initCommandList( void )
 	NullEvent.info.flags = 0;
 	NullEvent.info.linenumber = 0;
 }
+
+#if defined( GAME_DLL )
+
+/* The registry order is part of the save format (eventorder.cpp): drift here
+   mis-dispatches every script call a loaded save replays, silently.  Check it
+   at every game start instead of trusting static-init order again. */
+void Event::VerifyRegistryOrder( void )
+{
+	int      i;
+	int      num;
+	qboolean *seen;
+
+	if ( !commandList || !eventDefList )
+	{
+		EVENT_Error( ERR_DROP, "Event registry not built.\n" );
+		return;
+	}
+
+	if ( stricmp( commandList->ObjectAt( 1 )->c_str(), "NULL" ) )
+	{
+		EVENT_Error( ERR_DROP, "Event registry slot 1 is '%s', not NULL.\n",
+			commandList->ObjectAt( 1 )->c_str() );
+		return;
+	}
+
+	for ( i = 2; i <= g_EventOrderNum; i++ )
+	{
+		const char *have = commandList->ObjectAt( i )->c_str();
+		const char *want = g_EventOrder[ i - 2 ];
+
+		if ( stricmp( have, want ) )
+		{
+			EVENT_Error( ERR_DROP, "Event registry drifted from retail at %d: have '%s', want '%s'.\n",
+				i, have, want );
+			return;
+		}
+	}
+
+	seen = new qboolean[ commandList->NumObjects() + 1 ];
+	memset( seen, 0, sizeof( qboolean ) * ( commandList->NumObjects() + 1 ) );
+
+	for ( i = 1; i <= eventDefList->NumObjects(); i++ )
+	{
+		num = eventDefList->ObjectAt( i )->eventnum;
+		if ( num > 0 && num <= commandList->NumObjects() )
+		{
+			seen[ num ] = true;
+		}
+	}
+
+	for ( i = 0; i < g_EventOrderDocNum; i++ )
+	{
+		num = FindEvent( g_EventOrderDoc[ i ] );
+		if ( !num || !seen[ num ] )
+		{
+			delete[] seen;
+			EVENT_Error( ERR_DROP, "Event '%s' is in retail's registry but has no event object.\n",
+				g_EventOrderDoc[ i ] );
+			return;
+		}
+	}
+
+	delete[] seen;
+}
+
+#endif
 
 Event::Event()
 {
@@ -3249,6 +3328,8 @@ void L_InitEvents( void )
 	
 	Event::InitializeEventLists();
 	
+	Event::VerifyRegistryOrder();
+
 	L_ClearEventList();
 	
 	Event::InitializeDocumentation();

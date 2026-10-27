@@ -22,7 +22,7 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #define LSM_PROP_EMPTY            "EMPTY"
 #define LSM_CVAR_SAVEMENAME       "savegamename"
 #define LSM_CMD_SAVEGAME          "savegame %s"
-#define LSM_CMD_SAVEGAME_AUTO     "savegame SaveGame_%010d"
+#define LSM_CMD_SAVEGAME_AUTO     "savegame SaveGame%010d"
 #define LSM_NONESAVE_MSG          "loadLastSaveGame: There are no save games to load\n"
 #define LSM_CMD_OKDIALOG          "showmenu OkDialog\n"
 #define LSM_CMD_OKDIALOGTITLE                                                                     \
@@ -48,7 +48,7 @@ static const char *lsm_ldFiles[] = {
     "global/leveldefs7.txt", "global/leveldefs8.txt", "global/leveldefs9.txt",
 };
 
-static bool lsm_NextToken(const char **p, char *tok, size_t toksize)
+static bool lsm_NextToken(const char **p, char *tok, size_t toksize, bool *quoted = NULL)
 {
     const char *s = *p;
     size_t      n = 0;
@@ -63,6 +63,9 @@ static bool lsm_NextToken(const char **p, char *tok, size_t toksize)
     }
 
     if (*s == '"') {
+        if (quoted) {
+            *quoted = true;
+        }
         s++;
         while (*s && *s != '"') {
             if (n + 1 < toksize) {
@@ -74,6 +77,9 @@ static bool lsm_NextToken(const char **p, char *tok, size_t toksize)
             s++;
         }
     } else {
+        if (quoted) {
+            *quoted = false;
+        }
         while (*s && *s != ' ' && *s != '\t' && *s != '\r' && *s != '\n') {
             if (n + 1 < toksize) {
                 tok[n++] = *s;
@@ -120,8 +126,12 @@ void GetDescriptiveLevelName(const char *mapName, str *out)
             if (!stricmp(tok, "level") || !stricmp(tok, "sublevel")) {
                 if (lsm_NextToken(&p, tok, sizeof(tok))) {
                     if (!stricmp(tok, mapName)) {
+                        bool hasdesc = false;
                         match = true;
-                        if (lsm_NextToken(&p, tok, sizeof(tok))) {
+                        /* only a quoted token is a description; a bare line is
+                           followed by the next structural keyword, and retail
+                           falls back to the map name there */
+                        if (lsm_NextToken(&p, tok, sizeof(tok), &hasdesc) && hasdesc) {
                             *out = tok;
                         }
                         break;
