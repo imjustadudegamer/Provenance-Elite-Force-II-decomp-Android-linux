@@ -22,6 +22,19 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "cm_local.h"
 
+#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                          Com_Printf
+#include "qa_probe.h"
+
+#define CLIP_PROBE(tag, ...) PROBE_EMIT("[CLIP:", tag, __VA_ARGS__)
+
+static int s_clipReenter;
+/* CM_TransformedBoxTrace hands CM_BoxTrace model-space coordinates; these carry the
+   caller's world-space numbers through so a probe row can still print them. */
+static vec3_t s_clipRawStart, s_clipRawEnd, s_clipRawMins, s_clipRawMaxs;
+static int s_clipRawCyl, s_clipRawValid;
+
+
 
 
 sphere_t sphere;
@@ -153,6 +166,16 @@ void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
 	tw->trace.startsolid = tw->trace.allsolid = qtrue;
 	tw->trace.fraction = 0;
 	tw->trace.contents = brush->contents;
+	{
+		static int s_clipInside;
+		if (PROBE_Throttle(&s_clipInside, 12, 400)) {
+			CLIP_PROBE("inside", "b=%d sh=%s cont=0x%x box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) org=(%.1f %.1f %.1f)\n",
+				(int)(brush - cm.brushes), cm.shaders[brush->shaderNum].shader, brush->contents,
+				tw->rawMins[0], tw->rawMins[1], tw->rawMins[2],
+				tw->rawMaxs[0], tw->rawMaxs[1], tw->rawMaxs[2],
+				tw->rawStart[0], tw->rawStart[1], tw->rawStart[2]);
+		}
+	}
 }
 
 
@@ -506,6 +529,41 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 				tw->trace.plane = *clipplane;
 				tw->trace.surfaceFlags = leadside->surfaceFlags;
 				tw->trace.contents = brush->contents;
+				{
+					static int s_clipRows;
+					if (PROBE_Throttle(&s_clipRows, 24, 400)) {
+						const char *crouch = "n/a";
+						vec3_t		cmins, cmaxs;
+						trace_t		ct;
+						if (!s_clipReenter && (tw->rawMaxs[2] - tw->rawMins[2]) > 60.0f) {
+							sphere_t		savedSphere = sphere;
+							int				savedCheck = cm.checkcount;
+							s_clipReenter = qtrue;
+							VectorCopy( tw->rawMins, cmins );
+							VectorCopy( tw->rawMaxs, cmaxs );
+							cmaxs[2] = 49.0f;
+							CM_BoxTrace( &ct, tw->rawStart, tw->rawEnd, cmins, cmaxs, 0,
+								tw->contents, tw->rawCyl );
+							sphere = savedSphere;
+							cm.checkcount = savedCheck;
+							s_clipReenter = qfalse;
+							crouch = ( ct.fraction > tw->trace.fraction + 0.001f ) ? "crouch-clears" : "crouch-blocked";
+						}
+						CLIP_PROBE("block", "b=%d sh=%s cont=0x%x side=%d n=(%.3f %.3f %.3f) d=%.2f "
+							"org=(%.1f %.1f %.1f) box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) f=%.3f end=(%.1f %.1f %.1f) %s\n",
+							(int)(brush - cm.brushes), cm.shaders[brush->shaderNum].shader, brush->contents,
+							(int)(leadside - brush->sides),
+							clipplane->normal[0], clipplane->normal[1], clipplane->normal[2], clipplane->dist,
+							tw->rawStart[0], tw->rawStart[1], tw->rawStart[2],
+							tw->rawMins[0], tw->rawMins[1], tw->rawMins[2],
+							tw->rawMaxs[0], tw->rawMaxs[1], tw->rawMaxs[2],
+							tw->trace.fraction,
+							tw->rawStart[0] + tw->trace.fraction * (tw->rawEnd[0] - tw->rawStart[0]),
+							tw->rawStart[1] + tw->trace.fraction * (tw->rawEnd[1] - tw->rawStart[1]),
+							tw->rawStart[2] + tw->trace.fraction * (tw->rawEnd[2] - tw->rawStart[2]),
+							crouch);
+					}
+				}
 			}
 		}
 	} else {
@@ -996,6 +1054,19 @@ static void CM_BoxTraceInternal( trace_t *results, const vec3_t start, const vec
 	tw.height = tw.size[ 1 ][ 2 ];
 	tw.radius = tw.size[ 1 ][ 0 ];
 
+	VectorCopy( start, tw.rawStart );
+	VectorCopy( end, tw.rawEnd );
+	VectorCopy( mins, tw.rawMins );
+	VectorCopy( maxs, tw.rawMaxs );
+	tw.rawCyl = cylinder;
+	if ( s_clipRawValid ) {
+		VectorCopy( s_clipRawStart, tw.rawStart );
+		VectorCopy( s_clipRawEnd, tw.rawEnd );
+		VectorCopy( s_clipRawMins, tw.rawMins );
+		VectorCopy( s_clipRawMaxs, tw.rawMaxs );
+		tw.rawCyl = s_clipRawCyl;
+	}
+
 	if( cylinder && !sphere.use )
 	{
 		sphere.use = qtrue;
@@ -1170,7 +1241,14 @@ void CM_TransformedBoxTrace( trace_t *results, const vec3_t start, const vec3_t 
 		VectorSet( sphere.offset, 0, 0, t );
 	}
 
+	VectorCopy( start, s_clipRawStart );
+	VectorCopy( end, s_clipRawEnd );
+	VectorCopy( mins, s_clipRawMins );
+	VectorCopy( maxs, s_clipRawMaxs );
+	s_clipRawCyl   = cylinder;
+	s_clipRawValid = qtrue;
 	CM_BoxTrace( &trace, start_l, end_l, symetricSize[0], symetricSize[1], model, brushmask, cylinder );
+	s_clipRawValid = qfalse;
 
 	sphere.use = qfalse;
 
@@ -1575,6 +1653,19 @@ qboolean CM_BoxSightTrace( const vec3_t start, const vec3_t end, const vec3_t mi
 
 	tw.height = tw.size[ 1 ][ 2 ];
 	tw.radius = tw.size[ 1 ][ 0 ];
+
+	VectorCopy( start, tw.rawStart );
+	VectorCopy( end, tw.rawEnd );
+	VectorCopy( mins, tw.rawMins );
+	VectorCopy( maxs, tw.rawMaxs );
+	tw.rawCyl = cylinder;
+	if ( s_clipRawValid ) {
+		VectorCopy( s_clipRawStart, tw.rawStart );
+		VectorCopy( s_clipRawEnd, tw.rawEnd );
+		VectorCopy( s_clipRawMins, tw.rawMins );
+		VectorCopy( s_clipRawMaxs, tw.rawMaxs );
+		tw.rawCyl = s_clipRawCyl;
+	}
 
 	if( cylinder && !sphere.use )
 	{

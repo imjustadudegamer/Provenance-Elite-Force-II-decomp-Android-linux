@@ -171,7 +171,12 @@ typedef struct
 typedef struct traceWork_s {
 	vec3_t		start;
 	vec3_t		end;
-	vec3_t		size[2];	
+	vec3_t		rawStart;	/* caller space, no box shift */
+	vec3_t		rawEnd;
+	vec3_t		rawMins;
+	vec3_t		rawMaxs;
+	int			rawCyl;
+	vec3_t		size[2];
 	vec3_t		offsets[8];	
 	float		maxOffset;	
 	vec3_t		extents;	
