@@ -29,9 +29,11 @@ public class EF2Activity extends SDLActivity {
 
     /**
      * touched -- never the live unified config, never retail data in the paks.
+     * config.cfg is NOT here: the write root is this OBB directory flattened, so
+     * <obb>/base/config.cfg IS the player's archive, and deleting it each launch
+     * threw away every setting before the engine could exec it.
      */
     private static final String[] STALE_BASE_FILES = {
-            "config.cfg",            // 6,271 B: an older build's home==base config
             "android_defaults.cfg",  // the retired defaults asset (now in the binary)
             "autoexec.cfg",          // the retired empty autoexec hook (effects removed)
             "ef2-launcher.cfg",      // the retired per-boot pin file (config.cfg owns the settings)
