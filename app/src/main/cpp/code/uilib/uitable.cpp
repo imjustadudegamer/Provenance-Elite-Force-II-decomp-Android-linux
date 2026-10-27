@@ -956,9 +956,22 @@ qboolean UIRowColumn::KeyEvent(int key, unsigned int time)
 {
     int total   = m_rows.NumObjects();
     int visible = VisibleRowCount();
+    int i;
+
+    /* A list takes the keys it owns and returns false for the rest, the shape of
+       retail's list key handler @0x001AD110 at the top and bottom row.  Its parent is
+       the table that dispatched here, so walking m_parent loops the dispatch. */
+    for (i = 1; i <= m_keyCommands.NumObjects(); i++) {
+        WidgetKeyCommand *keycommand = m_keyCommands.ObjectAt(i);
+
+        if (keycommand->key == key) {
+            uii.Cmd_Stuff(keycommand->command.c_str());
+            return qtrue;
+        }
+    }
 
     if (!total) {
-        return UIScrollable::KeyEvent(key, time);
+        return qfalse;
     }
 
     /* Pad nav: an unselected list's first arrow takes row 1 rather than skipping
@@ -1008,7 +1021,7 @@ qboolean UIRowColumn::KeyEvent(int key, unsigned int time)
         break;
     }
 
-    return UIScrollable::KeyEvent(key, time);
+    return qfalse;
 }
 
 

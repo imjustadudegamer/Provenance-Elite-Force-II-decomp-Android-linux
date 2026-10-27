@@ -249,6 +249,8 @@ void UILayout::Load(const char *filename)
 
         ProcessCommands();
 
+        uWinMan.CensusParentChains();
+
         delete m_script;
         m_script = NULL;
     }

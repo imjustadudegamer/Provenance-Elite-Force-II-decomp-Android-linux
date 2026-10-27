@@ -118,6 +118,13 @@ public:
     bool              MovePadFocus(int dir, int key);
     bool              ActivateFocusedWidget(void);
     void              ClearPadFocus(void);
+
+    /* UIWidget::KeyEvent stops only at this window manager, so a parent chain that
+       loops is a dispatch that never returns.  One row per layout load. */
+    void              CensusParentChains(void);
+
+private:
+    void              CensusParentChain(UIWidget *w, int depth, int *nodes, int *bad);
 };
 
 extern Event W_MouseExited;

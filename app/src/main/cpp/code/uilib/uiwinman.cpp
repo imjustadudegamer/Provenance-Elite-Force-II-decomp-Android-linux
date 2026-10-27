@@ -886,6 +886,59 @@ void UIWindowManager::ClearPadFocus(void)
     }
 }
 
+/* UIWidget::KeyEvent stops only at this window manager, so a widget whose parent chain does
+   not come back here in exactly its own depth of steps is a dispatch that never returns. */
+void UIWindowManager::CensusParentChains(void)
+{
+    int nodes = 0;
+    int bad   = 0;
+
+    if (!PROBE_On()) {
+        return;
+    }
+
+    CensusParentChain(this, 0, &nodes, &bad);
+
+    UIVK_CENSUS_PROBE("parentchain", "nodes=%d bad=%d", nodes, bad);
+}
+
+void UIWindowManager::CensusParentChain(UIWidget *w, int depth, int *nodes, int *bad)
+{
+    int      i;
+    UIWidget *p;
+
+    (*nodes)++;
+
+    for (i = 1; i <= w->m_children.NumObjects(); i++) {
+        UIWidget *child = w->m_children.ObjectAt(i);
+
+        if (child) {
+            CensusParentChain(child, depth + 1, nodes, bad);
+        }
+    }
+
+    if (depth == 0) {
+        return;
+    }
+
+    p = w->m_parent;
+
+    for (i = 1; i < depth && p; i++) {
+        p = p->m_parent;
+    }
+
+    if (p != &uWinMan) {
+        (*bad)++;
+
+        UIVK_CENSUS_PROBE(
+            "parentchain",
+            "widget='%s' depth=%d ended='%s'",
+            w->getName() ? w->getName() : "(null)",
+            depth,
+            p ? (p->getName() ? p->getName() : "(null)") : "(null)");
+    }
+}
+
 /* The pad's activation key runs the mouse's own click path at the widget's centre: the container
    focus has already put it in the mouse-over state, so a synthesized press and release reaches
    exactly the code a click reaches -- UIButtonBase::Released -> Action(), a checkbox's toggle, and
