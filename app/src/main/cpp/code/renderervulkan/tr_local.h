@@ -1810,6 +1810,7 @@ void	R_TotalTextureMemInfo_f( void );
 const void *RB_TakeScreenshotCmd( const void *data );
 void	R_ScreenShot_f( void );
 void	R_Register( void );
+void	R_Unregister( void );
 void	R_Screenshot_Request( const char *name, int width, int height );
 qboolean	R_Screenshot_Pending( void );
 void	R_Screenshot_Flush( unsigned imageIndex );

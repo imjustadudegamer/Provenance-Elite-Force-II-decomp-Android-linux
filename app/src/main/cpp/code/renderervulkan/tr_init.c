@@ -544,6 +544,8 @@ void RE_Shutdown( qboolean destroyWindow )
 {
 	VK_Life_Census( "shutdown" );
 
+	R_Unregister();
+
 	R_ShutdownCommandBuffers();
 	VK_BringDown();
 	VKimp_Shutdown();

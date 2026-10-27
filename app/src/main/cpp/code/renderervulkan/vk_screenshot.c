@@ -312,3 +312,16 @@ void R_Register( void )
 	ri.Cmd_AddCommand( "modellist", R_Modellist_f );
 	ri.Cmd_AddCommand( "screenshot", R_ScreenShot_f );
 }
+
+/* A renderer .so is unloaded and reloaded on every restart, and a command
+   entry that outlives it holds a pointer into the dead mapping.  The GL
+   twin removes its own commands in RE_Shutdown; this one does the same. */
+void R_Unregister( void )
+{
+	ri.Cmd_RemoveCommand( "totaltexturememinfo" );
+	ri.Cmd_RemoveCommand( "imagelist" );
+	ri.Cmd_RemoveCommand( "shaderlist" );
+	ri.Cmd_RemoveCommand( "skinlist" );
+	ri.Cmd_RemoveCommand( "modellist" );
+	ri.Cmd_RemoveCommand( "screenshot" );
+}
