@@ -15,8 +15,9 @@ Elite Force II SDK agreement.  See LICENSING.md.
 // (program.cpp, dfunction_t::Archive).  That number is the registry's insertion
 // order -- static-init and link order, build local -- so a build that registers
 // in any other order mis-dispatches every script call a save replays.  114
-// retail saves give one stable table (1542/1542 agreement, no conflicts); the
-// 22 slots no save can name are code-only events, taken from the definitions' file/line order (analysis/evdefs.json).
+// retail saves give one stable table, and the retail DLL's own static
+// initialisers name every slot the same way; the 22 slots no save can name are
+// code-only events, taken from the retail DLL's own initialiser order.
 //
 // initCommandList registers this table before any Event object constructs, so
 // every event lands on retail's number and a port-added event appends after

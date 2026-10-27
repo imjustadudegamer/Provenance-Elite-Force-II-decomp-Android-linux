@@ -52,10 +52,14 @@ def main():
             if len(p) >= 2 and p[0].isdigit():
                 binslot[int(p[0])] = p[1]
         fill = [n for s, n in sorted(binslot.items()) if s in set(gaps)]
-        src = 'the retail DLL static-initialiser order (analysis/dllorder/order.tsv)'
+        src = 'the retail DLL\'s own initialiser order'
         if sorted(fill) != sorted(codeonly):
             sys.exit('dllorder gaps %d do not match the code-only set %d'
                      % (len(fill), len(codeonly)))
+        for s, n in documented:
+            if binslot.get(s) != n:
+                sys.exit('the DLL order disagrees with the saves at slot %d: %s vs %s'
+                         % (s, n, binslot.get(s)))
     else:
         byname = {}
         for r in defs:
@@ -87,8 +91,9 @@ Elite Force II SDK agreement.  See LICENSING.md.
 // (program.cpp, dfunction_t::Archive).  That number is the registry's insertion
 // order -- static-init and link order, build local -- so a build that registers
 // in any other order mis-dispatches every script call a save replays.  114
-// retail saves give one stable table (1542/1542 agreement, no conflicts); the
-// %d slots no save can name are code-only events, taken from %s.
+// retail saves give one stable table, and the retail DLL's own static
+// initialisers name every slot the same way; the %d slots no save can name are
+// code-only events, taken from %s.
 //
 // initCommandList registers this table before any Event object constructs, so
 // every event lands on retail's number and a port-added event appends after
