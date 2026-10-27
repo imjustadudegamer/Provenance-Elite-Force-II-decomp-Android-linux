@@ -27,6 +27,26 @@ Elite Force II SDK agreement.  See LICENSING.md.
 /* The rotation stream IS the evidence for the tilt, so it carries its own budget
    instead of sharing the census window the anomaly families use. */
 #define ROT_PROBE(tag, ...) PROBE_EMIT_N("[CHAN:", tag, 20000000, __VA_ARGS__)
+#define TIKI_PROBE(tag, ...) PROBE_EMIT("[TIKI:", tag, __VA_ARGS__)
+#define TIKI_MAP_CENSUS(tag, ...) PROBE_CENSUS_EMIT("[TIKI:", tag, __VA_ARGS__)
+
+const char *TIKI_Skan_MapVerdictName(int verdict)
+{
+    switch (verdict) {
+    case TIKI_MAPV_HANDLE:
+        return "registered";
+    case TIKI_MAPV_IDENTITY:
+        return "identity";
+    case TIKI_MAPV_NOSKEL:
+        return "noskel";
+    case TIKI_MAPV_TOOMANY:
+        return "toomanybones";
+    case TIKI_MAPV_TABLEFULL:
+        return "tablefull";
+    default:
+        return "?";
+    }
+}
 
 extern "C" void TIKI_Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
@@ -97,6 +117,9 @@ skelAnimHeaderRec_t *TIKI_Skan_RetainNative(const void *image, size_t bytes, con
 
     if (m_skanRetainedCount >= MAX_TIKI_ALIASES) {
         Com_DPrintf("TIKI_Skan_RetainNative: native SKAN image table full (%d)\n", MAX_TIKI_ALIASES);
+        /* the animation still plays -- only its bone mapping is lost to it, and the
+           loss is silent otherwise.  This row is the reason a slot stays -1. */
+        TIKI_PROBE("map", "table full anim='%s' count=%d\n", path ? path : "?", m_skanRetainedCount);
         return NULL;
     }
 
@@ -179,6 +202,169 @@ skelAnimHeaderRec_t *TIKI_Skan_FindByAnim(dtiki_t *tiki, int animnum)
     }
 
     return TIKI_Skan_Find(SkeletorCacheGetData(tiki->a->m_aliases[animnum]));
+}
+
+/* retail TIKI_SetupTikiAnim @0x000F4400 registers into any slot still holding -1 and
+   TIKI_GetAnim @0x000F4810 re-enters it on every fetch, so a slot the build could not
+   fill lands on first use.  The port poses straight off the records and never re-enters
+   the setup, so the retry lives here: the one site that provably runs with the
+   animation's data resident.  A failed registration stays UNSET and is retried, which
+   is retail's own behaviour; a resolved identity latches and stops costing Calc. */
+const int *TIKI_Skan_AnimBoneMapping(dtiki_t *tiki, int anim)
+{
+    static int s_healMiss;
+    skelAnimHeaderRec_t *hdr;
+    const char          *name;
+    int                  handle;
+    int                  mapped;
+    int                  verdict;
+
+    if (!tiki || !tiki->a || !tiki->boneMappings) {
+        return NULL;
+    }
+
+    if (anim < 0 || anim >= tiki->a->num_anims) {
+        return NULL;
+    }
+
+    handle = tiki->boneMappings[anim];
+    if (handle >= 0) {
+        const int *map = TIKI_GetAnimBoneMapping(handle);
+
+        if (map) {
+            return map;
+        }
+
+        /* retail TIKI_FreeTiki @0x000FD240 frees only at zero uses, so a handle that
+           resolves to nothing is a dead entry a survivor still holds: drop the slot
+           back to unset so the refill below rebuilds it instead of reading by bone
+           index for good. */
+        tiki->boneMappings[anim] = TIKI_BONEMAP_UNSET;
+    } else if (handle != TIKI_BONEMAP_UNSET) {
+        return NULL;
+    }
+
+    hdr  = TIKI_Skan_FindByAnim(tiki, anim);
+    name = TIKI_Anim_NameForNum(tiki, anim);
+
+    if (!hdr || hdr->ident != TIKI_SKC_HEADER_IDENT) {
+        /* data resident and still no native SKAN header: it never gets one (.tan or
+           .skc), so latch instead of re-probing every pose.  An anim whose data is
+           absent stays UNSET -- that one is transient and the retry IS the heal. */
+        if (SkeletorCacheEntryLoaded(tiki->a->m_aliases[anim])) {
+            tiki->boneMappings[anim] = TIKI_BONEMAP_NOHEADER;
+        }
+
+        if (PROBE_On() && PROBE_Throttle(&s_healMiss, 8, 600)) {
+            PROBE_CENSUS_EMIT(
+                "[TIKI:",
+                "map",
+                "heal tiki=%s anim=%d name='%s' handle=%d calc=%s misses=%d\n",
+                tiki->name ? tiki->name : "?",
+                anim,
+                name ? name : "?",
+                tiki->boneMappings[anim],
+                hdr ? "ident" : "nohdr",
+                s_healMiss
+            );
+        }
+        return NULL;
+    }
+
+    mapped = TIKI_RegisterAnimBoneMappingV(hdr, tiki->skelIndex, &verdict);
+    if (verdict == TIKI_MAPV_IDENTITY) {
+        tiki->boneMappings[anim] = TIKI_BONEMAP_IDENTITY;
+    } else if (mapped >= 0) {
+        tiki->boneMappings[anim] = mapped;
+        TIKI_MAP_CENSUS(
+            "map",
+            "heal tiki=%s anim=%d name='%s' handle=%d calc=%s\n",
+            tiki->name ? tiki->name : "?",
+            anim,
+            name ? name : "?",
+            tiki->boneMappings[anim],
+            TIKI_Skan_MapVerdictName(verdict)
+        );
+    } else if (PROBE_On() && PROBE_Throttle(&s_healMiss, 8, 600)) {
+        PROBE_CENSUS_EMIT(
+            "[TIKI:",
+            "map",
+            "heal tiki=%s anim=%d name='%s' handle=-1 calc=%s misses=%d\n",
+            tiki->name ? tiki->name : "?",
+            anim,
+            name ? name : "?",
+            TIKI_Skan_MapVerdictName(verdict),
+            s_healMiss
+        );
+    }
+
+    if (mapped < 0) {
+        return NULL;
+    }
+
+    return TIKI_GetAnimBoneMapping(mapped);
+}
+
+/* retail TIKI_RefreshCachedTIKI @0x000FBE60 rewrites every anim bone mapping from the
+   live data on a warm hit.  Divergence: this one only fills a slot still unset, so a
+   warm hit does not pay Calc again; the walk in TIKI_Skan_AnimBoneMapping holds the
+   same guarantee retail's unconditional rewrite bought. */
+void TIKI_RefreshAnimBoneMapping(dtiki_t *tiki, int animnum)
+{
+    skelAnimHeaderRec_t *hdr;
+    const char          *name;
+    int                  verdict = TIKI_MAPV_NOSKEL;
+    int                  mapped;
+
+    if (!tiki || !tiki->a || !tiki->boneMappings) {
+        return;
+    }
+
+    if (animnum < 0 || animnum >= tiki->a->num_anims) {
+        return;
+    }
+
+    if (tiki->boneMappings[animnum] != TIKI_BONEMAP_UNSET) {
+        return;
+    }
+
+    /* only a slot whose data is already paged in: this path is load time, not the
+       walk, and the walk pages in and fills whatever this one left */
+    if (!SkeletorCacheEntryLoaded(tiki->a->m_aliases[animnum])) {
+        return;
+    }
+
+    hdr  = TIKI_Skan_FindByAnim(tiki, animnum);
+    name = TIKI_Anim_NameForNum(tiki, animnum);
+
+    if (!hdr || hdr->ident != TIKI_SKC_HEADER_IDENT) {
+        TIKI_PROBE(
+            "map",
+            "fill tiki=%s anim=%d name='%s' handle=-1 calc=%s\n",
+            tiki->name ? tiki->name : "?",
+            animnum,
+            name ? name : "?",
+            hdr ? "ident" : "nohdr"
+        );
+        return;
+    }
+
+    mapped = TIKI_RegisterAnimBoneMappingV(hdr, tiki->skelIndex, &verdict);
+    if (verdict == TIKI_MAPV_IDENTITY) {
+        tiki->boneMappings[animnum] = TIKI_BONEMAP_IDENTITY;
+    } else if (mapped >= 0) {
+        tiki->boneMappings[animnum] = mapped;
+    }
+
+    TIKI_PROBE(
+        "map",
+        "fill tiki=%s anim=%d name='%s' handle=%d calc=%s\n",
+        tiki->name ? tiki->name : "?",
+        animnum,
+        name ? name : "?",
+        tiki->boneMappings[animnum],
+        TIKI_Skan_MapVerdictName(verdict)
+    );
 }
 
 void TIKI_SwapAnimSkel(skelAnimHeaderRec_t *hdr)
@@ -682,7 +868,7 @@ static void TIKI_Skan_RotProbe(
     if (moved) {
         s_tail[key] = 30;
     } else if (s_tail[key] > 0) {
-        s_tail[slot]--;
+        s_tail[key]--;
     }
     tail = (s_tail[key] > 0);
 
@@ -1223,14 +1409,10 @@ static qboolean TIKI_Skan_SetupChannel(
     if (!TIKI_ValidateSkelAnimAndFrame(tiki, anim, frame, &ch->mainHdr, &ch->mainRec)) {
         return qfalse;
     }
-    if (tiki->boneMappings && anim >= 0 && anim < tiki->a->num_anims) {
-        ch->mainMap = TIKI_GetAnimBoneMapping(tiki->boneMappings[anim]);
-    }
+    ch->mainMap = TIKI_Skan_AnimBoneMapping(tiki, anim);
 
     TIKI_ValidateSkelAnimAndFrame(tiki, oldanim, oldframe, &ch->aHdr, &ch->aRec);
-    if (tiki->boneMappings && oldanim >= 0 && oldanim < tiki->a->num_anims) {
-        ch->aMap = TIKI_GetAnimBoneMapping(tiki->boneMappings[oldanim]);
-    }
+    ch->aMap = TIKI_Skan_AnimBoneMapping(tiki, oldanim);
 
     if (!ch->aRec || ch->aRec == ch->mainRec) {
         framelerp = 0.0f;
@@ -1238,9 +1420,7 @@ static qboolean TIKI_Skan_SetupChannel(
 
     if (resolveCb) {
         TIKI_ValidateSkelAnimAndFrame(tiki, cbAnim, cbFrame, &ch->crossHdr, &ch->crossRec);
-        if (tiki->boneMappings && cbAnim >= 0 && cbAnim < tiki->a->num_anims) {
-            ch->crossMap = TIKI_GetAnimBoneMapping(tiki->boneMappings[cbAnim]);
-        }
+        ch->crossMap = TIKI_Skan_AnimBoneMapping(tiki, cbAnim);
     }
 
     if (cbLerp < 0.0f) {

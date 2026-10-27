@@ -60,8 +60,16 @@ extern "C" {
     void TIKI_ReleaseMorphMapping(int handle);
 
     int  TIKI_CalcAnimBoneMapping(int *map, skelAnimHeader_t *anim, skelHeaderGame_t *skel);
+    /* retail answers -1 for four different reasons; the verdict names which one. */
+#define TIKI_MAPV_HANDLE     0
+#define TIKI_MAPV_IDENTITY   1
+#define TIKI_MAPV_NOSKEL     2
+#define TIKI_MAPV_TOOMANY    3
+#define TIKI_MAPV_TABLEFULL  4
+    int  TIKI_RegisterAnimBoneMappingV(skelAnimHeader_t *anim, int skelIndex, int *verdict);
     int  TIKI_RegisterAnimBoneMapping(skelAnimHeader_t *anim, int skelIndex);
     struct animBoneMapping_s *TIKI_FindAnimBoneMapping(
         skelAnimHeader_t *anim, int checksum, skelHeaderGame_t *skel);
     int *TIKI_GetAnimBoneMapping(int handle);
+    void TIKI_ReleaseAnimBoneMapping(int handle);
     void TIKI_FreeAnimBoneMapping(int handle);

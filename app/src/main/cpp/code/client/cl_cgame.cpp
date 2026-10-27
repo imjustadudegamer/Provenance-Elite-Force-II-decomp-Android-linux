@@ -1032,14 +1032,13 @@ void CL_InitCGame( void ) {
 	CGIMP_VerifyBound( &cgi );
 	cls.state = CA_LOADING;
 
-	if( !com_sv_running->integer && !cls.vid_restart )
+	if( !cls.vid_restart )
 	{
 		PROBE_CENSUS_EMIT( "[", "BOUND:tiki", "map='%s' clear=1 tiki=%d skel=%d ent=%d vidrestart=0",
 			  mapname, TIKI_CacheTikiCount(), TIKI_CacheSkelCount(), TIKI_EntityCacheLive() );
 		TIKI_End();
 		TIKI_Begin();
-		// alias state (TIKI_FreeLevelData @0x00107E30), never the model cache.
-		TIKI_FreeLevelData();
+		// TIKI_FreeLevelData stays in SV_SpawnServer; the alias list is re-read by spawn.
 		CL_InitClientSavedData();
 	}
 	else

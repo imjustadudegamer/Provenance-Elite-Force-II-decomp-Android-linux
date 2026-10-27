@@ -75,8 +75,19 @@ extern ChannelNameTable skel_ChannelNames;
 
 #define TIKI_SKB_EF2_HEADER_SIZE    96
 
+/* retail TIKI_SetupTikiAnim @0x000F4400 fills only slots still holding -1 and
+   TIKI_GetAnim @0x000F4810 re-enters it every time it fetches one, so -1 is
+   "not registered yet" and never a verdict.  A resolved identity (Calc == 0,
+   retail TIKI_RegisterAnimBoneMapping @0x000F5D30 answers -1 for it) latches as
+   IDENTITY so an identity skeleton does not re-run Calc on every fetch. */
+#define TIKI_BONEMAP_UNSET    (-1)
+#define TIKI_BONEMAP_IDENTITY (-2)
+/* a .tan or .skc anim has no native SKAN header, so it never gets a mapping;
+   retail's cmds_fixed latch stops the re-entry, so I latch it here. */
+#define TIKI_BONEMAP_NOHEADER (-3)
+
 #define TIKI_MAX_BONES       100
-#define TIKI_MAX_VERTEXES    4096 
+#define TIKI_MAX_VERTEXES    4096
 #define TIKI_MAX_TRIANGLES   2000
 #define TIKI_MAX_SKELCACHE   1024
 #define TIKI_CMD_MAX_CMDS    256

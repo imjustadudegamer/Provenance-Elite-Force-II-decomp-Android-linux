@@ -429,18 +429,14 @@ static qboolean TIKI_Tag_OrientationSkelBody(
             continue;
         }
 
-        if (tiki->boneMappings && chAnim >= 0 && chAnim < tiki->a->num_anims) {
-            chMap = TIKI_GetAnimBoneMapping(tiki->boneMappings[chAnim]);
-        }
+        chMap = TIKI_Skan_AnimBoneMapping(tiki, chAnim);
 
         boneName = skel_BoneNames.FindName(skel->pBones[bone].channel);
 
         if (chLerp >= 0.0f) {
             TIKI_ValidateSkelAnimAndFrame(tiki, cbAnim, cbFrame, &cbHdr, &cbRec);
 
-            if (tiki->boneMappings && cbAnim >= 0 && cbAnim < tiki->a->num_anims) {
-                cbMap = TIKI_GetAnimBoneMapping(tiki->boneMappings[cbAnim]);
-            }
+            cbMap = TIKI_Skan_AnimBoneMapping(tiki, cbAnim);
 
             if (!cbRec || cbRec == chRec) {
                 cbHdr = NULL;
@@ -826,18 +822,7 @@ typedef struct {
 
 static const int *TIKI_Tag_LerpSkel_AnimMapping(dtiki_t *tiki, int anim)
 {
-    int handle;
-
-    if (!tiki->boneMappings || !tiki->a || anim < 0 || anim >= tiki->a->num_anims) {
-        return NULL;
-    }
-
-    handle = tiki->boneMappings[anim];
-    if (handle == -1) {
-        return NULL;
-    }
-
-    return TIKI_GetAnimBoneMapping(handle);
+    return TIKI_Skan_AnimBoneMapping(tiki, anim);
 }
 
 static void TIKI_Tag_LerpSkel_SetupChannel(

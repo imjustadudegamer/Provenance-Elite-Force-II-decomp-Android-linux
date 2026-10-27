@@ -32,6 +32,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../tiki/tiki_skel.h"
 #include "../corepp/mem_tempalloc.h"
 
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
+
 qboolean tiki_loading;
 
 typedef struct {
@@ -461,17 +465,33 @@ dtiki_t *TIKI_LoadTikiModel(dtikianim_t *tikianim, const char *name, size_t *def
             }
 
             if (tiki->a && tiki->a->num_anims > 0) {
+                int notresident = 0;
+
+                /* retail TIKI_FillTIKIStructureSkel @0x000F84E0 allocates the slot
+                   array, writes -1 and registers nowhere: every registration lives in
+                   TIKI_SetupTikiAnim @0x000F4400 on first use and
+                   TIKI_RefreshCachedTIKI @0x000FBE60 on a warm hit.  The eager pass I
+                   removed registered every anim of every tiki here -- 8469 fills
+                   against a 128-entry table in one boot -- so it starved the table and
+                   every tiki loaded after it read by bone index.  This census only
+                   reads residency; it pages nothing in. */
                 tiki->boneMappings = (int *)TIKI_Alloc(tiki->a->num_anims * sizeof(int));
                 memset(tiki->boneMappings, -1, tiki->a->num_anims * sizeof(int));
 
                 for (j = 0; j < tiki->a->num_anims; j++) {
-                    skelAnimHeader_t *hdr;
-
-                    hdr = TIKI_Skan_FindByAnim(tiki, j);
-                    if (hdr) {
-                        tiki->boneMappings[j] = TIKI_RegisterAnimBoneMapping(hdr, tiki->skelIndex);
+                    if (!SkeletorCacheEntryLoaded(tiki->a->m_aliases[j])) {
+                        notresident++;
                     }
                 }
+
+                PROBE_CENSUS_EMIT(
+                    "[TIKI:",
+                    "map",
+                    "build tiki=%s anims=%d filled=0 identity=0 failed=0 nohdr=%d\n",
+                    tiki->name,
+                    tiki->a->num_anims,
+                    notresident
+                );
             }
         }
 

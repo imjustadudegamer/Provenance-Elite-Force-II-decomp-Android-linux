@@ -2039,6 +2039,27 @@ int *TIKI_GetAnimBoneMapping(int handle)
     return s_animBoneMappings[handle].map;
 }
 
+/* retail TIKI_FreeTiki @0x000FD240 decrements the entry's use count and only calls
+   this at zero: the entry is keyed on the skeleton pointer and the channel names, so
+   several tikis hold the same one. */
+void TIKI_ReleaseAnimBoneMapping(int handle)
+{
+    if (handle < 0 || handle > s_maxAnimBoneMappings) {
+        TIKI_Error("TIKI_ReleaseAnimBoneMapping: handle %d out of range\n", handle);
+        return;
+    }
+
+    if (!s_animBoneMappings[handle].map) {
+        return;
+    }
+
+    if (--s_animBoneMappings[handle].numuses > 0) {
+        return;
+    }
+
+    TIKI_FreeAnimBoneMapping(handle);
+}
+
 void TIKI_FreeAnimBoneMapping(int handle)
 {
     if (handle < 0 || handle > s_maxAnimBoneMappings) {
@@ -2108,7 +2129,11 @@ void TIKI_ReleaseMorphMapping(int handle)
     }
 }
 
-int TIKI_RegisterAnimBoneMapping(skelAnimHeader_t *anim, int skelIndex)
+/* retail TIKI_RegisterAnimBoneMapping @0x000F5D30 answers -1 for four different
+   reasons and every one of them is only reported to the developer log, which a
+   boot does not carry.  The verdict names the arm so the site that stores the -1
+   can tell a correct identity from a silent failure. */
+int TIKI_RegisterAnimBoneMappingV(skelAnimHeader_t *anim, int skelIndex, int *verdict)
 {
     skelHeaderGame_t  *skel;
     animBoneMapping_t *map;
@@ -2117,6 +2142,10 @@ int TIKI_RegisterAnimBoneMapping(skelAnimHeader_t *anim, int skelIndex)
     int                checksum;
     int                i;
     int                j;
+
+    if (verdict) {
+        *verdict = TIKI_MAPV_NOSKEL;
+    }
 
     if (skelIndex < 0 || skelIndex > cache_maxskel) {
         return -1;
@@ -2132,11 +2161,21 @@ int TIKI_RegisterAnimBoneMapping(skelAnimHeader_t *anim, int skelIndex)
 
     if (skel->numBones > TIKI_MAX_BONES) {
         TIKI_Error("TIKI_RegisterAnimBoneMapping: skeleton has more than %i bones (%i)\n", TIKI_MAX_BONES, skel->numBones);
+        if (verdict) {
+            *verdict = TIKI_MAPV_TOOMANY;
+        }
         return -1;
     }
 
     if (!TIKI_CalcAnimBoneMapping(mapBuf, anim, skel)) {
+        if (verdict) {
+            *verdict = TIKI_MAPV_IDENTITY;
+        }
         return -1;
+    }
+
+    if (verdict) {
+        *verdict = TIKI_MAPV_TABLEFULL;
     }
 
     map = TIKI_FindAnimBoneMapping(anim, checksum, skel);
@@ -2176,5 +2215,13 @@ int TIKI_RegisterAnimBoneMapping(skelAnimHeader_t *anim, int skelIndex)
     }
 
     map->numuses++;
+    if (verdict) {
+        *verdict = TIKI_MAPV_HANDLE;
+    }
     return map - s_animBoneMappings;
+}
+
+int TIKI_RegisterAnimBoneMapping(skelAnimHeader_t *anim, int skelIndex)
+{
+    return TIKI_RegisterAnimBoneMappingV(anim, skelIndex, NULL);
 }

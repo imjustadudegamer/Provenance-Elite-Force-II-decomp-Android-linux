@@ -433,6 +433,34 @@ static void CG_EF2WriteTorsoChannel(refEntity_t *model, const animstate_t *state
     model->torsoLive = qtrue;
 }
 
+/* CG_ModelAnim @0x34F00 torso-retire arm: the crossblend fields always come off
+   the state, the torso fields come off the live legs channel while it runs and
+   off the crossblend itself once it does not -- never off the retired base. */
+static void CG_EF2WriteTorsoRetireChannel(refEntity_t *model, const animstate_t *state, qboolean legsLive)
+{
+    model->torso_crossblend_lerp      = state->crossblend_lerp;
+    model->torso_crossblend_framelerp = state->crossblend.framelerp;
+    model->torso_crossblend_anim      = state->crossblend.anim & ANIM_MASK;
+    model->torso_crossblend_frame     = (short)state->crossblend.frame;
+    model->torso_crossblend_oldframe  = (short)state->crossblend.oldframe;
+
+    if (legsLive) {
+        model->torso_anim      = model->anim;
+        model->torso_oldanim   = model->oldanim;
+        model->torso_frame     = model->frame;
+        model->torso_oldframe  = model->oldframe;
+        model->torso_framelerp = model->framelerp;
+    } else {
+        model->torso_anim      = state->crossblend.anim & ANIM_MASK;
+        model->torso_oldanim   = state->crossblend.anim & ANIM_MASK;
+        model->torso_frame     = (short)state->crossblend.frame;
+        model->torso_oldframe  = (short)state->crossblend.oldframe;
+        model->torso_framelerp = state->crossblend.framelerp;
+    }
+
+    model->torsoLive = qtrue;
+}
+
 static qboolean CG_EF2RetireAnimChannel(int tiki, animstate_t *state, qboolean bRequireExpired)
 {
     if (state->base.anim & ANIM_BLEND) {
@@ -562,7 +590,7 @@ static qboolean CG_EF2ModelAnim(centity_t *cent, refEntity_t *model)
             CG_EF2WriteTorsoChannel(model, &cent->animstate[1]);
         }
     } else if (CG_EF2RetireAnimChannel(tiki, &cent->animstate[1], qfalse )) {
-        CG_EF2WriteTorsoChannel(model, &cent->animstate[1]);
+        CG_EF2WriteTorsoRetireChannel(model, &cent->animstate[1], bDoLegs);
     }
 
     if (!bDoLegs) {
@@ -584,7 +612,7 @@ static qboolean CG_EF2ModelAnim(centity_t *cent, refEntity_t *model)
                 CHAN_PROBE(
                     "anim:chan",
                     "ent=%d anim=%d(%d) torso=%d(%d) blendL=%d blendT=%d legsLive=%d torsoLive=%d "
-                    "frame=%d oldframe=%d lerp=%.2f cblerp=%.2f tiki=%d\n",
+                    "frame=%d oldframe=%d lerp=%.2f cblerp=%.2f tA=%d tF=%d tLerp=%.2f tCb=%.2f tiki=%d\n",
                     s1->number,
                     s1->anim,
                     s1->anim & ANIM_MASK,
@@ -598,6 +626,10 @@ static qboolean CG_EF2ModelAnim(centity_t *cent, refEntity_t *model)
                     model->oldframe,
                     model->framelerp,
                     model->crossblend_lerp,
+                    model->torso_anim,
+                    model->torso_frame,
+                    model->torso_framelerp,
+                    model->torso_crossblend_lerp,
                     tiki
                 );
             }

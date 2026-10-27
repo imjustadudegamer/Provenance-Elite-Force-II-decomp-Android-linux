@@ -28,6 +28,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/mem_blockalloc.h"
 #include "../corepp/con_set.h"
 #include "tiki_files.h"
+#include "tiki_skan.h"
+
+#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
+#define PROBE_PRINT                 Com_Printf
+#include "../qcommon/qa_probe.h"
 
 static void *context;
 
@@ -88,6 +93,55 @@ static void TIKI_SetupTikiAnim(dtiki_t *pmdl, int alias_index)
         }
 
         panimdef->cmds_fixed = qtrue;
+
+        /* retail TIKI_SetupTikiAnim @0x000F4400: a native SKAN animation registers
+           its bone mapping here, the first time its data is resident, and only
+           while the slot is still unset.  An animation paged in after the tiki was
+           built would otherwise be read by bone index, and a skeleton whose bone
+           order is not that animation's channel order then poses a permutation. */
+        if (pmdl->boneMappings && pmdl->boneMappings[i] == TIKI_BONEMAP_UNSET) {
+            skelAnimHeader_t *skel = TIKI_Skan_FindByAnim(pmdl, i);
+
+            if (skel && skel->ident == TIKI_SKC_HEADER_IDENT) {
+                int verdict = TIKI_MAPV_NOSKEL;
+                int mapped  = TIKI_RegisterAnimBoneMappingV(skel, pmdl->skelIndex, &verdict);
+
+                if (verdict == TIKI_MAPV_IDENTITY) {
+                    pmdl->boneMappings[i] = TIKI_BONEMAP_IDENTITY;
+                } else if (mapped >= 0) {
+                    pmdl->boneMappings[i] = mapped;
+                }
+
+                if (mapped < 0 && verdict != TIKI_MAPV_IDENTITY) {
+                    PROBE_CENSUS_EMIT(
+                        "[TIKI:",
+                        "map",
+                        "setup tiki=%s anim=%d name='%s' handle=-1 calc=%s\n",
+                        pmdl->name ? pmdl->name : "?",
+                        i,
+                        panimdef->alias ? panimdef->alias : "?",
+                        TIKI_Skan_MapVerdictName(verdict)
+                    );
+                }
+            } else {
+                /* this anim's data is resident (we returned early otherwise) and it
+                   still has no native SKAN header, so it never will: latch instead of
+                   re-probing on every fetch.  Only tablefull stays retried -- that one
+                   clears as tikis free their entries. */
+                pmdl->boneMappings[i] = TIKI_BONEMAP_NOHEADER;
+                if (PROBE_On()) {
+                    PROBE_CENSUS_EMIT(
+                        "[TIKI:",
+                        "map",
+                        "setup tiki=%s anim=%d name='%s' handle=-3 calc=%s\n",
+                        pmdl->name ? pmdl->name : "?",
+                        i,
+                        panimdef->alias ? panimdef->alias : "?",
+                        skel ? "ident" : "nohdr"
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -97,7 +151,13 @@ static skelAnimDataGameHeader_t *TIKI_GetAnimData(dtiki_t *pmdl, int animnum)
     int                       alias_index = panims->m_aliases[animnum];
     skelAnimDataGameHeader_t *animData    = SkeletorCacheGetData(alias_index);
 
-    if (animData && !panims->animdefs[animnum]->cmds_fixed) {
+    /* retail TIKI_GetAnim @0x000F4810 re-runs the setup from the live data; the cmds
+       half is idempotent (it only rewrites TIKI_FRAME_LAST), so re-entering it also
+       re-tries the mapping registration the first pass could not do because the
+       animation's data was not resident yet. */
+    if (animData
+        && (!panims->animdefs[animnum]->cmds_fixed
+            || (pmdl->boneMappings && pmdl->boneMappings[animnum] == TIKI_BONEMAP_UNSET))) {
         TIKI_SetupTikiAnim(pmdl, alias_index);
     }
 

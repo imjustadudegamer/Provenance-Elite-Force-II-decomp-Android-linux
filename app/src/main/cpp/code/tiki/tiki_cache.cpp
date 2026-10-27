@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/str.h"
 #include "tiki_files.h"
 #include "tiki_skel.h"
+#include "tiki_skan.h"
 #include "../corepp/tiki_main.h"
 
 struct pchar {
@@ -313,6 +314,12 @@ int TIKI_RegisterTiki(const char *path)
                 for (j = 0; j < s_tikis[i].tiki->a->num_anims; j++) {
                     s_tikis[i].tiki->a->m_aliases[j] =
                         TIKI_Anim_RetainAlias(s_tikis[i].tiki->a->m_aliases[j]);
+
+                    /* retail TIKI_RefreshCachedTIKI @0x000FBE60 rewrites the anim bone
+                       mapping whenever it forces an animation back in; this is the warm
+                       hit that re-pages it, and the slot it fills is the one the build
+                       left -1.  Self-guards on a live handle. */
+                    TIKI_RefreshAnimBoneMapping(s_tikis[i].tiki, j);
                 }
             }
 
@@ -708,6 +715,21 @@ void TIKI_TikiList_f(void)
     }
 }
 
+/* GetSkeletor matches on pointer identity, so a row left holding a skeletor
+   whose dtiki_t is about to be freed can be matched again once the allocator
+   hands that address back -- and a beamed-in entity then poses on another
+   model's skeleton. */
+static void TIKI_DropEntityCacheFor(dtiki_t *tiki)
+{
+    int i;
+
+    for (i = 0; i < TIKI_MAX_ENTITY_CACHE; i++) {
+        if (skel_entity_cache[i] && skel_entity_cache[i]->m_Tiki == tiki) {
+            skel_entity_cache[i] = NULL;
+        }
+    }
+}
+
 void TIKI_FreeTiki(int handle)
 {
     dtiki_t *tiki;
@@ -753,6 +775,7 @@ void TIKI_FreeTiki(int handle)
         skeletor_c *skeletor = (skeletor_c *)tiki->skeletor;
 
         if (skeletor) {
+            TIKI_DropEntityCacheFor(tiki);
             delete skeletor;
             tiki->skeletor = NULL;
         }
@@ -787,8 +810,10 @@ void TIKI_FreeTiki(int handle)
 
     if (tiki->boneMappings) {
         for (i = 0; i < tiki->a->num_anims; i++) {
+            /* retail TIKI_FreeTiki @0x000FD240: the entry is shared, so drop one use
+               and free only the last */
             if (tiki->boneMappings[i] >= 0) {
-                TIKI_FreeAnimBoneMapping(tiki->boneMappings[i]);
+                TIKI_ReleaseAnimBoneMapping(tiki->boneMappings[i]);
             }
         }
 
