@@ -1271,7 +1271,7 @@ void R_Register( void )
 	r_drawBuffer = ri.Cvar_Get( "r_drawBuffer", "GL_BACK", CVAR_CHEAT );
 	r_lockpvs = ri.Cvar_Get ("r_lockpvs", "0", CVAR_CHEAT);
 	r_noportals = ri.Cvar_Get ("r_noportals", "0", CVAR_CHEAT);
-	r_shadows = ri.Cvar_Get( "cg_shadows", "1", 0 );
+	r_shadows = ri.Cvar_Get( "cg_shadows", "1", CVAR_ARCHIVE );
 
 
 	r_stipplelines = ri.Cvar_Get("r_stipplelines", "1", CVAR_ARCHIVE);
@@ -1281,8 +1281,8 @@ void R_Register( void )
 	r_light_nolight = ri.Cvar_Get("r_light_nolight", "0", CVAR_CHEAT | CVAR_ARCHIVE);
 	r_light_emphasize = ri.Cvar_Get("r_light_emphasize", "0", 0);
 	r_light_emphasizePercent = ri.Cvar_Get("r_light_emphasizePercent", "0", 0);
-	r_light_simple = ri.Cvar_Get("r_light_simple", "0", 0);
-	r_light_simple_dist = ri.Cvar_Get("r_light_simple_dist", "1000", 0);
+	r_light_simple = ri.Cvar_Get("r_light_simple", "0", CVAR_ARCHIVE);
+	r_light_simple_dist = ri.Cvar_Get("r_light_simple_dist", "1000", CVAR_ARCHIVE);
 	r_light_ambientFudge = ri.Cvar_Get("r_light_ambientFudge", "0.7", 0);
 	r_light_ambientEmphasize = ri.Cvar_Get("r_light_ambientEmphasize", "1.6", 0);
 	r_skyportal = ri.Cvar_Get("r_skyportal", "0", 0);

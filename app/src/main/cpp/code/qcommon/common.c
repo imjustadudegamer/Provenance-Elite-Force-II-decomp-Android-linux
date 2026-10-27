@@ -1496,69 +1496,6 @@ void DeleteLoadSaveGameManager( void );
 }
 #endif
 
-#ifdef __ANDROID__
-/* The launcher's own pin chain, transported: a fresh file every boot, exec'd
-   after config.cfg, `setx' so nothing lands in the player's config.  Window,
-   mode and renderer rows are the handheld surface's own; the quiet/diag rows
-   are the property's to arm. */
-static const char *s_com_pinRows[][2] = {
-	{ "r_vkSafeMode", "0" },
-	{ "r_lightmap", "0" },
-	{ "r_worldFlat", "0" },
-	{ "r_vertexLight", "0" },
-	{ "r_vboStatic", "0" },
-	{ "vk_2dCover", "0" },
-	{ "r_jobs", "-1" },
-	{ "cl_jobs", "-1" },
-	{ "r_picmip", "0" },
-	{ "r_lodbias", "1" },
-	{ "r_subdivisions", "2" },
-	{ "r_texturebits", "0" },
-	{ "r_colorbits", "32" },
-	{ "r_allowExtensions", "1" },
-	{ "r_arb_multisample", "1" },
-	{ "r_ext_nv_multisample_filter", "1" },
-	{ "r_anisotropicFiltering", "1" },
-	{ "r_lodCurveError", "250" },
-	{ "cg_effectdetail", "1.0" },
-	{ "cg_marks", "1" },
-	{ "cg_shadows", "1" },
-	{ "r_light_simple", "0" },
-	{ "r_light_simple_dist", "5000" },
-	{ "r_lodScaleDistance", "1.0" },
-	{ "r_flares", "2" },
-	{ "r_dynamiclight", "1" },
-	{ "r_allowGeometryDeforms", "1" },
-	{ "r_detailSurfaces", "1" },
-	{ "r_detailtextures", "1" },
-	{ "r_dynamiclightmaps", "1" },
-};
-
-void Com_AndroidWritePins( void ) {
-	const char *want = Cvar_VariableString( "com_execAfterConfig" );
-	fileHandle_t f;
-	int i;
-
-	if ( !want[ 0 ] ) {
-		return;
-	}
-
-	f = FS_FOpenFileWrite_HomeData( want );
-	if ( !f ) {
-		Com_Printf( "Pins: %s could not be written\n", want );
-		return;
-	}
-
-	for ( i = 0; i < (int)ARRAY_LEN( s_com_pinRows ); i++ ) {
-		FS_Printf( f, "setx %s %s\n", s_com_pinRows[ i ][ 0 ], s_com_pinRows[ i ][ 1 ] );
-	}
-	FS_FCloseFile( f );
-
-	Com_Printf( "Pins: %d rows -> %s (per-boot launcher overrides)\n",
-				(int)ARRAY_LEN( s_com_pinRows ), want );
-}
-#endif
-
 void Com_Init( char *commandLine ) {
 	int			iStart;
 	int			iEnd;
@@ -1705,10 +1642,6 @@ void Com_Init( char *commandLine ) {
 
 		Com_WriteConfigToFile( EF2_CONFIG_FILE );
 	}
-
-#ifdef __ANDROID__
-	Com_AndroidWritePins();
-#endif
 
 	/* The one exec slot after config.cfg and before the command line is
 	   re-applied: a file named here holds per-boot overrides that beat the

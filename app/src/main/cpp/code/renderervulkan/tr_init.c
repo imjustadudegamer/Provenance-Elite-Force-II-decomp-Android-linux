@@ -248,7 +248,7 @@ void R_RegisterCvars( void )
 	r_offsetUnits = ri.Cvar_Get( "r_offsetunits", "-2", CVAR_CHEAT  );
 	r_lockpvs = ri.Cvar_Get( "r_lockpvs", "0", CVAR_CHEAT );
 	r_noportals = ri.Cvar_Get( "r_noportals", "0", CVAR_CHEAT );
-	r_shadows = ri.Cvar_Get( "cg_shadows", "1", 0  );
+	r_shadows = ri.Cvar_Get( "cg_shadows", "1", CVAR_ARCHIVE  );
 	r_terrain_global = ri.Cvar_Get( "r_terrain_global", "0", CVAR_CHEAT );
 	r_terrain_global_min = ri.Cvar_Get( "r_terrain_global_min", va("%f", -65536.0f), CVAR_CHEAT );
 
@@ -267,8 +267,8 @@ void R_RegisterCvars( void )
 	r_light_emphasizePercent = ri.Cvar_Get("r_light_emphasizePercent", "0", 0);
 	r_light_lines = ri.Cvar_Get("r_light_lines", "0", CVAR_CHEAT);
 	r_light_nolight = ri.Cvar_Get("r_light_nolight", "0", CVAR_CHEAT | CVAR_ARCHIVE);
-	r_light_simple = ri.Cvar_Get("r_light_simple", "0", 0);
-	r_light_simple_dist = ri.Cvar_Get("r_light_simple_dist", "1000", 0);
+	r_light_simple = ri.Cvar_Get("r_light_simple", "0", CVAR_ARCHIVE);
+	r_light_simple_dist = ri.Cvar_Get("r_light_simple_dist", "1000", CVAR_ARCHIVE);
 	r_light_sun_line = ri.Cvar_Get("r_light_sun_line", "0", CVAR_CHEAT);
 	r_lightcoronasize = ri.Cvar_Get("r_lightcoronasize", ".1", CVAR_ARCHIVE);
 	r_numdebuglines = ri.Cvar_Get("g_numdebuglines", "4096", CVAR_LATCH);

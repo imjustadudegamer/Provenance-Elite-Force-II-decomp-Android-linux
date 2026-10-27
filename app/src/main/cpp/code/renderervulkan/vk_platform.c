@@ -741,7 +741,9 @@ qboolean VK_EnsureBroughtUp( const char *where )
 		}
 	}
 
-	rmode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
+	/* the twin's own default: -2 is the desktop arm, the display's own size, and the
+	   value the compiled seed ships; retail's 2003 mode 3 is nobody's screen now */
+	rmode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH );
 	mode = rmode ? rmode->integer : VK_PLATFORM_FALLBACK_MODE;
 
 	/* the entry row is informational, not a guard hit: the guard ledger answers "did a Vulkan call fail" and VK_INCOMPLETE here reads as a failure
