@@ -49,8 +49,6 @@ MovementSubsystem::MovementSubsystem()
     _stickToGround      = true;
     _useCodeDrivenSpeed = false;
     _step               = Vector(0.0f, 0.0f, STEPSIZE);
-
-    _steeringCommandedMoveDir = false;
 }
 
 MovementSubsystem::MovementSubsystem(Actor *actor)
@@ -98,8 +96,6 @@ void MovementSubsystem::_init()
 
     _movementType  = MOVEMENT_TYPE_NORMAL;
     _stickToGround = true;
-
-    _steeringCommandedMoveDir = false;
 
     CheckWater();
 }
@@ -169,8 +165,6 @@ void MovementSubsystem::Accelerate(const Vector& original_steering)
     }
 
     newDir.AngleVectors(&_movedir);
-
-    _steeringCommandedMoveDir = true;
 
     Vector newAng = _animdir.toAngles();
 
@@ -291,8 +285,6 @@ void MovementSubsystem::CalcMove(void)
     act->total_delta = vec_zero;
 
     _animdir = act->orientation[0];
-
-    _steeringCommandedMoveDir = false;
 }
 
 qboolean MovementSubsystem::CanMoveTo(const Vector& pos)
@@ -431,11 +423,6 @@ stepmoveresult_t MovementSubsystem::IsMoveValid(
             qfalse,
             "MovementSubsystem::IsMoveValid2"
         );
-    }
-
-    _blockingNormal = vec_zero;
-    if (horizontalTrace.plane.normal != vec_zero) {
-        _blockingNormal = horizontalTrace.plane.normal;
     }
 
     if (horizontalTrace.startsolid || (horizontalTrace.fraction < 0.0001f)) {

@@ -521,7 +521,15 @@ void CMod_LoadPatches( gamelump_t *surfs, gamelump_t *verts ) {
 		patch->contents = cm.shaders[ shaderNum ].contentFlags;
 		patch->surfaceFlags = cm.shaders[ shaderNum ].surfaceFlags;
 
+		/* retail clamps the subdivision floor at 16 (CMod_LoadPatches: the raw
+		   value is passed through when it is 16 or above, otherwise 16); the
+		   unclamped 4 and 5 in these shaders subdivide the corridor's curved
+		   panels about four times finer than retail and bevel planes that
+		   retail never builds come out of them */
 		patch->subdivisions = cm.shaders[ shaderNum ].subdivisions;
+		if ( patch->subdivisions < 16 ) {
+			patch->subdivisions = 16;
+		}
 
 		patch->pc = CM_GeneratePatchCollide( width, height, points, patch->subdivisions );
 

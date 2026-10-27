@@ -199,10 +199,6 @@ private:
     bool             _stickToGround;
     bool             _useCodeDrivenSpeed;
 
-    bool _steeringCommandedMoveDir; 
-
     Actor    *act;
     EntityPtr _blockingEntity;
-
-    Vector _blockingNormal;
 };

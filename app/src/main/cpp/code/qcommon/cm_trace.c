@@ -391,6 +391,85 @@ void CM_TraceThroughPatch( traceWork_t *tw, cPatch_t *patch ) {
 	}
 }
 
+/* [CLIP:block] budget: per-shader slices, a smaller one for the point traces
+   (box 0 0 0 are AI rays, not movement contacts), and cm_drawblockRegion
+   "xmin ymin zmin xmax ymax zmax" to hold the census to the stretch in
+   question.  Empty means no region filter. */
+#define CM_DRAWBLOCK_SHADERS	24
+#define CM_DRAWBLOCK_PER_SHADER	600
+#define CM_DRAWBLOCK_POINTS		800
+
+typedef struct {
+	char	name[64];
+	int		rows;
+} cmDrawBlockShader_t;
+
+static cmDrawBlockShader_t	s_cmDrawBlockShader[ CM_DRAWBLOCK_SHADERS ];
+static int					s_cmDrawBlockShaderCount;
+static int					s_cmDrawBlockPoint;
+
+static qboolean CM_DrawBlockWants( traceWork_t *tw, cbrush_t *brush )
+{
+	static cvar_t				*region;
+	cmDrawBlockShader_t			*s;
+	const char					*shader;
+	int							i;
+	int							*counter;
+
+	if ( !region ) {
+		region = Cvar_Get( "cm_drawblockRegion", "", 0 );
+	}
+
+	if ( region->string[ 0 ] ) {
+		float	b[ 6 ];
+
+		if ( sscanf( region->string, "%f %f %f %f %f %f",
+			&b[ 0 ], &b[ 1 ], &b[ 2 ], &b[ 3 ], &b[ 4 ], &b[ 5 ] ) == 6 ) {
+			if ( tw->rawStart[ 0 ] < b[ 0 ] || tw->rawStart[ 0 ] > b[ 3 ] ||
+			     tw->rawStart[ 1 ] < b[ 1 ] || tw->rawStart[ 1 ] > b[ 4 ] ) {
+				return qfalse;
+			}
+		}
+	}
+
+	if ( !tw->rawMins[ 0 ] && !tw->rawMins[ 1 ] && !tw->rawMins[ 2 ] &&
+	     !tw->rawMaxs[ 0 ] && !tw->rawMaxs[ 1 ] && !tw->rawMaxs[ 2 ] ) {
+		counter = &s_cmDrawBlockPoint;
+		if ( *counter >= CM_DRAWBLOCK_POINTS ) {
+			return qfalse;
+		}
+		( *counter )++;
+		return qtrue;
+	}
+
+	shader = cm.shaders[ brush->shaderNum ].shader;
+
+	for ( i = 0; i < s_cmDrawBlockShaderCount; i++ ) {
+		if ( !strcmp( s_cmDrawBlockShader[ i ].name, shader ) ) {
+			break;
+		}
+	}
+
+	if ( i == s_cmDrawBlockShaderCount ) {
+		if ( i == CM_DRAWBLOCK_SHADERS ) {
+			return qtrue;
+		}
+		s = &s_cmDrawBlockShader[ s_cmDrawBlockShaderCount++ ];
+		Q_strncpyz( s->name, shader, sizeof( s->name ) );
+		s->rows = 0;
+	}
+	else {
+		s = &s_cmDrawBlockShader[ i ];
+	}
+
+	if ( s->rows >= CM_DRAWBLOCK_PER_SHADER ) {
+		return qfalse;
+	}
+
+	s->rows++;
+	return qtrue;
+}
+
 void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 	int			i;
 	cplane_t	*plane, *clipplane, *clipplane2;
@@ -542,7 +621,7 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 						return;
 					}
 					static int s_clipRows;
-					if (PROBE_Throttle(&s_clipRows, 4000, 100000)) {
+					if (CM_DrawBlockWants(tw, brush) && PROBE_Throttle(&s_clipRows, 40000, 400000)) {
 						const char *crouch = "n/a";
 						vec3_t		cmins, cmaxs;
 						trace_t		ct;
