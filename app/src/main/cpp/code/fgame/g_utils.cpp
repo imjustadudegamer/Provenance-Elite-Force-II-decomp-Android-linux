@@ -682,7 +682,6 @@ qboolean M_CheckBottom(Entity *ent)
     Vector  mins, maxs, start, stop;
     trace_t trace;
     int     x, y;
-    float   mid, bottom;
 
     mins = ent->origin + ent->mins * 0.5;
     maxs = ent->origin + ent->maxs * 0.5;
@@ -699,18 +698,15 @@ qboolean M_CheckBottom(Entity *ent)
         }
     }
 
-    c_yes++;
-    return true; 
+    return true;
 
 realcheck:
-
-    c_no++;
 
     start[2] = mins[2];
 
     start[0] = stop[0] = (mins[0] + maxs[0]) * 0.5;
     start[1] = stop[1] = (mins[1] + maxs[1]) * 0.5;
-    stop[2]            = start[2] - 3 * STEPSIZE; 
+    stop[2]            = start[2] - 3 * STEPSIZE;
 
     trace = G_Trace(start, vec_zero, vec_zero, stop, ent, MASK_MONSTERSOLID, false, "M_CheckBottom 1");
 
@@ -718,26 +714,6 @@ realcheck:
         return false;
     }
 
-    mid = bottom = trace.endpos[2];
-
-    for (x = 0; x <= 1; x++) {
-        for (y = 0; y <= 1; y++) {
-            start[0] = stop[0] = x ? maxs[0] : mins[0];
-            start[1] = stop[1] = y ? maxs[1] : mins[1];
-
-            trace = G_Trace(start, vec_zero, vec_zero, stop, ent, MASK_MONSTERSOLID, false, "M_CheckBottom 1");   
-
-            if (trace.fraction != 1.0 && trace.endpos[2] > bottom) {
-                bottom = trace.endpos[2];
-            }
-
-            if (trace.fraction == 1.0 || mid - trace.endpos[2] > STEPSIZE) {
-                return false;
-            }
-        }
-    }
-
-    c_yes++;
     return true;
 }
 
