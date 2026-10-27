@@ -60,6 +60,13 @@ Every change must pass, on a clean rebuild:
 - the project's local verification scripts (license, shipped-text and
   comment-budget checks, plus the provenance ledger `--check`), all green.
 
+One source file in the tree is generated: `code/fgame/eventorder.cpp` holds
+retail EF2's script event registry order, the numbering every save carries
+inside its archived functions. `tools/gen_event_order.py` emits it from the
+offline save-compat harness; the game checks the live registry against it at
+every start (`Event::VerifyRegistryOrder`) and refuses to run a build whose
+events drift out of retail's order.
+
 ## What ships in the APK
 
 | file | what it is |

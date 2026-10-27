@@ -332,6 +332,8 @@ fgame/entity.cpp	sdk	port record names the EF2 SDK as the source	fgame/entity.cp
 fgame/entity.h	gpl	recovered GPL banner	fgame/entity.h	0.486	dlls/game/entity.h	0.275
 fgame/equipment.cpp	sdk	port record names the EF2 SDK as the source	-	0.000	dlls/game/equipment.cpp	0.400
 fgame/equipment.h	sdk	port record names the EF2 SDK as the source	-	0.000	dlls/game/equipment.h	0.367
+fgame/eventorder.cpp	recon	port record names the retail binaries as the source	-	0.000	-	0.000
+fgame/eventorder.h	recon	port record names the retail binaries as the source	-	0.000	-	0.000
 fgame/explosion.cpp	gpl	recovered GPL banner	fgame/explosion.cpp	0.669	dlls/game/explosion.cpp	0.348
 fgame/explosion.h	gpl	recovered GPL banner	fgame/explosion.h	0.738	dlls/game/explosion.h	0.453
 fgame/fuzzyengine.cpp	sdk	port record names the EF2 SDK as the source	-	0.000	-	0.000

@@ -384,6 +384,7 @@ class Event : public Class
 		friend class			Level;
 
 		static void			   initCommandList( void );
+		static void			   VerifyRegistryOrder( void );
       static void          InitializeEventLists( void );
       static void          ShutdownEventLists( void );
       static void          InitializeDocumentation( void );
