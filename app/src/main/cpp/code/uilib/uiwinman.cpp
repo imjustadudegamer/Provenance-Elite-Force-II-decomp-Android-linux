@@ -409,7 +409,7 @@ void UIWindowManager::UpdateViews(void)
 
     /* The pad has no pointer, and a HUD stop may draw nothing for hover at all -- the
        routing board's 99 cells are transparent unnamed hotspots -- so the walk paints
-       its own cursor.  Menus keep the look retail gives them. */
+       its own cursor. */
     if (m_padNavActive && !menuManager.CurrentMenu()) {
         UIWidget *pad = PadFocusedWidget();
 
@@ -422,6 +422,55 @@ void UIWindowManager::UpdateViews(void)
             DrawBox(f.pos.x - 2.0f, f.pos.y + f.size.height, f.size.width + 4.0f, 2.0f, ring, 1.0f);
             DrawBox(f.pos.x - 2.0f, f.pos.y, 2.0f, f.size.height, ring, 1.0f);
             DrawBox(f.pos.x + f.size.width, f.pos.y, 2.0f, f.size.height, ring, 1.0f);
+        }
+    }
+
+    /* A menu's rows carry retail's hover look only where the page data set it: a
+       switchbox, a slider or a linked value label has none, so the pad's row sat on
+       plain white text with nothing to show for it.  The walk washes the page's own
+       accent over the stop it is on, and across the label that names the row when one
+       sits beside it.  Pointer hover draws exactly as it did, and the wash is
+       translucent so the row's own text still reads through it. */
+    if (m_padNavActive && menuManager.CurrentMenu()) {
+        UIWidget          *pad = PadFocusedWidget();
+        UIWidgetContainer *cont = PadContainer();
+
+        if (pad && cont && pad->getFrame().size.width > 0.0f && pad->getFrame().size.height > 0.0f) {
+            UIRect2D f(pad->getGlobalPoint(UIPoint2D(0.0f, 0.0f)), pad->getFrame().size);
+            UColor   ring(0.35f, 0.67f, 1.0f, 1.0f);
+            float    left = f.pos.x;
+
+            Container<UIWidget *>& kids = cont->getChildren();
+            int                    i;
+
+            for (i = 1; i <= kids.NumObjects(); i++) {
+                UIWidget *sib = kids.ObjectAt(i);
+                UIRect2D  s;
+                float     gap;
+
+                if (!sib || sib == pad || !sib->isSubclassOf(UILabel)) {
+                    continue;
+                }
+
+                s   = UIRect2D(sib->getGlobalPoint(UIPoint2D(0.0f, 0.0f)), sib->getFrame().size);
+                gap = f.pos.x - (s.pos.x + s.size.width);
+
+                if (s.size.width > 0.0f && s.size.height > 0.0f
+                    && fabsf(s.pos.y + s.size.height * 0.5f - f.pos.y - f.size.height * 0.5f) < 2.0f
+                    && gap >= -2.0f && gap <= 24.0f) {
+                    left = s.pos.x;
+                }
+            }
+
+            set2D();
+            DrawBox(left - 2.0f, f.pos.y - 2.0f, f.pos.x + f.size.width - left + 4.0f,
+                    f.size.height + 4.0f, UColor(0.278f, 0.365f, 0.510f, 1.0f), 0.55f);
+            DrawBox(left - 3.0f, f.pos.y - 3.0f, f.pos.x + f.size.width - left + 6.0f, 2.0f, ring, 1.0f);
+            DrawBox(left - 3.0f, f.pos.y + f.size.height + 1.0f, f.pos.x + f.size.width - left + 6.0f,
+                    2.0f, ring, 1.0f);
+            DrawBox(left - 3.0f, f.pos.y - 1.0f, 2.0f, f.size.height + 2.0f, ring, 1.0f);
+            DrawBox(f.pos.x + f.size.width + 1.0f, f.pos.y - 1.0f, 2.0f, f.size.height + 2.0f,
+                    ring, 1.0f);
         }
     }
 
