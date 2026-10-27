@@ -128,17 +128,10 @@ static inline qboolean PROBE_Throttle(int *counter, int first, int every)
 
 #include <stdlib.h>
 
+/* qa_probe is the one switch; the old getenv arm was unarmanable off-PC. */
 static inline qboolean UIVK_EntTrashOn(void)
 {
-	static int uivk_enttrash_cached = -1;
-
-	if (uivk_enttrash_cached == -1) {
-		const char *uivk_enttrash_env = getenv("EF2_ENTTRASH");
-
-		uivk_enttrash_cached = (uivk_enttrash_env && *uivk_enttrash_env) ? 1 : 0;
-	}
-
-	return uivk_enttrash_cached ? qtrue : qfalse;
+	return PROBE_On();
 }
 #define UIVK_PROBE(tag, ...) PROBE_EMIT("[UIVK:", tag, __VA_ARGS__)
 

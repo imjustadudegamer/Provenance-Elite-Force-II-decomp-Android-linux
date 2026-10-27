@@ -616,12 +616,14 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 				{
 					/* A flat plane under a feet-at-origin box is the floor answering a ground
 					   trace, not a blocker; it gets no row at all, so the budget stays for the
-					   volumes that actually stop somebody. */
+					   volumes that actually stop somebody.  The gate leads: the budget scan
+					   and the crouch re-trace below are instrument work and must not run
+					   disarmed. */
 					if ( clipplane->normal[2] > 0.99f && tw->rawMins[2] == 0.0f ) {
 						return;
 					}
 					static int s_clipRows;
-					if (CM_DrawBlockWants(tw, brush) && PROBE_Throttle(&s_clipRows, 40000, 400000)) {
+					if (PROBE_On() && CM_DrawBlockWants(tw, brush) && PROBE_Throttle(&s_clipRows, 40000, 400000)) {
 						const char *crouch = "n/a";
 						vec3_t		cmins, cmaxs;
 						trace_t		ct;
