@@ -2102,6 +2102,25 @@ void S_OPENAL_AddLoopSounds(const vec3_t vTempAxis)
     }
 }
 
+/* A channel whose entity is the listener, or whose entity reports use_listener
+   (CG_SetEntitySoundPosition sets that for anything parented to the local
+   client -- the player's own weapon among them), sits on the listener by
+   definition.  Its distance to the listener is never a real distance, so the
+   two range gates below must not apply to it: the player's own fire sound
+   cannot be dropped or muted because a captured origin read far. */
+static qboolean S_OPENAL_ListenerOwned(const openal_channel *pChannel)
+{
+    if (pChannel->iEntNum == s_iListenerNumber) {
+        return qtrue;
+    }
+
+    if (pChannel->iEntNum >= 0 && pChannel->iEntNum < MAX_GENTITIES) {
+        return s_entity[pChannel->iEntNum].use_listener ? qtrue : qfalse;
+    }
+
+    return qfalse;
+}
+
 void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxis[3])
 {
     int             i;
@@ -2233,7 +2252,8 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
         if (pChannel->fMaxDist > 0.0f) {
             VectorSubtract(vOrigin, vListenerOrigin, vDir);
             fDist = VectorLength(vDir);
-            float fDistGain = (fDist > pChannel->fMaxDist) ? 0.0f : 1.0f;
+            float fDistGain =
+                (!S_OPENAL_ListenerOwned(pChannel) && fDist > pChannel->fMaxDist) ? 0.0f : 1.0f;
             if (pChannel->fDistGain != fDistGain) {
                 pChannel->fDistGain = fDistGain;
                 pChannel->set_gain_3d(S_EF2_ChannelVolume(pChannel->iEntChannel) * pChannel->fVolume);
@@ -2256,7 +2276,12 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
         }
 
         if (pChannel->bPendingStart) {
-            if (!S_OPENAL_ShouldStart(pChannel->vOrigin, pChannel->fMinDist, pChannel->fMaxDist)) {
+            /* Retail holds an out-of-range start: S_MILES_Respatialize @0x001F2CC0 tests
+               S_MILES_ShouldStart and skips the start without touching the pending flag,
+               so AIL_start_3D_sample fires on a later frame.  end_sample() clears the
+               flag, so one frame with a bad origin lost the sound for good. */
+            if (!S_OPENAL_ListenerOwned(pChannel)
+                && !S_OPENAL_ShouldStart(pChannel->vOrigin, pChannel->fMinDist, pChannel->fMaxDist)) {
                 pChannel->end_sample();
                 continue;
             }
