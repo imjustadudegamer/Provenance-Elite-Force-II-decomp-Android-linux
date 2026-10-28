@@ -1733,7 +1733,11 @@ void Com_Init( char *commandLine ) {
 	com_speeds = Cvar_Get( "com_speeds", "0", 0 );
 	com_timedemo = Cvar_Get( "timedemo", "0", CVAR_CHEAT );
 	Cvar_Get( "mem_churnStats", "1", CVAR_ARCHIVE );
-#ifdef __ANDROID__
+#ifdef PROBE_BUILD_SILENT
+	/* the shipped build arms nothing: ROM keeps a config row or a set from
+	   moving the one switch the ~40 direct readers consult */
+	Cvar_Get( "qa_probe", "0", CVAR_ROM );
+#elif defined(__ANDROID__)
 	/* the property arms qa_probe itself, so the UI's own override reads it too */
 	if ( Sys_AndroidDiagOn() ) {
 		Cvar_Set( "qa_probe", "1" );

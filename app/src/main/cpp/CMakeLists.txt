@@ -86,6 +86,23 @@ else()
     add_compile_definitions(EF2_MULTITHREAD=0)
 endif()
 
+# ---------------------------------------------------------------------------
+# THE RELEASE'S PROBE SILENCE.
+#
+# EF2_PROBE_RELEASE_SILENT (default OFF, the gradle release build type is the
+# only caller) defines PROBE_BUILD_SILENT.  qa_probe.h's PROBE_On then answers
+# qfalse before any property or cvar, and the gates that arm rows outside it
+# (vk_probeplumb.c R_ProbeStatsOn/R_ProbeMarkOn, vk_platform.c's trace provider,
+# sys_main.c's Sys_AndroidDiagOn) test the same macro; common.c registers
+# `qa_probe' ROM under it.  Fault paths consult none of these, so the crash
+# backtrace stays the one channel the release keeps.
+# ---------------------------------------------------------------------------
+option(EF2_PROBE_RELEASE_SILENT "Compile every probe row family out of the build" OFF)
+
+if(EF2_PROBE_RELEASE_SILENT)
+    add_compile_definitions(PROBE_BUILD_SILENT=1)
+endif()
+
 option(BUILD_SERVER "Build dedicated server" ON)
 option(BUILD_CLIENT "Build client" ON)
 # GLES 3.0 renderer.  This is the fixed-function renderer's fork with the

@@ -430,6 +430,10 @@ static void UI_DeliverConsoleText(const char *msg, int color)
     }
 }
 
+/* the console is a 300-item ring (uiconsole.cpp AddLine), so a queued line past
+   this was never going to be drawn anyway */
+#define CONSOLE_QUEUE_MAX 512
+
 void UI_PrintConsole(const char *msg, int color)
 {
     /* every print queues, and the UI frame thread delivers: the console's
@@ -440,6 +444,15 @@ void UI_PrintConsole(const char *msg, int color)
     record->text  = new str(msg);
     record->color = color;
     SDL_LockMutex(s_intermediateconsoleLock);
+    /* the drain needs a console and a shipped build has neither, so this add is
+       otherwise unbounded */
+    if (s_intermediateconsole.NumObjects() >= CONSOLE_QUEUE_MAX) {
+        intermediate_console_text_t *stale = s_intermediateconsole.ObjectAt(1);
+
+        s_intermediateconsole.RemoveObjectAt(1);
+        delete stale->text;
+        delete stale;
+    }
     s_intermediateconsole.AddObject(record);
     SDL_UnlockMutex(s_intermediateconsoleLock);
 }

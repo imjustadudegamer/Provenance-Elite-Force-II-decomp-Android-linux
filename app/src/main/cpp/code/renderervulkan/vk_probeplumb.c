@@ -92,6 +92,9 @@ qboolean smp_hasEtc2Core = qfalse;
 
 qboolean R_ProbeStatsOn( void )
 {
+#ifdef PROBE_BUILD_SILENT
+	return qfalse;		/* the shipped build arms no row family */
+#else
 	static cvar_t *probe;
 
 	if ( !probe ) {
@@ -99,12 +102,16 @@ qboolean R_ProbeStatsOn( void )
 	}
 
 	return ( probe && probe->integer ) ? qtrue : qfalse;
+#endif
 }
 
 /* The light/mark rows answer to the device's own diag property as well, so one
    arm boots the decal evidence without qa_probe's whole census behind it. */
 qboolean R_ProbeMarkOn( void )
 {
+#ifdef PROBE_BUILD_SILENT
+	return qfalse;
+#else
 	static int cached = -1;
 
 	if ( cached < 0 ) {
@@ -122,6 +129,7 @@ qboolean R_ProbeMarkOn( void )
 	}
 
 	return cached ? qtrue : qfalse;
+#endif
 }
 
 /* the renderer's own clock: `ri.Milliseconds() * 1000' quantised every usec= row it feeds to a millisecond, so a cost under one read as zero
