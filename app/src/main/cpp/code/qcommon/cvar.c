@@ -924,7 +924,11 @@ void Cvar_SetA_f( void ) {
 	if ( !v ) {
 		return;
 	}
-	v->flags |= CVAR_ARCHIVE;
+	/* a row out of config.cfg cannot manufacture an archive right: only the
+	   registration owns that, so a stale row dies with its own next write */
+	if ( !cvar_inConfig ) {
+		v->flags |= CVAR_ARCHIVE;
+	}
 }
 
 /* `set' plus CVAR_NOARCHIVE: the value holds for this process only and is not

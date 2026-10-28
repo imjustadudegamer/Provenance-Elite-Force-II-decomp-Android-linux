@@ -65,10 +65,10 @@ GL_State() (tr_backend.c:263 in the GL1 renderer).  Every GL1 state word the
 shipped shaders carry must map to one of those rows; a shipped stage whose
 state word has no row renders undefined.
 
-TWO WRITERS, NO THREAD -- THE STATE OF THIS LAYER
-------------------------------------------------
-There is still no render thread in this renderer (no r_smp, no thread primitives),
-so nothing here takes a lock.  The earlier claim that "nothing in this layer ...
+TWO WRITERS, ONE LOCK-FREE LAYER -- THE STATE OF THIS LAYER
+----------------------------------------------------------
+r_smp is forced on, so a render thread does walk this module; nothing here takes
+a lock, and the single-EXECUTOR rule below is what keeps that correct.  The earlier claim that "nothing in this layer ...
 assumes a second writer" is NOT true of the code as it stands, and the two-writer
 audit says exactly where: GLES3_ApplyStateBits
 writes the module static s_currentAlphaTest and is reached from BOTH the back end

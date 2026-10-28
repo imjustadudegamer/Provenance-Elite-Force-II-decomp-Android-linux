@@ -865,8 +865,9 @@ static void MENU3DAndroidVideoMenuFixup(Menu *menu)
     }
 }
 
-/* The two antialiasing checkboxes (r_arb_multisample, r_ext_nv_multisample_filter)
- * are registered and read nowhere, so they change neither picture nor cost. */
+/* The two antialiasing checkboxes name cvars the engine no longer registers and
+ * nothing ever read, so they change neither picture nor cost; the shipped page
+ * still carries the widgets and the rows must stay hidden. */
 static void MENU3DAndroidAdvancedVideoMenuFixup(Menu *menu)
 {
     UIWidget *advcont;
@@ -1582,9 +1583,9 @@ static adaptRow_s s_adaptRows[] = {
 };
 #endif /* !__ANDROID__ */
 
-/* these rows stay hidden on BOTH targets because the option does not exist in this lane, not because the menu is Android's: `r_texturebits' is registered and
-   never read again, and `r_arb_multisample' / `r_ext_nv_multisample_filter' are not referenced at all (every pipeline is VK_SAMPLE_COUNT_1_BIT).  The controls row
-   hides retail's bind scrollbar, which this port's own bind tables replace. */
+/* these rows stay hidden on BOTH targets because the option does not exist in this lane, not because the menu is Android's: the antialiasing pair has no
+   reader in either renderer (every pipeline is VK_SAMPLE_COUNT_1_BIT) and its cvars are gone.  The controls row hides retail's bind scrollbar, which this
+   port's own bind tables replace. */
 
 #ifdef __ANDROID__
 /* Options the port DOES service, hidden only because the Android build's menus were trimmed for touch; the Linux build shows retail's rows.  The video page is not in

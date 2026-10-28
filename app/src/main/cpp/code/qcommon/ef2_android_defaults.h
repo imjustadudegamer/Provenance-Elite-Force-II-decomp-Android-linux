@@ -59,11 +59,10 @@ root, for more details.
      r_dynamiclightmaps 1 is the maximum and it IS read: RE_SetDynamicLights
        (tr_init.c) gates the per-light-group intensities on it, so 0 forces the
        map's own defaults.
-     r_allowExtensions 1 opens the page's master gate: the checkbox and the three
-       sub-rows it gates (r_arb_multisample, r_ext_nv_multisample_filter,
-       r_anisotropicFiltering) read unregistered cvars and grey out while it sits
-       at 0.  Nothing in renderervulkan reads any of the four, so the pins change
-       no pixel; they make the page read max.
+     r_allowExtensions 1 opens the page's master gate: the checkbox and the
+       antialiasing sub-rows grey out while it sits at 0, so the pin makes the
+       page read max.  It changes no pixel: sdl_glimp.c and the GLES3 platform
+       layer are its only readers, and neither gates a draw on it.
      r_light_simple 0 is the maximum: tr_sphere_shade.cpp gates the RF_EXTRALIGHT
        path on !r_light_simple, so 1 SWITCHES IT OFF; unchecked is the rich path.
      r_light_simple_dist 5000 is the page's top option and the extralight radius
@@ -76,7 +75,12 @@ root, for more details.
        D32_SFLOAT, stencilBits 0), so Simple IS this lane's maximum.
      r_swapInterval 0 is inert on Android now (vk_swapchain.c takes the uncapped rung);
        desktop still reads it.  com_maxfps 60 is the standing order.
-     Pad roles: Y nightvision (EV_Player_Nightvision), d-pad sides +leanleft/+leanright, shoulders nextinv/previnv alone, and the left trigger stays +attackright -- the sniper's controlZoom. */
+     Pad roles: Y nightvision (EV_Player_Nightvision), d-pad sides +leanleft/+leanright, shoulders nextinv/previnv alone, and the left trigger stays +attackright -- the sniper's controlZoom.
+
+   Every value row below is `set', never `seta': a seed row may not hand a cvar
+   the archive right, or this block would grow config.cfg forever with rows no
+   settings page owns.  A cvar whose registration carries CVAR_ARCHIVE keeps it
+   and its seeded value still reaches the file; the rest stay session-only. */
 #define EF2_ANDROID_DEFAULT_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
 	"bind w \"+forward\"\n" \
@@ -152,84 +156,70 @@ root, for more details.
 	"bind PAD0_RIGHTSTICK_CLICK \"+aim\"\n" \
 	"bind PAD0_BACK \"+objectives_score\"\n" \
 	"bind PAD0_START \"togglemenu\"\n" \
-	"seta ui_dialogdisplaymode 1\n" \
-	"seta ui_radarviewmode 0\n" \
-	"seta rate 25000\n" \
-	"seta m_aim 0\n" \
-	"seta sensitivity 5.0\n" \
-	"seta m_invert_pitch 0\n" \
-	"seta m_pitch 0.022\n" \
-	"seta m_filter 0\n" \
-	"seta mp_autoSwitchWeapons 1\n" \
-	"seta ui_autoswitchhudweapon 1\n" \
-	"seta cl_run 1\n" \
-	"seta s_playTaunts 1\n" \
-	"seta com_printwarnings 0\n" \
-	"seta cg_viewbob 1\n" \
-	"seta cg_marks 1\n" \
-	"seta cg_shadows 1\n" \
-	"seta cg_effectdetail 1\n" \
-	"seta cg_crosshair 1\n" \
-	"seta cg_viewkick 1\n" \
-	"seta cg_crosshairtexture \"textures/sprites/crosshair/crosshair_2.tga\"\n" \
+	"set ui_dialogdisplaymode 1\n" \
+	"set ui_radarviewmode 0\n" \
+	"set m_aim 0\n" \
+	"set sensitivity 5.0\n" \
+	"set m_pitch 0.022\n" \
+	"set m_filter 0\n" \
+	"set mp_autoSwitchWeapons 1\n" \
+	"set ui_autoswitchhudweapon 1\n" \
+	"set cl_run 1\n" \
+	"set com_printwarnings 0\n" \
+	"set cg_viewbob 1\n" \
+	"set cg_marks 1\n" \
+	"set cg_shadows 1\n" \
+	"set cg_effectdetail 1\n" \
+	"set cg_crosshair 1\n" \
+	"set cg_viewkick 1\n" \
+	"set cg_crosshairtexture \"textures/sprites/crosshair/crosshair_2.tga\"\n" \
 	"set mp_itemRespawnMultiplier 1.0\n" \
 	"set mp_weaponRespawnMultiplier 1.0\n" \
 	"set mp_powerupRespawnMultiplier 1.0\n" \
 	"set mp_damageMultiplier 1.0\n" \
 	"set mp_knockbackMultiplier 1.0\n" \
 	"set mp_respawnInvincibilityTime 4\n" \
-	"set mp_lowBandwidth 0\n" \
 	"set mp_warmUpTime 10\n" \
 	"set mp_minPlayers 0\n" \
 	"set sv_maxclients 1\n" \
-	"seta cl_renderer \"vulkan\"\n" \
-	"seta r_mode -2\n" \
-	"seta r_fullscreen 1\n" \
-	"seta r_swapInterval 0\n" \
-	"seta com_maxfps 60\n" \
-	"seta in_joystick 1\n" \
-	"seta in_joystickUseAnalog 1\n" \
-	"seta joy_threshold 0.15\n" \
-	"seta j_forward -0.004\n" \
-	"seta j_side 0.004\n" \
-	"seta j_pitch 0.0055\n" \
-	"seta j_yaw -0.0075\n" \
-	"seta j_forward_axis 1\n" \
-	"seta j_side_axis 0\n" \
-	"seta j_pitch_axis 3\n" \
-	"seta j_yaw_axis 2\n" \
-	"seta j_up_axis 4\n" \
-	"seta cl_yawspeed 245\n" \
-	"seta cl_pitchspeed 180\n" \
-	"seta cl_touchLook 2.2\n" \
-	"seta cl_touchScale 1.0\n" \
-	"seta cl_touchOpacity 1.0\n" \
-	"seta cl_crouchToggle 1\n" \
-	"seta s_musicvolume 0.5\n" \
-	"seta s_dialogvolume 0.96\n" \
-	"seta ui_console 0\n" \
-	"seta ui_minicon 0\n" \
-	"seta r_smp 1\n" \
-	"seta r_jobs -1\n" \
-	"seta cl_jobs -1\n" \
-	"seta r_vboStatic 0\n" \
-	"seta r_picmip 0\n" \
-	"seta r_lodbias 1\n" \
-	"seta r_subdivisions 2\n" \
-	"seta r_texturebits 0\n" \
-	"seta r_colorbits 32\n" \
-	"seta r_flares 2\n" \
-	"seta r_dynamiclightmaps 1\n" \
-	"seta r_allowExtensions 1\n" \
-	"seta r_arb_multisample 1\n" \
-	"seta r_ext_nv_multisample_filter 1\n" \
-	"seta r_anisotropicFiltering 1\n" \
-	"seta r_lodCurveError 250\n" \
-	"seta r_lodScaleDistance 1.0\n" \
-	"seta r_light_simple 0\n" \
-	"seta r_light_simple_dist 5000\n"
+	"set cl_renderer \"vulkan\"\n" \
+	"set r_mode -2\n" \
+	"set r_fullscreen 1\n" \
+	"set r_swapInterval 0\n" \
+	"set com_maxfps 60\n" \
+	"set in_joystick 1\n" \
+	"set in_joystickUseAnalog 1\n" \
+	"set joy_threshold 0.15\n" \
+	"set j_forward -0.004\n" \
+	"set j_side 0.004\n" \
+	"set j_pitch 0.0055\n" \
+	"set j_yaw -0.0075\n" \
+	"set j_forward_axis 1\n" \
+	"set j_side_axis 0\n" \
+	"set j_pitch_axis 3\n" \
+	"set j_yaw_axis 2\n" \
+	"set j_up_axis 4\n" \
+	"set cl_yawspeed 245\n" \
+	"set cl_pitchspeed 180\n" \
+	"set cl_touchLook 2.2\n" \
+	"set cl_touchScale 1.0\n" \
+	"set cl_touchOpacity 1.0\n" \
+	"set cl_crouchToggle 1\n" \
+	"set s_musicvolume 0.5\n" \
+	"set s_dialogvolume 0.96\n" \
+	"set r_picmip 0\n" \
+	"set r_lodbias 1\n" \
+	"set r_subdivisions 2\n" \
+	"set r_texturebits 0\n" \
+	"set r_colorbits 32\n" \
+	"set r_flares 2\n" \
+	"set r_dynamiclightmaps 1\n" \
+	"set r_allowExtensions 1\n" \
+	"set r_anisotropicFiltering 1\n" \
+	"set r_lodCurveError 250\n" \
+	"set r_lodScaleDistance 1.0\n" \
+	"set r_light_simple 0\n" \
+	"set r_light_simple_dist 5000\n"
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 
-
-#define EF2_ANDROID_DEFAULT_SETA_COUNT 65

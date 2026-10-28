@@ -1521,7 +1521,7 @@ void Com_Init( char *commandLine ) {
 
 	Com_StartupVariable( "developer" );
 
-	developer = Cvar_Get( "developer", "0", CVAR_ARCHIVE | CVAR_CHEAT );
+	developer = Cvar_Get( "developer", "0", CVAR_CHEAT );
 
 	CL_InitKeyCommands();
 
@@ -1623,16 +1623,16 @@ void Com_Init( char *commandLine ) {
 
 	/* the port's one defaults source, folded in once on EVERY platform: the compiled EF2_ANDROID_DEFAULT_COMMANDS (the union of the shipped defaultcontrols.cfg
 	   and defaultoptions.cfg, platform-neutral where those are not).  The gate is `port_defaultsSeed', a cvar only this code writes, so a seed bump is the only way
-	   new rows reach an install that already archived an older one -- this block runs AFTER the config exec and therefore beats the archived value. */
+	   new rows reach an install that already archived an older one -- this block runs AFTER the config exec and therefore beats the archived value.  The pin is
+	   registered every boot, not only when the seed runs: it is the one engine-internal row the config carries, and an unregistered pin would read 0 here and
+	   re-seed every boot. */
 #define PORT_DEFAULTS_SEED 9
+	Cvar_Get( "port_defaultsSeed", "0", CVAR_ARCHIVE );
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );
 		Cbuf_Execute( 0 );
-		Cvar_Get( "port_defaultsSeed", "0", CVAR_ARCHIVE );
 		Cvar_Set( "port_defaultsSeed", XSTRING( PORT_DEFAULTS_SEED ) );
-		Cvar_Get( "in_androidDefaults", "0", CVAR_ARCHIVE );
-		Cvar_Set( "in_androidDefaults", "10" );
 
 		Com_WriteConfigToFile( EF2_CONFIG_FILE );
 	}
@@ -1702,12 +1702,10 @@ void Com_Init( char *commandLine ) {
 
 	cvar_modifiedFlags &= ~CVAR_ARCHIVE;
 
-	/* the seed above ran on this boot (or an earlier one), so its `seta' values
-	   must reach the archive on either platform, not only Android.  Keyed on the
-	   seed's own cvar, so a stray or zero `in_androidDefaults' cannot switch the
-	   archiving off. */
-	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" )
-		 || Cvar_VariableIntegerValue( "in_androidDefaults" ) )
+	/* the seed above ran on this boot (or an earlier one), so its values must
+	   reach the archive on either platform, not only Android.  Keyed on the
+	   seed's own cvar, so a stray or zero value cannot switch archiving off. */
+	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) )
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 
 	/* the standing 60, not the shipped 85 */
@@ -1721,7 +1719,7 @@ void Com_Init( char *commandLine ) {
 	deathmatch = Cvar_Get( "deathmatch", "0", 0 );
 	paused = Cvar_Get( "paused", "0", CVAR_ROM );
 	com_canAutoSaveNow = Cvar_Get( "com_canAutoSaveNow", "0", CVAR_ROM );
-	fps = Cvar_Get( "fps", "0", CVAR_ARCHIVE );
+	fps = Cvar_Get( "fps", "0", 0 );
 	com_logfile = Cvar_Get("logfile", "0", CVAR_TEMP);
 	/* the per-boot override file; CVAR_TEMP keeps it out of the archive */
 	com_execAfterConfig = Cvar_Get( "com_execAfterConfig", "", CVAR_TEMP );
@@ -1732,7 +1730,8 @@ void Com_Init( char *commandLine ) {
 	com_viewlog = Cvar_Get( "viewlog", "0", CVAR_CHEAT );
 	com_speeds = Cvar_Get( "com_speeds", "0", 0 );
 	com_timedemo = Cvar_Get( "timedemo", "0", CVAR_CHEAT );
-	Cvar_Get( "mem_churnStats", "1", CVAR_ARCHIVE );
+	/* instrument, not a setting: it gates one probe row, and qa_probe is the master gate */
+	Cvar_Get( "mem_churnStats", "1", 0 );
 #ifdef PROBE_BUILD_SILENT
 	/* the shipped build arms nothing: ROM keeps a config row or a set from
 	   moving the one switch the ~40 direct readers consult */

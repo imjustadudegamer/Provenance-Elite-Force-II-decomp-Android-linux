@@ -183,7 +183,7 @@ static cvar_t  *s_2dStateElide;
 static qboolean VK_Draw_2DElideOn( void )
 {
 	if ( !s_2dStateElide ) {
-		s_2dStateElide = ri.Cvar_Get( "vk_2dStateElide", "1", CVAR_ARCHIVE );
+		s_2dStateElide = ri.Cvar_Get( "vk_2dStateElide", "1", 0 );
 	}
 	return ( s_2dStateElide && s_2dStateElide->integer ) ? qtrue : qfalse;
 }

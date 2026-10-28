@@ -105,8 +105,8 @@ void CG_RegisterCvars(void)
     cvar_t *temp;
 
     cg_viewsize                   = cgi.Cvar_Get("viewsize", "100", CVAR_ARCHIVE);
-    cg_viewposx                   = cgi.Cvar_Get("viewposx", "0", CVAR_ARCHIVE);
-    cg_viewposy                   = cgi.Cvar_Get("viewposy", "0", CVAR_ARCHIVE);
+        cg_viewposx                   = cgi.Cvar_Get("viewposx", "0", 0);
+        cg_viewposy                   = cgi.Cvar_Get("viewposy", "0", 0);
     cg_viewsizewidth              = cgi.Cvar_Get("viewsizewidth", "-1", CVAR_ARCHIVE);
     cg_viewsizeheight             = cgi.Cvar_Get("viewsizeheight", "-1", CVAR_ARCHIVE);
     // aspect-aspect3d: port-only cvar (retail has no Android renderer); the client
@@ -135,7 +135,7 @@ void CG_RegisterCvars(void)
     cg_cameradist                 = cgi.Cvar_Get("cg_cameradist", "120", CVAR_ARCHIVE);
     cg_cameraverticaldisplacement = cgi.Cvar_Get("cg_cameraverticaldisplacement", "-2", CVAR_ARCHIVE);
     cg_camerascale                = cgi.Cvar_Get("cg_camerascale", "1.0", CVAR_ARCHIVE);
-    cg_traceinfo                  = cgi.Cvar_Get("cg_traceinfo", "0", CVAR_ARCHIVE);
+        cg_traceinfo                  = cgi.Cvar_Get("cg_traceinfo", "0", 0);
     cg_debugFootsteps             = cgi.Cvar_Get("cg_debugfootsteps", "0", CVAR_CHEAT);
     cg_shadows                    = cgi.Cvar_Get("cg_shadows", "1", CVAR_ARCHIVE);
     developer                     = cgi.Cvar_Get("developer", "0", CVAR_CHEAT);

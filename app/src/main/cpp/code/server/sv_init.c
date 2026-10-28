@@ -882,10 +882,10 @@ void SV_Init (void)
 	Cvar_Get ("protocol", "66", CVAR_SERVERINFO | CVAR_ROM);
 	sv_mapname = Cvar_Get ("mapname", "nomap", CVAR_SERVERINFO | CVAR_ROM);
 	sv_privateClients = Cvar_Get ("sv_privateClients", "0", CVAR_SERVERINFO);
-	sv_hostname = Cvar_Get ("sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE);
+	sv_hostname = Cvar_Get ("sv_hostname", "noname", CVAR_SERVERINFO);
 	sv_maxclients = Cvar_Get ("sv_maxclients", "1", CVAR_SERVERINFO | CVAR_LATCH);
-	sv_maxRate = Cvar_Get ("sv_maxRate", "0", CVAR_ARCHIVE | CVAR_SERVERINFO);
-	sv_floodProtect = Cvar_Get ("sv_floodProtect", "1", CVAR_ARCHIVE | CVAR_SERVERINFO);
+	sv_maxRate = Cvar_Get ("sv_maxRate", "0", CVAR_SERVERINFO);
+	sv_floodProtect = Cvar_Get ("sv_floodProtect", "1", CVAR_SERVERINFO);
 	Cvar_Get ("cheats", "0", CVAR_LATCH | CVAR_SYSTEMINFO);
 	sv_serverid = Cvar_Get ("sv_serverid", "0", CVAR_SYSTEMINFO | CVAR_ROM);
 	sv_pure = Cvar_Get ("sv_pure", "0", CVAR_SYSTEMINFO);

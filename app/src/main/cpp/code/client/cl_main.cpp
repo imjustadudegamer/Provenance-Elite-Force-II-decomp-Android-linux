@@ -2220,7 +2220,7 @@ void CL_Init( void ) {
 
 	start = Sys_Milliseconds();
 
-	cl_jobs = Cvar_Get( "cl_jobs", "-1", CVAR_ARCHIVE );
+	cl_jobs = Cvar_Get( "cl_jobs", "-1", 0 );
 	JobPool_Init( "cljob", cl_jobs->integer );
 
 	CL_ClearState ();
@@ -2258,8 +2258,8 @@ void CL_Init( void ) {
 	cl_pitchspeed = Cvar_Get ("cl_pitchspeed", "140", CVAR_ARCHIVE);
 	cl_anglespeedkey = Cvar_Get ("cl_anglespeedkey", "1.5", 0);
 
-	cl_maxpackets = Cvar_Get ("cl_maxpackets", "30", CVAR_ARCHIVE );
-	cl_packetdup = Cvar_Get ("cl_packetdup", "1", CVAR_ARCHIVE );
+	cl_maxpackets = Cvar_Get ("cl_maxpackets", "30", 0 );
+	cl_packetdup = Cvar_Get ("cl_packetdup", "1", 0 );
 
 	cl_run = Cvar_Get( "cl_run", "0", CVAR_ARCHIVE );         
     cl_freelook = Cvar_Get("freelook", "1", CVAR_ARCHIVE);
@@ -2300,9 +2300,9 @@ void CL_Init( void ) {
 
 	cg_gametype = Cvar_Get( "cg_gametype", "0", 0 );
 
-	cl_updatesource                = Cvar_Get( "cl_updatesource", "0", CVAR_ARCHIVE );
-	cl_showemptyservers           = Cvar_Get( "cl_showemptyservers", "1", CVAR_ARCHIVE );         
-	cl_showfullservers             = Cvar_Get( "cl_showfullservers", "1", CVAR_ARCHIVE );         
+	cl_updatesource                = Cvar_Get( "cl_updatesource", "0", 0 );
+	cl_showemptyservers           = Cvar_Get( "cl_showemptyservers", "1", 0 );         
+	cl_showfullservers             = Cvar_Get( "cl_showfullservers", "1", 0 );         
 
 	// The seventeen retail CL_Init cvars the port had never registered, in
 	mp_savingDemo                 = Cvar_Get( "mp_savingDemo", "0", CVAR_USERINFO );                    
@@ -2312,14 +2312,14 @@ void CL_Init( void ) {
 	cl_avidemo                    = Cvar_Get( "cl_avidemo", "0", 0 );                                   
 	cl_alternateMouseMove         = Cvar_Get( "cl_alternateMouseMove", "0", 0 );                        
 	m_up                          = Cvar_Get( "m_up", "0", CVAR_ARCHIVE );                              
-	dm_morph_c1                   = Cvar_Get( "dm_morph_c1", "0", CVAR_ARCHIVE | CVAR_USERINFO );        
+	dm_morph_c1                   = Cvar_Get( "dm_morph_c1", "0", CVAR_USERINFO );        
 	cl_disableloadinginbackground = Cvar_Get( "cl_disableloadinginbackground", "1", CVAR_ARCHIVE );      
 	cl_chbottom                   = Cvar_Get( "cl_chbottom", "150", CVAR_ARCHIVE );                     
 	cl_chtop                      = Cvar_Get( "cl_chtop", "-150", CVAR_ARCHIVE );                       
 	cl_chleft                     = Cvar_Get( "cl_chleft", "-100", CVAR_ARCHIVE );                      
 	cl_chright                    = Cvar_Get( "cl_chright", "100", CVAR_ARCHIVE );                      
 	Cvar_Get( "cg_predictItems", "1", CVAR_ARCHIVE | CVAR_USERINFO );                                   
-	Cvar_Get( "mp_lowBandwidth", "0", CVAR_ARCHIVE | CVAR_USERINFO );                                   
+	Cvar_Get( "mp_lowBandwidth", "0", CVAR_USERINFO );                                   
 	userFov                       = Cvar_Get( "userFov", "0", CVAR_ARCHIVE | CVAR_USERINFO );            
 	com_blood                     = Cvar_Get( "com_blood", "1", CVAR_ARCHIVE | CVAR_USERINFO | CVAR_SERVERINFO );        
 
@@ -2332,17 +2332,11 @@ void CL_Init( void ) {
 	// Port-only cvar (retail has no Android renderer).  Registered on every
 	android_aspect = Cvar_Get ("android_aspect", "0", CVAR_ARCHIVE);
 
-	Cvar_Get( "cl_maxPing", "800", CVAR_ARCHIVE );
-
-	if( m_pitch->value >= 0.0 ) {
-		Cvar_Set( "m_invert_pitch", "0" );
-	} else {
-		Cvar_Set( "m_invert_pitch", "1" );
-	}
+	Cvar_Get( "cl_maxPing", "800", 0 );
 
 	name = Cvar_Get ("name", "RedShirt", CVAR_USERINFO | CVAR_ARCHIVE);
-	cl_rate = Cvar_Get ("rate", "25000", CVAR_USERINFO | CVAR_ARCHIVE );
-	Cvar_Get ("snaps", "20", CVAR_USERINFO | CVAR_ARCHIVE );
+	cl_rate = Cvar_Get ("rate", "25000", CVAR_USERINFO );
+	Cvar_Get ("snaps", "20", CVAR_USERINFO );
 	Cvar_Get ("password", "", CVAR_USERINFO);		 
 	Cvar_Get ("mp_playermodel", "models/char/mainchar.tik", CVAR_USERINFO | CVAR_ARCHIVE );
 

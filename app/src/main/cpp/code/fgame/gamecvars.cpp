@@ -234,7 +234,7 @@ void CVAR_Init( void )
 	g_rankedserver				= gi.cvar( "g_rankedserver",		"0",		0 );
 	g_allowActionMusic				= gi.cvar( "g_allowActionMusic",		"1",		0 );
 	g_armoradaptionlimit				= gi.cvar( "g_armoradaptionlimit",		"300",		0 );
-	g_secretCount				= gi.cvar( "g_secretCount",		"0",		CVAR_ARCHIVE|CVAR_ROM );
+	g_secretCount				= gi.cvar( "g_secretCount",		"0",		CVAR_ROM );
 	csys_posx				= gi.cvar( "csys_posx",		"0",		0 );
 	csys_posy				= gi.cvar( "csys_posy",		"0",		0 );
 	csys_posz				= gi.cvar( "csys_posz",		"0",		0 );
@@ -267,9 +267,9 @@ void CVAR_Init( void )
 	mp_bombTime				= gi.cvar( "mp_bombTime",		"30",		0 );
 	mp_maxVotes				= gi.cvar( "mp_maxVotes",		"3",		0 );
 	mp_skipWeaponReloads				= gi.cvar( "mp_skipWeaponReloads",		"0",		0 );
-	mp_minTauntTime				= gi.cvar( "mp_minTauntTime",		"4",		CVAR_ARCHIVE );
+	mp_minTauntTime				= gi.cvar( "mp_minTauntTime",		"4",		0 );
 	mp_useMapList				= gi.cvar( "mp_useMapList",		"0",		0 );
-	mp_mapList				= gi.cvar( "mp_mapList",		"",		CVAR_ARCHIVE );
+	mp_mapList				= gi.cvar( "mp_mapList",		"",		0 );
 	mp_currentPosInMapList				= gi.cvar( "mp_currentPosInMapList",		"0",		0 );
 	sv_showinfo				= gi.cvar( "sv_showinfo",		"0",		0 );
 	sv_showinfodist				= gi.cvar( "sv_showinfodist",		"256",		0 );

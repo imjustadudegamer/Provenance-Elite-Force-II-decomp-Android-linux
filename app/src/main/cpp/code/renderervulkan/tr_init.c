@@ -254,13 +254,13 @@ void R_RegisterCvars( void )
 
 	/* The rest of the 3D front end's cvars, with the twin's names, defaults
 	   and flags; unregistered, any of them is a null read. */
-	r_debuglines_depthmask = ri.Cvar_Get("r_debuglines_depthmask", "0", CVAR_ARCHIVE);
+	r_debuglines_depthmask = ri.Cvar_Get("r_debuglines_depthmask", "0", 0);
 	r_farplane = ri.Cvar_Get("r_farplane", "0", CVAR_CHEAT);
 	r_farplane_color = ri.Cvar_Get("r_farplane_color", ".5 .5 .5", CVAR_CHEAT);
 	r_farplane_nocull = ri.Cvar_Get("r_farplane_nocull", "0", CVAR_CHEAT);
 	r_farplane_nofog = ri.Cvar_Get("r_farplane_nofog", "0", CVAR_CHEAT);
 	r_ignore = ri.Cvar_Get( "r_ignore", "1", CVAR_CHEAT );
-	r_jobs = ri.Cvar_Get("r_jobs", "-1", CVAR_ARCHIVE | CVAR_LATCH);
+	r_jobs = ri.Cvar_Get("r_jobs", "-1", CVAR_LATCH);
 	r_light_ambientEmphasize = ri.Cvar_Get("r_light_ambientEmphasize", "1.6", 0);
 	r_light_ambientFudge = ri.Cvar_Get("r_light_ambientFudge", "0.7", 0);
 	r_light_emphasize = ri.Cvar_Get("r_light_emphasize", "0", 0);
@@ -366,7 +366,7 @@ void R_Init( void )
 	/* The compressed-source path is only taken when the device can hold the
 	   blocks and the last bring-up did not die taking them.  An explicit
 	   r_vkSafeMode 1 outranks the crash marker, and the row names its cause. */
-	s_vkSafeMode = ri.Cvar_Get( "r_vkSafeMode", "0", CVAR_ARCHIVE );
+	s_vkSafeMode = ri.Cvar_Get( "r_vkSafeMode", "0", 0 );
 	if ( s_vkSafeMode->integer || VK_SafeModeMarkerPresent() ) {
 		vkConfig.textureCompression = TC_NONE;
 		VK_Guard_Row( "VK:guard",
@@ -897,7 +897,7 @@ void VK_PerfFpsRow( void )
 
 	cv = s_perfFps;
 	if ( !cv ) {
-		cv = s_perfFps = ri.Cvar_Get( "r_perfFps", "1", CVAR_ARCHIVE );
+		cv = s_perfFps = ri.Cvar_Get( "r_perfFps", "1", 0 );
 	}
 	/* the timing is the cost, so the master probe gate owns the row too */
 	if ( !cv || !cv->integer || !R_ProbeStatsOn() ) {

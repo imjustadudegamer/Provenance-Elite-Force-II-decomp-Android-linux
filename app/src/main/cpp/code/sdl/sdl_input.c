@@ -1955,7 +1955,7 @@ void IN_Init( void *windowData )
 
 	Com_DPrintf( "\n------- Input Initialization -------\n" );
 
-	in_keyboardDebug = Cvar_Get( "in_keyboardDebug", "0", CVAR_ARCHIVE );
+	in_keyboardDebug = Cvar_Get( "in_keyboardDebug", "0", 0 );
 
 	in_mouse = Cvar_Get( "in_mouse", "1", CVAR_ARCHIVE );
 	in_nograb = Cvar_Get( "in_nograb", "0", CVAR_ARCHIVE );

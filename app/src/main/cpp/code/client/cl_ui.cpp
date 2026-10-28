@@ -4339,7 +4339,7 @@ void ArenaController::registerCvars(void)
     ac_mp_modifier_OneFlag              = Cvar_Get("mp_modifier_OneFlag", "0", 4);
     ac_mp_modifier_Elimination          = Cvar_Get("mp_modifier_Elimination", "0", 4);
     ac_mp_modifier_Specialties          = Cvar_Get("mp_modifier_Specialties", "0", 4);
-    ac_temp_sv_hostname                 = Cvar_Get("temp_sv_hostname", "EF2 Server", 1);
+    ac_temp_sv_hostname                 = Cvar_Get("temp_sv_hostname", "EF2 Server", 0);
     ac_temp_sv_maxspeed                 = Cvar_Get("temp_sv_maxspeed", "400", 0);
     ac_temp_sv_maxclients               = Cvar_Get("temp_sv_maxclients", "8", 0);
     ac_temp_mp_gametype                 = Cvar_Get("temp_mp_gametype", "0", 0);
@@ -4360,7 +4360,7 @@ void ArenaController::registerCvars(void)
     ac_temp_dedicated                   = Cvar_Get("temp_dedicated", "0", 0);
     ac_temp_sv_pure                     = Cvar_Get("temp_sv_pure", "0", 0);
     ac_temp_strafeJumpingAllowed        = Cvar_Get("temp_strafeJumpingAllowed", "1", 0);
-    ac_temp_sv_maxrate                  = Cvar_Get("temp_sv_maxrate", "0", 1);
+    ac_temp_sv_maxrate                  = Cvar_Get("temp_sv_maxrate", "0", 0);
     ac_temp_mp_modifier_InstantKill     = Cvar_Get("temp_mp_modifier_InstantKill", "0", 0);
     ac_temp_mp_modifier_ActionHero      = Cvar_Get("temp_mp_modifier_ActionHero", "0", 0);
     ac_temp_mp_modifier_AutoHandicap    = Cvar_Get("temp_mp_modifier_AutoHandicap", "0", 0);
@@ -5876,10 +5876,10 @@ void CL_InitializeUI(void)
     ui_drawcoords         = Cvar_Get("ui_drawcoords", "", 0);              
     // not the "" this block had.  Resolved off the same cl_ui pool (retail offsets in
     ui_changeresolution   = Cvar_Get("ui_changeresolution", "1", 1);        
-    ui_minicon            = Cvar_Get("ui_minicon", "0", 1);                 
+    ui_minicon            = Cvar_Get("ui_minicon", "0", 0);                 
     ui_consoleposition    = Cvar_Get("ui_consoleposition", "", 1);         
     ui_inventoryfile      = Cvar_Get("ui_inventoryfile", "global/inventory.scr", 0); 
-    ui_console            = Cvar_Get("ui_console", "0", 1);                
+    ui_console            = Cvar_Get("ui_console", "0", 0);                
     ui_newvidmode         = Cvar_Get("ui_newvidmode", "-1", 0);            
     ui_dialogdisplaymode  = Cvar_Get("ui_dialogdisplaymode", "1", 1);      
     ui_radarviewmode      = Cvar_Get("ui_radarviewmode", "0", 1);          

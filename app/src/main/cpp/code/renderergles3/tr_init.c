@@ -215,9 +215,7 @@ cvar_t* r_debuglines_depthmask;
 cvar_t* r_bumpmap;
 
 
-cvar_t* r_arb_multisample;
 cvar_t* r_arb_samples;
-cvar_t* r_ext_nv_multisample_filter;
 cvar_t* r_ext_nv_support_multisample;
 cvar_t* r_precompressed_textures;
 cvar_t* r_ati_fsaa_samples;
@@ -1159,9 +1157,7 @@ void R_Register( void )
 	// WIDGET-E1: the `#ifdef __linux__ "0"' arm was ioq3's, not retail's.  Retail
 	r_ext_texture_env_add = ri.Cvar_Get( "r_ext_texture_env_add", "1", CVAR_ARCHIVE | CVAR_LATCH);
 	r_ext_texture_env_combine = ri.Cvar_Get("r_ext_texture_env_combine", "0", CVAR_ARCHIVE | CVAR_LATCH);
-	r_arb_multisample = ri.Cvar_Get( "r_arb_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_arb_samples = ri.Cvar_Get( "r_arb_samples", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	r_ext_nv_multisample_filter = ri.Cvar_Get( "r_ext_nv_multisample_filter", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_nv_support_multisample = ri.Cvar_Get( "r_ext_nv_support_multisample", "0", 0 );
 	r_draw2d = ri.Cvar_Get("r_draw2d", "1", 0);
 
@@ -1246,7 +1242,10 @@ void R_Register( void )
 
 	r_skipBackEnd = ri.Cvar_Get ("r_skipBackEnd", "0", CVAR_CHEAT);
 
-	r_smp = ri.Cvar_Get ("r_smp", "0", CVAR_ARCHIVE | CVAR_LATCH);
+	/* always on, the same ROM value the Vulkan twin registers: the core-count
+	   gate below is the only thing that may still run this renderer serial */
+	r_smp = ri.Cvar_Get ("r_smp", "1", CVAR_ROM);
+	ri.Cvar_Set ("r_smp", "1");
 
 	r_measureOverdraw = ri.Cvar_Get( "r_measureOverdraw", "0", CVAR_CHEAT );
 	r_depthFuncAlways = ri.Cvar_Get( "r_depthFuncAlways", "0", CVAR_CHEAT );
@@ -1306,7 +1305,7 @@ void R_Register( void )
 	r_skyportal_origin = ri.Cvar_Get("r_skyportal_origin", "0 0 0", 0);
 	r_lightcoronasize = ri.Cvar_Get("r_lightcoronasize", ".1", CVAR_ARCHIVE);
 	r_useglfog = ri.Cvar_Get("r_useglfog", "1", CVAR_ARCHIVE);
-	r_debuglines_depthmask = ri.Cvar_Get("r_debuglines_depthmask", "0", CVAR_ARCHIVE);
+	r_debuglines_depthmask = ri.Cvar_Get("r_debuglines_depthmask", "0", 0);
 	r_fps = ri.Cvar_Get("fps", "0", 0);
 
 	// MENUSET: retail's flag word is CVAR_ARCHIVE alone, not the LATCH pair the ioq3 block
@@ -1329,7 +1328,7 @@ void R_Register( void )
 	r_developer = ri.Cvar_Get("developer", "", 0);
 
 	// PORT-ONLY, no retail counterpart and no effect on what is drawn: it runs
-	r_jobs = ri.Cvar_Get("r_jobs", "-1", CVAR_ARCHIVE | CVAR_LATCH);
+	r_jobs = ri.Cvar_Get("r_jobs", "-1", CVAR_LATCH);
 
 	r_jobsStats = ri.Cvar_Get("r_jobsStats", "0", CVAR_CHEAT);
 	ri.Cvar_SetDescription(r_jobsStats, "Print one [MT] measurement line per second: frame-interval "

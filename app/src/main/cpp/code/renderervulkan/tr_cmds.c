@@ -158,7 +158,7 @@ qboolean VK_WalkStatOn( void )
 	static cvar_t *cv;
 
 	if ( !cv ) {
-		cv = ri.Cvar_Get( "r_perfFps", "1", CVAR_ARCHIVE );
+		cv = ri.Cvar_Get( "r_perfFps", "1", 0 );
 	}
 
 	/* r_perfFps is the family switch; qa_probe is the master gate and the
@@ -1079,7 +1079,10 @@ void R_InitCommandBuffers( void )
 {
 	int i;
 
-	r_smp = ri.Cvar_Get( "r_smp", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	/* always on: ROM keeps a config row or a console set from turning the walk
+	   off, and the forced set beats a row already read this boot */
+	r_smp = ri.Cvar_Get( "r_smp", "1", CVAR_ROM );
+	ri.Cvar_Set( "r_smp", "1" );
 	vk.smpActive = r_smp->integer ? qtrue : qfalse;
 	vk.frameSlot = 0;
 

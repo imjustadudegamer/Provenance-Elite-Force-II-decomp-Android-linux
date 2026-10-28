@@ -2844,8 +2844,8 @@ void	R_InitImages( void ) {
 	Com_Memset(tr.images, 0, sizeof(tr.images));
 	tr.numImages = 0;
 
-	smp_texCache = ri.Cvar_Get("smp_texCache", "1", CVAR_ARCHIVE);
-	smp_texCacheMaxMB = ri.Cvar_Get("smp_texCacheMaxMB", "96", CVAR_ARCHIVE);
+	smp_texCache = ri.Cvar_Get("smp_texCache", "1", 0);
+	smp_texCacheMaxMB = ri.Cvar_Get("smp_texCacheMaxMB", "96", 0);
 	{
 		int mb = smp_texCacheMaxMB->integer;
 
