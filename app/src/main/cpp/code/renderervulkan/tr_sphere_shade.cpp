@@ -745,13 +745,11 @@ void R_Sphere_SetupEntity()
     float      fDist;
     vec3_t     vDelta;
     vec3_t     vLightDir;
+    vec3_t     vDrawn;
     spherel_t *lightlist[MAX_MAP_SPHERE_LIGHTS_EF2];
 
-    /* retail fills the entity-lighting record first, and the record is the
-       default draw: an early return must never leave a zero sphere reading */
-    R_SetupEntityLighting( &backEnd.refdef, backEnd.currentEntity );
-    backEnd.currentSphere->TessFunction = &RB_CalcColorFromEntityLighting;
-
+    /* retail @0x464C0 enters with the tess function the walk reset; the record
+       arm and R_Sphere_SetupGlobals/R_Sphere_BuildDLights are its writers */
     if ((backEnd.currentEntity->e.renderfx & RF_FULLBRIGHT) || r_light_nolight->integer) {
         backEnd.currentSphere->TessFunction = &RB_Light_FullbrightSphere;
         return;
@@ -796,7 +794,6 @@ void R_Sphere_SetupEntity()
 
         /* retail draws this branch from the sphere itself and leaves the record alone; the row still names which one ran */
         s_sphereWroteAmbient = 0;
-        backEnd.currentSphere->TessFunction = &RB_Light_Sphere;
 
         VectorClear(backEnd.currentSphere->ambient);
         for (i = 0; i < SPHERE_NUM_BASIS; i++) {
@@ -808,14 +805,7 @@ void R_Sphere_SetupEntity()
         VectorScale(
             backEnd.currentSphere->ambient, r_light_ambientEmphasize->value, backEnd.currentSphere->ambient
         );
-
-        /* the record's ambient is what the TessFunction-null fallback reads; mirror the drawn sphere ambient into it */
-        VectorCopy(backEnd.currentSphere->ambient, backEnd.currentEntity->ambientLight);
-        ((byte *)&backEnd.currentEntity->ambientLightInt)[0] = (byte)Q_min(backEnd.currentSphere->ambient[0], 255.0f);
-        ((byte *)&backEnd.currentEntity->ambientLightInt)[1] = (byte)Q_min(backEnd.currentSphere->ambient[1], 255.0f);
-        ((byte *)&backEnd.currentEntity->ambientLightInt)[2] = (byte)Q_min(backEnd.currentSphere->ambient[2], 255.0f);
-        ((byte *)&backEnd.currentEntity->ambientLightInt)[3] = 0xFF;
-        VectorClear(backEnd.currentEntity->directedLight);
+        VectorCopy(backEnd.currentSphere->ambient, vDrawn);
     } else {
         vec3_t vAmbient;
 
@@ -843,8 +833,11 @@ void R_Sphere_SetupEntity()
         backEnd.currentEntity->e.shaderRGBA[0] = (byte)vAmbient[0];
         backEnd.currentEntity->e.shaderRGBA[1] = (byte)vAmbient[1];
         backEnd.currentEntity->e.shaderRGBA[2] = (byte)vAmbient[2];
+        /* retail @0x464C0 writes the fourth byte opaque: the colour is read as one int */
+        backEnd.currentEntity->e.shaderRGBA[3] = 0xFF;
 
         VectorClear(backEnd.currentEntity->directedLight);
+        VectorCopy(vAmbient, vDrawn);
     }
 
     /* an entity that has not moved whose resolved ambient changed names itself with the light set that produced it */
@@ -870,9 +863,9 @@ void R_Sphere_SetupEntity()
             float fMove = fabs(backEnd.currentEntity->e.origin[0] - s_prev[iSlot].origin[0])
                           + fabs(backEnd.currentEntity->e.origin[1] - s_prev[iSlot].origin[1])
                           + fabs(backEnd.currentEntity->e.origin[2] - s_prev[iSlot].origin[2]);
-            float fDelta = fabs(backEnd.currentEntity->ambientLight[0] - s_prev[iSlot].ambient[0])
-                           + fabs(backEnd.currentEntity->ambientLight[1] - s_prev[iSlot].ambient[1])
-                           + fabs(backEnd.currentEntity->ambientLight[2] - s_prev[iSlot].ambient[2]);
+            float fDelta = fabs(vDrawn[0] - s_prev[iSlot].ambient[0])
+                           + fabs(vDrawn[1] - s_prev[iSlot].ambient[1])
+                           + fabs(vDrawn[2] - s_prev[iSlot].ambient[2]);
 
             if (fMove < 4.0f && fDelta > 8.0f) {
                 int iCur = backEnd.refdef.num_dlights - 1;
@@ -885,8 +878,8 @@ void R_Sphere_SetupEntity()
                     "rf=%x nf=%d slot=%d w=%d pf=%d exd=%d",
                     RB_FrameCount(), backEnd.currentEntity->e.entityNumber, fMove,
                     s_prev[iSlot].ambient[0], s_prev[iSlot].ambient[1], s_prev[iSlot].ambient[2],
-                    backEnd.currentEntity->ambientLight[0], backEnd.currentEntity->ambientLight[1],
-                    backEnd.currentEntity->ambientLight[2], fDelta,
+                    vDrawn[0], vDrawn[1],
+                    vDrawn[2], fDelta,
                     backEnd.currentSphere->numLights, tr.numSLights, iLeafKey, iLeafFilled,
                     s_prev[iSlot].dl, backEnd.refdef.num_dlights, backEnd.bExactDLights,
                     tr.overbrightMult, (backEnd.refdef.rdflags & RDF_FULLBRIGHT) ? 1 : 0,
@@ -920,7 +913,7 @@ void R_Sphere_SetupEntity()
             VectorClear(s_prev[iSlot].dlcol);
         }
         VectorCopy(backEnd.currentEntity->e.origin, s_prev[iSlot].origin);
-        VectorCopy(backEnd.currentEntity->ambientLight, s_prev[iSlot].ambient);
+        VectorCopy(vDrawn, s_prev[iSlot].ambient);
     }
 }
 
