@@ -1203,6 +1203,7 @@ CLASS_DECLARATION(Sentient, Player, "player") {
 	{ &EV_Player_SpawnActor,								&Player::SpawnActor },
 	{ &EV_Player_Respawn,									&Player::Respawn },
 	{ &EV_Player_DoUse,										&Player::DoUse },
+	{ &EV_Damage,											&Player::ArmorDamage },
 	{ &EV_Pain,												&Player::Pain },
 	{ &EV_Killed,											&Player::Killed },
 	{ &EV_Gib,												&Player::GibEvent },
@@ -7677,7 +7678,13 @@ float Player::getDamageDone(float damage, int meansOfDeath, bool inMelee)
         damageDone *= damage_multiplier;
     }
 
-    (void)meansOfDeath;
+    if (_powerup) {
+        damageDone = _powerup->getDamageDone(damageDone, meansOfDeath);
+    }
+
+    if (_rune) {
+        damageDone = _rune->getDamageDone(damageDone, meansOfDeath);
+    }
 
     return damageDone;
 }

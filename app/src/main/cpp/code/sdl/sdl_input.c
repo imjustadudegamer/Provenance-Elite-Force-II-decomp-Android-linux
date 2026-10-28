@@ -113,6 +113,9 @@ static cvar_t *in_joystick          = NULL;
 static cvar_t *in_joystickThreshold = NULL;
 static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
+static cvar_t *in_padPollUsec       = NULL;
+
+static Uint64 in_padPollLast = 0;
 
 static cvar_t *cl_crouchToggle      = NULL;   
 static cvar_t *cl_easyJump          = NULL;
@@ -506,6 +509,10 @@ static void IN_InitJoystick( void )
 	SDL_SetHint( SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0" );
 	SDL_SetHint( SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1" );
 #endif
+
+	/* IN_JoyMove drives the device walk itself; SDL's event pump must not repeat
+	 * it once per poll (SDL_PumpEvents -> SDL_JoystickUpdate). */
+	SDL_SetHint( SDL_HINT_AUTO_UPDATE_JOYSTICKS, "0" );
 
 	if (!SDL_WasInit(SDL_INIT_JOYSTICK))
 	{
@@ -929,15 +936,38 @@ static void IN_JoyMove( void )
 	unsigned int hats = 0;
 	int total = 0;
 	int i = 0;
+	static Uint64 perfFreq;
+
+	if (!gamepad && !stick)
+		return;
+
+	/* The frame-pace loop re-enters here hundreds of times a frame and every
+	 * pass is 27 SDL state queries each taking SDL's joystick mutex, plus a
+	 * device walk. 1 kHz is past any gamepad's report rate. */
+	if ( in_padPollUsec->integer > 0 )
+	{
+		if ( !perfFreq )
+			perfFreq = SDL_GetPerformanceFrequency();
+
+		if ( in_padPollLast )
+		{
+			Uint64 now = SDL_GetPerformanceCounter();
+
+			if ( now - in_padPollLast < perfFreq * (Uint64)in_padPollUsec->integer / 1000000ull )
+				return;
+			in_padPollLast = now;
+		}
+		else
+		{
+			in_padPollLast = SDL_GetPerformanceCounter();
+		}
+	}
 
 	if (gamepad)
 	{
 		IN_GamepadMove();
 		return;
 	}
-
-	if (!stick)
-		return;
 
 	SDL_JoystickUpdate();
 
@@ -1967,6 +1997,7 @@ void IN_Init( void *windowData )
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
 #endif
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
+	in_padPollUsec       = Cvar_Get( "in_padPollUsec", "1000", 0 );
 
 #ifdef __ANDROID__
 	cl_touchLook    = Cvar_Get( "cl_touchLook",    "2.2", CVAR_ARCHIVE );

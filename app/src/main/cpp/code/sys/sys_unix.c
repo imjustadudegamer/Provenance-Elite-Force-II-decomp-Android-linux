@@ -607,17 +607,19 @@ unsigned long sys_timeBase = 0;
 int curtime;
 int Sys_Milliseconds (void)
 {
-	struct timeval tp;
+	struct timespec tp;
 
-	gettimeofday(&tp, NULL);
+	/* MONOTONIC: the vdso path is ~2x the realtime one, every caller takes
+	   deltas, and Windows already reads timeGetTime() here. */
+	clock_gettime(CLOCK_MONOTONIC, &tp);
 
 	if (!sys_timeBase)
 	{
 		sys_timeBase = tp.tv_sec;
-		return tp.tv_usec/1000;
+		return tp.tv_nsec/1000000;
 	}
 
-	curtime = (tp.tv_sec - sys_timeBase)*1000 + tp.tv_usec/1000;
+	curtime = (tp.tv_sec - sys_timeBase)*1000 + tp.tv_nsec/1000000;
 
 	return curtime;
 }
