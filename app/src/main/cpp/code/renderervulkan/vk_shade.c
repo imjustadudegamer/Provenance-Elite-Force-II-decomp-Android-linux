@@ -1037,6 +1037,20 @@ qboolean VK_StageReadsVertexColor( const shaderStage_t *pStage )
 	return qfalse;
 }
 
+/* the alpha-only vertex gens: AGEN_VERTEX/ONE_MINUS_VERTEX read a_Color.a on their own
+   (vk_stage.vert u_AlphaGen 4/5), so the array has to reach the pack even when the stage's
+   rgbGen is not a vertex gen.  A decal stage carrying `alphaGen vertex` alone -- EF2's whole
+   goosplat/splat family -- drew with a_Color unbound, so its alpha came off the ring as
+   garbage and the quad painted opaque. */
+qboolean VK_StageReadsVertexAlpha( const shaderStage_t *pStage )
+{
+	if ( !pStage )
+	{
+		return qfalse;
+	}
+	return pStage->alphaGen == AGEN_VERTEX || pStage->alphaGen == AGEN_ONE_MINUS_VERTEX;
+}
+
 qboolean VK_StageNeedsCPUTexCoords( const shaderStage_t *pStage )
 {
 	int b, tm;
@@ -5290,7 +5304,8 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	   model fills nothing, so carrying its array drew the previous surface's colour, which under the retail dst factors multiplies to black.  2D keeps the array unconditionally. */
 	colors = cpuColor ? (const unsigned char *)input->svars.colors
 					  : ( backEnd.in2D
-						  || ( VK_StageReadsVertexColor( pStage ) && input->vertexColorValid ) )
+						  || ( VK_StageReadsVertexColor( pStage ) && input->vertexColorValid )
+						  || ( VK_StageReadsVertexAlpha( pStage ) && input->vertexColorValid ) )
 						? (const unsigned char *)input->vertexColors
 						: NULL;
 
