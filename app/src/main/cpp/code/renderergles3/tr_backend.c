@@ -448,13 +448,9 @@ void GL_TexEnv( int env )
 
 unsigned long RF_ForceAlphaStateBits( unsigned long stateBits )
 {
-	if ( backEnd.currentEntity && ( backEnd.currentEntity->e.renderfx & RF_FORCE_ALPHA )
-		&& backEnd.currentEntity->e.shaderRGBA[3] < 255 )
-	{
-		return ( stateBits & ~( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS | GLS_DEPTHMASK_TRUE ) )
-		       | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
-	}
-
+	/* retail never touches the blend for RF_FORCE_ALPHA: the fade rides the
+	   entity's own alpha in the colour (R_AddSkelSurfaces), so the shader's
+	   blendFunc survives -- an additive flash stays additive */
 	return stateBits;
 }
 
@@ -1092,6 +1088,12 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	backEnd.currentSphere = &backEnd.sphere;
 
 	for (i = 0, drawSurf = drawSurfs ; i < numDrawSurfs ; i++, drawSurf++) {
+		/* a null surface pointer, or a key past the surface table, is a call
+		   through garbage that names nothing */
+		if ( drawSurf->surface == NULL
+			|| *drawSurf->surface < 0 || *drawSurf->surface >= SF_NUM_SURFACE_TYPES ) {
+			continue;
+		}
 		if ( drawSurf->sort == (unsigned)oldSort && *drawSurf->surface != SF_SPRITE ) {
 			rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
 			continue;
@@ -1816,6 +1818,21 @@ static const void *RB_2DFontString( const void *data ) {
 			/* the recorded run writes the same quads the immediate body does, so
 			   it takes the same placement, at the same point in the transform */
 			RB_2DPlaceRange( tess.numVertexes, 4 );
+
+			/* the glyph quad carries the 2D colour per vertex, as the
+			   stretch-pic quads do, or the text inherits the previous
+			   surface's colour */
+			{
+				int v;
+
+				for ( v = 0; v < 4; v++ ) {
+					tess.vertexColors[tess.numVertexes + v][0] = backEnd.color2D[0];
+					tess.vertexColors[tess.numVertexes + v][1] = backEnd.color2D[1];
+					tess.vertexColors[tess.numVertexes + v][2] = backEnd.color2D[2];
+					tess.vertexColors[tess.numVertexes + v][3] = backEnd.color2D[3];
+				}
+				tess.vertexColorValid = qtrue;
+			}
 
 			tess.numVertexes += 4;
 			tess.numIndexes += 6;

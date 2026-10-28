@@ -746,6 +746,9 @@ void R_Sphere_SetupEntity()
         backEnd.currentEntity->e.shaderRGBA[0] = (byte)vAmbient[0];
         backEnd.currentEntity->e.shaderRGBA[1] = (byte)vAmbient[1];
         backEnd.currentEntity->e.shaderRGBA[2] = (byte)vAmbient[2];
+        /* retail @0x000464C0 writes the fourth byte opaque: the entity colour is
+           read as one int by RB_CalcColorFromEntity */
+        backEnd.currentEntity->e.shaderRGBA[3] = 0xFF;
 
         VectorClear(backEnd.currentEntity->directedLight);
     }

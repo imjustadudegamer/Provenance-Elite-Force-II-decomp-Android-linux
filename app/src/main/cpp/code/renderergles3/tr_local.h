@@ -1137,7 +1137,10 @@ void		R_Modellist_f (void);
 
 extern	refimport_t		ri;
 
-#define	MAX_DRAWIMAGES			2048
+/* 8192: the retail corpus names more distinct textures than 2048 slots hold, and
+   the table overflows into a hard ERR_DROP for a session that loads past it.
+   The table is the only cost; the pixels are allocated when an image is uploaded. */
+#define	MAX_DRAWIMAGES			8192
 #define	MAX_LIGHTMAPS			256
 #define	MAX_SKINS				1024
 #define MAX_MAP_SPHERE_LIGHTS_EF2	2532

@@ -197,7 +197,12 @@ void RE_AddRefEntityToScene( const refEntity_t *ent ) {
 
 	backEndData->entities[r_numentities].e = *ent;
 
-	backEndData->entities[r_numentities].lightDir[0] = 0.0f;
+	/* the record pool is the two-slot frame ring: a slot the sphere pass never
+	   lights must not answer with its previous occupant's lighting */
+	VectorClear( backEndData->entities[r_numentities].lightDir );
+	VectorClear( backEndData->entities[r_numentities].ambientLight );
+	backEndData->entities[r_numentities].ambientLightInt = 0;
+	VectorClear( backEndData->entities[r_numentities].directedLight );
 
 	r_numentities++;
 }
@@ -304,7 +309,8 @@ void RE_RenderScene( const refdef_t *fd ) {
 		ri.Error (ERR_DROP, "R_RenderScene: NULL worldmodel");
 	}
 
-	backEnd.in2D = qfalse;
+	/* in2D is the walk's flag, cleared by its own 3D pass (tr_backend.c); this
+	   front-end write would race the walk's 2D pass under r_smp */
 	/* the view reopens depth, so the overlay phase has to be re-stated after it:
 	   a cached window would let the next 2D draw skip its own state block */
 	RB_2D_InvalidateWindow();

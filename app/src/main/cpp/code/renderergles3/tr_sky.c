@@ -334,7 +334,7 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 		gles3Program_t	*pSky = GLES3_BeginFamily( GLP_FAMILY_SKY, 1 );
 
 		GLES3_SetBaseColor4f( pSky, 1.0f, 1.0f, 1.0f, 1.0f );
-		GLES3_SetUniform1f( pSky, GLES3_U_SKYALPHA, tr.refdef.sky_alpha );
+		GLES3_SetUniform1f( pSky, GLES3_U_SKYALPHA, backEnd.refdef.sky_alpha );
 		GLES3_SetUniform1i( pSky, GLES3_U_SKYALPHAMODE, 0 );
 		GLES3_SetUniform2f( pSky, GLES3_U_SKYSCROLL, 0.0f, 0.0f );
 	}

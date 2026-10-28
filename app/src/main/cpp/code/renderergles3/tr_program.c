@@ -1573,9 +1573,10 @@ void GLES3_SetupViewUniforms( gles3Program_t *p )
 	   viewer-vector arms need on entity geometry -- the world pass passes both
 	   names the same value */
 	GLES3_SetUniform3fv( p, GLES3_U_VIEWORIGIN, backEnd.ori.viewOrigin );
-	GLES3_SetUniform3fv( p, GLES3_U_VIEWAXIS0, tr.refdef.viewaxis[0] );
+	/* frame-carry: read the record's refdef, not the live one */
+	GLES3_SetUniform3fv( p, GLES3_U_VIEWAXIS0, backEnd.refdef.viewaxis[0] );
 	GLES3_SetUniform3f( p, GLES3_U_LOCALVIEWORIGIN,
-						tr.refdef.vieworg[0], tr.refdef.vieworg[1], tr.refdef.vieworg[2] );
+						backEnd.refdef.vieworg[0], backEnd.refdef.vieworg[1], backEnd.refdef.vieworg[2] );
 
 	if ( backEnd.currentEntity )
 	{
@@ -1886,7 +1887,8 @@ void GLES3_SetupFogUniforms( gles3Program_t *p, int fogNum, qboolean fogDensityA
 
 	if ( fogNum == 9999 )
 	{
-		unsigned colorInt = (unsigned)tr.viewParms.fogColorInt;
+		/* the walk's own frame copy, not the front end's live struct */
+		unsigned colorInt = (unsigned)backEnd.viewParms.fogColorInt;
 		const byte *byteColor = ( const byte * )&colorInt;
 
 		/* the shader does floor(u_FogColor * 255) for both fog colour gens, so the
@@ -1894,7 +1896,7 @@ void GLES3_SetupFogUniforms( gles3Program_t *p, int fogNum, qboolean fogDensityA
 		   first byte as a float and left the other three at whatever the block held */
 		GLES3_SetUniform4f( p, GLES3_U_FOGCOLOR, byteColor[0] / 255.0f, byteColor[1] / 255.0f,
 							byteColor[2] / 255.0f, byteColor[3] / 255.0f );
-		GLES3_SetUniform1f( p, GLES3_U_FOGOOLEN, tr.viewParms.fog.oolen );
+		GLES3_SetUniform1f( p, GLES3_U_FOGOOLEN, backEnd.viewParms.fog.oolen );
 		GLES3_SetUniform1i( p, GLES3_U_FOGDENSITYARM, fogDensityArm ? 1 : 0 );
 		return;
 	}
