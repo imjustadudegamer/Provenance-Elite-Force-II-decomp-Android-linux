@@ -441,10 +441,10 @@ void UIWindowManager::UpdateViews(void)
             float    left = f.pos.x;
 
             Container<UIWidget *>& kids = cont->getChildren();
-            int                    i;
+            int                    sibIndex;
 
-            for (i = 1; i <= kids.NumObjects(); i++) {
-                UIWidget *sib = kids.ObjectAt(i);
+            for (sibIndex = 1; sibIndex <= kids.NumObjects(); sibIndex++) {
+                UIWidget *sib = kids.ObjectAt(sibIndex);
                 UIRect2D  s;
                 float     gap;
 

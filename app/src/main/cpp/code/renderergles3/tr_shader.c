@@ -1107,6 +1107,11 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 				stage->colorConst[0] = 255 * color[0];
 				stage->colorConst[1] = 255 * color[1];
 				stage->colorConst[2] = 255 * color[2];
+				/* three components name no alpha; RB_CalcColorFromConstant copies
+				   all four, so a zero here drew the stage invisible */
+				if ( stage->alphaGen != AGEN_CONSTANT ) {
+					stage->colorConst[3] = 255;
+				}
 
 				stage->rgbGen = CGEN_CONSTANT;
 			}
@@ -2595,60 +2600,43 @@ static void CollapseMultitexture(int *stagecounter) {
 	}
 }
 
-static void Q_UNUSED_VAR FixRenderCommandList( int newShader ) {
-	renderCommandList_t	*cmdList = &backEndData->commands;
+/* Retail @0x0001E5A0: the frame's already-built sort keys carry sortedIndex.
+   The sprite list packs the same field into its own keys and caches it in each
+   record's shaderNum, which the sprite walk reads out of sortedShaders. */
+static void R_UpdateDrawSurfs_NewShader( int sortedIndex )
+{
+	int			count, i;
+	drawSurf_t	*surfs;
 
-	if( cmdList ) {
-		const void *curCmd = cmdList->cmds;
+	count = tr.refdef.numDrawSurfs;
+	if ( count > MAX_DRAWSURFS ) {
+		count = MAX_DRAWSURFS;
+	}
+	surfs = tr.refdef.drawSurfs;
+	for ( i = 0; i < count; i++ ) {
+		if ( (int)( surfs[i].sort >> QSORT_SHADERNUM_SHIFT ) >= sortedIndex ) {
+			surfs[i].sort += ( 1 << QSORT_SHADERNUM_SHIFT );
+		}
+	}
 
-		while ( 1 ) {
-			switch ( *(const int *)curCmd ) {
-			case RC_SET_COLOR:
-				{
-				const setColorCommand_t *sc_cmd = (const setColorCommand_t *)curCmd;
-				curCmd = (const void *)(sc_cmd + 1);
-				break;
-				}
-			case RC_STRETCH_PIC:
-				{
-				const stretchPicCommand_t *sp_cmd = (const stretchPicCommand_t *)curCmd;
-				curCmd = (const void *)(sp_cmd + 1);
-				break;
-				}
-			case RC_DRAW_SURFS:
-				{
-				int i;
-				drawSurf_t	*drawSurf;
-				const drawSurfsCommand_t *ds_cmd =  (const drawSurfsCommand_t *)curCmd;
-				int			count = ds_cmd->numDrawSurfs;
+	count = tr.refdef.numSpriteSurfs;
+	if ( count > MAX_SPRITESURFS ) {
+		count = MAX_SPRITESURFS;
+	}
+	surfs = tr.refdef.spriteSurfs;
+	for ( i = 0; i < count; i++ ) {
+		if ( (int)( surfs[i].sort >> QSORT_SHADERNUM_SHIFT ) >= sortedIndex ) {
+			surfs[i].sort += ( 1 << QSORT_SHADERNUM_SHIFT );
+		}
+	}
 
-				if (count > MAX_DRAWSURFS) {
-					count = MAX_DRAWSURFS;
-				}
-				for( i = 0, drawSurf = ds_cmd->drawSurfs; i < count; i++, drawSurf++ ) {
-					if( (int)( drawSurf->sort >> QSORT_SHADERNUM_SHIFT ) >= newShader ) {
-						drawSurf->sort += ( 1 << QSORT_SHADERNUM_SHIFT );
-					}
-				}
-				curCmd = (const void *)(ds_cmd + 1);
-				break;
-				}
-			case RC_DRAW_BUFFER:
-				{
-				const drawBufferCommand_t *db_cmd = (const drawBufferCommand_t *)curCmd;
-				curCmd = (const void *)(db_cmd + 1);
-				break;
-				}
-			case RC_SWAP_BUFFERS:
-				{
-				const swapBuffersCommand_t *sb_cmd = (const swapBuffersCommand_t *)curCmd;
-				curCmd = (const void *)(sb_cmd + 1);
-				break;
-				}
-			case RC_END_OF_LIST:
-			default:
-				return;
-			}
+	count = tr.refdef.num_sprites;
+	if ( count > MAX_SPRITES ) {
+		count = MAX_SPRITES;
+	}
+	for ( i = 0; i < count; i++ ) {
+		if ( tr.refdef.sprites[i].shaderNum >= sortedIndex ) {
+			tr.refdef.sprites[i].shaderNum++;
 		}
 	}
 }
@@ -2671,6 +2659,8 @@ static void SortNewShader( void ) {
 
 	newShader->sortedIndex = i+1;
 	tr.sortedShaders[i+1] = newShader;
+
+	R_UpdateDrawSurfs_NewShader( newShader->sortedIndex );
 }
 
 
@@ -3432,6 +3422,12 @@ qhandle_t RE_RefreshShaderNoMip(const char* name) {
 				image_t* image;
 
 				sh = currentShader->shader;
+				if (!sh) {
+					/* retail @0x0003E040 answers 0 for a shader this registration
+					   has not re-parsed yet; reading bundle[0] through a null
+					   shader_t is the fault the guard replaces */
+					return 0;
+				}
 				image = sh->unfoggedStages[0]->bundle[0].image[0];
 				currentShader = NULL;
 
@@ -3765,6 +3761,12 @@ void R_SetupShaders(void)
         ri.Printf(0, "Setting up Shaders\n");
     }
     currentShader = NULL;
+
+    /* every shader_t died with the hunk; the table must not carry one */
+    tr.numShaders = 0;
+    Com_Memset( tr.shaders, 0, sizeof( tr.shaders ) );
+    Com_Memset( tr.sortedShaders, 0, sizeof( tr.sortedShaders ) );
+
     for (hash = 0; hash < FILE_HASH_SIZE; ++hash)
     {
 		for (shaderText = hashTable[hash]; shaderText; shaderText = shaderText->next) {

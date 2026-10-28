@@ -1915,4 +1915,8 @@ void RE_PrintBSPFileSizes(void)
 void R_ClearWorld(void) {
     tr.world = NULL;
     tr.worldMapLoaded = qfalse;
+
+    /* every pointer here was in the arena the registration just freed;
+       RE_LoadWorldMap memsets it again, this closes the window between */
+    Com_Memset( &s_worldData, 0, sizeof( s_worldData ) );
 }

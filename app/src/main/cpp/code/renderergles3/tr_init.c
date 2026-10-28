@@ -389,7 +389,14 @@ vidmode_t r_vidModes[] =
 	{ "Mode  8: 1280x1024",		1280,	1024,	1 },
 	{ "Mode  9: 1600x1200",		1600,	1200,	1 },
 	{ "Mode 10: 2048x1536",		2048,	1536,	1 },
-	{ "Mode 11: 856x480 (wide)",856,	480,	1 }
+	{ "Mode 11: 856x480 (wide)",856,	480,	1 },
+	/* modes 0-11 are retail's table verbatim, and every config's r_mode keeps
+	   its retail meaning; 12-14 are this port's widescreen additions.  The
+	   video menu's rows (uilib/uimenu.cpp MENU3DVideoMenuResolutionFixup)
+	   cite these indices -- keep the two in step. */
+	{ "Mode 12: 1280x720 (wide)",	1280,	720,	1 },
+	{ "Mode 13: 1600x900 (wide)",	1600,	900,	1 },
+	{ "Mode 14: 1920x1080 (wide)",	1920,	1080,	1 }
 };
 static int	s_numVidModes = ( sizeof( r_vidModes ) / sizeof( r_vidModes[0] ) );
 
@@ -1558,8 +1565,12 @@ void RE_BeginRegistration(glconfig_t* glconfigOut) {
 		ri.Cvar_Set("r_renderergeneration", value);
 	}
 	tr.registrating = qtrue;
-	tr.viewCluster = -1;		
+	tr.viewCluster = -1;
 	RE_ClearScene();
+
+	/* every skin_t died with the hunk above; the lazy table must not carry one */
+	tr.numSkins = 0;
+	Com_Memset( tr.skins, 0, sizeof( tr.skins ) );
 
 	R_ClearWorld();
 

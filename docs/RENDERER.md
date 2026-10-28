@@ -117,8 +117,33 @@ with the programs cached on disk so a launch does not recompile them.
 shipped shader corpus produces, plus rows for the expressible-but-unreachable
 arms -- `#include`d five times by `tr_program.c`, once per section, so the C table
 and the audit record are one file. `glsl/gles3_glsl_embedded.h` is generated from
-the `.glsl` sources by `glsl/build_glsl.py`; the `.glsl` files are the sources of
+the `.glsl` sources by `glsl/build_glsl.py`, which also compiles and links every
+permutation the census names offline, so a permutation that no longer compiles
+fails the build instead of a device run; the `.glsl` files are the sources of
 truth and the header must not drift from them.
+
+## Selecting the twin at runtime
+
+Both modules ship in the same APK (and in the same Linux build directory):
+`librenderer_vulkan.so` and `librenderer_gles3.so` are two targets of one CMake
+tree (`cmake/renderer_vulkan.cmake`, `cmake/renderer_gles3.cmake`), and the
+client picks one by name. `cl_renderer` (`code/client/cl_main.cpp`, a
+`CVAR_ARCHIVE | CVAR_LATCH` cvar whose compiled default is `vulkan`) is
+formatted into `renderer_%s`, dlopen'd, and a name that fails to load resets the
+cvar to its compiled default and retries. On Android the loader prefixes `lib`
+and asks for the native lib dir, so `cl_renderer gles3` resolves
+`librenderer_gles3.so` out of the same APK.
+
+`cl_renderer` is latched, so the switch takes a restart:
+
+    cl_renderer gles3
+    vid_restart
+
+The log then names the module twice: `Trying to load "renderer_gles3.so"` (or
+`librenderer_gles3.so` on Android) from the loader, and the twin's own context
+row from `gl_gles3_platform.c` (`[GLES3:gles3] context requested=3.0 ...`,
+behind `qa_probe`). Vulkan stays the shipping default and nothing in this
+section changes that.
 
 ## Probes
 
@@ -128,6 +153,14 @@ sources and read back what they compile. They are never run. The Vulkan module
 has no separate probe executable: its first-light core (`vk_firstlight.c`, the
 `VK:firstlight` row) is linked into the renderer and answers to the master
 `qa_probe` gate.
+
+The twin's build-side gates run without a device: `glsl/build_glsl.py` (compile
+and link every permutation, re-emit the embedded header),
+`tools/parity_check.py` (the state word and the generator ordinals agree across
+both renderers, and the GLSL `u_AlphaGen`/`u_ColorGen` dispatch literals name
+those enums in the twin and in the derived `renderervulkan/shaders/` copies), and
+the four headless probes, which need only Mesa's EGL surfaceless platform on the
+host.
 
 ## The tess vertex stores (design notes)
 
