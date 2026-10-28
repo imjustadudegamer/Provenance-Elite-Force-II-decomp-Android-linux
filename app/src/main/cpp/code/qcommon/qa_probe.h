@@ -19,6 +19,21 @@ root, for more details.
 #ifndef __QA_PROBE_H__
 #define __QA_PROBE_H__
 
+/* `qa_probe' is the ONE switch: 0 (default) silences every row family, 1 arms them all; the family cvars are fine-grained overrides.  PC arms it with
+ * play_ef2_decomp.sh --diag, Android with the property `log.tag.ProvenanceEF2'.  Fault paths (ERR_DROP, Sys_Error, the signal handler, VK_Guard_Hit) stay ungated.
+ *
+ * The shipped APK arms nothing, ever.  The release flavor defines PROBE_BUILD_SILENT (CMake EF2_PROBE_RELEASE_SILENT): PROBE_On answers qfalse before any
+ * property or cvar, the gates that arm rows outside this header test the same macro, and common.c registers `qa_probe' ROM under it. */
+
+static inline qboolean PROBE_ReleaseSilent(void)
+{
+#ifdef PROBE_BUILD_SILENT
+	return qtrue;
+#else
+	return qfalse;
+#endif
+}
+
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
@@ -30,16 +45,21 @@ root, for more details.
 #error "define PROBE_PRINT before including qa_probe.h"
 #endif
 
-/* `qa_probe' is the ONE switch: 0 (default) silences every row family, 1 arms them all; the family cvars are fine-grained overrides.  PC arms it with
- * play_ef2_decomp.sh --diag, Android with the property `log.tag.ProvenanceEF2'.  Fault paths (ERR_DROP, Sys_Error, the signal handler, VK_Guard_Hit) stay ungated. */
 #ifdef PROBE_ON_OVERRIDE
 static inline qboolean PROBE_On(void)
 {
+	if (PROBE_ReleaseSilent()) {
+		return qfalse;
+	}
+
 	return PROBE_ON_OVERRIDE ? qtrue : qfalse;
 }
 #else
 static inline qboolean PROBE_On(void)
 {
+	if (PROBE_ReleaseSilent()) {
+		return qfalse;
+	}
 #ifdef __ANDROID__
 	static int propArmed = -1;
 

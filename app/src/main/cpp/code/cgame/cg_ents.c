@@ -591,6 +591,10 @@ static qboolean CG_DecalProbeOn( void )
 {
     static int cached = -1;
 
+    if ( PROBE_ReleaseSilent() ) {
+        return qfalse;
+    }
+
     if ( cached < 0 ) {
         cached = PROBE_On() ? 1 : 0;
 #ifdef __ANDROID__

@@ -70,6 +70,15 @@ android {
             isDebuggable = project.hasProperty("ef2rd")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
+            // The shipped APK keeps one channel: the crash backtrace.  This define
+            // compiles every probe row family out (CMakeLists EF2_PROBE_RELEASE_
+            // SILENT -> qa_probe.h PROBE_BUILD_SILENT), so a device property left
+            // at 1 cannot arm them.
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DEF2_PROBE_RELEASE_SILENT=ON"
+                }
+            }
             signingConfig = if (project.hasProperty("RELEASE_STORE_FILE")) {
                 signingConfigs.getByName("release")
             } else {

@@ -101,6 +101,9 @@ static void Sys_AndroidFaultMirror( const char *text )
  * channel never consults this -- Sys_Error, the signal handler and the fault mirror log unconditionally. */
 qboolean Sys_AndroidDiagOn( void )
 {
+#ifdef PROBE_BUILD_SILENT
+	return qfalse;		/* the shipped build keeps one channel: the crash */
+#else
 	static int cached = -1;
 
 	if( cached < 0 )
@@ -118,6 +121,7 @@ qboolean Sys_AndroidDiagOn( void )
 	}
 
 	return cached ? qtrue : qfalse;
+#endif
 }
 
 /* The quiet boot's SDL log sink: every row the vendor or the engine hands to

@@ -78,6 +78,9 @@ static void VK_LogRow( const char *line )
 
 static int VK_TraceCvar( const char *name, int defaultValue )
 {
+#ifdef PROBE_BUILD_SILENT
+	return 0;		/* the shipped build arms no row family */
+#else
 	char fallback[16];
 	cvar_t *cv;
 
@@ -85,6 +88,7 @@ static int VK_TraceCvar( const char *name, int defaultValue )
 	cv = ri.Cvar_Get( name, fallback, 0 );
 
 	return cv ? cv->integer : defaultValue;
+#endif
 }
 
 static void VK_FullPath( char *out, size_t len, const char *path )
