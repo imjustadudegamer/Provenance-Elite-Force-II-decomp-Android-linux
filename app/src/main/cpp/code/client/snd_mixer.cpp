@@ -107,16 +107,19 @@ static float DbToLinear(float fDb)
 }
 
 /* Depth of a bus while the detector is fully engaged, in dB of attenuation.
-   0 means the bus is never ducked, which is what DIALOG, MOVIE and (by
-   default) UI carry. */
+   Retail's S_GetChanVolume @0x001F54A0 is base x category x fade and no class
+   it names carries a duck, so SFX and AMBIENT stay open: every weapon channel
+   (CHAN_LOCAL, CHAN_WEAPON, CHAN_WEAPONIDLE, CHAN_COMBAT and the unspecified
+   rest all land on SNDBUS_SFX) keeps its authored level under a dialog or
+   ambience bed.  MUSIC keeps retail's own level-driven duck.  s_duckDepthSfx
+   stays registered so an archived config is not disturbed; it is no longer
+   read. */
 static float DuckDepthDb(int bus)
 {
     switch (bus) {
-    case SNDBUS_MUSIC:   return s_iMusicDucking ? s_duckDepthMusic->value : 0.0f;
-    case SNDBUS_AMBIENT:
-    case SNDBUS_SFX:     return s_duckDepthSfx->value;
-    case SNDBUS_UI:      return s_duckDepthUi->value;
-    default:             return 0.0f;
+    case SNDBUS_MUSIC: return s_iMusicDucking ? s_duckDepthMusic->value : 0.0f;
+    case SNDBUS_UI:    return s_duckDepthUi->value;
+    default:           return 0.0f;
     }
 }
 
