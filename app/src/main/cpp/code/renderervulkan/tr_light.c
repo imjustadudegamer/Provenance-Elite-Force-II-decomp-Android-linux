@@ -251,7 +251,8 @@ int R_LightForPoint(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec
 
 /* retail R_SetupEntityLighting: the record every entity colour reads.  A world
    with no base-lighting surfs (every shipped EF2 map) takes the lit fallback --
-   ambient = directed = identityLight * 255 -- plus the in-range sphere lights. */
+   ambient = directed = identityLight * 255 -- plus the in-range sphere lights.
+   Uncalled: retail's only xref is R_AddMD3Surfaces @0x20BB0 behind r_smp > 1. */
 void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
     float   identity = tr.identityLight * 255.0f;
     float   max;
