@@ -110,6 +110,7 @@ public:
     /* The focused widget lives on the current menu's container, or on the HUD the
        game added when no menu is up; these drive it from the pad's arrow keys and
        the pad's activation key. */
+    static int        PadNavKey(int key);
     static int        PadNavDirection(int key);
     UIWidgetContainer *PadContainer(void);
     UIWidget         *PadFocusedWidget(void);

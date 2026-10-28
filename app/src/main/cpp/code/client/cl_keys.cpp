@@ -754,6 +754,23 @@ void Key_CtrlBind_f(void)
     Key_SetCtrlBinding(b, cmd);
 }
 
+/* Every gameplay button and every pad button is a lookup in one of these three
+   tables, so an empty set of them is a boot with no game input at all. */
+int Key_BindCount(void)
+{
+    int i;
+    int n = 0;
+
+    for (i = 0; i < MAX_KEYS; i++) {
+        if ((keys[i].binding && keys[i].binding[0]) || (altkeys[i].binding && altkeys[i].binding[0])
+            || (ctrlkeys[i].binding && ctrlkeys[i].binding[0])) {
+            n++;
+        }
+    }
+
+    return n;
+}
+
 void Key_WriteBindings(fileHandle_t f)
 {
     int i;

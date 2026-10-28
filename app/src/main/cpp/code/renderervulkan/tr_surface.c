@@ -117,11 +117,6 @@ void RB_AddQuadStampExt( vec3_t origin, vec3_t left, vec3_t up, byte *color, flo
 		* ( unsigned int * )color;
 
 
-	/* retail RB_AddQuadStampExt stores 1 at tess-3636 before the count increment: a stamped
-	   quad owns its colour array, and every gen that reads a_Color -- the whole RT_SPRITE
-	   family, impacts and muzzle flashes -- was drawing on an unbound attribute */
-	tess.vertexColorValid = qtrue;
-
 	tess.numVertexes += 4;
 	tess.numIndexes += 6;
 }

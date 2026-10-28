@@ -834,6 +834,9 @@ qboolean COM_IsMapValid(const char* name);
 
 void CL_InitKeyCommands( void );
 
+/* non-empty rows across the three bind tables: the boot's "is the config bindless" test */
+int Key_BindCount( void );
+
 void CL_Init( void );
 void CL_Disconnect(qboolean showMenu);
 void CL_AbnormalDisconnect( const char *message );	 

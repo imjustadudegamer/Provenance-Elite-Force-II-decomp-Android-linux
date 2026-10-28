@@ -81,7 +81,10 @@ root, for more details.
    the archive right, or this block would grow config.cfg forever with rows no
    settings page owns.  A cvar whose registration carries CVAR_ARCHIVE keeps it
    and its seeded value still reaches the file; the rest stay session-only. */
-#define EF2_ANDROID_DEFAULT_COMMANDS \
+/* The bind rows are their own block so the engine can replay them alone: the one
+   fault that leaves a boot bindless is a config that carried cvars and no binds,
+   and that repair needs the binds, not the cvar pins. */
+#define EF2_DEFAULT_BIND_COMMANDS \
 	"bind UPARROW \"+forward\"\n" \
 	"bind w \"+forward\"\n" \
 	"bind DOWNARROW \"+back\"\n" \
@@ -156,6 +159,9 @@ root, for more details.
 	"bind PAD0_RIGHTSTICK_CLICK \"+aim\"\n" \
 	"bind PAD0_BACK \"+objectives_score\"\n" \
 	"bind PAD0_START \"togglemenu\"\n" \
+
+/* the cvar pins, the seed block's own half */
+#define EF2_DEFAULT_CVAR_COMMANDS \
 	"set ui_dialogdisplaymode 1\n" \
 	"set ui_radarviewmode 0\n" \
 	"set m_aim 0\n" \
@@ -220,6 +226,8 @@ root, for more details.
 	"set r_lodScaleDistance 1.0\n" \
 	"set r_light_simple 0\n" \
 	"set r_light_simple_dist 5000\n"
+
+#define EF2_ANDROID_DEFAULT_COMMANDS EF2_DEFAULT_BIND_COMMANDS EF2_DEFAULT_CVAR_COMMANDS
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 
 #endif 

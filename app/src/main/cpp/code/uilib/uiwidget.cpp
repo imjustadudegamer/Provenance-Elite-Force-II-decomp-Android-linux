@@ -5021,12 +5021,11 @@ qboolean UIWidgetContainer::moveFocus(int dir)
     return moveFocus(dir, 0, qfalse);
 }
 
-/* `key' is the navigation key itself and `directional' says the walk may go by direction.  The
-   menus keep the child-order step: there a screen-ordered walk is the whole model and a
-   directional one would take the focus sideways off a row.  A HUD whose stops span three columns
-   and three rows is a board (the tricorder route board, a keypad) and there the walk picks the
-   nearest stop in the direction pressed and clamps at the edge instead of wrapping into the next
-   row. */
+/* `key' is the navigation key itself and `directional' says the walk may go by direction.  Every
+   page the walk serves moves by direction now: a screen-ordered step on a page that lays rows out
+   two to a band took a vertical push sideways, and a one-column page took a horizontal push down
+   its rows.  A HUD whose stops span a board (the tricorder route board, a keypad) keeps the same
+   nearest-stop rule with its edge clamp instead of wrapping into the next row. */
 qboolean UIWidgetContainer::moveFocus(int dir, int key, qboolean directional)
 {
     /* Visual order: activation restacks the child list, so the list is not a walk order. */
@@ -5108,7 +5107,11 @@ qboolean UIWidgetContainer::moveFocus(int dir, int key, qboolean directional)
 
     next = -1;
 
-    if (cur >= 0 && directional && key && cols >= 3 && rowNums >= 3) {
+    /* Two columns is already a grid: a settings page lays its rows out two to a band,
+       and there a step in list order is a diagonal.  One column is a list and the step
+       is its own vertical order, so a horizontal push finds nothing in its direction
+       and the row holds. */
+    if (cur >= 0 && directional && key && cols >= 2 && rowNums >= 2) {
         /* Nearest stop whose centre lies in the pressed direction, tie-broken by the
            distance across it. */
         int    best = -1;
@@ -5207,7 +5210,7 @@ qboolean UIWidgetContainer::moveFocus(int dir, int key, qboolean directional)
                        "dir=%d key=%d grid=%d rows=%d from='%s' to='%s'%s%s active='%s' menu='%s'",
                        dir,
                        key,
-                       (directional && cols >= 3 && rowNums >= 3) ? 1 : 0,
+                       (directional && cols >= 2 && rowNums >= 2) ? 1 : 0,
                        count,
                        m_focusWidget && m_focusWidget->getName() ? m_focusWidget->getName() : "(null)",
                        rows[next].wid->getName() ? rows[next].wid->getName() : "(null)",

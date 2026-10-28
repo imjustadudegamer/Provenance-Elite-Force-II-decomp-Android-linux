@@ -188,6 +188,7 @@ public:
     void ScrollTo(int row);
     int  VisibleRowCount(void) const;
     int  getSelectedIndex(void) const;
+    UIRow *getSelectedRow(void) const { return m_selectedRow; }
     bool getNoRowSelect(void) const { return m_noRowSelect; }
     void ClampScroll(void);
     void SyncScrollBar(void);

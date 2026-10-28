@@ -435,7 +435,10 @@ void UIWindowManager::UpdateViews(void)
         UIWidget          *pad = PadFocusedWidget();
         UIWidgetContainer *cont = PadContainer();
 
-        if (pad && cont && pad->getFrame().size.width > 0.0f && pad->getFrame().size.height > 0.0f) {
+        /* A list stop paints its own row highlight, so the wash would lie over the whole
+           box and the row's own mark both. */
+        if (pad && cont && !pad->isSubclassOf(UITable) && !pad->isSubclassOf(UIRowColumn)
+            && pad->getFrame().size.width > 0.0f && pad->getFrame().size.height > 0.0f) {
             UIRect2D f(pad->getGlobalPoint(UIPoint2D(0.0f, 0.0f)), pad->getFrame().size);
             UColor   ring(0.35f, 0.67f, 1.0f, 1.0f);
             float    left = f.pos.x;
@@ -808,6 +811,24 @@ void UIWindowManager::CharEvent(int ch)
     }
 }
 
+/* The stick's four keys are the arrows as far as a row is concerned: a slider steps,
+   a switchbox cycles and a list walks its rows on the arrows alone, and none of them
+   knows the stick's own spellings.  The walk keeps the raw key for its own repeat
+   bookkeeping, because the engine's key state is the stick's, not the arrow's. */
+int UIWindowManager::PadNavKey(int key)
+{
+    switch (key) {
+    case K_PAD0_LEFTSTICK_UP:    return K_UPARROW;
+    case K_PAD0_LEFTSTICK_DOWN:  return K_DOWNARROW;
+    case K_PAD0_LEFTSTICK_LEFT:  return K_LEFTARROW;
+    case K_PAD0_LEFTSTICK_RIGHT: return K_RIGHTARROW;
+    default:
+        break;
+    }
+
+    return key;
+}
+
 /* `dir` is the child-order step for a navigation key: up/left walk back, down/ right walk on. The
    left stick produces its own key codes, not arrows, so it is a direction here too -- its deadzone
    is the SDL layer's joy threshold and is already applied before the key is emitted. */
@@ -896,7 +917,7 @@ bool UIWindowManager::PadFocusRepeat(int key)
 
     /* The pad's row keeps its key while it is held, and hands back what it
        does not want. */
-    return focused->KeyEvent(key, 0) ? true : false;
+    return focused->KeyEvent(PadNavKey(key), 0) ? true : false;
 }
 
 /* The pad's row follows the widget that took a key while the pad had none. */
@@ -920,9 +941,10 @@ bool UIWindowManager::MovePadFocus(int dir, int key)
         return false;
     }
 
-    /* Directional movement is the HUD's alone: a menu keeps the screen-order
-       step it already had. */
-    return cont->moveFocus(dir, key, menuManager.CurrentMenu() ? qfalse : qtrue) ? true : false;
+    /* Every page the walk serves moves by direction: a vertical push stays in its
+       column and a horizontal one stays in its row, which is what the screen-order
+       step could not do on a page that lays rows out two to a band. */
+    return cont->moveFocus(dir, key, qtrue) ? true : false;
 }
 
 void UIWindowManager::ClearPadFocus(void)
@@ -1038,10 +1060,44 @@ bool UIWindowManager::ActivateFocusedWidget(void)
         return true;
     }
 
+    /* A bind list's activate key is the selected row's own Primary cell: the same click a
+       tap delivers, so the grab is the row's and not a command the table was never given.
+       A list with an activatecommand keeps retail's own arm. */
+    if (focused->isSubclassOf(UITable)) {
+        UIRowColumn *rows = ((UITable *)focused)->getRowColumn();
+        UIRow       *row;
+        UIWidget    *cell;
+        UIPoint2D    at;
+
+        if (rows && rows->getNumItems() && !rows->getNoRowSelect()) {
+            if (rows->getSelectedIndex() <= 0) {
+                Event *sel = new Event(EV_RowColumn_SelectRow);
+
+                sel->AddInteger(1);
+                focused->ProcessEvent(sel);
+            }
+
+            row  = rows->getSelectedRow();
+            cell = row ? row->getWidget(2) : NULL;
+
+            if (cell) {
+                at = cell->getGlobalPoint(
+                    UIPoint2D(cell->getSize().width * 0.5f, cell->getSize().height * 0.5f));
+
+                ViewEvent(cell, down, at, 1);
+                ViewEvent(cell, up, at, 0);
+                return true;
+            }
+        }
+
+        focused->ProcessEvent(EV_RowColumn_Activate);
+        return true;
+    }
+
     /* A list's activate key is its own activatecommand on the selected row, the
        same one its Load button stuffs; a click at the centre would land on
        whichever row happens to sit under it. */
-    if (focused->isSubclassOf(UITable) || focused->isSubclassOf(UIRowColumn)) {
+    if (focused->isSubclassOf(UIRowColumn)) {
         focused->ProcessEvent(EV_RowColumn_Activate);
         return true;
     }
@@ -1074,6 +1130,7 @@ bool UIWindowManager::ActivateFocusedWidget(void)
 qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 {
     int dir;
+    int nav;
 
     if (m_bindactive) {
         m_bindactive->KeyEvent(key, time);
@@ -1081,6 +1138,7 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
     }
 
     dir = PadNavDirection(key);
+    nav = PadNavKey(key);
 
     /* A menu or a HUD with a stop owns the walk; TAB joins it only where one does. */
     if ((dir != 0 || key == K_TAB) && PadContainer()) {
@@ -1104,7 +1162,7 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
             owner = m_activeControl;
         }
 
-        if (owner && owner->KeyEvent(key, time)) {
+        if (owner && owner->KeyEvent(nav, time)) {
             /* Fires only when the key went to a row the pad is not on. */
             if (focused && owner != focused) {
                 static int s_stealRows;

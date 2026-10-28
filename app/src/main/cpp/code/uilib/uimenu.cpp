@@ -1683,7 +1683,7 @@ static void AdaptTouchTooltip(UIWidget *wid, const char *tooltip)
    label + control, and the control is one of the three widget classes the shipped
    data already styles.  A section opens a header plus the panel box behind its rows.
 
-   DESIGN.md carries the kept/deleted lists and the file:line that kills each one.
+   DESIGN-MENU-GRAMMAR.md part II carries the kept/deleted lists and the file:line that kills each one.
    Nothing here introduces a cvar: every row drives one the engine already registers,
    so the per-boot launcher override chain cannot re-pin it out from under itself. */
 
@@ -1744,31 +1744,30 @@ struct settingsGeom_s {
 #define SET_TAB_H   16.0f
 #define SET_TAB_GAP 1.0f
 
+/* The shipped pages' own row: every settings page runs a 16-tall row on a 20 band, top
+   inset 4 into its panel, end to end (menu_advancedvideo.urc rows 38 107/127/147/167/187
+   210 16 under the panel at 34 103, menu_video.urc 162 108/128/148/168/188, menu_audio.urc
+   107..207).  The stretch this rebuild shipped before it -- the band divided by the rows --
+   was the dead space between the labels the page was built to close. */
+#define SET_ROW_H    16.0f
+#define SET_VIDEO_PITCH 20.0f
+
 /* x 34..606 and the 4-unit label pad are the shipped pages' own content band
    (menu_gameoption.urc 34 103 320 104 / 359 103 247 104, labels at 38; menu_advancedvideo
-   34/251).  Nine bands take what the band leaves after the shipped headers, tails and
-   seams: (395 - 87 - 3*16 - 3*4 - 2*4) / 9.  A band's row fills it, so the panel carries
-   no loose strip and its tail is the shipped 4 under the last row.  The left column's own
-   control ends 12 before the right column's first label -- the shipped two-column pages'
-   seam (menu_gameoption.urc value 194..350 against label 362, menu_advancedvideo.urc
-   value+arrow 223..379 against label 391) -- so valx+valw pins that edge. */
-#define SET_VIDEO_PITCH \
-    (((395.0f - SET_PAGE_Y) - 3 * (SET_HEAD_H + SET_HEAD_GAP) - 3 * SET_BOX_PAD - 2 * SET_SECT_GAP) / 9.0f)
-
+   34/251).  The left column's own control ends 12 before the right column's first label --
+   the shipped two-column pages' seam (menu_gameoption.urc value 194..350 against label 362,
+   menu_advancedvideo.urc value+arrow 223..379 against label 391) -- so valx+valw pins that
+   edge. */
 static const settingsGeom_s s_videoCol[2] = {
-    {"VidL", 38.0f, 160.0f, 198.0f, 117.0f, 34.0f, 283.0f, SET_VIDEO_PITCH, SET_VIDEO_PITCH},
-    {"VidR", 327.0f, 160.0f, 487.0f, 115.0f, 323.0f, 283.0f, SET_VIDEO_PITCH, SET_VIDEO_PITCH}
+    {"VidL", 38.0f, 160.0f, 198.0f, 117.0f, 34.0f, 283.0f, SET_VIDEO_PITCH, SET_ROW_H},
+    {"VidR", 327.0f, 160.0f, 487.0f, 115.0f, 323.0f, 283.0f, SET_VIDEO_PITCH, SET_ROW_H}
 };
 
-/* The touch page's own band is the shipped controls page's content area, 46..372
-   (menu_controls.urc tabs 46 87 .. 372 120, the right column at 374).  No shipped page
-   carries it, so the rows take the band: six rows over the 395 - 103 - 16 - 4 = 272 its
-   header and tail leave, and the box ends on the video page's own bottom line. */
-#define SET_TOUCH_PITCH \
-    (((395.0f - (SET_TAB_Y + SET_TAB_H)) - (SET_HEAD_H + SET_HEAD_GAP) - SET_BOX_PAD) / 6.0f)
-
-static const settingsGeom_s s_touchCol = {
-    "Touch", 50.0f, 170.0f, 220.0f, 147.0f, 46.0f, 325.0f, SET_TOUCH_PITCH, SET_TOUCH_PITCH
+/* The controls page's own right column: x 374..606 (menu_controls.urc's right column opens
+   at 374, the shipped Player Preview at 423..546), the same label/value seam arithmetic the
+   video columns carry, and the same shipped row. */
+static const settingsGeom_s s_ctlCol = {
+    "Ctl", 374.0f, 104.0f, 478.0f, 124.0f, 374.0f, 232.0f, SET_VIDEO_PITCH, SET_ROW_H
 };
 
 #ifdef __ANDROID__
@@ -1939,10 +1938,9 @@ static UIWidget *SettingsCheckBox(
     AdaptCommand(wid, "horizontaljustify", "left", NULL);
     AdaptCommand(wid, "clicksound", "sound/misc/menu/click.wav", NULL);
 
-    /* the mark fills the row instead of sitting 16px inside a taller one, and it
+    /* the mark is retail's own 16 in the shipped page's own 16-tall row, and it
        starts at the cvar: a row built from a table has no state of its own */
     if (wid->isSubclassOf(UICheckBox)) {
-        ((UICheckBox *)wid)->setCheckScale(1.3f);
         ((UICheckBox *)wid)->UpdateData();
     }
 
@@ -2019,6 +2017,7 @@ static int SettingsBuildRows(
     int       section = 0;
     int       secrow  = 0;
     int       bands   = 0;
+    float     rowtop  = 0.0f;
 
     for (i = 0; i < count; i++) {
         const settingsRow_s  *row = &rows[i];
@@ -2057,22 +2056,21 @@ static int SettingsBuildRows(
         band = (ncols > 1) ? (secrow >> 1) : secrow;
         g    = &cols[col];
 
+        /* the row sits the shipped 4 inside its panel and the tail is the same 4 under it */
+        rowtop = paneltop + SET_BOX_PAD + band * g->pitch;
+
         Com_sprintf(name, sizeof(name), "%s_%s_label", g->prefix, row->cvar);
-        label = SettingsRowLabel(container, name, row->label, g->labelx,
-                                 paneltop + band * g->pitch, g->labelw, g->rowh);
+        label = SettingsRowLabel(container, name, row->label, g->labelx, rowtop, g->labelw, g->rowh);
         AdaptTouchTooltip(label, row->tooltip);
 
         Com_sprintf(name, sizeof(name), "%s_%s", g->prefix, row->cvar);
 
         if (!strcmp(row->widget, "SwitchBox")) {
-            ctl = SettingsSwitchBox(container, row, name, g->valx,
-                                    paneltop + band * g->pitch, g->valw, g->rowh);
+            ctl = SettingsSwitchBox(container, row, name, g->valx, rowtop, g->valw, g->rowh);
         } else if (!strcmp(row->widget, "CheckBox")) {
-            ctl = SettingsCheckBox(container, row, name, g->valx,
-                                   paneltop + band * g->pitch, g->valw, g->rowh);
+            ctl = SettingsCheckBox(container, row, name, g->valx, rowtop, g->valw, g->rowh);
         } else {
-            ctl = SettingsSlider(container, row, name, g->valx,
-                                 paneltop + band * g->pitch, g->valw, g->rowh);
+            ctl = SettingsSlider(container, row, name, g->valx, rowtop, g->valw, g->rowh);
         }
 
         AdaptTouchTooltip(ctl, row->tooltip);
@@ -2084,7 +2082,7 @@ static int SettingsBuildRows(
 
         labels[built] = label;
         ctls[built]   = ctl;
-        rowy[built]   = paneltop + band * g->pitch;
+        rowy[built]   = rowtop;
         rowcol[built] = col;
         built++;
         secrow++;
@@ -2229,7 +2227,7 @@ static void SettingsHideVideoRetail(UIWidget *container)
     UIVK_PROBE("settings", "op=hide menu='video' hidden=%d art=%d", hidden, art);
 }
 
-/* The kept rows.  DESIGN.md 2.1 carries the cvar each one drives and why it stayed.
+/* The kept rows.  DESIGN-MENU-GRAMMAR.md II.1 carries the cvar each one drives and why it stayed.
    Three sections of six: two columns a band, three bands a section, one band shape
    everywhere -- so no band ever has an empty cell to drift against. */
 static settingsRow_s s_videoRows[] = {
@@ -2399,13 +2397,90 @@ static void SettingsAdaptVideo(UIWidget *container)
 #ifdef __ANDROID__
 /* ---- controls ---- */
 
-/* The touch panel's rows.  The four bind tables keep retail's own rows and come back;
-   this panel is the fifth tab. */
-static settingsRow_s s_touchRows[] = {
-    {"Touch & Stick", "Touch Look Sensitivity", "cl_touchLook", "Slider",
+/* The one controls page.  EF1's own answer key carries every row a player touches on ONE
+   page -- the binds it rebinds, the look and mouse rows beside them -- and the shipped page
+   split the same rows over four tabs, so a rebind cost a tab hop and the touch and stick rows
+   had nowhere to live but a fifth.  This page is one page: the bind list retail shipped,
+   curated to the rows a handheld or controller player uses, beside the look, mouse, touch and
+   stick rows in the shipped label/value grammar.
+
+   The rows this page drops, with the reason each:
+     Weapon Group 1..6  (warpinv 1..6)   six rows a stick player never reaches for; the
+                                         weapon rows that stay are next/previous.
+     Center View        (centerview)     the mouse/pad look path recentres itself; the key
+                                         stays bound in the config.
+     Drop Rune          (+droprune)      an arcade-lane action; not part of the campaign's
+                                         control set.
+     Message / Team Message / Taunt 1 / Taunt 2 / Vote Yes / Vote No
+                                         chat and vote rows: no remote server and no team
+                                         in this port's campaign, so they are rows that
+                                         cannot do anything.
+
+   Everything else the four shipped tables carried is here, in the shipped order. */
+
+/* The one bind list.  The columns are the shipped page's own (menu_controls.urc bindcommand
+   115 / bindbutton 106 / bindbuttonalt 106 under an 18 header), the scrollbar is the shipped
+   page's own template, and the rows are the shipped addrow data minus the drop list above. */
+typedef struct {
+    const char *label;
+    const char *command;
+} ctlBindRow_s;
+
+static const ctlBindRow_s s_bindRows[] = {
+    {"$$MoveForward$$",      "+forward"},
+    {"$$MoveBackward$$",     "+back"},
+    {"$$TurnLeft$$",         "+left"},
+    {"$$TurnRight$$",        "+right"},
+    {"$$RunWalk$$",          "+speed"},
+    {"$$StrafeLeft$$",       "+moveleft"},
+    {"$$StrafeRight$$",      "+moveright"},
+    {"$$Jump$$",             "+moveup"},
+    {"$$LeanLeft$$",         "+leanleft"},
+    {"$$LeanRight$$",        "+leanright"},
+    {"$$Crouch$$",           "+movedown"},
+    {"$$UseWeaponAim$$",     "+aim"},
+    {"$$LookUp$$",           "+lookup"},
+    {"$$LookDown$$",         "+lookdown"},
+    {"$$Attack$$",           "+attackleft"},
+    {"$$AlternateAttack$$",  "+attackright"},
+    {"$$Use$$",              "+use"},
+    {"$$Holster$$",          "+holster"},
+    {"$$Reload$$",           "+reload"},
+    {"$$NextWeapon$$",       "nextinv"},
+    {"$$PreviousWeapon$$",   "previnv"},
+    {"$$Objectives$$",       "+objectives_score"},
+    {"$$NightVision$$",      "nightvision"},
+    {"$$PauseGame$$",        "pause"},
+    {"$$QuickSave$$",        "ui_quicksave"},
+    {"$$QuickLoad$$",        "ui_quickload"},
+};
+
+/* The bind list's own frame: the shipped tables' rect is 46 124 325 255, and with the tab
+   row gone the one list takes the whole content band the shipped pages open at 87. */
+#define CTL_LIST_X 46.0f
+#define CTL_LIST_Y 87.0f
+#define CTL_LIST_W 325.0f
+#define CTL_LIST_H 308.0f
+
+/* The look, mouse, touch and stick rows, in two sections under their own headers, in the
+   page's right column.  Ranges are EF1's own where EF1 carries the row (sensitivity 2..30,
+   ui_controls2.cpp); the rest are the landed touch panel's. */
+static settingsRow_s s_ctlRows[] = {
+    {"Look & Mouse", "Sensitivity", "sensitivity", "Slider",
+     {{0}}, 0, 2.0f, 30.0f, 1.0f, "float", 0, "How far a mouse movement turns you"},
+
+    {NULL, "Smooth Mouse", "m_filter", "CheckBox",
+     {{0}}, 0, 0, 0, 0, NULL, 0, "Averages the mouse over two frames"},
+
+    {NULL, "Invert Look", "m_pitch", "SwitchBox",
+     {{"$$Yes$$", "set m_pitch -0.022", "-0.022"},
+      {"$$No$$", "set m_pitch 0.022", "0.022"}},
+     2, 0, 0, 0, NULL, 0, "Pushing the mouse forward looks down, like a flight stick"},
+
+    {"Touch & Stick", "Touch Look", "cl_touchLook", "Slider",
      {{0}}, 0, 0.5f, 6.0f, 0.1f, "float", 0, "Look sensitivity on the touch pad"},
 
-    {NULL, "Joystick Deadzone", "joy_threshold", "Slider",
+    {NULL, "Deadzone", "joy_threshold", "Slider",
      {{0}}, 0, 0.05f, 0.35f, 0.01f, "float", 0, "How far the stick must move before it responds"},
 
     {NULL, "Turn Speed", "cl_yawspeed", "Slider",
@@ -2421,122 +2496,135 @@ static settingsRow_s s_touchRows[] = {
      {{0}}, 0, 0, 0, 0, NULL, 0, "Jump is plain and immediate"},
 };
 
-/* Five panels.  A tab's command enables its own and disables the rest; the shipped
-   tab buttons already carry the four bind tables' strings, which are rewritten here
-   so the touch panel joins the same dance. */
-static const char *const s_controlPanels[] = {
-    "WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList", NULL
+/* The shipped page's own furniture this one page retires, by name.  The four tab buttons
+   and the four tables are the split this page replaces; the preview pair is the column the
+   look/touch rows need, and its rows were the four tabs' filler. */
+static const char *const s_ctlRetired[] = {
+    "WeaponBind", "AttackLookBind", "MovementBind", "GameplayBind",
+    "WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList",
+    "ModelView",
+    /* the grab hint: the page's own showcommand used to hide it on open, and that
+       command is gone, so the build sets the state the bind row expects */
+    "PressKey", NULL
 };
 
-static const char *const s_controlTabs[] = {
-    "$$Weapons$$", "$$AttackLook$$", "$$Movement$$", "$$GamePlay$$", "Touch"
-};
-
-static const char *const s_controlTabNames[] = {
-    "WeaponBind", "AttackLookBind", "MovementBind", "GameplayBind", "TouchBind"
-};
-
-static void SettingsTabCommand(int index)
+static void SettingsRetireControls(UIWidget *container)
 {
-    str cmd;
-    int i;
+    Container<UIWidget *>& children = container->getChildren();
+    int                    i;
+    int                    n = 0;
 
-    for (i = 0; i < 4; i++) {
-        cmd += str("globalwidgetcommand ") + s_controlPanels[i]
-             + (i == index ? " enable;" : " disable;");
+    /* The page's own showcommand re-arms the Weapons table every time it opens, so the
+       split it serves goes with the tables: nothing the page shows needs to re-arm. */
+    container->ClearShowCommands();
+
+    for (i = 1; i <= children.NumObjects(); i++) {
+        UIWidget   *wid  = children.ObjectAt(i);
+        const char *name = wid->getName();
+        int         j;
+
+        if (!name || !name[0]) {
+            continue;
+        }
+
+        for (j = 0; s_ctlRetired[j]; j++) {
+            if (!strcmp(name, s_ctlRetired[j])) {
+                wid->Disable();
+                n++;
+                break;
+            }
+        }
     }
 
-    /* the touch panel is its header, its box and the twelve widgets between them;
-       every name here carries this page's prefix, because the named lookup walks
-       every menu in the tree and the first hit wins */
-    cmd += str(";globalwidgetcommand TouchHead1 ") + ((index == 4) ? "enable" : "disable");
-    cmd += str(";globalwidgetcommand TouchBox1 ") + ((index == 4) ? "enable" : "disable");
+    /* the preview's own two labels carry titles and no name the page can be addressed by */
+    for (i = 1; i <= children.NumObjects(); i++) {
+        UIWidget   *wid = children.ObjectAt(i);
+        const char *title;
 
-    for (i = 0; i < ( int )( sizeof( s_touchRows ) / sizeof( s_touchRows[0] ) ); i++) {
-        cmd += str(";globalwidgetcommand Touch_") + s_touchRows[i].cvar + "_label "
-             + ((index == 4) ? "enable" : "disable");
-        cmd += str(";globalwidgetcommand Touch_") + s_touchRows[i].cvar + " "
-             + ((index == 4) ? "enable" : "disable");
+        if (!wid->isSubclassOf(UILabel) || !wid->isEnabled()) {
+            continue;
+        }
+
+        title = wid->getTitle();
+
+        if (!title || !title[0]) {
+            continue;
+        }
+
+        if ((isStringResource("$$PlayerPreview$$") && !stricmp(title, getStringResource("$$PlayerPreview$$")))
+            || (isStringResource("$$Controls$$") && !stricmp(title, getStringResource("$$Controls$$")))) {
+            UIRect2D f = wid->getFrame();
+
+            if (f.pos.x > 400.0f && f.pos.y < 130.0f) {
+                wid->Disable();
+                n++;
+            }
+        }
     }
 
-    uWinMan.FindWidget(s_controlTabNames[index])->LinkCommand(cmd);
+    UIVK_PROBE("settings", "op=hide menu='controls' retired=%d", n);
+}
+
+/* The one bind list is built from the shipped page's own templates: the same column events
+   the .urc issues, so the cells come out styled exactly as retail's did.  The list carries
+   no norowselect, because a row the pad cannot stop on is a row the pad cannot rebind. */
+static void SettingsBuildBindList(UIWidget *container)
+{
+    UIWidget *list = AdaptWidget(container, "Table", "CtlBindList",
+                                 CTL_LIST_X, CTL_LIST_Y, CTL_LIST_W, CTL_LIST_H);
+    int       i;
+
+    if (!list) {
+        return;
+    }
+
+    AdaptCommand(list, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
+    AdaptCommand(list, "bgcolor", "0.000", "0.000", "0.000", "0.800", NULL);
+    AdaptCommand(list, "borderstyle", "OUTLINE_BORDER", NULL);
+    AdaptCommand(list, "bordercolor", "0.125", "0.157", "0.251", "1.000", NULL);
+    AdaptCommand(list, "headerheight", "18", NULL);
+    AdaptCommand(list, "itemheight", "16", NULL);
+    AdaptCommand(list, "allowusersort", "0", NULL);
+    AdaptCommand(list, "scrollbartemplate", "bindscroll", NULL);
+
+    AdaptCommand(list, "tablecolumn", "bindcommand", "115", "alpha", "bindHeader", "$$Command$$", NULL);
+    AdaptCommand(list, "tablecolumn", "bindbutton", "106", "alpha", "bindHeader", "$$Primary$$", NULL);
+    AdaptCommand(list, "tablecolumn", "bindbuttonalt", "106", "alpha", "bindHeader", "$$Alternate$$", NULL);
+
+    AdaptCommand(list, "hovercommand", "globalwidgetcommand tooltip_controls title \"$$PressEnterOrClickToChange$$\"", NULL);
+    AdaptCommand(list, "hoverexitcommand", "globalwidgetcommand tooltip_controls title \"\"", NULL);
+
+    for (i = 0; i < ( int )( sizeof( s_bindRows ) / sizeof( s_bindRows[0] ) ); i++) {
+        AdaptCommand(list, "addrow", s_bindRows[i].label, s_bindRows[i].command, s_bindRows[i].command, NULL);
+    }
+
+    UIVK_PROBE("settings", "op=bindlist rows=%d frame=%.0f,%.0f %.0fx%.0f",
+               ( int )( sizeof( s_bindRows ) / sizeof( s_bindRows[0] ) ),
+               ( double )CTL_LIST_X, ( double )CTL_LIST_Y, ( double )CTL_LIST_W, ( double )CTL_LIST_H);
 }
 
 static void SettingsAdaptControls(UIWidget *container)
 {
-    const settingsGeom_s touchCols[2] = {s_touchCol, s_touchCol};
-    UIWidget             *tab;
-    float                 bottom = 0.0f;
-    int                   i;
-    int                   built;
+    const settingsGeom_s ctlCols[2] = {s_ctlCol, s_ctlCol};
+    float                bottom = 0.0f;
+    int                  built;
 
     s_settingsTooltipBar = "tooltip_controls";
 
-    if (container->FindWidget("TouchBind")) {
+    if (container->FindWidget("CtlBindList")) {
         return;    // built once
     }
 
-    for (i = 0; i < 5; i++) {
-        if (i < 4) {
-            tab = uWinMan.FindWidget(s_controlTabNames[i]);
+    SettingsRetireControls(container);
+    SettingsBuildBindList(container);
 
-            if (!tab) {
-                continue;
-            }
+    /* every width the helper lays out comes from cols[1]; a one-column page hands the same
+       column twice, and the column opens on the shipped page's own right edge */
+    built = SettingsBuildRows(container, s_ctlRows,
+                              (int)(sizeof(s_ctlRows) / sizeof(s_ctlRows[0])),
+                              ctlCols, 1, SET_PAGE_Y, &bottom);
 
-            SettingsRect(tab, SET_TAB_X + i * (SET_TAB_W + SET_TAB_GAP), SET_TAB_Y,
-                         SET_TAB_W, SET_TAB_H);
-        } else {
-            tab = AdaptWidget(container, "Button", s_controlTabNames[i],
-                              SET_TAB_X + i * (SET_TAB_W + SET_TAB_GAP), SET_TAB_Y,
-                              SET_TAB_W, SET_TAB_H);
-            AdaptCommand(tab, "fgcolor", "0.680", "0.630", "0.340", "1.000", NULL);
-            AdaptCommand(tab, "bgcolor", "0.120", "0.150", "0.250", "1.000", NULL);
-            AdaptCommand(tab, "hoverfgcolor", SET_COL_ORANGE, "1.000", NULL);
-            AdaptCommand(tab, "hoverbgcolor", "0.199", "0.258", "0.380", "1.000", NULL);
-            AdaptCommand(tab, "armedfgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
-            AdaptCommand(tab, "armedbgcolor", SET_COL_PANEL, "1.000", NULL);
-            AdaptCommand(tab, "borderstyle", "3D_BORDER", NULL);
-            AdaptCommand(tab, "staypressed", NULL);
-            AdaptCommand(tab, "clicksound", "sound/misc/menu/click.wav", NULL);
-        }
-
-        tab->setTitle(s_controlTabs[i]);
-        SettingsTabCommand(i);
-    }
-
-    /* every width the helper lays out comes from cols[1]; a one-column page hands the
-       same column twice, and the header opens on the tab row's own bottom */
-    built = SettingsBuildRows(container, s_touchRows,
-                              (int)(sizeof(s_touchRows) / sizeof(s_touchRows[0])),
-                              touchCols, 1, SET_TAB_Y + SET_TAB_H, &bottom);
-
-    /* hidden until the touch tab takes them: the shipped page showcommand only knows
-       the four bind tables, so the default tab stays Weapons.  The header and the box
-       are created after the tab commands ran, so they owe the same hide here. */
-    static const char *const touchFrame[] = {"TouchHead1", "TouchBox1", NULL};
-
-    for (i = 0; touchFrame[i]; i++) {
-        UIWidget *wid = container->FindWidget(touchFrame[i]);
-
-        if (wid) {
-            wid->Disable();
-        }
-    }
-
-    for (i = 0; i < ( int )( sizeof( s_touchRows ) / sizeof( s_touchRows[0] ) ); i++) {
-        UIWidget *lbl = container->FindWidget(va("Touch_%s_label", s_touchRows[i].cvar));
-        UIWidget *ctl = container->FindWidget(va("Touch_%s", s_touchRows[i].cvar));
-
-        if (lbl) {
-            lbl->Disable();
-        }
-        if (ctl) {
-            ctl->Disable();
-        }
-    }
-
-    UIVK_PROBE("settings", "op=build menu='controls' tabs=5 rows=%d bottom=%.0f", built, bottom);
+    UIVK_PROBE("settings", "op=build menu='controls' rows=%d bottom=%.0f", built, bottom);
 }
 #endif /* __ANDROID__ */
 

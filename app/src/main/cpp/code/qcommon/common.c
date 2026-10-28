@@ -1637,6 +1637,31 @@ void Com_Init( char *commandLine ) {
 		Com_WriteConfigToFile( EF2_CONFIG_FILE );
 	}
 
+	/* No config row may leave the engine bindless: every gameplay button and every
+	   pad button is a lookup in the bind tables, and a config that carried its cvars
+	   and no binds boots with the mouse look alive and nothing else.  A config with
+	   any bind row at all is left exactly as it is; an empty table replays the same
+	   default rows the seed block carries, after the config has had its say and
+	   before the per-boot override slot, so an explicit unbind is still a state the
+	   next boot repairs and a launcher override still wins.
+
+	   The repair is deliberately not written back here.  The renderer's archived
+	   cvars are not registered yet, so a write now would replace the file with one
+	   that lost them; the rows live in the tables for this session and reach the
+	   file with the next archived write, and a boot without one replays them again. */
+#ifndef DEDICATED
+	if ( !Key_BindCount() )
+	{
+		Cbuf_AddText( EF2_DEFAULT_BIND_COMMANDS );
+		Cbuf_Execute( 0 );
+
+		if ( PROBE_On() ) {
+			Com_Printf( "[PROBE:input:binds] config carried no binds; replayed %d default rows\n",
+				EF2_ANDROID_DEFAULT_BIND_COUNT );
+		}
+	}
+#endif
+
 	/* The one exec slot after config.cfg and before the command line is
 	   re-applied: a file named here holds per-boot overrides that beat the
 	   config and lose only to an explicit +set.  LATCHed names bind here

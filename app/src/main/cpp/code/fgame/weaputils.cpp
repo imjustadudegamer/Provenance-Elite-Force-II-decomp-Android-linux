@@ -36,8 +36,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "earthquake.h"
 #include "trigger.h"
 #include "debuglines.h"
-#include "g_main.h"
-#include "mp_manager.hpp" 
+#include "g_main.h" 
 
 
 
@@ -1924,10 +1923,10 @@ float BulletAttack(
 
     ent = NULL;
 
+    // Two retail lines are deliberately not transcribed because they are MULTIPLAYER-only
     if (owner && owner->isSubclassOf(Player)) {
         player = (Player *)owner;
 
-        meansofdeath = player->changetMeansOfDeath((meansOfDeath_t)meansofdeath);
         damage = player->getDamageDone(damage, meansofdeath, false);
 
         player->shotFired();
@@ -1936,10 +1935,10 @@ float BulletAttack(
     for (i = 0; i < count; i++) {
         end = start + (dir * range) + (right * G_CRandom() * spread.x) + (up * G_CRandom() * spread.y);
 
-        if (multiplayerManager.inMultiplayer() && !multiplayerManager.fullCollision()) {
-            trace = G_Trace(start, vec_zero, vec_zero, end, owner, MASK_SHOT, false, "BulletAttack");
-        } else {
+        if (g_gametype->integer == GT_SINGLE_PLAYER) {
             trace = G_FullTrace(start, vec_zero, vec_zero, end, owner, MASK_SHOT, false, "BulletAttack");
+        } else {
+            trace = G_Trace(start, vec_zero, vec_zero, end, owner, MASK_SHOT, false, "BulletAttack");
         }
 
         if (gi.cvar("qa_probe", "0", 0)->integer) {

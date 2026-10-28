@@ -577,8 +577,19 @@ void CG_ImpactMark(
         }
     }
 
-    /* retail CG_ImpactMark fetches no lighting here: the four channels are one
-       255-scaled write and nothing else, so the decal's tint is the entity colour */
+    if (lighting) {
+        vec3_t vLight;
+        cgi.R_GetLightingForDecal(vLight, dir, origin);
+
+        info.colors[0] = (int)(red * vLight[0]);
+        info.colors[1] = (int)(green * vLight[1]);
+        info.colors[2] = (int)(blue * vLight[2]);
+    } else {
+        info.colors[0] = (int)(red * 255.0f);
+        info.colors[1] = (int)(green * 255.0f);
+        info.colors[2] = (int)(blue * 255.0f);
+    }
+
     if (fadeColour) {
         info.colors[0] = 0;
         info.colors[1] = 0;
