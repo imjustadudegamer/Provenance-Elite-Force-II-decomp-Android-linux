@@ -434,3 +434,18 @@ void LoadSaveGameManager::loadLastSaveGame(void)
         Cbuf_ExecuteText(EXEC_NOW, LSM_CMD_OKDIALOGTITLE);
     }
 }
+
+/* The server's save writer labels a slot from here and is compiled as C, so the
+   lookup crosses as a plain buffer fill. */
+extern "C" void LSM_DescriptiveLevelName(const char *mapName, char *out, int size)
+{
+    str description;
+
+    if (!out || size <= 0) {
+        return;
+    }
+
+    out[0] = 0;
+    GetDescriptiveLevelName(mapName, &description);
+    Q_strncpyz(out, description.c_str(), size);
+}

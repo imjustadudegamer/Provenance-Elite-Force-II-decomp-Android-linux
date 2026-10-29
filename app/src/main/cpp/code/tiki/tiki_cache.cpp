@@ -381,8 +381,10 @@ int TIKI_ReloadTiki(const char *name)
    (skeleton, channel set) pairs against retail's 128 and the actors spawning
    later read by bone index.  Drop the entries here, at the boundary retail
    frees its tikis, so the table holds the current level's live pairs again.
-   The survivors re-heal on first pose, which is retail's own first-use site. */
-static void TIKI_DropAnimBoneMappings(void)
+   The survivors re-heal on first pose, which is retail's own first-use site.
+   TIKI_FreeAll has no live caller in this port, so the load boundary that reaches
+   retail's teardown is CL_FlushMemory and the drop runs there too. */
+void TIKI_DropAllAnimBoneMappings(void)
 {
     dtiki_t **entry;
 
@@ -419,7 +421,7 @@ void TIKI_FreeAll()
     int           i;
     int           kept = 0;
 
-    TIKI_DropAnimBoneMappings();
+    TIKI_DropAllAnimBoneMappings();
 
     if (tikicache && TIKI_KeepLoaded()) {
         con_map_enum<pchar, dtiki_t *> en = *tikicache;

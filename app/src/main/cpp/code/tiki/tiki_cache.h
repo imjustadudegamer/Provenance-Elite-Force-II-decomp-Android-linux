@@ -64,6 +64,7 @@ extern "C" {
 
     int  TIKI_CacheAll(void);
     void TIKI_CacheAllInDir(const char *dir);
+    void TIKI_DropAllAnimBoneMappings(void);
     void         TIKI_FreeAll(void);
     void         TIKI_FreeLevelData(void);
     void        *TIKI_GetSkeletor(dtiki_t *tiki, int entnum);

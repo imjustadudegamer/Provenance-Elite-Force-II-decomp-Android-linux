@@ -788,11 +788,14 @@ void UIRowColumn::fitColumns(Event *ev)
     UIColumn *src;
     UIColumn *flex;
     UIWidget *tmpl;
+    float    *need;
     float     widest;
     float     want;
     float     delta;
+    float     spare;
     int       i;
     int       c;
+    int       cols;
 
     if (!m_autofitSrc || m_autofitSrc > m_columns.NumObjects()
         || !m_autofitFlex || m_autofitFlex > m_columns.NumObjects()) {
@@ -807,33 +810,83 @@ void UIRowColumn::fitColumns(Event *ev)
         return;
     }
 
-    widest = 0.0f;
-    for (i = 1; i <= m_rows.NumObjects(); i++) {
-        UIWidget *cell = m_rows.ObjectAt(i)->getWidget(m_autofitSrc);
-        float     w;
+    cols = m_columns.NumObjects();
+    need = new float[cols];
 
-        if (!cell) {
+    /* every visible column states its own requirement: the widest cell and its
+       own header, whichever reads wider, so no cell and no header truncates */
+    for (c = 1; c <= cols; c++) {
+        UIWidget *head = m_columns.ObjectAt(c)->headerWidget;
+
+        need[c - 1] = 0.0f;
+
+        if (m_columns.ObjectAt(c)->baseWidth <= 0.0f) {
             continue;
         }
 
-        w = tmpl->getFont()->getFloatWidth(cell->getData(), -1, qtrue) / uid.scaleRes[0];
-        if (w > widest) {
-            widest = w;
+        if (head && head->getFont() && head->getTitle() && head->getTitle()[0]) {
+            need[c - 1] = head->getFont()->getFloatWidth(head->getTitle(), -1, qtrue) / uid.scaleRes[0];
+        }
+
+        for (i = 1; i <= m_rows.NumObjects(); i++) {
+            UIWidget *cell = m_rows.ObjectAt(i)->getWidget(c);
+            float     w;
+
+            if (!cell) {
+                continue;
+            }
+
+            w = tmpl->getFont()->getFloatWidth(cell->getData(), -1, qtrue) / uid.scaleRes[0];
+            if (w > need[c - 1]) {
+                need[c - 1] = w;
+            }
+        }
+
+        need[c - 1] += 8.0f;
+    }
+
+    /* the columns outside the trade take what their content needs, paid out of
+       the flex column */
+    for (c = 1; c <= cols; c++) {
+        UIColumn *col = m_columns.ObjectAt(c);
+
+        if (col == src || col == flex || col->baseWidth <= 0.0f) {
+            continue;
+        }
+
+        delta = need[c - 1] - col->baseWidth;
+        if (delta > 0.0f) {
+            col->baseWidth += delta;
+            col->width = col->baseWidth * uid.scaleRes[0];
+            flex->baseWidth -= delta;
+            flex->width = flex->baseWidth * uid.scaleRes[0];
         }
     }
 
-    widest += 8.0f;
+    widest = need[m_autofitSrc - 1];
     want = (m_autofitMax > 0.0f && widest > m_autofitMax) ? m_autofitMax : widest;
     delta = want - src->baseWidth;
 
-    if (delta <= 0.0f) {
-        return;
+    /* the flex column never drops under what its own cells read */
+    spare = flex->baseWidth - need[m_autofitFlex - 1];
+    if (spare < 0.0f) {
+        spare = 0.0f;
     }
 
-    src->baseWidth  += delta;
-    src->width       = src->baseWidth * uid.scaleRes[0];
-    flex->baseWidth -= delta;
-    flex->width      = flex->baseWidth * uid.scaleRes[0];
+    if (delta > 0.0f) {
+        if (delta > spare) {
+            delta = spare;
+        }
+
+        if (delta > 0.0f) {
+            src->baseWidth += delta;
+            src->width = src->baseWidth * uid.scaleRes[0];
+            flex->baseWidth -= delta;
+            flex->width = flex->baseWidth * uid.scaleRes[0];
+        }
+    }
+
+    delete[] need;
 
     for (i = 1; i <= m_rows.NumObjects(); i++) {
         UIRow  *row = m_rows.ObjectAt(i);

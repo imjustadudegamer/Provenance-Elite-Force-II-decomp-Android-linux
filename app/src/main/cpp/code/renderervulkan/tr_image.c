@@ -2643,7 +2643,9 @@ qboolean R_ImageExists(const char* name) {
 /* retail R_CreateFogImage @0x000158E0: the image FinishShader's per-volume fog stage samples,
    256x32, white with an alpha ramp.  RB_CalcFogTexCoords emits only t=0.03125 (vertex outside
    the volume) and t=0.96875 (inside), so those two bands are the only texels ever read; the
-   in-fog band ramps with the fog depth on s, the same linear law retail's global-fog arm uses. */
+   in-fog band ramps with the fog depth on s, the same linear law retail's global-fog arm uses.
+   Retail writes a computed alpha to every row, so the field is continuous; the step this image
+   used to carry at the half-height row put a hard fog boundary under any t that straddled it. */
 #define	FOG_IMAGE_WIDTH		256
 #define	FOG_IMAGE_HEIGHT	32
 static void R_CreateFogImage( void ) {
@@ -2651,17 +2653,23 @@ static void R_CreateFogImage( void ) {
 	byte	data[FOG_IMAGE_HEIGHT][FOG_IMAGE_WIDTH][4];
 
 	for (y = 0; y < FOG_IMAGE_HEIGHT; y++) {
+		float row;
+
+		if (y < 2) {
+			row = 0.0f;
+		} else if (y < FOG_IMAGE_HEIGHT / 2) {
+			row = (float)(y - 1) / (float)(FOG_IMAGE_HEIGHT / 2 - 1);
+		} else {
+			row = 1.0f;
+		}
+
 		for (x = 0; x < FOG_IMAGE_WIDTH; x++) {
+			float d = (float)x / (float)(FOG_IMAGE_WIDTH - 1);
+
 			data[y][x][0] = 255;
 			data[y][x][1] = 255;
 			data[y][x][2] = 255;
-			if (y < FOG_IMAGE_HEIGHT / 2) {
-				data[y][x][3] = 0;
-			} else {
-				float d = (float)x / (float)(FOG_IMAGE_WIDTH - 1);
-
-				data[y][x][3] = (byte)(255.0f * d);
-			}
+			data[y][x][3] = (byte)(255.0f * d * row);
 		}
 	}
 	tr.fogImage = R_CreateImageOld("*fog", (byte *)data, FOG_IMAGE_WIDTH, FOG_IMAGE_HEIGHT,
