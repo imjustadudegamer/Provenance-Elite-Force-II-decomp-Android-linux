@@ -361,6 +361,10 @@ extern "C" {
         void (*UI_DisplayDialogConsole)(const char *dialogName, const char *dialogTextSoundName, int entnum);
         void (*Dialog_ResetConsole)(const char *consoleName);
         void (*UI_AddPrintString)(const char *text, float *pos, int width, float *color, const char *fontname);
+        /* The scan-target label the brackets name -- "Health Terminal" and its kin --
+           draws twice its authored size: cgame doubles the box it is laid out in and
+           the UI doubles the glyphs, so both sides move on this one number. */
+        #define CG_TARGET_TEXT_SCALE 2.0f
         void (*UI_PrintString)(const char *fontname, float x, float y, const char *text, float alpha);
         void (*UI_AddNotifyString)(const char *text);
         int (*UI_GetGlobalFontHeight)(void);

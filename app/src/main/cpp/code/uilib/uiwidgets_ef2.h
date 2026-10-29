@@ -85,6 +85,8 @@ protected:
     float         m_scrollItemHeight;       
     float         m_scrollItemHeightBase;   
     float         m_scrollHeaderHeight;     
+    /* the band a header takes out of the frame the bar has to span */
+    float         m_scrollBarHeaderOffset;
 
 public:
     CLASS_PROTOTYPE(UIScrollable);
@@ -103,6 +105,7 @@ public:
     float getScrollBarWidth(void) const;
 
     UIVertScroll *getScrollBar(void) const { return m_scrollBar; }
+    void          setScrollBarHeaderOffset(float offset);
     float         getItemHeight(void) const { return m_scrollItemHeight; }
     int           getTopItem(void) const { return m_topItem; }
     int           getBottomItem(void) const { return m_bottomItem; }

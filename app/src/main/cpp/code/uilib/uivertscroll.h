@@ -87,7 +87,7 @@ public:
     int  getNumItems(void) override;
     void setThumbColor(const UColor& thumb);
     void setSolidBorderColor(const UColor& col);
-    void InitFrameAlignRight(UIWidget *parent);
+    void InitFrameAlignRight(UIWidget *parent, float headerOffset = 0.0f);
     void FrameInitialized() override;
     void setScrollbarWidth(float w)
     {

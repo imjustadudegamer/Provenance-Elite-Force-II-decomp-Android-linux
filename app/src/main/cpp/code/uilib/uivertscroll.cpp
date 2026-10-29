@@ -436,16 +436,17 @@ void UIVertScroll::copyProperties(UIWidget& other)
 }
 
 
-void UIVertScroll::InitFrameAlignRight(UIWidget *parent)
+void UIVertScroll::InitFrameAlignRight(UIWidget *parent, float headerOffset)
 {
     UIRect2D frame, clientFrame;
 
     clientFrame = parent->getClientFrame();
-    /* the bar rides inside the parent's own border, not over it */
-    frame.pos.x       = clientFrame.pos.x + clientFrame.size.width - m_scrollbarWidth - 2.0f;
-    frame.pos.y       = 2.0f;
+    /* the bar spans the list frame, not the row band its parent owns: the header the
+       parent sits under is given back, and one unit clears the frame's own border */
+    frame.pos.x       = clientFrame.pos.x + clientFrame.size.width - m_scrollbarWidth - 1.0f;
+    frame.pos.y       = 1.0f - headerOffset;
     frame.size.width  = m_scrollbarWidth;
-    frame.size.height = clientFrame.size.height - 4.0f;
+    frame.size.height = clientFrame.size.height + headerOffset - 2.0f;
 
     if (!m_frameinitted) {
         InitFrame(parent, frame, -1, "tahoma-8");

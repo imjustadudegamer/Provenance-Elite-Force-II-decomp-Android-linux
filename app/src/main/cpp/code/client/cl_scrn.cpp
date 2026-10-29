@@ -602,6 +602,21 @@ void SCR_SimpleUpdateScreen( void ) {
 
 static qboolean scr_update_recursive;
 
+/* the renderer has read the shot, or the hold has run out: the screen is free again */
+static void SCR_SaveShotRelease( void ) {
+	cls.no_menus = qfalse;
+	cls.saveShotFrames = 0;
+	cls.saveShotCmd[0] = 0;
+	if ( cls.saveShotDrawModel >= 0.0f ) {
+		cvar_t *drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
+
+		if ( drawviewmodel ) {
+			Cvar_SetValue( "r_drawviewmodel", cls.saveShotDrawModel );
+		}
+		cls.saveShotDrawModel = -1.0f;
+	}
+}
+
 void SCR_ResetUpdateGuard( void ) {
 	scr_update_recursive = qfalse;
 }
@@ -621,11 +636,22 @@ void SCR_UpdateScreen( void ) {
 
 	CL_StartHunkUsers(qfalse);
 
-	/* The thumbnail is the world frame the player was looking at, so the request
-	   rides the frame the suppression is drawing: issued here it lands on the
-	   frame below, never on a loading screen, a menu, or a frame with no world
-	   in it -- the frames that follow an autosave across a sublevel edge. */
-	if ( cls.no_menus && cls.state == CA_ACTIVE && cls.saveShotCmd[0] ) {
+	/* The thumbnail is the world frame the player was looking at.  A save made from
+	   a page holds the request until a frame the world is drawing again, so the page
+	   keeps the screen for the whole write; the suppression and the clean viewmodel
+	   arm here with it, never ahead of it. */
+	if ( cls.saveShotCmd[0] && cls.state == CA_ACTIVE && !UI_MenuActive() ) {
+		cls.no_menus = qtrue;
+
+		if ( cls.saveShotDrawModel < 0.0f ) {
+			cvar_t *drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
+
+			if ( drawviewmodel ) {
+				cls.saveShotDrawModel = drawviewmodel->value;
+				Cvar_SetValue( "r_drawviewmodel", 0.0f );
+			}
+		}
+
 		Cbuf_ExecuteText( EXEC_NOW, cls.saveShotCmd );
 		cls.saveShotCmd[0] = 0;
 	}
@@ -638,31 +664,11 @@ void SCR_UpdateScreen( void ) {
 	   drawn in the world, not by the wall clock. */
 	if ( cls.no_menus ) {
 		if ( re.ScreenshotPending && !re.ScreenshotPending() ) {
-			cls.no_menus = qfalse;
-			cls.saveShotFrames = 0;
-			cls.saveShotCmd[0] = 0;
-			if ( cls.saveShotDrawModel >= 0.0f ) {
-				cvar_t *drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
-
-				if ( drawviewmodel ) {
-					Cvar_SetValue( "r_drawviewmodel", cls.saveShotDrawModel );
-				}
-				cls.saveShotDrawModel = -1.0f;
-			}
+			SCR_SaveShotRelease();
 		} else if ( cls.state != CA_ACTIVE ) {
 			cls.saveShotFrames = 0;
 		} else if ( ++cls.saveShotFrames > 600 ) {
-			cls.no_menus = qfalse;
-			cls.saveShotFrames = 0;
-			cls.saveShotCmd[0] = 0;
-			if ( cls.saveShotDrawModel >= 0.0f ) {
-				cvar_t *drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
-
-				if ( drawviewmodel ) {
-					Cvar_SetValue( "r_drawviewmodel", cls.saveShotDrawModel );
-				}
-				cls.saveShotDrawModel = -1.0f;
-			}
+			SCR_SaveShotRelease();
 		}
 	}
 

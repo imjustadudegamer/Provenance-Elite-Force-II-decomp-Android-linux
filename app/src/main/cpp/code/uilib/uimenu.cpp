@@ -2747,6 +2747,10 @@ static void SaveLoadRetireRetail(UIWidget *container, const char *tooltip, const
             continue;
         }
 
+        /* Disable alone does not hold: the update walk re-Enables any widget whose
+           shipped visibilityProperty still reads true, and the main-menu ship came
+           back through it to draw behind the rebuilt page */
+        wid->clearGameplayProperty();
         wid->Disable();
     }
 }
