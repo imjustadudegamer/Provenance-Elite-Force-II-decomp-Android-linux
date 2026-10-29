@@ -2640,35 +2640,6 @@ qboolean R_ImageExists(const char* name) {
     return qfalse;
 }
 
-/* retail R_CreateFogImage @0x000158E0: the image FinishShader's per-volume fog stage samples,
-   256x32, white with an alpha ramp.  RB_CalcFogTexCoords emits only t=0.03125 (vertex outside
-   the volume) and t=0.96875 (inside), so those two bands are the only texels ever read; the
-   in-fog band ramps with the fog depth on s, the same linear law retail's global-fog arm uses. */
-#define	FOG_IMAGE_WIDTH		256
-#define	FOG_IMAGE_HEIGHT	32
-static void R_CreateFogImage( void ) {
-	int		x, y;
-	byte	data[FOG_IMAGE_HEIGHT][FOG_IMAGE_WIDTH][4];
-
-	for (y = 0; y < FOG_IMAGE_HEIGHT; y++) {
-		for (x = 0; x < FOG_IMAGE_WIDTH; x++) {
-			data[y][x][0] = 255;
-			data[y][x][1] = 255;
-			data[y][x][2] = 255;
-			if (y < FOG_IMAGE_HEIGHT / 2) {
-				data[y][x][3] = 0;
-			} else {
-				float d = (float)x / (float)(FOG_IMAGE_WIDTH - 1);
-
-				data[y][x][3] = (byte)(255.0f * d);
-			}
-		}
-	}
-	tr.fogImage = R_CreateImageOld("*fog", (byte *)data, FOG_IMAGE_WIDTH, FOG_IMAGE_HEIGHT,
-								   0, 1, qfalse, qfalse, qtrue, qfalse, 0);
-	tr.fogImage->r_sequence = -1;
-}
-
 #define	DLIGHT_SIZE	32
 static void R_CreateDlightImage( void ) {
 	int		x,y;
@@ -2755,8 +2726,6 @@ void R_CreateBuiltinImages(void) {
 	tr.scratchImage->r_sequence = -1;
 
 	R_CreateDlightImage();
-
-	R_CreateFogImage();
 }
 
 void R_BuildGammaTables( void ) {

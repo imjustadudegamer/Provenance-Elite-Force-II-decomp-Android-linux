@@ -306,7 +306,10 @@ dtiki_t *TIKI_LoadTikiModel(dtikianim_t *tikianim, const char *name, size_t *def
     skelSurfaceGame_t *surf;
     int                surfOffset;
     qboolean           found;
+    int                tanNumTags;
     byte              *start_ptr, *max_ptr, *ptr;
+
+    tanNumTags = 0;
 
     temp_tiki = &temp.tiki;
 
@@ -319,7 +322,48 @@ dtiki_t *TIKI_LoadTikiModel(dtikianim_t *tikianim, const char *name, size_t *def
         tikianim->modelDataSize
     );
     if (!temp_tiki->numMeshes) {
-        return NULL;
+        /* retail TIKI_FillTIKIStructure @0x000F86F0: the .tan-only path takes num_tags
+           from the first animation and refuses the tiki if another one disagrees. */
+        if (!tikianim->num_anims || !tikianim->tanMesh || !tikianim->m_aliases) {
+            return NULL;
+        }
+
+        for (i = 0; i < tikianim->num_anims; i++) {
+            skelHeaderGame_t *sm;
+            int               animTags;
+
+            if (tikianim->tanMesh[i] < 0) {
+                TIKI_Error(
+                    "TIKI_FillTIKIStructure: tried to load non-TAN animation '%s' for model '%s'.\n",
+                    tikianim->animdefs[i]->alias,
+                    name
+                );
+                return NULL;
+            }
+
+            sm = TIKI_GetSkel(tikianim->tanMesh[i]);
+            if (!sm || sm->numBones < 1) {
+                TIKI_Error(
+                    "TIKI_FillTIKIStructure: animation '%s' has no tag table for model '%s'.\n",
+                    tikianim->animdefs[i]->alias,
+                    name
+                );
+                return NULL;
+            }
+
+            animTags = sm->numBones - 1;
+
+            if (i == 0) {
+                tanNumTags = animTags;
+            } else if (animTags != tanNumTags) {
+                TIKI_Error(
+                    "TIKI_FillTIKIStructure: tikianim %s has different number of tags in %s, skipping.\n",
+                    skelcache[tikianim->tanMesh[i]].path,
+                    name
+                );
+                return NULL;
+            }
+        }
     }
 
     if (tikianim->tanMesh && temp_tiki->numMeshes > 0) {
@@ -406,6 +450,9 @@ dtiki_t *TIKI_LoadTikiModel(dtikianim_t *tikianim, const char *name, size_t *def
     tiki->num_surfaces = temp_tiki->num_surfaces;
     tiki->numMeshes    = temp_tiki->numMeshes;
     tiki->radius       = temp_tiki->radius;
+    if (!temp_tiki->numMeshes) {
+        tiki->num_tags = tanNumTags;
+    }
     Q_strncpyz(tiki->name, name, sizeof(tiki->name));
     // Retail TIKI_InitTiki @0x000F6F50 sets skelIndex to -1 here; it is NOT the
     tiki->skelIndex = -1;
