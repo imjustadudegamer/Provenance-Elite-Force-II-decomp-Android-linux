@@ -2637,6 +2637,263 @@ static void SettingsAdaptControls(UIWidget *container)
 #endif /* __ANDROID__ */
 
 
+/* ---- the save and load pages ----
+
+   Retail's two slot pages: a 536-wide list of 16-tall rows that stops at 378 of the
+   396 the band holds, 16-tall text buttons under it, and an activation that always
+   detours through a confirmation page.  This pass retires the retail widgets and
+   builds the page the settings pages are built by.
+
+   Band 87..396 (the shipped pages' own content band, the settings pages' too).  The
+   list takes the left 384, the screenshot and the three actions the right 142.
+   FILL-THE-BAND LAW, the settings pages': itemheight = (309 - 18 - 4) / 8 = 35, and
+   the remainder is the tail under the list.  Columns 372 wide inside the scrollbar:
+   name floor 100 / cap 200, time 56, date 216 -- the name column self-widens and the
+   date column pays for it, the settings pages' own label/value discipline. */
+
+#define SV_ROWS        8
+#define SV_HEAD_H      18.0f
+#define SV_BOX_PAD     4.0f
+#define SV_BAR_W       12.0f
+#define SV_LIST_X      46.0f
+#define SV_LIST_W      384.0f
+#define SV_SIDE_X      440.0f
+#define SV_SIDE_W      142.0f
+#define SV_NAME_FLOOR  100.0f
+#define SV_NAME_MAX    200.0f
+#define SV_TIME_W      56.0f
+#define SV_BTN_H       50.0f
+#define SV_BTN_GAP     6.0f
+
+/* the shipped pages' own palette and faces (menu_loadgame.urc 143/155, the settings law) */
+#define SV_COL_NAVY    "0.122", "0.157", "0.251"
+#define SV_COL_PANEL   "0.278", "0.365", "0.510"
+#define SV_COL_ORANGE  "0.953", "0.667", "0.271"
+#define SV_FONT_ROW    "serpentinemedium-12"
+#define SV_FONT_HEAD   "serpentinemedium-14"
+
+/* background.inc and mp-background.inc, the pages' own LCARS art */
+static const char *const s_svKeepNames[] = {
+    "main_bkg_01", "main_bkg_02", "main_bkg_03",
+    "main_bkg_04", "main_bkg_05", "main_bkg_06",
+    "mp_bkg_01", "mp_bkg_02", "mp_bkg_03",
+    "mp_bkg_04", "mp_bkg_05", "mp_bkg_06",
+    "logo", NULL
+};
+
+static qboolean SaveLoadNameKeeps(const char *name)
+{
+    int j;
+
+    if (!name || !name[0]) {
+        return qfalse;
+    }
+
+    for (j = 0; s_svKeepNames[j]; j++) {
+        if (!strcmp(name, s_svKeepNames[j])) {
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
+/* The page's own title is kept by title, both ways, the video page's rule: the shipped
+   data carries the $$token$$ and getTitle hands back the translated string. */
+static qboolean SaveLoadTitleKeeps(UIWidget *wid, const char *token)
+{
+    const char *title = wid->getTitle();
+    const char *want[2];
+    int         i;
+
+    if (!title || !title[0]) {
+        return qfalse;
+    }
+
+    want[0] = token;
+    want[1] = isStringResource(token) ? getStringResource(token) : NULL;
+
+    for (i = 0; i < 2; i++) {
+        if (want[i] && !stricmp(title, want[i])) {
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
+static void SaveLoadRetireRetail(UIWidget *container, const char *tooltip, const char *titleToken)
+{
+    Container<UIWidget *>& children = container->getChildren();
+    int                    i;
+
+    for (i = 1; i <= children.NumObjects(); i++) {
+        UIWidget *wid = children.ObjectAt(i);
+
+        if (SaveLoadNameKeeps(wid->getName())) {
+            continue;
+        }
+
+        if (tooltip && !strcmp(wid->getName(), tooltip)) {
+            continue;
+        }
+
+        if (SaveLoadTitleKeeps(wid, titleToken)) {
+            continue;
+        }
+
+        wid->Disable();
+    }
+}
+
+static UIWidget *SaveLoadTemplate(
+    UIWidget *container, const char *name, const char *font, const char *justify, qboolean header
+)
+{
+    UIWidget *wid = AdaptWidget(container, "Label", name, 0.0f, 0.0f, 100.0f, SV_HEAD_H);
+
+    AdaptCommand(wid, "font", font, NULL);
+    AdaptCommand(wid, "horizontaljustify", justify, NULL);
+
+    if (header) {
+        AdaptCommand(wid, "title", "", NULL);
+        AdaptCommand(wid, "fgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
+        AdaptCommand(wid, "bgcolor", SV_COL_PANEL, "1.000", NULL);
+        AdaptCommand(wid, "borderstyle", "3D_BORDER", NULL);
+        AdaptCommand(wid, "verticaljustify", "center", NULL);
+    } else {
+        /* the shipped list's own cell palette (menu_loadgame.urc 143-148) */
+        AdaptCommand(wid, "fgcolor", SV_COL_PANEL, "1.000", NULL);
+        AdaptCommand(wid, "hoverfgcolor", SV_COL_PANEL, "1.000", NULL);
+        AdaptCommand(wid, "hoverbgcolor", SV_COL_ORANGE, "0.500", NULL);
+        AdaptCommand(wid, "selectedfgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
+        AdaptCommand(wid, "selectedbgcolor", SV_COL_PANEL, "0.750", NULL);
+        AdaptCommand(wid, "clicksound", "sound/misc/menu/click.wav", NULL);
+    }
+
+    return wid;
+}
+
+static UIWidget *SaveLoadButton(
+    UIWidget *container, const char *name, const char *title, const char *command,
+    float x, float y, const char *font
+)
+{
+    UIWidget *wid = AdaptWidget(container, "Button", name, x, y, SV_SIDE_W, SV_BTN_H);
+
+    AdaptCommand(wid, "title", title, NULL);
+    AdaptCommand(wid, "font", font, NULL);
+    AdaptCommand(wid, "fgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
+    AdaptCommand(wid, "bgcolor", SV_COL_NAVY, "1.000", NULL);
+    AdaptCommand(wid, "borderstyle", "3D_BORDER", NULL);
+    AdaptCommand(wid, "hovershader", "menu/generic/button-hover", NULL);
+    AdaptCommand(wid, "pressedshader", "menu/generic/button-press", NULL);
+    AdaptCommand(wid, "clicksound", "sound/misc/menu/click.wav", NULL);
+    AdaptCommand(wid, "stuffcommand", command, NULL);
+
+    return wid;
+}
+
+static void SaveLoadAdapt(UIWidget *container, qboolean isSave)
+{
+    const char *listname = isSave ? "SaveSlotList" : "LoadSlotList";
+    const char *tooltip  = isSave ? "tooltip_savegame" : "tooltip_loadgame";
+    const char *titleTok = isSave ? "$$SaveGame$$" : "$$LoadGame$$";
+    const char *action   = isSave ? "ui_savegame" : "ui_loadgame";
+    char        cell[64];
+    char        head[64];
+    char        scroll[64];
+    char        shotname[64];
+    UIWidget   *list;
+    UIWidget   *shot;
+    UIWidget   *shothead;
+    float       itemh;
+    float       datew;
+    float       y;
+
+    if (container->FindWidget(listname)) {
+        return;    // built once
+    }
+
+    Com_sprintf(cell, sizeof(cell), "%sCell", listname);
+    Com_sprintf(head, sizeof(head), "%sHead", listname);
+    Com_sprintf(scroll, sizeof(scroll), "%sScroll", isSave ? "save" : "load");
+    Com_sprintf(shotname, sizeof(shotname), "%sShotHead", listname);
+
+    SaveLoadRetireRetail(container, tooltip, titleTok);
+
+    SaveLoadTemplate(container, cell, SV_FONT_ROW, "left", qfalse);
+    SaveLoadTemplate(container, head, SV_FONT_HEAD, "left", qtrue);
+
+    itemh = ((SET_PAGE_BOTTOM - SET_PAGE_Y) - SV_HEAD_H - SV_BOX_PAD) / (float)SV_ROWS;
+    itemh = (float)(int)itemh;
+
+    list = AdaptWidget(container, "Table", listname, SV_LIST_X, SET_PAGE_Y, SV_LIST_W,
+                       SV_HEAD_H + itemh * SV_ROWS + SV_BOX_PAD);
+
+    AdaptCommand(list, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
+    AdaptCommand(list, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
+    AdaptCommand(list, "borderstyle", "OUTLINE_BORDER", NULL);
+    AdaptCommand(list, "bordercolor", SV_COL_ORANGE, "1.000", NULL);
+    AdaptCommand(list, "headerheight", "18", NULL);
+    AdaptCommand(list, "itemheight", va("%d", (int)itemh), NULL);
+    AdaptCommand(list, "allowusersort", "0", NULL);
+    AdaptCommand(list, "scrollbartemplate", scroll, NULL);
+    AdaptCommand(list, "scrollbar_width", "12", NULL);
+
+    datew = SV_LIST_W - SV_BAR_W - SV_NAME_FLOOR - SV_TIME_W;
+
+    AdaptCommand(list, "tablecolumn", cell, va("%g", SV_NAME_FLOOR), "alpha", head, "$$Name$$", NULL);
+    AdaptCommand(list, "tablecolumn", cell, va("%g", SV_TIME_W), "alpha", head, "$$ElapsedTime$$", NULL);
+    AdaptCommand(list, "tablecolumn", cell, va("%g", datew), "alpha", head, "$$DateTime$$", NULL);
+    AdaptCommand(list, "tablecolumn", cell, "0", "alpha", head, "FileName", NULL);
+    AdaptCommand(list, "tablecolumn", cell, "0", "int", head, "Timestamp", NULL);
+
+    /* the tap and the activate key are the same action, and neither one asks first */
+    AdaptCommand(list, "selectedcommand", "ui_getsavegameinfo", "4", NULL);
+    AdaptCommand(list, "activatecommand", action, NULL);
+    AdaptCommand(list, "tapactivate", NULL);
+    AdaptCommand(list, "autofit", "1", "3", va("%g", SV_NAME_MAX), NULL);
+
+    AdaptCommand(list, "hovercommand",
+                 va("globalwidgetcommand %s title \"$$SelectSaveGame$$\"", tooltip), NULL);
+    AdaptCommand(list, "hoverexitcommand", va("globalwidgetcommand %s title \"\"", tooltip), NULL);
+
+    /* the page fills its own list on show: retail's showcommand, the new list's name */
+    container->ClearShowCommands();
+    AdaptCommand(container, "showcommand",
+                 va("globalwidgetcommand %s deleteallitems;ui_setloadsavegamelist %s %d;"
+                    "ui_getsavegames\n",
+                    listname, listname, isSave ? 1 : 0),
+                 NULL);
+
+    /* the screenshot, the shipped panel one size up from retail's 124x92 */
+    shothead = AdaptWidget(container, "Label", shotname, SV_SIDE_X, SET_PAGE_Y, SV_SIDE_W, SV_HEAD_H);
+    AdaptCommand(shothead, "font", SV_FONT_HEAD, NULL);
+    AdaptCommand(shothead, "title", "$$Screenshot$$", NULL);
+    AdaptCommand(shothead, "fgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
+    AdaptCommand(shothead, "bgcolor", SV_COL_PANEL, "1.000", NULL);
+    AdaptCommand(shothead, "borderstyle", "3D_BORDER", NULL);
+
+    shot = AdaptWidget(container, "Label", va("%sShot", listname), SV_SIDE_X, SET_PAGE_Y + SV_HEAD_H,
+                       SV_SIDE_W, 106.0f);
+    AdaptCommand(shot, "bgcolor", "0.000", "0.000", "0.000", "0.500", NULL);
+    AdaptCommand(shot, "borderstyle", "OUTLINE_BORDER", NULL);
+    AdaptCommand(shot, "bordercolor", "0.125", "0.157", "0.251", "1.000", NULL);
+    AdaptCommand(shot, "shader", "sysimg/2d/default-map-screen.tga", NULL);
+    AdaptCommand(shot, "shaderProperty", "LoadSaveGame", "ScreenShotShader", NULL);
+
+    y = SET_PAGE_Y + SV_HEAD_H + 106.0f + 8.0f;
+
+    SaveLoadButton(container, va("%sAction", listname), isSave ? "$$Save$$" : "$$Load$$", action,
+                   SV_SIDE_X, y, SV_FONT_HEAD);
+    SaveLoadButton(container, va("%sDelete", listname), "$$Delete$$", "showmenu deletesavegame",
+                   SV_SIDE_X, y + SV_BTN_H + SV_BTN_GAP, SV_FONT_ROW);
+    SaveLoadButton(container, va("%sBack", listname), "$$Back$$", "popmenu 1", SV_SIDE_X,
+                   y + 2 * (SV_BTN_H + SV_BTN_GAP), SV_FONT_ROW);
+}
+
+
 /* Serves the one row the Android menus trim by frame alone: a pulldown the shipped
    data leaves with no name, no cvar and no title. */
 #ifdef __ANDROID__
@@ -2712,5 +2969,10 @@ void UI_AdaptSettingsMenus(void)
             SettingsAdaptControls(container);
         }
 #endif
+        else if (!stricmp(container->getName(), "loadgame")) {
+            SaveLoadAdapt(container, qfalse);
+        } else if (!stricmp(container->getName(), "savegame")) {
+            SaveLoadAdapt(container, qtrue);
+        }
     }
 }

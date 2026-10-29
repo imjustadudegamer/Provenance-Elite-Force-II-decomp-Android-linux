@@ -1181,12 +1181,8 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
     }
 
 
-    if (s1->number == cg.snap->ps.clientNum && s1->parent == ENTITYNUM_NONE && !bThirdPerson) {
-        for (i = 0; i < MAX_MODEL_SURFACES; i++) {
-            model.surfaces[i] |= MDL_SURFACE_NODRAW;
-        }
-    }
-
+    /* RF_THIRD_PERSON above is retail's own whole first-person suppression: the
+       surface flag hid the corpse the death camera has to show. */
     if (!(s1->renderfx & RF_DONTDRAW) && (model.renderfx & RF_SHADOW) && cg_shadows->integer
         && !CG_SimpleDistanceCull(model.origin, Square(1400))
         && !CG_FrustumCullSphere(model.origin, model.radius + 64)) {
@@ -1195,28 +1191,6 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
 
     cent->bFootOnGround_Left  = qtrue;
     cent->bFootOnGround_Right = qtrue;
-
-
-    if (s1->number == cg.snap->ps.clientNum) {
-        if ((!cg.bFPSModelLastFrame && !bThirdPerson) || (cg.bFPSModelLastFrame && bThirdPerson)) {
-            cg.bFPSModelLastFrame = !bThirdPerson;
-        }
-
-
-        if (!bThirdPerson) {
-
-
-            if (cg.pLastPlayerWorldModel < 0 || cg.pLastPlayerWorldModel != tiki) {
-                cg.hPlayerFPSModelHandle = cgs.model_draw[modelindex];
-                cg.pPlayerFPSModel       = tiki;
-                cg.pLastPlayerWorldModel = tiki;
-            }
-
-            for (i = 0; i < MAX_MODEL_SURFACES; i++) {
-                model.surfaces[i] |= MDL_SURFACE_NODRAW;
-            }
-        }
-    }
 
     model.reType = RT_MODEL;
 

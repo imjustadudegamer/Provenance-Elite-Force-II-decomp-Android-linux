@@ -159,6 +159,25 @@ Event EV_RowColumn_DeleteAllItems
     "deleteallitems", EV_DEFAULT, NULL, NULL, "Delete all the items from the widget"
 );
 
+Event EV_RowColumn_TapActivate
+(
+    "tapactivate", EV_DEFAULT, NULL, NULL,
+    "Makes one row press the list's own activatecommand"
+);
+
+Event EV_RowColumn_Autofit
+(
+    "autofit", EV_DEFAULT, "iif",
+    "srcColumn flexColumn maxWidth",
+    "Widens srcColumn to its longest cell and takes the width back from flexColumn"
+);
+
+Event EV_RowColumn_FitColumns
+(
+    "columnfit", EV_DEFAULT, NULL, NULL,
+    "Runs the autofit pass over the rows the list carries now"
+);
+
 CLASS_DECLARATION(UIScrollable, UIRowColumn, NULL) {
     {&W_LeftMouseDown,               &UIRowColumn::Pressed                   },
     {&W_MouseEntered,                &UIRowColumn::MouseEntered              },
@@ -185,6 +204,9 @@ CLASS_DECLARATION(UIScrollable, UIRowColumn, NULL) {
     {&EV_RowColumn_NoRowSelect,      &UIRowColumn::noRowSelect               },
     {&EV_RowColumn_NoRowHighlight,   &UIRowColumn::noRowHighlight            },
     {&EV_RowColumn_DeleteAllItems,   &UIRowColumn::DeleteItems               },
+    {&EV_RowColumn_TapActivate,      &UIRowColumn::tapActivate               },
+    {&EV_RowColumn_Autofit,          &UIRowColumn::autofit                   },
+    {&EV_RowColumn_FitColumns,       &UIRowColumn::fitColumns                },
     {NULL,                           NULL                                    }
 };
 
@@ -485,6 +507,10 @@ UIRowColumn::UIRowColumn()
     m_lastClickTime                = 0;
     m_noRowSelect                  = false;
     m_noRowHighlight               = false;
+    m_tapActivate                  = false;
+    m_autofitSrc                   = 0;
+    m_autofitFlex                  = 0;
+    m_autofitMax                   = 0.0f;
     m_sortType                     = 2;
     m_backgroundRowColorRequested  = false;
     m_foregroundRowColorRequested  = false;

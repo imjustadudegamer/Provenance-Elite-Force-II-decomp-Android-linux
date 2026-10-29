@@ -484,6 +484,18 @@ static void ComputeColors( shaderStage_t *pStage )
 
 				if (backEnd.currentSphere->TessFunction) {
 					backEnd.currentSphere->TessFunction((unsigned char*)tess.svars.colors);
+				} else {
+					/* no sphere pass lit this entity (a brush model has no tiki), so the
+					   array stays whatever the last batch left -- the unlit answer is the
+					   identity fill the world arm above already gives */
+					byte amb = (byte)(tr.identityLight * 255.0f);
+
+					for (i = 0; i < tess.numVertexes; i++) {
+						tess.svars.colors[i][0] = amb;
+						tess.svars.colors[i][1] = amb;
+						tess.svars.colors[i][2] = amb;
+						tess.svars.colors[i][3] = 0xFF;
+					}
 				}
 				break;
 			}

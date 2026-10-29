@@ -333,6 +333,27 @@ void UIRowColumn::Pressed(Event *ev)
         return;
     }
 
+    /* A page that owns its rows takes the press as the activation: select, then the
+       arm retail reserves for the double click. */
+    if (m_tapActivate) {
+        if (m_selectedRow != row) {
+            if (m_selectedRow) {
+                m_selectedRow->setSelected(false);
+            }
+            m_selectedRow = row;
+            row->setSelected(true);
+        }
+
+        executeCommand(WIDGET_STATE_SELECTED, row);
+        executeColumnCommand(WIDGET_STATE_SELECTED, row);
+        executeCommand(WIDGET_STATE_ARMED, row);
+        executeColumnCommand(WIDGET_STATE_ARMED, row);
+
+        UIWidget::Pressed(ev);
+        setHoverState();
+        return;
+    }
+
     float x = ev->GetFloat(1);
     float y = ev->GetFloat(2);
 
@@ -747,6 +768,90 @@ void UIRowColumn::noRowSelect(Event *ev)
     m_noRowSelect = true;
 }
 
+void UIRowColumn::tapActivate(Event *ev)
+{
+    m_tapActivate = true;
+}
+
+/* The label column of a list self-widens the way the settings pages' does: measure the
+   longest cell in the row face, widen its column, and take the width back from the
+   column beside it so the row total never moves. */
+void UIRowColumn::autofit(Event *ev)
+{
+    m_autofitSrc  = ev->GetInteger(1);
+    m_autofitFlex = ev->GetInteger(2);
+    m_autofitMax  = ev->GetFloat(3);
+}
+
+void UIRowColumn::fitColumns(Event *ev)
+{
+    UIColumn *src;
+    UIColumn *flex;
+    UIWidget *tmpl;
+    float     widest;
+    float     want;
+    float     delta;
+    int       i;
+    int       c;
+
+    if (!m_autofitSrc || m_autofitSrc > m_columns.NumObjects()
+        || !m_autofitFlex || m_autofitFlex > m_columns.NumObjects()) {
+        return;
+    }
+
+    src  = m_columns.ObjectAt(m_autofitSrc);
+    flex = m_columns.ObjectAt(m_autofitFlex);
+    tmpl = src->headerWidget;
+
+    if (!tmpl || !tmpl->getFont()) {
+        return;
+    }
+
+    widest = 0.0f;
+    for (i = 1; i <= m_rows.NumObjects(); i++) {
+        UIWidget *cell = m_rows.ObjectAt(i)->getWidget(m_autofitSrc);
+        float     w;
+
+        if (!cell) {
+            continue;
+        }
+
+        w = tmpl->getFont()->getFloatWidth(cell->getData(), -1, qtrue) / uid.scaleRes[0];
+        if (w > widest) {
+            widest = w;
+        }
+    }
+
+    widest += 8.0f;
+    want = (m_autofitMax > 0.0f && widest > m_autofitMax) ? m_autofitMax : widest;
+    delta = want - src->baseWidth;
+
+    if (delta <= 0.0f) {
+        return;
+    }
+
+    src->baseWidth  += delta;
+    src->width       = src->baseWidth * uid.scaleRes[0];
+    flex->baseWidth -= delta;
+    flex->width      = flex->baseWidth * uid.scaleRes[0];
+
+    for (i = 1; i <= m_rows.NumObjects(); i++) {
+        UIRow  *row = m_rows.ObjectAt(i);
+        float   x   = 0.0f;
+
+        for (c = 1; c <= m_columns.NumObjects(); c++) {
+            UIWidget *cell = row->getWidget(c);
+
+            if (!cell) {
+                continue;
+            }
+
+            cell->InitFrame(row, x, 0.0f, m_columns.ObjectAt(c)->width, getItemHeight(), -1, "tahoma-8");
+            x += m_columns.ObjectAt(c)->width;
+        }
+    }
+}
+
 void UIRowColumn::sortType(Event *ev)
 {
     str type = ev->GetString(1);
@@ -1066,6 +1171,9 @@ CLASS_DECLARATION(UIWidget, UITable, NULL) {
     {&EV_RowColumn_NoRowHighlight,     &UITable::noRowHighlight      },
     {&EV_RowColumn_DeselectAll,        &UITable::deselectAll         },
     {&EV_RowColumn_NoRowSelect,        &UITable::noRowSelect         },
+    {&EV_RowColumn_TapActivate,        &UITable::tapActivate         },
+    {&EV_RowColumn_Autofit,            &UITable::autofit             },
+    {&EV_RowColumn_FitColumns,         &UITable::fitColumns          },
     {NULL,                             NULL                          }
 };
 
@@ -1241,6 +1349,27 @@ void UITable::noRowSelect(Event *ev)
 {
     if (m_pRowColumn) {
         m_pRowColumn->noRowSelect(ev);
+    }
+}
+
+void UITable::tapActivate(Event *ev)
+{
+    if (m_pRowColumn) {
+        m_pRowColumn->tapActivate(ev);
+    }
+}
+
+void UITable::autofit(Event *ev)
+{
+    if (m_pRowColumn) {
+        m_pRowColumn->autofit(ev);
+    }
+}
+
+void UITable::fitColumns(Event *ev)
+{
+    if (m_pRowColumn) {
+        m_pRowColumn->fitColumns(ev);
     }
 }
 

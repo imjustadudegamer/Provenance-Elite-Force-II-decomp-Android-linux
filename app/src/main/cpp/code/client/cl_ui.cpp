@@ -3324,7 +3324,8 @@ static void UI_GetSavedGames_f(void)
         time_t t       = (time_t)entries[i].time;
 
         Com_sprintf(elapsed, sizeof(elapsed), "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60);
-        strftime(date, sizeof(date), "%a %b %d %Y %H:%M:%S", localtime(&t));
+        /* the row reads at a glance; the year is the one part a save slot never needs */
+        strftime(date, sizeof(date), "%b %d %H:%M", localtime(&t));
 
         UI_SaveSanitize(comment, entries[i].comment, sizeof(comment));
         UI_SaveSanitize(name, entries[i].saveName, sizeof(name));
@@ -3347,6 +3348,9 @@ static void UI_GetSavedGames_f(void)
     if (count > 0) {
         Cbuf_AddText(va("globalwidgetcommand %s selectrow %d\n", ui_saveListWidget, ui_saveListIsSave ? 2 : 1));
     }
+
+    /* the name column is measured against the rows this fill just added */
+    Cbuf_AddText(va("globalwidgetcommand %s columnfit\n", ui_saveListWidget));
 }
 
 static savegamestruct_t *UI_FindSaveGame(const char *name)
@@ -3448,6 +3452,13 @@ static void UI_SaveGame_f(void)
         if (!ui_selectedSaveName[0]) {
             return;
         }
+        Cbuf_AddText(va("savegame %s\n", ui_selectedSaveName));
+        return;
+    }
+
+    /* no argument means the slot the page has selected, and an empty slot saves under
+       its own name: the row's own comment is what the list shows, not the file name */
+    if (ui_selectedSaveName[0]) {
         Cbuf_AddText(va("savegame %s\n", ui_selectedSaveName));
         return;
     }

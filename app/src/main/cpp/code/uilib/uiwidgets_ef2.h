@@ -126,6 +126,10 @@ protected:
     UColor m_backgroundRowColor;
     UColor m_foregroundRowColor;
     bool   m_noFocus;
+    bool   m_tapActivate;
+    int    m_autofitSrc;
+    int    m_autofitFlex;
+    float  m_autofitMax;
     str            m_commands[WIDGET_STATE_COUNT];
     Container<int> m_commandArgs[WIDGET_STATE_COUNT];
 
@@ -172,6 +176,9 @@ public:
     void activate(Event *ev);
     void noRowHighlight(Event *ev);
     void noRowSelect(Event *ev);
+    void tapActivate(Event *ev);
+    void autofit(Event *ev);
+    void fitColumns(Event *ev);
     void sortType(Event *ev);
     void setBackgroundRowColor(Event *ev);
     void setForegroundRowColor(Event *ev);
@@ -227,6 +234,9 @@ public:
     void deleteItems(Event *ev);
     void noRowSelect(Event *ev);
     void noRowHighlight(Event *ev);
+    void tapActivate(Event *ev);
+    void autofit(Event *ev);
+    void fitColumns(Event *ev);
     void setScrollbarTemplate(Event *ev);
     void setScrollbarWidth(Event *ev);
     void setItemHeight(Event *ev);
@@ -288,6 +298,9 @@ extern Event EV_RowColumn_DeselectAll;
 extern Event EV_RowColumn_DeleteAllItems;
 extern Event EV_RowColumn_NoRowSelect;
 extern Event EV_RowColumn_NoRowHighlight;
+extern Event EV_RowColumn_TapActivate;
+extern Event EV_RowColumn_Autofit;
+extern Event EV_RowColumn_FitColumns;
 extern Event EV_RowColumn_SortColumn;
 extern Event EV_RowColumn_Activate;
 extern Event EV_Scrollable_ItemHeight;
