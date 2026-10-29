@@ -2647,9 +2647,10 @@ static void SettingsAdaptControls(UIWidget *container)
    Band 87..396 (the shipped pages' own content band, the settings pages' too).  The
    list takes the left 384, the screenshot and the three actions the right 142.
    FILL-THE-BAND LAW, the settings pages': itemheight = (309 - 18 - 4) / 8 = 35, and
-   the remainder is the tail under the list.  Columns 372 wide inside the scrollbar:
-   name floor 100 / cap 200, time 56, date 216 -- the name column self-widens and the
-   date column pays for it, the settings pages' own label/value discipline. */
+   the remainder is the tail under the list.  A slot row holds two lines of the level
+   name, so the faces step down one and each column states its own requirement at its
+   own face, the name taking what is left; UITable::LayoutHeader frames the headers
+   from the same widths. */
 
 #define SV_ROWS        8
 #define SV_HEAD_H      18.0f
@@ -2659,18 +2660,22 @@ static void SettingsAdaptControls(UIWidget *container)
 #define SV_LIST_W      384.0f
 #define SV_SIDE_X      440.0f
 #define SV_SIDE_W      142.0f
-#define SV_NAME_FLOOR  100.0f
+#define SV_TIME_W      118.0f
+#define SV_DATE_W      113.0f
+#define SV_NAME_MIN    86.0f
 #define SV_NAME_MAX    200.0f
-#define SV_TIME_W      92.0f
 #define SV_BTN_H       50.0f
 #define SV_BTN_GAP     6.0f
 
-/* the shipped pages' own palette and faces (menu_loadgame.urc 143/155, the settings law) */
+/* the shipped pages' own palette and faces (menu_loadgame.urc 143/155), one step
+   down from the settings law because the row band holds two lines; the three
+   actions are 50-tall thumb targets and keep the settings law's own pair. */
 #define SV_COL_NAVY    "0.122", "0.157", "0.251"
 #define SV_COL_PANEL   "0.278", "0.365", "0.510"
 #define SV_COL_ORANGE  "0.953", "0.667", "0.271"
-#define SV_FONT_ROW    "serpentinemedium-12"
-#define SV_FONT_HEAD   "serpentinemedium-14"
+#define SV_FONT_ROW    "serpentinemedium-10"
+#define SV_FONT_HEAD   "serpentinemedium-12"
+#define SV_FONT_BTN    "serpentinemedium-14"
 
 /* background.inc and mp-background.inc, the pages' own LCARS art */
 static const char *const s_svKeepNames[] = {
@@ -2809,6 +2814,7 @@ static void SaveLoadAdapt(UIWidget *container, qboolean isSave)
     UIWidget   *shothead;
     float       itemh;
     float       datew;
+    float       namew;
     float       y;
 
     if (container->FindWidget(listname)) {
@@ -2841,9 +2847,17 @@ static void SaveLoadAdapt(UIWidget *container, qboolean isSave)
     AdaptCommand(list, "scrollbartemplate", scroll, NULL);
     AdaptCommand(list, "scrollbar_width", "12", NULL);
 
-    datew = SV_LIST_W - SV_BAR_W - SV_NAME_FLOOR - SV_TIME_W;
+    /* one geometry: the two columns that state their own requirement take it, the name
+       takes what is left and never drops under the widest word the data puts in it */
+    datew = SV_DATE_W;
+    namew = SV_LIST_W - SV_BAR_W - SV_TIME_W - datew;
 
-    AdaptCommand(list, "tablecolumn", cell, va("%g", SV_NAME_FLOOR), "alpha", head, "$$Name$$", NULL);
+    if (namew < SV_NAME_MIN) {
+        datew -= SV_NAME_MIN - namew;
+        namew = SV_NAME_MIN;
+    }
+
+    AdaptCommand(list, "tablecolumn", cell, va("%g", namew), "alpha", head, "$$Name$$", NULL);
     AdaptCommand(list, "tablecolumn", cell, va("%g", SV_TIME_W), "alpha", head, "$$ElapsedTime$$", NULL);
     AdaptCommand(list, "tablecolumn", cell, va("%g", datew), "alpha", head, "$$DateTime$$", NULL);
     AdaptCommand(list, "tablecolumn", cell, "0", "alpha", head, "FileName", NULL);
@@ -2886,11 +2900,11 @@ static void SaveLoadAdapt(UIWidget *container, qboolean isSave)
     y = SET_PAGE_Y + SV_HEAD_H + 106.0f + 8.0f;
 
     SaveLoadButton(container, va("%sAction", listname), isSave ? "$$Save$$" : "$$Load$$", action,
-                   SV_SIDE_X, y, SV_FONT_HEAD);
+                   SV_SIDE_X, y, SV_FONT_BTN);
     SaveLoadButton(container, va("%sDelete", listname), "$$Delete$$", "showmenu deletesavegame",
-                   SV_SIDE_X, y + SV_BTN_H + SV_BTN_GAP, SV_FONT_ROW);
+                   SV_SIDE_X, y + SV_BTN_H + SV_BTN_GAP, SV_FONT_HEAD);
     SaveLoadButton(container, va("%sBack", listname), "$$Back$$", "popmenu 1", SV_SIDE_X,
-                   y + 2 * (SV_BTN_H + SV_BTN_GAP), SV_FONT_ROW);
+                   y + 2 * (SV_BTN_H + SV_BTN_GAP), SV_FONT_HEAD);
 }
 
 

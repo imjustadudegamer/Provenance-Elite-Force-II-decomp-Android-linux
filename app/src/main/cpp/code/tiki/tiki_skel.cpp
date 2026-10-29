@@ -1626,7 +1626,10 @@ int TIKI_Morph_NumForName(dtiki_t *tiki, const char *name)
 }
 
 
-#define TIKI_MAX_BONE_MAPPINGS  128
+/* Counted over the shipped bytes: the worst single level wants 140 of these,
+   one session 218, all 2093 tikis 508.  The sibling tables key on a skeleton
+   pair, 89 in the whole game, and stay where retail left them. */
+#define TIKI_MAX_BONE_MAPPINGS  1024
 #define TIKI_MAX_MORPH_MAPPINGS 128
 
 typedef struct boneMapping_s {
@@ -2012,7 +2015,9 @@ animBoneMapping_t *TIKI_FindAnimBoneMapping(skelAnimHeader_t *anim, int checksum
             }
         }
 
-        if (remaining-- == 0) {
+        /* retail TIKI_FindAnimBoneMapping @0x000F5AC0 stops once the live count is
+           spent, so the scan runs only as long as the table is occupied */
+        if (--remaining <= 0) {
             break;
         }
     }

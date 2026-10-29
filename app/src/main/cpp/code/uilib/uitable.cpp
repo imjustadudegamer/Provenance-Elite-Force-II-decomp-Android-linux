@@ -50,7 +50,7 @@ void UIRowColumn::addColumn(Event *ev)
     addColumn(templateName, width, dataType);
 }
 
-void UIRowColumn::addColumn(const str& templateName, int width, const str& dataType)
+void UIRowColumn::addColumn(const str& templateName, int width, const str& dataType, UIWidget *headTemplate)
 {
     UIColumn *col = new UIColumn;
 
@@ -59,6 +59,10 @@ void UIRowColumn::addColumn(const str& templateName, int width, const str& dataT
     if (col->headerWidget) {
         col->headerWidget->Disable();
     }
+
+    /* the cell the column header is drawn by carries the title and the face, so the
+       fit pass measures this one and not the cell template it copies */
+    col->headWidget = headTemplate;
 
     col->width     = (float)width;
     col->baseWidth = (float)width;
@@ -816,7 +820,7 @@ void UIRowColumn::fitColumns(Event *ev)
     /* every visible column states its own requirement: the widest cell and its
        own header, whichever reads wider, so no cell and no header truncates */
     for (c = 1; c <= cols; c++) {
-        UIWidget *head = m_columns.ObjectAt(c)->headerWidget;
+        UIWidget *head = m_columns.ObjectAt(c)->headWidget;
 
         need[c - 1] = 0.0f;
 
@@ -902,6 +906,30 @@ void UIRowColumn::fitColumns(Event *ev)
             cell->InitFrame(row, x, 0.0f, m_columns.ObjectAt(c)->width, getItemHeight(), -1, "tahoma-8");
             x += m_columns.ObjectAt(c)->width;
         }
+    }
+}
+
+/* One geometry for the table: the header cells are framed from the same column
+   widths the body cells are, so a width a fit pass hands out moves both. */
+void UITable::LayoutHeader(void)
+{
+    float x = 0.0f;
+    int   c;
+
+    if (!m_pRowColumn || m_headerWidgets.NumObjects() != m_pRowColumn->getNumColumns()) {
+        return;
+    }
+
+    for (c = 1; c <= m_headerWidgets.NumObjects(); c++) {
+        UIWidget       *wid = m_headerWidgets.ObjectAt(c);
+        const UIColumn *col = m_pRowColumn->getColumn(c);
+
+        if (!wid || !col) {
+            continue;
+        }
+
+        wid->InitFrame(this, x, 0.0f, col->width, (float)m_headerHeight, -1, "tahoma-8");
+        x += col->width;
     }
 }
 
@@ -1279,7 +1307,7 @@ void UITable::addTableColumn(Event *ev)
     }
 
     if (m_pRowColumn) {
-        m_pRowColumn->addColumn(templateName, width, datatype);
+        m_pRowColumn->addColumn(templateName, width, datatype, widget);
     }
 }
 
@@ -1292,6 +1320,8 @@ void UITable::setHeaderHeight(Event *ev)
         m_pRowColumn->onSizeChanged();
         LayoutRowColumn();
     }
+
+    LayoutHeader();
 }
 
 void UITable::allowUserSort(Event *ev)
@@ -1423,6 +1453,7 @@ void UITable::fitColumns(Event *ev)
 {
     if (m_pRowColumn) {
         m_pRowColumn->fitColumns(ev);
+        LayoutHeader();
     }
 }
 
@@ -1478,6 +1509,10 @@ void UITable::ChangeResolution(void)
 {
     UIWidget::ChangeResolution();
     m_headerHeight = (int)((float)m_headerHeightBase * uid.scaleRes[1]);
+
+    /* the columns come back scaled, so the header cells are re-issued from them
+       rather than left on a frame a fit pass may have written in client pixels */
+    LayoutHeader();
 }
 
 void UITable::Pressed(Event *ev)
