@@ -1705,6 +1705,10 @@ struct settingsRow_s {
 #define SET_COL_PANEL   "0.278", "0.365", "0.510"
 #define SET_COL_ORANGE  "0.953", "0.667", "0.271"
 
+/* both shipped faces (menu_video.urc 86, tri_keypad.urc); one step up from the -10 built rows inherited */
+#define SET_FONT_ROW  "serpentinemedium-12"
+#define SET_FONT_HEAD "serpentinemedium-14"
+
 /* One row is label + value, and the value is the same widget frame whichever of the
    three it is, so the checkbox mark, the pulldown value and the slider thumb all start
    on the same x.  The page is two such columns under a full-width section header. */
@@ -1720,22 +1724,19 @@ struct settingsGeom_s {
     float rowh;
 };
 
-/* The shipped pages' own seams: every settings header is 16 tall and its panel starts on
-   the header's own bottom edge, a panel ends 4 under its tallest column and 4 above the
-   next header (menu_video.urc 157 87 326 16 / 157 103 326 105, menu_gameoption.urc
-   34 87 321 16 / 34 103 320 104, menu_advancedvideo.urc 34 87 215 16 / 34 103 214 144). */
-#define SET_HEAD_H   16.0f
+/* FILL-THE-BAND LAW, this port's own: pitch = the page's band budget over its own bands,
+   floored, remainder in the last panel's tail.  Budget = 87..396 less the headers, tails
+   and gaps: video (309-3x18-3x4-2x4)/9 -> 26, controls (309-2x18-2x4-1x4)/9 -> 29.
+   Row = pitch - 4, so video lands 395 with 22-tall rows, controls 396 with 25. */
+#define SET_HEAD_H   18.0f
 #define SET_HEAD_GAP 0.0f
-
-/* the shipped box tail under its tallest column, and the gap it leaves before the next
-   header (menu_advancedvideo.urc: box 103..247, next header 251) */
 #define SET_BOX_PAD  4.0f
 #define SET_SECT_GAP 4.0f
 
-/* the page's content band: the tab row ends at 87 and every shipped page opens its first
-   header there (menu_video.urc 157 87 326 16), and the densest one (menu_advancedvideo.urc
-   34 267 567 129) bottoms out at 396, seven above the description bar at 403 */
-#define SET_PAGE_Y 87.0f
+/* the content band: the tab row ends at 87, 396 is 8 above the description bar at 403 */
+#define SET_PAGE_Y      87.0f
+#define SET_PAGE_BOTTOM 396.0f
+#define SET_ROW_GAP     4.0f
 
 /* the controls page's own five-slot tab row (menu_controls.urc tabs 46 87, 16 tall) */
 #define SET_TAB_X   46.0f
@@ -1744,13 +1745,10 @@ struct settingsGeom_s {
 #define SET_TAB_H   16.0f
 #define SET_TAB_GAP 1.0f
 
-/* The shipped pages' own row: every settings page runs a 16-tall row on a 20 band, top
-   inset 4 into its panel, end to end (menu_advancedvideo.urc rows 38 107/127/147/167/187
-   210 16 under the panel at 34 103, menu_video.urc 162 108/128/148/168/188, menu_audio.urc
-   107..207).  The stretch this rebuild shipped before it -- the band divided by the rows --
-   was the dead space between the labels the page was built to close. */
-#define SET_ROW_H    16.0f
-#define SET_VIDEO_PITCH 20.0f
+#define SET_VIDEO_PITCH 26.0f
+#define SET_CTL_PITCH   29.0f
+#define SET_VIDEO_ROW_H (SET_VIDEO_PITCH - SET_ROW_GAP)
+#define SET_CTL_ROW_H   (SET_CTL_PITCH - SET_ROW_GAP)
 
 /* x 34..606 and the 4-unit label pad are the shipped pages' own content band
    (menu_gameoption.urc 34 103 320 104 / 359 103 247 104, labels at 38; menu_advancedvideo
@@ -1759,15 +1757,15 @@ struct settingsGeom_s {
    menu_advancedvideo.urc value+arrow 223..379 against label 391) -- so valx+valw pins that
    edge. */
 static const settingsGeom_s s_videoCol[2] = {
-    {"VidL", 38.0f, 160.0f, 198.0f, 117.0f, 34.0f, 283.0f, SET_VIDEO_PITCH, SET_ROW_H},
-    {"VidR", 327.0f, 160.0f, 487.0f, 115.0f, 323.0f, 283.0f, SET_VIDEO_PITCH, SET_ROW_H}
+    {"VidL", 38.0f, 160.0f, 198.0f, 117.0f, 34.0f, 283.0f, SET_VIDEO_PITCH, SET_VIDEO_ROW_H},
+    {"VidR", 327.0f, 160.0f, 487.0f, 115.0f, 323.0f, 283.0f, SET_VIDEO_PITCH, SET_VIDEO_ROW_H}
 };
 
 /* The controls page's own right column: x 374..606 (menu_controls.urc's right column opens
    at 374, the shipped Player Preview at 423..546), the same label/value seam arithmetic the
-   video columns carry, and the same shipped row. */
+   video columns carry, and the column's own band. */
 static const settingsGeom_s s_ctlCol = {
-    "Ctl", 374.0f, 104.0f, 478.0f, 124.0f, 374.0f, 232.0f, SET_VIDEO_PITCH, SET_ROW_H
+    "Ctl", 374.0f, 104.0f, 478.0f, 124.0f, 374.0f, 232.0f, SET_CTL_PITCH, SET_CTL_ROW_H
 };
 
 #ifdef __ANDROID__
@@ -1853,6 +1851,7 @@ static UIWidget *SettingsHeader(
 {
     UIWidget *wid = AdaptWidget(container, "Label", name, x, y, w, SET_HEAD_H);
 
+    AdaptCommand(wid, "font", SET_FONT_HEAD, NULL);
     AdaptCommand(wid, "title", title, NULL);
     AdaptCommand(wid, "fgcolor", "1.000", "1.000", "1.000", "1.000", NULL);
     AdaptCommand(wid, "bgcolor", SET_COL_PANEL, "1.000", NULL);
@@ -1880,6 +1879,7 @@ static UIWidget *SettingsRowLabel(
 {
     UIWidget *wid = AdaptWidget(container, "Label", name, x, y, w, h);
 
+    AdaptCommand(wid, "font", SET_FONT_ROW, NULL);
     AdaptCommand(wid, "title", title, NULL);
     AdaptCommand(wid, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
     AdaptCommand(wid, "bgcolor", SET_COL_NAVY, "1.000", NULL);
@@ -1896,6 +1896,7 @@ static UIWidget *SettingsSwitchBox(
     int       i;
 
     AdaptCommand(wid, "linkcvar", row->cvar, NULL);
+    AdaptCommand(wid, "font", SET_FONT_ROW, NULL);
     AdaptCommand(wid, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
     AdaptCommand(wid, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
     AdaptCommand(wid, "borderstyle", "OUTLINE_BORDER", NULL);
@@ -1924,6 +1925,7 @@ static UIWidget *SettingsCheckBox(
 
     AdaptCommand(wid, "title", "", NULL);    /* the row label carries the text */
     AdaptCommand(wid, "linkcvar", row->cvar, NULL);
+    AdaptCommand(wid, "font", SET_FONT_ROW, NULL);
     AdaptCommand(wid, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
     AdaptCommand(wid, "bgcolor", "0.50", "0.50", "0.50", "0.00", NULL);
     AdaptCommand(wid, "shadercolor", SET_COL_ORANGE, "1.000", NULL);
@@ -1969,6 +1971,7 @@ static UIWidget *SettingsSlider(
     wid = AdaptWidget(container, "Slider", name, x, y, w, h);
 
     AdaptCommand(wid, "linkcvar", row->cvar, NULL);
+    AdaptCommand(wid, "font", SET_FONT_ROW, NULL);
     AdaptCommand(wid, "fgcolor", "1.00", "1.00", "1.00", "1.00", NULL);
     AdaptCommand(wid, "bgcolor", "0.000", "0.000", "0.000", "0.750", NULL);
     AdaptCommand(wid, "borderstyle", "OUTLINE_BORDER", NULL);
@@ -2496,13 +2499,15 @@ static settingsRow_s s_ctlRows[] = {
      {{0}}, 0, 0, 0, 0, NULL, 0, "Jump is plain and immediate"},
 };
 
-/* The shipped page's own furniture this one page retires, by name.  The four tab buttons
-   and the four tables are the split this page replaces; the preview pair is the column the
-   look/touch rows need, and its rows were the four tabs' filler. */
+/* Furniture this one page retires, by name.  The last five are the page's own column and
+   scrollbar templates: pure copy sources (copyProperties carries neither m_enabled nor
+   m_visible), and they ship with no rect, so they live at UILayout's placeholder 10 10
+   100 64 -- bindHeader paints an opaque box there and the buttons take a click. */
 static const char *const s_ctlRetired[] = {
     "WeaponBind", "AttackLookBind", "MovementBind", "GameplayBind",
     "WeaponBindList", "AttackLookBindList", "MovementBindList", "GameplayBindList",
     "ModelView",
+    "bindHeader", "bindcommand", "bindbutton", "bindbuttonalt", "bindscroll",
     /* the grab hint: the page's own showcommand used to hide it on open, and that
        command is gone, so the build sets the state the bind row expects */
     "PressKey", NULL
@@ -2586,6 +2591,9 @@ static void SettingsBuildBindList(UIWidget *container)
     AdaptCommand(list, "itemheight", "16", NULL);
     AdaptCommand(list, "allowusersort", "0", NULL);
     AdaptCommand(list, "scrollbartemplate", "bindscroll", NULL);
+    /* the shipped template ships scrollbar_width 0, so the bar was born zero-width;
+       12 is the shipped save/load lists' own bar (menu_savegame.urc:165) */
+    AdaptCommand(list, "scrollbar_width", "12", NULL);
 
     AdaptCommand(list, "tablecolumn", "bindcommand", "115", "alpha", "bindHeader", "$$Command$$", NULL);
     AdaptCommand(list, "tablecolumn", "bindbutton", "106", "alpha", "bindHeader", "$$Primary$$", NULL);

@@ -1412,7 +1412,9 @@ static void UI_Update_Impl(void)
             }
         }
 
-        if (cl.snap.ps.missionStatus & 1) {
+        /* server_loading: the bit is still the dying level's, and re-showing re-runs
+           the failure screen's level_ai 0 into the level loading now. */
+        if (!server_loading && (cl.snap.ps.missionStatus & 1)) {
             UI_ShowMissionFailed(true);
             UI_UI_STATE_END();
             UI_ZONE(UI_FAM_UI, UI_UIZ_views, uWinMan.UpdateViews());
