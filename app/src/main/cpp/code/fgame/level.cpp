@@ -964,6 +964,16 @@ void Level::Archive(Archiver& arc)
 
     arc.ArchiveBoolean(&cinematic);
     arc.ArchiveBoolean(&ai_on);
+    if (arc.Loading() && !ai_on) {
+        /* Level::Init (retail @0x00238950, level+364=1) owns this invariant: a level begins
+           with AI on.  level_ai (0) is a cinematic-only gate whose exit is the level ending,
+           and a save taken in that window carries the stale 0 -- restoring it blinds every
+           actor's perception for the whole loaded session.  Per-actor ai_off is untouched
+           (LevelAIOn needs _levelAIOff, which only the level gate sets).  Same shape as the
+           intermission_advancetime guard below: the slot stays, the value re-arms. */
+        ai_on = qtrue;
+        SAVE_PROBE("airearm", "level %s carried ai_on=0, re-armed\n", mapname.c_str());
+    }
 
     arc.ArchiveBoolean(&mission_failed);
     arc.ArchiveBoolean(&died_already);
