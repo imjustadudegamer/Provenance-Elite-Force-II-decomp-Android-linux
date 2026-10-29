@@ -222,6 +222,7 @@ UIColumn::UIColumn()
     width         = 0.0f;
     baseWidth     = 0.0f;
     headerWidget  = NULL;
+    headWidget    = NULL;
     sortDirection = 1;
     dataType      = 0;
 }

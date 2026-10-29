@@ -20,6 +20,7 @@ public:
     float          width;
     float          baseWidth;
     UIWidget      *headerWidget;
+    UIWidget      *headWidget;
     int            sortDirection;
     int            dataType;
     str            commands[WIDGET_STATE_COUNT];
@@ -140,7 +141,7 @@ public:
     ~UIRowColumn();
 
     void addColumn(Event *ev);
-    void addColumn(const str& templateName, int width, const str& dataType);
+    void addColumn(const str& templateName, int width, const str& dataType, UIWidget *headTemplate = NULL);
     void addRowWidgets(Event *ev);
     void addRow(Event *ev);
     void addItem(Event *ev);
@@ -251,6 +252,10 @@ public:
     qboolean KeyEvent(int key, unsigned int time) override;
 
     UIRowColumn *getRowColumn(void) const { return m_pRowColumn; }
+
+    /* frames every header cell at the widths the body cells are framed at, so the
+       two read one geometry even after a fit pass has moved a column */
+    void LayoutHeader(void);
 
 private:
     void LayoutRowColumn(void);

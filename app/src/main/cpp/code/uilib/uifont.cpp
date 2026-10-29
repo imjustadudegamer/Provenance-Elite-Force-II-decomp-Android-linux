@@ -230,6 +230,7 @@ void UIFont::PrintJustified(
 {
     float    newx, newy;
     float    textheight;
+    float    wrapwidth;
     UIRect2D sizedRect;
 
     UI_COUNT(UI_FAM_UI, UI_UC_text, 1);
@@ -238,7 +239,23 @@ void UIFont::PrintJustified(
     // off_228198 load at 0x5FE5C feeds one fmuls at 0x5FFE0, never a division).
     sizedRect = rect;
 
-    textheight = (float)getHeight(text, -1, virtualScreen != 0);
+    /* the left/right inset the justification applies to the drawn edge is part of the
+       band, so the text is wrapped to the band it really draws in, not to the frame */
+    const float hbias    = 2.0f * (virtualScreen ? uid.scaleRes[0] : 1.0f);
+    const bool  insetted = (horz != FONT_JUSTHORZ_CENTER);
+
+    wrapwidth = sizedRect.size.width - (insetted ? hbias : 0.0f);
+    if (wrapwidth < 0.0f) {
+        wrapwidth = 0.0f;
+    }
+
+    Container<str> lines;
+    UIFont_WrapLines(this, text, wrapwidth, virtualScreen != 0, lines);
+
+    /* the band is justified against the lines it will actually hold: centring on a
+       one-line height put the first line where it belonged and sent every wrapped
+       line out under the box, which is where the clipped row fragments came from */
+    textheight = (float)lines.NumObjects() * (float)getHeight(virtualScreen != 0);
 
     switch (vert) {
     case FONT_JUSTVERT_TOP:
@@ -254,11 +271,6 @@ void UIFont::PrintJustified(
         newy = 0;
         break;
     }
-
-    Container<str> lines;
-    UIFont_WrapLines(this, text, sizedRect.size.width, virtualScreen != 0, lines);
-
-    const float hbias = 2.0f * (virtualScreen ? uid.scaleRes[0] : 1.0f);
 
     for (int li = 1; li <= lines.NumObjects(); li++) {
         const char *string  = lines.ObjectAt(li).c_str();

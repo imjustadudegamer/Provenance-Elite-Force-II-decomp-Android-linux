@@ -373,17 +373,10 @@ int TIKI_ReloadTiki(const char *name)
     return TIKI_HandleForTiki(tiki);
 }
 
-/* Nothing resets the anim bone mapping table wholesale and its 128 slots turn
-   over only through TIKI_FreeTiki @0x000FD240's per-entry release, so a table
-   entry lives as long as some tiki holds it.  tiki_keepLoaded keeps the parse
-   and build results alive across a level load, which pins every entry every
-   tiki ever took: one holodeck assault-range session then wants ~173
-   (skeleton, channel set) pairs against retail's 128 and the actors spawning
-   later read by bone index.  Drop the entries here, at the boundary retail
-   frees its tikis, so the table holds the current level's live pairs again.
-   The survivors re-heal on first pose, which is retail's own first-use site.
-   TIKI_FreeAll has no live caller in this port, so the load boundary that reaches
-   retail's teardown is CL_FlushMemory and the drop runs there too. */
+/* One entry per distinct (skeleton, animation channel set) whose mapping is not
+   identity, so the table carries the session's union and nothing turns it over
+   in play: retail's only release is TIKI_FreeTiki @0x000FD240, never a level
+   boundary.  This walk is for the full teardown alone. */
 void TIKI_DropAllAnimBoneMappings(void)
 {
     dtiki_t **entry;
