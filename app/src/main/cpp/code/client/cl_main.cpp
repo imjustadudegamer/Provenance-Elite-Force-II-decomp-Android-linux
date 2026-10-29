@@ -551,6 +551,9 @@ void CL_ShutdownAll(qboolean shutdownRef) {
 void CL_FlushMemory( void ) {
 
 	CL_ShutdownCGame();
+	/* retail's CL_ShutdownAll freed the tikis and their bone mappings here; the
+	   retained tiki cache keeps the models but must still turn the table over. */
+	TIKI_DropAllAnimBoneMappings();
 	S_StopAllSounds2( qtrue );
 	UI_ClearState();
 	cls.rendererRegistered = qfalse;

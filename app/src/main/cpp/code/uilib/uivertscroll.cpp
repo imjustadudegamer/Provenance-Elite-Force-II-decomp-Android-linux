@@ -440,11 +440,12 @@ void UIVertScroll::InitFrameAlignRight(UIWidget *parent)
 {
     UIRect2D frame, clientFrame;
 
-    clientFrame          = parent->getClientFrame();
-    frame.pos.x          = clientFrame.pos.x + clientFrame.size.width - m_scrollbarWidth;
-    frame.pos.y          = 0.0f;
-    frame.size.width     = m_scrollbarWidth;
-    frame.size.height    = clientFrame.size.height;
+    clientFrame = parent->getClientFrame();
+    /* the bar rides inside the parent's own border, not over it */
+    frame.pos.x       = clientFrame.pos.x + clientFrame.size.width - m_scrollbarWidth - 2.0f;
+    frame.pos.y       = 2.0f;
+    frame.size.width  = m_scrollbarWidth;
+    frame.size.height = clientFrame.size.height - 4.0f;
 
     if (!m_frameinitted) {
         InitFrame(parent, frame, -1, "tahoma-8");

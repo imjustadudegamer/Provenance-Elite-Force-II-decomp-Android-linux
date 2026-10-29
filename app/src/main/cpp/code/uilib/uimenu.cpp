@@ -2661,7 +2661,7 @@ static void SettingsAdaptControls(UIWidget *container)
 #define SV_SIDE_W      142.0f
 #define SV_NAME_FLOOR  100.0f
 #define SV_NAME_MAX    200.0f
-#define SV_TIME_W      56.0f
+#define SV_TIME_W      92.0f
 #define SV_BTN_H       50.0f
 #define SV_BTN_GAP     6.0f
 

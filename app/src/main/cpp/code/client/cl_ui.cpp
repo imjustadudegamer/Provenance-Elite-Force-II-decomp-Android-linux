@@ -3304,6 +3304,19 @@ static void UI_GetSavedGames_f(void)
             continue;
         }
 
+        /* a header written before the writer resolved its own title still names the
+           map: label it from the leveldefs, the rule retail's writer applies */
+        if (save.comment[0]) {
+            str  desc;
+            char resolved[256];
+
+            GetDescriptiveLevelName(save.comment, &desc);
+            if (desc.length()) {
+                convertStringResourceIds(desc.c_str(), resolved, sizeof(resolved));
+                Q_strncpyz(save.comment, resolved, sizeof(save.comment));
+            }
+        }
+
         Q_strncpyz(entries[count].comment, save.comment, sizeof(entries[count].comment));
         Q_strncpyz(entries[count].saveName, save.saveName, sizeof(entries[count].saveName));
         entries[count].secondsPlayed = save.secondsPlayed;

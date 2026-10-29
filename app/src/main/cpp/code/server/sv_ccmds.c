@@ -35,8 +35,13 @@ char *Com_GetGameTypeName( int gametype, char *buf, int bufsize );
 
 
 
-static int sv_saveStatus = 2;    
-static int sv_loadStatus = 2;    
+static int sv_saveStatus = 2;
+static int sv_loadStatus = 2;
+
+/* the leveldefs description the save slot is labelled with; defined in the
+   client's save manager, which is C++ */
+void LSM_DescriptiveLevelName(const char *mapName, char *out, int size);
+
 
 
 static client_t *SV_SetPlayer( void ) {
@@ -874,6 +879,7 @@ qboolean SV_ArchiveServerFile( const char *serverExt, qboolean loading, qboolean
 	fileHandle_t     f;
 	const char      *name;
 	char             comment[64];
+	char             desc[64];
 	savegamestruct_t save;
 	char             cmdString[256];
 	time_t           aclock;
@@ -895,14 +901,27 @@ qboolean SV_ArchiveServerFile( const char *serverExt, qboolean loading, qboolean
 		time( &aclock );
 
 		// EF2 does not have -- retail carries the name in the `savegamename` cvar the
+		desc[0] = 0;
+#ifndef DEDICATED
+		LSM_DescriptiveLevelName( svs.mapName, desc, sizeof( desc ) );
+#endif
+
 		if ( autosave ) {
-			Com_sprintf( comment, sizeof( comment ), "%s %s", "Starting", sv.configstrings[ CS_NAME ] );
+			/* retail labels the slot from the leveldefs, never with the raw map key */
+			if ( desc[ 0 ] ) {
+				Com_sprintf( comment, sizeof( comment ), "%s %s", "Starting", desc );
+			} else {
+				Com_sprintf( comment, sizeof( comment ), "%s %s", "Starting", sv.configstrings[ CS_NAME ] );
+			}
 		} else {
 			const char *savename = Cvar_VariableString( "savegamename" );
 
 			if ( savename && savename[ 0 ] ) {
 				Com_sprintf( comment, sizeof( comment ), "%s", savename );
 				Cvar_Set( "savegamename", "" );
+			} else if ( desc[ 0 ] ) {
+				/* no name arrived from the UI: label it the way retail's writer does */
+				Com_sprintf( comment, sizeof( comment ), "%s", desc );
 			} else {
 				Com_sprintf( comment, sizeof( comment ), "%s", sv.configstrings[ CS_NAME ] );
 			}
