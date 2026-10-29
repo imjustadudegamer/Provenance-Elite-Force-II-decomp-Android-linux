@@ -46,6 +46,7 @@ UIScrollable::UIScrollable()
     m_scrollItemHeight     = 16.0f;
     m_scrollItemHeightBase = 0.0f;
     m_scrollHeaderHeight   = 0.0f;
+    m_scrollBarHeaderOffset = 0.0f;
     AllowActivate(false);
 }
 
@@ -135,7 +136,7 @@ void UIScrollable::scrollBarTemplate(Event *ev)
     m_scrollBar = (UIVertScroll *)created;
     tmpl->copyProperties(*m_scrollBar);
 
-    m_scrollBar->InitFrameAlignRight(this);
+    m_scrollBar->InitFrameAlignRight(this, m_scrollBarHeaderOffset);
     onSizeChanged();
 }
 
@@ -156,12 +157,22 @@ void UIScrollable::onSizeChanged(void)
         return;
     }
 
-    m_scrollBar->InitFrameAlignRight(this);
+    m_scrollBar->InitFrameAlignRight(this, m_scrollBarHeaderOffset);
 
     if (m_scrollItemHeight > 0.0f) {
         int page = (int)((m_frame.size.height - m_scrollHeaderHeight) / m_scrollItemHeight);
         m_scrollBar->setPageHeight(page);
     }
+}
+
+void UIScrollable::setScrollBarHeaderOffset(float offset)
+{
+    if (m_scrollBarHeaderOffset == offset) {
+        return;
+    }
+
+    m_scrollBarHeaderOffset = offset;
+    onSizeChanged();
 }
 
 void UIScrollable::setNumItems(int numItems)

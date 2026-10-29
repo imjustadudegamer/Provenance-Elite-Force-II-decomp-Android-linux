@@ -569,6 +569,9 @@ public:
     void               LayoutGameplayShaderProperty(Event *ev);
     void               statVisibility(Event *ev);
     void               setGameplayProperty(const char *group, const char *name, int kind);
+    /* a widget an adapter has retired is out of the page: no shipped visibility
+       driver may bring it back on the next update walk */
+    void               clearGameplayProperty(void) { m_gameplayPropertyInUse = false; }
     virtual void       updateVisibility(void);
     virtual void       updateGameplayProperty(void);
     virtual void       updateStatVisibility(void);

@@ -294,13 +294,15 @@ void View3D::PrintStringList(void)
         rect.size.width  = (float)si->width;
         rect.size.height = (float)(int)(yi - frame.pos.y);
 
-        font.PrintJustified(
+        /* the scan-target label is this list's only resident, and it draws at the
+           scale cgame lays its box out for: same seat, twice the glyphs */
+        font.PrintJustifiedScaled(
             rect,
             FONT_JUSTHORZ_LEFT,
             (si->y == -1.0f) ? FONT_JUSTVERT_CENTER : FONT_JUSTVERT_BOTTOM,
             si->text,
             UBlack,
-            false
+            CG_TARGET_TEXT_SCALE
         );
     }
 

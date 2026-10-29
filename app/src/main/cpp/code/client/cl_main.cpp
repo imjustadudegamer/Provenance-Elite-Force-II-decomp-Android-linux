@@ -3295,7 +3295,6 @@ void CL_SaveShot_f( void ) {
 
 	strcat( expanded, "\n" );
 
-	cls.no_menus = qtrue;
 	cls.saveShotFrames = 0;
 
 	/* The thumbnail is the world frame the player was looking at, so the request
@@ -3303,6 +3302,15 @@ void CL_SaveShot_f( void ) {
 	   here: the frames that follow a save are whatever the client is showing --
 	   a sublevel's loading screen, a menu, a frame with no world in it. */
 	Q_strncpyz( cls.saveShotCmd, expanded, sizeof( cls.saveShotCmd ) );
+
+	/* A page on screen keeps it: the write leaves the save page up, so the hold and
+	   the viewmodel swap travel with the request and arm on the first world frame
+	   after the page closes.  Taking the screen here is the save flash. */
+	if ( UI_MenuActive() ) {
+		return;
+	}
+
+	cls.no_menus = qtrue;
 
 	drawviewmodel = Cvar_FindVar( "r_drawviewmodel" );
 	if ( drawviewmodel ) {

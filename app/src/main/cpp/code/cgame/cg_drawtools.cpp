@@ -785,7 +785,7 @@ static void CG_QueueTargetBlock(const char *source, int startTime, float *pos)
             cgi.UI_AddPrintString(lines[i], pos, 640, cg_ident.color, "serpentinelight-10");
         }
 
-        pos[1] += 19.0f;
+        pos[1] += 19.0f * CG_TARGET_TEXT_SCALE;
     }
 }
 
@@ -827,14 +827,16 @@ void CG_DrawTargetIdentifier(void)
         float  pos[2];
         const char *source;
 
-        pos[0] = cg_ident.xMax + 10.0f;
-        pos[1] = cg_ident.yMin + 10.0f;
+        /* the brackets are retail's own and stay as they are: only the label's box
+           grows, so the label keeps its seat to their right and below their top */
+        pos[0] = cg_ident.xMax + 10.0f * CG_TARGET_TEXT_SCALE;
+        pos[1] = cg_ident.yMin + 10.0f * CG_TARGET_TEXT_SCALE;
 
         source = CG_CreateTargetString(cent, CG_TargetDescriptionProperty(cg_ident.descLevel), built, sizeof(built));
         CG_QueueTargetBlock(source, cg_ident.timer2, pos);
 
         if (cg_ident.descLevel == 3) {
-            pos[1] += 19.0f;
+            pos[1] += 19.0f * CG_TARGET_TEXT_SCALE;
             source = CG_CreateTargetString(cent, "Description3", built, sizeof(built));
             CG_QueueTargetBlock(source, cg_ident.timer3, pos);
         }

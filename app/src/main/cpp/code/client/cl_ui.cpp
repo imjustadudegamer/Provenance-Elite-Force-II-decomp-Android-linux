@@ -1126,7 +1126,10 @@ static void UI_Update_Impl(void)
     ui_stateT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
     LIMIT_StateBegin();
 
-    if (cls.no_menus && cls.state == CA_ACTIVE) {
+    /* The save's thumbnail holds this flag while it waits for a world frame, and a
+       page on screen is not one: the save page keeps drawing, and the capture takes
+       the first frame after it closes. */
+    if (cls.no_menus && cls.state == CA_ACTIVE && !UI_MenuActive()) {
         int limit_uis_nomenu = LIMIT_Leg();
 
         view3d->setShow(true);

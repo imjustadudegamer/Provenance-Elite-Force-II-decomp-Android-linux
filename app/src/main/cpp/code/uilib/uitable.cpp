@@ -1492,6 +1492,9 @@ void UITable::LayoutRowColumn(void)
         (float)m_headerHeight,
         m_frame.size.width,
         m_frame.size.height - (float)m_headerHeight));
+
+    /* the bar reads the frame, not the band this frame carves out under the header */
+    m_pRowColumn->setScrollBarHeaderOffset((float)m_headerHeight);
 }
 
 void UITable::Realign(void)

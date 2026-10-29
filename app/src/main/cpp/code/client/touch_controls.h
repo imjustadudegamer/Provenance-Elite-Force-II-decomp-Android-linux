@@ -72,8 +72,8 @@ static const tcActionButton_t tcActionButtons[] = {
 	{ 0.665f, 0.925f, 0.054f, 0.034f, K_PAD0_B,             "CROUCH",   LCARS_VIOLET,    qfalse, qfalse },
 	{ 0.950f, 0.520f, 0.050f, 0.032f, K_PAD0_RIGHTSHOULDER, "NEXT",     LCARS_SUNFLOWER, qtrue,  qfalse },
 	{ 0.950f, 0.405f, 0.050f, 0.032f, K_PAD0_LEFTSHOULDER,  "PREV",     LCARS_BUTTERSCOTCH, qtrue, qfalse },
-	{ 0.050f, 0.290f, 0.048f, 0.030f, '6',                  "TRICORDER",LCARS_ICE,       qtrue,  qfalse },
-	{ 0.050f, 0.180f, 0.048f, 0.030f, 'n',                "NIGHT",    LCARS_ICE,       qtrue,  qfalse },
+	{ 0.050f, 0.180f, 0.048f, 0.030f, '6',                  "TRICORDER",LCARS_ICE,       qtrue,  qfalse },
+	{ 0.050f, 0.290f, 0.048f, 0.030f, 'n',                "NIGHT",    LCARS_ICE,       qtrue,  qfalse },
 	{ 0.115f, 0.470f, 0.062f, 0.034f, K_TAB,                "MISSION",  LCARS_HOPBUSH,   qfalse, qfalse },
 };
 #define TC_NUM_ACTION ( (int)( sizeof( tcActionButtons ) / sizeof( tcActionButtons[0] ) ) )
