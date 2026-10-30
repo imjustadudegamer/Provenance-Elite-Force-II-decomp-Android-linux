@@ -822,9 +822,6 @@ void CL_CreateNewCommands( void ) {
 	if ( frame_msec > 200 ) {
 		frame_msec = 200;
 	}
-	if ( frame_msec < 1 ) {
-		frame_msec = 1;	/* CL_KeyState divides by this; 0 would read 0/0 */
-	}
 	old_com_frameTime = com_frameTime;
 
 

@@ -2948,10 +2948,7 @@ void Com_Frame( void ) {
         }
 
         msec = com_frameTime - lastTime;
-    } while ( ( minUsec > 0 && Com_PaceUsec() - lastPace < minUsec )
-           || ( !com_dedicated->integer && msec < 1 ) );
-    /* an off budget still owes its millisecond (Com_Frame @0x000CAAC0: v23 < 1 -> 1),
-       so frame_msec downstream never reads zero */
+    } while ( minUsec > 0 && Com_PaceUsec() - lastPace < minUsec );
 
     if ( ui_statsOn ) { ui_spinUsec = UI_Microseconds() - limitSpinT0; }
     }

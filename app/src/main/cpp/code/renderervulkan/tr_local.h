@@ -2086,6 +2086,7 @@ struct skelAnimFrame_s;
 void R_InitStaticModels(void);
 void R_FreeNonTikiModels(void);
 void R_FreeModels(void);
+void R_FreeUnusedModels(void);
 qhandle_t RE_SpawnEffectModel(const char* szModel, vec3_t vPos, vec3_t* axis);
 qhandle_t RE_RegisterServerModel(const char* name);
 void RE_UnregisterServerModel(qhandle_t hModel);

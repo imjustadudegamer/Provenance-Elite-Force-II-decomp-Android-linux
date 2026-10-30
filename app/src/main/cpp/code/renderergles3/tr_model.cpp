@@ -173,6 +173,24 @@ void R_FreeModels(void)
     }
 }
 
+/* retail @0x00028EC0 retires every model that missed this registration; the
+   tiki cache itself is retained by design, only its table row is let go. */
+void R_FreeUnusedModels(void)
+{
+    int i;
+
+    for (i = 1; i < tr.numModels; i++) {
+        if (!tr.models[i].name[0]) {
+            continue;
+        }
+        if (tr.models[i].r_sequence == r_sequencenumber || tr.models[i].r_sequence == -1) {
+            continue;
+        }
+
+        memset(&tr.models[i], 0, sizeof(model_t));
+    }
+}
+
 
 
 void R_RegisterShaders(model_t *mod)
