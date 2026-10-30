@@ -213,7 +213,8 @@ void R_RegisterCvars( void )
 	r_lerpmodels = ri.Cvar_Get( "r_lerpmodels", "1", 0 );
 	r_lodCurveError = ri.Cvar_Get( "r_lodCurveError", "250", CVAR_ARCHIVE|CVAR_CHEAT  );
 	r_lodbias = ri.Cvar_Get( "r_lodbias", "1", CVAR_ARCHIVE );
-	r_flares = R_RegisterLightCvar( "r_flares", "1" );
+	/* the boot default is the full tier: the cheap tier is reachable only by an explicit row */
+	r_flares = R_RegisterLightCvar( "r_flares", "2" );
 	r_flaresMaxDist = ri.Cvar_Get( "r_flaresMaxDist", "768", CVAR_ARCHIVE  );
 	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT  );
 	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", 0  );

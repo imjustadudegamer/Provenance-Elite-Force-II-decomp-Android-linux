@@ -28,6 +28,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define MAX_FLARES 20
 
 static void R_DrawEmitterLensflares(void);
+static void R_AddDlightFlares(void);
+static void R_AddSpherelFlares(void);
+static void R_AddEntityFlares(void);
 
 class flare_s
 {
@@ -82,7 +85,6 @@ public:
     bool         CheckRange();
     bool         CheckRay();
     bool         ScreenCalc();
-    virtual void Try();
     virtual void Init(const char *which);
     void         ScreenBlend();
     void         InPortalSky();
@@ -94,23 +96,6 @@ public:
     void SetAlpha(float a) { alpha = a; }
 };
 
-class dlight_lens_flare : public lens_flare
-{
-public:
-    shader_t *corona_shader;
-
-public:
-    dlight_lens_flare() { corona_shader = NULL; }
-
-    void Try() override;
-
-    void Init(const char *which) override
-    {
-        lens_flare::Init(which);
-        corona_shader = R_FindShader("textures/sprites/corona", -1, qfalse, qfalse, qfalse, qfalse);
-    }
-};
-
 class sun_flare_class : public lens_flare
 {
 public:
@@ -119,12 +104,6 @@ public:
     void SunTry();
 };
 
-lens_flare        torches;
-dlight_lens_flare dlights;
-/* retail keys four sections, not two: R_LoadLensflares @0x0004A150 names
-   entity, viewentity, dlight and viewdlight and routes one arm to each */
-lens_flare        entityFlares;
-dlight_lens_flare viewDlights;
 sun_flare_class   sunFlare;
 int               lens_flare::max_flares;
 
@@ -196,14 +175,14 @@ bool lens_flare::ScreenCalc()
     VectorClear4(eye);
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
-            eye[i] += point[j] * tr.ori.modelMatrix[i + j * 4];
+            eye[i] += point[j] * backEnd.ori.modelMatrix[i + j * 4];
         }
     }
 
     VectorClear4(clip);
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
-            clip[i] += eye[j] * tr.viewParms.projectionMatrix[i + j * 4];
+            clip[i] += eye[j] * backEnd.viewParms.projectionMatrix[i + j * 4];
         }
     }
 
@@ -218,86 +197,6 @@ bool lens_flare::ScreenCalc()
     }
 
     return retval;
-}
-
-void lens_flare::Try()
-{
-    vec2_t diff;
-    vec2_t point;
-    float  fadeAlpha;
-    int    i;
-
-    if (!ScreenCalc()) {
-        return;
-    }
-    if (!CheckRange()) {
-        return;
-    }
-    if (!CheckRay()) {
-        return;
-    }
-
-    VectorScale2D(screen, -2.0, diff);
-    fadeAlpha = (dot - dot_min) / (1.0 - dot_min);
-
-    for (i = 0; i < num_flares; i++) {
-        flare_s *flare = &flares[i];
-
-        VectorMA2D(screen, flare->where, diff, point);
-
-        RB_Color4f(color[0], color[1], color[2], fadeAlpha * this->alpha * flare->alphascale);
-        RB_StreamBegin(flare->shader);
-        RB_Texcoord2f(0.0, 0.0);
-
-        RB_Vertex2f(point[0] - flare->size, point[1] + flare->size);
-        RB_Texcoord2f(1.0, 0.0);
-
-        RB_Vertex2f(point[0] + flare->size, point[1] + flare->size);
-        RB_Texcoord2f(0.0, 1.0);
-
-        RB_Vertex2f(point[0] - flare->size, point[1] - flare->size);
-        RB_Texcoord2f(1.0, 1.0);
-
-        RB_Vertex2f(point[0] + flare->size, point[1] - flare->size);
-        RB_StreamEnd();
-    }
-
-    lasttime     = backEnd.refdef.time;
-    blend_active = true;
-    lastbright   = Square(fadeAlpha) * Square(fadeAlpha) * this->fullscale;
-}
-
-void dlight_lens_flare::Try()
-{
-    float size;
-
-    size = r_lightcoronasize->value;
-    lens_flare::Try();
-    lens_flare::CheckRange();
-
-    if (dot <= 0) {
-        return;
-    }
-
-    if (!CheckRay()) {
-        return;
-    }
-
-    RB_Color4f(color[0], color[1], color[2], alpha);
-    RB_StreamBegin(corona_shader);
-    RB_Texcoord2f(0.0, 0.0);
-
-    RB_Vertex2f(screen[0] - size, screen[1] + size);
-    RB_Texcoord2f(1.0, 0.0);
-
-    RB_Vertex2f(screen[0] + size, screen[1] + size);
-    RB_Texcoord2f(0.0, 1.0);
-
-    RB_Vertex2f(screen[0] - size, screen[1] - size);
-    RB_Texcoord2f(1.0, 1.0);
-
-    RB_Vertex2f(screen[0] + size, screen[1] - size);
-    RB_StreamEnd();
 }
 
 void lens_flare::ScreenBlend()
@@ -526,10 +425,22 @@ static void R_DrawSunFlareBlend()
 
 void R_DrawLensFlares()
 {
-    int i;
     int modelViewMark, projectionMark;
 
-    R_RotateForViewer();
+    /* retail RB_RenderFlares @0x0004A6E0 gates the pass on tr.world too */
+    if (!tr.world) {
+        return;
+    }
+
+    /* retail's whole-pass gate (RB_RenderFlares @0x0004A6E0), not an arm-local one */
+    if (!r_flares->integer) {
+        return;
+    }
+
+    /* the walk runs on the render thread: retail's RB_RenderFlares resets the
+       orientation it is about to transform with, and that orientation is the
+       carried frame's, never the front end's live copy */
+    backEnd.ori = backEnd.viewParms.world;
 
     RB_ImmFlush();
     modelViewMark = RB_ModelViewDepth();
@@ -541,71 +452,11 @@ void R_DrawLensFlares()
     RB_OrthoProjection(-1.0, 1.0, -1.0, 1.0, -99999.0, 99999.0);
 
     tess.no_global_fog = true;
+
     R_DrawSunFlare();
-
-    for (i = 0; i < backEnd.refdef.num_entities; i++) {
-        if ((backEnd.viewParms.isPortalSky && !(backEnd.refdef.entities[i].e.renderfx & RF_SKYENTITY))
-            || (!backEnd.viewParms.isPortalSky && (backEnd.refdef.entities[i].e.renderfx & RF_SKYENTITY))) {
-            continue;
-        }
-
-        if (backEnd.refdef.entities[i].e.renderfx & RF_LENSFLARE) {
-            vec3_t rgb;
-
-            /* RB_AddEntityFlares @0x00049B00 keys bit 0x100 to the "entity" section */
-            if (backEnd.refdef.entities[i].e.renderfx & RF_SKYENTITY) {
-                entityFlares.InPortalSky();
-            } else {
-                entityFlares.NotInPortalSky();
-            }
-
-            entityFlares.SetVect(backEnd.refdef.entities[i].e.origin);
-
-
-            rgb[0] = backEnd.refdef.entities[i].e.shaderRGBA[0] / 255.0;
-            rgb[1] = backEnd.refdef.entities[i].e.shaderRGBA[1] / 255.0;
-            rgb[2] = backEnd.refdef.entities[i].e.shaderRGBA[2] / 255.0;
-            entityFlares.SetColor(rgb);
-
-            entityFlares.Try();
-        }
-
-        if (backEnd.refdef.entities[i].e.renderfx & RF_VIEWLENSFLARE) {
-            vec3_t rgb;
-
-            if (backEnd.refdef.entities[i].e.renderfx & RF_SKYENTITY) {
-                torches.InPortalSky();
-            } else {
-                torches.NotInPortalSky();
-            }
-
-            torches.SetVect(backEnd.refdef.entities[i].e.origin);
-
-            rgb[0] = backEnd.refdef.entities[i].e.shaderRGBA[0] / 255.0;
-            rgb[1] = backEnd.refdef.entities[i].e.shaderRGBA[1] / 255.0;
-            rgb[2] = backEnd.refdef.entities[i].e.shaderRGBA[2] / 255.0;
-            torches.SetColor(rgb);
-
-            torches.Try();
-        }
-    }
-
-    for (i = 0; i < backEnd.refdef.num_dlights; i++) {
-        /* RB_RenderFlares @0x0004A6E0 keys type 1 to "dlight" and type 2 to
-           "viewdlight"; additive stays on the plain dlight definition */
-        dlight_lens_flare &which = (backEnd.refdef.dlights[i].type & dlighttype_t::viewlensflare)
-                                       ? viewDlights
-                                       : dlights;
-
-        if (backEnd.refdef.dlights[i].type
-            & (dlighttype_t::lensflare | dlighttype_t::viewlensflare | dlighttype_t::additive)) {
-            which.NotInPortalSky();
-            which.SetVect(backEnd.refdef.dlights[i].origin);
-            which.SetColor(backEnd.refdef.dlights[i].color);
-
-            which.Try();
-        }
-    }
+    R_AddDlightFlares();
+    R_AddSpherelFlares();
+    R_AddEntityFlares();
 
     R_DrawSunFlareBlend();
 
@@ -620,10 +471,6 @@ void R_DrawLensFlares()
 
 void R_InitLensFlare()
 {
-    torches.Init("viewentity");
-    dlights.Init("dlight");
-    entityFlares.Init("entity");
-    viewDlights.Init("viewdlight");
     sunFlare.initted = false;
 
     R_LoadLensflares();
@@ -664,14 +511,14 @@ void sun_flare_class::SunScreenCalc()
     VectorClear4(eye);
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
-            eye[i] += point[j] * tr.ori.modelMatrix[i + j * 4];
+            eye[i] += point[j] * backEnd.ori.modelMatrix[i + j * 4];
         }
     }
 
     VectorClear4(clip);
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
-            clip[i] += eye[j] * tr.viewParms.projectionMatrix[i + j * 4];
+            clip[i] += eye[j] * backEnd.viewParms.projectionMatrix[i + j * 4];
         }
     }
 
@@ -1188,14 +1035,14 @@ static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen)
     VectorClear4(eye);
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
-            eye[i] += point[j] * tr.ori.modelMatrix[i + j * 4];
+            eye[i] += point[j] * backEnd.ori.modelMatrix[i + j * 4];
         }
     }
 
     VectorClear4(clip);
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
-            clip[i] += eye[j] * tr.viewParms.projectionMatrix[i + j * 4];
+            clip[i] += eye[j] * backEnd.viewParms.projectionMatrix[i + j * 4];
         }
     }
 
@@ -1228,6 +1075,9 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
 
     if (f->viewFrameCount != backEnd.viewParms.frameCount || f->clipped) {
         visible = qfalse;
+    } else if (r_flares->integer <= 1) {
+        /* retail's Simple tier runs no occlusion test; Precise is the trace below */
+        visible = qtrue;
     } else if (backEnd.refdef.time < f->nextVisTime) {
         visible = f->visible;
     } else {
@@ -1442,16 +1292,181 @@ static void R_LensflareDraw(lensflareState_t *f)
     }
 }
 
+/* One flare record into the shared Lensflare state; every arm below feeds the
+   same records retail's RB_AddFlare @0x00049740 does. */
+static void R_LensflareFeed(const lensflare_t *lf)
+{
+    lensflareInfo_t  *info;
+    lensflareState_t *f;
+    vec2_t            screen;
+    qboolean          inside;
+
+    info = R_LensflareInfoForNum(lf->num);
+    if (!info) {
+        return;
+    }
+
+    inside = R_LensflareScreenCalc(lf->origin, screen);
+
+    f = R_LensflareStateFor(lf->key, (qboolean)!inside);
+    if (!f) {
+        return;
+    }
+
+    if (f->viewFrameCount != backEnd.viewParms.frameCount - 1
+        && f->viewFrameCount != backEnd.viewParms.frameCount) {
+        f->visible = qfalse;
+    }
+    f->viewFrameCount = backEnd.viewParms.frameCount;
+
+    f->info              = info;
+    f->clipped           = (qboolean)!inside;
+    f->scale             = lf->scale;
+    f->replacementShader = lf->replacementShader;
+    VectorCopy(lf->origin, f->origin);
+    VectorCopy(lf->color, f->color);
+    f->screen[0] = screen[0];
+    f->screen[1] = screen[1];
+}
+
+static void R_LensflarePush(lensflare_t *out, void *key, const vec3_t org, const vec3_t color, int num)
+{
+    out->key              = key;
+    VectorCopy(org, out->origin);
+    VectorCopy(color, out->color);
+    out->num              = num;
+    out->scale            = 1.0f;
+    out->replacementShader = NULL;
+    R_LensflareFeed(out);
+}
+
+/* RB_AddEntityFlares @0x00049B00: bit 0x100 names "entity", 0x8 "viewentity" */
+static void R_AddEntityFlares(void)
+{
+    lensflare_t lf;
+    vec3_t      rgb;
+    int         entityNum = R_LensflareNameToNum("entity");
+    int         viewNum   = R_LensflareNameToNum("viewentity");
+    int         i;
+
+    for (i = 0; i < backEnd.refdef.num_entities; i++) {
+        const refEntity_t *re = &backEnd.refdef.entities[i].e;
+
+        if ((backEnd.viewParms.isPortalSky && !(re->renderfx & RF_SKYENTITY))
+            || (!backEnd.viewParms.isPortalSky && (re->renderfx & RF_SKYENTITY))) {
+            continue;
+        }
+
+        if (re->renderfx & RF_LENSFLARE) {
+            if (entityNum < 0) {
+                continue;
+            }
+            rgb[0] = re->shaderRGBA[0] / 255.0;
+            rgb[1] = re->shaderRGBA[1] / 255.0;
+            rgb[2] = re->shaderRGBA[2] / 255.0;
+            R_LensflarePush(&lf, (void *)re, re->origin, rgb, entityNum);
+        } else if (re->renderfx & RF_VIEWLENSFLARE) {
+            if (viewNum < 0) {
+                continue;
+            }
+            rgb[0] = re->shaderRGBA[0] / 255.0;
+            rgb[1] = re->shaderRGBA[1] / 255.0;
+            rgb[2] = re->shaderRGBA[2] / 255.0;
+            R_LensflarePush(&lf, (void *)re, re->origin, rgb, viewNum);
+        }
+    }
+}
+
+/* RB_RenderFlares @0x0004A6E0: type 1 names "dlight", type 2 "viewdlight", and
+   no other type draws a flare */
+static void R_AddDlightFlares(void)
+{
+    lensflare_t lf;
+    int         dlightNum = R_LensflareNameToNum("dlight");
+    int         viewNum   = R_LensflareNameToNum("viewdlight");
+    int         i;
+
+    for (i = 0; i < backEnd.refdef.num_dlights; i++) {
+        dlight_t *dl = &backEnd.refdef.dlights[i];
+
+        if (dl->type == dlighttype_t::lensflare) {
+            if (dlightNum >= 0) {
+                R_LensflarePush(&lf, dl, dl->origin, dl->color, dlightNum);
+            }
+        } else if (dl->type == dlighttype_t::viewlensflare) {
+            if (viewNum >= 0) {
+                R_LensflarePush(&lf, dl, dl->origin, dl->color, viewNum);
+            }
+        }
+    }
+}
+
+/* RB_AddLightFlares @0x00049DF0: the map's own entity lights carry the flare
+   bit, "corona" for every type but the sun; the per-record mark keeps a light
+   listed under several nodes to one flare per view */
+/* retail RB_AddLightFlares @0x00049DF0 bumps its own counter once per call, so the
+   portal-sky view and the main view each get a pass over the same record */
+static int s_spherelFlareSerial;
+
+static void R_SpherelFlarePush(lensflare_t *out, spherel_t *s, int coronaNum, int sunNum)
+{
+    int num;
+
+    if (!s->lensflare || s->flare_frame == s_spherelFlareSerial) {
+        return;
+    }
+    s->flare_frame = s_spherelFlareSerial;
+
+    num = (s->type == SPHEREL_SUN) ? sunNum : coronaNum;
+    if (num >= 0) {
+        R_LensflarePush(out, s, s->origin, s->color, num);
+    }
+}
+
+static void R_AddSpherelFlares(void)
+{
+    lensflare_t lf;
+    int         coronaNum = R_LensflareNameToNum("corona");
+    int         sunNum    = R_LensflareNameToNum("sun");
+    int         i, j;
+
+    if (!tr.world) {
+        return;
+    }
+
+    s_spherelFlareSerial++;
+
+    if (tr.sphereLightVis) {
+        /* retail's arm walks every node the view marked and flares that node's
+           own list, so a light rides the nodes ENTLIGHTSVIS gave it; the -1 arm
+           is the sky pass, whose marks are one serial older by the main view */
+        for (i = 0; i < tr.world->numnodes; i++) {
+            mnode_t *node = &tr.world->nodes[i];
+
+            if (!node->numlights) {
+                continue;
+            }
+            if (node->visframe != tr.visCount && !(tr.skyRendered && node->visframe == tr.visCount - 1)) {
+                continue;
+            }
+            for (j = 0; j < node->numlights; j++) {
+                R_SpherelFlarePush(&lf, node->lights[j], coronaNum, sunNum);
+            }
+        }
+        return;
+    }
+
+    for (i = 0; i < tr.numSLights; i++) {
+        R_SpherelFlarePush(&lf, &tr.sLights[i], coronaNum, sunNum);
+    }
+}
+
 static void R_DrawEmitterLensflares(void)
 {
     lensflareState_t **prev;
     lensflareState_t  *f;
     qboolean           draw;
     int                i;
-
-    if (!r_flares->integer) {
-        return;
-    }
 
     for (i = 0; i < backEnd.refdef.num_lensflares; i++) {
         const lensflare_t *lf = &backEnd.refdef.lensflares[i];

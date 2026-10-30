@@ -1296,7 +1296,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		qglDepthRange (0, 1.0);
 	}
 
-	if (!(backEnd.refdef.rdflags & RDF_FULLBRIGHT)) {
+	/* retail R_RenderView @0x0001F190 draws the pass only for a flag-free world refdef */
+	if (!backEnd.refdef.rdflags) {
 		BE_ZONE( BE_FAM_DS, BE_DSZ_flare, R_DrawLensFlares() );
 	}
 
