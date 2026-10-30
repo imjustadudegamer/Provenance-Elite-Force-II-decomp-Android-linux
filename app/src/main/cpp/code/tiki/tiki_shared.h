@@ -269,6 +269,9 @@ typedef struct dtiki_s {
     int                   *boneMappings;
     dtikiReplacedSurface_t *replacedSurfaces;
     int                     numReplacedSurfaces;
+    /* the renderer's own stamp: which tr.shaders[] generation the surface hShader[]
+       were resolved in.  Port-only, past the pinned retail offsets. */
+    int                     shaderGen;
 
 #ifdef __cplusplus
     int         GetBoneNumFromName(const char *name);

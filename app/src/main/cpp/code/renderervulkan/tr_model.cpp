@@ -124,6 +124,7 @@ static int      R_ResolveEntityPose(refEntity_t *e, frameInfo_t *frameInfo, shor
 
 void R_CacheModel(model_t *mod);
 void R_RegisterShaders(model_t *mod);
+void R_TikiRefreshShaders(dtiki_t *tiki);
 
 model_t *R_GetModelByHandle(qhandle_t hModel)
 {
@@ -227,12 +228,24 @@ void R_FreeModels(void)
 
 void R_RegisterShaders(model_t *mod)
 {
-    dtiki_t        *tiki;
+    R_TikiRefreshShaders(mod->d.tiki);
+}
+
+/* A tiki that reaches a draw without passing the model table in this registration
+   still holds the previous generation's slots, and tr.shaders[] names whatever now
+   sits at that index.  Retail re-resolves through the model's r_sequence; the tiki
+   is the holder the port reads surfaces from, so the stamp lives on it. */
+void R_TikiRefreshShaders(dtiki_t *tiki)
+{
     int             i, j;
     dtikisurface_t *psurface;
     shader_t       *sh;
 
-    tiki = mod->d.tiki;
+    if (!tiki) {
+        return;
+    }
+
+    tiki->shaderGen = tr.shaderGen;
 
     for (i = 0; i < tiki->num_surfaces; i++) {
         psurface = &tiki->surfaces[i];
@@ -250,7 +263,7 @@ void R_RegisterShaders(model_t *mod)
                 );
                 psurface->hShader[j] = sh->index;
                 if ( sh == tr.defaultShader ) {
-                    SMP_ShaderDefaultProbe( "tiki-surface", psurface->shader[j], mod->name, i, j );
+                    SMP_ShaderDefaultProbe( "tiki-surface", psurface->shader[j], tiki->name, i, j );
                 }
             } else {
                 psurface->hShader[j] = 0;
@@ -1250,6 +1263,10 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
     tiki = ent->e.tiki;
 
+
+    /* the same stamp the tiki arm checks: a surface read here is a read of the
+       slot this generation handed out, not the one before it */
+    R_TikiRefreshShaders(tiki);
 
     if (!ent->e.legsLive && !ent->e.torsoLive) {
         ri.Printf(PRINT_DEVELOPER, "R_AddSkelSurfaces: model '%s' with no torso or leg anim set\n", tiki->a->name);
@@ -2433,19 +2450,24 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
     skelHeaderGame_t *skelmodel;
     int               fogNum = 0;
 
-    tiki = ent->e.tiki;
+    /* retail R_AddTikiSurfaces @0x00026950 resolves the tiki from the model table,
+       the one thing this registration already re-registered, never from the entity's
+       own copy of it.  The copy stays as the fallback for a record that lost it. */
+    tiki = (tr.currentModel && tr.currentModel->type == MOD_TIKI) ? tr.currentModel->d.tiki : NULL;
+    if (!tiki) {
+        tiki = ent->e.tiki;
+    }
 
-    /* The entity's copy is a client-side cache of a fact this switch already
-       established: the model is a TIKI, so its own dtiki_t is the tiki.  An
-       entity whose copy did not survive the client's own resolution used to
+    /* An entity whose copy did not survive the client's own resolution used to
        leave through here and add no surface at all -- the whole-body vanish the
        scene-gate census records as an unnamed drop. */
     if (!tiki) {
-        tiki = tr.currentModel ? tr.currentModel->d.tiki : NULL;
-        if (!tiki) {
-            return;
-        }
+        return;
     }
+
+    /* the surfaces hold the previous generation's slots if this tiki never went
+       through the model table this registration */
+    R_TikiRefreshShaders(tiki);
 
     skelmodel = (tiki->numMeshes > 0) ? ri.TIKI_GetSkel(tiki->mesh[0]) : NULL;
 
