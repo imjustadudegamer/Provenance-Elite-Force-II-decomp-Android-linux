@@ -658,6 +658,7 @@ qboolean SV_DoneLoading( void );
 void 		QDECL Com_DPrintf( const char *fmt, ... ) Q_PRINTF_FUNC(1, 2);
 void 		QDECL Com_Error( int code, const char *fmt, ... ) Q_NO_RETURN Q_PRINTF_FUNC(2, 3);
 void 		Com_Quit_f( void ) Q_NO_RETURN;
+qboolean	Com_QuitRequested( void );
 
 int			Com_Milliseconds( void );	
 unsigned	Com_BlockChecksum( const void *buffer, int length );
@@ -986,6 +987,7 @@ const char *Sys_GetDeviceModel( void );
 
 void	QDECL Sys_Error( const char *error, ...) Q_NO_RETURN Q_PRINTF_FUNC(1, 2);
 void	Sys_Quit (void) Q_NO_RETURN;
+void	Sys_ShutdownPlatform( int exitCode );
 char	*Sys_GetClipboardData( void );	
 
 void	Sys_Print( const char *msg );

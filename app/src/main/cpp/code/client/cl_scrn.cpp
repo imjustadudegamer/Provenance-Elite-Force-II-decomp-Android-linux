@@ -621,6 +621,14 @@ void SCR_ResetUpdateGuard( void ) {
 	scr_update_recursive = qfalse;
 }
 
+/* a quit that lands inside the hold must not carry the suppression or a pending
+   readback into the renderer shutdown: the shot is dropped, never taken half-way */
+void SCR_SaveShotDrop( void ) {
+	if ( cls.no_menus || cls.saveShotCmd[0] ) {
+		SCR_SaveShotRelease();
+	}
+}
+
 void SCR_UpdateScreen( void ) {
 	if ( !scr_initialized ) {
 		return;				

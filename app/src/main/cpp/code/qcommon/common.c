@@ -73,7 +73,13 @@ extern "C" {
 int		com_argc;
 char	*com_argv[MAX_NUM_ARGVS+1];
 
-jmp_buf abortframe;		
+jmp_buf abortframe;
+
+/* the clean-quit latch: Com_Quit_f longjmps to abortframe after setting it, so the
+   frame loop unwinds and main returns to the platform instead of calling exit() */
+static qboolean com_quitRequested;
+
+qboolean Com_QuitRequested( void ) { return com_quitRequested; }
 
 
 FILE *debuglogfile;
@@ -617,7 +623,15 @@ void Com_Quit_f( void ) {
 		Com_Shutdown ();
 		FS_Shutdown(qtrue);
 	}
+#ifdef __ANDROID__
+	/* exit() from this thread kills the process under the activity's own UI render
+	   thread; unwinding to main lets the UI thread finish its window first. */
+	com_quitRequested = qtrue;
+	Sys_ShutdownPlatform( 0 );
+	longjmp( abortframe, -1 );
+#else
 	Sys_Quit ();
+#endif
 }
 
 

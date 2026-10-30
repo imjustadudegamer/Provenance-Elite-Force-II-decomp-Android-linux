@@ -528,6 +528,7 @@ void	SCR_DrawDebugGraph(void);
 void	SCR_DrawScreenField(void);
 void	SCR_UpdateScreen (void);
 void	SCR_ResetUpdateGuard (void);
+void	SCR_SaveShotDrop (void);
 
 void	CL_ProcessLoadingScreen( const char *loadingStatus );
 // to UI_UpdateLoadingStatus (0x001A1E30), which is not ported; kept so that a later

@@ -2433,6 +2433,9 @@ static void CL_ShutdownBody( void ) {
 	}
     recursive = qtrue;
 
+	/* a deferred saveshot dies here, before the renderer that would read it goes away */
+	SCR_SaveShotDrop();
+
 	ShutdownCinematicSystem();
 
 	DeleteArenaController();

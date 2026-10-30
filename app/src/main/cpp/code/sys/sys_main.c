@@ -313,16 +313,8 @@ qboolean Sys_OpenFolderInFileManager( const char *path, qboolean create )
 	return Sys_OpenFolderInPlatformFileManager( path );
 }
 
-static Q_NO_RETURN void Sys_Exit( int exitCode )
+void Sys_ShutdownPlatform( int exitCode )
 {
-#ifdef __ANDROID__
-	/* A clean exit stays silent; only a fatal exit (code >= 2) surfaces. */
-	if( exitCode >= 2 )
-		Sys_AndroidLog( ANDROID_LOG_ERROR,
-			va( "ENGINE EXIT code=%d state=%s\n", exitCode,
-				com_fullyInitialized ? "fully-initialised" : "DURING INIT" ) );
-#endif
-
     Sys_ShutdownEx();
 
 	CON_Shutdown( );
@@ -339,6 +331,19 @@ static Q_NO_RETURN void Sys_Exit( int exitCode )
 	NET_Shutdown( );
 
 	Sys_PlatformExit( );
+}
+
+static Q_NO_RETURN void Sys_Exit( int exitCode )
+{
+#ifdef __ANDROID__
+	/* A clean exit stays silent; only a fatal exit (code >= 2) surfaces. */
+	if( exitCode >= 2 )
+		Sys_AndroidLog( ANDROID_LOG_ERROR,
+			va( "ENGINE EXIT code=%d state=%s\n", exitCode,
+				com_fullyInitialized ? "fully-initialised" : "DURING INIT" ) );
+#endif
+
+	Sys_ShutdownPlatform( exitCode );
 
 	exit( exitCode );
 }
@@ -983,7 +988,10 @@ int main( int argc, char **argv )
 #ifdef __EMSCRIPTEN__
 	emscripten_set_main_loop( Com_Frame, 0, 1 );
 #else
-	while( 1 )
+	/* A clean quit breaks here instead of exit(): returning hands the process back
+	   to SDLActivity, whose UI thread finishes the activity and tears its own
+	   window down before the process ends. */
+	while( !Com_QuitRequested() )
 	{
 		Com_Frame( );
 	}

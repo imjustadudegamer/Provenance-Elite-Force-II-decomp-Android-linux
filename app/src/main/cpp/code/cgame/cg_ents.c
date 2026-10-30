@@ -659,7 +659,27 @@ void CG_Decal(centity_t *cent)
     );
 }
 
-void CG_Portal(centity_t *cent) {}
+/* Retail CG_AddCEntity case 9 @0x0002FC80: the portal marker the renderer scans for
+   when a viewscreen surface asks for its camera view; axis[1] and axis[2] are negated
+   here and axis[0]/axis[1] again in R_GetPortalOrientations, exactly as retail does. */
+void CG_Portal(centity_t *cent)
+{
+    refEntity_t ent;
+
+    memset(&ent, 0, sizeof(ent));
+
+    VectorCopy(cent->lerpOrigin, ent.origin);
+    VectorCopy(cent->currentState.origin2, ent.attachOrigin);
+
+    AnglesToAxis(cent->currentState.angles, ent.axis);
+    VectorSubtract(vec3_origin, ent.axis[1], ent.axis[1]);
+    VectorSubtract(vec3_origin, ent.axis[2], ent.axis[2]);
+
+    ent.reType = RT_PORTALSURFACE;
+    ent.frame  = (short)cent->currentState.frame;
+
+    cgi.R_AddRefEntityToScene(&ent);
+}
 
 void BG_EvaluateTrajectory(const trajectory_t *tr, int atTime, vec3_t result)
 {
