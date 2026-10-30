@@ -1759,7 +1759,14 @@ void Com_Init( char *commandLine ) {
 	paused = Cvar_Get( "paused", "0", CVAR_ROM );
 	com_canAutoSaveNow = Cvar_Get( "com_canAutoSaveNow", "0", CVAR_ROM );
 	fps = Cvar_Get( "fps", "0", 0 );
+	/* A build that arms the probes writes its own log file; the shipped build
+	   writes nothing.  3 is the all-rows level and forces the flush, so
+	   qconsole.log in the homepath outlives the logcat ring. */
+#ifdef PROBE_BUILD_SILENT
 	com_logfile = Cvar_Get("logfile", "0", CVAR_TEMP);
+#else
+	com_logfile = Cvar_Get("logfile", "3", CVAR_TEMP);
+#endif
 	/* the per-boot override file; CVAR_TEMP keeps it out of the archive */
 	com_execAfterConfig = Cvar_Get( "com_execAfterConfig", "", CVAR_TEMP );
 	com_timescale = Cvar_Get( "timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO );
