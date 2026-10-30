@@ -688,6 +688,7 @@ static void RE_EndRegistration( void )
 
 	tr.registrating = qfalse;
 	R_IssuePendingRenderCommands();
+	R_FreeUnusedModels();
 	R_FreeUnusedImages();
 }
 
