@@ -262,7 +262,8 @@ void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, fl
 
 
 void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b ) {
-	RE_AddDynamicLightToScene( org, intensity, r, g, b, qtrue );
+	/* additive is its own type: 1 is dlighttype_t::lensflare and would draw a flare */
+	RE_AddDynamicLightToScene( org, intensity, r, g, b, additive );
 }
 
 void RE_AddLensflareToScene( void *key, const vec3_t org, int lensflareNum, float r, float g, float b, float scale, qhandle_t replacementShader ) {

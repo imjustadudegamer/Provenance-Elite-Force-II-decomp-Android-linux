@@ -149,6 +149,7 @@ typedef struct spherel_s {
     int   exclusiveLightNameCount;
     unsigned int exclusiveLightNameHashList[4];
     int   reference_count;
+    int   flare_frame;
 } spherel_t;
 
 typedef struct dlight_s {
@@ -1327,6 +1328,9 @@ typedef struct {
 
     spherel_t sLights[MAX_MAP_SPHERE_LIGHTS_EF2 + MAX_DLIGHTS];
     int numSLights;
+    /* RB_AddLightFlares @0x00049DF0 takes this arm when the map carries no
+       spherelight vis: every lensflare record flares, not just the seen ones */
+    qboolean sphereLightVis;
     int rendererhandle;
     qboolean shadersParsed;
     int frame_skel_index;

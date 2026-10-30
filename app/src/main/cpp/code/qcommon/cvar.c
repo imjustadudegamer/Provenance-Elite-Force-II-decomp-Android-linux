@@ -46,6 +46,9 @@ static	cvar_t	*hashTable[FILE_HASH_SIZE];
 
 qboolean cvar_global_force = qfalse;
 qboolean cvar_inConfig = qfalse;
+/* same right for the port's own defaults and the per-boot override slot: both are config-grade,
+   so their rows outrank a pak `setd' and a later code registration */
+qboolean cvar_inSeed = qfalse;
 
 static void Cvar_FlagsCheck(int flags);
 
@@ -316,14 +319,15 @@ const char *Cvar_CompleteVariableByNumber( const char *partial, int number )
 
 void Cvar_SetDefault( cvar_t *var, const char *var_value )
 {
-	if( !strcmp( var->resetString, var_value ) ) {
-		return;
+	if( strcmp( var->resetString, var_value ) ) {
+		var->flags |= CVAR_USER_CREATED;
+		Z_Free( var->resetString );
+		var->resetString = CopyString( var_value );
 	}
 
-	var->flags |= CVAR_USER_CREATED;
-	Z_Free( var->resetString );
-	var->resetString = CopyString( var_value );
-
+	/* a setd that lands on the default the cvar already carries still authored
+	   that default: the renderer's own registration has to see the marker or a
+	   fresh install keeps the pak's value and never opens on the code one */
 	var->defaultRecorded = qtrue;
 }
 
@@ -507,7 +511,7 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 
 	/* a value out of config.cfg is the player's own, not a default: a pak `setd' must
 	   not outrank it and neither may a later code registration */
-	if ( cvar_inConfig ) {
+	if ( cvar_inConfig || cvar_inSeed ) {
 		var->defaultRecorded = qfalse;
 	}
 

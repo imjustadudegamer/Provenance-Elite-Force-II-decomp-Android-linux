@@ -1203,7 +1203,8 @@ void R_Register( void )
 	r_lodCurveError = ri.Cvar_Get( "r_lodCurveError", "250", CVAR_ARCHIVE|CVAR_CHEAT );
 	// 0x18f14 stw into TOC slot 0x227FB8.  "1", not the "0" this line carried -- and
 	r_lodbias = ri.Cvar_Get("r_lodbias", "1", CVAR_ARCHIVE);
-	r_flares = R_RegisterLightCvar( "r_flares", "1" );
+	/* the boot default is the full tier: the cheap tier is reachable only by an explicit row */
+	r_flares = R_RegisterLightCvar( "r_flares", "2" );
 	r_flaresMaxDist = ri.Cvar_Get ("r_flaresMaxDist", "768", CVAR_ARCHIVE );
 	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT );
 	ri.Cvar_CheckRange( r_znear, 0.001f, 200, qtrue );

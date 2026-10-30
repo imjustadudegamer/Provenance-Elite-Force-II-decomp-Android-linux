@@ -2228,7 +2228,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	/* the walk hands the next list the full range whatever its own mirror said */
 	vkDepthRange (0, 1.0);
 
-	if (!(backEnd.refdef.rdflags & RDF_FULLBRIGHT)) {
+	/* retail R_RenderView @0x0001F190 draws the pass only for a flag-free world refdef */
+	if (!backEnd.refdef.rdflags) {
 		R_DrawLensFlares();
 	}
 

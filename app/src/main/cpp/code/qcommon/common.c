@@ -1645,7 +1645,11 @@ void Com_Init( char *commandLine ) {
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
 		Cbuf_AddText( EF2_ANDROID_DEFAULT_COMMANDS );
+		/* these rows are the port's own defaults, so a pak `setd' may not outrank them
+		   and the renderer's registration may not reset them */
+		cvar_inSeed = qtrue;
 		Cbuf_Execute( 0 );
+		cvar_inSeed = qfalse;
 		Cvar_Set( "port_defaultsSeed", XSTRING( PORT_DEFAULTS_SEED ) );
 
 		Com_WriteConfigToFile( EF2_CONFIG_FILE );
@@ -1685,7 +1689,11 @@ void Com_Init( char *commandLine ) {
 
 		if ( overrideCfg && overrideCfg[ 0 ] && FS_FileExists_HomeData( overrideCfg ) ) {
 			Cbuf_AddText( va( "exec %s\n", overrideCfg ) );
+			/* the per-boot override is the launcher's own setting, same standing as a
+			   config row: it must beat the pak `setd' and the registration default */
+			cvar_inSeed = qtrue;
 			Cbuf_Execute( 0 );
+			cvar_inSeed = qfalse;
 			Com_Printf( "Exec: %s (launcher overrides)\n", overrideCfg );
 		}
 	}

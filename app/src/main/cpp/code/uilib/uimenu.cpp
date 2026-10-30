@@ -2282,7 +2282,9 @@ static settingsRow_s s_videoRows[] = {
      {{0}}, 0, 0, 0, 0, NULL, 0, "The weapon and muzzle lights"},
 
     /* both option lists are the shipped pages' own (menu_advancedvideo.urc: shadows
-       447..449, flares 527..529), in the shipped order and at the shipped values. */
+       447..449, flares 527..529), in the shipped order and at the shipped values.
+       Flares is the one deliberate cut: two of the shipped three, the half tier
+       dropped (see DESIGN-MENU-GRAMMAR.md). */
     {NULL, "$$Shadows$$", "cg_shadows", "SwitchBox",
      {{"$$None$$", "set cg_shadows 0", "0"},
       {"$$Simple$$", "set cg_shadows 1", "1"},
@@ -2291,9 +2293,8 @@ static settingsRow_s s_videoRows[] = {
 
     {NULL, "$$Flares$$", "r_flares", "SwitchBox",
      {{"$$None$$", "set r_flares 0", "0"},
-      {"$$Simple$$", "set r_flares 1", "1"},
       {"$$Precise$$", "set r_flares 2", "2"}},
-     3, 0, 0, 0, NULL, 0, "The light halos"},
+     2, 0, 0, 0, NULL, 0, "The light halos"},
 
     {"Effects & Detail", "Geometry Detail", "r_subdivisions", "SwitchBox",
      {{"$$Low$$", "set r_subdivisions 8", "8"},

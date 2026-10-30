@@ -459,6 +459,7 @@ void R_LoadSphereLights(gamelump_t* l) {
     spherel_t* light;
 
     tr.numSLights = 0;
+    tr.sphereLightVis = qfalse;
 
     if (!l->buffer || !l->length) {
         return;
@@ -535,6 +536,7 @@ void R_LoadSphereLightVis(gamelump_t* l) {
 
         if (numentries) {
             if (numentries != s_worldData.numnodes - s_worldData.numDecisionNodes) {
+                tr.sphereLightVis = qtrue;
                 for (i = 0; i < numentries; ++i)
                     entries[i] = LittleLong(entries[i]);
 
