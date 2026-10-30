@@ -571,7 +571,9 @@ static qboolean R_Sphere_ResetPointColors(void)
         }
     }
 
-    VectorSet( backEnd.currentSphere->ambient, ambientlight[0], ambientlight[1], ambientlight[2] );
+    /* retail @0x00044FC0 writes that same zero constant here unconditionally: the
+       sphere's ambient stays black and only the RF_EXTRALIGHT arm fills it */
+    VectorClear( backEnd.currentSphere->ambient );
 
     if (tr.numSLights && !r_fullbright->integer && backEnd.currentSphere->leaves[0]) {
         for (i = 0; i < SPHERE_NUM_BASIS; i++) {
@@ -1057,9 +1059,10 @@ void R_Sphere_InitLights()
     s_sun.szFlareName[0] = 0;
     s_sun.exists         = qfalse;
 
-    /* retail seeds the sphere's ambient light from its own default before the
-       entity string can override it: a map without the key is still lit */
-    VectorSet( ambientlight, tr.identityLightByte, tr.identityLightByte, tr.identityLightByte );
+    /* retail @0x000471C0 seeds ambientlight from the float at 0x22A718[0]+8, and
+       R_Sphere_NormalizeColors compares overbrightMult against that same slot, so
+       the slot is 0.0; the map's own "ambientlight" key still overrides it below */
+    VectorClear( ambientlight );
     backEnd.sphere.TessFunction = &RB_Light_Sphere;
     backEnd.currentSphere       = &backEnd.sphere;
     backEnd.bExactDLights       = qfalse;

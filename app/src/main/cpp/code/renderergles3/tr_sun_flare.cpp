@@ -121,6 +121,10 @@ public:
 
 lens_flare        torches;
 dlight_lens_flare dlights;
+/* retail keys four sections, not two: R_LoadLensflares @0x0004A150 names
+   entity, viewentity, dlight and viewdlight and routes one arm to each */
+lens_flare        entityFlares;
+dlight_lens_flare viewDlights;
 sun_flare_class   sunFlare;
 int               lens_flare::max_flares;
 
@@ -548,21 +552,22 @@ void R_DrawLensFlares()
         if (backEnd.refdef.entities[i].e.renderfx & RF_LENSFLARE) {
             vec3_t rgb;
 
+            /* RB_AddEntityFlares @0x00049B00 keys bit 0x100 to the "entity" section */
             if (backEnd.refdef.entities[i].e.renderfx & RF_SKYENTITY) {
-                dlights.InPortalSky();
+                entityFlares.InPortalSky();
             } else {
-                dlights.NotInPortalSky();
+                entityFlares.NotInPortalSky();
             }
 
-            dlights.SetVect(backEnd.refdef.entities[i].e.origin);
+            entityFlares.SetVect(backEnd.refdef.entities[i].e.origin);
 
 
             rgb[0] = backEnd.refdef.entities[i].e.shaderRGBA[0] / 255.0;
             rgb[1] = backEnd.refdef.entities[i].e.shaderRGBA[1] / 255.0;
             rgb[2] = backEnd.refdef.entities[i].e.shaderRGBA[2] / 255.0;
-            dlights.SetColor(rgb);
+            entityFlares.SetColor(rgb);
 
-            dlights.Try();
+            entityFlares.Try();
         }
 
         if (backEnd.refdef.entities[i].e.renderfx & RF_VIEWLENSFLARE) {
@@ -586,13 +591,19 @@ void R_DrawLensFlares()
     }
 
     for (i = 0; i < backEnd.refdef.num_dlights; i++) {
-        if ((backEnd.refdef.dlights[i].type & dlighttype_t::lensflare)
-            || (backEnd.refdef.dlights[i].type & dlighttype_t::additive)) {
-            dlights.NotInPortalSky();
-            dlights.SetVect(backEnd.refdef.dlights[i].origin);
-            dlights.SetColor(backEnd.refdef.dlights[i].color);
+        /* RB_RenderFlares @0x0004A6E0 keys type 1 to "dlight" and type 2 to
+           "viewdlight"; additive stays on the plain dlight definition */
+        dlight_lens_flare &which = (backEnd.refdef.dlights[i].type & dlighttype_t::viewlensflare)
+                                       ? viewDlights
+                                       : dlights;
 
-            dlights.Try();
+        if (backEnd.refdef.dlights[i].type
+            & (dlighttype_t::lensflare | dlighttype_t::viewlensflare | dlighttype_t::additive)) {
+            which.NotInPortalSky();
+            which.SetVect(backEnd.refdef.dlights[i].origin);
+            which.SetColor(backEnd.refdef.dlights[i].color);
+
+            which.Try();
         }
     }
 
@@ -609,8 +620,10 @@ void R_DrawLensFlares()
 
 void R_InitLensFlare()
 {
-    torches.Init("entity");
+    torches.Init("viewentity");
     dlights.Init("dlight");
+    entityFlares.Init("entity");
+    viewDlights.Init("viewdlight");
     sunFlare.initted = false;
 
     R_LoadLensflares();
@@ -1102,6 +1115,9 @@ void R_ShutdownLensflares(void)
     }
 
     lf_infos = NULL;
+    /* the next load re-keys from zero, so a stale lensflareNum cached in cgame
+       cannot survive into a table that numbers its entries from here */
+    lf_numInfos = 0;
 }
 
 void R_ClearLensflareStates(void)
