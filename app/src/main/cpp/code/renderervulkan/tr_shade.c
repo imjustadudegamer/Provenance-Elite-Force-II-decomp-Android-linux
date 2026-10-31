@@ -551,6 +551,30 @@ static void ComputeColors( shaderStage_t *pStage )
 						tess.svars.colors[i][3] = 0xFF;
 					}
 				}
+
+				/* the generic lightingDiffuse arm is what a two-stage head/skin reads,
+				   so name its colour and the sphere record beside the vertex-lit row */
+				if ( R_ProbeMarkOn() && tess.numVertexes > 0 ) {
+					static int s_ldiffRows;
+
+					s_ldiffRows++;
+					if ( s_ldiffRows <= 8 || ( s_ldiffRows % 300 ) == 0 ) {
+						VK_Guard_Row( "DOCC:ldiff",
+									  "f=%d shader='%s' ent=%d n=%d c0=%d,%d,%d,%d tessfn=%d nlights=%d "
+									  "amb=(%.1f,%.1f,%.1f) rf=0x%x",
+									  RB_FrameCount(), tess.shader->name,
+									  backEnd.currentEntity ? backEnd.currentEntity->e.entityNumber : -1,
+									  tess.numVertexes,
+									  tess.svars.colors[0][0], tess.svars.colors[0][1],
+									  tess.svars.colors[0][2], tess.svars.colors[0][3],
+									  ( backEnd.currentSphere && backEnd.currentSphere->TessFunction ) ? 1 : 0,
+									  backEnd.currentSphere ? backEnd.currentSphere->numLights : -1,
+									  backEnd.currentSphere ? backEnd.currentSphere->ambient[0] : 0.0f,
+									  backEnd.currentSphere ? backEnd.currentSphere->ambient[1] : 0.0f,
+									  backEnd.currentSphere ? backEnd.currentSphere->ambient[2] : 0.0f,
+									  backEnd.currentEntity ? backEnd.currentEntity->e.renderfx : 0 );
+					}
+				}
 				break;
 			}
 

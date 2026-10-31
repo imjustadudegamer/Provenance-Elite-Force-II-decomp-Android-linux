@@ -1266,6 +1266,24 @@ void R_AddEntitySurfaces (void) {
 
 		R_NoteEntitySurfStart();
 
+		/* what the sub-view's entity list actually holds: the viewscreen backdrop is
+		   portal-only, so a missing draw is either absent here or carries the wrong bit */
+		if ( tr.viewParms.isPortal && R_ProbeMarkOn() ) {
+			static int s_subEntRows;
+
+			if ( tr.currentEntityNum < 8 ) {
+				s_subEntRows++;
+				if ( s_subEntRows <= 64 || ( s_subEntRows % 600 ) == 0 ) {
+					VK_Guard_Row( "VK:portalent",
+								  "sub ent=%d n=%d reType=%d model=%d rf=0x%x keep=%d f=%d",
+								  tr.currentEntityNum, tr.refdef.num_entities,
+								  ent->e.reType, ent->e.hModel, ent->e.renderfx,
+								  ( ent->e.renderfx & ( RF_PORTALENTITY | RF_DUALENTITY ) ) ? 1 : 0,
+								  RB_FrameCount() );
+				}
+			}
+		}
+
 		if ( (ent->e.renderfx & RF_FIRST_PERSON) && tr.viewParms.isPortal) {
 			continue;
 		}

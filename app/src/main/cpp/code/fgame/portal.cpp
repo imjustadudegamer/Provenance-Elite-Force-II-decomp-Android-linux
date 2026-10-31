@@ -37,8 +37,10 @@ Event EV_Portal_Roll
 	"Sets the portal camera's roll."
 );
 
+/* retail code/game/portal.cpp:60-67 declares this EV_DEFAULT, and the level scripts
+   call it (`viewscreenSetupPortal`); code-only is not retail's contract. */
 Event EV_Portal_LocateCamera (	"locatecamera",
-	EV_CODEONLY,
+	EV_DEFAULT,
 	NULL,
 	NULL,
 	"Locates the camera position."

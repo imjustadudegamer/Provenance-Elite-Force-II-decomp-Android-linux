@@ -382,6 +382,8 @@ void CG_Sprite(centity_t *cent)
     }
 }
 
+static qboolean CG_DecalProbeOn( void );
+
 void CG_General(centity_t *cent)
 {
     refEntity_t    ent;
@@ -466,6 +468,26 @@ void CG_General(centity_t *cent)
     ent.tag_num  = s1->tag_num;
     ent.skin_num = s1->skinNum;
     ent.renderfx |= s1->renderfx;
+
+    /* the first refEntity the cgame hands the scene for a portal-only draw: if the
+       viewscreen backdrop is missing from the sub-view this row says it never got here */
+    if ( ( ent.renderfx & RF_PORTALENTITY ) && CG_DecalProbeOn() ) {
+        static int portal_rows;
+
+        portal_rows++;
+        if ( portal_rows <= 16 || ( portal_rows % 240 ) == 0 ) {
+            UIVK_PROBE(
+                "DOCC:portal",
+                "ent=%d rf=0x%x hide=%d model=%d h=0x%x org=(%.1f,%.1f,%.1f)\n",
+                s1->number,
+                ent.renderfx,
+                ( ent.renderfx & RF_DONTDRAW ) ? 1 : 0,
+                s1->modelindex,
+                ent.hModel,
+                ent.origin[0], ent.origin[1], ent.origin[2]
+            );
+        }
+    }
 
     ent.tiki         = CG_TikiFromHandle(cgi.R_Model_GetHandle(cgs.model_draw[s1->modelindex]));
     ent.actionWeight = 1.0;
