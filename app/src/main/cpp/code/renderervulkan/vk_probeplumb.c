@@ -105,31 +105,11 @@ qboolean R_ProbeStatsOn( void )
 #endif
 }
 
-/* The light/mark rows answer to the device's own diag property as well, so one
-   arm boots the decal evidence without qa_probe's whole census behind it. */
+/* One gate for every row family: qa_probe, which the Android boot sets from the
+   log property before the renderer runs. */
 qboolean R_ProbeMarkOn( void )
 {
-#ifdef PROBE_BUILD_SILENT
-	return qfalse;
-#else
-	static int cached = -1;
-
-	if ( cached < 0 ) {
-		cached = R_ProbeStatsOn() ? 1 : 0;
-#ifdef __ANDROID__
-		if ( !cached ) {
-			char val[ PROP_VALUE_MAX ];
-
-			if ( __system_property_get( "log.tag.ProvenanceEF2", val ) > 0
-				 && val[ 0 ] != '\0' && Q_stricmp( val, "0" ) && Q_stricmp( val, "false" ) ) {
-				cached = 1;
-			}
-		}
-#endif
-	}
-
-	return cached ? qtrue : qfalse;
-#endif
+	return R_ProbeStatsOn();
 }
 
 /* the renderer's own clock: `ri.Milliseconds() * 1000' quantised every usec= row it feeds to a millisecond, so a cost under one read as zero
