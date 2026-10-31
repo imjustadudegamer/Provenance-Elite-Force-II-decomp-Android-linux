@@ -8,9 +8,10 @@ enough to keep the lights dark.
 
 ## Retail's law
 
-- `r_flares` is registered as `"1"` (PC `EF2.exe` 0x5258ff): the boot tier is
-  Simple, one world trace with a twenty-four-unit grace
-  (`TestVisibility @0x00049150`).
+- Retail registers `r_flares` as `"1"` (PC `EF2.exe` 0x5258ff), a world trace
+  with a twenty-four-unit grace (`TestVisibility @0x00049150`). This port boots
+  the full tier (`2`) by its own design: the page offers None/Precise and the
+  Android seed pins `2`.
 - `"2"` is the precise tier: an occlusion query over a depth-tested,
   colour-silent quad, or a one-pixel depth readback when the query is absent.
 - A flare fades out beyond `r_flaresMaxDist` (768); the corona itself draws
@@ -33,8 +34,8 @@ enough to keep the lights dark.
    twenty-four units nearer. The test quad now carries that tolerance.
 6. **525dd5d** — the query never answered here: the range read `ready=0` even
    when collected before the reset. The precise tier now falls back to
-   retail's simple-tier trace whenever the depth answer is absent, and I
-   restored the registered default `r_flares=1`.
+   retail's simple-tier trace whenever the depth answer is absent, so the
+   boot tier (the seed's own `2`) draws.
 
 ## Final evidence
 
