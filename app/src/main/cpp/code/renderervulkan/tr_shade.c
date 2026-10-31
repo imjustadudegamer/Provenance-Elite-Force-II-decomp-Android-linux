@@ -1251,9 +1251,9 @@ qboolean VK_StageResolve2DColor( shaderStage_t *pStage )
 	return qtrue;
 }
 
-/* The 2D lane's tcMod arm.  Retail has no 2D iterator (ComputeStageIteratorFunc
+/* The 2D iterator's tcMod arm.  Retail has no 2D iterator (ComputeStageIteratorFunc
    @0x0003BA50 only ever names the three generic ones), so its UI quads run the
-   generic walk and its tcMods are CPU.  This lane's tess shader carries no
+   generic walk and its tcMods are CPU.  This backend's tess shader carries no
    tcMod code, so the stage's chain has to land in the vertex ST. */
 
 /* The quad's authored ST: every stage resolves from this, never from the stage

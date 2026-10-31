@@ -485,7 +485,7 @@ void VK_Upload_Quiesce( void );
 /* The calling thread's id, in the pool-ownership sense: 0 is no owner. */
 unsigned long VK_Upload_ThreadID( void );
 
-/* The master instrument gate (qa_probe, default 0): every row this lane emits
+/* The master instrument gate (qa_probe, default 0): every row this backend emits
    beyond the startup banner answers to it.  Declared here because the pool
    ownership rows live in vk_renderthread.c, which does not pull tr_local.h. */
 qboolean R_ProbeStatsOn( void );

@@ -993,7 +993,7 @@ done:
 	s_vkUploadMips = numMipmaps ? qtrue : qfalse;
 
 	/* The filter pair the sampler is built from; anisotropy stays off.  The
-	   mipmapped arm has nothing left to write in this lane -- the sampler reads
+	   mipmapped arm has nothing left to write in this backend -- the sampler reads
 	   vk_filter_min/vk_filter_max directly and the default already is the
 	   mipmap-capable filter, where the twin pushed gl_filter_min into the
 	   object.  Only the single-level arm changes them. */

@@ -290,7 +290,7 @@ void R_ScreenShot_f( void )
 	}
 }
 
-/* The renderer's console commands.  This lane defines the list commands but
+/* The renderer's console commands.  This backend defines the list commands but
    registered none of them, so `screenshot` -- and with it the save-game
    thumbnail -- silently did nothing. */
 void R_Register( void )

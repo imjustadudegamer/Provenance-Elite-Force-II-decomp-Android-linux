@@ -2513,7 +2513,7 @@ void RB_StageIterator2D( void )
 {
 	int stage;
 
-	/* This lane's 2D dispatch is RB_StageIterator2D, which never reaches
+	/* This backend's 2D dispatch is RB_StageIterator2D, which never reaches
 	   RB_StageIteratorGeneric, so the clock row is taken here as well: a
 	   scrolling 2D shader (a wall panel's screen, a HUD effect) animates off
 	   the same tess.shaderTime. */

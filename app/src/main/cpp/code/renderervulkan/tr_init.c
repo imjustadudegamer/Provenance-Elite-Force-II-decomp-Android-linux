@@ -601,7 +601,7 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 
 	vk_lifeGen = r_sequencenumber;
 
-	/* what a registration DESTROYS, which this lane used to leave standing: retail's R_BeginRegistration @0x00028D50 resets tr.viewCluster to
+	/* what a registration DESTROYS, which this backend used to leave standing: retail's R_BeginRegistration @0x00028D50 resets tr.viewCluster to
 	   -1 and the GLES3 twin additionally clears the scene, the non-tiki models, the hunk and the world, so tr.world, tr.worldMapLoaded, the
 	   PVS cluster lock and the model table all dropped.  Kept in the twin's order, before any scene is registered. */
 	tr.viewCluster = -1;

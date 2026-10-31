@@ -613,46 +613,46 @@ typedef struct shader_s {
   int shaderStates[MAX_STATES_PER_SHADER];          
 } shader_t;
 
-#define W31_SHADER_OFF(member) ((int)__builtin_offsetof(shader_t, member))
-#define W31_STAGE_OFF(member)  ((int)__builtin_offsetof(shaderStage_t, member))
+#define EF2_SHADER_OFF(member) ((int)__builtin_offsetof(shader_t, member))
+#define EF2_STAGE_OFF(member)  ((int)__builtin_offsetof(shaderStage_t, member))
 #if defined(__cplusplus)
-#define W31_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
+#define EF2_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
 #else
-#define W31_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
+#define EF2_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
 #endif
 
-W31_STATIC_ASSERT(sizeof(((shader_t *)0)->forcedAlphaShader) == 64,
+EF2_STATIC_ASSERT(sizeof(((shader_t *)0)->forcedAlphaShader) == 64,
 	"retail shader_t::forcedAlphaShader is char[64] (R_FindShader strlen bound @0x3DD8C)");
 
-W31_STATIC_ASSERT(W31_SHADER_OFF(usesGlobalFogIterator) == W31_SHADER_OFF(needsLSpherical) + 4,
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(usesGlobalFogIterator) == EF2_SHADER_OFF(needsLSpherical) + 4,
 	"retail +0x210 needsLSpherical then +0x214 usesGlobalFogIterator");
-W31_STATIC_ASSERT(W31_SHADER_OFF(fogFlags) == W31_SHADER_OFF(usesGlobalFogIterator) + 4,
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(fogFlags) == EF2_SHADER_OFF(usesGlobalFogIterator) + 4,
 	"retail +0x214 usesGlobalFogIterator then +0x218 fogFlags");
-W31_STATIC_ASSERT(W31_SHADER_OFF(noMerge) == W31_SHADER_OFF(fogFlags) + 4,
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(noMerge) == EF2_SHADER_OFF(fogFlags) + 4,
 	"retail +0x218 fogFlags then +0x21C noMerge");
-W31_STATIC_ASSERT(W31_SHADER_OFF(optimalStageIteratorFunc) == W31_SHADER_OFF(needsLSpherical) + 0x10,
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(optimalStageIteratorFunc) == EF2_SHADER_OFF(needsLSpherical) + 0x10,
 	"retail +0x220 optimalStageIteratorFunc (0x220 - 0x210 == 0x10)");
 
-W31_STATIC_ASSERT(W31_SHADER_OFF(remappedShader) > W31_SHADER_OFF(optimalStageIteratorFunc),
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(remappedShader) > EF2_SHADER_OFF(optimalStageIteratorFunc),
 	"retail order: +0x220 iterator then +0x224 remappedShader");
-W31_STATIC_ASSERT(W31_SHADER_OFF(forcedAlphaShader) > W31_SHADER_OFF(remappedShader),
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(forcedAlphaShader) > EF2_SHADER_OFF(remappedShader),
 	"retail order: +0x224 remappedShader then +0x228 forcedAlphaShader");
-W31_STATIC_ASSERT(W31_SHADER_OFF(forcedAlphaKey) >= W31_SHADER_OFF(forcedAlphaShader) + 64,
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(forcedAlphaKey) >= EF2_SHADER_OFF(forcedAlphaShader) + 64,
 	"retail order: +0x268 forcedAlphaKey follows the 64-byte forcedAlphaShader");
-W31_STATIC_ASSERT(W31_SHADER_OFF(next) >= W31_SHADER_OFF(forcedAlphaKey) + 4,
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(next) >= EF2_SHADER_OFF(forcedAlphaKey) + 4,
 	"retail order: +0x26C next follows +0x268 forcedAlphaKey");
-W31_STATIC_ASSERT(W31_SHADER_OFF(flags) > W31_SHADER_OFF(next),
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(flags) > EF2_SHADER_OFF(next),
 	"port-only shader_t::flags stays after retail's tail");
 
-W31_STATIC_ASSERT(W31_SHADER_OFF(needsLSpherical) == 896, "port shader_t tail base moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(usesGlobalFogIterator) == 900, "port usesGlobalFogIterator moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(fogFlags) == 904, "port fogFlags moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(noMerge) == 908, "port noMerge moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(optimalStageIteratorFunc) == 912, "port optimalStageIteratorFunc moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(remappedShader) == 920, "port remappedShader moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(forcedAlphaShader) == 928, "port forcedAlphaShader moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(forcedAlphaKey) == 992, "port forcedAlphaKey moved");
-W31_STATIC_ASSERT(W31_SHADER_OFF(next) == 1000, "port shader_t::next moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(needsLSpherical) == 896, "port shader_t tail base moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(usesGlobalFogIterator) == 900, "port usesGlobalFogIterator moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(fogFlags) == 904, "port fogFlags moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(noMerge) == 908, "port noMerge moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(optimalStageIteratorFunc) == 912, "port optimalStageIteratorFunc moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(remappedShader) == 920, "port remappedShader moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(forcedAlphaShader) == 928, "port forcedAlphaShader moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(forcedAlphaKey) == 992, "port forcedAlphaKey moved");
+EF2_STATIC_ASSERT(EF2_SHADER_OFF(next) == 1000, "port shader_t::next moved");
 
 typedef struct shaderState_s {
   char shaderName[MAX_QPATH];     

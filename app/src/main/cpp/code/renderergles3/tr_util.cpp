@@ -125,7 +125,7 @@ static void addTriangle(void)
 
 /* THE 2D placement, in one place: retail keeps glViewport and glOrtho constant for the whole 2D pass and carries each widget's placement in its screen-space
    vertex stream (retail-menu-solomatch-final.trace 10103-10124), so a port vertex is written in the widget's own coordinates and placed here, at the LAST step
-   after any glyph or HUD scale, exactly as the Vulkan lane does.  `backEnd.in2D' keeps the 3D pass untouched. */
+   after any glyph or HUD scale, exactly as the Vulkan backend does.  `backEnd.in2D' keeps the 3D pass untouched. */
 void RB_2DPlaceVertex(float *xyz)
 {
     if ( backEnd.in2D ) {
