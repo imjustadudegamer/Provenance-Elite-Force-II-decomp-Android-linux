@@ -293,11 +293,114 @@ qboolean VK_Frame_Init( void )
 		}
 	}
 
+	/* The occlusion queries retail's flare visibility reads.  Same reset
+	   discipline as the timestamps: the slot's own command buffer resets its own
+	   half, before the render pass opens. */
+	vk.flareQueryPool = VK_NULL_HANDLE;
+	if ( qvk.CreateQueryPool && qvk.CmdResetQueryPool && qvk.CmdBeginQuery && qvk.CmdEndQuery
+		 && qvk.GetQueryPoolResults ) {
+		VkQueryPoolCreateInfo flareInfo;
+
+		memset( &flareInfo, 0, sizeof( flareInfo ) );
+		flareInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		flareInfo.queryType = VK_QUERY_TYPE_OCCLUSION;
+		flareInfo.queryCount = VK_FRAMES_IN_FLIGHT * VK_FLARE_QUERIES;
+
+		if ( VK_Guard_Result( VK_GSITE_QUIRK,
+							  qvk.CreateQueryPool( vk.device, &flareInfo, NULL, &vk.flareQueryPool ),
+							  "vkCreateQueryPool(occlusion)" ) ) {
+			vk.flareSlot = 0;
+		} else {
+			vk.flareQueryPool = VK_NULL_HANDLE;
+		}
+	}
+
 	if ( R_ProbeStatsOn() ) {
 		VK_Guard_Row( "VK:frame", "ready slots=%d images=%u", frames, vk.swapchainImageCount );
 	}
 
 	return qtrue;
+}
+
+/* ---- retail's occlusion-query arm (Lensflare::TestVisibility @0x00049150) --
+   GL_SAMPLES_PASSED over a quad drawn at the flare's own depth is
+   VK_QUERY_TYPE_OCCLUSION here.  The read takes the frame before this one and
+   never waits, which is the same one-frame lag retail's own query arm carries. */
+
+void VK_Flare_QueryReset( int slot )
+{
+	vk.flareSlot = slot;
+
+	if ( vk.flareQueryPool == VK_NULL_HANDLE || !qvk.CmdResetQueryPool ) {
+		return;
+	}
+
+	qvk.CmdResetQueryPool( vk.commandBuffers[slot], vk.flareQueryPool,
+						   ( uint32_t )( slot * VK_FLARE_QUERIES ), VK_FLARE_QUERIES );
+}
+
+qboolean VK_Flare_QueryArm( unsigned int index )
+{
+	VkCommandBuffer cmd;
+
+	if ( vk.flareQueryPool == VK_NULL_HANDLE || index >= VK_FLARE_QUERIES ) {
+		return qfalse;
+	}
+
+	cmd = vk.commandBuffers[vk.flareSlot];
+	if ( cmd == VK_NULL_HANDLE ) {
+		return qfalse;
+	}
+
+	qvk.CmdBeginQuery( cmd, vk.flareQueryPool, ( uint32_t )( vk.flareSlot * VK_FLARE_QUERIES + index ), 0 );
+	return qtrue;
+}
+
+void VK_Flare_QueryEnd( unsigned int index )
+{
+	VkCommandBuffer cmd;
+
+	if ( vk.flareQueryPool == VK_NULL_HANDLE || index >= VK_FLARE_QUERIES ) {
+		return;
+	}
+
+	cmd = vk.commandBuffers[vk.flareSlot];
+	if ( cmd == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	qvk.CmdEndQuery( cmd, vk.flareQueryPool, ( uint32_t )( vk.flareSlot * VK_FLARE_QUERIES + index ) );
+}
+
+qboolean VK_Flare_QueryResult( unsigned int index, unsigned int *samples )
+{
+	uint32_t	out[2];
+	VkResult	result;
+	int			slot;
+
+	if ( vk.flareQueryPool == VK_NULL_HANDLE || index >= VK_FLARE_QUERIES || !qvk.GetQueryPoolResults ) {
+		return qfalse;
+	}
+
+	slot = vk.flareSlot ^ 1;
+	result = qvk.GetQueryPoolResults( vk.device, vk.flareQueryPool,
+									  ( uint32_t )( slot * VK_FLARE_QUERIES + index ), 1,
+									  sizeof( out ), out, sizeof( out ),
+									  VK_QUERY_RESULT_WITH_AVAILABILITY_BIT );
+	if ( result != VK_SUCCESS || !out[1] ) {
+		return qfalse;
+	}
+
+	*samples = out[0];
+	return qtrue;
+}
+
+void VK_Flare_QueryShutdown( void )
+{
+	if ( vk.flareQueryPool != VK_NULL_HANDLE && qvk.DestroyQueryPool ) {
+		qvk.DestroyQueryPool( vk.device, vk.flareQueryPool, NULL );
+	}
+	vk.flareQueryPool = VK_NULL_HANDLE;
 }
 
 void VK_Frame_Shutdown( void )
@@ -308,6 +411,8 @@ void VK_Frame_Shutdown( void )
 	if ( vk.device == VK_NULL_HANDLE ) {
 		return;
 	}
+
+	VK_Flare_QueryShutdown();
 
 	if ( vk.gpuQueryPool != VK_NULL_HANDLE && qvk.DestroyQueryPool ) {
 		qvk.DestroyQueryPool( vk.device, vk.gpuQueryPool, NULL );
@@ -593,6 +698,9 @@ qboolean VK_Frame_RecordBegin( int slot )
 	   pass opens: CmdResetQueryPool is legal outside a render pass, and the
 	   clear the pass performs is then the first interval. */
 	VK_PerfGpu_FrameBegin( slot );
+
+	/* CmdResetQueryPool is legal outside a render pass, which RecordBegin is */
+	VK_Flare_QueryReset( slot );
 
 	qvk.CmdBeginRenderPass( vk.commandBuffers[slot], &beginInfo, VK_SUBPASS_CONTENTS_INLINE );
 

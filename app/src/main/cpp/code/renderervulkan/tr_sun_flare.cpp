@@ -710,6 +710,9 @@ typedef struct lensflareInfo_s {
 
 #define MAX_LENSFLARE_STATES 128
 
+/* the occlusion pool is sized to the state table; one query per state */
+typedef char lensflareQueryPoolFit[( MAX_LENSFLARE_STATES <= VK_FLARE_QUERIES ) ? 1 : -1];
+
 typedef struct lensflareState_s {
     struct lensflareState_s *next;
     qboolean                 inUse;
@@ -726,8 +729,10 @@ typedef struct lensflareState_s {
     qboolean   clipped;           
     int        nextVisTime;       
 
-    vec2_t     screen;            
-    vec3_t     origin;            
+    vec2_t     screen;
+    float      eyeZ;
+    float      ndcZ;
+    vec3_t     origin;
     vec3_t     color;             
     float      scale;             
     shader_t  *replacementShader; 
@@ -1105,7 +1110,7 @@ static lensflareState_t *R_LensflareStateFor(void *key, qboolean clipped)
     return f;
 }
 
-static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen)
+static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen, float *eyeZ, float *ndcZ)
 {
     vec4_t   eye;
     vec4_t   clip;
@@ -1149,7 +1154,58 @@ static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen)
         screen[i] = clip[i] / clip[3];
     }
 
+    /* retail RB_AddFlare @0x00049740 keeps the eye-space z beside the window
+       point; both occlusion arms read it back against this frame */
+    if (eyeZ) {
+        *eyeZ = eye[2];
+    }
+    if (ndcZ) {
+        *ndcZ = clip[2] / clip[3];
+    }
+
     return inside;
+}
+
+/* retail Lensflare::occlusionDraw @0x00048AF0, called from the query arm of
+   TestVisibility @0x00049150: a quad at the flare's own depth, depth-tested,
+   writing no colour, inside the occlusion query the next frame reads.  The
+   ortho pass is already up, so the quad is placed in NDC and its depth inverted
+   through the projection this view drew with. */
+static void R_LensflareOcclusionArm(const lensflareState_t *f, unsigned int index)
+{
+    const float *proj = RB_GetProjectionMatrix();
+    float half, z;
+    int   span;
+
+    if (!VK_Flare_QueryArm(index)) {
+        return;
+    }
+
+    span = backEnd.viewParms.viewportHeight > 0 ? backEnd.viewParms.viewportHeight : 1;
+    half = 8.0f / (float)span;
+    z    = (f->ndcZ - proj[14]) / proj[10];
+
+    /* the immediate stream's own colour and st: alpha 0 is what leaves the
+       frame untouched while the depth test still runs */
+    RB_ImmColor4f(f->color[0], f->color[1], f->color[2], 0.0f);
+    RB_ImmBeginWithImage(VK_IMM_TRIANGLE_STRIP, tr.whiteImage,
+                         VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA);
+    RB_ImmTexCoord2f(0.0f, 0.0f);
+    RB_ImmVertex3f(f->screen[0] - half, f->screen[1] - half, z);
+    RB_ImmTexCoord2f(1.0f, 0.0f);
+    RB_ImmVertex3f(f->screen[0] + half, f->screen[1] - half, z);
+    RB_ImmTexCoord2f(0.0f, 1.0f);
+    RB_ImmVertex3f(f->screen[0] - half, f->screen[1] + half, z);
+    RB_ImmTexCoord2f(1.0f, 1.0f);
+    RB_ImmVertex3f(f->screen[0] + half, f->screen[1] + half, z);
+    RB_ImmEnd();
+
+    /* the stream's colour and st are its own state: leave them as this file
+       found them, so the next run that skips a colour keeps its own */
+    RB_ImmColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    RB_ImmTexCoord2f(0.0f, 0.0f);
+
+    VK_Flare_QueryEnd(index);
 }
 
 static void R_LensflareTestVisibility(lensflareState_t *f)
@@ -1164,12 +1220,10 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
 
     if (f->viewFrameCount != backEnd.viewParms.frameCount || f->clipped) {
         visible = qfalse;
-    } else if (r_flares->integer <= 1) {
-        /* retail's Simple tier runs no occlusion test; Precise is the trace below */
-        visible = qtrue;
     } else if (backEnd.refdef.time < f->nextVisTime) {
         visible = f->visible;
-    } else {
+    } else if (r_flares->integer == 1) {
+        /* retail TestVisibility @0x00049150, the ==1 arm: the world trace */
         trace_t trace;
         float   need;
 
@@ -1188,6 +1242,21 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
 
         f->nextVisTime = backEnd.refdef.time + 50;
         visible        = (qboolean)(trace.fraction > need);
+    } else {
+        /* retail's >=2 arm: the occlusion query over the quad the arm below
+           draws, answered with the frame before this one and never waited on */
+        unsigned int index = (unsigned int)(f - lf_states);
+        unsigned int samples;
+
+        if (VK_Flare_QueryResult(index, &samples)) {
+            visible = (qboolean)(samples != 0);
+        } else {
+            /* the last complete answer is not in yet: hold the fade rather
+               than invent a verdict */
+            visible = f->visible;
+        }
+
+        R_LensflareOcclusionArm(f, index);
     }
 
     maxAlpha = 1.0f;
@@ -1390,6 +1459,8 @@ static void R_LensflareFeed(const lensflare_t *lf)
     lensflareInfo_t  *info;
     lensflareState_t *f;
     vec2_t            screen;
+    float             eyeZ;
+    float             ndcZ;
     qboolean          inside;
 
     info = R_LensflareInfoForNum(lf->num);
@@ -1397,7 +1468,7 @@ static void R_LensflareFeed(const lensflare_t *lf)
         return;
     }
 
-    inside = R_LensflareScreenCalc(lf->origin, screen);
+    inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ, &ndcZ);
 
     f = R_LensflareStateFor(lf->key, (qboolean)!inside);
     if (!f) {
@@ -1418,6 +1489,8 @@ static void R_LensflareFeed(const lensflare_t *lf)
     VectorCopy(lf->color, f->color);
     f->screen[0] = screen[0];
     f->screen[1] = screen[1];
+    f->eyeZ      = eyeZ;
+    f->ndcZ      = ndcZ;
 }
 
 static void R_LensflarePush(lensflare_t *out, void *key, const vec3_t org, const vec3_t color, int num)
@@ -1564,6 +1637,8 @@ static void R_DrawEmitterLensflares(void)
         const lensflare_t *lf = &backEnd.refdef.lensflares[i];
         lensflareInfo_t   *info;
         vec2_t             screen;
+        float              eyeZ;
+        float              ndcZ;
         qboolean           inside;
 
         info = R_LensflareInfoForNum(lf->num);
@@ -1571,7 +1646,7 @@ static void R_DrawEmitterLensflares(void)
             continue;
         }
 
-        inside = R_LensflareScreenCalc(lf->origin, screen);
+        inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ, &ndcZ);
 
         f = R_LensflareStateFor(lf->key, (qboolean)!inside);
         if (!f) {
@@ -1592,6 +1667,8 @@ static void R_DrawEmitterLensflares(void)
         VectorCopy(lf->color, f->color);
         f->screen[0] = screen[0];
         f->screen[1] = screen[1];
+        f->eyeZ      = eyeZ;
+        f->ndcZ      = ndcZ;
     }
 
     draw = qfalse;

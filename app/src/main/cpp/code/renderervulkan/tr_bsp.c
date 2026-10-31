@@ -646,9 +646,23 @@ void R_LoadBaseLightmaps( gamelump_t *l ) {
 
     s_worldData.baseLightmapImage = ri.Hunk_Alloc( num * LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT * 4, h_dontcare );
 
-    Com_Memset( image, 0xff, sizeof( image ) );
-
     for ( j = 0; j < num; j++ ) {
+        /* The create carries the tile's own static base lightmap, not the white
+           fill: this is the write the composite's first pass makes, and a tile
+           it never reaches must not draw unlit-white. */
+        {
+            const byte	*src = s_worldData.baseLightmapData + j * LIGHTMAP_BYTES;
+            byte		*dst = image;
+            int			k;
+
+            for ( k = 0; k < LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT; k++, src += 3, dst += 4 ) {
+                dst[0] = src[0];
+                dst[1] = src[1];
+                dst[2] = src[2];
+                dst[3] = 255;
+            }
+        }
+
         tr.baseLightmaps[j] = R_CreateImageOld( va( "*lightmapD%i", j ), image,
             LIGHTMAP_WIDTH, LIGHTMAP_HEIGHT, 0, -1, qfalse, qfalse, qfalse, qfalse,
             0 );

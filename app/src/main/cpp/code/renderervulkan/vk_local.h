@@ -125,6 +125,8 @@ enum {
    cap is a runaway guard, not a budget -- a frame that hits it stops marking and
    the row's marks= counter names it. */
 #define VK_GPU_MAX_MARKS 32
+/* the flare states the occlusion pool must cover; tr_sun_flare.cpp static-asserts it */
+#define VK_FLARE_QUERIES 128
 
 typedef struct {
 	qboolean initialized;
@@ -211,6 +213,10 @@ typedef struct {
 	   after that slot's fence has signalled, so no host wait is added. */
 	VkQueryPool gpuQueryPool;
 	qboolean gpuPerfReady;
+	/* retail's occlusion-query arm: one query per flare state, two slots deep,
+	   so a slot's reset never touches another slot's in-flight queries */
+	VkQueryPool flareQueryPool;
+	int flareSlot;
 	float gpuTimestampPeriod;
 	int gpuMarkCount[VK_FRAMES_IN_FLIGHT];
 	unsigned char gpuMarkBucket[VK_FRAMES_IN_FLIGHT][VK_GPU_MAX_MARKS];
@@ -425,6 +431,12 @@ void VK_PerfGpu_Mark( int slot, int bucket );
 void VK_PerfGpu_FrameEnd( int slot );
 void VK_PerfGpu_Collect( int slot );
 void VK_PerfGpu_Take( long long *usecOut, long long *marksOut, long long *hitCapOut );
+
+qboolean VK_Flare_QueryArm( unsigned int index );
+void VK_Flare_QueryEnd( unsigned int index );
+qboolean VK_Flare_QueryResult( unsigned int index, unsigned int *samples );
+void VK_Flare_QueryReset( int slot );
+void VK_Flare_QueryShutdown( void );
 
 void VKimp_WalkBegin( int slot );
 void VKimp_WalkEnd( int slot );

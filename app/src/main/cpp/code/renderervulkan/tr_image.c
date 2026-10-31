@@ -1450,10 +1450,12 @@ image_t* R_CreateImageOld(
 	if (strlen(name) >= MAX_QPATH ) {
 		ri.Error (ERR_DROP, "R_CreateImage: \"%s\" is too long\n", name);
 	}
+	/* R_CreateImages @0x00013FE0 tests the two names independently, so a
+	   dynamic tile is both a lightmap and dynamically updated */
 	if (!strncmp(name, "*lightmap", 9)) {
 		isLightmap = qtrue;
 	}
-	else if (!strncmp(name, "*lightmapD", 10)) {
+	if (!strncmp(name, "*lightmapD", 10)) {
 		dynamicallyUpdated = qtrue;
 	}
 
