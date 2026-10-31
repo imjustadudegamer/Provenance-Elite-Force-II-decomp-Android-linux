@@ -116,6 +116,11 @@ void R_RenderShadowEdges( void ) {
 	int		i2;
 	int		hit[2];
 
+	/* ONE run for the whole volume.  RB_ImmBegin restarts the run's vertex
+	   window, so a begin per edge left only the last silhouette quad in the
+	   draw; a triangle list keeps the independent quads independent without
+	   one draw call per edge. */
+	RB_ImmBegin( VK_TRIANGLES );
 
 	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
 		c = numEdgeDefs[ i ];
@@ -147,12 +152,14 @@ void R_RenderShadowEdges( void ) {
 					area = VectorLength( n );
 					s_firstQuadArea = area;
 				}
-				RB_ImmBegin( VK_TRIANGLE_STRIP );
+				/* the strip's two triangles, written as a list so all edges
+				   share the one run: (i, i+N, i2) and (i2, i+N, i2+N) */
 				RB_ImmVertex3fv( tess.xyz[ i ] );
 				RB_ImmVertex3fv( tess.xyz[ i + tess.numVertexes ] );
 				RB_ImmVertex3fv( tess.xyz[ i2 ] );
+				RB_ImmVertex3fv( tess.xyz[ i2 ] );
+				RB_ImmVertex3fv( tess.xyz[ i + tess.numVertexes ] );
 				RB_ImmVertex3fv( tess.xyz[ i2 + tess.numVertexes ] );
-				RB_ImmEndDeferred();
 				s_edgeQuads++;
 			}
 		}
