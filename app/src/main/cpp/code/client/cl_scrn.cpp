@@ -317,6 +317,8 @@ void SCR_Init( void ) {
 #endif
 
 	scr_initialized = qtrue;
+	/* a quit that unwound out of a draw leaves the hold set; a fresh boot is never inside one */
+	SCR_ResetUpdateGuard();
 }
 
 

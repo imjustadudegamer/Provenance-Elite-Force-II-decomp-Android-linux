@@ -131,6 +131,15 @@ public class EF2Activity extends SDLActivity {
         super.loadLibraries();
     }
 
+    /* The process ends with the activity: by the time this runs the engine thread has
+       ended and the window is down, and a process that outlives the activity would
+       hand a relaunch a second engine on a renderer the first teardown freed. */
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        System.exit(0);
+    }
+
     private int apkVersionCode() {
         try {
             return getPackageManager()
