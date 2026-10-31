@@ -211,7 +211,9 @@ qboolean VK_Pipeline_Init( void )
 	rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterization.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterization.cullMode = VK_CULL_MODE_NONE;
-	rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	/* the clip y negation reverses the winding; this pipeline culls nothing, but it
+	   declares the same front face as the two that do */
+	rasterization.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterization.lineWidth = 1.0f;
 
 	memset( &multisample, 0, sizeof( multisample ) );

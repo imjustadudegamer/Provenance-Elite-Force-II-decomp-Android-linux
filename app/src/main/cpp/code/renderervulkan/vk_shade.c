@@ -1338,7 +1338,7 @@ void VK_SelectTexture( int tmu )
 /* the drawn colour of a stage's texture, read back off the device once per image at first bind: what the sampler holds is the one
    thing no offline reading answers.  Readback is a submit and a fence, so it rides qa_probe (r_texelProbe 0 disarms); every image gets a row. */
 #define VK_TEXEL_PROBE_MAX 4096
-static byte s_texelProbed[VK_TEXEL_PROBE_MAX];
+static int s_texelProbedStamp[VK_TEXEL_PROBE_MAX];	/* the image stamp this slot last answered for */
 
 static void VK_Shade_TexelProbe( image_t *image )
 {
@@ -1357,10 +1357,16 @@ static void VK_Shade_TexelProbe( image_t *image )
 	}
 
 	handle = (int)image->texnum;
-	if ( handle < 0 || handle >= VK_TEXEL_PROBE_MAX || s_texelProbed[handle] ) {
+	if ( handle < 0 || handle >= VK_TEXEL_PROBE_MAX ) {
 		return;
 	}
-	s_texelProbed[handle] = 1;
+	/* a slot outlives the image in it, so the dedup key is the image's own creation
+	   stamp: keyed on the handle, every image that landed in a used slot read as
+	   already probed and the art loaded after a recycle had no row at all. */
+	if ( image->imgStamp && s_texelProbedStamp[handle] == image->imgStamp ) {
+		return;
+	}
+	s_texelProbedStamp[handle] = image->imgStamp;
 
 	name = image->imgName[0] ? image->imgName : "(unnamed)";
 	if ( !VK_Texture_ReadBlock( handle, image->uploadWidth / 2, image->uploadHeight / 2,
@@ -1372,7 +1378,7 @@ static void VK_Shade_TexelProbe( image_t *image )
 
 	if ( blocked ) {
 		/* The block is the sampler's own bytes for the texel the row names, so
-		   decode it with the lane's own decoder and report that texel's RGBA.
+		   decode it with the backend's own decoder and report that texel's RGBA.
 		   The raw first four bytes of a BC2/BC3 block are its alpha plane, which
 		   is why this row could not answer a colour question about the art it
 		   was built for. */
@@ -1390,11 +1396,13 @@ static void VK_Shade_TexelProbe( image_t *image )
 	}
 
 	/* Both arms report the RGBA the sampler serves for the image's centre texel:
-	   the blocked one decodes the block this read copied. */
+	   the blocked one decodes the block this read copied.  The slot and the stamp
+	   ride along so a row can be matched to the image that answered for it. */
 	VK_Guard_Row( "VK:texel",
-				  "name=%s w=%d h=%d upto=%dx%d srcmips=%d levels=%d layout=%s "
+				  "name=%s handle=%d stamp=%d w=%d h=%d upto=%dx%d srcmips=%d levels=%d layout=%s "
 				  "fmt=0x%x wrap=%d,%d mipfilter=%d texel_mid=%u,%u,%u,%u",
-				  name, image->width, image->height, image->uploadWidth, image->uploadHeight,
+				  name, handle, image->imgStamp, image->width, image->height,
+				  image->uploadWidth, image->uploadHeight,
 				  image->numMipmaps, VK_Texture_MipLevels( handle ),
 				  VK_Texture_LayoutName( handle ),
 				  (unsigned)image->internalFormat,
@@ -1794,7 +1802,7 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 		static struct { const shader_t *sh; const shaderStage_t *st; vec4_t col; } seen[256];
 		static int seenRows;
 		int si, slot = -1;
-		const int cap = 200;	/* PROBE_ROW_CAP; this lane has no qa_probe include */
+		const int cap = 200;	/* PROBE_ROW_CAP; this backend has no qa_probe include */
 
 		for ( si = 0; si < 256; si++ ) {
 			if ( !seen[si].sh ) {
@@ -2953,17 +2961,20 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 	return offset;
 }
 
-/* the cull mode the shader's cullType and the mirror flag ask for */
+/* the cull mode the shader's cullType and the mirror flag ask for.  FrontFace is
+   CLOCKWISE because the window transform negates clip y, so a clip-space triangle
+   the engine wound counter-clockwise arrives clockwise here; with that declared,
+   CT_FRONT_SIDED keeps its GL meaning (`cull back`) and CT_BACK_SIDED `cull front`. */
 static VkCullModeFlagBits VK_Shade_CullMode( cullType_t cull, qboolean mirrored )
 {
 	switch ( cull ) {
 	case CT_TWO_SIDED:
 		return VK_CULL_MODE_NONE;
 	case CT_BACK_SIDED:
-		return mirrored ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_BACK_BIT;
+		return mirrored ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_FRONT_BIT;
 	case CT_FRONT_SIDED:
 	default:
-		return mirrored ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_FRONT_BIT;
+		return mirrored ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_BACK_BIT;
 	}
 }
 
@@ -3130,7 +3141,8 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	raster.polygonMode = VK_POLYGON_MODE_FILL;
 	raster.cullMode = VK_Shade_CullMode( cull, qfalse );
-	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	/* the clip y negation reverses the winding (VK_Mat4_ClipToWindow) */
+	raster.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	raster.lineWidth = 1.0f;
 	raster.depthClampEnable = VK_FALSE;
 	raster.depthBiasEnable = polygonOffset ? VK_TRUE : VK_FALSE;
@@ -3911,7 +3923,7 @@ static void VK_Shade_DepthRange( float n, float f )
 	}
 
 	/* GL's glDepthRange never touched x or y; the rect stays whatever glViewport
-	   last clamped.  This lane has to re-issue it, and the client's view rect can
+	   last clamped.  This backend has to re-issue it, and the client's view rect can
 	   land outside the device's own bounds range, so it rides the same clamp the
 	   3D view took. */
 	VK_Draw_ViewportRect( cmd, x, y, w, h, n, f );
@@ -4422,7 +4434,7 @@ vkProgram_t *VK_StageProgram( const shaderStage_t *pStage, const shader_t *shade
 
 /* ---- the world stage-set census ------------------------------------------ */
 
-/* the loss this lane hunts is silent by construction -- a stage never submitted, or submitted with a foreign texture, still draws -- so the census records the
+/* the loss this backend hunts is silent by construction -- a stage never submitted, or submitted with a foreign texture, still draws -- so the census records the
    EXPECTED set beside the SUBMITTED one and the difference is a row.  Gate: qa_probe (R_ProbeStatsOn). */
 
 /* WORLD_SET_CENSUS_BEGIN */

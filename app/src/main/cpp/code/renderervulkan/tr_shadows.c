@@ -152,8 +152,11 @@ void R_RenderShadowEdges( void ) {
 					area = VectorLength( n );
 					s_firstQuadArea = area;
 				}
-				/* the strip's two triangles, written as a list so all edges
-				   share the one run: (i, i+N, i2) and (i2, i+N, i2+N) */
+				/* the strip's own two triangles, written as a list so all edges
+				   share the one run: (i, i+N, i2) and (i2, i+N, i2+N).  A strip
+				   alternates its winding, so the second triangle takes the first
+				   two vertices swapped; writing it in ascending order instead
+				   turns one half of every quad against the other. */
 				RB_ImmVertex3fv( tess.xyz[ i ] );
 				RB_ImmVertex3fv( tess.xyz[ i + tess.numVertexes ] );
 				RB_ImmVertex3fv( tess.xyz[ i2 ] );
@@ -305,14 +308,23 @@ void RB_ShadowTessEnd( void ) {
 
 		s_rows++;
 		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
+			/* the face each of the two passes culls, resolved through the renderer's
+			   own mapping: a volume that counts the wrong side reads as an empty
+			   plane with the geometry intact, and only these two numbers say so */
+			int	first  = backEnd.viewParms.isMirror ? VK_FRONT : VK_BACK;
+			int	second = backEnd.viewParms.isMirror ? VK_BACK : VK_FRONT;
+
 			VK_Guard_Row( "VK:shadow",
 						  "site=tess ent=%d lightdir=%.3f,%.3f,%.3f verts=%d idx=%d facing=%d edges=%d "
-						  "quarter=%.3f stencil=%d f=%d",
+						  "quarter=%.3f stencil=%d vcull=%d,%d f=%d",
 						  ( backEnd.currentEntity && backEnd.currentEntity->e.entityNumber >= 0 )
 							? backEnd.currentEntity->e.entityNumber : -1,
 						  lightDir[0], lightDir[1], lightDir[2],
 						  tess.numVertexes, tess.numIndexes, numFacingTris, s_edgeQuads,
-						  s_firstQuadArea, 1, RB_FrameCount() );
+						  s_firstQuadArea, 1,
+						  (int)VK_Draw_CullModeFor( first, CT_TWO_SIDED ),
+						  (int)VK_Draw_CullModeFor( second, CT_TWO_SIDED ),
+						  RB_FrameCount() );
 		}
 	}
 

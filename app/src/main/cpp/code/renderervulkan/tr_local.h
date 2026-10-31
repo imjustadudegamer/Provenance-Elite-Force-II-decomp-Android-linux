@@ -2898,9 +2898,11 @@ typedef struct {
 #define VK_TESS_VERTEX_BYTES ( (int)sizeof( vkTessVertex_t ) )
 /* a level frame, not a menu frame, is the demand the ring has to hold, and the engine does not bound the draw-surf count that sets it.  The
    ceiling has been raised twice by that check (1,481 draw surfs refused 155 at 24,000 slots; 3,596 refused 529 at 72,000, that frame's demand
-   111,259 slots) while streaming efficiency stayed flat, so 48 batches / 144,000 slots is capacity 29% over the measured worst frame; `demand=` and `peak=` name both numbers every boot. */
-#define VK_RING_MAX_VERTEXES ( SHADER_MAX_VERTEXES * 48 )
-#define VK_RING_MAX_INDEXES  ( SHADER_MAX_INDEXES * 48 )
+   111,259 slots).  A frame that draws a viewscreen sub-view runs the whole 3D walk twice into the same ring, and that is the frame the ceiling
+   has to hold: 48 batches refused 5,860 of 149,860 slots on every such frame, so 72 batches (216,000) is 44% over the measured two-view worst
+   and still 15% under it for one; `demand=` and `peak=` name both numbers every boot. */
+#define VK_RING_MAX_VERTEXES ( SHADER_MAX_VERTEXES * 72 )
+#define VK_RING_MAX_INDEXES  ( SHADER_MAX_INDEXES * 72 )
 
 qboolean VK_VertexRing_Init( void );
 void     VK_VertexRing_Shutdown( void );
@@ -2963,6 +2965,9 @@ void     VK_Shade_ShadowState( qboolean *test, int *func, int *ref, unsigned *ma
 							   int *fail, int *zfail, int *zpass, int *cullFace,
 							   unsigned *colorMask );
 unsigned VK_Shade_ShadowGen( void );
+/* the key's cull words resolved to Vulkan, so a witness row can name the face a
+   pass culls without a second copy of the mapping */
+VkCullModeFlagBits VK_Draw_CullModeFor( int cullFace, int cull );
 
 /* The only two sites that bind a pipeline or a set, so the per-command-buffer
    state cache behind them cannot go stale: a repeated bind is skipped. */

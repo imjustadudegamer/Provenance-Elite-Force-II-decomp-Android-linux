@@ -90,7 +90,7 @@ static int				s_vertexBoundFrame[VK_FRAMES_IN_FLIGHT];
 static VkDeviceSize		s_vertexBoundOffset[VK_FRAMES_IN_FLIGHT];
 
 /* the pipeline and the set bound at set 0 are command-buffer state, so binding values already in force is a no-op the driver still charges for
-   (the menu's frame is 145 to 331 draws and most repeats follow one another).  Every bind goes through these two functions -- the 2D lane binds
+   (the menu's frame is 145 to 331 draws and most repeats follow one another).  Every bind goes through these two functions -- the 2D iterator binds
    its own layout at set 0, so a shade-only cache would serve a stale pipeline to a 3D draw that followed a 2D one.  Keyed on the frame as well as the slot. */
 static VkCommandBuffer	s_boundPipeCmd[VK_FRAMES_IN_FLIGHT];
 static VkCommandBuffer	s_boundSetCmd[VK_FRAMES_IN_FLIGHT];
@@ -292,7 +292,7 @@ typedef struct {
 static vkPushConstants_t	vk_current;
 static qboolean				vk_currentValid;
 
-/* the rectangle the reference clamps and this lane has to; defined below the
+/* the rectangle the reference clamps and this backend has to; defined below the
    draw state they read, called from the 2D window and the 3D view */
 static void VK_Draw_ScissorRect( VkCommandBuffer cmd, int x, int y, int w, int h );
 void VK_Draw_ViewportRect( VkCommandBuffer cmd, int x, int y, int w, int h,
@@ -441,6 +441,20 @@ static VkStencilOp VK_Draw_StencilOp( int op )
 	}
 }
 
+/* the one place a key's cull words become a Vulkan cull mode.  The cull names here
+   are GL's (`cull back` drops the faces turned away from the camera); the clip y
+   negation reverses the winding, so the front face is the clockwise one and those
+   names reach Vulkan without a swap. */
+VkCullModeFlagBits VK_Draw_CullModeFor( int cullFace, int cull )
+{
+	return ( cullFace < 0 ) ? VK_CULL_MODE_NONE
+		 : ( cullFace == VK_FRONT ) ? VK_CULL_MODE_FRONT_BIT
+		 : ( cullFace == VK_BACK ) ? VK_CULL_MODE_BACK_BIT
+		 : ( cull == CT_FRONT_SIDED ) ? VK_CULL_MODE_BACK_BIT
+		 : ( cull == CT_BACK_SIDED ) ? VK_CULL_MODE_FRONT_BIT
+		 : VK_CULL_MODE_NONE;
+}
+
 static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 {
 	VkPipelineShaderStageCreateInfo stages[2];
@@ -511,13 +525,8 @@ static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 	memset( &rasterization, 0, sizeof( rasterization ) );
 	rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterization.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterization.cullMode = ( key->cullFace < 0 ) ? VK_CULL_MODE_NONE
-						   : ( key->cullFace == VK_FRONT ) ? VK_CULL_MODE_FRONT_BIT
-						   : ( key->cullFace == VK_BACK ) ? VK_CULL_MODE_BACK_BIT
-						   : ( key->cull == CT_FRONT_SIDED ) ? VK_CULL_MODE_BACK_BIT
-						   : ( key->cull == CT_BACK_SIDED ) ? VK_CULL_MODE_FRONT_BIT
-						   : VK_CULL_MODE_NONE;
-	rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterization.cullMode = VK_Draw_CullModeFor( key->cullFace, key->cull );
+	rasterization.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterization.lineWidth = 1.0f;
 
 	memset( &multisample, 0, sizeof( multisample ) );
@@ -1116,7 +1125,7 @@ void VK_Draw_2DStateApply( VkCommandBuffer cmd, const float *ortho, const int *w
 	s_2dAppliedValid = qtrue;
 }
 
-/* ---- the rectangle the reference clamps and this lane has to ------------- */
+/* ---- the rectangle the reference clamps and this backend has to ------------- */
 
 /* The client's box is bottom-left and Vulkan's is top-left, and the client's
    origin hangs off the screen by more than an int names (the radar's box
@@ -1213,8 +1222,8 @@ int VK_Draw_LastSetIndex( void )
 }
 
 /* the viewport has no framebuffer to be cut to but it does have a device range, and a coordinate outside it is undefined too; every
-   CmdSetViewport in this lane goes through here, so no site can invent an out-of-range origin. */
-/* the range the lane last issued through VK_Draw_ViewportRect: the decal row reads it, so a draw under the viewmodel's 0.3 names itself */
+   CmdSetViewport in this backend goes through here, so no site can invent an out-of-range origin. */
+/* the range this backend last issued through VK_Draw_ViewportRect: the decal row reads it, so a draw under the viewmodel's 0.3 names itself */
 static float	s_depthRangeLast[2] = { 0.0f, 1.0f };
 
 void VK_Draw_DepthRangeLast( float *n, float *f )

@@ -1073,9 +1073,12 @@ static void RB_CalcEnvironmentTexCoordsRange( void *vctx, int begin, int end ) {
 		reflected[1] = normal[1]*2*d - viewer[1];
 		reflected[2] = normal[2]*2*d - viewer[2];
 
-/* the reference renderer's tr_shade_calc.c carries this note in full */
-		st[0] = 1.0 + reflected[1];
-		st[1] = 1.0 - reflected[2];
+/* RB_CalcEnvironmentTexCoords @0x00030B00 and the angle-based twin @0x00030C30
+   reflect the viewer and then write 0.5*(1+refl.y) and 0.5*(1-refl.z) -- both
+   halves of the offset are the constant 0.5, not 1.0, so the env map covers
+   [-1,1] once instead of tiling twice around a shifted centre. */
+		st[0] = 0.5f * ( 1.0f + reflected[1] );
+		st[1] = 0.5f * ( 1.0f - reflected[2] );
 	}
 }
 
@@ -1115,9 +1118,12 @@ static void RB_CalcAngleBasedEnvironmentTexCoordsRange( void *vctx, int begin, i
 		reflected[1] = normal[1]*2*d - c->viewer[1];
 		reflected[2] = normal[2]*2*d - c->viewer[2];
 
-/* the reference renderer's tr_shade_calc.c carries this note in full */
-		st[0] = 1.0 + reflected[1];
-		st[1] = 1.0 - reflected[2];
+/* RB_CalcEnvironmentTexCoords @0x00030B00 and the angle-based twin @0x00030C30
+   reflect the viewer and then write 0.5*(1+refl.y) and 0.5*(1-refl.z) -- both
+   halves of the offset are the constant 0.5, not 1.0, so the env map covers
+   [-1,1] once instead of tiling twice around a shifted centre. */
+		st[0] = 0.5f * ( 1.0f + reflected[1] );
+		st[1] = 0.5f * ( 1.0f - reflected[2] );
 	}
 }
 
