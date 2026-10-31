@@ -642,9 +642,10 @@ typedef struct lensflareState_s {
     qboolean   clipped;           
     int        nextVisTime;       
 
-    vec2_t     screen;            
-    vec3_t     origin;            
-    vec3_t     color;             
+    vec2_t     screen;
+    float      eyeZ;
+    vec3_t     origin;
+    vec3_t     color;
     float      scale;             
     shader_t  *replacementShader; 
 
@@ -1021,7 +1022,7 @@ static lensflareState_t *R_LensflareStateFor(void *key, qboolean clipped)
     return f;
 }
 
-static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen)
+static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen, float *eyeZ)
 {
     vec4_t   eye;
     vec4_t   clip;
@@ -1060,6 +1061,12 @@ static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen)
         screen[i] = clip[i] / clip[3];
     }
 
+    /* retail RB_AddFlare @0x00049740 keeps the eye-space z beside the window
+       point; the depth arm of TestVisibility reads it back against the frame */
+    if (eyeZ) {
+        *eyeZ = eye[2];
+    }
+
     return inside;
 }
 
@@ -1075,12 +1082,10 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
 
     if (f->viewFrameCount != backEnd.viewParms.frameCount || f->clipped) {
         visible = qfalse;
-    } else if (r_flares->integer <= 1) {
-        /* retail's Simple tier runs no occlusion test; Precise is the trace below */
-        visible = qtrue;
     } else if (backEnd.refdef.time < f->nextVisTime) {
         visible = f->visible;
-    } else {
+    } else if (r_flares->integer == 1) {
+        /* retail TestVisibility @0x00049150, the ==1 arm: the world trace */
         trace_t trace;
         float   need;
 
@@ -1099,6 +1104,43 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
 
         f->nextVisTime = backEnd.refdef.time + 50;
         visible        = (qboolean)(trace.fraction > need);
+    } else {
+        /* retail TestVisibility @0x00049150, the readback arm: the depth under
+           the flare's own pixel, unprojected to eye z.  Visible while nothing
+           stands the bias in front of it, so a closed door hides the flare. */
+        float z   = 1.0f;
+        float ndc;
+        float ze;
+        int   x, y;
+
+        x = backEnd.viewParms.viewportX
+          + (int)((f->screen[0] * 0.5f + 0.5f) * (float)backEnd.viewParms.viewportWidth);
+        y = backEnd.viewParms.viewportY
+          + (int)((f->screen[1] * 0.5f + 0.5f) * (float)backEnd.viewParms.viewportHeight);
+
+        if (x < backEnd.viewParms.viewportX) {
+            x = backEnd.viewParms.viewportX;
+        }
+        if (y < backEnd.viewParms.viewportY) {
+            y = backEnd.viewParms.viewportY;
+        }
+        if (x > backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth - 1) {
+            x = backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth - 1;
+        }
+        if (y > backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight - 1) {
+            y = backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight - 1;
+        }
+
+        qglReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &z);
+
+        /* the inverse of the view's own projection: eye[2] is negative forward,
+           so a surface nearer than the flare reads as a larger value */
+        ndc = 2.0f * z - 1.0f;
+        ze  = -backEnd.viewParms.projectionMatrix[14]
+            / (ndc + backEnd.viewParms.projectionMatrix[10]);
+
+        f->nextVisTime = backEnd.refdef.time + 50;
+        visible        = (qboolean)((ze - f->eyeZ) < 24.0f);
     }
 
     maxAlpha = 1.0f;
@@ -1299,6 +1341,7 @@ static void R_LensflareFeed(const lensflare_t *lf)
     lensflareInfo_t  *info;
     lensflareState_t *f;
     vec2_t            screen;
+    float             eyeZ;
     qboolean          inside;
 
     info = R_LensflareInfoForNum(lf->num);
@@ -1306,7 +1349,7 @@ static void R_LensflareFeed(const lensflare_t *lf)
         return;
     }
 
-    inside = R_LensflareScreenCalc(lf->origin, screen);
+    inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ);
 
     f = R_LensflareStateFor(lf->key, (qboolean)!inside);
     if (!f) {
@@ -1327,6 +1370,7 @@ static void R_LensflareFeed(const lensflare_t *lf)
     VectorCopy(lf->color, f->color);
     f->screen[0] = screen[0];
     f->screen[1] = screen[1];
+    f->eyeZ      = eyeZ;
 }
 
 static void R_LensflarePush(lensflare_t *out, void *key, const vec3_t org, const vec3_t color, int num)
@@ -1472,6 +1516,7 @@ static void R_DrawEmitterLensflares(void)
         const lensflare_t *lf = &backEnd.refdef.lensflares[i];
         lensflareInfo_t   *info;
         vec2_t             screen;
+        float              eyeZ;
         qboolean           inside;
 
         info = R_LensflareInfoForNum(lf->num);
@@ -1479,7 +1524,7 @@ static void R_DrawEmitterLensflares(void)
             continue;
         }
 
-        inside = R_LensflareScreenCalc(lf->origin, screen);
+        inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ);
 
         f = R_LensflareStateFor(lf->key, (qboolean)!inside);
         if (!f) {
@@ -1500,6 +1545,7 @@ static void R_DrawEmitterLensflares(void)
         VectorCopy(lf->color, f->color);
         f->screen[0] = screen[0];
         f->screen[1] = screen[1];
+        f->eyeZ      = eyeZ;
     }
 
     draw = qfalse;

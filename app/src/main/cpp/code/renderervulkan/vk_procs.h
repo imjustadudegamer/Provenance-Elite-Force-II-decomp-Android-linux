@@ -144,6 +144,8 @@ typedef struct vkProcs_s {
 	PFN_vkCmdCopyImageToBuffer		CmdCopyImageToBuffer;
 	PFN_vkCmdBlitImage				CmdBlitImage;
 	PFN_vkCmdResetQueryPool			CmdResetQueryPool;
+	PFN_vkCmdBeginQuery				CmdBeginQuery;
+	PFN_vkCmdEndQuery				CmdEndQuery;
 	PFN_vkCmdWriteTimestamp			CmdWriteTimestamp;
 	PFN_vkCreateQueryPool			CreateQueryPool;
 	PFN_vkDestroyQueryPool			DestroyQueryPool;

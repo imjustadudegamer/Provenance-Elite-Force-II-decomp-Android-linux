@@ -231,6 +231,8 @@ void VK_Procs_ResolveDevice( VkDevice device )
 	VK_DPROC( CmdCopyBufferToImage, vkCmdCopyBufferToImage );
 	VK_DPROC( CmdBlitImage, vkCmdBlitImage );
 	VK_DPROC( CmdResetQueryPool, vkCmdResetQueryPool );
+	VK_DPROC( CmdBeginQuery, vkCmdBeginQuery );
+	VK_DPROC( CmdEndQuery, vkCmdEndQuery );
 	VK_DPROC( CmdWriteTimestamp, vkCmdWriteTimestamp );
 	VK_DPROC( CreateQueryPool, vkCreateQueryPool );
 	VK_DPROC( DestroyQueryPool, vkDestroyQueryPool );
