@@ -335,6 +335,7 @@ static void R_CalcSurfLightmap( msurface_t *surf, baseLightingSurf_t *bls ) {
 				world->baseLightmapImage[ dst - 3 ] = v[0];
 				world->baseLightmapImage[ dst - 2 ] = v[1];
 				world->baseLightmapImage[ dst - 1 ] = v[2];
+				dst++;	/* RGB reads and writes three bytes, the buffer holds four */
 			}
 			src += srcStride;
 			dst += dstStride;
