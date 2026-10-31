@@ -234,6 +234,15 @@ static unsigned VK_Draw_PipelineHash( const vkPipelineKey_t *key )
 	h ^= (unsigned)key->depthTest * 668265263u;
 	h ^= (unsigned)key->depthWrite * 374761393u;
 	h ^= (unsigned)key->textured * 2654435761u;
+	h ^= (unsigned)( key->stencilTest ? 1u : 0u ) * 805459861u;
+	h ^= (unsigned)key->stencilFunc * 2654435761u;
+	h ^= (unsigned)key->stencilRef * 3266489917u;
+	h ^= key->stencilMask * 668265263u;
+	h ^= (unsigned)key->stencilOpFail * 374761393u;
+	h ^= (unsigned)key->stencilOpZFail * 805459861u;
+	h ^= (unsigned)key->stencilOpPass * 2654435761u;
+	h ^= (unsigned)key->cullFace * 3266489917u;
+	h ^= key->colorMask * 668265263u;
 
 	return h & ( VK_DRAW_PIPELINE_HASH - 1u );
 }
@@ -379,6 +388,7 @@ static void VK_Draw_BlendForState( unsigned stateBits, VkPipelineColorBlendAttac
 							| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 }
 
+
 static VkPrimitiveTopology VK_Draw_Topology( int topology )
 {
 	switch ( topology ) {
@@ -387,6 +397,29 @@ static VkPrimitiveTopology VK_Draw_Topology( int topology )
 	case VK_IMM_TRIANGLE_STRIP:		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 	case VK_IMM_TRIANGLES:
 	default:						return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	}
+}
+
+/* the shadow volume pass's stencil constants are the renderer's own ordinals;
+   Vulkan wants the enums, so each arm maps here rather than in the pass */
+static VkCompareOp VK_Draw_StencilCompare( int func )
+{
+	switch ( func ) {
+	case VK_NOTEQUAL:	return VK_COMPARE_OP_NOT_EQUAL;
+	case VK_EQUAL:		return VK_COMPARE_OP_EQUAL;
+	case VK_LEQUAL:		return VK_COMPARE_OP_LESS_OR_EQUAL;
+	case VK_ALWAYS:
+	default:			return VK_COMPARE_OP_ALWAYS;
+	}
+}
+
+static VkStencilOp VK_Draw_StencilOp( int op )
+{
+	switch ( op ) {
+	case VK_INCR:	return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
+	case VK_DECR:	return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
+	case VK_KEEP:
+	default:		return VK_STENCIL_OP_KEEP;
 	}
 }
 
@@ -460,7 +493,10 @@ static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 	memset( &rasterization, 0, sizeof( rasterization ) );
 	rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterization.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterization.cullMode = ( key->cull == CT_FRONT_SIDED ) ? VK_CULL_MODE_BACK_BIT
+	rasterization.cullMode = ( key->cullFace < 0 ) ? VK_CULL_MODE_NONE
+						   : ( key->cullFace == VK_FRONT ) ? VK_CULL_MODE_FRONT_BIT
+						   : ( key->cullFace == VK_BACK ) ? VK_CULL_MODE_BACK_BIT
+						   : ( key->cull == CT_FRONT_SIDED ) ? VK_CULL_MODE_BACK_BIT
 						   : ( key->cull == CT_BACK_SIDED ) ? VK_CULL_MODE_FRONT_BIT
 						   : VK_CULL_MODE_NONE;
 	rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -476,8 +512,23 @@ static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 	depthStencil.depthWriteEnable = ( key->depthWrite && key->depthTest ) ? VK_TRUE : VK_FALSE;
 	depthStencil.depthCompareOp = ( key->stateBits & VKS_DEPTHFUNC_EQUAL ) ? VK_COMPARE_OP_EQUAL
 																: VK_COMPARE_OP_LESS_OR_EQUAL;
+	/* the volume pass counts stencil: ALWAYS/KEEP,KEEP,INCR for the first volume
+	   and the DECR twin for the second, then NOTEQUAL 0 for the finish overlay;
+	   no other draw in the renderer arms it */
+	depthStencil.stencilTestEnable = key->stencilTest ? VK_TRUE : VK_FALSE;
+	depthStencil.front.failOp      = VK_Draw_StencilOp( key->stencilOpFail );
+	depthStencil.front.depthFailOp = VK_Draw_StencilOp( key->stencilOpZFail );
+	depthStencil.front.passOp      = VK_Draw_StencilOp( key->stencilOpPass );
+	depthStencil.front.compareOp   = VK_Draw_StencilCompare( key->stencilFunc );
+	depthStencil.front.compareMask = key->stencilMask;
+	depthStencil.front.writeMask   = key->stencilMask;
+	depthStencil.front.reference   = (uint32_t)key->stencilRef;
+	depthStencil.back              = depthStencil.front;
 
 	VK_Draw_BlendForState( key->stateBits, &blendAttachment );
+	/* the shadow volume writes no colour; every other draw passes all four
+	   channels, and the key is filled from the live mask at both sites */
+	blendAttachment.colorWriteMask = key->colorMask;
 
 	memset( &colourBlend, 0, sizeof( colourBlend ) );
 	colourBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;

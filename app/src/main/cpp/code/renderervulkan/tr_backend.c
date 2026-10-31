@@ -951,6 +951,9 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		key.depthTest = qfalse;
 	}
 	key.depthWrite = ( stage->stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+	VK_Shade_ShadowState( &key.stencilTest, &key.stencilFunc, &key.stencilRef,
+						  &key.stencilMask, &key.stencilOpFail, &key.stencilOpZFail,
+						  &key.stencilOpPass, &key.cullFace, &key.colorMask );
 
 	/* A 2D batch that loses its two-sided or depth-off state culls or z-fails
 	   every fragment and reads as text that never rasterised. */
@@ -1106,6 +1109,7 @@ typedef struct {
 	qboolean	pending;
 	image_t		*image;
 	VkPipeline	pipeline;
+	unsigned	shadowGen;	/* the stencil/cull/colour-mask state the run opened under */
 } vkImmRun_t;
 
 static vkImmRun_t	s_imm;
@@ -1169,7 +1173,8 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	vkPipelineKey_t key;
 	vkImmRun_t *run = &s_imm;
 
-	if ( run->open && ( run->topology != topology || run->image != image ) ) {
+	if ( run->open && ( run->topology != topology || run->image != image
+						|| run->shadowGen != VK_Shade_ShadowGen() ) ) {
 		RB_ImmEnd();
 	}
 
@@ -1179,6 +1184,11 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	key.cull = CT_TWO_SIDED;
 	key.depthTest = ( stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
 	key.depthWrite = ( stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+	/* the shadow volume's arm: the stencil test, the ops it counts with, the
+	   cull face it flips between its two volumes and the colour it never writes */
+	VK_Shade_ShadowState( &key.stencilTest, &key.stencilFunc, &key.stencilRef,
+						  &key.stencilMask, &key.stencilOpFail, &key.stencilOpZFail,
+						  &key.stencilOpPass, &key.cullFace, &key.colorMask );
 
 	/* the ortho is recorded on every run, at function scope: a run that trusted the previous run's push drew with a stale ortho, and a 2D quad
 	   under a stale ortho lands as a garbage sheet across the frame.  Which ortho it carries depends on the space the run draws in; the recording itself is unconditional. */
@@ -1231,6 +1241,7 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	run->open = qtrue;
 	run->topology = topology;
 	run->image = image;
+	run->shadowGen = VK_Shade_ShadowGen();
 	run->verts = 0;
 	run->base = VK_VertexRing_Used();
 }

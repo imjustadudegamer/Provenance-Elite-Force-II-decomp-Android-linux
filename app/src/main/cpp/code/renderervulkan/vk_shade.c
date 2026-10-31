@@ -1106,12 +1106,24 @@ typedef struct {
 	qboolean		colorMask[4];
 	qboolean		mirrored;
 	qboolean		stencil;
+	/* the shadow volume's own state: the stencil test/ops it counts with, the
+	   cull face it flips between volumes, and the colour it never writes */
+	qboolean		stencilTest;
+	int				stencilFunc;
+	int				stencilRef;
+	unsigned		stencilMask;
+	int				stencilOpFail;
+	int				stencilOpZFail;
+	int				stencilOpPass;
+	int				cullFaceOverride;	/* 0 none, else VK_FRONT / VK_BACK */
 	qboolean		waveBound;
 	VkImageView		waveView;
 	int				alphaTest;
 } vkShadeState_t;
 
-static vkShadeState_t	s_shade;
+/* an unarmed colour mask writes every channel: the shadow volumes are the only
+   draws that clear it, and they put it back themselves */
+static vkShadeState_t	s_shade = { .colorMask = { qtrue, qtrue, qtrue, qtrue } };
 int						r_spriteListOpen = 0;
 /* the sprite count the walk was handed, not the live front-end counter: the walk
    runs as a recorded command, so tr.refdef.num_sprites at draw time is a later
@@ -1200,10 +1212,46 @@ void VK_DepthStateReset( void )
 	VK_DepthState( qtrue, qtrue );
 }
 
+/* the immediate run is one pipeline, so a shadow-state change has to end the run
+   the way a topology change does: every setter bumps this generation */
+static unsigned s_shadowStateGen;
+
+unsigned VK_Shade_ShadowGen( void )
+{
+	return s_shadowStateGen;
+}
+
 void VK_StencilState( qboolean test, int func, int ref, unsigned mask )
 {
-	/* stencil shadow volumes are a later milestone: no stencil attachment yet */
-	(void)test; (void)func; (void)ref; (void)mask;
+	s_shadowStateGen++;
+	s_shade.stencilTest = test;
+	s_shade.stencilFunc = func;
+	s_shade.stencilRef  = ref;
+	s_shade.stencilMask = mask;
+}
+
+/* the shadow volume pass reads this back when it builds its pipeline key: the
+   stencil arm is pipeline state in Vulkan, not a context call */
+void VK_Shade_ShadowState( qboolean *test, int *func, int *ref, unsigned *mask,
+						   int *fail, int *zfail, int *zpass, int *cullFace,
+						   unsigned *colorMask )
+{
+	unsigned bits = 0;
+
+	if ( s_shade.colorMask[0] ) bits |= VK_COLOR_COMPONENT_R_BIT;
+	if ( s_shade.colorMask[1] ) bits |= VK_COLOR_COMPONENT_G_BIT;
+	if ( s_shade.colorMask[2] ) bits |= VK_COLOR_COMPONENT_B_BIT;
+	if ( s_shade.colorMask[3] ) bits |= VK_COLOR_COMPONENT_A_BIT;
+
+	*test     = s_shade.stencilTest;
+	*func     = s_shade.stencilFunc;
+	*ref      = s_shade.stencilRef;
+	*mask     = s_shade.stencilMask;
+	*fail     = s_shade.stencilOpFail;
+	*zfail    = s_shade.stencilOpZFail;
+	*zpass    = s_shade.stencilOpPass;
+	*cullFace = s_shade.cullFaceOverride;
+	*colorMask = bits;
 }
 
 /* the 2D window's state block ran last: this gate holds depth test off for the UI whatever a UI shader's own state bits say and
@@ -3757,7 +3805,9 @@ void vkEnable( int cap )
 		s_polygonOffset = qtrue;
 		s_shade.polygonOffset = qtrue;
 	} else if ( cap == VK_CULL_FACE ) {
-		/* cull is a pipeline state word; VK_Cull carries it */
+		/* back to the shader's own cull: the volume pass names its face per draw */
+		s_shadowStateGen++;
+		s_shade.cullFaceOverride = 0;
 	}
 }
 
@@ -3766,22 +3816,31 @@ void vkDisable( int cap )
 	if ( cap == VK_POLYGON_OFFSET_FILL ) {
 		s_polygonOffset = qfalse;
 		s_shade.polygonOffset = qfalse;
+	} else if ( cap == VK_CULL_FACE ) {
+		/* GL with culling off: the finish overlay draws cull-free */
+		s_shadowStateGen++;
+		s_shade.cullFaceOverride = -1;
 	}
 }
 
 void vkCullFace( int mode )
 {
 	/* the shadow passes flip the cull between their two volumes */
-	(void)mode;
+	s_shadowStateGen++;
+	s_shade.cullFaceOverride = mode;
 }
 
 void vkStencilOp( int fail, int zfail, int zpass )
 {
-	(void)fail; (void)zfail; (void)zpass;
+	s_shadowStateGen++;
+	s_shade.stencilOpFail  = fail;
+	s_shade.stencilOpZFail = zfail;
+	s_shade.stencilOpPass  = zpass;
 }
 
 void vkColorMask( qboolean r, qboolean g, qboolean b, qboolean a )
 {
+	s_shadowStateGen++;
 	s_shade.colorMask[0] = r;
 	s_shade.colorMask[1] = g;
 	s_shade.colorMask[2] = b;
@@ -6224,6 +6283,9 @@ static void VK_Shade_WarmShader2D( const shader_t *shader )
 		key.cull = CT_TWO_SIDED;
 		key.depthTest = ( pStage->stateBits & VKS_DEPTHTEST_DISABLE ) ? qfalse : qtrue;
 		key.depthWrite = ( pStage->stateBits & VKS_DEPTHMASK_TRUE ) ? qtrue : qfalse;
+		VK_Shade_ShadowState( &key.stencilTest, &key.stencilFunc, &key.stencilRef,
+							  &key.stencilMask, &key.stencilOpFail, &key.stencilOpZFail,
+							  &key.stencilOpPass, &key.cullFace, &key.colorMask );
 		VK_Draw_Pipeline( &key );
 	}
 }

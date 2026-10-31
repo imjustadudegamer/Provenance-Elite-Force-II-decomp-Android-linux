@@ -37,11 +37,20 @@ root, for more details.
 #include <stdlib.h>
 #include <string.h>
 
+/* retail's target is 24-bit depth with an 8-bit stencil (the shadow volumes
+   count stencil), so the combined format is asked for first; a depth-only pick
+   leaves stencilBits 0 and the whole volume path stands down */
 static const VkFormat vk_depthFormats[] = {
-	VK_FORMAT_D32_SFLOAT,
 	VK_FORMAT_D24_UNORM_S8_UINT,
+	VK_FORMAT_D32_SFLOAT,
 	VK_FORMAT_D16_UNORM
 };
+
+static qboolean VK_Target_HasStencil( VkFormat format )
+{
+	return ( format == VK_FORMAT_D24_UNORM_S8_UINT
+			 || format == VK_FORMAT_D32_SFLOAT_S8_UINT ) ? qtrue : qfalse;
+}
 
 static qboolean VK_Target_DepthOk( VkFormat format )
 {
@@ -60,10 +69,7 @@ static void VK_Target_PickDepth( void )
 	for ( i = 0; i < sizeof( vk_depthFormats ) / sizeof( vk_depthFormats[0] ); i++ ) {
 		if ( VK_Target_DepthOk( vk_depthFormats[i] ) ) {
 			vk.depthFormat = vk_depthFormats[i];
-			/* the stencil-bit count the game's own guards read: D32 and D16 carry
-			   no stencil, so the shadow-finish overlay that arms GL_NOTEQUAL has
-			   to stand down rather than paint the frame unclipped */
-			vkConfig.stencilBits = ( vk.depthFormat == VK_FORMAT_D24_UNORM_S8_UINT ) ? 8 : 0;
+			vkConfig.stencilBits = VK_Target_HasStencil( vk.depthFormat ) ? 8 : 0;
 			return;
 		}
 	}
@@ -113,7 +119,10 @@ VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayou
 		attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		/* the volume pass counts stencil from zero, so the pass clears it and
+		   keeps it for the draws between: retail's glClear(STENCIL) */
+		attachments[1].stencilLoadOp = VK_Target_HasStencil( vk.depthFormat )
+									   ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -203,7 +212,9 @@ static qboolean VK_Target_DepthCreate( void )
 	viewInfo.image = vk.depthImage;
 	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	viewInfo.format = vk.depthFormat;
-	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT
+										  | ( VK_Target_HasStencil( vk.depthFormat )
+											  ? VK_IMAGE_ASPECT_STENCIL_BIT : 0 );
 	viewInfo.subresourceRange.levelCount = 1;
 	viewInfo.subresourceRange.layerCount = 1;
 

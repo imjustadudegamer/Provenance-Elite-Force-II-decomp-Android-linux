@@ -2941,9 +2941,28 @@ typedef struct {
 	qboolean	depthTest;
 	qboolean	depthWrite;
 	qboolean	textured;			/* samples the stage bundle, or paints flat */
+	/* the shadow-volume pass is the one drawing state the stage words cannot
+	   express: it counts stencil, flips the cull between its two volumes and
+	   writes no colour */
+	qboolean	stencilTest;
+	int			stencilFunc;		/* VK_ALWAYS / VK_NOTEQUAL / VK_EQUAL / VK_LEQUAL */
+	int			stencilRef;
+	unsigned	stencilMask;
+	int			stencilOpFail;		/* VK_KEEP / VK_INCR / VK_DECR */
+	int			stencilOpZFail;
+	int			stencilOpPass;
+	int			cullFace;			/* 0 = the shader's cull, else VK_FRONT / VK_BACK */
+	unsigned	colorMask;			/* VK_COLOR_COMPONENT_* bits */
 } vkPipelineKey_t;
 
 VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key );
+
+/* the shadow volume pass's pipeline state, and the generation every setter of it
+   bumps so an open immediate run ends instead of drawing with the old arm */
+void     VK_Shade_ShadowState( qboolean *test, int *func, int *ref, unsigned *mask,
+							   int *fail, int *zfail, int *zpass, int *cullFace,
+							   unsigned *colorMask );
+unsigned VK_Shade_ShadowGen( void );
 
 /* The only two sites that bind a pipeline or a set, so the per-command-buffer
    state cache behind them cannot go stale: a repeated bind is skipped. */
