@@ -1518,6 +1518,10 @@ void Com_Init( char *commandLine ) {
 
 	Com_Memset( &eventQueue[ 0 ], 0, MAX_QUEUED_EVENTS * sizeof( sysEvent_t ) );
 
+	/* the clean-quit latch is per boot: after a quit Android restarts SDL_main in
+	   the live process, and the old latch would end that boot before one frame */
+	com_quitRequested = qfalse;
+
 	Com_InitRand();
 
 	Com_InitPushEvent();
@@ -1765,6 +1769,9 @@ void Com_Init( char *commandLine ) {
 	com_frameWaitMargin = Cvar_Get( "com_frameWaitMargin", "1", 0 );
 	deathmatch = Cvar_Get( "deathmatch", "0", 0 );
 	paused = Cvar_Get( "paused", "0", CVAR_ROM );
+	/* a quit from a paused mission leaves the latch set, and the next boot in the
+	   live process would freeze the server frame before it ever ran */
+	Cvar_Set( "paused", "0" );
 	com_canAutoSaveNow = Cvar_Get( "com_canAutoSaveNow", "0", CVAR_ROM );
 	fps = Cvar_Get( "fps", "0", 0 );
 	/* A build that arms the probes writes its own log file; the shipped build

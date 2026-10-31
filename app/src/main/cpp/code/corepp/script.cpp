@@ -1197,14 +1197,14 @@ extern "C" const char *getStringResource(const char *stringId)
 	return StringResource::getInstance()->getStringResource(id).c_str();
 }
 
+static qboolean s_stringResourceInitialized = qfalse;
+
 extern "C" void initializeStringResource(void)
 {
-	static qboolean initialized = qfalse;
-
-	if (initialized) {
+	if (s_stringResourceInitialized) {
 		return;
 	}
-	initialized = qtrue;
+	s_stringResourceInitialized = qtrue;
 
 	StringResource::createInstance();
 	StringResource::getInstance()->loadGlobalStrings();
@@ -1212,6 +1212,9 @@ extern "C" void initializeStringResource(void)
 
 extern "C" void uninitializeStringResource(void)
 {
+	/* the latch dies with the table, or the next boot never loads its strings */
+	s_stringResourceInitialized = qfalse;
+
 	StringResource::deleteInstance();
 }
 
