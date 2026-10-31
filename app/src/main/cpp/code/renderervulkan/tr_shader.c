@@ -3315,18 +3315,8 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 			shader.defaultShader = qtrue;
 		}
 
-		/* lightmap-by-vertex: retail @0x3DA00 walks every active stage and rewrites
-		   only the $lightmap bundles -- image whiteImage and rgbGen the baked
-		   vertex colour.  A stage left at rgbGen identity multiplies by white and
-		   the face draws unlit.  The guard is SURF_NOLIGHTMAP, not SURF_HINT. */
-		if ( shader.lightmapIndex == LIGHTMAP_BY_VERTEX && !( shader.surfaceFlags & SURF_NOLIGHTMAP ) ) {
-			for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
-				if ( !unfoggedStages[i].active || !unfoggedStages[i].bundle[0].isLightmap ) {
-					continue;
-				}
-				unfoggedStages[i].bundle[0].image[0] = tr.whiteImage;
-				unfoggedStages[i].rgbGen = CGEN_EXACT_VERTEX;
-			}
+		if (shader.lightmapIndex == LIGHTMAP_BY_VERTEX && !(shader.surfaceFlags & SURF_HINT)) {
+			unfoggedStages[0].rgbGen = CGEN_EXACT_VERTEX;
 		}
 
 		if ( variant ) {

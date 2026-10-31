@@ -242,12 +242,7 @@ void main()
 		c.rgb = (1.0 - t0.rgb) * (1.0 - t1.rgb) + t1.rgb * (1.0 - t1.rgb) + t0.rgb * t1.rgb;
 	#else
 		
-		if (u_TexEnv1 == 3) {
-			c = t1;
-		} else {
-			
-			c = t0 * t1 * v_Color;
-		}
+		c = t0 * t1 * v_Color;
 	#endif
 #endif
 
