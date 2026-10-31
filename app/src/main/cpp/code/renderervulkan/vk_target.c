@@ -79,6 +79,24 @@ static void VK_Target_PickDepth( void )
 	VK_Guard_Hit( VK_GSITE_DEVICE, "no depth-stencil format", VK_ERROR_FORMAT_NOT_SUPPORTED );
 }
 
+/* qa_probe arms the plane's readback, and both halves of the arm -- the image's
+   TRANSFER_SRC usage and the pass's stencil STORE -- are fixed when the target is
+   created, so a boot that arms it later gets no copy rather than a stale one. */
+static qboolean VK_Target_StencilArmed( void )
+{
+#ifdef PROBE_BUILD_SILENT
+	return qfalse;
+#else
+	return R_ProbeStatsOn();
+#endif
+}
+
+/* one frame in this many is copied and counted: a readback waits that frame's
+   fence, so the row cannot ride every frame */
+#define VK_STENCIL_PERIOD	180
+
+static void VK_Target_StencilRelease( void );
+
 VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth )
 {
 	VkAttachmentDescription attachments[2];
@@ -123,7 +141,10 @@ VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayou
 		   keeps it for the draws between: retail's glClear(STENCIL) */
 		attachments[1].stencilLoadOp = VK_Target_HasStencil( vk.depthFormat )
 									   ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		/* a copy of the plane after the pass is only defined if the pass stored
+		   it, so the readback arm sets STORE and the shipped path keeps DONT_CARE */
+		attachments[1].stencilStoreOp = VK_Target_StencilArmed()
+										? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
@@ -175,6 +196,7 @@ static qboolean VK_Target_DepthCreate( void )
 {
 	VkImageCreateInfo createInfo;
 	VkImageViewCreateInfo viewInfo;
+	qboolean armed = VK_Target_StencilArmed();
 
 	if ( vk.depthFormat == VK_FORMAT_UNDEFINED ) {
 		return qfalse;
@@ -193,6 +215,13 @@ static qboolean VK_Target_DepthCreate( void )
 	createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	createInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 					   | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+	if ( armed ) {
+		/* a transient, lazily-allocated attachment can never be a copy source:
+		   the arm trades both for the one read that names whether the plane holds
+		   the frame's volumes */
+		createInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+						   | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	}
 	createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -202,7 +231,9 @@ static qboolean VK_Target_DepthCreate( void )
 	}
 
 	if ( !VK_Memory_AllocImage( vk.depthImage,
-							   VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+							   armed ? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+									 : ( VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT
+										 | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT ),
 							   &vk.depthMemory ) ) {
 		return qfalse;
 	}
@@ -250,6 +281,9 @@ qboolean VK_Target_Init( void )
 	}
 
 	VK_Target_PickDepth();
+
+	/* read before the pass and the image are created: the pair is the arm */
+	vk.stencilReadback = VK_Target_StencilArmed();
 
 	vk.renderPass = VK_Target_MakePass( vk.swapchainFormat, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, qtrue );
 	vk.offscreenPass = VK_Target_MakePass( VK_FORMAT_R8G8B8A8_UNORM,
@@ -333,6 +367,8 @@ void VK_Target_Shutdown( void )
 	}
 	vk.offscreenPass = VK_NULL_HANDLE;
 
+	VK_Target_StencilRelease();
+
 	vk.targetReady = qfalse;
 }
 
@@ -355,3 +391,227 @@ qboolean VK_Target_Recreate( void )
 
 	return VK_Target_Init();
 }
+
+/* ---- the stencil plane's readback --------------------------------------- */
+
+/* The one measurement that separates "the volume never reached the plane" from
+   "the plane is armed and the overlay does not paint": the frame's stencil is
+   copied out, counted and named beside the volume that frame drew.  The clone of
+   vk_swapchain.c's colour readback, at one frame in VK_STENCIL_PERIOD. */
+
+#ifndef PROBE_BUILD_SILENT
+
+static int	s_stencilPending = -1;	/* the frame whose copy is recorded, -1 none */
+
+static void VK_Target_StencilRelease( void )
+{
+	if ( vk.stencilMapped ) {
+		qvk.UnmapMemory( vk.device, vk.stencilMemory );
+		vk.stencilMapped = NULL;
+	}
+	if ( vk.stencilBuffer != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+		qvk.DestroyBuffer( vk.device, vk.stencilBuffer, NULL );
+	}
+	if ( vk.stencilMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, vk.stencilMemory, NULL );
+	}
+	vk.stencilBuffer = VK_NULL_HANDLE;
+	vk.stencilMemory = VK_NULL_HANDLE;
+	vk.stencilBytes = 0;
+}
+
+static qboolean VK_Target_StencilEnsure( void )
+{
+	VkDeviceSize bytes;
+
+	bytes = (VkDeviceSize)vk.swapchainExtent.width * (VkDeviceSize)vk.swapchainExtent.height;
+	if ( bytes == 0 ) {
+		return qfalse;
+	}
+	if ( vk.stencilBuffer != VK_NULL_HANDLE && vk.stencilBytes >= bytes ) {
+		return qtrue;
+	}
+
+	VK_Target_StencilRelease();
+	if ( !VK_Memory_CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+								  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+								  &vk.stencilBuffer, &vk.stencilMemory ) ) {
+		return qfalse;
+	}
+	vk.stencilBytes = bytes;
+
+	return qtrue;
+}
+
+/* Recorded after the pass ends: a render-pass attachment may not be a copy
+   source inside it, and only a stored plane is defined to copy at all. */
+void VK_Target_StencilCopy( VkCommandBuffer cmd )
+{
+	VkBufferImageCopy copyRegion;
+	VkImageMemoryBarrier barrier;
+	int frame = RB_FrameCount();
+
+	if ( !vk.stencilReadback || cmd == VK_NULL_HANDLE || vk.depthImage == VK_NULL_HANDLE ) {
+		return;
+	}
+	if ( ( frame % VK_STENCIL_PERIOD ) != 0 ) {
+		return;
+	}
+	if ( !VK_Target_StencilEnsure() ) {
+		return;
+	}
+
+	memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = vk.depthImage;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+							VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &barrier );
+
+	memset( &copyRegion, 0, sizeof( copyRegion ) );
+	copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+	copyRegion.imageSubresource.layerCount = 1;
+	copyRegion.imageExtent.width = vk.swapchainExtent.width;
+	copyRegion.imageExtent.height = vk.swapchainExtent.height;
+	copyRegion.imageExtent.depth = 1;
+
+	qvk.CmdCopyImageToBuffer( cmd, vk.depthImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+							  vk.stencilBuffer, 1, &copyRegion );
+
+	/* the next frame's pass loads with UNDEFINED, but leaving the attachment in
+	   the layout its own description names keeps the barrier legal anyway */
+	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+	qvk.CmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+							VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, NULL, 0, NULL, 1, &barrier );
+
+	s_stencilPending = frame;
+}
+
+/* After the frame's submit: wait its fence, count the texels and name them
+   beside the volumes that frame drew, in words a reader can act on. */
+void VK_Target_StencilReadback( int slot )
+{
+	const unsigned char	*texels;
+	int				width, height;
+	int				x, y, hist[4];
+	int				nonzero = 0, minX = 0, minY = 0, maxX = -1, maxY = -1;
+	int				volumes = 0, quads = 0, overlay = 0;
+	const char		*verdict;
+
+	if ( s_stencilPending < 0 ) {
+		return;
+	}
+
+	/* a failed submit never signals the fence, so the arm is dropped rather than
+	   waited on */
+	if ( !vk.fencePending[slot]
+		 || !VK_Guard_Result( VK_GSITE_FENCE,
+							  VK_Sync_WaitForFences( vk.fences[slot], VK_TRUE, "shadow-stencil", "readback" ),
+							  "vkWaitForFences(stencil)" ) ) {
+		s_stencilPending = -1;
+		return;
+	}
+
+	if ( !vk.stencilMapped ) {
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC,
+							   qvk.MapMemory( vk.device, vk.stencilMemory, 0, vk.stencilBytes, 0,
+											  &vk.stencilMapped ),
+							   "stencil vkMapMemory" ) ) {
+			vk.stencilMapped = NULL;
+			s_stencilPending = -1;
+			return;
+		}
+	}
+
+	texels = (const unsigned char *)vk.stencilMapped;
+	width = (int)vk.swapchainExtent.width;
+	height = (int)vk.swapchainExtent.height;
+
+	hist[0] = hist[1] = hist[2] = hist[3] = 0;
+	for ( y = 0; y < height; y++ ) {
+		const unsigned char *row = texels + (size_t)y * (size_t)width;
+
+		for ( x = 0; x < width; x++ ) {
+			unsigned v = row[x];
+
+			if ( !v ) {
+				continue;
+			}
+			nonzero++;
+			if ( v <= 4 ) {
+				hist[v - 1]++;
+			}
+			if ( maxX < 0 || x < minX ) {
+				minX = x;
+			}
+			if ( x > maxX ) {
+				maxX = x;
+			}
+			if ( maxY < 0 || y < minY ) {
+				minY = y;
+			}
+			if ( y > maxY ) {
+				maxY = y;
+			}
+		}
+	}
+
+	VK_Shadow_FrameCounters( &volumes, &quads, &overlay );
+
+	/* the row's own conclusion: an empty plane with the volume drawn is the
+	   volume landing elsewhere, an armed plane is the overlay's arm to read */
+	if ( !nonzero ) {
+		verdict = ( quads > 0 ) ? "empty-plane-volume-drew-elsewhere" : "empty-plane-no-volume";
+	} else if ( maxX >= 0 && ( maxX - minX ) * ( maxY - minY ) < ( width * height ) / 4096 ) {
+		verdict = "plane-armed-sliver";
+	} else {
+		verdict = "plane-armed-region";
+	}
+
+	if ( R_ProbeMarkOn() ) {
+		/* the plane is one object per frame, so the row names every view that
+		   drew a volume into it: only the last one's walk can still be in the
+		   plane at this copy, and the rest are the views it had to be cleared of */
+		VK_Guard_Row( "VK:stencil",
+					  "f=%d nonzero=%d hist=%d,%d,%d,%d>4=%d bbox=%d,%d..%d,%d of %dx%d "
+					  "volumes=%d quads=%d overlay=%d views=%s last=%d verdict=%s store=%d",
+					  s_stencilPending, nonzero, hist[0], hist[1], hist[2], hist[3],
+					  nonzero - ( hist[0] + hist[1] + hist[2] + hist[3] ),
+					  minX, minY, maxX, maxY, width, height,
+					  volumes, quads, overlay, VK_Shadow_ViewCensusText(), VK_Shadow_LastView(),
+					  verdict, vk.stencilReadback ? 1 : 0 );
+	}
+
+	s_stencilPending = -1;
+}
+
+#else	/* PROBE_BUILD_SILENT: the shipped build carries no plane readback */
+
+static void VK_Target_StencilRelease( void )
+{
+}
+
+void VK_Target_StencilCopy( VkCommandBuffer cmd )
+{
+	( void )cmd;
+}
+
+void VK_Target_StencilReadback( int slot )
+{
+	( void )slot;
+}
+
+#endif

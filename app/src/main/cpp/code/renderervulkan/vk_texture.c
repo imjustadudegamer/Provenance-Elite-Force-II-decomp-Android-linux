@@ -307,6 +307,11 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
 	tex->inUse = qtrue;
 	vk_numTextures++;
 
+	/* the lifetime census counts what a registration can retire, so a map change
+	   names its own toll instead of printing the zero this row used to */
+	VK_Life_NoteCreate( VK_LIFE_IMAGE );
+	VK_Life_NoteCreate( VK_LIFE_VIEW );
+
 	/* a new view object may reuse the handle value of a destroyed one, so the
 	   descriptor-set cache has to know a texture lifetime just turned over */
 	VK_Draw_TextureGenBump();
@@ -366,6 +371,8 @@ void VK_Texture_Destroy( int handle )
 
 	if ( tex->inUse ) {
 		vk_numTextures--;
+		VK_Life_NoteDestroy( VK_LIFE_IMAGE );
+		VK_Life_NoteDestroy( VK_LIFE_VIEW );
 		/* the view this handle named is gone; every set written against it is
 		   stale even if the driver hands the same handle value to its successor */
 		VK_Draw_TextureGenBump();
@@ -1523,6 +1530,41 @@ VkImageView VK_Texture_View( int handle )
 	}
 
 	return vk_textures[handle].view;
+}
+
+/* A descriptor names a view, not a handle, so a witness that wants to prove what
+   a set samples has to come back from the view to the slot that owns it.  A view
+   no live slot owns is a set that outlived its image. */
+int VK_Texture_HandleForView( VkImageView view )
+{
+	int i;
+
+	if ( view == VK_NULL_HANDLE ) {
+		return -1;
+	}
+
+	for ( i = 0; i < VK_MAX_TEXTURES; i++ ) {
+		if ( vk_textures[i].inUse && vk_textures[i].view == view ) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+qboolean VK_Texture_ReadBlockView( VkImageView view, int x, int y, unsigned char out[4],
+								   unsigned char blockOut[16], int *blocked )
+{
+	int handle = VK_Texture_HandleForView( view );
+
+	if ( handle < 0 ) {
+		if ( blocked ) {
+			*blocked = 0;
+		}
+		return qfalse;
+	}
+
+	return VK_Texture_ReadBlock( handle, x, y, out, blockOut, blocked );
 }
 
 qboolean VK_Texture_Sampler( qboolean clamp, qboolean mipmap, qboolean linear, VkSampler *out )

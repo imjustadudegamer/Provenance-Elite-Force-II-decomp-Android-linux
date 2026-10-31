@@ -1154,6 +1154,11 @@ const char *R_FrontEnd_ViewRow( int recorded, int entities )
 	return NULL;
 }
 
+/* the volumes the sort parks last; a view with more casters than this keeps the
+   radix position of the surplus rather than growing a boot-sized array */
+#define VK_SHADOW_TAIL_MAX	256
+static drawSurf_t	s_shadowTail[VK_SHADOW_TAIL_MAX];
+
 void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *spriteSurfs, int numSpriteSurfs ) {
 	shader_t		*shader;
 	int				entityNum;
@@ -1181,6 +1186,27 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 
 	R_RadixSort (drawSurfs, numDrawSurfs );
 	R_RadixSort (spriteSurfs, numSpriteSurfs );
+
+	/* A z-pass volume counts against the depth its receivers wrote, so it has to
+	   follow every one of them.  The sort word packs sortedIndex at add time, and
+	   a shader registered afterwards moves that index, which is the one path that
+	   can put a volume ahead of the world; park the volumes at the tail whatever
+	   the key says. */
+	{
+		int	w = 0, nTail = 0;
+
+		for ( i = 0; i < numDrawSurfs; i++ ) {
+			if ( tr.shadowShader && drawSurfs[i].shader == tr.shadowShader
+				 && nTail < VK_SHADOW_TAIL_MAX ) {
+				s_shadowTail[nTail++] = drawSurfs[i];
+			} else {
+				drawSurfs[w++] = drawSurfs[i];
+			}
+		}
+		for ( i = 0; i < nTail; i++ ) {
+			drawSurfs[w + i] = s_shadowTail[i];
+		}
+	}
 
 	R_SortField_Row( numDrawSurfs, numSpriteSurfs );
 

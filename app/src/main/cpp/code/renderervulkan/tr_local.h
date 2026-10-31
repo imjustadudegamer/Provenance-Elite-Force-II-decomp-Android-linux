@@ -1518,7 +1518,11 @@ extern	cvar_t	*r_drawsky;
 extern	cvar_t	*r_shownormals;					
 extern	cvar_t	*r_clear;						
 
-extern	cvar_t	*r_shadows;						
+extern	cvar_t	*r_shadows;
+extern	cvar_t	*r_surfOwn;
+extern	cvar_t	*r_texgen3d;						
+/* instrument, not a setting: the volume with colour writes on, no cull and no stencil test */
+extern	cvar_t	*r_shadowVolume;
 extern	cvar_t	*r_flares;						
 extern	cvar_t	*r_flaresMaxDist;				
 
@@ -1993,6 +1997,14 @@ int R_LightForPoint(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec
 
 void RB_ShadowTessEnd( void );
 void RB_ShadowFinish( void );
+/* the frame's volumes, their silhouette quads and the overlay vertices it
+   committed: the census the stencil readback row is read against */
+void VK_Shadow_FrameCounters( int *volumes, int *quads, int *overlayVerts );
+/* the same census split by the view whose walk tessellated each volume ("v<id>=<volumes>/<quads>") */
+const char *VK_Shadow_ViewCensusText( void );
+int VK_Shadow_LastView( void );
+/* the slot the sort word named, -1 when the entity pointer is outside the list */
+int VK_Shadow_EntitySlot( void );
 void RB_ProjectionShadowDeform( void );
 
 
@@ -2273,6 +2285,10 @@ typedef struct {
 	viewParms_t	viewParms;
 	drawSurf_t *drawSurfs;
 	int		numDrawSurfs;
+	/* the whole record, slice included: the walk advances by this, not by the
+	   struct, because the surfaces the record owns live after it in the same
+	   allocation */
+	int		totalBytes;
 } drawSurfsCommand_t;
 
 typedef struct {
@@ -2968,6 +2984,13 @@ unsigned VK_Shade_ShadowGen( void );
 /* the key's cull words resolved to Vulkan, so a witness row can name the face a
    pass culls without a second copy of the mapping */
 VkCullModeFlagBits VK_Draw_CullModeFor( int cullFace, int cull );
+/* the key's built state in one line, so the volume row can name the pipeline it
+   actually drew with instead of the state word it meant to apply */
+void     VK_Draw_KeyText( const vkPipelineKey_t *key, char *out, int outSize );
+/* the last immediate runs' keys (0 = the run opened last) and the volume runs
+   that reached the command buffer */
+qboolean VK_Imm_KeyGet( int back, vkPipelineKey_t *out );
+void     VK_Imm_ShadowCommits( int *runs, int *verts );
 
 /* The only two sites that bind a pipeline or a set, so the per-command-buffer
    state cache behind them cannot go stale: a repeated bind is skipped. */
@@ -2979,6 +3002,7 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
    every world view can leave it describing a dead image; the generation retires
    those sets even when the driver hands the same handle value back. */
 void     VK_Draw_TextureGenBump( void );
+unsigned VK_Draw_TextureGen( void );
 extern	 int	vk_2dWindow[4];		/* x y w h of the 2D window in force */
 extern	 float	vk_2dOrigin[2];	/* the widget's placement in that window */
 void     VK_Draw_Set2DOrigin( float x, float y );
@@ -3056,6 +3080,27 @@ typedef struct {
 
 #define VK_MAX_TEXTURES MAX_DRAWIMAGES
 
+/* What the SOURCE of an uploaded image held, kept for the texel row.  The row reads
+   one block at the image's middle, and for an atlas that block is a gap between UV
+   islands: only the source can say whether the art is dark or transparent where the
+   row looked, and only a byte compare can say whether the copy on the device is that
+   source.  Recorded once at upload, per slot, keyed by the image's own stamp. */
+typedef struct {
+	unsigned		stamp;			/* the image stamp this summary belongs to; 0 = none kept */
+	int				blockLen;		/* source bytes kept: 8 BC1, 16 BC2/BC3, 4 RGBA8 */
+	unsigned char	block[16];		/* those bytes, for the byte-for-byte compare */
+	unsigned char	texel[4];		/* the source's own texel at the row's point */
+	unsigned char	mean[4];		/* decoded mean over the strided level-0 sample */
+	int				clear;			/* per cent of that sample whose alpha is 0 */
+	int				texels;			/* how many texels the mean covers */
+} vkSrcCensus_t;
+
+void VK_Image_RecordSourceCensus( int handle, unsigned stamp, const byte *pic,
+								  int width, int height, int picmip,
+								  int upW, int upH,
+								  int vkCompressMode, int iMipmapsAvailable );
+qboolean VK_Image_SourceCensus( int handle, unsigned stamp, vkSrcCensus_t *out );
+
 VkFormat VK_Texture_FormatFor( int internalFormat, qboolean *supported );
 qboolean VK_Texture_ReadPixels( int handle, unsigned char *out, size_t outBytes );
 qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat format, int *handleOut );
@@ -3066,6 +3111,12 @@ qboolean VK_Texture_Publish( int handle );
 qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked );
 qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],
 							   unsigned char blockOut[16], int *blocked );
+/* The same read addressed the way a descriptor addresses an image: by the view
+   the set was written with.  -1 means no live slot owns that view, which is the
+   one question a set still naming a retired view can be made to answer. */
+int      VK_Texture_HandleForView( VkImageView view );
+qboolean VK_Texture_ReadBlockView( VkImageView view, int x, int y, unsigned char out[4],
+								   unsigned char blockOut[16], int *blocked );
 void     VK_Texture_MakeMips( int handle );
 void     VK_Texture_Destroy( int handle );
 VkImageView VK_Texture_View( int handle );

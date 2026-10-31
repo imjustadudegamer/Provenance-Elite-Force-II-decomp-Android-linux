@@ -82,6 +82,9 @@ cvar_t	*r_offsetFactor;
 cvar_t	*r_offsetUnits;
 cvar_t	*r_portalOnly;
 cvar_t	*r_shadows;
+cvar_t	*r_surfOwn;
+cvar_t	*r_texgen3d;
+cvar_t	*r_shadowVolume;
 cvar_t	*r_showcluster;
 cvar_t	*r_showlod;
 cvar_t	*r_shownormals;
@@ -251,6 +254,18 @@ void R_RegisterCvars( void )
 	r_lockpvs = ri.Cvar_Get( "r_lockpvs", "0", CVAR_CHEAT );
 	r_noportals = ri.Cvar_Get( "r_noportals", "0", CVAR_CHEAT );
 	r_shadows = ri.Cvar_Get( "cg_shadows", "1", CVAR_ARCHIVE  );
+	/* 1: the surf record owns a copy of its view's list (the volumes must be
+	   walked in the order they were sorted).  0 is the live-array behaviour, kept
+	   so one boot can compare the two. */
+	r_surfOwn = ri.Cvar_Get( "r_surfOwn", "1", CVAR_CHEAT );
+	/* 1: a 3D stage set written in an older texture generation is repaired before
+	   it is bound.  0 is the pre-repair behaviour, kept for the same comparison. */
+	r_texgen3d = ri.Cvar_Get( "r_texgen3d", "1", CVAR_CHEAT );
+#ifndef PROBE_BUILD_SILENT
+	/* instrument, not a setting: it draws the volume instead of counting it, and
+	   the shipped build carries no arm for it */
+	r_shadowVolume = ri.Cvar_Get( "r_shadowVolume", "0", CVAR_CHEAT );
+#endif
 	r_terrain_global = ri.Cvar_Get( "r_terrain_global", "0", CVAR_CHEAT );
 	r_terrain_global_min = ri.Cvar_Get( "r_terrain_global_min", va("%f", -65536.0f), CVAR_CHEAT );
 

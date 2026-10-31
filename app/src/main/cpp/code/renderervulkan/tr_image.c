@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
+#include "tr_hwtex.h"
 
 /*
  * The reference renderer's upload seam, re-pointed at the Vulkan texture table.
@@ -761,6 +762,183 @@ static void UploadTranscodedDims( int width, int height, int iMipmapsAvailable,
 	}
 	*outW = upW;
 	*outH = upH;
+}
+
+/* ---- the source side of the texel row ------------------------------------- */
+
+/* The row reads one block off the device at the MIDDLE of the image.  For an atlas
+   that block is a gap between UV islands, so the row as written could not tell an
+   image that is genuinely dark or transparent from an upload that arrived corrupt,
+   and a whole boot of rows said nothing about the art it was built for.  The source
+   is in hand at upload, so it answers both: the bytes of the very block the row
+   reads, and a strided decode of the level the create sized.  Kept per SLOT and
+   keyed by the image's own stamp, because a slot outlives the image in it. */
+
+/* 16k texels is a 4x-oversampled census for every shipped character atlas and one
+   full decode for nothing larger than 128x128, so the pass stays off the load's
+   critical path while the mean stops being one block's opinion. */
+#define VK_SRC_CENSUS_TEXELS 16384
+
+static vkSrcCensus_t	s_srcCensus[VK_MAX_TEXTURES];
+
+qboolean VK_Image_SourceCensus( int handle, unsigned stamp, vkSrcCensus_t *out )
+{
+	const vkSrcCensus_t	*c;
+
+	if ( !out ) {
+		return qfalse;
+	}
+	memset( out, 0, sizeof( *out ) );
+	if ( handle < 0 || handle >= VK_MAX_TEXTURES || !stamp ) {
+		return qfalse;
+	}
+	c = &s_srcCensus[handle];
+	if ( !c->stamp || c->stamp != stamp || !c->blockLen ) {
+		return qfalse;
+	}
+	*out = *c;
+	return qtrue;
+}
+
+static void VK_SrcCensusAdd( const unsigned char *rgba, int texels,
+							 long long sum[4], int *cleared )
+{
+	int i;
+
+	for ( i = 0; i < texels; i++ ) {
+		sum[0] += rgba[i * 4 + 0];
+		sum[1] += rgba[i * 4 + 1];
+		sum[2] += rgba[i * 4 + 2];
+		sum[3] += rgba[i * 4 + 3];
+		if ( rgba[i * 4 + 3] == 0 ) {
+			(*cleared)++;
+		}
+	}
+}
+
+void VK_Image_RecordSourceCensus( int handle, unsigned stamp, const byte *pic,
+								  int width, int height, int picmip,
+								  int upW, int upH,
+								  int vkCompressMode, int iMipmapsAvailable )
+{
+	vkSrcCensus_t	*c;
+	long long		 sum[4];
+	int				 cleared = 0, texels = 0;
+	int				 cx, cy;
+
+	if ( !R_ProbeMarkOn() || !pic || handle < 0 || handle >= VK_MAX_TEXTURES || !stamp ) {
+		return;
+	}
+	c = &s_srcCensus[handle];
+	memset( c, 0, sizeof( *c ) );
+	c->stamp = stamp;
+
+	cx = upW >> 1;
+	cy = upH >> 1;
+	memset( sum, 0, sizeof( sum ) );
+
+	if ( !vkCompressMode ) {
+		/* the software path hands over RGBA8 at the source extent, so the create's
+		   level 0 is the source's level 0 only when no reduction ran */
+		int at, i, step, n = width * height;
+
+		if ( upW != width || upH != height ) {
+			c->blockLen = 0;
+			return;
+		}
+		if ( cx >= width ) cx = width - 1;
+		if ( cy >= height ) cy = height - 1;
+		if ( cx < 0 || cy < 0 ) {
+			c->blockLen = 0;
+			return;
+		}
+		at = ( cy * width + cx ) * 4;
+		memcpy( c->block, pic + at, 4 );
+		memcpy( c->texel, pic + at, 4 );
+		c->blockLen = 4;
+
+		step = 1;
+		while ( n / step > VK_SRC_CENSUS_TEXELS ) {
+			step <<= 1;
+		}
+		for ( i = 0; i < n; i += step ) {
+			VK_SrcCensusAdd( pic + i * 4, 1, sum, &cleared );
+			texels++;
+		}
+	} else {
+		int		dxt = ( vkCompressMode == VK_TF_DXT1 ) ? SMP_DXT1
+					: ( vkCompressMode == VK_TF_DXT5 ) ? SMP_DXT5 : SMP_DXT3;
+		int		blockBytes = ( dxt == SMP_DXT1 ) ? 8 : 16;
+		int		start = 0, srcW = width, srcH = height, off = 0;
+		int		bw, bh, nblk, step, i;
+
+		/* the level the create sized is the one the upload fills; if picmip or the
+		   size clamp moved it, the block the row reads is that level's block */
+		UploadCompressedDims( width, height, iMipmapsAvailable, picmip,
+							  &start, &upW, &upH );
+		if ( start || upW != width || upH != height ) {
+			int lvl;
+
+			for ( lvl = 0; lvl < start; lvl++ ) {
+				off += blockBytes * ( ( srcW + 3 ) / 4 ) * ( ( srcH + 3 ) / 4 );
+				srcW >>= 1;
+				srcH >>= 1;
+				if ( !srcW ) srcW = 1;
+				if ( !srcH ) srcH = 1;
+			}
+			if ( srcW != upW || srcH != upH ) {
+				/* the size clamp reduced past the stored chain, so the level the row
+				   reads is not in the file: keep no census rather than a wrong one */
+				c->blockLen = 0;
+				return;
+			}
+			cx = upW >> 1;
+			cy = upH >> 1;
+		}
+
+		bw = ( srcW + 3 ) / 4;
+		bh = ( srcH + 3 ) / 4;
+		if ( cx >= srcW ) cx = srcW - 1;
+		if ( cy >= srcH ) cy = srcH - 1;
+		if ( cx < 0 || cy < 0 ) {
+			c->blockLen = 0;
+			return;
+		}
+
+		{
+			unsigned char	rgba[64];
+			int				at = off + ( ( cy >> 2 ) * bw + ( cx >> 2 ) ) * blockBytes;
+
+			memcpy( c->block, pic + at, blockBytes );
+			c->blockLen = blockBytes;
+			SMP_DXTDecodeBlock( dxt, c->block, rgba );
+			memcpy( c->texel, rgba + ( ( ( cy & 3 ) * 4 ) + ( cx & 3 ) ) * 4, 4 );
+		}
+
+		nblk = bw * bh;
+		step = 1;
+		while ( nblk / step > VK_SRC_CENSUS_TEXELS / 16 ) {
+			step <<= 1;
+		}
+		for ( i = 0; i < nblk; i += step ) {
+			unsigned char	rgba[64];
+
+			SMP_DXTDecodeBlock( dxt, pic + off + i * blockBytes, rgba );
+			VK_SrcCensusAdd( rgba, 16, sum, &cleared );
+			texels += 16;
+		}
+	}
+
+	if ( !texels ) {
+		c->blockLen = 0;
+		return;
+	}
+	c->mean[0] = (unsigned char)( sum[0] / texels );
+	c->mean[1] = (unsigned char)( sum[1] / texels );
+	c->mean[2] = (unsigned char)( sum[2] / texels );
+	c->mean[3] = (unsigned char)( sum[3] / texels );
+	c->clear = (int)( ( cleared * 100 ) / texels );
+	c->texels = texels;
 }
 
 static void Upload32(
@@ -1490,6 +1668,12 @@ image_t* R_CreateImageOld(
 
 	image = &tr.images[i];
 
+	/* the extent the create sized, carried out here because the texel row's source
+	   census has to look at the SAME level the upload fills */
+	int			censusW = width;
+	int			censusH = height;
+	qboolean	censusOk = qfalse;
+
 	/* the texture object is created whole -- Vulkan needs extent and mip count up front and validation catches a wrong count -- and both
 	   come from the upload path's own level-zero arithmetic, not the source extent. */
 	{
@@ -1560,6 +1744,10 @@ image_t* R_CreateImageOld(
 			image->texnum = (unsigned int)s_vkUploadTex;
 			R_SlotTenant_Set( image->texnum, image );
 		}
+
+		censusW = upW;
+		censusH = upH;
+		censusOk = createOk;
 	}
 
 	image->numMipmaps = numMipmaps;
@@ -1575,6 +1763,14 @@ image_t* R_CreateImageOld(
 	image->wrapClampModeX = getGLClampType( VK_TWRAP_S, textureMode );
 	image->wrapClampModeY = getGLClampType( VK_TWRAP_T, textureMode );
 	image->imgStamp = ++s_imageStamp;
+
+	/* the texel row's source half: read while the decoded or blocked source is still
+	   in hand, so the next boot can tell the art from the copy */
+	if ( censusOk ) {
+		VK_Image_RecordSourceCensus( (int)image->texnum, image->imgStamp, pic,
+									 width, height, picmip, censusW, censusH,
+									 vkCompressMode, iMipmapsAvailable );
+	}
 
 	/* A Vulkan draw names its own descriptor: no texture unit to select. */
 	image->TMU = 0;

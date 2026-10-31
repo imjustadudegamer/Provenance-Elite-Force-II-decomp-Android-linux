@@ -330,6 +330,12 @@ void		VK_SetUniform3fv( vkProgram_t *p, vkUniform_t u, const float *v );
 void		VK_SetUniform4fv( vkProgram_t *p, vkUniform_t u, const float *v );
 
 void		VK_Mat4_ClipToWindow( float *m );
+/* column-major out = a * b: the one multiply the stage uniforms and the
+   immediate run share, so the two paths cannot land in different spaces */
+void		VK_Mat4Mul( float *out, const float *a, const float *b );
+/* the matrix the last immediate run pushed, for the rows that report where that
+   run's geometry landed */
+const float *RB_ImmPushedMatrix( void );
 
 void		VK_ApplyStateBits( unsigned long stateBits );
 unsigned	VK_CurrentAlphaTest( void );

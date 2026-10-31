@@ -1111,12 +1111,50 @@ typedef struct {
 	image_t		*image;
 	VkPipeline	pipeline;
 	unsigned	shadowGen;	/* the stencil/cull/colour-mask state the run opened under */
+	qboolean	shadow;		/* the run armed the stencil: a volume pass */
 } vkImmRun_t;
 
 static vkImmRun_t	s_imm;
 
+/* The volume's own commits: `imm` in the frame row counts the 2D batches only,
+   so without these two numbers "the volume reached the command buffer" had no
+   witness at all. */
+static int	s_immShadowRuns;
+static int	s_immShadowVerts;
+
+/* the key the last immediate runs were opened with: the volume row reads the
+   pipeline state that was actually built, not the state word it meant */
+static vkPipelineKey_t	s_immKey[2];
+static unsigned			s_immKeySeq;
+
+qboolean VK_Imm_KeyGet( int back, vkPipelineKey_t *out ) {
+	if ( !out || s_immKeySeq <= (unsigned)back ) {
+		return qfalse;
+	}
+	*out = s_immKey[ ( s_immKeySeq - 1 - (unsigned)back ) & 1u ];
+	return qtrue;
+}
+
+void VK_Imm_ShadowCommits( int *runs, int *verts ) {
+	if ( runs ) {
+		*runs = s_immShadowRuns;
+	}
+	if ( verts ) {
+		*verts = s_immShadowVerts;
+	}
+}
+
+/* the matrix the open run pushed: a row that reports where the run's geometry
+   lands has to read the transform the draw actually carries */
+static float		s_immPush[16];
+
 static float		s_immCurSt[2];	/* the stream's current st, stamped per vertex */
 static byte			s_immCurColor[4] = { 255, 255, 255, 255 };
+
+const float *RB_ImmPushedMatrix( void )
+{
+	return s_immPush;
+}
 
 static vkTessVertex_t *RB_Imm_NewVertex( void )
 {
@@ -1194,30 +1232,20 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	/* the ortho is recorded on every run, at function scope: a run that trusted the previous run's push drew with a stale ortho, and a 2D quad
 	   under a stale ortho lands as a garbage sheet across the frame.  Which ortho it carries depends on the space the run draws in; the recording itself is unconditional. */
 	struct { float ortho[16]; float alphaTest[4]; } push;	/* vk_draw.c's layout */
-	const float *window, *proj, *view;
-	int r, c, k;
+	const float *window;
 
 	memset( &push, 0, sizeof( push ) );
 	window = backEnd.in2D ? VK_Draw_CurrentOrtho() : NULL;
 	if ( window ) {
 		memcpy( push.ortho, window, sizeof( push.ortho ) );
 	} else {
-		proj = RB_GetProjectionMatrix();
-		view = RB_GetModelViewMatrix();
-		for ( r = 0; r < 4; r++ ) {
-			for ( c = 0; c < 4; c++ ) {
-				float sum = 0.0f;
-
-				for ( k = 0; k < 4; k++ ) {
-					sum += proj[r * 4 + k] * view[k * 4 + c];
-				}
-				push.ortho[c * 4 + r] = sum;
-			}
-		}
-		/* the push holds the product transposed, keeping the flat offsets of
-		   the negated row: 1, 5, 9, 13 */
+		/* column-major proj*view, the same product the stage pass uploads as u_MVP: the shader reads this push as a mat4, so a transposed
+		   product put every 3D immediate run -- the volume and this overlay's own quad -- in a space none of its vertices survive. */
+		VK_Mat4Mul( push.ortho, RB_GetProjectionMatrix(), RB_GetModelViewMatrix() );
+		/* the engine's matrices leave +y up in clip space; row 1 is flat 1, 5, 9, 13 */
 		VK_Mat4_ClipToWindow( push.ortho );
 	}
+	memcpy( s_immPush, push.ortho, sizeof( s_immPush ) );
 	push.alphaTest[0] = 0.0f;
 	push.alphaTest[1] = 0.0f;
 
@@ -1229,6 +1257,10 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	if ( run->pipeline == VK_NULL_HANDLE ) {
 		return;
 	}
+
+	s_immKey[s_immKeySeq & 1u] = key;
+	s_immKeySeq++;
+	run->shadow = key.stencilTest;
 
 	VK_Draw_BindPipeline( vk.commandBuffers[s_rbSlot], run->pipeline );
 	/* the run's own state, as the stage pass does: a leftover push would arm the
@@ -1297,6 +1329,11 @@ void RB_ImmCommit( void )
 		}
 	}
 	VK_Draw_Draw( cmd, run->verts, run->base );
+
+	if ( run->shadow ) {
+		s_immShadowRuns++;
+		s_immShadowVerts += run->verts;
+	}
 
 	backEnd.pc.c_vertexes += run->verts;
 	backEnd.pc.c_surfaces++;
@@ -1450,6 +1487,50 @@ int		max_polys;
 
 int		max_polyverts;
 
+/* ---- the surf record's own list ------------------------------------------ */
+
+/* The record has to own its surfaces.  cmd->drawSurfs used to be a raw pointer
+   into tr.refdef.drawSurfs, which the front end rewrites for a later frame while
+   the walk reads this record; a walk that meets the refilled array meets it in
+   add order, and there a caster's <stencil shadow> surf comes before the surfaces
+   its volume has to be depth-tested against.  Both volume walls then pass, the
+   counters cancel, and the stencil plane reads empty with every other reading in
+   the frame healthy. */
+static drawSurfsCommand_t *R_AllocSurfCmd( int headBytes, int numSurfs ) {
+	int					listBytes = ( numSurfs > 0 ) ? numSurfs * (int)sizeof( drawSurf_t ) : 0;
+	int					bytes = headBytes + listBytes + (int)sizeof( void * );
+	drawSurfsCommand_t	*cmd = (drawSurfsCommand_t *)R_GetCommandBuffer( bytes );
+	int					pad = (int)sizeof( void * );
+
+	/* The list advances a command by its own size, and this record keeps its
+	   surfaces behind the struct: without the padded total the walk read the
+	   slice as commands and every record after it -- the whole 2D screen -- was
+	   lost.  The allocator pads its request to pointer size, so the total does
+	   too. */
+	if ( cmd ) {
+		cmd->totalBytes = ( bytes + pad - 1 ) & ~( pad - 1 );
+	}
+	return cmd;
+}
+
+static void R_CarryDrawSurfs( drawSurfsCommand_t *cmd, drawSurf_t *surfs, int numSurfs ) {
+	unsigned long	addr, align, pad;
+	byte			*base;
+
+	if ( numSurfs <= 0 || surfs == NULL ) {
+		cmd->drawSurfs = NULL;
+		return;
+	}
+
+	base  = (byte *)cmd + sizeof( *cmd );
+	addr  = (unsigned long)base;
+	align = (unsigned long)sizeof( void * );
+	pad   = ( align - ( addr % align ) ) % align;
+
+	cmd->drawSurfs = (drawSurf_t *)( base + pad );
+	Com_Memcpy( cmd->drawSurfs, surfs, numSurfs * sizeof( drawSurf_t ) );
+}
+
 void	R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	drawSurfsCommand_t	*cmd;
 
@@ -1469,17 +1550,51 @@ void	R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 	R_Invalidate2DWindowCache();
 
-	cmd = R_GetCommandBuffer( sizeof( *cmd ) );
+	cmd = R_AllocSurfCmd( sizeof( *cmd ), numDrawSurfs );
 	if ( !cmd ) {
 		return;
 	}
 	cmd->commandId = RC_DRAW_SURFS;
 
-	cmd->drawSurfs = drawSurfs;
+	if ( r_surfOwn && r_surfOwn->integer ) {
+		R_CarryDrawSurfs( cmd, drawSurfs, numDrawSurfs );
+	} else {
+		/* the record names the live array again, which is only ever safe when the
+		   front end cannot refill it before the walk: the switch exists so the two
+		   behaviours can be compared on one boot */
+		cmd->drawSurfs = drawSurfs;
+	}
 	cmd->numDrawSurfs = numDrawSurfs;
 
 	cmd->refdef = tr.refdef;
+	/* the record's own list is the one the walk reads, so the refdef points at it */
+	cmd->refdef.drawSurfs = cmd->drawSurfs;
 	cmd->viewParms = tr.viewParms;
+
+	/* the record owns a copy of THIS view's slice while the refdef it carries
+	   counts the whole frame: a UI shader that never reaches the walk is either
+	   absent from the copy or added after it, and only these numbers say which */
+	if ( R_ProbeMarkOn() ) {
+		static int	s_addRows;
+
+		s_addRows++;
+		if ( s_addRows <= 24 || ( s_addRows % 300 ) == 0 ) {
+			int	menu = 0, i;
+
+			for ( i = 0; i < numDrawSurfs; i++ ) {
+				const char *n = drawSurfs[i].shader ? drawSurfs[i].shader->name : "";
+
+				if ( !Q_strncmp( n, "menu/", 5 ) || strstr( n, "lcars" ) ) {
+					menu++;
+				}
+			}
+			VK_Guard_Row( "VK:surfcmd",
+						  "site=add view=%d copied=%d refdef=%d menuSurfs=%d portal=%d f=%d",
+						  backEnd.viewParms.isPortal ? 1 : 0, numDrawSurfs,
+						  tr.refdef.numDrawSurfs, menu,
+						  backEnd.viewParms.isPortal ? 1 : 0, RB_FrameCount() );
+		}
+	}
 }
 
 void	R_AddSpriteSurfCmd(drawSurf_t* drawSurfs, int numDrawSurfs) {
@@ -1487,16 +1602,21 @@ void	R_AddSpriteSurfCmd(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
     R_Invalidate2DWindowCache();
 
-    cmd = R_GetCommandBuffer(sizeof(*cmd));
+    cmd = R_AllocSurfCmd( sizeof( *cmd ), numDrawSurfs );
     if (!cmd) {
         return;
     }
     cmd->commandId = RC_SPRITE_SURFS;
 
-    cmd->drawSurfs = drawSurfs;
+    if ( r_surfOwn && r_surfOwn->integer ) {
+        R_CarryDrawSurfs( cmd, drawSurfs, numDrawSurfs );
+    } else {
+        cmd->drawSurfs = drawSurfs;
+    }
     cmd->numDrawSurfs = numDrawSurfs;
 
     cmd->refdef = tr.refdef;
+    cmd->refdef.spriteSurfs = cmd->drawSurfs;
     cmd->viewParms = tr.viewParms;
 }
 
@@ -1581,6 +1701,12 @@ void RB_BeginDrawingView (void) {
 
 		memset( attachments, 0, sizeof( attachments ) );
 		attachments[count].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		/* RB_BeginDrawingView @0x1490 clears 1280 = DEPTH_BUFFER_BIT|STENCIL_BUFFER_BIT when the cvar at off_227C9C reads 2,
+		   the same pointer RB_ShadowFinish @0x40BD0 gates the overlay on, i.e. the precise shadow tier.  Without the stencil
+		   half every view in a frame shared one plane, so a sub-view's caster marked the main view's screen. */
+		if ( r_shadows->integer == 2 && vkConfig.stencilBits >= 4 ) {
+			attachments[count].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
 		attachments[count].clearValue.depthStencil.depth = 1.0f;
 		attachments[count].clearValue.depthStencil.stencil = 0;
 		count++;
@@ -1826,6 +1952,107 @@ void RB_NoteIndexDesync( const char *walk, shader_t *shader, int carriedIndex )
 	}
 }
 
+/* ---- where in the frame the volume is drawn ------------------------------ */
+
+/* A z-pass volume is only correct after its receivers, and "drawn after" is not
+   something the sort word proves: it packs sortedIndex at add time.  The frame's
+   own draw counter is the witness -- the first draws by name, the counter the
+   first <stencil shadow> met, and whether any surface draw came after it. */
+#define VK_ORDER_HEAD		40
+#define VK_ORDER_NAME		48
+#define VK_ORDER_LINE		2048
+
+static char	s_orderHead[VK_ORDER_HEAD][VK_ORDER_NAME];
+static int	s_orderHeadAt[VK_ORDER_HEAD];
+static int	s_orderHeadCount;
+static int	s_orderDraws;
+static int	s_orderVolumes;
+static int	s_orderVolumeFirst = -1;
+static int	s_orderVolumeLast = -1;
+static int	s_orderOtherAfter;
+static int	s_orderRows;
+
+static void RB_Order_Reset( void ) {
+	s_orderHeadCount   = 0;
+	s_orderDraws       = 0;
+	s_orderVolumes     = 0;
+	s_orderVolumeFirst = -1;
+	s_orderVolumeLast  = -1;
+	s_orderOtherAfter  = 0;
+}
+
+static void RB_Order_Note( shader_t *shader ) {
+	int	draw;
+
+	if ( !R_ProbeMarkOn() || !shader ) {
+		return;
+	}
+
+	draw = s_orderDraws++;
+
+	if ( s_orderHeadCount < VK_ORDER_HEAD ) {
+		Q_strncpyz( s_orderHead[s_orderHeadCount], shader->name, VK_ORDER_NAME );
+		s_orderHeadAt[s_orderHeadCount] = draw;
+		s_orderHeadCount++;
+	}
+
+	if ( shader == tr.shadowShader ) {
+		if ( s_orderVolumeFirst < 0 ) {
+			s_orderVolumeFirst = draw;
+		}
+		s_orderVolumeLast = draw;
+		s_orderVolumes++;
+	} else if ( s_orderVolumeFirst >= 0 ) {
+		s_orderOtherAfter++;
+	}
+}
+
+static void RB_Order_FrameRow( void ) {
+	char	head[VK_ORDER_LINE];
+	int		i, written = 0;
+
+	if ( !R_ProbeMarkOn() || s_orderVolumes == 0 ) {
+		RB_Order_Reset();
+		return;
+	}
+
+	s_orderRows++;
+	if ( s_orderRows > 16 && ( s_orderRows % 600 ) != 0 ) {
+		RB_Order_Reset();
+		return;
+	}
+
+	head[0] = 0;
+	for ( i = 0; i < s_orderHeadCount; i++ ) {
+		int n = Com_sprintf( head + written, sizeof( head ) - written, "%s#%d '%s'",
+							 i ? "," : "", s_orderHeadAt[i], s_orderHead[i] );
+
+		/* the row's own body is 896 bytes: the head is a window, and the count
+		   after it says how much of the frame it left out */
+		if ( n < 0 || written + n > 520 ) {
+			break;
+		}
+		written += n;
+	}
+	if ( i < s_orderHeadCount ) {
+		Com_sprintf( head + written, sizeof( head ) - written, ",+%d",
+					 s_orderHeadCount - i );
+	}
+
+	/* the verdict is the one number the item turns on: a surface draw after the
+	   first volume means the volume counted against depth the world had not yet
+	   written, and both its walls then pass and cancel */
+	VK_Guard_Row( "VK:draworder",
+				  "f=%d view=%d draws=%d volumes=%d vol_first=%d vol_last=%d other_after=%d "
+				  "verdict=%s head=%s",
+				  RB_FrameCount(), tr.viewCount, s_orderDraws, s_orderVolumes,
+				  s_orderVolumeFirst, s_orderVolumeLast, s_orderOtherAfter,
+				  s_orderOtherAfter ? "volume-before-world" : "volume-after-world",
+				  head );
+
+	RB_Order_Reset();
+}
+
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	shader_t		*shader, *oldShader;
 	int				entityNum, oldEntityNum;
@@ -1839,6 +2066,8 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	int				oldSort;
 
 	RB_BeginDrawingView ();
+
+	RB_Order_Reset();
 
 	oldEntityNum = -1;
 	backEnd.currentEntity = &tr.worldEntity;
@@ -1917,6 +2146,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				   ? drawSurf->shader
 				   : RB_ResolveStaleShader( "drawsurf", drawSurf->shaderGen, carriedIndex );
 			RB_NoteIndexDesync( "drawsurf", shader, carriedIndex );
+			RB_Order_Note( shader );
 			bStaticModel = qfalse;
 		} else {
 			refSprite_t *spr = (refSprite_t*)drawSurf->surface;
@@ -1925,6 +2155,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				   ? spr->shader
 				   : RB_ResolveStaleShader( "sprite", spr->shaderGen, spr->shaderNum );
 			RB_NoteIndexDesync( "sprite", shader, spr->shaderNum );
+			RB_Order_Note( shader );
 			entityNum = ENTITYNUM_WORLD;
 			fogNum = spr->fogNum;
 			dlightMap = 0;
@@ -2240,6 +2471,9 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	/* the walk hands the next list the full range whatever its own mirror said */
 	vkDepthRange (0, 1.0);
 
+	/* the volumes' place in this view's walk, named before the overlay paints it */
+	RB_Order_FrameRow();
+
 	/* retail R_RenderView @0x0001F190 draws the pass only for a flag-free world refdef */
 	if (!backEnd.refdef.rdflags) {
 		R_DrawLensFlares();
@@ -2416,6 +2650,38 @@ const void	*RB_DrawSurfs( const void *data ) {
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
+	if ( R_ProbeMarkOn() ) {
+		static int	s_walkRows;
+
+		s_walkRows++;
+		if ( s_walkRows <= 24 || ( s_walkRows % 300 ) == 0 ) {
+			int	menu = 0, i;
+
+			for ( i = 0; i < cmd->numDrawSurfs; i++ ) {
+				const char *n = cmd->drawSurfs[i].shader ? cmd->drawSurfs[i].shader->name : "";
+
+				if ( !Q_strncmp( n, "menu/", 5 ) || strstr( n, "lcars" ) ) {
+					menu++;
+				}
+			}
+			VK_Guard_Row( "VK:surfcmd",
+						  "site=walk copied=%d menuSurfs=%d live=%d in2D=%d f=%d",
+						  cmd->numDrawSurfs, menu, tr.refdef.numDrawSurfs,
+						  backEnd.in2D ? 1 : 0, RB_FrameCount() );
+		}
+	}
+
+	if ( R_ProbeMarkOn() && cmd->numDrawSurfs != tr.refdef.numDrawSurfs ) {
+		static int	s_walkRows;
+
+		s_walkRows++;
+		if ( s_walkRows <= 8 || ( s_walkRows % 300 ) == 0 ) {
+			VK_Guard_Row( "VK:surfcmd",
+						  "site=walk copied=%d live=%d f=%d",
+						  cmd->numDrawSurfs, tr.refdef.numDrawSurfs, RB_FrameCount() );
+		}
+	}
+
 	/* front end ahead of the handed-over frame: nonzero means the live reads raced */
 	if ( R_ProbeStatsOn() ) {
 		static int carryRows;
@@ -2444,7 +2710,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	BE_RootEnd( BE_FAM_DS );
 
-	return (const void *)(cmd + 1);
+	return (const void *)((const char *)cmd + cmd->totalBytes);
 }
 
 const void* RB_SpriteSurfs(const void* data) {
@@ -2467,7 +2733,7 @@ const void* RB_SpriteSurfs(const void* data) {
 	RB_SetupFog();
     RB_RenderSpriteSurfList(cmd->drawSurfs, cmd->numDrawSurfs);
 
-    return (const void*)(cmd + 1);
+    return (const void*)((const char *)cmd + cmd->totalBytes);
 }
 
 int RB_ModelViewDepth( void )

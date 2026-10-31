@@ -181,6 +181,14 @@ typedef struct {
 	VkImage depthImage;
 	VkDeviceMemory depthMemory;
 	VkImageView depthView;
+	/* The stencil readback's staging set, armed at target init: the image's
+	   usage and the pass's stencil store op are both creation-time, so qa_probe
+	   has to be on before the target exists for the copy to be legal. */
+	qboolean stencilReadback;
+	VkBuffer stencilBuffer;
+	VkDeviceMemory stencilMemory;
+	void *stencilMapped;
+	VkDeviceSize stencilBytes;
 	VkFramebuffer *framebuffers;
 	uint32_t framebufferCount;
 	VkBuffer vertexBuffer;
@@ -272,6 +280,11 @@ qboolean VK_Target_Init( void );
 void VK_Target_Shutdown( void );
 qboolean VK_Target_Recreate( void );
 VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth );
+
+/* The stencil plane's readback, one throttled row per armed frame: the copy is
+   recorded after the pass closes and counted once the frame's fence signals. */
+void VK_Target_StencilCopy( VkCommandBuffer cmd );
+void VK_Target_StencilReadback( int slot );
 
 qboolean VK_Frame_Init( void );
 void VK_Frame_Shutdown( void );

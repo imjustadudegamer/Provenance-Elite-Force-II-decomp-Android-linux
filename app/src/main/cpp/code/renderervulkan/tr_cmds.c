@@ -98,6 +98,15 @@ static qboolean RB_CommandListGrow( vkCommandList_t *list, int demand )
 		return qfalse;
 	}
 
+	/* The grow runs inside R_GetCommandBuffer, i.e. mid-record, so the commands
+	   already in this slot are the ones the render thread is about to walk: the
+	   bytes have to move with the list.  Swapping in a fresh block and keeping
+	   `used` read uninitialised memory for every earlier command of the frame --
+	   the 2D screen went out that way while the 3D scene after it still drew. */
+	if ( list->used > 0 && list->cmds ) {
+		Com_Memcpy( cmds, list->cmds, list->used );
+	}
+
 	list->cmds     = cmds;
 	list->capacity = newBytes;
 

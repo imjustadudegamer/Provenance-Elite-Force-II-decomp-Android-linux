@@ -284,6 +284,13 @@ void VK_Draw_TextureGenBump( void )
 	s_setGen++;
 }
 
+/* The one generation both set caches read: 2D and 3D descriptors are written
+   against the same image lifetimes, so one counter has to answer for both. */
+unsigned VK_Draw_TextureGen( void )
+{
+	return s_setGen;
+}
+
 typedef struct {
 	float	ortho[16];		/* offset 0, the vertex stage */
 	float	alphaTest[4];	/* offset 64: x = the bound (0 = off), y = 1 when 'less than' */
@@ -453,6 +460,34 @@ VkCullModeFlagBits VK_Draw_CullModeFor( int cullFace, int cull )
 		 : ( cull == CT_FRONT_SIDED ) ? VK_CULL_MODE_BACK_BIT
 		 : ( cull == CT_BACK_SIDED ) ? VK_CULL_MODE_FRONT_BIT
 		 : VK_CULL_MODE_NONE;
+}
+
+/* The pipeline state a key builds, in the terms the volume row reasons about:
+   the depth arm, the stencil arm and the face it culls.  Resolved through the
+   same two mappings VK_Draw_Build uses, so a mapping that stops agreeing with
+   the pipeline shows up here as the wrong word rather than not at all. */
+void VK_Draw_KeyText( const vkPipelineKey_t *key, char *out, int outSize ) {
+	const char	*cmp, *pass, *fail, *zfail;
+	int			cull;
+
+	if ( !out || outSize <= 0 ) {
+		return;
+	}
+
+	cmp   = ( key->stateBits & VKS_DEPTHFUNC_EQUAL ) ? "equal" : "lequal";
+	pass  = ( key->stencilOpPass == VK_INCR ) ? "incr"
+		  : ( key->stencilOpPass == VK_DECR ) ? "decr" : "keep";
+	fail  = ( key->stencilOpFail == VK_INCR ) ? "incr"
+		  : ( key->stencilOpFail == VK_DECR ) ? "decr" : "keep";
+	zfail = ( key->stencilOpZFail == VK_INCR ) ? "incr"
+		  : ( key->stencilOpZFail == VK_DECR ) ? "decr" : "keep";
+	cull  = (int)VK_Draw_CullModeFor( key->cullFace, key->cull );
+
+	Com_sprintf( out, outSize,
+				 "dtest=%d dwrite=%d cmp=%s stest=%d sf=%d ops=%s,%s,%s cull=%d cmask=0x%x",
+				 key->depthTest ? 1 : 0, key->depthWrite ? 1 : 0, cmp,
+				 key->stencilTest ? 1 : 0, key->stencilFunc,
+				 fail, zfail, pass, cull, key->colorMask );
 }
 
 static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
@@ -726,6 +761,7 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 
 	vk_pipelines[i].key = *key;
 	vk_pipelines[i].used = qtrue;
+	VK_Life_NoteCreate( VK_LIFE_PIPELINE );
 	if ( i == vk_numPipelines ) {
 		vk_numPipelines = i + 1;
 	}
@@ -836,6 +872,7 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 		}
 
 		vk_sets[i].used = qtrue;
+		VK_Life_NoteCreate( VK_LIFE_SET );
 		VK_Draw_WriteSet( i, view, sampler );
 
 		if ( i == vk_numSets ) {
@@ -949,6 +986,20 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	/* The 2D window is in force until the frame ends: the surfaces the walk
 	   performs inside it take the 2D walk. */
 	backEnd.in2D = qtrue;
+
+	/* the UI is a 2D window and nothing else: a menu that never sets one is not
+	   drawing at all, and a menu that sets one and still shows no art is a walk
+	   problem -- this row is the difference */
+	if ( R_ProbeMarkOn() ) {
+		static int	s_winRows;
+
+		s_winRows++;
+		if ( s_winRows <= 12 || ( s_winRows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:2dwin", "m11=%.4f m15=%.4f win=%.0f,%.0f f=%d",
+						  m[11], m[15], vk_current.ortho[0], vk_current.ortho[5],
+						  RB_FrameCount() );
+		}
+	}
 	}
 
 	/* The reference's RB_2D_SetWindow takes the 2D depth gate here, after the

@@ -806,6 +806,9 @@ void VK_Frame_RecordEnd( int slot )
 		   timestamp comes after it: the UI interval has to contain them. */
 		VK_PerfGpu_FrameEnd( slot );
 		qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
+		/* after the pass, never inside it: an attachment may not be a copy source
+		   while a render pass records against it */
+		VK_Target_StencilCopy( vk.commandBuffers[slot] );
 		/* Ending the buffer belongs with ending the pass, so the present path and
 		   the retire path both leave the command buffer in the same state: ended
 		   once, ready to submit. */
@@ -926,6 +929,10 @@ qboolean VK_Frame_Present( int slot )
 	if ( !vk.acquired ) {
 		return qfalse;
 	}
+
+	/* the plane the frame just wrote is counted here, while its submission is the
+	   one this slot's fence names; the present does not depend on the answer */
+	VK_Target_StencilReadback( slot );
 
 	memset( &presentInfo, 0, sizeof( presentInfo ) );
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
