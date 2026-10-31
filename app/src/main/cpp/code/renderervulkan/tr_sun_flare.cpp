@@ -1183,7 +1183,23 @@ static void R_LensflareOcclusionArm(const lensflareState_t *f, unsigned int inde
 
     span = backEnd.viewParms.viewportHeight > 0 ? backEnd.viewParms.viewportHeight : 1;
     half = 8.0f / (float)span;
-    z    = (f->ndcZ - proj[14]) / proj[10];
+
+    /* retail's readback arm hides the flare only when the depth under it is
+       more than 24 units nearer (TestVisibility @0x00049150: (-eyeZ + ze) < 24);
+       the query answers at whatever depth the quad is drawn at, so the quad is
+       placed that much nearer the eye to carry the same grace */
+    {
+        const float	*view = backEnd.viewParms.projectionMatrix;
+        float		dist;
+        float		ndc;
+
+        dist = view[14] / ( f->ndcZ + view[10] ) - 24.0f;
+        if ( dist < 1.0f ) {
+            dist = 1.0f;
+        }
+        ndc = -view[10] + view[14] / dist;
+        z   = ( ndc - proj[14] ) / proj[10];
+    }
 
     /* the immediate stream's own colour and st: alpha 0 is what leaves the
        frame untouched while the depth test still runs */
@@ -1685,6 +1701,23 @@ static void R_DrawEmitterLensflares(void)
         if (f->info && f->frameSceneNum == backEnd.viewParms.frameSceneNum
             && f->inPortalSky == backEnd.viewParms.isPortalSky) {
             R_LensflareTestVisibility(f);
+
+            /* the state walk had no witness at all: this is the row that says
+               whether a state exists, whether visible flips, and what alpha
+               reaches, so the draw-side silence stops being ambiguous */
+            if ( R_ProbeMarkOn() ) {
+                static int s_stateRows;
+
+                s_stateRows++;
+                if ( s_stateRows <= 12 || ( s_stateRows % 300 ) == 0 ) {
+                    VK_Guard_Row( "VK:flarestate",
+                                  "f=%d idx=%u clip=%d vis=%d alpha=%.3f mode=%d "
+                                  "screen=%.3f,%.3f ndcZ=%.4f",
+                                  RB_FrameCount(), (unsigned)( f - lf_states ), f->clipped,
+                                  f->visible, f->alpha, r_flares->integer,
+                                  f->screen[0], f->screen[1], f->ndcZ );
+                }
+            }
 
             if (f->alpha > 0.0f) {
                 draw = qtrue;
