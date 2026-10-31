@@ -53,6 +53,12 @@ typedef struct {
 static	edgeDef_t	edgeDefs[SHADER_MAX_VERTEXES][MAX_EDGE_DEFS];
 static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
 static	int			facing[SHADER_MAX_INDEXES/3];
+/* the silhouette quads the last R_RenderShadowEdges call emitted: an empty
+   volume and a volume with nowhere to land read the same from outside */
+static	int			s_edgeQuads;
+/* the facing cross-product area of the first quad a volume emitted: a zero
+   lightDir duplicates every vertex, and this is the number that says so */
+static	float		s_firstQuadArea;
 
 void R_ShutdownShadows( void ) {
 	Com_Memset( numEdgeDefs, 0, sizeof( numEdgeDefs ) );
@@ -131,12 +137,23 @@ void R_RenderShadowEdges( void ) {
 
 			if ( hit[ 1 ] == 0 ) {
 				BE_Bump( BE_FAM_DS, BE_DSC_edges, 1 );
+				if ( !s_edgeQuads ) {
+					vec3_t	d1, d2, n;
+					float	area;
+
+					VectorSubtract( tess.xyz[ i + tess.numVertexes ], tess.xyz[ i ], d1 );
+					VectorSubtract( tess.xyz[ i2 ], tess.xyz[ i ], d2 );
+					CrossProduct( d1, d2, n );
+					area = VectorLength( n );
+					s_firstQuadArea = area;
+				}
 				RB_ImmBegin( VK_TRIANGLE_STRIP );
 				RB_ImmVertex3fv( tess.xyz[ i ] );
 				RB_ImmVertex3fv( tess.xyz[ i + tess.numVertexes ] );
 				RB_ImmVertex3fv( tess.xyz[ i2 ] );
 				RB_ImmVertex3fv( tess.xyz[ i2 + tess.numVertexes ] );
 				RB_ImmEndDeferred();
+				s_edgeQuads++;
 			}
 		}
 	}
@@ -150,6 +167,7 @@ void RB_ShadowTessEnd( void ) {
 	int		i;
 	int		numTris;
 	int		shadowBuildT0;
+	int		numFacingTris = 0;
 	vec3_t	lightDir;
 
 	if ( tess.numVertexes >= SHADER_MAX_VERTEXES / 2 ) {
@@ -161,6 +179,33 @@ void RB_ShadowTessEnd( void ) {
 	}
 
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
+
+	/* R_Sphere_SetupEntity builds this direction from a SUM of six weighted
+	   basis vectors, so a room lit from opposite sides cancels it; the
+	   extrusion would then duplicate every vertex and the stencil would stay
+	   zero while the volume still reaches the draw list.  A degraded direction
+	   for the shadow only: the entity's strongest sphere light, else retail's
+	   own entity-lighting fallback axis.  A direction that is present is used
+	   verbatim, exactly as retail does. */
+	if ( VectorLength( lightDir ) == 0.0f ) {
+		float	best = 0.0f;
+		vec3_t	delta;
+
+		for ( i = 0; i < tr.numSLights; i++ ) {
+			float	w;
+
+			VectorSubtract( tr.sLights[i].origin, backEnd.currentEntity->e.origin, delta );
+			w = Q_max( Q_max( tr.sLights[i].color[0], tr.sLights[i].color[1] ),
+					   tr.sLights[i].color[2] );
+			if ( w > best && VectorNormalize( delta ) > 0.0f ) {
+				best = w;
+				VectorCopy( delta, lightDir );
+			}
+		}
+		if ( best == 0.0f ) {
+			VectorSet( lightDir, 0.0f, 0.0f, 1.0f );
+		}
+	}
 
 	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
 		VectorMA( tess.xyz[i], -512, lightDir, tess.xyz[i+tess.numVertexes] );
@@ -191,6 +236,7 @@ void RB_ShadowTessEnd( void ) {
 		d = DotProduct( normal, lightDir );
 		if ( d > 0 ) {
 			facing[ i ] = 1;
+			numFacingTris++;
 		} else {
 			facing[ i ] = 0;
 		}
@@ -214,6 +260,7 @@ void RB_ShadowTessEnd( void ) {
 
 	VK_StencilState( qtrue, VK_ALWAYS, 1, 255 );
 
+	s_edgeQuads = 0;
 	if ( backEnd.viewParms.isMirror ) {
 		vkCullFace( VK_FRONT );
 		vkStencilOp( VK_KEEP, VK_KEEP, VK_INCR );
@@ -238,6 +285,29 @@ void RB_ShadowTessEnd( void ) {
 
 
 	vkColorMask( VK_TRUE, VK_TRUE, VK_TRUE, VK_TRUE );
+	/* The volume's arm is state only this pass wants: the reference's GL_Cull
+	   re-issues the face at the next state block, and its stencil test is a
+	   context call the next block overwrites, so both fall back here rather
+	   than leak into the draws that follow the shadow batch. */
+	vkEnable( VK_CULL_FACE );
+	vkState.faceCulling = -1;
+	VK_StencilState( qfalse, VK_ALWAYS, 0, 255 );
+
+	if ( R_ProbeMarkOn() ) {
+		static int	s_rows;
+
+		s_rows++;
+		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:shadow",
+						  "site=tess ent=%d lightdir=%.3f,%.3f,%.3f verts=%d idx=%d facing=%d edges=%d "
+						  "quarter=%.3f stencil=%d f=%d",
+						  ( backEnd.currentEntity && backEnd.currentEntity->e.entityNumber >= 0 )
+							? backEnd.currentEntity->e.entityNumber : -1,
+						  lightDir[0], lightDir[1], lightDir[2],
+						  tess.numVertexes, tess.numIndexes, numFacingTris, s_edgeQuads,
+						  s_firstQuadArea, 1, RB_FrameCount() );
+		}
+	}
 
 	if ( BE_On() ) {
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_shadow, BE_Microseconds() - shadowBuildT0 );
@@ -245,6 +315,8 @@ void RB_ShadowTessEnd( void ) {
 }
 
 void RB_ShadowFinish( void ) {
+	int		ringBefore, ringAfter;
+
 	if ( r_shadows->integer != 2 ) {
 		return;
 	}
@@ -272,6 +344,7 @@ void RB_ShadowFinish( void ) {
 
 
 
+	ringBefore = RB_ImmStreamVerts();
 	RB_ImmBegin( VK_TRIANGLE_FAN );
 	RB_ImmVertex3f( -100, 100, -10 );
 	RB_ImmVertex3f( 100, 100, -10 );
@@ -279,7 +352,35 @@ void RB_ShadowFinish( void ) {
 	RB_ImmVertex3f( -100, -100, -10 );
 	RB_ImmEnd();
 	RB_ImmFlush();
+	ringAfter = RB_ImmStreamVerts();
+
+	/* the overlay is the last draw of the pass and the only one that paints
+	   the volume: the vertices it committed, the topology it took and the state
+	   its key carries are what tell "never drawn" from "drawn over an empty
+	   stencil" on a boot where nothing visibly darkened */
+	if ( R_ProbeMarkOn() ) {
+		static int	s_rows;
+
+		s_rows++;
+		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
+			qboolean	stTest;
+			int			stFunc, stRef, stFail, stZFail, stPass, stCull;
+			unsigned	stMask, stColor;
+
+			VK_Shade_ShadowState( &stTest, &stFunc, &stRef, &stMask, &stFail,
+								  &stZFail, &stPass, &stCull, &stColor );
+			VK_Guard_Row( "VK:shadow",
+						  "site=finish verts=%d topo=%d stencil=%d func=%d ref=%d "
+						  "ops=%d,%d,%d cull=%d cmask=0x%x f=%d",
+						  ringAfter - ringBefore, VK_IMM_TRIANGLE_FAN,
+						  stTest ? 1 : 0, stFunc, stRef, stFail, stZFail, stPass,
+						  stCull, stColor, RB_FrameCount() );
+		}
+	}
 
 	RB_ImmColor4f( 1, 1, 1, 1 );
 	VK_StencilState( qfalse, VK_ALWAYS, 0, 255 );
+	/* the overlay drew cull-free; the next state block owns the face again */
+	vkEnable( VK_CULL_FACE );
+	vkState.faceCulling = -1;
 }

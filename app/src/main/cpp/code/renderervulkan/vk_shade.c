@@ -3845,6 +3845,18 @@ void vkColorMask( qboolean r, qboolean g, qboolean b, qboolean a )
 	s_shade.colorMask[1] = g;
 	s_shade.colorMask[2] = b;
 	s_shade.colorMask[3] = a;
+
+	/* The mask is a pipeline-key field, so a mask left off blacks out every
+	   later key that reads it; the row names the transition and who set it. */
+	if ( R_ProbeMarkOn() ) {
+		static int	s_rows;
+
+		s_rows++;
+		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
+			VK_Guard_Row( "VK:cmask", "r=%d g=%d b=%d a=%d gen=%u f=%d",
+						  r, g, b, a, s_shadowStateGen, RB_FrameCount() );
+		}
+	}
 }
 
 void vkLineWidth( float width )

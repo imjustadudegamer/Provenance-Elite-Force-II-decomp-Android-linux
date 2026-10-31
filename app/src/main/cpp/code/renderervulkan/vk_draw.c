@@ -264,11 +264,25 @@ typedef struct {
 	VkImageView		view;
 	VkSampler		sampler;
 	VkDescriptorSet	set;
+	/* the texture generation this set was written in: a view handle alone
+	   cannot survive a registration, because the slot's image is destroyed
+	   and the driver may return the same handle for its successor */
+	unsigned		gen;
 	qboolean		used;
 } vkSetSlot_t;
 
 static vkSetSlot_t	vk_sets[VK_SET_SLOTS];
 static int			vk_numSets;
+
+/* Bumped by every texture create and destroy, so a cached set written before a
+   registration is a miss afterwards whatever the handle values say. */
+static unsigned		s_setGen;
+static int			s_setStaleRows;
+
+void VK_Draw_TextureGenBump( void )
+{
+	s_setGen++;
+}
 
 typedef struct {
 	float	ortho[16];		/* offset 0, the vertex stage */
@@ -389,12 +403,16 @@ static void VK_Draw_BlendForState( unsigned stateBits, VkPipelineColorBlendAttac
 }
 
 
+/* Every topology the reference's immediate mode can hand down.  The fan arm is
+   the shadow finish overlay's four-vertex quad: without it the quad reached the
+   list arm and only its first triangle was ever rasterised. */
 static VkPrimitiveTopology VK_Draw_Topology( int topology )
 {
 	switch ( topology ) {
 	case VK_IMM_LINES:				return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 	case VK_IMM_LINE_LOOP:			return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
 	case VK_IMM_TRIANGLE_STRIP:		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	case VK_IMM_TRIANGLE_FAN:		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
 	case VK_IMM_TRIANGLES:
 	default:						return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	}
@@ -715,11 +733,36 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 	return vk_pipelines[i].pipeline;
 }
 
+/* (Re)point a set at a live view: the hit path and the allocate path both end
+   here, so a set that outlived its image is repaired rather than reused. */
+static void VK_Draw_WriteSet( int i, VkImageView view, VkSampler sampler )
+{
+	VkDescriptorImageInfo imageInfo;
+	VkWriteDescriptorSet write;
+
+	memset( &imageInfo, 0, sizeof( imageInfo ) );
+	imageInfo.sampler = sampler;
+	imageInfo.imageView = view;
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	memset( &write, 0, sizeof( write ) );
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	write.dstSet = vk_sets[i].set;
+	write.dstBinding = 0;
+	write.descriptorCount = 1;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	write.pImageInfo = &imageInfo;
+
+	qvk.UpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
+
+	vk_sets[i].view = view;
+	vk_sets[i].sampler = sampler;
+	vk_sets[i].gen = s_setGen;
+}
+
 qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler sampler )
 {
 	VkDescriptorSetAllocateInfo allocInfo;
-	VkDescriptorImageInfo imageInfo;
-	VkWriteDescriptorSet write;
 	VkDescriptorSet set = VK_NULL_HANDLE;
 	unsigned	h;
 	int i, probe;
@@ -739,6 +782,20 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 		}
 		at--;
 		if ( vk_sets[at].used && vk_sets[at].view == view && vk_sets[at].sampler == sampler ) {
+			/* a set written before a texture create/destroy describes the image
+			   that used to own the handle, so it is rewritten, never reused */
+			if ( vk_sets[at].gen != s_setGen ) {
+				s_setStaleRows++;
+				if ( R_ProbeMarkOn() && ( s_setStaleRows <= 8 || ( s_setStaleRows % 256 ) == 0 ) ) {
+					VK_Guard_Row( "VK:setgen",
+								  "set=%d view=0x%llx sampler=0x%llx gen=%u now=%u n=%d f=%d",
+								  at, (unsigned long long)(uintptr_t)view,
+								  (unsigned long long)(uintptr_t)sampler,
+								  vk_sets[at].gen, s_setGen, s_setStaleRows,
+								  RB_FrameCount() );
+				}
+				VK_Draw_WriteSet( at, view, sampler );
+			}
 			set = vk_sets[at].set;
 			i = at;		/* the cache-hit path skips the slot scan below: the row reads the real index */
 			break;
@@ -769,24 +826,8 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 			return qfalse;
 		}
 
-		memset( &imageInfo, 0, sizeof( imageInfo ) );
-		imageInfo.sampler = sampler;
-		imageInfo.imageView = view;
-		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-		memset( &write, 0, sizeof( write ) );
-		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		write.dstSet = vk_sets[i].set;
-		write.dstBinding = 0;
-		write.descriptorCount = 1;
-		write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		write.pImageInfo = &imageInfo;
-
-		qvk.UpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
-
-		vk_sets[i].view = view;
-		vk_sets[i].sampler = sampler;
 		vk_sets[i].used = qtrue;
+		VK_Draw_WriteSet( i, view, sampler );
 
 		if ( i == vk_numSets ) {
 			vk_numSets = i + 1;

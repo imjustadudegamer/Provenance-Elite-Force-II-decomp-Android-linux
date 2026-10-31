@@ -307,6 +307,10 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
 	tex->inUse = qtrue;
 	vk_numTextures++;
 
+	/* a new view object may reuse the handle value of a destroyed one, so the
+	   descriptor-set cache has to know a texture lifetime just turned over */
+	VK_Draw_TextureGenBump();
+
 	*handleOut = i;
 
 	return qtrue;
@@ -362,6 +366,9 @@ void VK_Texture_Destroy( int handle )
 
 	if ( tex->inUse ) {
 		vk_numTextures--;
+		/* the view this handle named is gone; every set written against it is
+		   stale even if the driver hands the same handle value to its successor */
+		VK_Draw_TextureGenBump();
 	}
 
 	memset( tex, 0, sizeof( *tex ) );

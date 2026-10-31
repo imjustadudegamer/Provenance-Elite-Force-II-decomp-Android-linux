@@ -963,8 +963,9 @@ static qboolean RB_StagePass( shaderStage_t *stage, const color4ub_t *colors )
 		s_rows++;
 		if ( s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
 			VK_Guard_Row( "VK:2dstate",
-						  "cull=%d depth=%d in2d=%d shader='%s' pubatest=%d f=%d",
-						  (int)key.cull, key.depthTest ? 1 : 0, backEnd.in2D,
+						  "cull=%d cullface=%d depth=%d cmask=0x%x stencil=%d in2d=%d shader='%s' pubatest=%d f=%d",
+						  (int)key.cull, key.cullFace, key.depthTest ? 1 : 0, key.colorMask,
+						  key.stencilTest ? 1 : 0, backEnd.in2D,
 						  tess.shader ? tess.shader->name : "?",
 						  VK_Draw_LastAlphaTest(), RB_FrameCount() );
 		}

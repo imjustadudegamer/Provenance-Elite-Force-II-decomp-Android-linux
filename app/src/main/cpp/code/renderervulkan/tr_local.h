@@ -2970,6 +2970,10 @@ void     VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline );
 void     VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptorSet set,
 						  uint32_t dynamicOffset, uint32_t dynamicCount );
 qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler sampler );
+/* A cached set names its view by handle only, so a registration that destroys
+   every world view can leave it describing a dead image; the generation retires
+   those sets even when the driver hands the same handle value back. */
+void     VK_Draw_TextureGenBump( void );
 extern	 int	vk_2dWindow[4];		/* x y w h of the 2D window in force */
 extern	 float	vk_2dOrigin[2];	/* the widget's placement in that window */
 void     VK_Draw_Set2DOrigin( float x, float y );
