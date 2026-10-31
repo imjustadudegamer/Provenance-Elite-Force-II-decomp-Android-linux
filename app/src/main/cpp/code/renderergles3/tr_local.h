@@ -1096,8 +1096,7 @@ typedef struct {
 	int			clusterBytes;
 	const byte	*vis;			
 
-	byte		*novis;			
-	byte		*lighting;
+	byte		*novis;
 } world_t;
 
 

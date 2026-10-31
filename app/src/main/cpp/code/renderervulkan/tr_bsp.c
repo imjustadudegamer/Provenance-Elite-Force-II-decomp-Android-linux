@@ -412,9 +412,6 @@ static	void R_LoadLightmaps(gamelump_t* l) {
     if ( r_lightmap->integer == 2 )	{
         ri.Printf( PRINT_ALL, "Brightest lightmap value: %d\n", ( int ) ( maxIntensity * 255 ) );
     }
-
-    s_worldData.lighting = ri.Hunk_Alloc(l->length, h_dontcare);
-    Com_Memcpy(s_worldData.lighting, l->buffer, l->length);
 }
 
 
