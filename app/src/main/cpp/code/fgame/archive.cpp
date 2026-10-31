@@ -189,6 +189,10 @@ Archiver::Archiver()
 	harderror = true;
 	archivemode = ARCHIVE_READ;
 	numclassespos = 0;
+	saverecords = 0;
+	savebytes = 0;
+	savemaxrec = 0;
+	savelevelrec = 0;
 	assert( ( sizeof( typenames ) / sizeof( typenames[ 0 ] ) ) == ARC_NUMTYPES );
 }
 
@@ -249,6 +253,12 @@ void Archiver::Close( void )
 			numclassespos = gi.FS_FTell( file );
 			numobjects = classpointerList.NumObjects();
 			ArchiveInteger( &numobjects );
+
+			// One bounded row: the lengths a save carries, so the next port save
+			// can be diffed against a retail archive without a debugger.
+			SAVE_PROBE( "archive", "%s ptrs=%d recs=%d bytes=%d maxrec=%d level=%d\n",
+			            filename.c_str(), numobjects, saverecords, savebytes,
+			            savemaxrec, savelevelrec );
 		}
 		
 		gi.FS_FCloseFile( file );
@@ -1099,6 +1109,17 @@ void Archiver::ArchiveObject( Class *obj )
 			if ( !fileerror )
 			{
 				gi.FS_FSeek( file, endpos, FS_SEEK_SET );
+			}
+
+			saverecords++;
+			savebytes += ( int )size;
+			if ( ( int )size > savemaxrec )
+			{
+				savemaxrec = ( int )size;
+			}
+			if ( !Q_stricmp( classname.c_str(), "Level" ) )
+			{
+				savelevelrec = ( int )size;
 			}
 		}
 	}

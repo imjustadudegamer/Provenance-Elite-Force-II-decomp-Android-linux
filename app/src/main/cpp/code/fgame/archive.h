@@ -95,6 +95,12 @@ class Archiver : public Class
       int            numclassespos;
       qboolean       harderror;
 
+      // write-side census behind the single save-time probe row
+      int            saverecords;
+      int            savebytes;
+      int            savemaxrec;
+      int            savelevelrec;
+
 		void				CheckRead( void );
 		void				CheckType( int type );
 		int            ReadType( void );

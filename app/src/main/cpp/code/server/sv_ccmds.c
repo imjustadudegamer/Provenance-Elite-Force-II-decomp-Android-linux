@@ -930,6 +930,13 @@ qboolean SV_ArchiveServerFile( const char *serverExt, qboolean loading, qboolean
 		/* retail stores the resolved title, never the raw $$KEY$$ */
 		convertStringResourceIds( comment, comment, sizeof( comment ) );
 
+		/* A sublevel .ssb carries the map name in its comment slot in 85 of
+		   the 179 retail archives, the other 94 left it empty, and none
+		   carries a title: retail's writer never resolved one there. */
+		if ( Q_stricmp( serverExt, "ssv" ) != 0 ) {
+			Q_strncpyz( comment, svs.mapName, sizeof( comment ) );
+		}
+
 		Q_strncpyz( save.comment, comment, sizeof( save.comment ) );
 
 		save.time = aclock;
