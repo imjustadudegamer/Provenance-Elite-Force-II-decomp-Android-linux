@@ -327,7 +327,62 @@ qboolean VK_Frame_Init( void )
    VK_QUERY_TYPE_OCCLUSION here.  Retail reads GL_QUERY_RESULT, which blocks
    until the query it issued last frame resolves; the read below takes the same
    slot's previous submission, whose own fence this frame's record already
-   waited on, so the answer is always there and no host wait is added. */
+   waited on, so the answer is always there and no host wait is added.
+
+   The read happens BEFORE this frame resets the range.  A reset recorded into
+   the command buffer is not supposed to touch host-visible results until it
+   executes, but a driver that marks a range unavailable when the reset is
+   recorded would make a mid-frame read of the same range answer "not ready"
+   forever; collecting the whole range at the frame seam removes that class for
+   every driver and costs one host call per frame. */
+static qboolean		s_flareQueryValid[VK_FRAMES_IN_FLIGHT][VK_FLARE_QUERIES];
+static unsigned int	s_flareQuerySamples[VK_FRAMES_IN_FLIGHT][VK_FLARE_QUERIES];
+
+void VK_Flare_QueryCollect( int slot )
+{
+	uint32_t	out[VK_FLARE_QUERIES * 2];
+	VkResult	result;
+	int			i, ready = 0, drawing = 0;
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		return;
+	}
+
+	memset( s_flareQueryValid[slot], 0, sizeof( s_flareQueryValid[slot] ) );
+
+	if ( vk.flareQueryPool == VK_NULL_HANDLE || !qvk.GetQueryPoolResults ) {
+		return;
+	}
+
+	result = qvk.GetQueryPoolResults( vk.device, vk.flareQueryPool,
+									  ( uint32_t )( slot * VK_FLARE_QUERIES ), VK_FLARE_QUERIES,
+									  sizeof( out ), out, sizeof( out[0] ) * 2,
+									  VK_QUERY_RESULT_WITH_AVAILABILITY_BIT );
+	if ( result != VK_SUCCESS && result != VK_NOT_READY ) {
+		return;
+	}
+
+	for ( i = 0; i < VK_FLARE_QUERIES; i++ ) {
+		if ( out[i * 2 + 1] ) {
+			s_flareQueryValid[slot][i]   = qtrue;
+			s_flareQuerySamples[slot][i] = out[i * 2];
+			ready++;
+			if ( out[i * 2] ) {
+				drawing++;
+			}
+		}
+	}
+
+	if ( R_ProbeStatsOn() ) {
+		static int s_rows;
+
+		if ( s_rows < 8 || ( s_rows % 300 ) == 0 ) {
+			VK_Guard_Row( "VK:flareq", "slot=%d ready=%d drawing=%d f=%d",
+						  slot, ready, drawing, RB_FrameCount() );
+		}
+		s_rows++;
+	}
+}
 
 void VK_Flare_QueryReset( int slot )
 {
@@ -376,27 +431,18 @@ void VK_Flare_QueryEnd( unsigned int index )
 
 qboolean VK_Flare_QueryResult( unsigned int index, unsigned int *samples )
 {
-	uint32_t	out[2];
-	VkResult	result;
-	int			slot;
-
-	if ( vk.flareQueryPool == VK_NULL_HANDLE || index >= VK_FLARE_QUERIES || !qvk.GetQueryPoolResults ) {
+	if ( index >= VK_FLARE_QUERIES || vk.flareSlot < 0 || vk.flareSlot >= VK_FRAMES_IN_FLIGHT ) {
 		return qfalse;
 	}
 
-	/* this slot's own range: its last submission is the fence this frame's
-	   record already waited on, so the answer is complete.  The other slot is
-	   still executing and a read there never resolves. */
-	slot = vk.flareSlot;
-	result = qvk.GetQueryPoolResults( vk.device, vk.flareQueryPool,
-									  ( uint32_t )( slot * VK_FLARE_QUERIES + index ), 1,
-									  sizeof( out ), out, sizeof( out ),
-									  VK_QUERY_RESULT_WITH_AVAILABILITY_BIT );
-	if ( result != VK_SUCCESS || !out[1] ) {
+	/* the range was collected at this frame's seam, before the reset was
+	   recorded: the answer belongs to this slot's previous submission, the one
+	   this frame's begin waited on */
+	if ( !s_flareQueryValid[vk.flareSlot][index] ) {
 		return qfalse;
 	}
 
-	*samples = out[0];
+	*samples = s_flareQuerySamples[vk.flareSlot][index];
 	return qtrue;
 }
 
@@ -703,6 +749,9 @@ qboolean VK_Frame_RecordBegin( int slot )
 	   pass opens: CmdResetQueryPool is legal outside a render pass, and the
 	   clear the pass performs is then the first interval. */
 	VK_PerfGpu_FrameBegin( slot );
+
+	/* the last complete answers are read before this frame's reset is recorded */
+	VK_Flare_QueryCollect( slot );
 
 	/* CmdResetQueryPool is legal outside a render pass, which RecordBegin is */
 	VK_Flare_QueryReset( slot );

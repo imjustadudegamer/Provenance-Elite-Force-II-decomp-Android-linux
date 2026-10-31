@@ -436,6 +436,7 @@ qboolean VK_Flare_QueryArm( unsigned int index );
 void VK_Flare_QueryEnd( unsigned int index );
 qboolean VK_Flare_QueryResult( unsigned int index, unsigned int *samples );
 void VK_Flare_QueryReset( int slot );
+void VK_Flare_QueryCollect( int slot );
 void VK_Flare_QueryShutdown( void );
 
 void VKimp_WalkBegin( int slot );

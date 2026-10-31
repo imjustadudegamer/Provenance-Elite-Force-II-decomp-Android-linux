@@ -1224,6 +1224,33 @@ static void R_LensflareOcclusionArm(const lensflareState_t *f, unsigned int inde
     VK_Flare_QueryEnd(index);
 }
 
+/* retail TestVisibility @0x00049150, the ==1 arm: one world trace, hidden only
+   when a solid surface covers all but the last twenty-four units of the ray.
+   The precise tier falls back here whenever its depth answer is not in yet, so
+   a driver that never resolves the query cannot silence the flare family. */
+static qboolean R_LensflareTraceVisible(lensflareState_t *f)
+{
+    trace_t trace;
+    vec3_t  diff;
+    float   d, need;
+
+    ri.CM_BoxTrace(
+        &trace, backEnd.viewParms.ori.origin, f->origin, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse
+    );
+
+    VectorSubtract(f->origin, backEnd.viewParms.ori.origin, diff);
+    d = VectorLength(diff);
+
+    if (d >= 24.0f) {
+        need = (d - 24.0f) / d;
+    } else {
+        need = 1.0f;
+    }
+
+    f->nextVisTime = backEnd.refdef.time + 50;
+    return (qboolean)(trace.fraction > need);
+}
+
 static void R_LensflareTestVisibility(lensflareState_t *f)
 {
     lensflareInfo_t *info = f->info;
@@ -1239,25 +1266,7 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
     } else if (backEnd.refdef.time < f->nextVisTime) {
         visible = f->visible;
     } else if (r_flares->integer == 1) {
-        /* retail TestVisibility @0x00049150, the ==1 arm: the world trace */
-        trace_t trace;
-        float   need;
-
-        ri.CM_BoxTrace(
-            &trace, backEnd.viewParms.ori.origin, f->origin, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse
-        );
-
-        VectorSubtract(f->origin, backEnd.viewParms.ori.origin, diff);
-        d = VectorLength(diff);
-
-        if (d >= 24.0f) {
-            need = (d - 24.0f) / d;
-        } else {
-            need = 1.0f;
-        }
-
-        f->nextVisTime = backEnd.refdef.time + 50;
-        visible        = (qboolean)(trace.fraction > need);
+        visible = R_LensflareTraceVisible(f);
     } else {
         /* retail's >=2 arm: the occlusion query over the quad the arm below
            draws, answered with the frame before this one and never waited on */
@@ -1267,9 +1276,20 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
         if (VK_Flare_QueryResult(index, &samples)) {
             visible = (qboolean)(samples != 0);
         } else {
-            /* the last complete answer is not in yet: hold the fade rather
-               than invent a verdict */
-            visible = f->visible;
+            /* no complete depth answer (first frames, a state the previous
+               slot did not arm, or a driver that dropped the result): retail's
+               own simple-tier law keeps the flare alive instead of holding a
+               latch that starts false and never flips */
+            visible = R_LensflareTraceVisible(f);
+            if (R_ProbeMarkOn()) {
+                static int s_fallbackRows;
+
+                if (s_fallbackRows < 8 || (s_fallbackRows % 300) == 0) {
+                    VK_Guard_Row("VK:flarefallback", "f=%d idx=%u vis=%d",
+                                 RB_FrameCount(), index, visible);
+                }
+                s_fallbackRows++;
+            }
         }
 
         R_LensflareOcclusionArm(f, index);
