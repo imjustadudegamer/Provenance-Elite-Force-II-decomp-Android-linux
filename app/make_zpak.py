@@ -62,22 +62,27 @@ LOC_FILES = ("Eng/stringresource/globalstrings1.loc",)
 FIXED_DATE = (2026, 1, 1, 0, 0, 0)
 
 
-def default_commands():
-    """The EF2_ANDROID_DEFAULT_COMMANDS text, parsed out of the engine header."""
-    src = open(HEADER, encoding="utf-8").read()
-    m = re.search(r"#define\s+EF2_ANDROID_DEFAULT_COMMANDS\s*(.*?)\n\n", src, re.S)
+def _macro_literals(src, name):
+    """The string literals of one seed macro, in file order."""
+    m = re.search(r"#define\s+%s\s*(.*?)(?=\n\s*\n|\n#define\s|\Z)" % re.escape(name), src, re.S)
     if not m:
-        raise SystemExit("make_zpak: EF2_ANDROID_DEFAULT_COMMANDS not found in " + HEADER)
-    body = m.group(1)
-    parts = re.findall(r'"((?:[^"\\]|\\.)*)"', body)
+        raise SystemExit("make_zpak: %s not found in %s" % (name, HEADER))
+    parts = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))
     if not parts:
-        raise SystemExit("make_zpak: no string literals in EF2_ANDROID_DEFAULT_COMMANDS")
-    text = "".join(parts)
+        raise SystemExit("make_zpak: no string literals in %s" % name)
+    return "".join(parts)
+
+
+def default_commands():
+    """The seed text, parsed out of the engine header's two command macros."""
+    src = open(HEADER, encoding="utf-8").read()
+    text = (_macro_literals(src, "EF2_DEFAULT_BIND_COMMANDS")
+            + _macro_literals(src, "EF2_DEFAULT_CVAR_COMMANDS"))
     # The literals are C escapes; the only ones the defaults use are \n and \".
     text = text.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
     if not text.endswith("\n"):
         text += "\n"
-    if "seta cl_renderer" not in text:
+    if "set cl_renderer" not in text and "seta cl_renderer" not in text:
         raise SystemExit("make_zpak: the parsed defaults look wrong (no cl_renderer)")
     return text
 
