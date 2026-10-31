@@ -168,9 +168,12 @@ void VKimp_FillConfig( glconfig_t *glconfig, int width, int height, float aspect
 	glconfig->numTextureUnits = 8;
 	glconfig->colorBits = 32;
 	glconfig->depthBits = 24;
-	/* no stencil attachment is created, so the guards that arm the shadow
-	   overlay have to see none until one does exist */
-	glconfig->stencilBits = 0;
+	/* the target's chosen depth format decides: the 24/8 arm carries stencil,
+	   D32 and D16 do not, and the shadow guards read this AFTER the target has
+	   picked (this fill runs after bring-up, so a constant here would clobber
+	   the target's own answer) */
+	glconfig->stencilBits = ( vk.depthFormat == VK_FORMAT_D24_UNORM_S8_UINT
+							  || vk.depthFormat == VK_FORMAT_D32_SFLOAT_S8_UINT ) ? 8 : 0;
 	glconfig->driverType = GLDRV_ICD;
 	glconfig->hardwareType = GLHW_GENERIC;
 	glconfig->deviceSupportsGamma = qfalse;
