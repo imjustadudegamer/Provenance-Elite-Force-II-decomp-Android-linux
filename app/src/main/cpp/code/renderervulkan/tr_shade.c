@@ -1429,6 +1429,32 @@ void RB_StageIteratorVertexLitTextureUnfogged( void )
 		}
 	}
 
+	/* the single-stage lightingDiffuse body is the arm that can go dark while the
+	   two-stage head stays lit; name the colour it computed and the sphere record
+	   behind it, so the leave-scene uniform stops being a guess */
+	if ( R_ProbeMarkOn() && input->numVertexes > 0 ) {
+		static int s_vlitRows;
+
+		s_vlitRows++;
+		if ( s_vlitRows <= 8 || ( s_vlitRows % 300 ) == 0 ) {
+			VK_Guard_Row( "DOCC:vlit",
+						  "f=%d shader='%s' ent=%d n=%d c0=%d,%d,%d,%d tessfn=%d nlights=%d "
+						  "amb=(%.1f,%.1f,%.1f) rf=0x%x rdflags=0x%x",
+						  RB_FrameCount(), shader->name,
+						  backEnd.currentEntity ? backEnd.currentEntity->e.entityNumber : -1,
+						  input->numVertexes,
+						  tess.svars.colors[0][0], tess.svars.colors[0][1],
+						  tess.svars.colors[0][2], tess.svars.colors[0][3],
+						  ( backEnd.currentSphere && backEnd.currentSphere->TessFunction ) ? 1 : 0,
+						  backEnd.currentSphere ? backEnd.currentSphere->numLights : -1,
+						  backEnd.currentSphere ? backEnd.currentSphere->ambient[0] : 0.0f,
+						  backEnd.currentSphere ? backEnd.currentSphere->ambient[1] : 0.0f,
+						  backEnd.currentSphere ? backEnd.currentSphere->ambient[2] : 0.0f,
+						  backEnd.currentEntity ? backEnd.currentEntity->e.renderfx : 0,
+						  backEnd.refdef.rdflags );
+		}
+	}
+
 	if ( r_logFile->integer )
 	{
 		VKimp_LogComment( (char *)va("--- RB_StageIteratorVertexLitTexturedUnfogged( %s ) ---\n", tess.shader->name) );
