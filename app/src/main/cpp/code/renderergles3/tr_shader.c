@@ -3226,8 +3226,23 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 			shader.defaultShader = qtrue;
 		}
 
-		if (shader.lightmapIndex == LIGHTMAP_BY_VERTEX && !(shader.surfaceFlags & SURF_HINT)) {
-			unfoggedStages[0].rgbGen = CGEN_EXACT_VERTEX;
+		/* R_RealFindShader's -3 arm walks every stage and every bundle, and
+		   rewrites the $lightmap bundle's image plus the stage's rgbGen; a
+		   stage left at identity colour multiplies by white and draws unlit */
+		if ( shader.lightmapIndex == LIGHTMAP_BY_VERTEX && !( shader.surfaceFlags & SURF_NOLIGHTMAP ) ) {
+			for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
+				int	b;
+
+				if ( !unfoggedStages[i].active ) {
+					continue;
+				}
+				for ( b = 0; b < NUM_TEXTURE_BUNDLES; b++ ) {
+					if ( unfoggedStages[i].bundle[b].isLightmap ) {
+						unfoggedStages[i].bundle[b].image[0] = tr.whiteImage;
+						unfoggedStages[i].rgbGen = CGEN_EXACT_VERTEX;
+					}
+				}
+			}
 		}
 
 		if ( variant ) {

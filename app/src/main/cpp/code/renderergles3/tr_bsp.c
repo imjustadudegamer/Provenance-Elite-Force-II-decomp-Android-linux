@@ -629,13 +629,16 @@ void R_LoadBaseLightmaps( gamelump_t *l ) {
 
     s_worldData.baseLightmapImage = ri.Hunk_Alloc( num * LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT * 4, h_dontcare );
 
+    /* R_LoadBaseLightmaps @0x000032F0 fills the create buffer white; the white
+       only leaves once the composite's upload replaces the tile */
+    Com_Memset( image, 0xff, sizeof( image ) );
+
     for ( j = 0; j < num; j++ ) {
-        /* The create carries the tile's own static base lightmap, not the white
-           fill: this is the write the composite's first pass makes, and a tile
-           it never reaches must not draw unlit-white. */
+        /* the staging tile carries its own static base, so an upload that lands
+           before the composite pushes base and never uninitialised memory */
         {
             const byte	*src = s_worldData.baseLightmapData + j * LIGHTMAP_BYTES;
-            byte		*dst = image;
+            byte		*dst = s_worldData.baseLightmapImage + j * LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT * 4;
             int			k;
 
             for ( k = 0; k < LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT; k++, src += 3, dst += 4 ) {

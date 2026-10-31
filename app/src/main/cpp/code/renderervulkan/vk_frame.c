@@ -324,8 +324,10 @@ qboolean VK_Frame_Init( void )
 
 /* ---- retail's occlusion-query arm (Lensflare::TestVisibility @0x00049150) --
    GL_SAMPLES_PASSED over a quad drawn at the flare's own depth is
-   VK_QUERY_TYPE_OCCLUSION here.  The read takes the frame before this one and
-   never waits, which is the same one-frame lag retail's own query arm carries. */
+   VK_QUERY_TYPE_OCCLUSION here.  Retail reads GL_QUERY_RESULT, which blocks
+   until the query it issued last frame resolves; the read below takes the same
+   slot's previous submission, whose own fence this frame's record already
+   waited on, so the answer is always there and no host wait is added. */
 
 void VK_Flare_QueryReset( int slot )
 {
@@ -382,7 +384,10 @@ qboolean VK_Flare_QueryResult( unsigned int index, unsigned int *samples )
 		return qfalse;
 	}
 
-	slot = vk.flareSlot ^ 1;
+	/* this slot's own range: its last submission is the fence this frame's
+	   record already waited on, so the answer is complete.  The other slot is
+	   still executing and a read there never resolves. */
+	slot = vk.flareSlot;
 	result = qvk.GetQueryPoolResults( vk.device, vk.flareQueryPool,
 									  ( uint32_t )( slot * VK_FLARE_QUERIES + index ), 1,
 									  sizeof( out ), out, sizeof( out ),
