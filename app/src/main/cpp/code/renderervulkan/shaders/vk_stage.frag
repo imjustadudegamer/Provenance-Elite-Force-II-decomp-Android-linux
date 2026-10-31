@@ -32,8 +32,14 @@ void main()
 	#elif defined(VKP_TEXENV_COMBINE4)
 		c.rgb = (1.0 - t0.rgb) * (1.0 - t1.rgb) + t1.rgb * (1.0 - t1.rgb) + t0.rgb * t1.rgb;
 	#else
-		
-		c = t0 * t1 * v_Color;
+		/* u_TexEnv1 3 is the multitexture iterator's r_lightmap arm:
+		   RB_StageIteratorLightmappedMultitextureUnfogged @0x368D0 selects
+		   GL_TexEnv(GL_REPLACE) on TMU1 for it and GL_MODULATE otherwise. */
+		if (u_TexEnv1 == 3) {
+			c = t1;
+		} else {
+			c = t0 * t1 * v_Color;
+		}
 	#endif
 #endif
 
