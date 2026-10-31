@@ -70,6 +70,15 @@ void PortalSurface::LocateCamera(Event *ev)
         return;
     }
 
+    /* retail code/game/portal.cpp: "frame holds the rotate speed" (25/75 from the
+       camera's spawnflags), "skinNum holds the rotate offset"; the engine reads both
+       off the portal marker, so dropping either loses the portal camera's spin. */
+    if (owner->spawnflags & 1) {
+        edict->s.frame = 25;
+    } else if (owner->spawnflags & 2) {
+        edict->s.frame = 75;
+    }
+
     edict->s.skinNum = owner->edict->s.skinNum;
 
     VectorCopy(owner->origin, edict->s.origin2);

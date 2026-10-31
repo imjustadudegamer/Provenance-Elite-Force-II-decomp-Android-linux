@@ -745,8 +745,20 @@ qboolean R_GetPortalOrientations( drawSurf_t *drawSurf, int entityNum,
 		return qtrue;
 	}
 
+	/* the screen draws nothing but its sub-view, so a marker the engine never
+	   finds is a viewscreen filled with whatever was drawn before it */
+	if ( R_ProbeStatsOn() ) {
+		static int rows;
 
-
+		if ( rows < 8 || ( rows % 300 ) == 0 ) {
+			VK_Guard_Row( "VK:portal",
+						  "no-marker surfEnt=%d ents=%d plane=(%.1f %.1f %.1f | %.1f) f=%d",
+						  entityNum, tr.refdef.num_entities,
+						  originalPlane.normal[0], originalPlane.normal[1], originalPlane.normal[2],
+						  originalPlane.dist, RB_FrameCount() );
+		}
+		rows++;
+	}
 
 	return qfalse;
 }
@@ -951,6 +963,25 @@ qboolean R_MirrorViewBySurface (drawSurf_t *drawSurf, int entityNum) {
 
 
 	tr.portalRendered = qtrue;
+
+	/* the sub-view paints nothing when neither the surface nor the set behind it is
+	   drawn, so the pre-drawn sky stays on the screen: name the pose that drew */
+	if ( R_ProbeStatsOn() ) {
+		static int rows;
+
+		if ( rows < 8 || ( rows % 300 ) == 0 ) {
+			VK_Guard_Row( "VK:portal",
+						  "sub surfEnt=%d mirror=%d hit=(%.1f %.1f %.1f) cam=(%.1f %.1f %.1f) view=(%.1f %.1f %.1f) plane=(%.1f %.1f %.1f | %.1f) f=%d",
+						  entityNum, newParms.isMirror ? 1 : 0,
+						  surface.origin[0], surface.origin[1], surface.origin[2],
+						  camera.origin[0], camera.origin[1], camera.origin[2],
+						  newParms.ori.origin[0], newParms.ori.origin[1], newParms.ori.origin[2],
+						  newParms.portalPlane.normal[0], newParms.portalPlane.normal[1],
+						  newParms.portalPlane.normal[2], newParms.portalPlane.dist,
+						  RB_FrameCount() );
+		}
+		rows++;
+	}
 
 	R_RenderView (&newParms);
 
