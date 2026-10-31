@@ -1032,6 +1032,38 @@ void S_UnpauseSound()
     s_bSoundPaused = false;
 }
 
+/* the Android pause freezes the frame loop inside its own SDL pump, three polls
+   before the input hook can run, so the sound edge has to land here on the
+   mixer's thread.  See IN_AndroidLifecycleFilter. */
+static qboolean s_bLifecyclePaused = qfalse;
+static void     S_LifecycleHoldStreams(qboolean hold);
+
+extern "C" void S_LifecyclePause(void)
+{
+    if (s_bLifecyclePaused) {
+        return;
+    }
+
+    s_bLifecyclePaused = qtrue;
+    S_PauseSound();
+    S_LifecycleHoldStreams(qtrue);
+}
+
+extern "C" void S_LifecycleResume(void)
+{
+    if (!s_bLifecyclePaused) {
+        return;
+    }
+
+    s_bLifecyclePaused = qfalse;
+    S_LifecycleHoldStreams(qfalse);
+
+    /* the pause menu keeps the ownership when it is up */
+    if (!paused->integer && s_bSoundPaused) {
+        S_UnpauseSound();
+    }
+}
+
 static qboolean S_OPENAL_ShouldPlay(sfx_t *pSfx)
 {
     int iMaxNumberPlaying;
@@ -2503,10 +2535,13 @@ void S_OPENAL_Update()
     bool bLevelsChanged = false;
 
 
-    if (paused->integer && !s_bSoundPaused) {
-        S_PauseSound();
-    } else if (!paused->integer && s_bSoundPaused) {
-        S_UnpauseSound();
+    /* a lifecycle hold owns the paused state until its own resume edge */
+    if (!s_bLifecyclePaused) {
+        if (paused->integer && !s_bSoundPaused) {
+            S_PauseSound();
+        } else if (!paused->integer && s_bSoundPaused) {
+            S_UnpauseSound();
+        }
     }
 
     if (s_bFading) {
@@ -4066,6 +4101,41 @@ static void S_RawResetClock(void)
     s_rawSamplesPlayed = 0;
     s_rawClockMs       = 0;
     s_rawUnderruns     = 0;
+}
+
+/* the movie track and the cinematic raw source sit outside S_PauseSound's pool,
+   so a background during a movie would leave their queues playing too */
+static void S_LifecycleHoldStreams(qboolean hold)
+{
+    ALint state = 0;
+
+    if (!s_bSoundStarted) {
+        return;
+    }
+
+    if (hold) {
+        if (openal.chan_movie.is_playing()) {
+            openal.chan_movie.pause();
+        }
+    } else if (openal.chan_movie.is_paused()) {
+        openal.chan_movie.play();
+    }
+
+    if (!s_rawSource) {
+        return;
+    }
+
+    qalGetSourcei(s_rawSource, AL_SOURCE_STATE, &state);
+    alDieIfError();
+
+    if (hold) {
+        if (state == AL_PLAYING) {
+            qalSourcePause(s_rawSource);
+        }
+    } else if (state == AL_PAUSED) {
+        qalSourcePlay(s_rawSource);
+    }
+    alDieIfError();
 }
 
 void S_StopRawSamples(void)

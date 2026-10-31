@@ -80,10 +80,14 @@ static int SDLCALL IN_AndroidLifecycleFilter( void *userdata, SDL_Event *e )
 		case SDL_APP_WILLENTERBACKGROUND:
 		case SDL_APP_DIDENTERBACKGROUND:
 			in_androidBackgrounded = 1;
+			/* the pump freezes three polls from here, before the frame hook runs:
+			   the APP events are pushed on the SDL thread, the mixer's own thread */
+			S_LifecyclePause();
 			break;
 		case SDL_APP_WILLENTERFOREGROUND:
 		case SDL_APP_DIDENTERFOREGROUND:
 			in_androidBackgrounded = 0;
+			S_LifecycleResume();
 			break;
 
 		case SDL_WINDOWEVENT:

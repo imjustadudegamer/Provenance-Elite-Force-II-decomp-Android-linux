@@ -114,6 +114,8 @@ void S_SoundList(void);
 
 qboolean S_IsSoundPlaying(int channel_number, const char* sfxName);
 void S_FadeSound(float fTime);
+void S_LifecyclePause(void);
+void S_LifecycleResume(void);
 
 qboolean MUSIC_LoadSoundtrackFile(const char* filename);
 qboolean MUSIC_SongValid(const char* mood);
