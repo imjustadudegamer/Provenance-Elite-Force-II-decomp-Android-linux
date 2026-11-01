@@ -85,20 +85,18 @@ use, night vision, tricorder). Keyboard and mouse keep the retail layout
 ## Known issues
 
 This port is not fully play tested and the campaign has not been played end to
-end. The big stuff is listed here rather than left to discover:
+end; expect the occasional stutter while a new effect compiles. The big stuff is
+listed here rather than left to discover:
 
-- **Graphical issues** — effects, lighting and UI elements still diverge from
-  retail in places; occasional texture and overlay glitches remain.
-- **Game mechanic issues** — some routines reconstructed from the retail binaries
-  still have unresolved details, so a few behaviours may differ from retail.
-- **No PortMaster** support.
-- **The OpenGL ES 3.2 renderer is broken and disabled** — Vulkan is the only
-  shipping renderer.
-- **The 2D main menus need a rework** to be properly usable on Android.
-- **Expect crashes**, and the occasional stutter (pipeline and shader compilation
-  on first use of new effects).
-- **Saves**: retail PC saves are not guaranteed to load here, and saves written
-  here are not guaranteed to load in retail. Back your saves up.
+- **No stencil shadows** — `cg_shadows 2` draws nothing on this renderer, so the
+  character shadows are the simple set (`cg_shadows 1`, the default).
+- **Some effects are still missing** — a few effect models and overlay passes
+  never reach the screen.
+- **The OpenGL ES 3.2 renderer is not enabled** — Vulkan is the only shipping
+  renderer; the GLES 3.2 twin is kept in step but is not brought up on the
+  device.
+- **Saves are one way in practice** — a save written here can load oddly or
+  crash in retail, so back your saves up and finish a run in this port.
 - **REPORT YOUR ISSUES PLEASE!**
 
 ## Build
