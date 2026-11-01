@@ -937,6 +937,14 @@ qboolean SV_ArchiveServerFile( const char *serverExt, qboolean loading, qboolean
 			Q_strncpyz( comment, svs.mapName, sizeof( comment ) );
 		}
 
+#ifndef PROBE_BUILD_SILENT
+		/* the header's two name slots, named at the write: a reader cannot tell
+		   which of them a save used without this */
+		if ( Q_stricmp( serverExt, "ssv" ) != 0 ) {
+			Com_Printf( "[SAVE:ssb] ext=%s comment='%.32s' map='%.32s' game='%.32s'\n",
+						serverExt, comment, svs.mapName, svs.gameName );
+		}
+#endif
 		Q_strncpyz( save.comment, comment, sizeof( save.comment ) );
 
 		save.time = aclock;
