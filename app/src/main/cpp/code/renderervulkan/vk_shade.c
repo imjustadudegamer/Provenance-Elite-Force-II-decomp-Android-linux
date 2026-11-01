@@ -5569,6 +5569,64 @@ static void VK_Shade_SpriteBindWitness( const shaderCommands_t *input,
 				  frame );
 }
 
+/* ---- the square over a billboard: what the sprite's own draw carries -------- */
+
+/* shader.c drops a blended sprite's fog pass (numFog/numGlobalFogPasses--), so what is left is the fixed-fog arm, and this pair decides it: the arm replaces rgb with
+   the fog colour and keeps the stage's alpha, so ONE/ONE or DST_COLOR/ONE fills the quad's rectangle and SRC_ALPHA does not. */
+#ifndef PROBE_BUILD_SILENT
+#define VK_SPRFOG_ROWS 128
+static void VK_Shade_SpriteFogRow( const shader_t *shader, const shaderStage_t *pStage,
+								   unsigned stateBits, const shaderCommands_t *input )
+{
+	static const shader_t		*s_sh[VK_SPRFOG_ROWS];
+	static const shaderStage_t	*s_st[VK_SPRFOG_ROWS];
+	unsigned	srcNibble, dstNibble;
+	int			i, slot;
+
+	if ( !R_ProbeMarkOn() || !r_spriteListOpen || !shader || !pStage || !input ) {
+		return;
+	}
+
+	for ( slot = -1, i = 0; i < VK_SPRFOG_ROWS; i++ ) {
+		if ( s_sh[i] == shader && s_st[i] == pStage ) {
+			return;
+		}
+		if ( !s_sh[i] && slot < 0 ) {
+			slot = i;
+		}
+	}
+	if ( slot < 0 ) {
+		return;
+	}
+	s_sh[slot] = shader;
+	s_st[slot] = pStage;
+
+	srcNibble = stateBits & VKS_SRCBLEND_BITS;
+	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
+
+	VK_Guard_Row( "VK:sprfog",
+				  "shader='%s' f=%d fogNum=%d list=%d fogpass=%d fixfog=%d "
+				  "src=%u dst=%u blendEn=%d col=%d n=%d rgba=%u,%u,%u,%u",
+				  shader->name, RB_FrameCount(), tess.fogNum,
+				  ( tess.xstages == shader->globalFogStages ) ? 2
+					: ( tess.xstages == shader->fogStages ) ? 1 : 0,
+				  pStage->fogDensityArm ? 1 : 0,
+				  ( vkState.externalSetState & VKS_FOG ) ? 2 : 0,
+				  (unsigned)VK_Shade_SrcBlendFactor( srcNibble ),
+				  (unsigned)VK_Shade_DstBlendFactor( dstNibble ),
+				  ( srcNibble || dstNibble ) ? 1 : 0,
+				  input->vertexColorValid ? 2 : 0,
+				  input->numVertexes,
+				  (unsigned)input->vertexColors[0][0],
+				  (unsigned)input->vertexColors[0][1],
+				  (unsigned)input->vertexColors[0][2],
+				  (unsigned)input->vertexColors[0][3] );
+}
+#else
+#define VK_Shade_SpriteFogRow( shader, pStage, stateBits, input ) \
+	do { (void)( shader ); (void)( pStage ); (void)( stateBits ); (void)( input ); } while ( 0 )
+#endif
+
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -5689,6 +5747,7 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	VK_Shade_ColorStreamRow( input, colors, shader, pStage );
 
 	VK_Shade_SpriteBindWitness( input, shader, pStage );
+	VK_Shade_SpriteFogRow( shader, pStage, stateBits, input );
 
 	/* the draw-time witness: everything above names what the stage asked for, this
 	   row names what the set the draw binds actually samples */

@@ -2755,24 +2755,24 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	vkDepthRange(0.0, 1.0);
 }
 
+/* Retail only *enables* fog in RB_GLFogStageIteratorFunc @0x00034830, around one surface's own passes; R_SetupFrustum just sets the colour and the end distance.  Arming
+   it for the whole view fogged every blended sprite stage, whose fog pass FinishShader drops, and filled the quad's rectangle. */
 void RB_SetupFog(void) {
-	if (!backEnd.viewParms.farplane_distance) {
-		vkState.externalSetState &= ~VKS_FOG;
-	} else if (r_farplane_nofog->integer) {
-		vkState.externalSetState &= ~VKS_FOG;
-	} else if (!backEnd.viewParms.farplane_fog) {
-		vkState.externalSetState &= ~VKS_FOG;
-	} else {
-		vec4_t vFogColor;
+	vec4_t	vFogColor;
 
-        vFogColor[0] = backEnd.viewParms.farplane_color[0] * tr.identityLight;
-        vFogColor[1] = backEnd.viewParms.farplane_color[1] * tr.identityLight;
-        vFogColor[2] = backEnd.viewParms.farplane_color[2] * tr.identityLight;
-        vFogColor[3] = 1.0;
-        VK_SetFogColor(vFogColor);
+	vkState.externalSetState &= ~VKS_FOG;
 
-		vkState.externalSetState |= VKS_FOG;
+	if (!backEnd.viewParms.farplane_distance
+		|| r_farplane_nofog->integer
+		|| !backEnd.viewParms.farplane_fog) {
+		return;
 	}
+
+	vFogColor[0] = backEnd.viewParms.farplane_color[0] * tr.identityLight;
+	vFogColor[1] = backEnd.viewParms.farplane_color[1] * tr.identityLight;
+	vFogColor[2] = backEnd.viewParms.farplane_color[2] * tr.identityLight;
+	vFogColor[3] = 1.0;
+	VK_SetFogColor(vFogColor);
 }
 
 const void	*RB_DrawSurfs( const void *data ) {
