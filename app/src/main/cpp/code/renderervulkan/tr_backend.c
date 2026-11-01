@@ -1652,6 +1652,97 @@ static void RB_Hyperspace( void ) {
 	backEnd.isHyperspace = qtrue;
 }
 
+/* ---- the sub-view's own rect, named where the pixels are decided ---------- */
+
+/* The sub-view is rasterised before the main view and is masked by it, so the
+   panel keeps a sub-view pixel only if the sub-view painted that pixel.  This
+   row carries the rect the sub-view was given, the scissor its draws actually
+   ran under, the marker's screen rect, the depth range and the draws it issued:
+   a zero-area intersection is the number that says the content never landed on
+   the panel, and a non-empty one says the panel's pixels are there and something
+   else is eating them. */
+typedef struct {
+	int			frame;
+	qboolean	subSeen;
+	int			vp[4];
+	int			scn[4];
+	float		range[2];
+	int			draws;
+	int			markerSeen;
+	int			marker[4];
+} vkPortalComp_t;
+
+static vkPortalComp_t	s_portalComp;
+
+/* the marker surface's own screen rect, in the caller view's window space; the
+   answer is Vulkan's top-left space, so it compares with the scissor directly */
+static qboolean RB_PortalMarkerRect( const drawSurf_t *drawSurf, int out[4] ) {
+	const srfSurfaceFace_t	*face;
+	vec4_t					eye, clip, ndc, win;
+	float					x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+	float					h = (float)backEnd.viewParms.viewportHeight;
+	int						i;
+
+	if ( !drawSurf->surface || *drawSurf->surface != SF_FACE ) {
+		return qfalse;
+	}
+	face = (const srfSurfaceFace_t *)drawSurf->surface;
+	for ( i = 0; i < face->numPoints; i++ ) {
+		R_TransformModelToClip( face->points[i], backEnd.ori.modelMatrix,
+								backEnd.viewParms.projectionMatrix, eye, clip );
+		if ( clip[3] <= 0.0f ) {
+			continue;
+		}
+		R_TransformClipToWindow( clip, &backEnd.viewParms, ndc, win );
+		/* the clip helper answers GL's bottom-left window; the scissor is Vulkan's
+		   top-left one, and the view's own origin is the viewport's */
+		win[1] = h - win[1];
+		if ( win[0] < x0 ) x0 = win[0];
+		if ( win[1] < y0 ) y0 = win[1];
+		if ( win[0] > x1 ) x1 = win[0];
+		if ( win[1] > y1 ) y1 = win[1];
+	}
+	if ( x1 <= x0 || y1 <= y0 ) {
+		return qfalse;
+	}
+	out[0] = backEnd.viewParms.viewportX + (int)( x0 + 0.5f );
+	out[1] = VK_Draw_TopY( backEnd.viewParms.viewportY, backEnd.viewParms.viewportHeight )
+			 + (int)( y0 + 0.5f );
+	out[2] = backEnd.viewParms.viewportX + (int)( x1 + 0.5f );
+	out[3] = VK_Draw_TopY( backEnd.viewParms.viewportY, backEnd.viewParms.viewportHeight )
+			 + (int)( y1 + 0.5f );
+	return qtrue;
+}
+
+static void RB_PortalCompRow( void ) {
+	int	ix0, iy0, ix1, iy1, iw = 0, ih = 0;
+	static int rows;
+
+	ix0 = s_portalComp.scn[0] > s_portalComp.marker[0] ? s_portalComp.scn[0] : s_portalComp.marker[0];
+	iy0 = s_portalComp.scn[1] > s_portalComp.marker[1] ? s_portalComp.scn[1] : s_portalComp.marker[1];
+	ix1 = s_portalComp.scn[0] + s_portalComp.scn[2];
+	iy1 = s_portalComp.scn[1] + s_portalComp.scn[3];
+	if ( s_portalComp.marker[2] < ix1 ) ix1 = s_portalComp.marker[2];
+	if ( s_portalComp.marker[3] < iy1 ) iy1 = s_portalComp.marker[3];
+	if ( ix1 > ix0 ) iw = ix1 - ix0;
+	if ( iy1 > iy0 ) ih = iy1 - iy0;
+
+	rows++;
+	if ( rows > 8 && ( rows % 600 ) != 0 ) {
+		return;
+	}
+	VK_Guard_Row( "VK:portalframe",
+				  "f=%d sub vp=(%d,%d %dx%d) scn=(%d,%d %dx%d) range=%.3f..%.3f "
+				  "draws=%d marker=(%d,%d)-(%d,%d) inter=%dx%d",
+				  RB_FrameCount(), s_portalComp.vp[0], s_portalComp.vp[1],
+				  s_portalComp.vp[2], s_portalComp.vp[3],
+				  s_portalComp.scn[0], s_portalComp.scn[1],
+				  s_portalComp.scn[2], s_portalComp.scn[3],
+				  s_portalComp.range[0], s_portalComp.range[1], s_portalComp.draws,
+				  s_portalComp.marker[0], s_portalComp.marker[1],
+				  s_portalComp.marker[2], s_portalComp.marker[3], iw, ih );
+}
+
 void RB_BeginDrawingView (void) {
 
 	RB_2D_Flush();
@@ -1662,6 +1753,26 @@ void RB_BeginDrawingView (void) {
 	   writing it made a string re-open the screen window over its widget's own. */
 
 	SetViewportAndScissor();
+
+	/* the rect this view is given and the scissor its draws will run under, read
+	   where the backend has just issued both */
+	if ( R_ProbeMarkOn() && backEnd.viewParms.isPortal ) {
+		s_portalComp.frame = RB_FrameCount();
+		s_portalComp.subSeen = qtrue;
+		s_portalComp.markerSeen = qfalse;
+		s_portalComp.draws = 0;
+		s_portalComp.vp[0] = backEnd.viewParms.viewportX;
+		s_portalComp.vp[1] = backEnd.viewParms.viewportY;
+		s_portalComp.vp[2] = backEnd.viewParms.viewportWidth;
+		s_portalComp.vp[3] = backEnd.viewParms.viewportHeight;
+		if ( VK_Draw_LastScissorValid() ) {
+			VK_Draw_LastScissorRect( s_portalComp.scn );
+		} else {
+			s_portalComp.scn[0] = s_portalComp.scn[1] = 0;
+			s_portalComp.scn[2] = s_portalComp.scn[3] = 0;
+		}
+		VK_Draw_DepthRangeLast( &s_portalComp.range[0], &s_portalComp.range[1] );
+	}
 
 	VK_DepthState( qtrue, qtrue );	/* the 3D pass opens its gate, as retail's does */
 	VK_StencilState( qfalse, VK_ALWAYS, 0, 255 );	/* retail's traced menu issues no stencil call */
@@ -1770,7 +1881,11 @@ void RB_BeginDrawingView (void) {
 
 	backEnd.skyRenderedThisView = qfalse;
 
-	if ( backEnd.viewParms.isPortal ) {
+	/* RB_BeginDrawingView @0x1490 gates the user plane on the dword 16 bytes before
+	   portalPlane, which in this struct is isMirror -- not isPortal.  Arming it for a
+	   non-mirror portal (every viewscreen row in the log reads mirror=0) hands the
+	   fragment stage an eye-space plane that discards one half of the panel. */
+	if ( backEnd.viewParms.isMirror ) {
 		float	plane[4];
 		float	plane2[4];
 
@@ -2064,6 +2179,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	int				i;
 	drawSurf_t		*drawSurf;
 	int				oldSort;
+	int				portalDraws = 0;
 
 	RB_BeginDrawingView ();
 
@@ -2168,6 +2284,17 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			   would sit outside every shade total */
 			VK_Shade_WindowClose( shadeT0, shadeNested0, shadeParts );
 			continue;
+		}
+
+		if ( R_ProbeMarkOn() ) {
+			if ( backEnd.viewParms.isPortal ) {
+				portalDraws++;
+			} else if ( !s_portalComp.markerSeen && shader->name[0]
+						&& !strcmp( shader->name, "textures/common/portal" ) ) {
+				/* the marker's own quad is the panel: its screen rect is the rect
+				   the sub-view's pixels have to land in */
+				s_portalComp.markerSeen = RB_PortalMarkerRect( drawSurf, s_portalComp.marker );
+			}
 		}
 
 		if (shader != oldShader || fogNum != oldFogNum || dlightMap != oldDlightMap
@@ -2465,6 +2592,20 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 	if (oldShader != NULL) {
 		RB_EndSurface();
+	}
+
+	/* the sub-view's own numbers, and the marker's rect once the main view has
+	   walked it: the pair is the whole question this row exists to answer */
+	if ( R_ProbeMarkOn() ) {
+		if ( backEnd.viewParms.isPortal ) {
+			s_portalComp.draws = portalDraws;
+			VK_Draw_DepthRangeLast( &s_portalComp.range[0], &s_portalComp.range[1] );
+		} else if ( s_portalComp.subSeen && s_portalComp.markerSeen
+					&& s_portalComp.frame == RB_FrameCount() ) {
+			RB_PortalCompRow();
+			s_portalComp.subSeen = qfalse;
+			s_portalComp.markerSeen = qfalse;
+		}
 	}
 
 	RB_LoadModelViewMatrix(  backEnd.viewParms.world.modelMatrix );
