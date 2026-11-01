@@ -1644,7 +1644,8 @@ void Com_Init( char *commandLine ) {
 	   new rows reach an install that already archived an older one -- this block runs AFTER the config exec and therefore beats the archived value.  The pin is
 	   registered every boot, not only when the seed runs: it is the one engine-internal row the config carries, and an unregistered pin would read 0 here and
 	   re-seed every boot. */
-#define PORT_DEFAULTS_SEED 9
+/* 10: the shadow tier.  cg_shadows is archived, so an install that picked Stencil keeps a tier this depth format cannot draw; the fold re-takes the simple row. */
+#define PORT_DEFAULTS_SEED 10
 	Cvar_Get( "port_defaultsSeed", "0", CVAR_ARCHIVE );
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{
