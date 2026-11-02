@@ -31,17 +31,29 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 vec4_t r_colorWhite = { 1.0, 1.0, 1.0, 1.0 };
 
 /* Front-end copy of backEnd.color2D, so an entry point reads the colour it
- * recorded without touching render-thread state. */
-static byte r_color2D[4];
+ * recorded without touching render-thread state.  White before the first
+ * Draw_SetColor, as the reference renderer's copy is. */
+static byte r_color2D[4] = { 255, 255, 255, 255 };
 
-/* Recorded window/scissor coalescing.  A duplicate is skipped only while both
- * caches are valid; R_Invalidate2DWindowCache() drops them from every recorded
- * command that can change the viewport or the scissor box. */
+/* Recorded window/scissor coalescing, on the RECORDING thread.  A duplicate is
+ * skipped only while both caches are valid; R_Invalidate2DWindowCache() drops
+ * them from every recorded command that can change the viewport or the scissor
+ * box.  These are never written by the walk. */
 static qboolean r_window2DValid;
 static int      r_window2D[4];
 static float    r_window2DOrtho[6];
 static qboolean r_scissor2DValid;
 static int      r_scissor2D[4];
+
+/* The state the walk has actually applied.  r_smp runs the recording thread a
+ * frame ahead, so a walk that tested the mirrors above read state it had not
+ * issued yet and skipped the viewport/ortho/scissor change: the widget then
+ * drew under a neighbour's clip. */
+static qboolean s_walkWindowValid;
+static int      s_walkWindow[4];
+static float    s_walkWindowOrtho[6];
+static qboolean s_walkScissorValid;
+static int      s_walkScissor[4];
 
 void R_Invalidate2DWindowCache( void ) {
 	r_window2DValid = qfalse;
@@ -49,10 +61,14 @@ void R_Invalidate2DWindowCache( void ) {
 }
 
 /* A 3D view reopens depth, so the next overlay draw has to re-issue the phase's
-   own state block; a window cached across it would let that draw skip it. */
+   own state block; a window cached across it would let that draw skip it.  This
+   drops the WALK's pair only -- the state GL actually holds.  The recorder's
+   cache belongs to the recording thread, which runs a frame ahead: a walk write
+   of it, or a recorder write of this, is the r36 race that reopened the screen
+   window over a widget's own string at uncapped fps. */
 void RB_2D_InvalidateWindow( void ) {
-	r_window2DValid  = qfalse;
-	r_scissor2DValid = qfalse;
+	s_walkWindowValid  = qfalse;
+	s_walkScissorValid = qfalse;
 }
 
 /* ---- [2D:stall] per-call accounting of the 2D entry points ---------------- */
@@ -225,13 +241,110 @@ static int       s_2dTriBase;
    the coverage count stays exact. */
 #define RB_2D_TRI_BOX_MAX 256
 
+/* The scissor GL actually holds, kept with the apply.  Two paths issue a raw
+   qglScissor -- the string run here and the immediate one in tr_font.cpp -- and
+   both used to leave s_walkScissor at a rect GL no longer had, so the dedupes in
+   RB_2D_Scissor/RB_2D_SetWindow reasoned about the wrong box and could skip the
+   scissor the next widget asked for. */
+void RB_2D_ScissorApplied( int x, int y, int width, int height ) {
+	qglEnable( GL_SCISSOR_TEST );
+	qglScissor( x, y, width, height );
+
+	s_walkScissorValid = qtrue;
+	s_walkScissor[0] = x; s_walkScissor[1] = y; s_walkScissor[2] = width; s_walkScissor[3] = height;
+}
+
+/* The batch's own rect against the clip it is about to draw under.  Retail scissor
+   clips every widget to its own rect (retail-gl-1031 trace: bkg_01's
+   glScissor(0,280,320,320) at call 186693 with the quad's vertices 0,0..320,320 at
+   186716), so a batch drawn outside its recorded clip is the missing-panel class
+   and must name itself instead of vanishing. */
+static void D2_ClipAudit( int verts ) {
+	static int	s_rows;
+	int			i;
+	float		x0, y0, x1, y1;
+	int			sc[4] = { 0, 0, 0, 0 };
+	unsigned char	wmask = 0;
+	int			inside;
+
+	if ( !D2_On() || verts <= 0 || !s_walkScissorValid ) {
+		return;
+	}
+
+	x0 = x1 = tess.xyz[0][0];
+	y0 = y1 = tess.xyz[0][1];
+	for ( i = 1; i < verts; i++ ) {
+		if ( tess.xyz[i][0] < x0 ) x0 = tess.xyz[i][0];
+		if ( tess.xyz[i][0] > x1 ) x1 = tess.xyz[i][0];
+		if ( tess.xyz[i][1] < y0 ) y0 = tess.xyz[i][1];
+		if ( tess.xyz[i][1] > y1 ) y1 = tess.xyz[i][1];
+	}
+
+	/* the ortho is y-down over the screen, the scissor y-up in GL's own units, so
+	   the rect is flipped before it is compared with the clip */
+	inside = ( (int)x0 >= s_walkScissor[0] && (int)x1 <= s_walkScissor[0] + s_walkScissor[2] &&
+			   (int)( glConfig.vidHeight - y1 ) >= s_walkScissor[1] &&
+			   (int)( glConfig.vidHeight - y0 ) <= s_walkScissor[1] + s_walkScissor[3] ) ? 1 : 0;
+
+	if ( qglGetIntegerv ) {
+		qglGetIntegerv( GL_SCISSOR_BOX, sc );
+	}
+	if ( qglGetBooleanv ) {
+		qglGetBooleanv( GL_DEPTH_WRITEMASK, &wmask );
+	}
+
+	s_rows++;
+	if ( inside && qglGetIntegerv && sc[0] == s_walkScissor[0] && sc[1] == s_walkScissor[1] &&
+		 sc[2] == s_walkScissor[2] && sc[3] == s_walkScissor[3] && s_rows > 8 ) {
+		return;
+	}
+	if ( s_rows > 64 && !inside ) {
+		return;
+	}
+
+	ri.Printf( PRINT_ALL,
+			   "[GLES3:2dclip] sh=%s rect=%.0f,%.0f %.0fx%.0f scn=%d,%d %dx%d drvSc=%d,%d %dx%d "
+			   "inside=%d scTest=%d depth=%d/%d blend=%d atest=%u f=%d\n",
+			   s_2dBatchShader && s_2dBatchShader->name[0] ? s_2dBatchShader->name : "-",
+			   (double)x0, (double)y0, (double)( x1 - x0 ), (double)( y1 - y0 ),
+			   s_walkScissor[0], s_walkScissor[1], s_walkScissor[2], s_walkScissor[3],
+			   sc[0], sc[1], sc[2], sc[3], inside,
+			   qglIsEnabled ? ( qglIsEnabled( GL_SCISSOR_TEST ) ? 1 : 0 ) : -1,
+			   qglIsEnabled ? ( qglIsEnabled( GL_DEPTH_TEST ) ? 1 : 0 ) : -1,
+			   wmask ? 1 : 0, qglIsEnabled ? ( qglIsEnabled( GL_BLEND ) ? 1 : 0 ) : -1,
+			   (unsigned)( ( glState.glStateBits & GLS_ATEST_BITS ) >> 28 ), RB_FrameCount() );
+}
+
 void RB_2D_Flush( void ) {
+	/* The batch, tess and GL are the walk's.  A recorder that reaches here has
+	   parked the walk first (R_FlushRenderCommands, the font run's fallback); one
+	   that has not is drawing under the render thread's hands, and the batch it
+	   catches is closed with its quads never issued. */
+	if ( PROBE_On() && glConfig.smpActive && !GLimp_IsRenderThread()
+		 && !GLimp_GLMainOwnsContext() && !RB_SerialIssueActive() ) {
+		static int	s_rows;
+
+		if ( s_rows < 8 || ( s_rows % 256 ) == 0 ) {
+			ri.Printf( PRINT_ALL, "[2D:thread] flush off the render thread f=%d\n", RB_FrameCount() );
+		}
+		s_rows++;
+	}
+
 	if ( s_2dBatchOpen ) {
 		int	verts;
 
 		/* tess.numVertexes is what is actually about to be handed over; the counter is what the UI asked
 		   for. A gap means something reset the tess under the open batch and those quads are gone. */
 		verts = tess.numVertexes;
+
+		/* The clip the quads were recorded under, re-issued where they draw.  The
+		   batch outlives the widget's own scissor command, so a flush that lands
+		   after another writer moved GL's box would draw these quads under a rect
+		   they were never clipped to. */
+		D2_ClipAudit( verts );
+		if ( s_walkScissorValid ) {
+			RB_2D_ScissorApplied( s_walkScissor[0], s_walkScissor[1], s_walkScissor[2], s_walkScissor[3] );
+		}
 		if ( verts != s_2dBatchVerts ) {
 			int			lost = s_2dBatchVerts - verts;
 			static int	s_rows;
@@ -555,7 +668,34 @@ void RB_2D_LineLoop( const vec2_t *points, int count, int stipple_factor, int st
    (retail-menu-solomatch-final.trace 10103-10124), so the twin does the same. */
 float	gles3_2dOrigin[2] = { 0.0f, 0.0f };
 
+/* The placement in force on the RECORDING thread, where a string is queued: the
+   run flushes after later widgets' state records, so the walk's copy of the
+   placement at flush time is not the run's.  Stamped into the run's own command. */
+static float	r_2dOrigin[2] = { 0.0f, 0.0f };
+
+void R_2DQueuePlacement( float *ox, float *oy, qboolean *scnValid, int *scn, byte *color ) {
+	*ox = r_2dOrigin[0];
+	*oy = r_2dOrigin[1];
+	*scnValid = r_scissor2DValid;
+	memcpy( scn, r_scissor2D, 4 * sizeof( int ) );
+	memcpy( color, r_color2D, 4 );
+}
+
 void Set2DOrigin( float x, float y ) {
+	/* The walk replays a recorded placement here.  Under r_smp the branch below
+	   only appends a command and returns, so a walk that came through it applied
+	   nothing: every quad was placed at the screen origin and only the widget
+	   whose clip sits at the origin showed.  The walk applies, the recorder
+	   records, and only the recorder owns the mirror a string stamps. */
+	if ( glConfig.smpActive && GLimp_IsRenderThread() ) {
+		gles3_2dOrigin[0] = x;
+		gles3_2dOrigin[1] = y;
+		return;
+	}
+
+	r_2dOrigin[0] = x;
+	r_2dOrigin[1] = y;
+
 	if ( glConfig.smpActive ) {
 		origin2DCommand_t *cmd = ( origin2DCommand_t * )R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -575,7 +715,7 @@ void Set2DOrigin( float x, float y ) {
    inherits the view's depth and lands behind the wall in front of the camera (the in-game counter that only shows over playback).  The block it re-issues is the
    screen window, not the last widget's own rect -- re-arming that put a screen-level string inside a widget's viewport and scissor. */
 void RB_2D_EnterPhase( void ) {
-	if ( GLES3_DepthGate2D() && r_window2DValid && r_scissor2DValid ) {
+	if ( GLES3_DepthGate2D() && s_walkWindowValid && s_walkScissorValid ) {
 		return;
 	}
 
@@ -583,14 +723,53 @@ void RB_2D_EnterPhase( void ) {
 }
 
 void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f ) {
-	/* The same tuple the batch was opened under is already in force: keep the
-	   batch open and issue nothing.  A 3D pass leaves the depth gate open and
-	   the 2D pass runs with it shut, or its z=0 quads write half depth. */
-	if ( GLES3_DepthGate2D() && r_window2DValid && r_scissor2DValid &&
-		 r_window2D[0] == x && r_window2D[1] == y && r_window2D[2] == w && r_window2D[3] == h &&
-		 r_window2DOrtho[0] == left && r_window2DOrtho[1] == right && r_window2DOrtho[2] == bottom &&
-		 r_window2DOrtho[3] == top && r_window2DOrtho[4] == n && r_window2DOrtho[5] == f &&
-		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == w && r_scissor2D[3] == h ) {
+	/* The 2D phase is where the placement means anything: RB_2DPlaceVertex adds the
+	   origin only under in2D.  This latch is above the dedupe because a skipped
+	   window command is still a 2D draw, and the early return used to leave in2D
+	   down and every later quad unplaced -- the widget that draws at the screen's
+	   origin (bkg_01) is the only one that survives that. */
+	if ( !backEnd.in2D )
+	{
+		/* The 3D view is still what is on screen here: the viewport has not been
+		   moved and no 2D quad has been issued since it finished.  The rect comes
+		   from a live query, so it is only asked for while the readback runs. */
+		if ( GLES3_PixelProbeWanted() ) {
+			GLint	vp[4];
+
+			qglGetIntegerv( GL_VIEWPORT, vp );
+			GLES3_PixelProbe( "view", vp[0] + vp[2] / 2 - 8, vp[1] + vp[3] / 2 - 8, 16, 16 );
+		}
+
+		backEnd.refdef.time = ri.Milliseconds();
+		backEnd.in2D = qtrue;
+		backEnd.refdef.floatTime = backEnd.refdef.time / 1000.0;
+        backEnd.shaderStartTime = 0;
+	}
+
+	/* A page that hides the 3D view leaves the frame uncleared; take it here,
+	   before this window's placement means anything. */
+	RB_FrameClearIfFirst();
+
+	/* The window, its viewport and its projection are what a widget repeats: the
+	   UI opens the screen window for every widget and moves only the clip.  When
+	   that tuple is already in force, the clip is the only state to set -- doing
+	   the viewport, the projection and the rest again was ~12 GL calls and two
+	   matrix loads per widget, which is most of a menu's frame. */
+	if ( GLES3_DepthGate2D() && s_walkWindowValid &&
+		 s_walkWindow[0] == x && s_walkWindow[1] == y && s_walkWindow[2] == w && s_walkWindow[3] == h &&
+		 s_walkWindowOrtho[0] == left && s_walkWindowOrtho[1] == right && s_walkWindowOrtho[2] == bottom &&
+		 s_walkWindowOrtho[3] == top && s_walkWindowOrtho[4] == n && s_walkWindowOrtho[5] == f ) {
+		gles3_2dOrigin[0] = 0.0f;
+		gles3_2dOrigin[1] = 0.0f;
+
+		if ( !( s_walkScissorValid && s_walkScissor[0] == x && s_walkScissor[1] == y &&
+				s_walkScissor[2] == w && s_walkScissor[3] == h ) ) {
+			RB_2D_Flush();
+			RB_2D_ScissorApplied( x, y, w, h );
+			s_walkScissorValid = qtrue;
+			s_walkScissor[0] = x; s_walkScissor[1] = y;
+			s_walkScissor[2] = w; s_walkScissor[3] = h;
+		}
 		return;
 	}
 
@@ -610,45 +789,24 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 	RB_ClipPlane_Disable();
 	GLES3_DepthGate2DTake();
 
-	r_window2DValid = qtrue;
-	r_window2D[0] = x; r_window2D[1] = y; r_window2D[2] = w; r_window2D[3] = h;
-	r_window2DOrtho[0] = left; r_window2DOrtho[1] = right; r_window2DOrtho[2] = bottom;
-	r_window2DOrtho[3] = top; r_window2DOrtho[4] = n; r_window2DOrtho[5] = f;
-	r_scissor2DValid = qtrue;
-	r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = w; r_scissor2D[3] = h;
-
-	if (!backEnd.in2D)
-	{
-		/* The 3D view is still what is on screen here: the viewport has not been
-		   moved and no 2D quad has been issued since it finished. */
-		{
-			GLint	vp[4];
-
-			qglGetIntegerv( GL_VIEWPORT, vp );
-			GLES3_PixelProbe( "view", vp[0] + vp[2] / 2 - 8, vp[1] + vp[3] / 2 - 8, 16, 16 );
-		}
-
-		backEnd.refdef.time = ri.Milliseconds();
-		backEnd.in2D = qtrue;
-		backEnd.refdef.floatTime = backEnd.refdef.time / 1000.0;
-        backEnd.shaderStartTime = 0;
-	}
+	s_walkWindowValid = qtrue;
+	s_walkWindow[0] = x; s_walkWindow[1] = y; s_walkWindow[2] = w; s_walkWindow[3] = h;
+	s_walkWindowOrtho[0] = left; s_walkWindowOrtho[1] = right; s_walkWindowOrtho[2] = bottom;
+	s_walkWindowOrtho[3] = top; s_walkWindowOrtho[4] = n; s_walkWindowOrtho[5] = f;
+	s_walkScissorValid = qtrue;
+	s_walkScissor[0] = x; s_walkScissor[1] = y; s_walkScissor[2] = w; s_walkScissor[3] = h;
 }
 
 void RB_2D_Scissor( int x, int y, int width, int height ) {
-	if ( r_scissor2DValid &&
-		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == width && r_scissor2D[3] == height ) {
+	if ( s_walkScissorValid &&
+		 s_walkScissor[0] == x && s_walkScissor[1] == y && s_walkScissor[2] == width && s_walkScissor[3] == height ) {
 		return;
 	}
 
 	RB_2D_Flush();
 
-	qglEnable(GL_SCISSOR_TEST);
-	qglScissor(x, y, width, height);
+	RB_2D_ScissorApplied( x, y, width, height );
 	SMP_VpProbe( "scissor", "RE_Scissor/arg", x, y, width, height, 0, qfalse );
-
-	r_scissor2DValid = qtrue;
-	r_scissor2D[0] = x; r_scissor2D[1] = y; r_scissor2D[2] = width; r_scissor2D[3] = height;
 }
 
 void RB_2D_ShaderTime( float startTime ) {

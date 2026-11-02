@@ -2227,7 +2227,7 @@ void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 				densityArm = ( dView >= 0.0f ) ? 2 : 3;
 			}
 		}
-		VK_SetUniform1f( p, VK_U_FOGOOLEN, tr.viewParms.fog.oolen );
+		VK_SetUniform1f( p, VK_U_FOGOOLEN, backEnd.viewParms.fog.oolen );
 	}
 
 	VK_SetUniform1i( p, VK_U_FOGDENSITYARM, densityArm );
@@ -5221,6 +5221,13 @@ static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
 	int feedKind = 0;
 	const void *feed;
 	int v;
+
+	/* The row walks every vertex of the draw to bound the colour stream, and it
+	   was doing that on every draw whether the gate was armed or not: the scan
+	   is the payload, so it belongs behind the same gate as the row. */
+	if ( !R_ProbeMarkOn() ) {
+		return;
+	}
 
 	if ( !colors || input->numVertexes <= 0 ) {
 		return;

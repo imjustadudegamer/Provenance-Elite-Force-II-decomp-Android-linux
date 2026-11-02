@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_local.h"
 #include "tr_vbo.h"
 #include "tr_imm_decompose.h"
+#include "tr_program.h"
 
 typedef struct {
 	float			xyz[4];		
@@ -378,6 +379,10 @@ static unsigned int		s_streamIndices[RB_IMM_INDEX_CAPACITY( RB_STREAM_MAX_VERTS 
 static int		s_streamNumVerts;
 static int		s_streamNumRecs;
 static int		s_streamOpenRec;	
+/* A run whose records are all direct needs no index list: the modes this path is
+   opened with are TRIANGLES/LINES/LINE_LOOP/TRIANGLE_FAN/TRIANGLE_STRIP, so the
+   decomposition pass and its upload are skipped rather than walked empty. */
+static qboolean	s_streamHasDecompose;
 
 static float	s_streamColor[4] = { 1, 1, 1, 1 };
 static float	s_streamST[2];
@@ -1540,6 +1545,88 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 }
 
 
+/* Append one immediate 2D run to the frame's streaming store and hand back where
+   it landed.  The run's bytes, records and order are its own and the records are
+   drawn one call each from these offsets, so nothing the panel shows moves; only
+   the storage the record reads is this frame's store instead of the single
+   stream buffer.  That buffer is never rotated, so a write into it after the GPU
+   has read it is a driver shadow copy of the whole buffer -- per flush, which is
+   what a menu does per widget.  A store that is not open (arm stood down, or no
+   room left this frame) answers qfalse and the caller keeps its own buffers. */
+qboolean RB_VboImmSend( int numVertexes, const glIndex_t *indices, int numIndices,
+                        GLintptr *vBase, GLintptr *iBase ) {
+	GLintptr	vOff, iOff;
+	GLsizeiptr	vBytes, iBytes;
+	int			slot;
+
+	/* The store belongs to the walk thread: the front end may only reach it
+	   through a recorded command, so a flush on any other thread keeps its own
+	   buffers. */
+	if ( glConfig.smpActive && !GLimp_IsRenderThread() ) {
+		return qfalse;
+	}
+
+	if ( !s_arenaActive || s_arenaFull ) {
+		if ( s_arenaArmed ) {
+			s_arenaFall++;
+		}
+		return qfalse;
+	}
+
+	vOff = RB_VboAlignUp( s_arenaVOff, RB_TESS_ARENA_VALIGN );
+	iOff = (GLintptr)PAD( s_arenaIOff, RB_TESS_ARENA_ALIGN );
+	vBytes = (GLsizeiptr)( ( size_t )numVertexes * RB_VERTEX_STRIDE );
+	iBytes = (GLsizeiptr)( ( size_t )numIndices * sizeof( glIndex_t ) );
+
+	if ( vOff + vBytes > RB_TESS_ARENA_VBO_BYTES
+		 || iOff + iBytes > RB_TESS_ARENA_EBO_BYTES ) {
+		s_arenaFull = qtrue;
+		s_arenaFall++;
+		return qfalse;
+	}
+
+	/* the store's own VAO names its buffers; the offset is set below, so the
+	   run's records draw from their own bytes and not from the frame's first */
+	slot = s_arenaInit ? s_arenaNext : 0;
+	RB_BindVAO( s_vaoArena[slot] );
+	RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
+	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
+
+	if ( s_arenaMapped && s_arenaMapV[s_arenaMappedSlot] && s_arenaMapI[s_arenaMappedSlot] ) {
+		/* a copy, not a call: the store is mapped for the whole frame */
+		Com_Memcpy( s_arenaMapV[s_arenaMappedSlot] + vOff, s_streamVerts, (size_t)vBytes );
+		if ( iBytes > 0 ) {
+			Com_Memcpy( s_arenaMapI[s_arenaMappedSlot] + iOff, indices, (size_t)iBytes );
+		}
+	} else {
+		qglBufferSubData( GL_ARRAY_BUFFER, vOff, vBytes, s_streamVerts );
+		if ( iBytes > 0 ) {
+			qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, iOff, iBytes, indices );
+		}
+	}
+
+	/* The store's VAO already holds base 0 on the base-vertex arm, which is the
+	   one this path draws on: the run's offset rides the draw as a vertex index,
+	   so nothing here re-points five attributes per flush.  The arm without the
+	   entry point re-points once, exactly as the tess path beside it does. */
+	if ( !s_baseVertexDraw ) {
+		RB_VboAttribsAt( vOff );
+	}
+
+	s_arenaVOff = (GLintptr)( vOff + vBytes );
+	s_arenaIOff = (GLintptr)( iOff + iBytes );
+	s_arenaMapBatches++;
+
+	*vBase = vOff;
+	*iBase = iOff;
+	return qtrue;
+}
+
+/* The run's records draw from base 0 with the vertex index carrying the run's
+   offset, so there is no attribute base to put back. */
+void RB_VboImmDone( void ) {
+}
+
 /* ---- [GLES3:pixd] what one 3D draw adds to the framebuffer --------------- The menu's 3D view
    submits 13 draws a frame whose counts, order, blend and clear all match retail's own captured
    frame, and the screen keeps the 2D background. A submit that reaches no pixel is invisible from
@@ -1952,10 +2039,14 @@ void RB_ImmFlush( void )
 {
 	int		i;
 	int		nIndices;
+	GLintptr	vBase = 0;
+	GLintptr	iBase = 0;
+	qboolean	usedStore = qfalse;
 
 	if ( s_streamNumVerts == 0 ) {
 		s_streamNumRecs = 0;
 		s_streamOpenRec = -1;
+		s_streamHasDecompose = qfalse;
 		return;
 	}
 
@@ -1963,75 +2054,151 @@ void RB_ImmFlush( void )
 		RB_VBO_Init();
 	}
 
-	RB_BindVAO( s_vaoStream );
-	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboStream );
-	qglBufferSubData( GL_ARRAY_BUFFER, 0,
-					  ( GLsizeiptr )( ( size_t )s_streamNumVerts * RB_VERTEX_STRIDE ),
-					  s_streamVerts );
-
 	nIndices = 0;
 	for ( i = 0; i < s_streamNumRecs; i++ ) {
-		rbStreamRec_t	*rec = &s_streamRecs[i];
-		int				n;
-
-		rec->idxFirst = 0;
-		rec->idxCount = 0;
-
-		if ( rec->count <= 0 || RB_ImmModeIsDirect( rec->mode ) ) {
-			continue;
-		}
-		if ( nIndices >= RB_IMM_INDEX_CAPACITY( RB_STREAM_MAX_VERTS ) ) {
-			break;
-		}
-
-		n = RB_ImmBuildIndices( rec->mode, ( unsigned int )rec->first, rec->count,
-								s_streamIndices + nIndices );
-		if ( n > 0 ) {
-			rec->idxFirst = nIndices;
-			rec->idxCount = n;
-			nIndices += n;
-		}
+		s_streamRecs[i].idxFirst = 0;
+		s_streamRecs[i].idxCount = 0;
 	}
 
-	if ( nIndices > 0 ) {
-		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
-		qglBufferSubData( GL_ELEMENT_ARRAY_BUFFER, 0,
-						  ( GLsizeiptr )( ( size_t )nIndices * sizeof( unsigned int ) ),
-						  s_streamIndices );
-	}
+	if ( s_streamHasDecompose ) {
+		for ( i = 0; i < s_streamNumRecs; i++ ) {
+			rbStreamRec_t	*rec = &s_streamRecs[i];
+			int				n;
 
-	for ( i = 0; i < s_streamNumRecs; i++ ) {
-		const rbStreamRec_t	*rec = &s_streamRecs[i];
-
-		if ( rec->count <= 0 ) {
-			continue;
-		}
-
-		if ( rec->idxCount > 0 ) {
-			qglDrawElements( GL_TRIANGLES, rec->idxCount, GL_UNSIGNED_INT,
-							 ( const void * )( ( size_t )rec->idxFirst * sizeof( unsigned int ) ) );
-			continue;
-		}
-
-		if ( !RB_ImmModeIsDirect( rec->mode ) ) {
-			static qboolean	s_warned[1];
-			if ( !s_warned[0] ) {
-				s_warned[0] = qtrue;
-				ri.Printf( PRINT_ALL, "RB_ImmFlush: dropped a 0x%04x primitive range of %d vertex(es) "
-									 "(no ES 3.0 equivalent, malformed for its mode)\n",
-									 (unsigned)rec->mode, rec->count );
+			if ( rec->count <= 0 || RB_ImmModeIsDirect( rec->mode ) ) {
+				continue;
 			}
-			continue;
-		}
+			if ( nIndices >= RB_IMM_INDEX_CAPACITY( RB_STREAM_MAX_VERTS ) ) {
+				break;
+			}
 
-		qglDrawArrays( rec->mode, rec->first, rec->count );
-		BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
+			n = RB_ImmBuildIndices( rec->mode, ( unsigned int )rec->first, rec->count,
+									s_streamIndices + nIndices );
+			if ( n > 0 ) {
+				rec->idxFirst = nIndices;
+				rec->idxCount = n;
+				nIndices += n;
+			}
+		}
 	}
 
+	usedStore = RB_VboImmSend( s_streamNumVerts, s_streamIndices, nIndices, &vBase, &iBase );
+	if ( usedStore ) {
+		/* The store this frame opened: the bytes just landed at vBase/iBase and the
+		   records draw from there, in the order they were recorded.  The run's
+		   first vertex is an index into the store, not an attribute base, so no
+		   attribute is re-pointed between two records. */
+		const GLint	runFirst = (GLint)( vBase / RB_VERTEX_STRIDE );
+
+		for ( i = 0; i < s_streamNumRecs; i++ ) {
+			const rbStreamRec_t	*rec = &s_streamRecs[i];
+
+			if ( rec->count <= 0 ) {
+				continue;
+			}
+
+			if ( rec->idxCount > 0 ) {
+				const void	*idx = ( const void * )(uintptr_t)( iBase
+								 + (GLintptr)( ( size_t )rec->idxFirst * sizeof( unsigned int ) ) );
+
+				if ( s_baseVertexDraw ) {
+					qglDrawElementsBaseVertex( GL_TRIANGLES, rec->idxCount, GL_UNSIGNED_INT,
+											   idx, runFirst );
+				} else {
+					qglDrawElements( GL_TRIANGLES, rec->idxCount, GL_UNSIGNED_INT, idx );
+				}
+				continue;
+			}
+
+			if ( !RB_ImmModeIsDirect( rec->mode ) ) {
+				static qboolean	s_warned[1];
+				if ( !s_warned[0] ) {
+					s_warned[0] = qtrue;
+					ri.Printf( PRINT_ALL, "RB_ImmFlush: dropped a 0x%04x primitive range of %d vertex(es) "
+										 "(no ES 3.0 equivalent, malformed for its mode)\n",
+										 (unsigned)rec->mode, rec->count );
+				}
+				continue;
+			}
+
+			/* the run's offset is in the vertex index, which is what
+			   glDrawArrays' first argument already is */
+			qglDrawArrays( rec->mode,
+						   s_baseVertexDraw ? (GLint)( runFirst + rec->first ) : rec->first,
+						   rec->count );
+			BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
+		}
+		RB_VboImmDone();
+	} else {
+		/* The store is not open.  The single stream buffer is never rotated, so a
+		   write into it is the driver's shadow copy of the whole buffer; a
+		   re-specification with the run's own bytes is not.  The bytes, the records
+		   and their order are the same either way. */
+		RB_BindVAO( 0 );
+		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboStream );
+		qglBufferData( GL_ARRAY_BUFFER,
+					   ( GLsizeiptr )( ( size_t )s_streamNumVerts * RB_VERTEX_STRIDE ),
+					   s_streamVerts, GL_STREAM_DRAW );
+
+		if ( nIndices > 0 ) {
+			RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboStream );
+			qglBufferData( GL_ELEMENT_ARRAY_BUFFER,
+						   ( GLsizeiptr )( ( size_t )nIndices * sizeof( unsigned int ) ),
+						   s_streamIndices, GL_STREAM_DRAW );
+		}
+
+		RB_BindVAO( s_vaoStream );
+
+		for ( i = 0; i < s_streamNumRecs; i++ ) {
+			const rbStreamRec_t	*rec = &s_streamRecs[i];
+
+			if ( rec->count <= 0 ) {
+				continue;
+			}
+
+			if ( rec->idxCount > 0 ) {
+				qglDrawElements( GL_TRIANGLES, rec->idxCount, GL_UNSIGNED_INT,
+								 ( const void * )( ( size_t )rec->idxFirst * sizeof( unsigned int ) ) );
+				continue;
+			}
+
+			if ( !RB_ImmModeIsDirect( rec->mode ) ) {
+				static qboolean	s_warned[1];
+				if ( !s_warned[0] ) {
+					s_warned[0] = qtrue;
+					ri.Printf( PRINT_ALL, "RB_ImmFlush: dropped a 0x%04x primitive range of %d vertex(es) "
+										 "(no ES 3.0 equivalent, malformed for its mode)\n",
+										 (unsigned)rec->mode, rec->count );
+				}
+				continue;
+			}
+
+			qglDrawArrays( rec->mode, rec->first, rec->count );
+			BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
+		}
+	}
+
+	{
+		static int	s_immRows;
+
+		s_immRows++;
+		if ( R_ProbeStatsOn() && ( s_immRows <= 8 || ( s_immRows % 240 ) == 0 ) ) {
+			unsigned	issued = 0, skipped = 0;
+
+			GLES3_UnifBlockStats( &issued, &skipped );
+			ri.Printf( PRINT_ALL,
+					   "[2D:imm] arm=%s verts=%d idx=%d vBase=%d iBase=%d recs=%d "
+					   "blk=%u/%u f=%d\n",
+					   usedStore ? "store" : "ring",
+					   s_streamNumVerts, nIndices, (int)vBase, (int)iBase, s_streamNumRecs,
+					   skipped, issued, RB_FrameCount() );
+		}
+	}
 
 	s_streamNumVerts = 0;
 	s_streamNumRecs = 0;
 	s_streamOpenRec = -1;
+	s_streamHasDecompose = qfalse;
 }
 
 void RB_ImmBegin( GLenum mode )
@@ -2042,6 +2209,10 @@ void RB_ImmBegin( GLenum mode )
 	}
 
 	// NOTE: the current colour/texcoord are NOT reset here.  In the
+
+	if ( !RB_ImmModeIsDirect( mode ) ) {
+		s_streamHasDecompose = qtrue;
+	}
 
 	s_streamOpenRec = s_streamNumRecs++;
 	s_streamRecs[s_streamOpenRec].mode = mode;

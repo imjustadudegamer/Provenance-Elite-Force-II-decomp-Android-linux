@@ -356,6 +356,8 @@ void		GLES3_BindProgram( gles3Program_t *p );
 void		GLES3_RefreshClipPlane( void );
 
 gles3Program_t	*GLES3_BeginFamily( unsigned family, int texEnv );
+qboolean	GLES3_PixelProbeWanted( void );
+void		GLES3_UnifBlockStats( unsigned *issued, unsigned *skipped );
 void		GLES3_PixelProbe( const char *src, int x, int y, int w, int h );
 void		GLES3_ModelPixelAtSwap( void );
 void		GLES3_GlErrAt( const char *what );

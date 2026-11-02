@@ -42,6 +42,23 @@ void R_ShutdownShadows( void ) {
 	Com_Memset( facing, 0, sizeof( facing ) );
 }
 
+/* whether the walk handed this entity the view alone instead of its own transform:
+   the one state in which a model-space volume has no space to live in */
+static qboolean GLES3_ShadowOriIsView( void )
+{
+	const float	*a = backEnd.ori.modelMatrix;
+	const float	*b = backEnd.viewParms.world.modelMatrix;
+	int			i;
+
+	for ( i = 0; i < 16; i++ ) {
+		if ( a[i] != b[i] ) {
+			return qfalse;
+		}
+	}
+
+	return qtrue;
+}
+
 void R_AddEdgeDef( int i1, int i2, int localFacing ) {
 	int		c;
 
@@ -145,6 +162,32 @@ void RB_ShadowTessEnd( void ) {
 
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 
+	/* R_Sphere_SetupEntity builds this direction from a SUM of six weighted
+	   basis vectors, so a room lit from opposite sides cancels it; the extrusion
+	   would then duplicate every vertex and the stencil would stay zero while the
+	   volume still reaches the draw list.  A degraded direction for the shadow
+	   only: the entity's strongest sphere light, else retail's own
+	   entity-lighting fallback axis. */
+	if ( VectorLength( lightDir ) == 0.0f ) {
+		float	best = 0.0f;
+		vec3_t	delta;
+
+		for ( i = 0; i < tr.numSLights; i++ ) {
+			float	w;
+
+			VectorSubtract( tr.sLights[i].origin, backEnd.currentEntity->e.origin, delta );
+			w = Q_max( Q_max( tr.sLights[i].color[0], tr.sLights[i].color[1] ),
+					   tr.sLights[i].color[2] );
+			if ( w > best && VectorNormalize( delta ) > 0.0f ) {
+				best = w;
+				VectorCopy( delta, lightDir );
+			}
+		}
+		if ( best == 0.0f ) {
+			VectorSet( lightDir, 0.0f, 0.0f, 1.0f );
+		}
+	}
+
 	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
 		VectorMA( tess.xyz[i], -512, lightDir, tess.xyz[i+tess.numVertexes] );
 	}
@@ -185,6 +228,18 @@ void RB_ShadowTessEnd( void ) {
 
 	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
 		return;	/* no world, no shadow volume, nothing may arm the stencil */
+	}
+
+	/* The volume's vertices are the caster's own model space, so it only says
+	   anything under that caster's model transform.  R_RotateForEntity hands back
+	   the view alone for a slot whose reType is not RT_MODEL (tr_main.c), and a
+	   volume extruded under it wraps the caster's model space around the eye and
+	   arms the whole viewport.  No shadow draw surf is registered for such a slot,
+	   so this pair is the draw surf and the entity disagreeing, and it refuses the
+	   volume rather than painting the frame. */
+	if ( !backEnd.currentEntity || backEnd.currentEntity->e.reType != RT_MODEL
+		 || GLES3_ShadowOriIsView() ) {
+		return;
 	}
 
 	GL_BindUnit0( tr.whiteImage );
@@ -265,4 +320,7 @@ void RB_ShadowFinish( void ) {
 
 	RB_ImmColor4f( 1, 1, 1, 1 );
 	GLES3_StencilState( qfalse, GL_ALWAYS, 0, 255 );
+	/* the overlay drew cull-free; the next state block owns the face again */
+	qglEnable( GL_CULL_FACE );
+	glState.faceCulling = -1;
 }

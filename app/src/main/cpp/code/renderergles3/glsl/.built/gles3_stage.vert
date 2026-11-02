@@ -242,13 +242,14 @@ vec2 GLES3_TexGen0(vec3 pos, vec3 nrm)
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
 		
-		return vec2(1.0 + refl.y, 1.0 - refl.z);
+		return vec2(0.5 * (1.0 + refl.y), 0.5 * (1.0 - refl.z));
 	}
 	if (u_TCGen0 == 7) {							
 		vec3 viewer = normalize(u_EntityAxis[0]);
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
-		return vec2(1.0 + refl.y, 1.0 - refl.z);
+		
+		return vec2(0.5 * (1.0 + refl.y), 0.5 * (1.0 - refl.z));
 	}
 	if (u_TCGen0 == 6) {							
 		

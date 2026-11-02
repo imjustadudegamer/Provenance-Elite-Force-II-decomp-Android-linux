@@ -996,6 +996,8 @@ void R_AddDrawSurf(surfaceType_t* surface, shader_t* shader, int fogNum, int dli
 		| (fogNum << QSORT_FOGNUM_SHIFT)
 		| (dlightMap & QSORT_DLIGHTMAP_MASK);
 	tr.refdef.drawSurfs[index].surface = surface;
+	tr.refdef.drawSurfs[index].shader    = shader;
+	tr.refdef.drawSurfs[index].shaderGen = tr.shaderGen;
 	tr.refdef.numDrawSurfs++;
 }
 
@@ -1012,6 +1014,8 @@ void R_AddSpriteSurf(surfaceType_t* surface, shader_t* shader, float zDistance)
 	index = tr.refdef.numSpriteSurfs % MAX_SPRITES;
     tr.refdef.spriteSurfs[index].sort = (int)(MAX_SPRITE_DIST_SQUARED - zDistance) | (shader->sortedIndex << QSORT_SHADERNUM_SHIFT);
     tr.refdef.spriteSurfs[index].surface = surface;
+    tr.refdef.spriteSurfs[index].shader = shader;
+    tr.refdef.spriteSurfs[index].shaderGen = tr.shaderGen;
     tr.refdef.numSpriteSurfs++;
 }
 
@@ -1021,6 +1025,11 @@ void R_DecomposeSort(unsigned int sort, int* entityNum, shader_t** shader, int* 
 	*fogNum = ( sort & 0xFF ) >> QSORT_FOGNUM_SHIFT;
 	*dlightMap = sort & QSORT_DLIGHTMAP_MASK;
 }
+
+/* the volumes the sort parks last; a view with more casters than this keeps the
+   radix position of the surplus rather than growing a boot-sized array */
+#define GLES3_SHADOW_TAIL_MAX	256
+static drawSurf_t	s_shadowTail[GLES3_SHADOW_TAIL_MAX];
 
 void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *spriteSurfs, int numSpriteSurfs ) {
 	shader_t		*shader;
@@ -1044,6 +1053,27 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 	R_RadixSort (drawSurfs, numDrawSurfs );
 	R_RadixSort (spriteSurfs, numSpriteSurfs );
 
+	/* A z-pass volume counts against the depth its receivers wrote, so it has to
+	   follow every one of them.  The sort word packs sortedIndex at add time, and
+	   a shader registered afterwards moves that index, which is the one path that
+	   can put a volume ahead of the world; park the volumes at the tail whatever
+	   the key says. */
+	{
+		int	w = 0, nTail = 0;
+
+		for ( i = 0; i < numDrawSurfs; i++ ) {
+			if ( tr.shadowShader && drawSurfs[i].shader == tr.shadowShader
+				 && nTail < GLES3_SHADOW_TAIL_MAX ) {
+				s_shadowTail[nTail++] = drawSurfs[i];
+			} else {
+				drawSurfs[w++] = drawSurfs[i];
+			}
+		}
+		for ( i = 0; i < nTail; i++ ) {
+			drawSurfs[w + i] = s_shadowTail[i];
+		}
+	}
+
 	R_SortField_Row( numDrawSurfs, numSpriteSurfs );
 
 	R_Sky_Render();
@@ -1052,6 +1082,10 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 	{
 		for (i = 0; i < numDrawSurfs; i++) {
 			R_DecomposeSort((drawSurfs + i)->sort, &entityNum, &shader, &fogNum, &dlighted);
+
+			if ( shader == NULL ) {
+				continue;	/* a slot the table has not registered: no sort word to read */
+			}
 
 			if (shader->sort > SS_PORTAL) {
 				break;
@@ -1247,14 +1281,21 @@ void R_AddSpriteSurfaces(void)
 			continue;
 		}
 
-		sprite->shaderNum = tr.currentModel->d.sprite->shader->sortedIndex;
+		sprite->shader = tr.currentModel->d.sprite->shader;
+		sprite->shaderGen = tr.shaderGen;
+
+		if (!sprite->shader) {
+			continue;
+		}
+
+		sprite->shaderNum = sprite->shader->sortedIndex;
 
 		sprite->fogNum = R_SpriteFogNum(
 			sprite->origin,
 			sprite->scale * (tr.currentModel->d.sprite->width * tr.currentModel->d.sprite->scale));
 
 		VectorSubtract(sprite->origin, tr.refdef.vieworg, delta);
-		R_AddSpriteSurf(&sprite->surftype, tr.currentModel->d.sprite->shader, VectorLengthSquared(delta));
+		R_AddSpriteSurf(&sprite->surftype, sprite->shader, VectorLengthSquared(delta));
 	}
 }
 
@@ -1601,8 +1642,14 @@ void R_RenderView (viewParms_t *parms) {
 		tr.refdef.numSpriteSurfs - firstSpriteSurf ) );
 
 	/* exec is the back end run from inside the front end: [BE:ds] measures the same
-	 * work from the other side, so the two overlap rather than add. */
-	BE_ZONE( BE_FAM_FE, BE_FEZ_exec, R_IssuePendingRenderCommands() );
+	 * work from the other side, so the two overlap rather than add.  Under r_smp
+	 * this call only parked the front end for the frame in flight -- the scene was
+	 * recorded, not issued, and the frame is handed over whole at its end -- so a
+	 * draw the UI submits mid-walk (CL_Draw3DModel) waited a whole back end for
+	 * nothing.  A caller that needs the GL context claims it (GL_ClaimContextForResource). */
+	if ( !glConfig.smpActive ) {
+		BE_ZONE( BE_FAM_FE, BE_FEZ_exec, R_IssuePendingRenderCommands() );
+	}
 
 	BE_ZONE( BE_FAM_FE, BE_FEZ_other, R_DrawDebugLines() );
 

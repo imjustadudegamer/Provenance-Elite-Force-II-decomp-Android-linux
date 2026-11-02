@@ -57,6 +57,12 @@ void RB_ImmFlush( void );
 void RB_ImmEndDeferred( void );
 int  RB_ImmStreamVerts( void );
 
+/* the frame's streaming store: an immediate run appends to it and draws from
+   there, and the store's attribute base is put back after the run */
+qboolean RB_VboImmSend( int numVertexes, const glIndex_t *indices, int numIndices,
+                        GLintptr *vBase, GLintptr *iBase );
+void     RB_VboImmDone( void );
+
 #ifdef __cplusplus
 }
 #endif

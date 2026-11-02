@@ -37,13 +37,18 @@ vec2 VK_TexGen0(vec3 pos, vec3 nrm)
 		vec3 viewer = normalize(u_ViewOrigin - pos);
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
-		return vec2(1.0 + refl.y, 1.0 - refl.z);
+		/* RB_CalcEnvironmentTexCoords @0x30B00: the half-offset sphere map,
+		   [0,1] on each axis, the same form tr_shade_calc.c keeps */
+		return vec2(0.5 * (1.0 + refl.y), 0.5 * (1.0 - refl.z));
 	}
 	if (u_TCGen0 == 7) {							
 		vec3 viewer = normalize(u_EntityAxis[0]);
 		float d = dot(nrm, viewer);
 		vec3 refl = nrm * (2.0 * d) - viewer;
-		return vec2(1.0 + refl.y, 1.0 - refl.z);
+		/* RB_CalcAngleBasedEnvironmentTexCoords @0x30C30, the same half-offset
+		   map; the Intrepid base stage's measured [0,2] is this span after its
+		   own tcMod scale 2 */
+		return vec2(0.5 * (1.0 + refl.y), 0.5 * (1.0 - refl.z));
 	}
 	if (u_TCGen0 == 6) {							
 		vec3 viewer = normalize(u_ViewOrigin - pos);

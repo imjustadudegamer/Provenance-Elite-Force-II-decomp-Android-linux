@@ -48,7 +48,7 @@ int			r_numpolyverts;
 void R_InitNextFrame( void ) {
 	tr.smpFrame ^= 1;
 	backEndData = backEndDataBuf[tr.smpFrame];
-	backEndData->commands.used = 0;
+	RB_CommandListReset();
 
 	/* the frame's pose arena, rewound ONCE per frame -- here, at the boundary -- and never per view: a reset inside RE_RenderScene rewinds the cursor at the
 	   second view of a frame, whose poses overwrite the first view's before the walk reads them.  Kept in step with renderervulkan/tr_scene.c; control: docs/controls/bonearm. */
@@ -313,8 +313,10 @@ void RE_RenderScene( const refdef_t *fd ) {
 	/* in2D is the walk's flag, cleared by its own 3D pass (tr_backend.c); this
 	   front-end write would race the walk's 2D pass under r_smp */
 	/* the view reopens depth, so the overlay phase has to be re-stated after it:
-	   a cached window would let the next 2D draw skip its own state block */
-	RB_2D_InvalidateWindow();
+	   a cached window would let the next 2D draw skip its own state block.  This
+	   is the RECORDER, so it drops the recorder's cache only; the walk drops its
+	   own pair when it executes the view (RB_BeginDrawingView). */
+	R_Invalidate2DWindowCache();
 	tr.refdef.x = fd->x;
 	tr.refdef.y = fd->y;
 	tr.refdef.width = fd->width;

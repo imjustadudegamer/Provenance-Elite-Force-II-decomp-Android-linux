@@ -1812,10 +1812,12 @@ void RB_BeginDrawingView (void) {
 
 		memset( attachments, 0, sizeof( attachments ) );
 		attachments[count].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-		/* RB_BeginDrawingView @0x1490 clears 1280 = DEPTH_BUFFER_BIT|STENCIL_BUFFER_BIT when the cvar at off_227C9C reads 2,
-		   the same pointer RB_ShadowFinish @0x40BD0 gates the overlay on, i.e. the precise shadow tier.  Without the stencil
-		   half every view in a frame shared one plane, so a sub-view's caster marked the main view's screen. */
-		if ( r_shadows->integer == 2 && vkConfig.stencilBits >= 4 ) {
+		/* RB_BeginDrawingView @0x1490 clears 1280 = DEPTH_BUFFER_BIT|STENCIL_BUFFER_BIT when the cvar at off_227CA0 is
+		   nonzero OR the one at off_227C9C reads 2, the same pointer RB_ShadowFinish @0x40BD0 gates the overlay on, i.e.
+		   the precise shadow tier.  The first term is r_measureOverdraw's readback, which sums the plane every swap.
+		   Without the stencil half every view in a frame shared one plane, so a sub-view's caster marked the main
+		   view's screen. */
+		if ( ( r_measureOverdraw->integer || r_shadows->integer == 2 ) && vkConfig.stencilBits >= 4 ) {
 			attachments[count].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
 		}
 		attachments[count].clearValue.depthStencil.depth = 1.0f;

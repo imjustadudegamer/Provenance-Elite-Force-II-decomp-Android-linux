@@ -195,6 +195,9 @@ typedef struct refSprite_s {
     surfaceType_t surftype;
     int hModel;
     int shaderNum;
+    /* pack-time shader + the table generation it is valid in */
+    struct shader_s *shader;
+    int shaderGen;
     float origin[3];
     float scale;
     float axis[3][3];
@@ -786,6 +789,9 @@ typedef struct {
 typedef struct drawSurf_s {
 	unsigned			sort;			
 	surfaceType_t		*surface;		
+	/* pack-time shader + generation; the index in `sort' is mutable */
+	struct shader_s		*shader;
+	int					shaderGen;
 } drawSurf_t;
 
 #define	MAX_FACE_POINTS		64
@@ -1315,6 +1321,9 @@ typedef struct {
 	int						numShaders;
 	shader_t				*shaders[MAX_SHADERS];
 	shader_t				*sortedShaders[MAX_SHADERS];
+	/* bumped when the shader table is rebuilt: an index written before the bump
+	   names a different shader after it */
+	int						shaderGen;
 
 	int						numSkins;
 	skin_t					*skins[MAX_SKINS];
@@ -1465,8 +1474,9 @@ extern	cvar_t	*r_drawsky;
 extern	cvar_t	*r_shownormals;					
 extern	cvar_t	*r_clear;						
 
-extern	cvar_t	*r_shadows;						
-extern	cvar_t	*r_flares;						
+extern	cvar_t	*r_shadows;
+extern	cvar_t	*r_surfOwn;
+extern	cvar_t	*r_flares;
 extern	cvar_t	*r_flaresMaxDist;				
 
 extern	cvar_t	*r_intensity;
@@ -1576,6 +1586,7 @@ void R_SetupFrustum(void);
 void	GL_SetFogColor(const vec4_t fColor);
 void	GL_Bind( image_t *image );
 void	GL_BindUnit0( image_t *image );
+void	GL_InvalidateTextureBinding( unsigned texnum );
 void	GL_SetDefaultState (void);
 void	GL_SelectTexture( int unit );
 void	GL_TextureMode( const char *string );
@@ -1659,7 +1670,13 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 /* The widget's placement in that window: the twin carries it in the vertices too. */
 void Set2DOrigin( float x, float y );
 extern float gles3_2dOrigin[2];
+/* The placement, clip and colour in force on the recording thread, for a
+ * command the walk replays after later widgets' state records. */
+void R_2DQueuePlacement( float *ox, float *oy, qboolean *scnValid, int *scn, byte *color );
 void RB_2D_Scissor( int x, int y, int width, int height );
+/* Applies a scissor and keeps the walk's mirror of the box GL holds with it;
+ * every raw apply has to go through this or a dedupe names a stale rect. */
+void RB_2D_ScissorApplied( int x, int y, int width, int height );
 void RB_2D_ShaderTime( float startTime );
 
 /* Drops the recorded window/scissor coalescing state; every command whose
@@ -2114,9 +2131,16 @@ typedef struct suninfo_s {
 extern suninfo_t s_sun;
 extern vec3_t spheredef[SPHERE_NUM_BASIS];
 
+/* The list grows rather than refuse a record: a refused record is a quad, a
+   colour, a window or a scissor the walk never sees, and a menu frame asks for
+   more than MAX_RENDER_COMMANDS.  The bound below is the hard ceiling. */
+#define	MAX_RENDER_COMMANDS_CEIL	0x800000
+
 typedef struct {
-	byte	cmds[MAX_RENDER_COMMANDS];
+	byte	*cmds;
 	int		used;
+	int		capacity;
+	int		highWater;
 } renderCommandList_t;
 
 typedef struct {
@@ -2161,6 +2185,10 @@ typedef struct {
 	viewParms_t	viewParms;
 	drawSurf_t *drawSurfs;
 	int		numDrawSurfs;
+	/* the whole record, slice included: the walk advances by this, not by the
+	   struct, because the surfaces the record owns live after it in the same
+	   allocation */
+	int		totalBytes;
 } drawSurfsCommand_t;
 
 typedef struct {
@@ -2284,6 +2312,13 @@ typedef struct {
 	float		charHeight;
 	float		glyphScale;
 	float		widthScale, heightScale;
+	/* the placement, clip and colour the string was QUEUED under: the run
+	   flushes after later widgets' state records, so the walk's live state at
+	   that point is not the run's and the glyphs land elsewhere */
+	float		originX, originY;
+	int			scissorValid;
+	int			scissor[4];
+	byte		color[4];
 } fontString2DCommand_t;
 
 typedef enum {
@@ -2310,7 +2345,8 @@ typedef enum {
 	RC_2D_SCISSOR,
 	RC_2D_ORIGIN,
 	RC_2D_FONT_STRING,
-	RC_2D_SHADER_TIME
+	RC_2D_SHADER_TIME,
+	RC_2D_FLUSH
 } renderCommand_t;
 
 
@@ -2343,6 +2379,8 @@ extern	volatile qboolean	renderThreadActive;
 
 
 void *R_GetCommandBuffer( int bytes );
+void RB_CommandListReset( void );
+void RB_FrameClearIfFirst( void );
 void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs );
 void R_AddSpriteSurfCmd( drawSurf_t* drawSurfs, int numDrawSurfs );
 void RB_ExecuteRenderCommands( const void *data );
@@ -2355,6 +2393,7 @@ int		RB_FrameCount( void );
 int		RB_FrameBoneArena( void );	
 int		RB_FrameBackEndMsec( void );	
 void	RB_FrameBackEndReset( void );
+qboolean RB_SerialIssueActive( void );
 
 void R_SavePerformanceCounters(void);
 void R_InitCommandBuffers( void );

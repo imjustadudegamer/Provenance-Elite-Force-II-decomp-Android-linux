@@ -2590,6 +2590,8 @@ void R_DeleteImageFromHash(image_t* image) {
 void R_FreeImage(image_t* image) {
 	if (image->texnum) {
 		GL_ClaimContextForResource();
+		/* the name this release hands back is one the bind cache may still name */
+		GL_InvalidateTextureBinding( image->texnum );
 		qglDeleteTextures(1, &image->texnum);
 	}
 

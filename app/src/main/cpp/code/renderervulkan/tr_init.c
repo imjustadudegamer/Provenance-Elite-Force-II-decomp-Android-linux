@@ -82,6 +82,7 @@ cvar_t	*r_offsetFactor;
 cvar_t	*r_offsetUnits;
 cvar_t	*r_portalOnly;
 cvar_t	*r_shadows;
+cvar_t	*r_measureOverdraw;
 cvar_t	*r_surfOwn;
 cvar_t	*r_texgen3d;
 cvar_t	*r_shadowVolume;
@@ -254,6 +255,10 @@ void R_RegisterCvars( void )
 	r_lockpvs = ri.Cvar_Get( "r_lockpvs", "0", CVAR_CHEAT );
 	r_noportals = ri.Cvar_Get( "r_noportals", "0", CVAR_CHEAT );
 	r_shadows = ri.Cvar_Get( "cg_shadows", "1", CVAR_ARCHIVE  );
+	/* RB_BeginDrawingView @0x1490 reads this one to decide the stencil half of the
+	   clear; the module has no overdraw readback of its own, but the plane still
+	   has to be retired when the cvar asks for it */
+	r_measureOverdraw = ri.Cvar_Get( "r_measureOverdraw", "0", CVAR_CHEAT );
 	/* 1: the surf record owns a copy of its view's list (the volumes must be
 	   walked in the order they were sorted).  0 is the live-array behaviour, kept
 	   so one boot can compare the two. */

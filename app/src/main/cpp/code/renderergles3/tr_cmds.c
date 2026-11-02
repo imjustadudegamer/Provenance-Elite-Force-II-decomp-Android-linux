@@ -64,6 +64,12 @@ int RB_FrameBoneArena( void ) {
 	return rb_activeFrame ? rb_activeFrame->boneArena : tr.smpFrame;
 }
 
+/* qtrue while the recorder is executing the list itself with the render thread
+   parked, which is the one window where walk code may run off the walk thread. */
+qboolean RB_SerialIssueActive( void ) {
+	return rb_serialIssue;
+}
+
 int RB_FrameBackEndMsec( void ) {
 	return SDL_AtomicGet( &rb_frameBackMsec );
 }
@@ -155,6 +161,7 @@ void R_IssueRenderCommands( qboolean runPerformanceCounters ) {
 		frame->frameCount = tr.frameCount;
 		frame->boneArena = tr.smpFrame;
 		frame->backEndMsec = 0;
+
 
 		if ( glConfig.smpActive && !rb_serialIssue && !GLimp_IsRenderThread() ) {
 			GLimp_WakeRenderer( frame );
@@ -262,21 +269,84 @@ void R_FlushRenderCommands( void ) {
 	R_IssueRenderCommands( qfalse );
 }
 
+static qboolean RB_CommandListGrow( renderCommandList_t *list, int demand ) {
+	int		oldBytes, newBytes;
+	byte	*cmds;
+
+	if ( !list || demand <= list->capacity || list->capacity >= MAX_RENDER_COMMANDS_CEIL ) {
+		return qfalse;
+	}
+
+	oldBytes = list->capacity > 0 ? list->capacity : MAX_RENDER_COMMANDS;
+	newBytes = oldBytes;
+	while ( newBytes < demand && newBytes < MAX_RENDER_COMMANDS_CEIL ) {
+		newBytes *= 2;
+	}
+	if ( newBytes > MAX_RENDER_COMMANDS_CEIL ) {
+		newBytes = MAX_RENDER_COMMANDS_CEIL;
+	}
+
+	cmds = (byte *)ri.Malloc( newBytes );
+	if ( !cmds ) {
+		return qfalse;
+	}
+
+	/* The grow runs mid-record, so the commands already in this slot are the
+	   ones the render thread will walk: the bytes have to move with the list. */
+	if ( list->used > 0 && list->cmds ) {
+		Com_Memcpy( cmds, list->cmds, list->used );
+	}
+
+	list->cmds     = cmds;
+	list->capacity = newBytes;
+
+	return qtrue;
+}
+
+/* The slot's last demand sizes the next frame: growing here costs one copy-free
+   swap before anything is recorded into the block, instead of a mid-record copy.
+   Mirrors the reference renderer's reset. */
+void RB_CommandListReset( void ) {
+	renderCommandList_t	*list = &backEndData->commands;
+
+	if ( list && list->capacity > 0 && list->highWater * 4 >= list->capacity * 3 ) {
+		RB_CommandListGrow( list, list->highWater + ( int )sizeof( int ) * 8 );
+	}
+	if ( list ) {
+		list->used      = 0;
+		list->highWater = 0;
+	}
+}
+
 void *R_GetCommandBufferReserved( int bytes, int reservedBytes ) {
 	renderCommandList_t	*cmdList;
+	int					demand;
 
 	cmdList = &backEndData->commands;
 	bytes = PAD(bytes, sizeof(void *));
 
-	if ( cmdList->used + bytes + sizeof( int ) + reservedBytes > MAX_RENDER_COMMANDS ) {
-		if ( bytes > MAX_RENDER_COMMANDS - sizeof( int ) ) {
-			ri.Error( ERR_FATAL, "R_GetCommandBuffer: bad size %i", bytes );
-		}
-		ri.Printf( PRINT_WARNING, "Failed to allocate render command of size %d\n", bytes );
+	if ( !cmdList->cmds ) {
 		return NULL;
+	}
+	if ( bytes > MAX_RENDER_COMMANDS - (int)sizeof( int ) ) {
+		ri.Error( ERR_FATAL, "R_GetCommandBuffer: bad size %i", bytes );
+	}
+
+	demand = cmdList->used + bytes + (int)sizeof( int ) + reservedBytes;
+	if ( demand > cmdList->capacity ) {
+		/* Refusing here drops the record silently, which is how the menu lost its
+		   art, its colour and its scissor once the list passed the bound. */
+		if ( !RB_CommandListGrow( cmdList, demand ) ) {
+			ri.Printf( PRINT_WARNING, "Failed to allocate render command of size %d (used %d of %d)\n",
+					   bytes, cmdList->used, cmdList->capacity );
+			return NULL;
+		}
 	}
 
 	cmdList->used += bytes;
+	if ( cmdList->used > cmdList->highWater ) {
+		cmdList->highWater = cmdList->used;
+	}
 
 	return cmdList->cmds + cmdList->used - bytes;
 }
@@ -286,21 +356,69 @@ void *R_GetCommandBuffer( int bytes ) {
 }
 
 
+/* The record has to own its surfaces.  cmd->drawSurfs used to be a raw pointer
+   into tr.refdef.drawSurfs, which the front end rewrites when a later scene of
+   the same frame starts: R_SetupScene rewinds tr.refdef.numDrawSurfs to this
+   scene's first index, so the walk could re-read another scene's surfaces in the
+   slot this record named. */
+static drawSurfsCommand_t *R_AllocSurfCmd( int headBytes, int numSurfs ) {
+	int					listBytes = ( numSurfs > 0 ) ? numSurfs * (int)sizeof( drawSurf_t ) : 0;
+	int					bytes = headBytes + listBytes + (int)sizeof( void * );
+	drawSurfsCommand_t	*cmd = (drawSurfsCommand_t *)R_GetCommandBuffer( bytes );
+	int					pad = (int)sizeof( void * );
+
+	/* The list advances a command by its own size, and this record keeps its
+	   surfaces behind the struct: the total carries the padded slice or the walk
+	   reads it as commands.  The allocator pads its request to pointer size, so
+	   the total does too. */
+	if ( cmd ) {
+		cmd->totalBytes = ( bytes + pad - 1 ) & ~( pad - 1 );
+	}
+	return cmd;
+}
+
+static void R_CarryDrawSurfs( drawSurfsCommand_t *cmd, drawSurf_t *surfs, int numSurfs ) {
+	unsigned long	addr, align, pad;
+	byte			*base;
+
+	if ( numSurfs <= 0 || surfs == NULL ) {
+		cmd->drawSurfs = NULL;
+		return;
+	}
+
+	base  = (byte *)cmd + sizeof( *cmd );
+	addr  = (unsigned long)base;
+	align = (unsigned long)sizeof( void * );
+	pad   = ( align - ( addr % align ) ) % align;
+
+	cmd->drawSurfs = (drawSurf_t *)( base + pad );
+	Com_Memcpy( cmd->drawSurfs, surfs, numSurfs * sizeof( drawSurf_t ) );
+}
+
 void	R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	drawSurfsCommand_t	*cmd;
 
 	R_Invalidate2DWindowCache();
 
-	cmd = R_GetCommandBuffer( sizeof( *cmd ) );
+	cmd = R_AllocSurfCmd( sizeof( *cmd ), numDrawSurfs );
 	if ( !cmd ) {
 		return;
 	}
 	cmd->commandId = RC_DRAW_SURFS;
 
-	cmd->drawSurfs = drawSurfs;
+	if ( r_surfOwn && r_surfOwn->integer ) {
+		R_CarryDrawSurfs( cmd, drawSurfs, numDrawSurfs );
+	} else {
+		/* the record names the live array again, which is only ever safe when the
+		   front end cannot refill it before the walk: the switch exists so the two
+		   behaviours can be compared on one boot */
+		cmd->drawSurfs = drawSurfs;
+	}
 	cmd->numDrawSurfs = numDrawSurfs;
 
 	cmd->refdef = tr.refdef;
+	/* the record's own list is the one the walk reads, so the refdef points at it */
+	cmd->refdef.drawSurfs = cmd->drawSurfs;
 	cmd->viewParms = tr.viewParms;
 }
 
@@ -310,16 +428,21 @@ void	R_AddSpriteSurfCmd(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
     R_Invalidate2DWindowCache();
 
-    cmd = R_GetCommandBuffer(sizeof(*cmd));
+    cmd = R_AllocSurfCmd(sizeof(*cmd), numDrawSurfs);
     if (!cmd) {
         return;
     }
     cmd->commandId = RC_SPRITE_SURFS;
 
-    cmd->drawSurfs = drawSurfs;
+    if ( r_surfOwn && r_surfOwn->integer ) {
+        R_CarryDrawSurfs( cmd, drawSurfs, numDrawSurfs );
+    } else {
+        cmd->drawSurfs = drawSurfs;
+    }
     cmd->numDrawSurfs = numDrawSurfs;
 
     cmd->refdef = tr.refdef;
+    cmd->refdef.spriteSurfs = cmd->drawSurfs;
     cmd->viewParms = tr.viewParms;
 }
 
@@ -478,8 +601,21 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec ) {
 	}
 
 	/* The 2D pass ended: the batched quads draw now, into this frame's buffer
-	   and under the 2D view, rather than leaking into the next one. */
-	RB_2D_Flush();
+	   and under the 2D view, rather than leaking into the next one.  Under r_smp
+	   the walk does it, from this record: the batch is walk state and GL is the
+	   walk's, so a flush here ran on the recorder while the walk was still
+	   executing the previous frame -- whichever batch it caught was closed
+	   off-thread, and its quads were gone for that frame. */
+	if ( glConfig.smpActive ) {
+		int	*flush = (int *)R_GetCommandBuffer( sizeof( int ) );
+
+		if ( flush ) {
+			*flush = RC_2D_FLUSH;
+		}
+	} else {
+		RB_2D_Flush();
+	}
+
 
 	cmd = R_GetCommandBufferReserved( sizeof( *cmd ), 0 );
 	if ( !cmd ) {

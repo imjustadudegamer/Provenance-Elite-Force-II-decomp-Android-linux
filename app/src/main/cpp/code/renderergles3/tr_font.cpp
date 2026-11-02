@@ -624,6 +624,11 @@ static shader_t	   *s_fontRunShader;
 static int			s_fontRunScaled;
 static float		s_fontRunZ, s_fontRunCharHeight, s_fontRunGlyphScale;
 static float		s_fontRunWidthScale, s_fontRunHeightScale;
+/* the state the run was queued under, not the state the walk holds when it draws */
+static float		s_fontRunOrigin[2];
+static qboolean		s_fontRunScissorValid;
+static int			s_fontRunScissor[4];
+static byte			s_fontRunColor[4];
 
 static void R_FontRunWrite( void ) {
 	int		i;
@@ -633,6 +638,13 @@ static void R_FontRunWrite( void ) {
 	}
 
 	RB_2D_EnterPhase();
+	/* the phase block zeroes the placement and takes the scissor with it */
+	gles3_2dOrigin[0] = s_fontRunOrigin[0];
+	gles3_2dOrigin[1] = s_fontRunOrigin[1];
+	if ( s_fontRunScissorValid ) {
+		RB_2D_ScissorApplied( s_fontRunScissor[0], s_fontRunScissor[1],
+							  s_fontRunScissor[2], s_fontRunScissor[3] );
+	}
 	RB_BeginSurface( s_fontRunShader, 0 );
 
 	for ( i = 0; i < s_fontRunCount; i++ ) {
@@ -684,6 +696,20 @@ static void R_FontRunWrite( void ) {
 		/* the glyph quad is a 2D quad like any other: placed once, after the scale */
 		RB_2DPlaceRange( tess.numVertexes, 4 );
 
+		/* the glyph quad bypasses addTriangle, so it would otherwise draw in
+		   whatever colour the previous surface left in the array */
+		{
+			int v;
+
+			for ( v = 0; v < 4; v++ ) {
+				tess.vertexColors[tess.numVertexes + v][0] = s_fontRunColor[0];
+				tess.vertexColors[tess.numVertexes + v][1] = s_fontRunColor[1];
+				tess.vertexColors[tess.numVertexes + v][2] = s_fontRunColor[2];
+				tess.vertexColors[tess.numVertexes + v][3] = s_fontRunColor[3];
+			}
+			tess.vertexColorValid = qtrue;
+		}
+
 		tess.numVertexes += 4;
 		tess.numIndexes += 6;
 	}
@@ -719,6 +745,11 @@ static void R_FontRunFlush( void ) {
 	cmd->glyphScale = s_fontRunGlyphScale;
 	cmd->widthScale = s_fontRunWidthScale;
 	cmd->heightScale = s_fontRunHeightScale;
+	cmd->originX = s_fontRunOrigin[0];
+	cmd->originY = s_fontRunOrigin[1];
+	cmd->scissorValid = s_fontRunScissorValid ? 1 : 0;
+	Com_Memcpy( cmd->scissor, s_fontRunScissor, sizeof( cmd->scissor ) );
+	Com_Memcpy( cmd->color, s_fontRunColor, sizeof( cmd->color ) );
 	Com_Memcpy( cmd + 1, s_fontRun, s_fontRunCount * sizeof( fontGlyph_t ) );
 
 	s_fontRunCount = 0;
@@ -737,6 +768,10 @@ static void R_FontRunBegin( shader_t *shader, float z, float charHeight, float g
 	s_fontRunWidthScale = widthScale;
 	s_fontRunHeightScale = heightScale;
 	s_fontRunScaled = scaled;
+
+	/* the state in force where the string is QUEUED, not where it flushes */
+	R_2DQueuePlacement( &s_fontRunOrigin[0], &s_fontRunOrigin[1],
+						&s_fontRunScissorValid, s_fontRunScissor, s_fontRunColor );
 }
 
 void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y, int maxlen, const float *pvVirtualScreen) {

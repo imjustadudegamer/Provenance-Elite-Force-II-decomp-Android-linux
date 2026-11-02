@@ -32,6 +32,39 @@ backEndData_t	*backEndData;
 backEndData_t	*backEndDataBuf[SMP_FRAMES];	
 backEndState_t	backEnd;
 
+/* Whether this frame's colour target has been cleared by anything.  A frame
+   whose 2D page hides the menu's 3D view never reaches RB_BeginDrawingView, so
+   nothing cleared it and the page composited over the previous frame's pixels --
+   the ghosted backdrop behind the load/save page.  The reference renderer clears
+   its pass every frame; the twin clears once, in the view or in the 2D window,
+   whichever comes first. */
+static qboolean	s_frameCleared;
+static int		s_frameClearedFor = -1;
+
+static void RB_FrameClearOnce( void ) {
+	if ( s_frameClearedFor != RB_FrameCount() ) {
+		s_frameClearedFor = RB_FrameCount();
+		s_frameCleared = qfalse;
+	}
+}
+
+/* The 2D window calls this before it applies its own placement.  The box is
+   forced full-screen first so a stale widget clip cannot keep the clear off the
+   rest of the target. */
+void RB_FrameClearIfFirst( void ) {
+	RB_FrameClearOnce();
+	if ( s_frameCleared ) {
+		return;
+	}
+
+	/* the box the clear must cover; RB_2D_ScissorApplied keeps the walk's mirror
+	   with the box, so the next widget's dedupe still tests the truth */
+	RB_2D_ScissorApplied( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
+	qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
+	qglClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	s_frameCleared = qtrue;
+}
+
 
 static float	s_flipMatrix[16] = {
 	0, 0, -1, 0,
@@ -39,6 +72,18 @@ static float	s_flipMatrix[16] = {
 	0, 1, 0, 0,
 	0, 0, 0, 1
 };
+
+/* Whether a pixel readback would run at all.  A caller that has to query live GL
+   state to build the probe's rect asks this first: a synchronous state query
+   costs the frame more than the row it feeds, and a silent build runs none. */
+qboolean GLES3_PixelProbeWanted( void ) {
+	static cvar_t	*cvar;
+
+	if ( !cvar ) {
+		cvar = PROBE_GET( "pix_probe", "1", 0 );
+	}
+	return ( cvar->integer && PROBE_On() ) ? qtrue : qfalse;
+}
 
 /* ---- [GLES3:pix] what the framebuffer actually holds ----------------------
  * A submitted draw that produces no pixels is invisible from the command list.
@@ -230,6 +275,26 @@ found:
 /* The wrap is object state and the flip writes it to whatever is bound, so a
    texture keeps another stage's clamp or repeat; the bind hands its own back. */
 static image_t	*s_wrapImage[2];
+
+/* A released texture's GL name is handed out again by the next upload, and the
+   bind cache would then skip the bind for a unit whose name happens to match: the
+   stage samples whatever the driver left there.  Every entry naming this name
+   falls back to "unknown" so the next bind re-issues it. */
+void GL_InvalidateTextureBinding( unsigned texnum ) {
+	int	tmu;
+
+	if ( !texnum ) {
+		return;
+	}
+	for ( tmu = 0; tmu < 2; tmu++ ) {
+		if ( (unsigned)glState.currenttextures[tmu] == texnum ) {
+			glState.currenttextures[tmu] = -1;
+		}
+		if ( s_wrapImage[tmu] && (unsigned)s_wrapImage[tmu]->texnum == texnum ) {
+			s_wrapImage[tmu] = NULL;
+		}
+	}
+}
 
 static GLenum GLES3_WrapEnum( int mode ) {
 	if ( mode == GL_CLAMP && haveClampToEdge ) {
@@ -961,8 +1026,11 @@ void RB_BeginDrawingView (void) {
 	backEnd.in2D = qfalse;
 
 	/* A 2D rect cached here survives the 3D pass, and the next 2D call would
-	   then skip re-issuing a scissor that pass overwrote: drop the pair. */
-	R_Invalidate2DWindowCache();
+	   then skip re-issuing a scissor that pass overwrote: drop the walk's pair.
+	   The recorder's own cache is the recorder's -- the walk writing it made a
+	   string re-open the screen window over its widget's own -- and R_RenderScene
+	   and R_AddDrawSurfCmd drop that one where it is recorded. */
+	RB_2D_InvalidateWindow();
 
 	SetViewportAndScissor();
 
@@ -972,9 +1040,13 @@ void RB_BeginDrawingView (void) {
 	GL_State( GLS_DEFAULT );
 	clearBits = GL_DEPTH_BUFFER_BIT;
 
-	/* Retail's menu frame clears DEPTH only; the UI's 3D view builds no volume. */
+	/* RB_BeginDrawingView @0x1490 clears 1280 = DEPTH_BUFFER_BIT|STENCIL_BUFFER_BIT when the
+	   overdraw cvar is on or the cvar at off_227C9C reads 2, the precise shadow tier.  Without
+	   the stencil half every view in a frame shared one plane, so a sub-view's caster marked
+	   the main view's screen. */
 	if ( !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL )
-		 && ( r_measureOverdraw->integer || r_shadows->integer == 2 ) )
+		 && ( r_measureOverdraw->integer || r_shadows->integer == 2 )
+		 && glConfig.stencilBits >= 4 )
 	{
 		clearBits |= GL_STENCIL_BUFFER_BIT;
 	}
@@ -997,6 +1069,10 @@ void RB_BeginDrawingView (void) {
 	}
 	qglClear( clearBits );
 
+	if ( clearBits & GL_COLOR_BUFFER_BIT ) {
+		s_frameCleared = qtrue;
+	}
+
 	GLES3_DepthFuncApply( GL_LEQUAL );	/* pinned per view for the A/B cvar */
 
 	SMP_VpProbe( "clear", "RB_BeginDrawingView/qglClear",
@@ -1017,7 +1093,11 @@ void RB_BeginDrawingView (void) {
 
 	backEnd.skyRenderedThisView = qfalse;
 
-	if ( backEnd.viewParms.isPortal ) {
+	/* RB_BeginDrawingView @0x1490 gates the clip plane on the dword 16 bytes before
+	   portalPlane, which in this struct is isMirror -- not isPortal.  Arming it for a
+	   non-mirror portal hands the fragment stage an eye-space plane that discards one
+	   half of the viewscreen's panel. */
+	if ( backEnd.viewParms.isMirror ) {
 		float	plane[4];
 		double	plane2[4];
 
@@ -1055,6 +1135,17 @@ void RB_BeginDrawingView (void) {
 			s_gles3ViewLogged++;
 		}
 	}
+}
+
+/* a sort word or a sprite whose table generation has passed: the index is the
+   only thing left that names a shader, so re-resolve it against the live table */
+static shader_t *RB_ResolveStaleShader( int index )
+{
+	if ( index < 0 || index >= tr.numShaders ) {
+		return NULL;
+	}
+
+	return tr.sortedShaders[index];
 }
 
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
@@ -1100,14 +1191,37 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		}
 		oldSort = (int)drawSurf->sort;
 		if (*drawSurf->surface != SF_SPRITE) {
+			int	carriedIndex;
+
+			/* sort decomposes for entity/fog/dlight; the shader comes from the
+			   pack-time pointer, not the mutable index: an index is only valid
+			   for the generation that wrote it */
 			R_DecomposeSort(drawSurf->sort, &entityNum, &shader, &fogNum, &dlightMap);
+			carriedIndex = ( drawSurf->sort >> QSORT_SHADERNUM_SHIFT ) & QSORT_SHADERNUM_MASK;
+			if ( drawSurf->shaderGen != tr.shaderGen ) {
+				shader = RB_ResolveStaleShader( carriedIndex );
+			} else if ( drawSurf->shader ) {
+				shader = drawSurf->shader;
+			}
 			bStaticModel = qfalse;
 		} else {
-			shader = tr.sortedShaders[((refSprite_t*)drawSurf->surface)->shaderNum];
+			refSprite_t	*spr = (refSprite_t *)drawSurf->surface;
+
+			if ( spr->shaderGen != tr.shaderGen ) {
+				shader = RB_ResolveStaleShader( spr->shaderNum );
+			} else if ( spr->shader ) {
+				shader = spr->shader;
+			} else {
+				shader = tr.sortedShaders[spr->shaderNum];
+			}
 			entityNum = ENTITYNUM_WORLD;
-			fogNum = ((refSprite_t*)drawSurf->surface)->fogNum;
+			fogNum = spr->fogNum;
 			dlightMap = 0;
 			bStaticModel = qfalse;
+		}
+
+		if ( shader == NULL ) {
+			continue;	/* the sort word named no live shader: nothing to draw with */
 		}
 
 		if (shader != oldShader || fogNum != oldFogNum || dlightMap != oldDlightMap
@@ -1338,7 +1452,10 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
         if (spr->shaderNum < 0 || spr->shaderNum >= tr.numShaders) continue;
 		BE_Bump( BE_FAM_BE, BE_BEC_sprN, 1 );
 		shadowSprT0 = BE_On() ? BE_Microseconds() : 0;
-		shader = tr.sortedShaders[spr->shaderNum];
+		/* the pack-time pointer, while its generation is the live one */
+		shader = ( spr->shaderGen == tr.shaderGen ) ? spr->shader
+												    : tr.sortedShaders[spr->shaderNum];
+		if ( !shader ) continue;
 		depthRange = (spr->renderfx & RF_DEPTHHACK) != 0;
 
         if ((shader != oldShader || (shader->noMerge & 1)) && !shader->entityMergable)
@@ -1538,6 +1655,15 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty) {
 	image_t	*scratch = tr.scratchImage;	
 	(void)client;
+
+	if ( !tr.registered ) {
+		return;
+	}
+
+	/* This upload is GL and rebinds the walk's unit-0 cache: park the walk and
+	   hand the context over first, as the reference renderer's own entry does. */
+	R_SyncRenderThread();
+	R_FlushRenderCommands();
 
 	GL_BindUnit0( scratch );
 
@@ -1739,7 +1865,10 @@ static const void *RB_2DSetWindow( const void *data ) {
 static const void *RB_2DOrigin( const void *data ) {
 	const origin2DCommand_t *cmd = (const origin2DCommand_t *)data;
 
-	Set2DOrigin( cmd->x, cmd->y );
+	/* the walk's own placement; the recorder's mirror is written where the run
+	   is queued (R_2DQueuePlacement), never from this thread */
+	gles3_2dOrigin[0] = cmd->x;
+	gles3_2dOrigin[1] = cmd->y;
 	return (const void *)(cmd + 1);
 }
 
@@ -1757,6 +1886,12 @@ static const void *RB_2DShaderTime( const void *data ) {
 	return (const void *)(cmd + 1);
 }
 
+/* The frame's 2D pass ends here, on the thread that owns the batch and GL. */
+static const void *RB_2DFlush( const void *data ) {
+	RB_2D_Flush();
+	return (const void *)((const int *)data + 1);
+}
+
 /* One recorded page-and-colour run of a string. */
 static const void *RB_2DFontString( const void *data ) {
 	const fontString2DCommand_t	*cmd = (const fontString2DCommand_t *)data;
@@ -1768,7 +1903,17 @@ static const void *RB_2DFontString( const void *data ) {
 			RB_EndSurface();
 		}
 
+		/* The phase block is the screen window: it zeroes the placement and takes
+		   the scissor with it, and the run's own state is what places its glyphs. */
 		RB_2D_EnterPhase();
+		gles3_2dOrigin[0] = cmd->originX;
+		gles3_2dOrigin[1] = cmd->originY;
+		/* written through the walk's mirror: the next widget's RE_Scissor dedupes
+		   against it, and a raw apply here used to leave it naming a box GL no
+		   longer had, so that widget's clip was skipped */
+		if ( cmd->scissorValid ) {
+			RB_2D_ScissorApplied( cmd->scissor[0], cmd->scissor[1], cmd->scissor[2], cmd->scissor[3] );
+		}
 		RB_BeginSurface( cmd->shader, 0 );
 
 		for ( i = 0; i < cmd->numGlyphs; i++, g++ ) {
@@ -1822,15 +1967,15 @@ static const void *RB_2DFontString( const void *data ) {
 
 			/* the glyph quad carries the 2D colour per vertex, as the
 			   stretch-pic quads do, or the text inherits the previous
-			   surface's colour */
+			   surface's colour; the run's own colour, not the live one */
 			{
 				int v;
 
 				for ( v = 0; v < 4; v++ ) {
-					tess.vertexColors[tess.numVertexes + v][0] = backEnd.color2D[0];
-					tess.vertexColors[tess.numVertexes + v][1] = backEnd.color2D[1];
-					tess.vertexColors[tess.numVertexes + v][2] = backEnd.color2D[2];
-					tess.vertexColors[tess.numVertexes + v][3] = backEnd.color2D[3];
+					tess.vertexColors[tess.numVertexes + v][0] = cmd->color[0];
+					tess.vertexColors[tess.numVertexes + v][1] = cmd->color[1];
+					tess.vertexColors[tess.numVertexes + v][2] = cmd->color[2];
+					tess.vertexColors[tess.numVertexes + v][3] = cmd->color[3];
 				}
 				tess.vertexColorValid = qtrue;
 			}
@@ -1889,7 +2034,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	BE_RootEnd( BE_FAM_DS );
 
-	return (const void *)(cmd + 1);
+	return (const void *)((const char *)cmd + cmd->totalBytes);
 }
 
 
@@ -1904,11 +2049,16 @@ const void* RB_SpriteSurfs(const void* data) {
 
     backEnd.refdef = cmd->refdef;
     backEnd.viewParms = cmd->viewParms;
-	
+
+	/* the sprite pass is a 3D view and in2D is the walk's flag: a sprite list
+	   reached with in2D still up keeps the surface out of the global-fog
+	   promotion RB_BeginSurface keys on that flag */
+	backEnd.in2D = qfalse;
+
 	RB_SetupFog();
     RB_RenderSpriteSurfList(cmd->drawSurfs, cmd->numDrawSurfs);
 
-    return (const void*)(cmd + 1);
+    return (const void*)((const char *)cmd + cmd->totalBytes);
 }
 
 
@@ -1916,6 +2066,8 @@ const void	*RB_DrawBuffer( const void *data ) {
 	const drawBufferCommand_t	*cmd;
 
 	cmd = (const drawBufferCommand_t *)data;
+
+	RB_FrameClearOnce();
 
 	glState.finishCalled = qfalse;
 
@@ -2048,7 +2200,13 @@ const void	*RB_SwapBuffers( const void *data ) {
 	}
 
 
-	if ( !glState.finishCalled ) {
+	/* Retail finishes the frame here when no view opened it, which on a page that
+	   draws no 3D view -- every menu page -- is every frame.  A finish drains the
+	   whole GPU pipeline before the swap can start, so the CPU never overlaps the
+	   GPU on exactly the pages that are cheapest to draw, and the frame becomes
+	   the sum of the two instead of the larger.  The swap already orders the
+	   frame, so the drain is only what r_finish asks for. */
+	if ( r_finish->integer && !glState.finishCalled ) {
 		qglFinish();
 	}
 
@@ -2475,6 +2633,7 @@ static const char *RB_GlErrCmdName( int id ) {
 	case RC_2D_ORIGIN:			return "2D_ORIGIN";
 	case RC_2D_FONT_STRING:		return "2D_FONT_STRING";
 	case RC_2D_SHADER_TIME:		return "2D_SHADER_TIME";
+	case RC_2D_FLUSH:			return "2D_FLUSH";
 	default:					return "UNKNOWN_CMD";
 	}
 }
@@ -2597,9 +2756,17 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			BE_ZONE( BE_FAM_BE, BE_BEZ_pic, data = RB_StretchPic( data ) );
 			break;
 		case RC_DRAW_SURFS:
+			/* The 2D batch draws where it flushes, not where its commands sit, and
+			   retail's own frame paints the menu's fill and frame strips, then the
+			   view3d model, then the LCARS panels (retail-gl-1031 trace 186420-186503,
+			   186528-186669, 186677+).  Closing it here keeps that order; left to
+			   RB_BeginDrawingView it is closed after the surf case has already
+			   begun, and a sprite list clears in2D before its next surface opens. */
+			RB_2D_Flush();
 			BE_ZONE( BE_FAM_BE, BE_BEZ_surfs, data = RB_DrawSurfs( data ) );
 			break;
 		case RC_SPRITE_SURFS:
+			RB_2D_Flush();
 			BE_ZONE( BE_FAM_BE, BE_BEZ_sprites, data = RB_SpriteSurfs( data ) );
 			break;
 		case RC_DRAW_BUFFER:
@@ -2659,6 +2826,9 @@ void RB_ExecuteRenderCommands( const void *data ) {
 		case RC_2D_SHADER_TIME:
 			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DShaderTime(data) );
 			break;
+		case RC_2D_FLUSH:
+			BE_ZONE( BE_FAM_BE, BE_BEZ_other, data = RB_2DFlush(data) );
+			break;
 		case RC_END_OF_LIST:
 		default:
 			t2 = ri.Milliseconds ();
@@ -2672,6 +2842,13 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			return;
 		}
 		RB_GlErrSample( RB_GlErrCmdName( cmdId ), cmdId );
+
+		/* The allocator pads every command to pointer size, so the walk has to
+		   advance by the same amount: a struct whose size is not a multiple of it
+		   (20 here, 44 for the 2D window) puts the next command id four bytes
+		   early, and the list ends on whatever byte it lands on -- every command
+		   behind it, including the frame's surfaces and its swap, is lost. */
+		data = PADP( data, sizeof( void * ) );
 	}
 
 }

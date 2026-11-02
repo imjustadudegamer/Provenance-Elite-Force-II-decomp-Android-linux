@@ -3782,6 +3782,10 @@ void R_SetupShaders(void)
     Com_Memset( tr.shaders, 0, sizeof( tr.shaders ) );
     Com_Memset( tr.sortedShaders, 0, sizeof( tr.sortedShaders ) );
 
+    /* a shader index is only valid for the generation that wrote it: a record
+       holding one across this wipe names whatever the rebuild puts there */
+    tr.shaderGen++;
+
     for (hash = 0; hash < FILE_HASH_SIZE; ++hash)
     {
 		for (shaderText = hashTable[hash]; shaderText; shaderText = shaderText->next) {

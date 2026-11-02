@@ -1146,10 +1146,18 @@ typedef enum {
 	UNIF_UNBOUND		/* not in use: the call would be invalid */
 } unifVerdict_t;
 
+/* Every uniform write bumps this.  A block of writes that a whole draw shares
+   records it on the way out, so a write from anywhere else -- another program's
+   stage, the box run's base colour, the fullbright clobber -- reaches that
+   record without any of them having to announce itself. */
+static unsigned	s_unifEpoch = 1;
+
 static unifVerdict_t GLES3_UniformCached( gles3Program_t *p, int location, const void *v, int n )
 {
 	gles3UnifCache_t	*e;
 	unsigned			 slot;
+
+	s_unifEpoch++;
 
 	slot = ( (unsigned)p->program * 31u + (unsigned)location ) & ( GLES3_UNIF_CACHE_SIZE - 1 );
 
@@ -1633,10 +1641,14 @@ void GLES3_SetupStageUniforms( gles3Program_t *p, const shaderStage_t *pStage, c
 	cpuTexCoords = GLES3_StageNeedsCPUTexCoords( pStage );
 
 	/* In 2D the quad already carries Draw_SetColor in a_Color (tr_draw.c writes it per vertex), so
-	   u_BaseColor stays 1: multiplying it in again squares the colour and the alpha, which is the
-	   black-button / half-alpha class. In 3D a_Color is the tess colour array, which a
-	   constant-colour stage never fills, so the uniform still has to carry it. */
-	if ( backEnd.in2D )
+	   u_BaseColor stays 1 for the gens that read the vertex: multiplying it in again squares the
+	   colour and the alpha, which is the black-button / half-alpha class. The two gens that read the
+	   uniform instead keep their own constant -- forcing 1 on them made every constant-colour 2D
+	   stage draw white, and the retail view modes tint through rgbGen const. In 3D a_Color is the
+	   tess colour array, which a constant-colour stage never fills, so the uniform carries it. */
+	if ( backEnd.in2D
+		 && pStage->rgbGen != CGEN_CONSTANT
+		 && pStage->rgbGen != CGEN_MULTIPLY_BY_WAVEFORM )
 	{
 		baseColor[0] = baseColor[1] = baseColor[2] = baseColor[3] = 1.0f;
 	}
@@ -1975,7 +1987,7 @@ void GLES3_SetupFogUniforms( gles3Program_t *p, int fogNum, qboolean fogDensityA
 				densityArm = ( dView >= 0.0f ) ? 2 : 3;
 			}
 		}
-		GLES3_SetUniform1f( p, GLES3_U_FOGOOLEN, tr.viewParms.fog.oolen );
+		GLES3_SetUniform1f( p, GLES3_U_FOGOOLEN, backEnd.viewParms.fog.oolen );
 	}
 
 	GLES3_SetUniform1i( p, GLES3_U_FOGDENSITYARM, densityArm );
@@ -2486,6 +2498,134 @@ void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 	}
 }
 
+/* ---- the 2D draw's shared uniform block ------------------------------------
+   A 2D pass is one surface per widget and every widget repeats the state of the
+   one before it: same stage, same program, same world, and for a list of rows
+   the same ortho too.  Re-issuing the block costs some fifty cache probes a
+   widget, which on the load page is most of the frame.  The block is skipped
+   when every input it reads is unchanged AND no uniform write has happened
+   since it ran (s_unifEpoch), so nothing else in the renderer has to know that
+   this exists.  Only the 2D pass takes it: the clip plane is off for the whole
+   of it (RB_2D_SetWindow disables it), which is the one input that is not a
+   value here. */
+typedef struct {
+	unsigned			epoch;
+	int					frame;
+	gles3Program_t		*prog;
+	const shaderStage_t	*stage;
+	const shader_t		*shader;
+	const void			*entity;
+	byte				color[4];
+	unsigned			forceBits;
+	int					fogNum;
+	int					fogArm;
+	int					fogGate;
+	float				shaderTime;
+	float				entityFade;
+	float				identityLight;
+	float				proj[16];
+	float				mv[16];
+	vec3_t				viewOrigin;
+	vec3_t				viewOrg;
+	vec3_t				viewAxis0;
+	vec3_t				oriOrigin;
+	vec3_t				oriAxis0;
+	vec3_t				oriAxis1;
+	vec3_t				oriAxis2;
+	vec3_t				sunDirection;
+	int					identityLightByte;
+} gles3UnifBlock_t;
+
+static gles3UnifBlock_t	s_unifBlock;
+
+/* the skip rate, so one capture says whether a page repeats its state */
+static unsigned	s_unifBlockIssued;
+static unsigned	s_unifBlockSkipped;
+
+void GLES3_UnifBlockStats( unsigned *issued, unsigned *skipped )
+{
+	if ( issued ) {
+		*issued = s_unifBlockIssued;
+	}
+	if ( skipped ) {
+		*skipped = s_unifBlockSkipped;
+	}
+}
+
+/* Take the block's key for this draw.  qtrue means the program already carries
+   it and the three setup calls can be skipped. */
+static qboolean GLES3_UnifBlockTake( gles3Program_t *p, const shaderStage_t *pStage,
+									 const shader_t *shader, float forceAlpha )
+{
+	gles3UnifBlock_t	k;
+
+	if ( !backEnd.in2D ) {
+		s_unifBlock.epoch = 0;
+		return qfalse;
+	}
+
+	k.epoch      = s_unifEpoch;
+	k.frame      = tr.frameCount;
+	k.prog       = p;
+	k.stage      = pStage;
+	k.shader     = shader;
+	k.entity     = backEnd.currentEntity;
+	k.fogNum     = tess.fogNum;
+	k.fogArm     = pStage->fogDensityArm;
+	k.fogGate    = ( glState.externalSetState & GLS_FOG ) ? 1 : 0;
+	k.shaderTime = tess.shaderTime;
+	k.entityFade = tess.entityFade;
+	k.identityLight = tr.identityLight;
+	k.identityLightByte = tr.identityLightByte;
+	/* the widget's own colour reaches the block only through the two gens that
+	   read the uniform; pinning it to zero otherwise is what lets two rows that
+	   differ only in colour still share the block */
+	if ( pStage->rgbGen == CGEN_GLOBAL_COLOR || pStage->alphaGen == AGEN_GLOBAL_ALPHA ) {
+		Com_Memcpy( k.color, backEnd.color2D, sizeof( k.color ) );
+	} else {
+		Com_Memset( k.color, 0, sizeof( k.color ) );
+	}
+	VectorCopy( tr.sunDirection, k.sunDirection );
+	Com_Memcpy( &k.forceBits, &forceAlpha, sizeof( k.forceBits ) );
+	Com_Memcpy( k.proj, RB_GetProjectionMatrix(), sizeof( k.proj ) );
+	Com_Memcpy( k.mv, RB_GetModelViewMatrix(), sizeof( k.mv ) );
+	VectorCopy( backEnd.ori.viewOrigin, k.viewOrigin );
+	VectorCopy( backEnd.refdef.vieworg, k.viewOrg );
+	VectorCopy( backEnd.refdef.viewaxis[0], k.viewAxis0 );
+	VectorCopy( backEnd.viewParms.ori.origin, k.oriOrigin );
+	VectorCopy( backEnd.viewParms.ori.axis[0], k.oriAxis0 );
+	VectorCopy( backEnd.viewParms.ori.axis[1], k.oriAxis1 );
+	VectorCopy( backEnd.viewParms.ori.axis[2], k.oriAxis2 );
+
+	if ( s_unifBlock.epoch == k.epoch && s_unifBlock.epoch
+		 && s_unifBlock.frame == k.frame
+		 && s_unifBlock.prog == k.prog && s_unifBlock.stage == k.stage
+		 && s_unifBlock.shader == k.shader && s_unifBlock.entity == k.entity
+		 && s_unifBlock.fogNum == k.fogNum && s_unifBlock.fogArm == k.fogArm
+		 && s_unifBlock.fogGate == k.fogGate
+		 && s_unifBlock.forceBits == k.forceBits
+		 && s_unifBlock.identityLightByte == k.identityLightByte
+		 && !memcmp( s_unifBlock.color, k.color, sizeof( k.color ) )
+		 && !memcmp( s_unifBlock.sunDirection, k.sunDirection, sizeof( k.sunDirection ) )
+		 && !memcmp( &s_unifBlock.shaderTime, &k.shaderTime, sizeof( float ) )
+		 && !memcmp( &s_unifBlock.entityFade, &k.entityFade, sizeof( float ) )
+		 && !memcmp( &s_unifBlock.identityLight, &k.identityLight, sizeof( float ) )
+		 && !memcmp( s_unifBlock.proj, k.proj, sizeof( k.proj ) )
+		 && !memcmp( s_unifBlock.mv, k.mv, sizeof( k.mv ) )
+		 && !memcmp( s_unifBlock.viewOrigin, k.viewOrigin, sizeof( k.viewOrigin ) )
+		 && !memcmp( s_unifBlock.viewOrg, k.viewOrg, sizeof( k.viewOrg ) )
+		 && !memcmp( s_unifBlock.viewAxis0, k.viewAxis0, sizeof( k.viewAxis0 ) )
+		 && !memcmp( s_unifBlock.oriOrigin, k.oriOrigin, sizeof( k.oriOrigin ) )
+		 && !memcmp( s_unifBlock.oriAxis0, k.oriAxis0, sizeof( k.oriAxis0 ) )
+		 && !memcmp( s_unifBlock.oriAxis1, k.oriAxis1, sizeof( k.oriAxis1 ) )
+		 && !memcmp( s_unifBlock.oriAxis2, k.oriAxis2, sizeof( k.oriAxis2 ) ) ) {
+		return qtrue;
+	}
+
+	s_unifBlock = k;
+	return qfalse;
+}
+
 void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -2501,9 +2641,19 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		prog = GLES3_StageProgram( pStage, shader, 0 );
 		GLES3_BindProgram( prog );
 
-		GLES3_SetupStageUniforms( prog, pStage, shader );
-		GLES3_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
-		GLES3_SetUniform1f( prog, GLES3_U_FORCEALPHA, forceAlpha );
+		if ( !GLES3_UnifBlockTake( prog, pStage, shader, forceAlpha ) )
+		{
+			GLES3_SetupStageUniforms( prog, pStage, shader );
+			GLES3_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
+			GLES3_SetUniform1f( prog, GLES3_U_FORCEALPHA, forceAlpha );
+			/* the block just wrote, so its epoch is current once more */
+			s_unifBlock.epoch = s_unifEpoch;
+			s_unifBlockIssued++;
+		}
+		else if ( backEnd.in2D )
+		{
+			s_unifBlockSkipped++;
+		}
 	} );
 
 	if ( hudColorClobber && ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
@@ -2578,6 +2728,10 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 
 	(void)stateBits;
 
+	/* The key's own payload walks every vertex of the draw to min/max the
+	   colours, and the census that reads it answers qfalse without the gate:
+	   the walk was being paid per draw to feed a row nobody prints. */
+	if ( R_ProbeStatsOn() )
 	{
 		gles3DrawKey_t k;
 

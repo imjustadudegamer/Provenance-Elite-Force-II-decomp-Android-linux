@@ -1961,7 +1961,8 @@ void RB_CalcAlphaFogDensities( void ) {
 		c.viewOrigin = backEnd.ori.viewOrigin;
 		c.numVertexes = tess.numVertexes;
 		c.arm = 0;
-		c.scale = tr.viewParms.fog.oolen;
+		/* the walk's frame copy, never the recorder's live struct */
+		c.scale = backEnd.viewParms.fog.oolen;
 
 		RB_CalcAlphaFogDensitiesRun( &c );
 		return;

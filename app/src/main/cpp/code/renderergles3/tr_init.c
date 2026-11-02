@@ -133,6 +133,7 @@ cvar_t  *r_glDriver;
 cvar_t	*r_lightmap;
 cvar_t	*r_vertexLight;
 cvar_t	*r_shadows;
+cvar_t	*r_surfOwn;
 cvar_t	*r_flares;
 cvar_t	*r_flaresMaxDist;
 cvar_t	*r_mode;
@@ -1279,6 +1280,9 @@ void R_Register( void )
 	r_lockpvs = ri.Cvar_Get ("r_lockpvs", "0", CVAR_CHEAT);
 	r_noportals = ri.Cvar_Get ("r_noportals", "0", CVAR_CHEAT);
 	r_shadows = ri.Cvar_Get( "cg_shadows", "1", CVAR_ARCHIVE );
+	/* the record's surfaces are its own: a live-array pointer is only safe when
+	   the front end cannot refill the array before the walk */
+	r_surfOwn = ri.Cvar_Get( "r_surfOwn", "1", CVAR_CHEAT );
 
 
 	r_stipplelines = ri.Cvar_Get("r_stipplelines", "1", CVAR_ARCHIVE);
@@ -1440,6 +1444,9 @@ void R_Init( void ) {
 		backEndDataBuf[i]->staticModels = NULL;
 		backEndDataBuf[i]->staticModelData = NULL;
 		backEndDataBuf[i]->commands.used = 0;
+		backEndDataBuf[i]->commands.highWater = 0;
+		backEndDataBuf[i]->commands.capacity = MAX_RENDER_COMMANDS;
+		backEndDataBuf[i]->commands.cmds = (byte *)ri.Malloc( MAX_RENDER_COMMANDS );
 	}
 	backEndData = backEndDataBuf[0];
 	R_InitNextFrame();
@@ -1505,6 +1512,10 @@ void RE_Shutdown( qboolean destroyWindow ) {
 
 	for ( int i = 0; i < SMP_FRAMES; i++ ) {
 		if ( backEndDataBuf[i] ) {
+			if ( backEndDataBuf[i]->commands.cmds ) {
+				ri.Free( backEndDataBuf[i]->commands.cmds );
+				backEndDataBuf[i]->commands.cmds = NULL;
+			}
 			ri.Free( backEndDataBuf[i] );
 			backEndDataBuf[i] = NULL;
 		}
