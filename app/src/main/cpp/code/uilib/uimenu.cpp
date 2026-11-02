@@ -89,12 +89,14 @@ Menu::Menu()
 {
     menuManager.AddMenu(this);
     m_fullscreen = qfalse;
+    m_linksCvars = qfalse;
 }
 
 Menu::Menu(str name)
 {
     setName(name);
     m_fullscreen = qfalse;
+    m_linksCvars = qfalse;
     menuManager.AddMenu(this);
 }
 
@@ -431,6 +433,14 @@ void Menu::NotifyPopMenu(void)
     if (widcon) {
         widcon->ExecutePopCommands();
     }
+
+    /* The handheld is swiped away rather than quit, so the exit write is not a
+       reliable archive: a page that owns settings writes them as it closes, one
+       file, once per page.  The renderer row writes its own the moment it
+       changes, because it must survive even a page left open. */
+    if (m_linksCvars) {
+        uii.Cmd_Stuff("writeconfig\n");
+    }
 }
 
 qboolean Menu::isVisible(void)
@@ -443,6 +453,14 @@ qboolean Menu::isVisible(void)
     return false;
 }
 
+/* A row whose value belongs to the next process start, not to this page: the
+   renderer row writes the archive and prompts, and a page restore would put the
+   old module name back the moment the page closed. */
+static qboolean MenuCvarOwnedByPlayer(const char *cvar)
+{
+    return (Q_stricmp(cvar, "cl_renderer") == 0) ? qtrue : qfalse;
+}
+
 void Menu::SaveCVars(void)
 {
     int i;
@@ -453,7 +471,16 @@ void Menu::SaveCVars(void)
         UIWidget *wid = m_itemlist.ObjectAt(i);
 
         if (wid->m_cvarname.length()) {
-            const char *ret = UI_GetCvarString(wid->m_cvarname, NULL);
+            const char *ret;
+
+            m_linksCvars = qtrue;
+
+            if (MenuCvarOwnedByPlayer(wid->m_cvarname.c_str())) {
+                wid->m_cvarvalue = "";   /* nothing snapshotted, nothing to put back */
+                continue;
+            }
+
+            ret = UI_GetCvarString(wid->m_cvarname, NULL);
             if (ret && *ret) {
                 wid->m_cvarvalue = ret;
             } else {
@@ -477,6 +504,10 @@ void Menu::RestoreCVars(void)
         UIWidget *wid = m_itemlist.ObjectAt(i);
 
         if (wid->m_cvarname.length()) {
+            if (MenuCvarOwnedByPlayer(wid->m_cvarname.c_str())) {
+                continue;
+            }
+
             // Cvar_Set2("") zeroes the cvar: an empty save must not round-trip.
             if (!wid->m_cvarvalue.length()) {
                 if (PROBE_On()) {
@@ -1787,9 +1818,14 @@ static const settingsGeom_s s_ctlCol = {
    video mode's own shape (r_mode owns it, retail ships no aspect row), so a letterbox
    inside that window only squashes the page.  The row still ships on both targets -- the
    page is one page -- and greying is EF1's own shape of that answer (ui_video.cpp:410,
-   QMF_GRAYED). */
+   QMF_GRAYED).
+
+   The renderer row is the handheld's alone: cl_renderer selects the module Android's
+   APK ships twice (librenderer_vulkan / librenderer_gles3), and the desktop launcher
+   picks its renderer by name on its own command line, so the row is greyed there the
+   same way the aspect row is. */
 static const char *const s_videoDesktopRows[] = {"r_fullscreen", NULL};
-static const char *const s_videoAndroidRows[] = {"android_aspect", NULL};
+static const char *const s_videoAndroidRows[] = {"android_aspect", "cl_renderer", NULL};
 
 static qboolean SettingsRowInList(const char *cvar, const char *const *list)
 {
@@ -2230,11 +2266,162 @@ static void SettingsHideVideoRetail(UIWidget *container)
     UIVK_PROBE("settings", "op=hide menu='video' hidden=%d art=%d", hidden, art);
 }
 
+/* The value `cl_renderer` is loaded by (CL_InitRef builds "renderer_%s" from it), and the
+   label the row and the restart prompt show for each. */
+static const char *SettingsRendererName(const char *value)
+{
+    if (!Q_stricmp(value, "gles3")) {
+        return "OpenGL ES 3.2";
+    }
+
+    if (!Q_stricmp(value, "vulkan")) {
+        return "Vulkan";
+    }
+
+    return value;   /* an archived value this build does not ship: name it as it is */
+}
+
+/* What the renderer row replaced, so the prompt's No can put it back.  The row writes the
+   archive; the module that runs is the one CL_InitRef already dlopened. */
+static char s_rendererPrev[16];
+
+/* The restart prompt is retail's own promptvidrestart, reused because the wording has to
+   name the renderer the NEXT start loads and a data file cannot carry a runtime name.  Its
+   content children are one Label and the Yes/No pair (the rest is background-dlg.inc art);
+   retail's Yes stuffs vid_restart, which cannot change the module -- it is dlopened once --
+   so both buttons are re-pointed: Yes keeps the archived value, No restores the old one.
+   Neither calls vid_restart, which is the whole point of the wording. */
+static void SettingsRendererPromptPush(const char *value)
+{
+    Menu     *menu = menuManager.FindMenu("promptvidrestart");
+    UIWidget *cont;
+    UIWidget *label = NULL;
+    UIWidget *yes   = NULL;
+    UIWidget *no    = NULL;
+    char      text[256];
+
+    if (!menu || !(cont = menu->GetContainerWidget())) {
+        UIVK_PROBE("settings", "op=renderer prompt=MISSING");
+        return;
+    }
+
+    for (int i = 1; i <= cont->getChildren().NumObjects(); i++) {
+        UIWidget *wid = cont->getChildren().ObjectAt(i);
+
+        if (!label && wid->isSubclassOf(UILabel)) {
+            label = wid;
+        } else if (wid->isSubclassOf(UIButton)) {
+            if (!yes) {
+                yes = wid;
+            } else if (!no) {
+                no = wid;
+            }
+        }
+    }
+
+    if (!label || !yes || !no) {
+        UIVK_PROBE("settings", "op=renderer prompt=INCOMPLETE");
+        return;
+    }
+
+    Com_sprintf(text, sizeof(text),
+                "You will have to restart the game for the renderer to change.\n"
+                "The next start will use %s.\n"
+                "Keep this choice?",
+                SettingsRendererName(value));
+
+    /* both fields: the shipped prompt carries `title`, a localized copy could carry
+       `labeltext`, and either one is what UILabel::Draw reads */
+    label->setTitle(str(text));
+    label->setLabelText(str(text));
+    AdaptCommand(yes, "stuffcommand", "popmenu 0", NULL);
+    AdaptCommand(no, "stuffcommand", "ui_rendererrevert;popmenu 0", NULL);
+
+    uii.Cmd_Stuff("pushmenu promptvidrestart\n");
+    UIVK_PROBE("settings", "op=renderer prompt=push value=%s", value);
+}
+
+/* The row's write.  Cvar_Set is the forced form: it skips CVAR_LATCH entirely, so
+   cl_renderer carries no latchedString and Menu::CheckRestart / the auto-apply can
+   never turn this write into a vid_restart (which would restart the video system into
+   the module already loaded).  The archive is what changes; the restart applies it. */
+void UI_SetRenderer_f(void)
+{
+    const char *want = Cmd_Argv(1);
+    cvar_t     *var;
+    const char *old;
+
+    var = uii.Cvar_Find("cl_renderer");
+    if (!var) {
+        return;
+    }
+
+    if (Q_stricmp(want, "vulkan") && Q_stricmp(want, "gles3")) {
+        Com_Printf("usage: ui_setrenderer <vulkan|gles3>\n");
+        return;
+    }
+
+    old = var->latchedString ? var->latchedString : var->string;
+
+    if (!Q_stricmp(want, old)) {
+        return;   /* cycling back onto the option already stored: nothing to confirm */
+    }
+
+    Q_strncpyz(s_rendererPrev, old, sizeof(s_rendererPrev));
+    Cvar_Set("cl_renderer", want);
+
+    /* Written now, not at exit: the handheld is usually swiped away rather than
+       quit, and the exit write is the only other writer of the archive -- the
+       choice used to be lost that way and the next start loaded the old module. */
+    uii.Cmd_Stuff("writeconfig\n");
+    UIVK_PROBE("settings", "op=renderer set want=%s prev=%s", want, s_rendererPrev);
+    UI_RendererAudit_f();
+    uii.Cmd_Stuff("ui_rendereraudit\n");
+
+    SettingsRendererPromptPush(want);
+}
+
+/* What the cvar actually holds, string and latch, read straight back.  A forced
+   write through Cvar_Set leaves no latch, so a latching set here would show up as
+   string unchanged with latchedString set -- the case the archive then writes. */
+void UI_RendererAudit_f(void)
+{
+    cvar_t *var = uii.Cvar_Find("cl_renderer");
+
+    if (!var) {
+        UIVK_PROBE("settings", "op=renderer audit MISSING");
+        return;
+    }
+
+    UIVK_PROBE("settings", "op=renderer audit string='%s' latched='%s' flags=0x%x",
+               var->string, var->latchedString ? var->latchedString : "(none)", var->flags);
+}
+
+void UI_RendererRevert_f(void)
+{
+    if (!s_rendererPrev[0]) {
+        return;
+    }
+
+    Cvar_Set("cl_renderer", s_rendererPrev);
+    uii.Cmd_Stuff("writeconfig\n");
+    UIVK_PROBE("settings", "op=renderer revert to=%s", s_rendererPrev);
+    UI_RendererAudit_f();
+}
+
 /* The kept rows.  DESIGN-MENU-GRAMMAR.md II.1 carries the cvar each one drives and why it stayed.
-   Three sections of six: two columns a band, three bands a section, one band shape
-   everywhere -- so no band ever has an empty cell to drift against. */
+   Two columns a band, one band shape everywhere; the renderer row opens the page and owns
+   the dialog a change owes (it is not a latched restart -- see UI_SetRenderer_f).  The
+   bands are 4/2/3 across the three sections: the low-quality lighting rows below are cut,
+   so the first and second sections each end on a single-cell band while nine bands -- the
+   page's own pitch -- hold, and the bottom edge stays where it was. */
 static settingsRow_s s_videoRows[] = {
-    {"Display & Quality", "Aspect", "android_aspect", "SwitchBox",
+    {"Display & Quality", "Renderer", "cl_renderer", "SwitchBox",
+     {{"Vulkan", "ui_setrenderer vulkan", "vulkan"},
+      {"OpenGL ES 3.2", "ui_setrenderer gles3", "gles3"}},
+     2, 0, 0, 0, NULL, 0, "Which renderer the next start loads.  Changing it needs a restart."},
+
+    {NULL, "Aspect", "android_aspect", "SwitchBox",
      {{"Fill", "set android_aspect 0", "0"},
       {"16:9", "set android_aspect 1", "1"},
       {"4:3", "set android_aspect 2", "2"}},
@@ -2266,19 +2453,15 @@ static settingsRow_s s_videoRows[] = {
       {"$$High$$", "set r_picmip 0", "0"}},
      3, 0, 0, 0, NULL, 1, "How far textures are shrunk.  Changing it restarts the renderer."},
 
-    {"Lighting", "Simple Lighting", "r_light_simple", "CheckBox",
-     {{0}}, 0, 0, 0, 0, NULL, 0, "Flat light instead of the lit path"},
+    /* Cut, both targets: Simple Lighting (r_light_simple), Simple Lighting Reach
+       (r_light_simple_dist) and Vertex Lighting (r_vertexLight) are off the page.  They
+       are the flat-light path and the page offers the lit one; the cvars stay registered
+       in the renderers with their own flags and defaults, and the seed keeps pinning
+       r_light_simple 0 / r_light_simple_dist 5000, so an install that archived the flat
+       path still lands on the lit path.  Curving a bad value back is the only thing this
+       page ever did with them, and nothing renders from this table. */
 
-    {NULL, "Simple Lighting Reach", "r_light_simple_dist", "SwitchBox",
-     {{"$$Close$$", "set r_light_simple_dist 100", "100"},
-      {"$$Near$$", "set r_light_simple_dist 2500", "2500"},
-      {"$$Far$$", "set r_light_simple_dist 5000", "5000"}},
-     3, 0, 0, 0, NULL, 0, "How far the simple light reaches"},
-
-    {NULL, "Vertex Lighting", "r_vertexLight", "CheckBox",
-     {{0}}, 0, 0, 0, 0, NULL, 1, "Per-vertex light instead of lightmaps.  Changing it restarts."},
-
-    {NULL, "$$DynamicLights$$", "r_dynamiclight", "CheckBox",
+    {"Lighting", "$$DynamicLights$$", "r_dynamiclight", "CheckBox",
      {{0}}, 0, 0, 0, 0, NULL, 0, "The weapon and muzzle lights"},
 
     /* both option lists are the shipped pages' own (menu_advancedvideo.urc: shadows
@@ -2318,7 +2501,7 @@ static settingsRow_s s_videoRows[] = {
      {{0}}, 0, 0, 0, 0, NULL, 0, "The extra detail pass on some surfaces"},
 
     {NULL, "$$DetailTextures$$", "r_detailtextures", "CheckBox",
-     {{0}}, 0, 0, 0, 0, NULL, 0, "The close-up grain on walls and floors"},
+     {{0}}, 0, 0, 0, 0, NULL, 1, "The close-up grain on walls and floors"},
 
     {NULL, "$$WallDecals$$", "cg_marks", "CheckBox",
      {{0}}, 0, 0, 0, 0, NULL, 0, "Bullet holes and scorch marks"},

@@ -2346,6 +2346,10 @@ void CL_Init( void ) {
 	Cvar_Get ("cg_mpgametype", "1", 0);
 	Cvar_Get ("viewsize", "100", CVAR_ARCHIVE);
 	Cvar_Get ("cg_effectdetail", "1", CVAR_ARCHIVE);
+	/* registered here as well as in cgame: the graphics page is a client menu and
+	   is shown before any level loads, so a cgame-only cvar read as absent and its
+	   row came up unchecked and wrote a session-only value */
+	Cvar_Get ("cg_marks", "1", CVAR_ARCHIVE);
 
 	Cvar_Get("mp_autoSwitchWeapons", "1", CVAR_USERINFO | CVAR_ARCHIVE);
 

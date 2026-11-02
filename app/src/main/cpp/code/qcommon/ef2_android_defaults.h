@@ -188,7 +188,6 @@ root, for more details.
 	"set mp_warmUpTime 10\n" \
 	"set mp_minPlayers 0\n" \
 	"set sv_maxclients 1\n" \
-	"set cl_renderer \"vulkan\"\n" \
 	"set r_mode -2\n" \
 	"set r_fullscreen 1\n" \
 	"set r_swapInterval 0\n" \

@@ -3064,6 +3064,9 @@ void CL_ShutdownUI(void)
     Cmd_RemoveCommand("ui_verifycvarrange");
     Cmd_RemoveCommand("ui_checkrestart");
     Cmd_RemoveCommand("ui_settingsautoapply");
+    Cmd_RemoveCommand("ui_setrenderer");
+    Cmd_RemoveCommand("ui_rendererrevert");
+    Cmd_RemoveCommand("ui_rendereraudit");
     Cmd_RemoveCommand("dointro");
     Cmd_RemoveCommand("_intro");
     Cmd_RemoveCommand("centerprint");
@@ -5971,6 +5974,9 @@ void CL_InitializeUI(void)
     Cmd_AddCommand("ui_verifycvarrange", UI_VerifyCvarRange);
     Cmd_AddCommand("ui_checkrestart", UI_CheckRestart);
     Cmd_AddCommand("ui_settingsautoapply", UI_SettingsAutoApply);
+    Cmd_AddCommand("ui_setrenderer", UI_SetRenderer_f);
+    Cmd_AddCommand("ui_rendererrevert", UI_RendererRevert_f);
+    Cmd_AddCommand("ui_rendereraudit", UI_RendererAudit_f);
     Cmd_AddCommand("dointro", UI_StartIntro_f);
     Cmd_AddCommand("_intro", UI_DoIntro_f);
     Cmd_AddCommand("centerprint", UI_CenterPrint_f);

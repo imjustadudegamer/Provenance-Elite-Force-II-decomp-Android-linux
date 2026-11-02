@@ -12,19 +12,43 @@ import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.util.Log;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * layout): makes sure the retail game data is present in the app's OBB
  * EF2's game directory is "base" (q_shared.h BASEGAME) and retail ships the
+ *
+ * The same screen offers the renderer: Vulkan or OpenGL ES 3.2.  The choice is
+ * written as the `seta cl_renderer "<value>"` row of the engine's own
+ * <obb>/base/config.cfg and nowhere else, so the in-game graphics row (which
+ * writes that cvar) and this picker can never disagree.
  */
 public class ImportActivity extends Activity {
     private static final String TAG = "ProvenanceEF2";
     private static final int REQUEST_PICK_PAKS = 42;
+
+    /**
+     * The two renderer modules the APK ships (lib/librenderer_*.so); the value is the
+     * literal CL_InitRef formats into "renderer_%s".  The label is the row's own.
+     */
+    private static final String RENDERER_VULKAN = "vulkan";
+    private static final String RENDERER_GLES3 = "gles3";
+    private static final String[] RENDERER_VALUES = {RENDERER_VULKAN, RENDERER_GLES3};
+    private static final String[] RENDERER_LABELS = {"Vulkan", "OpenGL ES 3.2"};
+
+    /** The engine's one archive: <obb>/base/config.cfg (qcommon.h EF2_CONFIG_FILE). */
+    private static final String CONFIG_FILE = "config.cfg";
+    private static final String RENDERER_CVAR = "cl_renderer";
 
     /**
      * EVERY retail pak, and all of them are required (the rule: "make all retail
@@ -41,6 +65,10 @@ public class ImportActivity extends Activity {
     private static final String REQUIRED_DLL = "gamex86.dll";
 
     private File mBaseDir;
+
+    /** The picker's current value; null until the import screen has been shown. */
+    private String mRendererChoice;
+    private AlertDialog mImportDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -118,7 +146,218 @@ public class ImportActivity extends Activity {
         finish();
     }
 
+    /* ---- the renderer row -------------------------------------------------------
+     *
+     * <obb>/base/config.cfg is the engine's one archive and the in-game graphics row
+     * writes the same cvar, so this is the single store: the picker reads the row to
+     * pre-select and rewrites the row to set it, and every other byte of the file is
+     * copied through untouched.  The engine execs the file in Com_Init before
+     * CL_InitRef reads cl_renderer and dlopens renderer_<value>, so a row written
+     * here is what the next process start loads.
+     */
+
+    /** The row as the engine would write it; `seta` is what Cvar_WriteVariables emits. */
+    private static String rendererRow(String value) {
+        return "seta " + RENDERER_CVAR + " \"" + value + "\"";
+    }
+
+    /**
+     * The renderer the archive selects.  A config with no row is not an error: the
+     * engine's registration default (Cvar_Get("cl_renderer", EF2_DEFAULT_RENDERER))
+     * seeds the compiled value, which is vulkan.
+     */
+    private String readRendererChoice() {
+        File config = new File(mBaseDir, CONFIG_FILE);
+        if (!config.isFile()) {
+            return RENDERER_VULKAN;
+        }
+
+        String value = null;
+        try {
+            for (String line : configLines(new String(readAll(config), StandardCharsets.ISO_8859_1))) {
+                String row = rendererRowValue(line);
+                if (row != null) {
+                    value = row;   // the last row wins, exactly as the config exec runs
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "could not read " + config, e);
+        }
+
+        return value != null ? value : RENDERER_VULKAN;
+    }
+
+    /**
+     * Rewrite (or create) the cl_renderer row, atomically: a temp file in the same
+     * directory, fsynced and renamed over config.cfg.  Every line that is not that
+     * row keeps its exact bytes; the row itself becomes the engine's own form, so a
+     * hand-edited `set cl_renderer gles3` is normalised rather than duplicated.
+     */
+    private void writeRendererChoice(String value) throws IOException {
+        File config = new File(mBaseDir, CONFIG_FILE);
+        byte[] before = config.isFile() ? readAll(config) : new byte[0];
+        String text = new String(before, StandardCharsets.ISO_8859_1);
+
+        StringBuilder out = new StringBuilder(text.length() + 64);
+        boolean found = false;
+        for (String line : configLines(text)) {
+            String eol = lineTerminator(line);
+            String body = line.substring(0, line.length() - eol.length());
+            if (rendererRowValue(body) != null) {
+                out.append(rendererRow(value)).append(eol);
+                found = true;
+            } else {
+                out.append(line);
+            }
+        }
+        if (!found) {
+            if (out.length() > 0 && out.charAt(out.length() - 1) != '\n') {
+                out.append('\n');
+            }
+            out.append(rendererRow(value)).append('\n');
+        }
+
+        File tmp = new File(mBaseDir, CONFIG_FILE + ".tmp");
+        FileOutputStream fos = new FileOutputStream(tmp);
+        try {
+            fos.write(out.toString().getBytes(StandardCharsets.ISO_8859_1));
+            fos.flush();
+            fos.getFD().sync();
+        } finally {
+            fos.close();
+        }
+        if (!tmp.renameTo(config)) {
+            tmp.delete();
+            throw new IOException("could not replace " + config);
+        }
+        if (LogGate.on()) {
+            Log.i(TAG, "renderer row -> " + value + " in " + config);
+        }
+    }
+
+    /** Every line, terminator included, so a rewrite cannot change any other byte. */
+    private static List<String> configLines(String text) {
+        List<String> lines = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') {
+                lines.add(text.substring(start, i + 1));
+                start = i + 1;
+            }
+        }
+        if (start < text.length()) {
+            lines.add(text.substring(start));
+        }
+        return lines;
+    }
+
+    private static String lineTerminator(String line) {
+        if (line.endsWith("\r\n")) {
+            return "\r\n";
+        }
+        return line.endsWith("\n") ? "\n" : "";
+    }
+
+    /**
+     * The value of a `set* cl_renderer <value>` line, or null when the line is not that
+     * row.  Only the first three tokens are read; the quote handling matches the engine
+     * command parser closely enough for the rows it writes.
+     */
+    private static String rendererRowValue(String line) {
+        List<String> tok = configTokens(line);
+        if (tok.size() < 3 || !tok.get(1).equalsIgnoreCase(RENDERER_CVAR)) {
+            return null;
+        }
+        if (!tok.get(0).toLowerCase(Locale.US).startsWith("set")) {
+            return null;
+        }
+        return tok.get(2);
+    }
+
+    private static List<String> configTokens(String line) {
+        List<String> tok = new ArrayList<>();
+        int i = 0;
+        int n = line.length();
+        while (i < n && tok.size() < 3) {
+            char c = line.charAt(i);
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ';') {
+                i++;
+                continue;
+            }
+            if (c == '/' && i + 1 < n && line.charAt(i + 1) == '/') {
+                break;
+            }
+            StringBuilder sb = new StringBuilder();
+            if (c == '"') {
+                i++;
+                while (i < n && line.charAt(i) != '"') {
+                    sb.append(line.charAt(i++));
+                }
+                if (i < n) {
+                    i++;
+                }
+            } else {
+                while (i < n) {
+                    char d = line.charAt(i);
+                    if (d == ' ' || d == '\t' || d == '\r' || d == '\n' || d == ';'
+                            || d == '"') {
+                        break;
+                    }
+                    sb.append(d);
+                    i++;
+                }
+            }
+            tok.add(sb.toString());
+        }
+        return tok;
+    }
+
+    private static int rendererIndex(String value) {
+        for (int i = 0; i < RENDERER_VALUES.length; i++) {
+            if (RENDERER_VALUES[i].equalsIgnoreCase(value)) {
+                return i;
+            }
+        }
+        return 0;   // an archived name this build does not ship: show the default
+    }
+
+    private static byte[] readAll(File f) throws IOException {
+        FileInputStream in = new FileInputStream(f);
+        try {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream((int) Math.max(1, f.length()));
+            byte[] chunk = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(chunk)) != -1) {
+                buf.write(chunk, 0, n);
+            }
+            return buf.toByteArray();
+        } finally {
+            in.close();
+        }
+    }
+
+    private void chooseRenderer(String value) {
+        mRendererChoice = value;
+        // Written now, not at launch: the picker dialog can be re-shown or the activity
+        // recreated before the import finishes, and the row is the only store.
+        try {
+            writeRendererChoice(value);
+        } catch (Exception e) {
+            Log.e(TAG, "could not write the renderer row", e);
+            showImportDialog("Could not save the renderer choice (" + e + ").");
+        }
+    }
+
     private void showImportDialog(String extraLine) {
+        if (mImportDialog != null) {
+            mImportDialog.dismiss();
+            mImportDialog = null;
+        }
+
+        if (mRendererChoice == null) {
+            mRendererChoice = readRendererChoice();
+        }
+
         String msg = (extraLine != null ? extraLine + "\n\n" : "")
                 + "Star Trek: Elite Force II needs the game data from "
                 + "your retail copy of the game:\n\n"
@@ -130,12 +369,20 @@ public class ImportActivity extends Activity {
                 + "the picker can reach -- e.g. the Downloads folder.)\n\n"
                 + "Copy them onto this device, then tap \"Select game files\" "
                 + "and pick all of them.\n\n"
-                + "Still missing: " + missingList();
+                + "Still missing: " + missingList() + "\n\n"
+                + "Renderer for the next start:";
 
         AlertDialog.Builder b = new AlertDialog.Builder(this);
         b.setTitle("Game data required");
         b.setMessage(msg);
         b.setCancelable(false);
+        b.setSingleChoiceItems(RENDERER_LABELS, rendererIndex(mRendererChoice),
+                new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        chooseRenderer(RENDERER_VALUES[which]);
+                    }
+                });
         b.setPositiveButton("Select game files", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
@@ -148,7 +395,7 @@ public class ImportActivity extends Activity {
                 finish();
             }
         });
-        b.show();
+        mImportDialog = b.show();
     }
 
     private void showFatal(String msg) {

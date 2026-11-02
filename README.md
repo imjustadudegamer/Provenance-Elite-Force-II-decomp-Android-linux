@@ -30,7 +30,8 @@ and there is an answer.
 
 ## Features
 
-- Vulkan renderer, written for this port — the only shipping renderer.
+- Vulkan renderer, written for this port — the shipping default. The GLES 3.2
+  twin ships beside it and is selectable in Graphics → Renderer.
 - Touch controls: virtual stick, look area, and on-screen pills for fire, jump,
   crouch, use, night vision and the tricorder.
 - Full gamepad support (SDL GameController, EF1-style layout — see the table below),
@@ -92,9 +93,9 @@ listed here rather than left to discover:
   character shadows are the simple set (`cg_shadows 1`, the default).
 - **Some effects are still missing** — a few effect models and overlay passes
   never reach the screen.
-- **The OpenGL ES 3.2 renderer is not enabled** — Vulkan is the only shipping
-  renderer; the GLES 3.2 twin is kept in step but is not brought up on the
-  device.
+- **The GLES 3.2 renderer is selectable, not the default** — Graphics → Renderer
+  switches between Vulkan and the GLES 3.2 twin; Vulkan remains the default and
+  the renderer the release ships first.
 - **Saves are one way in practice** — a save written here can load oddly or
   crash in retail, so back your saves up and finish a run in this port.
 - **REPORT YOUR ISSUES PLEASE!**

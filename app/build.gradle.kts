@@ -15,7 +15,10 @@ android {
         minSdk = 26           // Android 8.0, the port's platform-layer floor
         targetSdk = 35        // game data lives in the app's own OBB dir; no storage permission
 
-        versionCode = 10800
+        // Bumped with the zpak: assets re-extract only when this changes, and
+        // global/defaultoptions.cfg lost the cl_renderer row, so an install that keeps
+        // the old extracted pak would still re-pin the renderer on Restore Defaults.
+        versionCode = 10801
         versionName = file("src/main/cpp/VERSION").readText().trim()
         // The name carries the commit the APK was built from, so two installs are
         // distinguishable in a manifest dump.  versionCode stays the monotone

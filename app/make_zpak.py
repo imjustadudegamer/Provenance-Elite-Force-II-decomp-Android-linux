@@ -82,8 +82,8 @@ def default_commands():
     text = text.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
     if not text.endswith("\n"):
         text += "\n"
-    if "set cl_renderer" not in text and "seta cl_renderer" not in text:
-        raise SystemExit("make_zpak: the parsed defaults look wrong (no cl_renderer)")
+    if "bind " not in text or "set r_mode -2" not in text:
+        raise SystemExit("make_zpak: the parsed defaults look wrong (no bind rows, no r_mode)")
     return text
 
 

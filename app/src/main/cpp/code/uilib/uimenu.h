@@ -38,6 +38,9 @@ public:
 public:
     Container<UIWidget *> m_itemlist;
     str                   m_name;
+    /* set when a push found a row that links a cvar, so closing the page knows
+       it owns settings worth archiving */
+    qboolean              m_linksCvars;
 
 public:
     Menu();
@@ -132,6 +135,12 @@ void UI_AdaptSettingsMenus(void);
 // A settings row moved a LATCH cvar: restart the renderer when it left its baseline.
 void UI_SettingsAutoApply(void);
 void UI_SettingsAutoApplyFrame(void);
+
+// The renderer row: writes cl_renderer and prompts, or puts the old value back.
+// Never a vid_restart -- the module is dlopened once, at CL_InitRef.
+void UI_SetRenderer_f(void);
+void UI_RendererRevert_f(void);
+void UI_RendererAudit_f(void);
 
 extern Event EV_PushMenu;
 extern Event EV_LockMenus;
