@@ -634,8 +634,9 @@ Projectile::Projectile()
     _hitsProjectiles      = true;        
     _minOnGroundTime      = 0.0f;        
     _onGround             = false;       
-    _startOnGroundTime    = 0.0f;        
-    _damagedSomething     = false;       
+    _startOnGroundTime    = 0.0f;
+    _heatSeek             = false;
+    _damagedSomething     = false;
 
     _scaleByCharge        = false;       
     _scaleExplosion       = false;       
@@ -753,6 +754,8 @@ void Projectile::HeatSeek(Event *ev)
     Vector  v;
     int     n;
     int     i;
+
+    _heatSeek = true;
 
     if ((!target) || (target == world)) {
         mindist = 8192.0f;

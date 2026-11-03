@@ -51,6 +51,7 @@ public:
 public:
 	CLASS_PROTOTYPE( Projectile );
 
+	float fov;                      // SDK weaputils.h:49 -- only read back by Projectile::Archive
 	int owner;
 	float speed;
 	float minspeed;
@@ -101,12 +102,14 @@ public:
 	float  _controlTurnSpeed;
 	bool   firstTimeOwnerControl;
 	Vector prevPlayerAngles;
+	Vector originalPlayerAngles;    // SDK weaputils.h:63 -- only read back by Projectile::Archive
 	bool   triggerdetonate;
 	bool   _notifyActors;
 	bool   _hitsProjectiles;
 	float  _minOnGroundTime;
 	bool   _onGround;
 	float  _startOnGroundTime;
+	bool   _heatSeek;
 	bool   _damagedSomething;
 
 	Projectile();
@@ -176,20 +179,14 @@ public:
 };
 
 
-// were interleaved through the middle, and eleven retail members were simply not written.
-// Sentient::Archive.  MOHAA members retail never archived are simply not written -- they
 inline void Projectile::Archive
 	(
 	Archiver &arc
 	)
 {
-	float           fzero = 0.0f;
-	bool            bzero = false;
-	Vector          vzero( 0, 0, 0 );
-
 	Entity::Archive( arc );
 
-	arc.ArchiveFloat( &fzero );				 
+	arc.ArchiveFloat( &fov );
 	arc.ArchiveInteger( &owner );
 	arc.ArchiveFloat( &speed );
 	arc.ArchiveFloat( &minspeed );
@@ -203,7 +200,7 @@ inline void Projectile::Archive
 	arc.ArchiveBool( &firstTimeOwnerControl );
 
 	arc.ArchiveVector( &prevPlayerAngles );
-	arc.ArchiveVector( &vzero );			 
+	arc.ArchiveVector( &originalPlayerAngles );			 
 	arc.ArchiveVector( &dlight_color );
 	arc.ArchiveVector( &addvelocity );
 	ArchiveEnum( meansofdeath, meansOfDeath_t );
@@ -243,7 +240,7 @@ inline void Projectile::Archive
 	arc.ArchiveFloat( &_minOnGroundTime );
 	arc.ArchiveBool( &_onGround );
 	arc.ArchiveFloat( &_startOnGroundTime );
-	arc.ArchiveBool( &bzero );				 
+	arc.ArchiveBool( &_heatSeek );				 
 	arc.ArchiveBool( &_damagedSomething );
 }
 

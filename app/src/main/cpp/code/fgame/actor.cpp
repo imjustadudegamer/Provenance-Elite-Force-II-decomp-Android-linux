@@ -3618,6 +3618,15 @@ Actor::Actor()
     currentHelperNode.nodeID = 0;
 
 
+    // All actors start immune to falling damage -- SDK actor.cpp:3009-3013 posts this
+    // unconditionally, savegame load included; Sentient::Archive never clears resistances
+    // before adding the saved rows, so skipping it here leaves every actor one row short.
+    {
+        Event *immunity_event = new Event(EV_Sentient_AddImmunity);
+        immunity_event->AddString("falling");
+        ProcessEvent(immunity_event);
+    }
+
     if (LoadingSavegame) {
         return;
     }
@@ -3643,12 +3652,6 @@ Actor::Actor()
     if (com_blood->integer) {
         flags |= FL_BLOOD;
         flags |= FL_DIE_GIBS;
-    }
-
-    {
-        Event *immunity_event = new Event(EV_Sentient_AddImmunity);
-        immunity_event->AddString("falling");
-        ProcessEvent(immunity_event);
     }
 
     setSolidType(SOLID_BBOX);
@@ -4271,11 +4274,17 @@ void Actor::Archive(Archiver& arc)
             arc.ArchiveObject(behavior);
         }
 
-        hBehavior_bool = false;
+        hBehavior_bool = headBehavior != NULL;
         arc.ArchiveBoolean(&hBehavior_bool);
+        if (hBehavior_bool) {
+            arc.ArchiveObject(headBehavior);
+        }
 
-        eBehavior_bool = false;
+        eBehavior_bool = eyeBehavior != NULL;
         arc.ArchiveBoolean(&eBehavior_bool);
+        if (eBehavior_bool) {
+            arc.ArchiveObject(eyeBehavior);
+        }
 
         tBehavior_bool = torsoBehavior != NULL;
         arc.ArchiveBoolean(&tBehavior_bool);
@@ -4287,14 +4296,10 @@ void Actor::Archive(Archiver& arc)
         behavior = behavior_bool ? (Behavior *)arc.ReadObject() : NULL;
 
         arc.ArchiveBoolean(&hBehavior_bool);
-        if (hBehavior_bool) {
-            arc.ReadObject(); 
-        }
+        headBehavior = hBehavior_bool ? (Behavior *)arc.ReadObject() : NULL;
 
         arc.ArchiveBoolean(&eBehavior_bool);
-        if (eBehavior_bool) {
-            arc.ReadObject(); 
-        }
+        eyeBehavior = eBehavior_bool ? (Behavior *)arc.ReadObject() : NULL;
 
         arc.ArchiveBoolean(&tBehavior_bool);
         torsoBehavior = tBehavior_bool ? (Behavior *)arc.ReadObject() : NULL;

@@ -6751,10 +6751,9 @@ int Entity::CurrentFrame(int part) const
 void Entity::Archive(Archiver& arc)
 {
     int      tempInt_shadow1   = 0;
-    qboolean flagFalse = qfalse;
     qboolean isPresent = qfalse;
-    qboolean true_bool = true;    
-    qboolean false_bool = false;  
+    qboolean true_bool = true;
+    qboolean false_bool = false;
     int      i;
     long long t0, t1;
 
@@ -6935,14 +6934,13 @@ void Entity::Archive(Archiver& arc)
         morph_info->Archive(arc);
     }
 
-    if (arc.Saving()) {
-        arc.ArchiveBoolean(&flagFalse);
-    } else {
-        arc.ArchiveBoolean(&isPresent);
-        if (isPresent) {
-            arc.FileError("Entity: ObjectProgram present in file; retail null-derefs here too");
-            return;
+    isPresent = (ObjectProgram != NULL);
+    arc.ArchiveBoolean(&isPresent);
+    if (isPresent) {
+        if (arc.Loading() && !ObjectProgram) {
+            ObjectProgram = new Program;
         }
+        ObjectProgram->Archive(arc);
     }
 
     if (arc.Saving()) {

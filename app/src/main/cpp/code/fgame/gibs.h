@@ -75,8 +75,8 @@ inline void Gib::Archive(Archiver& arc)
     arc.ArchiveFloat(&blood_splat_size);
     arc.ArchiveString(&blood_spurt_name);
     arc.ArchiveFloat(&final_pitch);
-    arc.ArchiveBoolean(&fadesplat);
     arc.ArchiveFloat(&next_bleed_time);
+    arc.ArchiveBoolean(&fadesplat);
 }
 
 void CreateGibs(Entity *ent, float damage = -50, float scale = 1.0f, int num = 1, const char *modelname = NULL);

@@ -131,6 +131,7 @@ inline void Door::Archive(Archiver& arc)
         SetStopSound(sound_stop);
         SetMoveSound(sound_move);
         SetMessageSound(sound_message);
+        SetLockedSound(sound_locked);
     }
 
     arc.ArchiveFloat(&lastblocktime);

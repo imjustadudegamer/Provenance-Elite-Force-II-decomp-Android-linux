@@ -59,7 +59,7 @@ protected:
     float explodewait;
     float explode_time;
     float duration;
-    float damage; 
+    int   damage; // SDK explosion.h:77 -- int, archived with ArchiveInteger
     float randomness;
 
     void MakeExplosion(Event *ev);  
@@ -91,7 +91,7 @@ inline void MultiExploder::Archive(Archiver& arc)
     arc.ArchiveFloat(&explodewait);
     arc.ArchiveFloat(&explode_time);
     arc.ArchiveFloat(&duration);
-    arc.ArchiveFloat(&damage);
+    arc.ArchiveInteger(&damage);
     arc.ArchiveFloat(&randomness);
 }
 
