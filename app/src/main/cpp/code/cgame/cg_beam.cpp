@@ -1031,10 +1031,16 @@ void CG_CreateBeam(
     {
         static int n = 0;
         if (PROBE_Throttle(&n, 24, 400)) {
+            vec3_t beamdir;
+            float  beamlen;
+
+            VectorSubtract(end, start, beamdir);
+            beamlen = VectorNormalize(beamdir);
+
             PROBE(
                 "beam:create",
                 "owner=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) len=%.1f shader='%s' "
-                "flags=0x%x create=%d name='%s'",
+                "flags=0x%x create=%d name='%s' dir=(%+.3f,%+.3f,%+.3f) span=%.1f\n",
                 owner,
                 start[0],
                 start[1],
@@ -1046,7 +1052,11 @@ void CG_CreateBeam(
                 beamshadername ? beamshadername : "(null)",
                 flags,
                 create ? 1 : 0,
-                name ? name : "(null)"
+                name ? name : "(null)",
+                beamdir[0],
+                beamdir[1],
+                beamdir[2],
+                beamlen
             );
         }
     }

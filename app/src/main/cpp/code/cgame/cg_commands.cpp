@@ -4320,10 +4320,16 @@ void ClientGameCommandManager::EndTagBeamSpawn(void)
         scale = current_entity->scale;
     }
 
+    // 0x133d0..0x13448 resolves the axis offset through GetRandomNumber @0x231C0,
+    // the same call the origin spawn path makes.
     for (i = 0; i < 3; i++) {
         m_spawnthing->cgd.origin +=
             Vector(m_spawnthing->tag_axis[i])
-            * (m_spawnthing->axis_offset_base[i] + m_spawnthing->axis_offset_amplitude[i] * random());
+            * CGResolveRandomNumber(
+                m_spawnthing->axis_offset_rand[i],
+                m_spawnthing->axis_offset_base[i],
+                m_spawnthing->axis_offset_amplitude[i]
+            );
     }
 
     // cached global trace_t (TOC 0x64148) over its local and NEVER CALLS CG_Trace -- the
@@ -4455,12 +4461,24 @@ void ClientGameCommandManager::EndOriginBeamSpawn(void)
     for (c = 0; c <= count; c++) {
         Vector angles;
 
+        /* 0x13c58..0x13cf8: each component resolves through GetRandomNumber
+           @0x231C0 -- CRANDOM answers base * crandom(), so `angles crandom 360'
+           spans -360..360.  base + random() * amp answered 360 flat and aimed
+           every beam down world +X. */
         for (i = 0; i < 3; i++) {
-            angles[i] = m_spawnthing->cgd.angles[i] + random() * m_spawnthing->angles_amplitude[i];
+            angles[i] = CGResolveRandomNumber(
+                m_spawnthing->angles_rand[i],
+                m_spawnthing->cgd.angles[i],
+                m_spawnthing->angles_amplitude[i]
+            );
 
             m_spawnthing->cgd.origin +=
                 Vector(m_spawnthing->tag_axis[i])
-                * (m_spawnthing->axis_offset_base[i] + m_spawnthing->axis_offset_amplitude[i] * random());
+                * CGResolveRandomNumber(
+                    m_spawnthing->axis_offset_rand[i],
+                    m_spawnthing->axis_offset_base[i],
+                    m_spawnthing->axis_offset_amplitude[i]
+                );
         }
 
         AnglesToAxis(angles, m_spawnthing->axis);
