@@ -3507,16 +3507,29 @@ void Player::GetViewTrace(trace_t& trace, int contents, float maxDistance)
     s.normalize();
     endpoint = vorg + (s * maxDistance);
 
-    trace = G_FullTrace(
-        vorg,
-        vec_zero,
-        vec_zero,
-        endpoint,
-        this,
-        contents,
-        qtrue,
-        "Player::GetViewEndPoint"
-    );
+    if (!multiplayerManager.inMultiplayer() || multiplayerManager.fullCollision()) {
+        trace = G_FullTrace(
+            vorg,
+            vec_zero,
+            vec_zero,
+            endpoint,
+            this,
+            contents,
+            qtrue,
+            "Player::GetViewEndPoint"
+        );
+    } else {
+        trace = G_Trace(
+            vorg,
+            vec_zero,
+            vec_zero,
+            endpoint,
+            this,
+            contents,
+            qtrue,
+            "Player::GetViewEndPoint"
+        );
+    }
 }
 
 void Player::CheckForTargetedEntity(void)

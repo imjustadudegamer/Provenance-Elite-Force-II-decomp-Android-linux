@@ -21,6 +21,10 @@
 #include "stationaryvehicle.hpp"
 #include "player.h"
 
+#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
+#define PROBE_PRINT                          gi.Printf
+#include "../qcommon/qa_probe.h"
+
 
 CLASS_DECLARATION(Vehicle, StationaryVehicle, NULL)
 {
@@ -46,6 +50,16 @@ StationaryVehicle::~StationaryVehicle()
 
 void StationaryVehicle::Postthink()
 {
+	float apply_yaw      = 0.0f;
+	float apply_pitch    = 0.0f;
+	int   apply_restrict = 0;
+
+	if (PROBE_On()) {
+		apply_yaw      = _yawDeltaDegrees;
+		apply_pitch    = _pitchDeltaDegrees;
+		apply_restrict = ( _restrictPitch ? 1 : 0 ) | ( _restrictYaw ? 2 : 0 );
+	}
+
 	if(drivable)
 	{
 		turnangle  = turnangle   * 0.25f + turnimpulse;
@@ -63,6 +77,17 @@ void StationaryVehicle::Postthink()
 	}
 
 	PositionVehicleAndDriver();
+
+	if (PROBE_On()) {
+		static int probe_throttle = 0;
+
+		if (PROBE_Throttle(&probe_throttle, 1, 100)) {
+			PROBE("turret:delta",
+			      "ent=%d dyaw=%.4f dpitch=%.4f angles=(%.2f,%.2f,%.2f) restr=%d",
+			      entnum, apply_yaw, apply_pitch,
+			      angles[0], angles[1], angles[2], apply_restrict);
+		}
+	}
 
 }
 
@@ -95,8 +120,10 @@ qboolean StationaryVehicle::Drive(usercmd_t* ucmd)
 	turnimpulse		=	angledist( SHORT2ANGLE( ucmd->angles[ YAW ] )   - driver->client->cmd_angles[ YAW ] );
 	pitchimpulse	=	angledist( SHORT2ANGLE( ucmd->angles[ PITCH ] ) - driver->client->cmd_angles[ PITCH ] );
 
-	_yawDeltaDegrees	=  SHORT2ANGLE(ucmd->deltaAngles[ YAW ] );
-	_pitchDeltaDegrees	= SHORT2ANGLE(ucmd->deltaAngles[ PITCH ] );
+	// A server frame consumes every usercmd the client produced, but only one Postthink runs
+	// in it, so a last-wins store would discard all but the final cmd's look delta.
+	_yawDeltaDegrees	+= SHORT2ANGLE(ucmd->deltaAngles[ YAW ] );
+	_pitchDeltaDegrees	+= SHORT2ANGLE(ucmd->deltaAngles[ PITCH ] );
 
 	return qtrue;
 }
@@ -157,6 +184,10 @@ void StationaryVehicle::PositionVehicleAndDriver(void)
 	}
 
 	player->SetViewAngles(angles);
+
+	// Applied: clear so the next frame sums only the cmds it actually consumed.
+	_pitchDeltaDegrees = 0.0f;
+	_yawDeltaDegrees   = 0.0f;
 }
 
 
