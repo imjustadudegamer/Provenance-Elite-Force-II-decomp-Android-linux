@@ -1787,6 +1787,11 @@ Entity::Entity()
 
     useData = NULL;
 
+    // SDK entity.cpp:2009 -- Entity::Archive dereferences this when it is set, so it has
+    // to start out NULL; an entity that never ran setobjectprogram otherwise carries
+    // whatever was in the allocation.
+    ObjectProgram = NULL;
+
     look_at_me = qfalse;
 
     animate = NULL;
