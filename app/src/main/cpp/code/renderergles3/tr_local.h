@@ -1976,6 +1976,8 @@ void RE_SwipeBegin(float thistime, float life, qhandle_t shader);
 void RE_SwipePoint(vec3_t point1, vec3_t point2, float time);
 void RE_SwipeEnd(void);
 void R_AddSwipeSurfaces(void);
+void R_SwipeNewFrame(void);
+qboolean RB_FxStreakCandidate(const char *name);
 
 void R_AddTerrainSurfaces(void);
 void R_ShutdownTerrain(void);

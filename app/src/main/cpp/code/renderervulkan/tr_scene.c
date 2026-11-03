@@ -67,6 +67,10 @@ void R_InitNextFrame( void ) {
 	backEndData = backEndDataBuf[tr.smpFrame];
 	backEndData->commands.used = 0;
 
+	/* the swipe count belongs to the frame as well as the slot: a frame that begins no
+	   swipe would otherwise re-add whatever this slot still held from two frames ago */
+	R_SwipeNewFrame();
+
 	/* the frame boundary owns both: tr.frameCount readers were stuck at 0 and
 	   tr.frameSceneNum never reset, so no per-frame state ever matched twice */
 	tr.frameCount++;

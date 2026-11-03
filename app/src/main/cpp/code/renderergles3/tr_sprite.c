@@ -23,6 +23,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 sprite_t *SPR_RegisterSprite(const char *name)
 {
 	image_t *spriteImage;
@@ -35,6 +39,12 @@ sprite_t *SPR_RegisterSprite(const char *name)
 		spriteImage = 0;
 		if(shader->unfoggedStages[0])
 			spriteImage = shader->unfoggedStages[0]->bundle[0].image[0];
+		/* retail's R_FindShader returns null for missing art, so its if(!Shader) guard
+		   dropped the sprite; ours hands back <default> which passed and drew white */
+		if ( shader == tr.defaultShader ) {
+			ri.Printf(1, "Could not find image for sprite in shader %s\n", name);
+			return 0;
+		}
 		if ( !spriteImage ) {
 			ri.Printf(1, "Could not find image for sprite in shader %s\n", name);
 			return 0;
@@ -89,6 +99,23 @@ void RB_DrawSprite( const refSprite_t *spr ) {
 	}
 
 	scale = spr->scale * model->d.sprite->scale;
+
+	/* A sprite is the other half of the streak suspects: the row names the model and
+	   the shader so the boot can say which payload drew. */
+	if (PROBE_On() && RB_FxStreakCandidate(model->name)) {
+		static int s_rows;
+
+		if (s_rows <= PROBE_ROW_CAP && PROBE_Throttle( &s_rows, 8, 256 )) {
+			ri.Printf(PRINT_ALL,
+					  "[GLES3:fxstreak] surf=sprite model='%s' sh='%s' type=%d "
+					  "scale=%.4f org=(%.1f,%.1f,%.1f) f=%d\n",
+					  model->name,
+					  model->d.sprite->shader ? model->d.sprite->shader->name : "-",
+					  model->d.sprite->shader ? model->d.sprite->shader->sprite.type : -1,
+					  scale, spr->origin[0], spr->origin[1], spr->origin[2],
+					  RB_FrameCount());
+		}
+	}
 
 	switch (model->d.sprite->shader->sprite.type)
     {

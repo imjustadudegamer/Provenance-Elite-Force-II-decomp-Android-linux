@@ -50,6 +50,10 @@ void R_InitNextFrame( void ) {
 	backEndData = backEndDataBuf[tr.smpFrame];
 	RB_CommandListReset();
 
+	/* the swipe count belongs to the frame as well as the slot: a frame that begins no
+	   swipe would otherwise re-add whatever this slot still held from two frames ago */
+	R_SwipeNewFrame();
+
 	/* the frame's pose arena, rewound ONCE per frame -- here, at the boundary -- and never per view: a reset inside RE_RenderScene rewinds the cursor at the
 	   second view of a frame, whose poses overwrite the first view's before the walk reads them.  Kept in step with renderervulkan/tr_scene.c; control: docs/controls/bonearm. */
 	TIKI_Reset_Caches_Arena( tr.smpFrame );

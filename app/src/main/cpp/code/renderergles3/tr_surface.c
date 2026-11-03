@@ -24,6 +24,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_vbo.h"
 #include "tr_program.h"
 
+#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
+#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
+#include "../qcommon/qa_probe.h"
+
 
 
 
@@ -146,6 +150,25 @@ static void RB_SurfaceSprite( void ) {
 void RB_SurfacePolychain( srfPoly_t *p ) {
 	int		i;
 	int		numv;
+
+	/* Beams, marks and any other poly payload reach the walk here, so this is the one
+	   place a poly-named streak suspect can be identified by its own shader. */
+	if (PROBE_On() && tess.shader && RB_FxStreakCandidate( tess.shader->name )
+		&& p->numVerts > 0) {
+		static int s_rows;
+
+		if (s_rows <= PROBE_ROW_CAP && PROBE_Throttle( &s_rows, 8, 256 )) {
+			ri.Printf( PRINT_ALL,
+					   "[GLES3:fxstreak] surf=poly sh='%s' verts=%d "
+					   "first=(%.1f,%.1f,%.1f) last=(%.1f,%.1f,%.1f) f=%d\n",
+					   tess.shader->name, p->numVerts,
+					   p->verts[0].xyz[0], p->verts[0].xyz[1], p->verts[0].xyz[2],
+					   p->verts[p->numVerts - 1].xyz[0],
+					   p->verts[p->numVerts - 1].xyz[1],
+					   p->verts[p->numVerts - 1].xyz[2],
+					   RB_FrameCount() );
+		}
+	}
 
 	RB_CHECKOVERFLOW( p->numVerts, 3*(p->numVerts - 2) );
 
