@@ -415,6 +415,7 @@ void CL_KeyMove( usercmd_t *cmd ) {
 /* The stick's analog consumer: the SDL layer owns the deadzone, j_* own the scale. */
 void CL_JoystickMove( usercmd_t *cmd ) {
 	float	anglespeed;
+	float	delta_yaw, delta_pitch;
 
 	float	yaw     = j_yaw->value     * cl.joystickAxis[j_yaw_axis->integer];
 	float	right   = j_side->value    * cl.joystickAxis[j_side_axis->integer];
@@ -428,19 +429,29 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 		anglespeed = 0.001 * cls.frametime;
 	}
 
+	// Any look source must carry the angles it moved into deltaAngles: the stationary
+	// vehicle turns on that delta alone, and CL_MouseMove is not the only writer here.
 	if ( !in_strafe.active ) {
-		cl.viewangles[YAW] += anglespeed * yaw;
+		delta_yaw = anglespeed * yaw;
+		cl.viewangles[YAW] += delta_yaw;
+		cmd->deltaAngles[YAW] += (short)(int)( 65536.0f * delta_yaw / 360.0f );
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)right );
 	} else {
-		cl.viewangles[YAW] += anglespeed * right;
+		delta_yaw = anglespeed * right;
+		cl.viewangles[YAW] += delta_yaw;
+		cmd->deltaAngles[YAW] += (short)(int)( 65536.0f * delta_yaw / 360.0f );
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)yaw );
 	}
 
 	if ( in_mlooking ) {
-		cl.viewangles[PITCH] += anglespeed * forward;
+		delta_pitch = anglespeed * forward;
+		cl.viewangles[PITCH] += delta_pitch;
+		cmd->deltaAngles[PITCH] += (short)(int)( 65536.0f * delta_pitch / 360.0f );
 		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)pitch );
 	} else {
-		cl.viewangles[PITCH] += anglespeed * pitch;
+		delta_pitch = anglespeed * pitch;
+		cl.viewangles[PITCH] += delta_pitch;
+		cmd->deltaAngles[PITCH] += (short)(int)( 65536.0f * delta_pitch / 360.0f );
 		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)forward );
 	}
 
@@ -740,6 +751,19 @@ void CL_FinishMove( usercmd_t *cmd ) {
 		cge->CG_GetViewOrigin( &cmd->realvieworigin[0], &cmd->realvieworigin[1], &cmd->realvieworigin[2] );
 		cge->CG_GetViewAngles( &cmd->realviewangles[0], &cmd->realviewangles[1], &cmd->realviewangles[2] );
 		cmd->thirdperson = cge->CG_GetThirdPerson();
+	}
+
+	if ( PROBE_On() ) {
+		static int probe_throttle = 0;
+
+		if ( PROBE_Throttle( &probe_throttle, 1, 100 ) ) {
+			PROBE( "look:cmd",
+			       "dyaw=%.4f dpitch=%.4f angles=(%.2f,%.2f) axis=(%d,%d,%d,%d,%d,%d)",
+			       SHORT2ANGLE( cmd->deltaAngles[YAW] ), SHORT2ANGLE( cmd->deltaAngles[PITCH] ),
+			       cl.viewangles[YAW], cl.viewangles[PITCH],
+			       cl.joystickAxis[0], cl.joystickAxis[1], cl.joystickAxis[2],
+			       cl.joystickAxis[3], cl.joystickAxis[4], cl.joystickAxis[5] );
+		}
 	}
 }
 
