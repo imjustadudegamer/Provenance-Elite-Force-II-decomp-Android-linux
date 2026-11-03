@@ -556,7 +556,12 @@ void GLES3_DepthState( qboolean test, qboolean write )
 
 void GLES3_DepthStateReset( void )
 {
-	s_depthTest  = qtrue;
+	/* Mirror what GL_SetDefaultState has just put in the context, not what a
+	   fresh context would hold: its caller enables the write mask and then
+	   disables the depth test, so a reset that claimed test-on made S disagree
+	   with both the mirror and the driver until the next word carrying
+	   GLS_DEPTHTEST_DISABLE happened to flip it. */
+	s_depthTest  = qfalse;
 	s_depthWrite = qtrue;
 	s_depth2D    = qfalse;
 }
@@ -1463,6 +1468,16 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	oldShader = NULL;
     depthRange = qfalse;
 
+	/* retail's sprite walk carries no range of its own -- RB_RenderSpriteSurfList
+	   never calls glDepthRange, so an inherited renderfx bit must not shrink it
+	   (the same law the Vulkan twin states at its own walk).  Anchor the full
+	   range once, before the list: a sprite that squashed to (0, 0.3) squeezed
+	   its eye-space Z into the bottom third of the depth buffer and passed
+	   LEQUAL against a wall written at (0, 1), which is a mark painting over
+	   geometry in front of it.  `depthRange' below is kept for the witness row
+	   only; it no longer drives anything. */
+	GLES3_DepthRangeApply( 0.0f, 1.0f );
+
     for (i = 0, drawSurf = drawSurfs; i < numDrawSurfs; i++, drawSurf++) {
         if (!drawSurf->surface) continue;
         refSprite_t *spr = (refSprite_t*)drawSurf->surface;
@@ -1488,7 +1503,41 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
         RB_LoadModelViewMatrix( backEnd.ori.modelMatrix);
 
-        GLES3_DepthRangeApply( 0.0f, depthRange ? 0.3f : 1.0f );
+        /* The phaser scorch rides this list, not the poly walk, so this is the row
+           that names it: which orientation arm its spritegen selected, which sort
+           bucket it landed in, and the depth state the stage actually runs under.
+           Without it the sprite route is the one mark path with no witness at all. */
+        if (PROBE_On() && shader->unfoggedStages[0]) {
+            static int s_rows;
+            unsigned    uiSt0 = shader->unfoggedStages[0]->stateBits;
+            GLboolean   bTest, bMask;
+            GLfloat     fRange[2];
+            GLint       iFunc, iSrc, iDst;
+
+            if (s_rows <= PROBE_ROW_CAP && PROBE_Throttle(&s_rows, 8, 256)) {
+                qglGetBooleanv(GL_DEPTH_TEST, &bTest);
+                qglGetIntegerv(GL_DEPTH_FUNC, &iFunc);
+                qglGetBooleanv(GL_DEPTH_WRITEMASK, &bMask);
+                qglGetFloatv(GL_DEPTH_RANGE, fRange);
+                qglGetIntegerv(GL_BLEND_SRC_RGB, &iSrc);
+                qglGetIntegerv(GL_BLEND_DST_RGB, &iDst);
+
+                ri.Printf(PRINT_ALL,
+                    "[UIVK:DOCC:sprite] n=%d sh='%s' sort=%d arm=%d st0=0x%08x"
+                    " blend=%d/%d depthtest=%s func=%s mask=%d drange=%.3f..%.3f"
+                    " dhack=%d scale=%.4f f=%d\n",
+                    i, shader->name, (int)shader->sort,
+                    (int)shader->sprite.type, uiSt0,
+                    (int)iSrc, (int)iDst,
+                    bTest ? "on" : "OFF",
+                    iFunc == GL_EQUAL ? "EQUAL" : (iFunc == GL_LEQUAL ? "LEQUAL"
+                                                   : (iFunc == GL_ALWAYS ? "ALWAYS" : "other")),
+                    bMask ? 1 : 0,
+                    fRange[0], fRange[1],
+                    depthRange ? 1 : 0,
+                    spr->scale, RB_FrameCount());
+            }
+        }
 
         backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 

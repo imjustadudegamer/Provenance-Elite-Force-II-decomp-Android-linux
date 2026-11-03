@@ -364,7 +364,12 @@ static void ProjectDlightTexture( void ) {
 			GL_Bind( tr.dlightImage );
 
 			if ( dl->type & additive) {
-				GLES3_ApplyStateBits( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL );
+				/* retail ProjectDlightTexture @0x00034F60: GL_State(2084) on the
+				   additive bit, 2083 otherwise -- 2084 is
+				   ONE_MINUS_DST_COLOR|ONE|DEPTHFUNC_EQUAL, not ONE|ONE, so the
+				   additive glow kept full brightness where the framebuffer was
+				   already bright instead of subtracting from it. */
+				GLES3_ApplyStateBits( GLS_SRCBLEND_ONE_MINUS_DST_COLOR | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL );
 			}
 			else {
 				GLES3_ApplyStateBits( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL );

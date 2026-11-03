@@ -87,8 +87,12 @@ static int CullSprite(const vec3_t* points) {
 			}
 		}
 
+		/* all four corners sit in front of this plane, so the quad is wholly
+		   outside the view and the caller's CULL_OUT test has to see it.  The
+		   CULL_CLIP return meant the only caller -- == CULL_OUT, and CULL_OUT
+		   is 2 while this returned 1 -- never rejected a sprite at all. */
 		if (j == 4) {
-			return CULL_CLIP;
+			return CULL_OUT;
 		}
 	}
 
