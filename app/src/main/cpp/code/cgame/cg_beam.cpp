@@ -624,20 +624,22 @@ void CG_BuildRendererBeam(
         if (i != numSubdivisions) {
             if (flags & BEAM_FULLWAVE) {
                 float sinfrac = (float)sin((2.0 * M_PI * (double)i) / (double)numSubdivisions);
-                /* 0x18xx feeds sin the negated cg.time and then subtracts phase, so the
-                   time term runs the other way to (cg.time - phase). */
-                float timedelta = -(float)cg.time - phase;
+                /* 0x1be4 builds cg.time with the signed int->double idiom
+                   (xoris 0x8000 | 0x4330, minus 2^52) and then `fsubs f27` for the
+                   phase: +(double)cg.time - phase.  There is no fneg at the site. */
+                float timedelta = (float)cg.time - phase;
 
                 p2.x += (amp.x * sinfrac * timedelta) / 1000.0f;
                 p2.y += (amp.y * sinfrac * timedelta) / 1000.0f;
                 p2.z += (amp.z * sinfrac * timedelta) / 1000.0f;
             } else if (flags & BEAM_WAVE_EFFECT) {
                 float sinephase = p2.x + p2.y;
-                /* 0x1c7c builds sinephase - cg.time, not sinephase + cg.time. */
-                p2.z += sin(sinephase - (double)cg.time) * angleVar;
+                /* 0x1ca0 `fadds f1, f2, f0`: sin(sinephase + (double)cg.time). */
+                p2.z += sin(sinephase + (double)cg.time) * angleVar;
             } else if (flags & BEAM_WAVE) {
-                /* 0x1cd0 negates both sin terms: -(M_PI*i) - cg.time/1000*wavespeed. */
-                p2.z = (float)((double)angleVar * sin(-(M_PI * (double)i) - (double)((float)cg.time / 1000.0f * wavespeed)) + (double)p2.z);
+                /* 0x1d10 `fmadd f1, f3, f1, f0`: sin(M_PI*i + cg.time/1000*wavespeed);
+                   the xoris 0x8000 at 0x1cd4/0x1cdc is the int->double idiom, not a sign. */
+                p2.z = (float)((double)angleVar * sin(M_PI * (double)i + (double)((float)cg.time / 1000.0f * wavespeed)) + (double)p2.z);
             } else if (flags & BEAM_USE_NOISE) {
                 p2.x += cgi.R_Noise(p2.x, p2.y, p2.z, cg.time) * angleVar;
                 p2.y += cgi.R_Noise(p2.x, p2.y, p2.z, cg.time) * angleVar;
@@ -1079,9 +1081,10 @@ void CG_CreateBeam(
                         b->shaderRGBA[i] = (int)((float)b->shaderRGBA[3] * (modulate[i] / 255.0f));
                     }
 
-                    /* 0x2FB0 divides by a negated numSubdivisions, so retail's step runs
-                       alpha -> endalpha, not the reverse. */
-                    b->alphastep = ((alpha - endalpha) / (float)b->numSubdivisions);
+                    /* 0x3650 `fdivs f4, f6, f4` divides endalpha - alpha (f30 - f24, the
+                       7th and 1st float args) by the positive (double)(int)numSubdivisions
+                       built at 0x3640 with the int->double idiom. */
+                    b->alphastep = ((endalpha - alpha) / (float)b->numSubdivisions);
 
                     VectorCopy(start, b->start);
                     VectorCopy(end, b->end);
@@ -1145,9 +1148,10 @@ void CG_CreateBeam(
                 b->shaderRGBA[i] = (int)((float)b->shaderRGBA[3] * (modulate[i] / 255.0f));
             }
 
-            /* 0x2FB0 divides by a negated numSubdivisions, so retail's step runs
-               alpha -> endalpha, not the reverse. */
-            b->alphastep = ((alpha - endalpha) / (float)b->numSubdivisions);
+            /* 0x3650 `fdivs f4, f6, f4` divides endalpha - alpha (f30 - f24, the 7th and
+               1st float args) by the positive (double)(int)numSubdivisions built at
+               0x3640 with the int->double idiom. */
+            b->alphastep = ((endalpha - alpha) / (float)b->numSubdivisions);
 
             VectorCopy(start, b->start);
             VectorCopy(end, b->end);

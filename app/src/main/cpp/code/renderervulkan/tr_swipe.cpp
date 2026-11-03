@@ -252,9 +252,12 @@ void RB_DrawSwipeSurface(surfaceType_t *pswipe)
             alpha = f - Q_max(f - 1.0, 0);
 
             RB_Color4f(alpha, alpha, alpha, alpha);
+            /* Retail's two vertices carry V = 1 and V = 0 (the two constants it also
+               uses for `oolife = 1/life` and `f > 0`), so the swipe texture's V range
+               is spread across the strip's width. */
             RB_Texcoord2f(i / (float)swipe->numswipes, 1.0);
             RB_Vertex3fv(swipepoint->points[0]);
-            RB_Texcoord2f(i / (float)swipe->numswipes, 1.0);
+            RB_Texcoord2f(i / (float)swipe->numswipes, 0.0);
             RB_Vertex3fv(swipepoint->points[1]);
         } else if (i == swipe->numswipes - 1) {
             swipe->numswipes = 0;
