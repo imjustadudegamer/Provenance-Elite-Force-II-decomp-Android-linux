@@ -332,7 +332,7 @@ void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 	color     = tess.vertexColors[ vertBase ];
 
 	if ( r_shownormals->integer || tess.shader->needsNormal || tess.shader->needsLSpherical
-		|| tr.refdef.num_dlights ) {
+		|| backEnd.refdef.num_dlights ) {
 		needsNormal = qtrue;
 	} else {
 		needsNormal = qfalse;
@@ -423,7 +423,7 @@ void RB_SurfaceTerrain( srfTriangles_t *srf ) {
 	dv        = srf->verts;
 
 	if ( r_shownormals->integer || tess.shader->needsNormal || tess.shader->needsLSpherical
-		|| tr.refdef.num_dlights ) {
+		|| backEnd.refdef.num_dlights ) {
 		needsNormal = qtrue;
 	} else {
 		needsNormal = qfalse;
@@ -558,7 +558,7 @@ void RB_SurfaceFace( srfSurfaceFace_t *surf ) {
 
 	needsNormal = qfalse;
 	if (r_shownormals->integer || tess.shader->needsNormal || tess.shader->needsLSpherical
-		|| tr.refdef.num_dlights) {
+		|| backEnd.refdef.num_dlights) {
 		needsNormal = qtrue;
 	}
 
@@ -720,7 +720,7 @@ void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 		color = ( unsigned char * ) &tess.vertexColors[numVertexes];
 		vDlightBits = &tess.vertexDlightBits[numVertexes];
 		needsNormal = r_shownormals->integer || tess.shader->needsNormal
-			|| tess.shader->needsLSpherical || tr.refdef.num_dlights;
+			|| tess.shader->needsLSpherical || backEnd.refdef.num_dlights;
 
 		for ( i = 0 ; i < rows ; i++ ) {
 			for ( j = 0 ; j < lodWidth ; j++ ) {

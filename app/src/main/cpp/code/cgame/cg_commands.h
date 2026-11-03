@@ -82,7 +82,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define T2_EMITTERSPIN        (1 << 10)
 #define T2_PARTICLESPIN       (1 << 11)
 #define T2_DOFADE             (1 << 12)
-#define T2_ALIGNSTRETCH       (1 << 13)
+/* bit 13 is deliberately unassigned: retail's cgame has no "alignstretch" command
+   (no such string in cgame_mac.pef), so nothing in retail ever sets it. */
 #define T2_ONEFRAMEONLY       (1 << 14)
 #define T2_CLAMP_VEL          (1 << 15)
 #define T2_CLAMP_VEL_AXIS     (1 << 16)
