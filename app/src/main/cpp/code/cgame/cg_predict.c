@@ -27,8 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define PROBE_PRINT                 cgi.Printf
 #include "../qcommon/qa_probe.h"
 
-/* retail reads cg_pmove.cmd.forwardmove from CG_OffsetFirstPersonView's bob gate */
-pmove_t cg_pmove;
+static pmove_t cg_pmove;
 
 /* the server owns this one; the client prediction must agree with it */
 static cvar_t *cg_easyJump;

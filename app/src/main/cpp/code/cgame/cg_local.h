@@ -430,7 +430,6 @@ extern "C" {
     int CG_OffsetFirstPersonView(void);
 
     extern float ef2_bobfracsin;
-    extern pmove_t cg_pmove;
 
     // The flag is dead in retail's own cgame -- the Mac body never reads its argument --
     void CG_InterpolateView(int personView);

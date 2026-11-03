@@ -481,27 +481,6 @@ static unsigned GLES3_ProgCacheDefinesHash( void )
 	return h;
 }
 
-/* The decal/mark families the fog-square round watches.  Retail ships these as
-   one-effect-per-shader .spr/.tga pairs, so an exact name test is the whole
-   selector -- there is no prefix family to walk. */
-static qboolean R_ProbeDecalShader( const char *name )
-{
-	static const char *const decalNames[] = {
-		"markShadow", "greensplat", "blastmark", "phaserburn"
-	};
-	int	i;
-
-	if ( !name ) {
-		return qfalse;
-	}
-	for ( i = 0; i < (int)( sizeof( decalNames ) / sizeof( decalNames[0] ) ); i++ ) {
-		if ( !Q_stricmp( name, decalNames[i] ) ) {
-			return qtrue;
-		}
-	}
-	return qfalse;
-}
-
 static void GLES3_ProgCacheRow( const char *why )
 {
 	progcacheProgCacheStats_t	st;
@@ -2910,7 +2889,7 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	}
 
 #define SMP_DECAL_MAX 16
-	if ( R_ProbeStatsOn() && R_ProbeDecalShader( shader->name ) )
+	if ( R_ProbeStatsOn() && !Q_stricmp( shader->name, "markShadow" ) )
 	{
 		static int		s_smpDecalCount;
 		static qboolean	s_smpDecalNotice;
@@ -2950,14 +2929,12 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 			ri.Printf(
 				PRINT_ALL,
 				"[SMP:decal] sh=%s prog=%s def=0x%06x state=0x%08x rgb=%d alpha=%d"
-				" acff=%d fogNum=%d"
 				" img0=%s tex0=%u cache0=%u"
 				" tmu=%d liveTex=%d blend=%d src=0x%04x dst=0x%04x"
 				" dtest=%d dmask=%d dfunc=0x%04x"
 				" vc0=%08x vc1=%08x st0=(%.4f,%.4f) st1=(%.4f,%.4f)\n",
 				shader->name, prog->name, prog->defines, stateBits,
 				(int)pStage->rgbGen, (int)pStage->alphaGen,
-				(int)pStage->acff, tess.fogNum,
 				n0, tex0, (unsigned)glState.currenttextures[0],
 				glState.currenttmu, iLiveTex,
 				(int)qglIsEnabled( GL_BLEND ), (unsigned)iSrc, (unsigned)iDst,

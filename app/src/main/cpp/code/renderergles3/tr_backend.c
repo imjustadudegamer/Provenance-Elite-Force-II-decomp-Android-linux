@@ -1490,42 +1490,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
         GLES3_DepthRangeApply( 0.0f, depthRange ? 0.3f : 1.0f );
 
-        /* The phaser scorch rides this list, not the poly walk, so this is the row
-           that names it: which orientation arm its spritegen selected, which sort
-           bucket it landed in, and the depth state the stage actually runs under.
-           Without it the sprite route is the one mark path with no witness at all. */
-        if (PROBE_On() && shader->unfoggedStages[0]) {
-            static int s_rows;
-            unsigned    uiSt0 = shader->unfoggedStages[0]->stateBits;
-            GLboolean   bTest, bMask;
-            GLfloat     fRange[2];
-            GLint       iFunc, iSrc, iDst;
-
-            if (s_rows <= PROBE_ROW_CAP && PROBE_Throttle(&s_rows, 8, 256)) {
-                qglGetBooleanv(GL_DEPTH_TEST, &bTest);
-                qglGetIntegerv(GL_DEPTH_FUNC, &iFunc);
-                qglGetBooleanv(GL_DEPTH_WRITEMASK, &bMask);
-                qglGetFloatv(GL_DEPTH_RANGE, fRange);
-                qglGetIntegerv(GL_BLEND_SRC_RGB, &iSrc);
-                qglGetIntegerv(GL_BLEND_DST_RGB, &iDst);
-
-                ri.Printf(PRINT_ALL,
-                    "[UIVK:DOCC:sprite] n=%d sh='%s' sort=%d arm=%d st0=0x%08x"
-                    " blend=%d/%d depthtest=%s func=%s mask=%d drange=%.3f..%.3f"
-                    " dhack=%d scale=%.4f f=%d\n",
-                    i, shader->name, (int)shader->sort,
-                    (int)shader->sprite.type, uiSt0,
-                    (int)iSrc, (int)iDst,
-                    bTest ? "on" : "OFF",
-                    iFunc == GL_EQUAL ? "EQUAL" : (iFunc == GL_LEQUAL ? "LEQUAL"
-                                                   : (iFunc == GL_ALWAYS ? "ALWAYS" : "other")),
-                    bMask ? 1 : 0,
-                    fRange[0], fRange[1],
-                    depthRange ? 1 : 0,
-                    spr->scale, RB_FrameCount());
-            }
-        }
-
         backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 
         rb_surfaceTable[*drawSurf->surface](drawSurf->surface);

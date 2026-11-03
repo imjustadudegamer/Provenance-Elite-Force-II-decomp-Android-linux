@@ -1032,7 +1032,7 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
             float dist;
             float fade;
             float bobAmt;
-            double dip;
+            float dip;
 
             dist = (float)(cg.time - cg.landTime);
 
@@ -1052,7 +1052,7 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
 
             dip = (fade + fabs(bobAmt)) - 1.0f;
             for (i = 0; i < 3; i++) {
-                model.origin[i] = (float)(cg.refdef.viewaxis[2][i] * dip + model.origin[i]);
+                model.origin[i] += cg.refdef.viewaxis[2][i] * dip;
             }
 
             model.scale = 1.0f;
