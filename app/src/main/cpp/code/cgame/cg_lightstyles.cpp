@@ -46,7 +46,10 @@ qboolean CG_LightStyleColor(int style, int realtime, vec4_t color, qboolean clam
 
     time = realtime / 50;
     frac = (realtime - (time * 50.0f)) / 50.0f;
-    VectorClear4(color);
+    /* retail CG_LightStyleColor @0x30430 clears ONE float, not the vec4: the caller's
+       alpha survives an unregistered style, which is what keeps a decal alive when its
+       `lightstyle' number names nothing (CG_AddMarks frees on colour[3] <= 0). */
+    color[0] = 0.0f;
     if ((style < 0) || (style >= (MAX_LIGHTSTYLES * 2))) {
         cgi.DPrintf("CG_LightStyleColor: style out of range.\n");
         return qtrue;

@@ -664,9 +664,9 @@ void RB_StageIteratorSky( void ) {
 	RB_ClipSkyPolygons( &tess );
 
 	if ( r_showsky->integer ) {
-		qglDepthRange( 0.0, 0.0 );
+		GLES3_DepthRangeApply( 0.0, 0.0 );
 	} else {
-		qglDepthRange( 1.0, 1.0 );
+		GLES3_DepthRangeApply( 1.0, 1.0 );
 	}
 
 	if ( tess.shader->sky.outerbox[0] && tess.shader->sky.outerbox[0] != tr.defaultImage ) {
@@ -689,7 +689,7 @@ void RB_StageIteratorSky( void ) {
 
 
 
-	qglDepthRange( 0.0, 1.0 );
+	GLES3_DepthRangeApply( 0.0, 1.0 );
 
 	backEnd.skyRenderedThisView = qtrue;
 }

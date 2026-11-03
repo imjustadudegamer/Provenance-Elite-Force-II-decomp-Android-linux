@@ -2967,8 +2967,8 @@ void ClientGameCommandManager::EndTagTraceImpactMark(void)
                 m_spawnthing->cgd.flags & (1 << 26),
                 m_spawnthing->cgd.decal_radius,
                 qfalse ,
-                m_spawnthing->cgd.flags2 & (1 << 26),
-                qfalse  
+                m_spawnthing->cgd.lightstyle,
+                qfalse
             );
         }
     }

@@ -337,7 +337,7 @@ int CG_OffsetFirstPersonView(void)
         if (cg_viewBobTime->value > 0.0f) {
             int q   = (int)((float)cg.time / cg_viewBobTime->value);
             int deg = q % 360;
-            phase   = (float)((double)((float)deg * 0.0055555557f) * 3.141592653589793);
+            phase   = (float)(M_PI * (double)((float)deg / 180.0f));
         } else {
             phase = 0.0f;
         }
@@ -357,24 +357,32 @@ int CG_OffsetFirstPersonView(void)
             ef2_bobfracsin = 0.0f;
         }
 
-        if (fabs(ef2_bobfracsin) < 0.05f) {
+        /* retail only settles the bob once the player stops walking forward
+         * (cg_pmove.cmd.forwardmove @0x43ba4), otherwise sin() is still near its
+         * zero crossing on the activation frame and the bob would never start */
+        if (cg_pmove.cmd.forwardmove == 0 && fabs(ef2_bobfracsin) < 0.05f) {
+            ef2_bobActive  = 0;
+            ef2_bobfracsin = 0.0f;
+        }
+
+        if (speed > 100.0f && ps->groundPlane && !(ps->pm_flags & PMF_INTERMISSION)) {
+            if (cg_viewStrafeTilt->integer) {
+                vec3_t yawAng;
+                float  strafeVel;
+                VectorSet(yawAng, 0.0f, cg.refdefViewAngles[YAW], 0.0f);
+                AngleVectorsLeft(yawAng, fwd, right, NULL);
+                strafeVel = DotProduct(ps->velocity, right);
+                if (strafeVel > -13.0f && strafeVel < 13.0f) {
+                    strafeVel = 0.0f;
+                }
+                cg.refdefViewAngles[2] += strafeVel * -0.0080000004f;
+            }
+        } else if (fabs(ef2_bobfracsin) < 0.05f) {
             ef2_bobActive  = 0;
             ef2_bobfracsin = 0.0f;
         }
     } else {
         ef2_bobfracsin = 0.0f;
-    }
-
-    if (cg_viewStrafeTilt->integer) {
-        vec3_t yawAng;
-        float  strafeVel;
-        VectorSet(yawAng, 0.0f, cg.refdefViewAngles[YAW], 0.0f);
-        AngleVectorsLeft(yawAng, fwd, right, NULL);
-        strafeVel = DotProduct(ps->velocity, right);
-        if (strafeVel > -13.0f && strafeVel < 13.0f) {
-            strafeVel = 0.0f;
-        }
-        cg.refdefViewAngles[2] += strafeVel * -0.0080000004f;
     }
 
     {
@@ -409,9 +417,9 @@ int CG_OffsetFirstPersonView(void)
         int delta = cg.time - cg.landTime;
 
         if (delta < 150) {
-            vieworg[2] += cg.landChange * ((float)delta * 0.0066666668f);
+            vieworg[2] += cg.landChange * ((float)delta / 150.0f);
         } else if (delta < 450) {
-            vieworg[2] += cg.landChange * (1.0f - (float)(delta - 150) * 0.0033333334f);
+            vieworg[2] += cg.landChange * (float)(1.0 - (double)((float)(delta - 150) / 300.0f));
         }
     }
 

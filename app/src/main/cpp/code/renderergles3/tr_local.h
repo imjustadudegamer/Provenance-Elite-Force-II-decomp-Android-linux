@@ -1390,6 +1390,8 @@ void		GLES3_DepthGate2DTake( void );
 void		GLES3_StencilState( qboolean test, GLint func, GLint ref, GLuint mask );
 void		GLES3_StencilStateReset( void );
 void		GLES3_DepthFuncApply( GLenum func );
+void		GLES3_DepthRangeApply( float znear, float zfar );
+void		GLES3_DepthRangeReset( void );
 
 extern cvar_t	*r_lodscale;
 

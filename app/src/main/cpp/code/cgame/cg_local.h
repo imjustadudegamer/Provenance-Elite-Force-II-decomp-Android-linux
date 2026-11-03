@@ -144,7 +144,13 @@ extern "C" {
         int alphaFade;
         int fadein;
         markPoly_t* markPolys;
-        int lastProbeTime;   
+        int lastProbeTime;
+        /* retail CG_AddMarks @0x33980 reads three more record fields the port's
+           object never carried: the light style (+12), the fade-byte selector
+           (+20) and the mark's own normalized colour (+28..44).  `fadein' is the
+           selector, not a fade-in gate -- retail never clears it. */
+        int lightStyle;
+        vec4_t color;
     } markObj_t;
 
 #define MAX_CUSTOM_SOUNDS 32
@@ -424,6 +430,7 @@ extern "C" {
     int CG_OffsetFirstPersonView(void);
 
     extern float ef2_bobfracsin;
+    extern pmove_t cg_pmove;
 
     // The flag is dead in retail's own cgame -- the Mac body never reads its argument --
     void CG_InterpolateView(int personView);
@@ -616,8 +623,10 @@ extern "C" {
         vec3_t           pos,
         float            radius,
         qhandle_t        markShader,
-        qboolean         fadein,
-        qboolean         alphaFade
+        const vec4_t     color,
+        int              lightStyle,
+        qboolean         alphaFade,
+        int              fadeByteSelector
     );
     qboolean CG_CheckMakeMarkOnEntity(int iEntIndex);
 

@@ -64,7 +64,7 @@ static void RB_Sphere_DrawDebugLine(const spherel_t *thislight, float fIntensity
 
     RB_PushModelView();
     RB_LoadModelViewMatrix(backEnd.ori.modelMatrix);
-    qglDepthRange(0.0, 0.0);
+    GLES3_DepthRangeApply(0.0, 0.0);
     GLES3_BeginWire();
 
     if (r_light_lines->integer == 2) {
@@ -110,7 +110,7 @@ static void RB_Sphere_DrawDebugLine(const spherel_t *thislight, float fIntensity
     }
 
     RB_ImmEnd();
-    qglDepthRange(0.0, 1.0);
+    GLES3_DepthRangeApply(0.0, 1.0);
     RB_PopModelView();
 }
 
@@ -154,7 +154,7 @@ static void R_Sphere_Light_Sun(const vec3_t vDir, const vec3_t vColor)
         GL_State(GLS_POLYMODE_LINE | GLS_DEPTHMASK_TRUE);
         RB_PushModelView();
         RB_LoadModelViewMatrix(backEnd.ori.modelMatrix);
-        qglDepthRange(0.0, 0.0);
+        GLES3_DepthRangeApply(0.0, 0.0);
         GLES3_BeginWire();
         RB_ImmBegin(GL_LINES);
 
@@ -169,7 +169,7 @@ static void R_Sphere_Light_Sun(const vec3_t vDir, const vec3_t vColor)
         RB_ImmVertex3fv(transpos);
         RB_ImmEnd();
 
-        qglDepthRange(0.0, 1.0);
+        GLES3_DepthRangeApply(0.0, 1.0);
         RB_PopModelView();
     }
 

@@ -62,6 +62,7 @@ typedef struct cg_impactmarkinfo_s {
     float  texCoordScaleS;
     float  texCoordScaleT;
     byte   colors[4];
+    vec4_t color;
     int    leafnum;
     vec3_t dir;
     float  radius;
@@ -590,6 +591,13 @@ void CG_ImpactMark(
         info.colors[2] = (int)(blue * 255.0f);
         info.colors[3] = (int)(alpha * 255.0f);
     }
+    /* retail keeps the record's own colour as the caller's raw 0..1 floats
+       (CG_AddMarks @0x33980 multiplies them back up by 255), so a `fadeColour`
+       mark carries a zero colour rather than a zero byte triple */
+    info.color[0] = fadeColour ? 0.0f : red;
+    info.color[1] = fadeColour ? 0.0f : green;
+    info.color[2] = fadeColour ? 0.0f : blue;
+    info.color[3] = fadeColour ? 0.0f : alpha;
     VectorCopy(origin, info.origin);
     info.shader = markShader;
     VectorAdd(origin, dir, v);
@@ -619,8 +627,10 @@ void CG_ImpactMark(
             &CG_ImpactMark_GetLeafCallback,
             (void *)&info,
             info.origin,
-            radius,          
+            radius,
             markShader,
+            info.color,
+            lighting,
             fadeColour,
             flag
         );
@@ -637,8 +647,10 @@ void CG_AssembleFinalMarks(
     vec3_t    pos,
     float     radius,
     qhandle_t markShader,
-    qboolean  fadeColour,
-    int       flag
+    const vec4_t color,
+    int       lightStyle,
+    qboolean  alphaFade,
+    int       fadeByteSelector
 )
 {
     markObj_t      *pMark;
@@ -674,9 +686,14 @@ void CG_AssembleFinalMarks(
         }
 
         pMark->time       = cg.time;
-        pMark->alphaFade  = fadeColour;
+        pMark->alphaFade  = alphaFade;
         pMark->markShader = markShader;
-        pMark->fadein     = flag;
+        pMark->fadein     = fadeByteSelector;
+        pMark->lightStyle = lightStyle;
+        pMark->color[0] = color[0];
+        pMark->color[1] = color[1];
+        pMark->color[2] = color[2];
+        pMark->color[3] = color[3];
         VectorCopy(pos, pMark->pos);
         pMark->radius = radius;
 
@@ -793,7 +810,11 @@ void CG_AddMarks(void)
     for (pMark = cg_activeMarkObjs.nextMark; pMark != &cg_activeMarkObjs; pMark = pNext) {
         pNext = pMark->nextMark;
 
-        if (pMark->alphaFade && cg.time > pMark->time + iTotalTime) {
+        /* retail CG_AddMarks @0x33980 frees on the lifetime alone: the port's
+           `alphaFade &&' let every mark created with fadeColour == 0 -- the whole
+           blastmark/splat/footprint decal family -- survive its own expiry and
+           only leave when the pool forced the oldest one out. */
+        if (cg.time > pMark->time + iTotalTime) {
             CG_FreeMarkObj(pMark);
             continue;
         }
@@ -822,27 +843,62 @@ void CG_AddMarks(void)
         }
 
         pMark->lastVisTime = cg.time;
-        if (pMark->fadein) {
-            fade = 255 * (cg.time - pMark->time) / MARK_FADE_TIME;
-            if (fade > 255) {
-                fade          = 255;
-                pMark->fadein = 0;
+
+        /* retail's three per-frame arms, in its order: the light style rewrite,
+           the fade-in gated on alphaFade, and the fade-out that runs for every
+           mark in its final second.  `fadein' is the byte selector retail stores
+           at record+20 and never clears, so a 0 mark fades its RGB and a 1 mark
+           fades its alpha -- both out of the record's own normalized colour. */
+        t = pMark->time + iTotalTime - cg.time;
+
+        if (pMark->lightStyle > 0) {
+            CG_LightStyleColor(pMark->lightStyle, t, pMark->color, qtrue);
+
+            if (pMark->color[3] <= 0.0f) {
+                CG_FreeMarkObj(pMark);
+                continue;
             }
 
             for (pPoly = pMark->markPolys; pPoly; pPoly = pPoly->nextPoly) {
                 for (j = 0; j < pPoly->numVerts; j++) {
-                    pPoly->verts[j].modulate[3] = fade;
+                    pPoly->verts[j].modulate[0] = (int)(pMark->color[0] * 255.0f);
+                    pPoly->verts[j].modulate[1] = (int)(pMark->color[1] * 255.0f);
+                    pPoly->verts[j].modulate[2] = (int)(pMark->color[2] * 255.0f);
+                    pPoly->verts[j].modulate[3] = (int)(pMark->color[3] * 255.0f);
                 }
             }
         }
 
         if (pMark->alphaFade) {
-            t = pMark->time + iTotalTime - cg.time;
-            if (t < MARK_FADE_TIME) {
-                fade = 255 * t / MARK_FADE_TIME;
-                for (pPoly = pMark->markPolys; pPoly; pPoly = pPoly->nextPoly) {
-                    for (j = 0; j < pPoly->numVerts; j++) {
+            fade = 255 * (cg.time - pMark->time) / MARK_FADE_TIME;
+            if (fade > 255) {
+                fade = 255;
+            }
+
+            for (pPoly = pMark->markPolys; pPoly; pPoly = pPoly->nextPoly) {
+                for (j = 0; j < pPoly->numVerts; j++) {
+                    if (pMark->fadein) {
                         pPoly->verts[j].modulate[3] = fade;
+                    } else {
+                        pPoly->verts[j].modulate[0] = (int)(pMark->color[0] * (float)fade);
+                        pPoly->verts[j].modulate[1] = (int)(pMark->color[1] * (float)fade);
+                        pPoly->verts[j].modulate[2] = (int)(pMark->color[2] * (float)fade);
+                    }
+                }
+            }
+        }
+
+        if (t < MARK_FADE_TIME) {
+            fade = 255 * t / MARK_FADE_TIME;
+
+            for (pPoly = pMark->markPolys; pPoly; pPoly = pPoly->nextPoly) {
+                for (j = 0; j < pPoly->numVerts; j++) {
+                    if (pMark->fadein) {
+                        pPoly->verts[j].modulate[3] = fade;
+                    } else {
+                        pPoly->verts[j].modulate[0] = (int)(pMark->color[0] * (float)fade);
+                        pPoly->verts[j].modulate[1] = (int)(pMark->color[1] * (float)fade);
+                        pPoly->verts[j].modulate[2] = (int)(pMark->color[2] * (float)fade);
                     }
                 }
             }

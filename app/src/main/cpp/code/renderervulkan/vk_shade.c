@@ -5634,6 +5634,26 @@ static void VK_Shade_SpriteFogRow( const shader_t *shader, const shaderStage_t *
 	do { (void)( shader ); (void)( pStage ); (void)( stateBits ); (void)( input ); } while ( 0 )
 #endif
 
+/* The vulkan twin of the GLES3 decal-family selector.  Same four names, because
+   both renderers walk the same shipped shader corpus. */
+static qboolean R_ProbeDecalShader( const char *name )
+{
+	static const char *const decalNames[] = {
+		"markShadow", "greensplat", "blastmark", "phaserburn"
+	};
+	int	i;
+
+	if ( !name ) {
+		return qfalse;
+	}
+	for ( i = 0; i < (int)( sizeof( decalNames ) / sizeof( decalNames[0] ) ); i++ ) {
+		if ( !Q_stricmp( name, decalNames[i] ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
@@ -5661,6 +5681,38 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	VK_Shade_FeedRow( input, shader, pStage );
 	VK_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
 	VK_SetUniform1f( prog, VK_U_FORCEALPHA, forceAlpha );
+
+	/* The vulkan twin of the GLES3 [SMP:decal] row: the acff selector that was
+	   just published (cpuColor collapses it to 0, which is what u_Acff holds),
+	   the gens the shader asked for, and the fog volume the fog stage samples. */
+	if ( R_ProbeStatsOn() && R_ProbeDecalShader( shader ? shader->name : NULL ) ) {
+		static int		s_vkDecalCount;
+		static qboolean	s_vkDecalNotice;
+		const int		SMP_DECAL_MAX = 16;
+
+		if ( s_vkDecalCount < SMP_DECAL_MAX ) {
+			s_vkDecalCount++;
+			ri.Printf(
+				PRINT_ALL,
+				"[VK:decal] sh=%s prog=%s def=0x%06x state=0x%08x rgb=%d alpha=%d"
+				" u_Acff=%d u_FogNum=%d fogArm=%d cpuColor=%d"
+				" img0=%s tcGen=%d blend=%d/%d\n",
+				shader->name, prog->name, prog->defines, stateBits,
+				(int)pStage->rgbGen, (int)pStage->alphaGen,
+				cpuColor ? 0 : (int)pStage->acff, tess.fogNum,
+				pStage->fogDensityArm ? 1 : 0, cpuColor ? 1 : 0,
+				( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
+				  ? pStage->bundle[0].image[0]->imgName : "-",
+				(int)pStage->bundle[0].tcGen,
+				(unsigned)VK_Shade_SrcBlendFactor( ( stateBits >> 4 ) & 0xF ),
+				(unsigned)VK_Shade_DstBlendFactor( ( stateBits >> 8 ) & 0xF )
+			);
+		} else if ( !s_vkDecalNotice ) {
+			s_vkDecalNotice = qtrue;
+			ri.Printf( PRINT_ALL, "[VK:decal] capped at %d rows; no further lines\n",
+					   SMP_DECAL_MAX );
+		}
+	}
 
 	if ( r_spriteListOpen
 		 && ( pStage->rgbGen == CGEN_ENTITY || pStage->rgbGen == CGEN_ONE_MINUS_ENTITY

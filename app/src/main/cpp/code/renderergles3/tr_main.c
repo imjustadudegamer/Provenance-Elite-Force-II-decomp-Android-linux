@@ -1331,14 +1331,14 @@ void R_DebugPolygon( int color, int numPoints, float *points ) {
 	RB_ImmEnd();
 
 	GL_State( GLS_POLYMODE_LINE | GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE );
-	qglDepthRangef( 0, 0 );
+	GLES3_DepthRangeApply(0, 0);
 	RB_ImmColor3f( 1, 1, 1 );
 	RB_ImmBegin( GL_LINE_LOOP );
 	for ( i = 0 ; i < numPoints ; i++ ) {
 		RB_ImmVertex3fv( points + i * 3 );
 	}
 	RB_ImmEnd();
-	qglDepthRangef( 0, 1 );
+	GLES3_DepthRangeApply(0, 1);
 	RB_ImmFlush();
 }
 
@@ -1565,7 +1565,7 @@ void R_DrawDebugLines(void) {
 
 	qglLineWidth(1.0);
 
-    qglDepthRangef(0.0, 1.0);
+    GLES3_DepthRangeApply(0.0, 1.0);
 }
 
 void R_DrawDebugStrings(void) {

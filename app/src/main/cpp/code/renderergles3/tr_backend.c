@@ -596,6 +596,31 @@ void GLES3_DepthFuncApply( GLenum func )
 	qglDepthFunc( ( r_depthFuncAlways && r_depthFuncAlways->integer ) ? GL_ALWAYS : func );
 }
 
+/* qglDepthRange is sticky context state and every writer in this renderer has to
+   agree on what it holds, or a gate keyed on a per-call local leaves it stale.  The
+   walk loops keyed theirs on a function local reset to qfalse each invocation while
+   the sky wrote past it, so a run that entered with the range still narrow drew the
+   whole pass at (0, 0.3) and a decal 0.2 units off its wall sorted nearer than the
+   wall a previous run wrote -- marks read through geometry.  Vulkan's law is the
+   right one (tr_backend.c: "the range is a recorded command, not retail's sticky GL
+   state, so every transition re-issues it") and this is that law with retail's
+   call-count discipline kept: the context call only happens on a real change. */
+static float	s_depthRangeLast[2] = { 0.0f, 1.0f };
+
+void GLES3_DepthRangeApply( float znear, float zfar )
+{
+	if ( s_depthRangeLast[0] != znear || s_depthRangeLast[1] != zfar ) {
+		qglDepthRange( znear, zfar );
+		s_depthRangeLast[0] = znear;
+		s_depthRangeLast[1] = zfar;
+	}
+}
+
+void GLES3_DepthRangeReset( void )
+{
+	GLES3_DepthRangeApply( 0.0f, 1.0f );
+}
+
 void GL_State( unsigned long stateBits )
 {
 	unsigned long diff;
@@ -1274,14 +1299,10 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 			RB_LoadModelViewMatrix(  backEnd.ori.modelMatrix );
 
-			if ( oldDepthRange != depthRange ) {
-				if ( depthRange ) {
-					qglDepthRange (0, 0.3);
-				} else {
-					qglDepthRange (0, 1.0);
-				}
-				oldDepthRange = depthRange;
-			}
+			/* re-issued every transition, like Vulkan's: the gate lives inside the
+			   applier against the context's own last value, not a per-call local */
+			GLES3_DepthRangeApply( 0.0f, depthRange ? 0.3f : 1.0f );
+			oldDepthRange = depthRange;
 
 			oldEntityNum = entityNum;
 			oldbStaticModel = bStaticModel;
@@ -1406,9 +1427,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	}
 
 	RB_LoadModelViewMatrix(  backEnd.viewParms.world.modelMatrix );
-	if ( oldDepthRange ) {
-		qglDepthRange (0, 1.0);
-	}
+	GLES3_DepthRangeReset();
 
 	/* retail R_RenderView @0x0001F190 draws the pass only for a flag-free world refdef */
 	if (!backEnd.refdef.rdflags) {
@@ -1429,7 +1448,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	shader_t	*shader;
 	shader_t	*oldShader;
 	qboolean	depthRange;
-	qboolean	oldDepthRange;
 	int			i;
 	int			shadowSprT0;
 	drawSurf_t	*drawSurf;
@@ -1444,7 +1462,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
 	oldShader = NULL;
     depthRange = qfalse;
-    oldDepthRange = qfalse;
 
     for (i = 0, drawSurf = drawSurfs; i < numDrawSurfs; i++, drawSurf++) {
         if (!drawSurf->surface) continue;
@@ -1471,15 +1488,42 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 
         RB_LoadModelViewMatrix( backEnd.ori.modelMatrix);
 
-        if (oldDepthRange != depthRange)
-        {
-			if (depthRange) {
-				qglDepthRange(0.0, 0.3);
-			} else {
-                qglDepthRange(0.0, 1.0);
-			}
+        GLES3_DepthRangeApply( 0.0f, depthRange ? 0.3f : 1.0f );
 
-            oldDepthRange = depthRange;
+        /* The phaser scorch rides this list, not the poly walk, so this is the row
+           that names it: which orientation arm its spritegen selected, which sort
+           bucket it landed in, and the depth state the stage actually runs under.
+           Without it the sprite route is the one mark path with no witness at all. */
+        if (PROBE_On() && shader->unfoggedStages[0]) {
+            static int s_rows;
+            unsigned    uiSt0 = shader->unfoggedStages[0]->stateBits;
+            GLboolean   bTest, bMask;
+            GLfloat     fRange[2];
+            GLint       iFunc, iSrc, iDst;
+
+            if (s_rows <= PROBE_ROW_CAP && PROBE_Throttle(&s_rows, 8, 256)) {
+                qglGetBooleanv(GL_DEPTH_TEST, &bTest);
+                qglGetIntegerv(GL_DEPTH_FUNC, &iFunc);
+                qglGetBooleanv(GL_DEPTH_WRITEMASK, &bMask);
+                qglGetFloatv(GL_DEPTH_RANGE, fRange);
+                qglGetIntegerv(GL_BLEND_SRC_RGB, &iSrc);
+                qglGetIntegerv(GL_BLEND_DST_RGB, &iDst);
+
+                ri.Printf(PRINT_ALL,
+                    "[UIVK:DOCC:sprite] n=%d sh='%s' sort=%d arm=%d st0=0x%08x"
+                    " blend=%d/%d depthtest=%s func=%s mask=%d drange=%.3f..%.3f"
+                    " dhack=%d scale=%.4f f=%d\n",
+                    i, shader->name, (int)shader->sort,
+                    (int)shader->sprite.type, uiSt0,
+                    (int)iSrc, (int)iDst,
+                    bTest ? "on" : "OFF",
+                    iFunc == GL_EQUAL ? "EQUAL" : (iFunc == GL_LEQUAL ? "LEQUAL"
+                                                   : (iFunc == GL_ALWAYS ? "ALWAYS" : "other")),
+                    bMask ? 1 : 0,
+                    fRange[0], fRange[1],
+                    depthRange ? 1 : 0,
+                    spr->scale, RB_FrameCount());
+            }
         }
 
         backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
@@ -1498,9 +1542,7 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	r_spriteListOpen = 0;
 
     RB_LoadModelViewMatrix( backEnd.viewParms.world.modelMatrix);
-	if (oldDepthRange) {
-		qglDepthRange(0.0, 1.0);
-	}
+	GLES3_DepthRangeReset();
 }
 
 
