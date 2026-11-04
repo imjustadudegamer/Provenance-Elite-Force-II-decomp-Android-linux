@@ -652,6 +652,46 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
         }
     }
 
+    if (p->cgd.flags2 & (T2_PARTICLESPIN | T2_EMITTERSPIN)) {
+        // TempModelPhysics @0x000156B8-0x00015958: the flight direction is re-derived from
+        // cgd.velocity each frame, advanced by cgd.spinRate (elevation slot 0, azimuth slot 1;
+        // the roll slot 2 is computed and never read back), and cgd.origin is REBUILT from the
+        // spawn base + that direction * spinSpeed * dt -- not incremented.  This is what turns
+        // `setspinrate' into an arc: a vertical `direction' velocity bends outward as it ages.
+        Vector dir = p->cgd.velocity;
+        float   yaw;
+        float   pitch;
+
+        if (dir[0] == 0.0f && dir[1] == 0.0f) {
+            pitch = (dir[2] > 0.0f) ? 90.0f : 270.0f;
+            yaw   = 0.0f;
+        } else {
+            yaw = 180.0f * atan2(dir[1], dir[0]) / M_PI;
+            if (yaw < 0.0f) {
+                yaw += 360.0f;
+            }
+            pitch = 180.0f * atan2(dir[2], sqrt(dir[0] * dir[0] + dir[1] * dir[1])) / M_PI;
+            if (pitch < 0.0f) {
+                pitch += 360.0f;
+            }
+        }
+
+        pitch = -pitch;
+
+        float dtms    = (float)(cg.time - p->cgd.createTime);
+        float step    = p->cgd.spinSpeed / 1000.0f * dtms;
+        float elevDeg = pitch + p->cgd.spinRate[0] / 1000.0f * dtms;
+        float yawDeg  = yaw + p->cgd.spinRate[1] / 1000.0f * dtms;
+
+        float sinElev = sin(M_PI / 180.0f * elevDeg);
+        float cosElev = cos(M_PI / 180.0f * elevDeg);
+        float sinYaw  = sin(M_PI / 180.0f * yawDeg);
+        float cosYaw  = cos(M_PI / 180.0f * yawDeg);
+
+        p->cgd.origin = p->spinOrigin
+                        + Vector(cosElev * cosYaw, cosElev * sinYaw, -sinElev) * step;
+    }
+
     if ((p->cgd.flags & (T_PARENTLINK | T_HARDLINK)) && (p->cgd.parent != ENTITYNUM_NONE)) {
         centity_t   *pc;
         refEntity_t *e;
@@ -1372,6 +1412,17 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         }
 
         p->cgd.oldorigin = p->cgd.origin;
+
+        // SpawnTempModel @0x00017B48 seeds the particle-spin base: the emitter origin when
+        // T2_RADIALVELOCITY (the sphere-branch base), else the particle origin.  Retail's
+        // TempModelPhysics spin branch rebuilds cgd.origin from this base every frame, so it
+        // must survive the per-frame oldorigin=origin overwrite at TempModelPhysics.
+        if (p->cgd.flags2 & T2_RADIALVELOCITY) {
+            p->spinOrigin = m_spawnthing->cgd.origin;
+        } else {
+            p->spinOrigin = p->cgd.origin;
+        }
+
         p->modelname     = m_spawnthing->GetModel();
 
         // SpawnTempModel @0x00017080 has no gate here: the name is copied, registered only

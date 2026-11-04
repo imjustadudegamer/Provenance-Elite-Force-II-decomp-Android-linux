@@ -554,6 +554,10 @@ public:
 
     float wavyDir[3];
 
+    // Spin-branch base (TempModelPhysics @0x000157B0 rebuilds cgd.origin from it); SpawnTempModel
+    // @0x00017B48 seeds it from the emitter origin (T2_RADIALVELOCITY) or the particle origin.
+    Vector spinOrigin;
+
     void (*touchfcn)(ctempmodel_t *ct, trace_t *trace);
 
 public:
