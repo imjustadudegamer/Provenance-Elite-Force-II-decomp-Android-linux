@@ -1089,10 +1089,15 @@ void ClientGameCommandManager::AddTempModels(void)
             );
         } else if (p->ent.reType == RT_SPRITE) {
             vec3_t vTestAngles;
-            cgi.R_AddRefSpriteToScene(&newEnt); 
+            cgi.R_AddRefSpriteToScene(&newEnt);
             MatrixToEulerAngles(newEnt.axis, vTestAngles);
-        } else if (!p->hide) {
-            cgi.R_AddRefEntityToScene(&newEnt); 
+        } else {
+            /* retail AddTempModels @0x00016840 seeds newEnt.fade before the model add;
+               without it R_AddTikiSurfaces' fade!=0 gate drops every model tempmodel */
+            newEnt.fade = 1.0f;
+            if (!p->hide) {
+                cgi.R_AddRefEntityToScene(&newEnt);
+            }
         }
 
         {
