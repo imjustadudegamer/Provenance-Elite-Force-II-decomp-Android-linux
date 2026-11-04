@@ -1070,6 +1070,30 @@ static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen, float *ey
     return inside;
 }
 
+/* retail TestVisibility @0x00049150, the ==1 arm: the world trace */
+static qboolean R_LensflareTraceVisible(const lensflareState_t *f)
+{
+    trace_t trace;
+    float   need;
+    vec3_t  diff;
+    float   d;
+
+    ri.CM_BoxTrace(
+        &trace, backEnd.viewParms.ori.origin, f->origin, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse
+    );
+
+    VectorSubtract(f->origin, backEnd.viewParms.ori.origin, diff);
+    d = VectorLength(diff);
+
+    if (d >= 24.0f) {
+        need = (d - 24.0f) / d;
+    } else {
+        need = 1.0f;
+    }
+
+    return (qboolean)(trace.fraction > need);
+}
+
 static void R_LensflareTestVisibility(lensflareState_t *f)
 {
     lensflareInfo_t *info = f->info;
@@ -1085,25 +1109,8 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
     } else if (backEnd.refdef.time < f->nextVisTime) {
         visible = f->visible;
     } else if (r_flares->integer == 1) {
-        /* retail TestVisibility @0x00049150, the ==1 arm: the world trace */
-        trace_t trace;
-        float   need;
-
-        ri.CM_BoxTrace(
-            &trace, backEnd.viewParms.ori.origin, f->origin, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse
-        );
-
-        VectorSubtract(f->origin, backEnd.viewParms.ori.origin, diff);
-        d = VectorLength(diff);
-
-        if (d >= 24.0f) {
-            need = (d - 24.0f) / d;
-        } else {
-            need = 1.0f;
-        }
-
         f->nextVisTime = backEnd.refdef.time + 50;
-        visible        = (qboolean)(trace.fraction > need);
+        visible        = R_LensflareTraceVisible(f);
     } else {
         /* retail TestVisibility @0x00049150, the readback arm: the depth under
            the flare's own pixel, unprojected to eye z.  Visible while nothing
@@ -1131,16 +1138,28 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
             y = backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight - 1;
         }
 
-        qglReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &z);
+        /* DEPTH_COMPONENT/GL_FLOAT is a desktop-GL pair; ES drivers may refuse it
+           and leave the pixel unanswered (Adreno raises 0x502 here every frame). */
+        GLuint zbits = 0xffffffffu;
+        qglGetError();
+        qglReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, &zbits);
 
-        /* the inverse of the view's own projection: eye[2] is negative forward,
-           so a surface nearer than the flare reads as a larger value */
-        ndc = 2.0f * z - 1.0f;
-        ze  = -backEnd.viewParms.projectionMatrix[14]
-            / (ndc + backEnd.viewParms.projectionMatrix[10]);
+        if (qglGetError() == GL_NO_ERROR) {
+            /* the inverse of the view's own projection: eye[2] is negative forward,
+               so a surface nearer than the flare reads as a larger value */
+            z   = (float)(zbits * (1.0 / 4294967295.0));
+            ndc = 2.0f * z - 1.0f;
+            ze  = -backEnd.viewParms.projectionMatrix[14]
+                / (ndc + backEnd.viewParms.projectionMatrix[10]);
+
+            visible = (qboolean)((ze - f->eyeZ) < 24.0f);
+        } else {
+            /* no depth answer: retail hides on a pending answer, so the trace
+               decides — the law the Vulkan twin keeps since the query fallback */
+            visible = R_LensflareTraceVisible(f);
+        }
 
         f->nextVisTime = backEnd.refdef.time + 50;
-        visible        = (qboolean)((ze - f->eyeZ) < 24.0f);
     }
 
     maxAlpha = 1.0f;

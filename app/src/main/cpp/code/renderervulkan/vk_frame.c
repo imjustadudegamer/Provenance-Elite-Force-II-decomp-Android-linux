@@ -340,7 +340,8 @@ static unsigned int	s_flareQuerySamples[VK_FRAMES_IN_FLIGHT][VK_FLARE_QUERIES];
 
 void VK_Flare_QueryCollect( int slot )
 {
-	uint32_t	out[VK_FLARE_QUERIES * 2];
+	/* VK_NOT_READY leaves the pairs undefined: reading them gave the precise tier stack garbage */
+	uint32_t	out[VK_FLARE_QUERIES * 2] = { 0 };
 	VkResult	result;
 	int			i, ready = 0, drawing = 0;
 
@@ -358,7 +359,8 @@ void VK_Flare_QueryCollect( int slot )
 									  ( uint32_t )( slot * VK_FLARE_QUERIES ), VK_FLARE_QUERIES,
 									  sizeof( out ), out, sizeof( out[0] ) * 2,
 									  VK_QUERY_RESULT_WITH_AVAILABILITY_BIT );
-	if ( result != VK_SUCCESS && result != VK_NOT_READY ) {
+	/* VK_INCOMPLETE is the partial-range result and still carries what it wrote */
+	if ( result != VK_SUCCESS && result != VK_INCOMPLETE ) {
 		return;
 	}
 
