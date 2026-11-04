@@ -23,10 +23,12 @@ Where the original source was published, that source is the authority: id
 Software's GPL engine release, and Ritual's own Elite Force II fgame code.
 Everything else is read out of the shipping retail binaries, the little known Mac
 PPC release first and the PC build as a secondary corroboration, and every value
-is checked against the retail data that ships with the game. A claim that cannot
-be tied to one of those is recorded as open rather than asserted. The name says
-that the code carries its own evidence chain. Ask where a behaviour comes from
-and there is an answer.
+is checked against the retail data that ships with the game. Behaviour is not
+assumed from the binaries alone: the retail game itself is instrumented and
+measured, and port behaviour is diffed against retail's own output. A claim that
+cannot be tied to one of those is recorded as open rather than asserted. The
+name says that the code carries its own evidence chain. Ask where a behaviour
+comes from and there is an answer.
 
 ## Features
 
@@ -86,18 +88,25 @@ use, night vision, tricorder). Keyboard and mouse keep the retail layout
 ## Known issues
 
 This port is not fully play tested and the campaign has not been played end to
-end; expect the occasional stutter while a new effect compiles. The big stuff is
-listed here rather than left to discover:
+end; expect the occasional stutter while a new effect compiles. The graphics
+have been through a retail-diff pass — the Borg generator effects (plasma rings
+and the sparkle dome), lens flares (including the through-wall bug), phaser
+scorch marks, decal fade and lifetime, ship trails, beam shapes, the additive
+light blend and the view bob are all checked against retail's own output — so
+almost all of the graphical bugs reported here are fixed. What is still open:
 
 - **No stencil shadows** — `cg_shadows 2` draws nothing on this renderer, so the
   character shadows are the simple set (`cg_shadows 1`, the default).
-- **Some effects are still missing** — a few effect models and overlay passes
-  never reach the screen.
+- **A few effects may still be missing** — unplayed areas can hide one; the
+  dampening-field volumes draw only where retail itself draws them.
 - **The GLES 3.2 renderer is selectable, not the default** — Graphics → Renderer
   switches between Vulkan and the GLES 3.2 twin; Vulkan remains the default and
   the renderer the release ships first.
 - **Saves are one way in practice** — a save written here can load oddly or
   crash in retail, so back your saves up and finish a run in this port.
+- **One deliberate divergence** — some scripted movement threads resume in this
+  port that retail itself cannot resume from its own saves; this is kept on
+  purpose and will not be "fixed".
 - **REPORT YOUR ISSUES PLEASE!**
 
 ## Build
