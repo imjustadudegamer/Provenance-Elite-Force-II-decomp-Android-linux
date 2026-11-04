@@ -444,7 +444,7 @@ byte *RB_ReadPixels(int x, int y, int width, int height, size_t *offset, int *pa
 {
 	byte *buffer, *bufstart;
 	int padwidth, linelen;
-	GLint packAlign;
+	GLint packAlign = 4;	/* GL default: this query can run off the render thread */
 	
 	qglGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
 	
@@ -472,6 +472,10 @@ void RB_TakeScreenshot( int x, int y, int width, int height, char *fileName ) {
 	size_t offset = 18, memcount;
 		
 	allbuf = RB_ReadPixels(x, y, width, height, &offset, &padlen);
+	if ( !allbuf ) {
+		ri.Printf( PRINT_WARNING, "Screenshot: pixel readback failed, %s not written\n", fileName );
+		return;
+	}
 	buffer = allbuf + offset - 18;
 	
 	Com_Memset (buffer, 0, 18);
@@ -600,7 +604,14 @@ void R_ResampledScreenShot(const char* filename, int destwidth, int destheight) 
 	float		xScale, yScale;
 	int			xx, yy;
 
+	/* the save-game thumbnail: SCR_UpdateScreen runs this off the render thread */
+	R_SyncRenderThread();
+
 	allsource = RB_ReadPixels(0, 0, glConfig.vidWidth, glConfig.vidHeight, &offset, &padlen);
+	if ( !allsource ) {
+		ri.Printf( PRINT_WARNING, "ScreenShot: pixel readback failed, %s not written\n", filename );
+		return;
+	}
 	source = allsource + offset;
 
 	buffer = ri.Hunk_AllocateTempMemory(destheight * destwidth * 3 + 18);
@@ -657,7 +668,13 @@ void R_LevelShot( void ) {
 
 	Com_sprintf(checkname, sizeof(checkname), "levelshots/%s.tga", tr.world->baseName);
 
+	R_SyncRenderThread();
+
 	allsource = RB_ReadPixels(0, 0, glConfig.vidWidth, glConfig.vidHeight, &offset, &padlen);
+	if ( !allsource ) {
+		ri.Printf( PRINT_WARNING, "LevelShot: pixel readback failed, %s not written\n", checkname );
+		return;
+	}
 	source = allsource + offset;
 
 	buffer = ri.Hunk_AllocateTempMemory(128 * 128*3 + 18);
