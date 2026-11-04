@@ -116,6 +116,14 @@ endif()
 target_include_directories(     ${CLIENT_BINARY} PRIVATE ${CLIENT_INCLUDE_DIRS})
 target_include_directories(     ${CLIENT_BINARY} PRIVATE ${SOURCE_DIR}/client)
 target_compile_definitions(     ${CLIENT_BINARY} PRIVATE ${CLIENT_DEFINITIONS})
+
+# macro/debug paths are remapped project-relative, exactly as the renderer's
+# (renderer_common.cmake): without it the shipped client embeds the build
+# machine's absolute source paths in __FILE__ and assert strings.
+list(APPEND CLIENT_COMPILE_OPTIONS
+    "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+    "-fmacro-prefix-map=${CMAKE_SOURCE_DIR}=.")
+
 target_compile_options(         ${CLIENT_BINARY} PRIVATE ${CLIENT_COMPILE_OPTIONS})
 target_link_libraries(          ${CLIENT_BINARY} PRIVATE ${COMMON_LIBRARIES} ${CLIENT_LIBRARIES})
 target_link_options(            ${CLIENT_BINARY} PRIVATE ${CLIENT_LINK_OPTIONS})
