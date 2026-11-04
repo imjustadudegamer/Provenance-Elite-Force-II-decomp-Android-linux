@@ -49,6 +49,8 @@ comes from and there is an answer.
 
 ## Install
 
+### Android
+
 1. Install the APK from Releases and launch it.
 2. On first run, pick your retail paks and the game DLL in the file picker
    (multi-select). The game copies them into place and starts.
@@ -58,8 +60,22 @@ comes from and there is an answer.
 adb push base/. /sdcard/Android/obb/com.provenanceef2/base/
 ```
 
-On Linux, take the AppImage from Releases instead and point it at your install —
-see the Linux release paragraph under [Build](#build).
+### Linux
+
+1. Download `ProvenanceEF2-<version>-x86_64.AppImage` from Releases, make it
+   executable and run it.
+2. On first run, a dialog asks for your retail installation folder — the one
+   holding `EF2.exe` and its `base/` directory. The choice is remembered;
+   nothing is copied.
+3. Point the game yourself, if you prefer:
+
+```sh
+./ProvenanceEF2-<version>-x86_64.AppImage +set fs_basepath /path/to/elite-force-ii
+```
+
+or drop the retail `base/` directory into `~/.local/share/provenanceef2/`,
+where the engine looks on its own. Configs and saves land in the same tree.
+The Linux release is Vulkan only.
 
 ## Controls
 
