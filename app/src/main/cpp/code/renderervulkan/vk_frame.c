@@ -691,7 +691,21 @@ qboolean VK_Frame_Acquire( int slot )
 		return qfalse;
 	}
 
-	if ( !VK_Guard_Result( VK_GSITE_ACQUIRE, result, "vkAcquireNextImageKHR" ) ) {
+	/* SUBOPTIMAL is a success-class answer, not a failure.  The image was handed
+	   over and its acquire semaphore is signalled, so this frame records,
+	   submits and presents it like any other.  The presentation engine keeps
+	   answering SUBOPTIMAL on every later acquire until the swapchain is
+	   rebuilt, and the rebuild belongs to VK_Frame_Present once the frame is
+	   out -- refusing here drops the frame, strands the handed-over image and
+	   leaves the slot's fence reset with a buffer still recording, which is
+	   exactly the frozen-picture wedge the AppImage boot hit: acquire returned
+	   SUBOPTIMAL on every frame, VK_Frame_Submit never ran again, and the loop
+	   kept walking over a screen that never changed.  The recreate that used to
+	   live here went away with 9e9580e's Android one, so this tail is the only
+	   SUBOPTIMAL handling acquire has. */
+	if ( result == VK_SUBOPTIMAL_KHR ) {
+		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_SUBOPTIMAL, "acquire", result );
+	} else if ( !VK_Guard_Result( VK_GSITE_ACQUIRE, result, "vkAcquireNextImageKHR" ) ) {
 		return qfalse;
 	}
 
@@ -702,6 +716,31 @@ qboolean VK_Frame_Acquire( int slot )
 	vk.acquired = qtrue;
 
 	return qtrue;
+}
+
+/* A walk that got as far as VK_Frame_Begin and then failed before the pass
+   opened still owns a prepared slot: Begin reset the fence and began the
+   command buffer, and no render pass is recording into it.  Leaving both is
+   the hazard Begin's own begin-without-submit probe names -- the next Begin on
+   that slot would call vkBeginCommandBuffer on a buffer that is still
+   recording.  There is nothing to retire, so this hands the slot back the way
+   VK_Frame_WaitIdle leaves it: buffer ended, fence retired, nothing held.
+   The only caller is the walk's RC_VK_BEGIN case, right after Begin returned
+   qtrue, so the buffer is in the recording state by construction. */
+void VK_Frame_Abandon( int slot )
+{
+	if ( !vk.frameReady ) {
+		return;
+	}
+
+	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE && qvk.EndCommandBuffer ) {
+		qvk.EndCommandBuffer( vk.commandBuffers[slot] );
+	}
+
+	vk.fencePending[slot] = qfalse;
+	vk.fenceRetired[slot] = qtrue;
+	vk.acquired = qfalse;
+	vk.acquiredImage = 0;
 }
 
 /* The pass opens at RC_VK_BEGIN and closes at RC_VK_PRESENT, so the UI

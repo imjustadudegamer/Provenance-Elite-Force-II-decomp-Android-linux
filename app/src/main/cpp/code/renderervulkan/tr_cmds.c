@@ -679,6 +679,10 @@ void RB_ExecuteRenderCommands( const void *data )
 
 				if ( !VK_Frame_Acquire( slot ) ) {
 					VK_WALK_ADD( acqT0, VK_WP_ACQ );
+					/* Begin succeeded, so the slot owns a reset fence and a
+					   recording buffer the abandon label below will not close:
+					   Retire only runs for a pass that opened.  Hand it back. */
+					VK_Frame_Abandon( slot );
 					goto abandoned;
 				}
 				VK_WALK_ADD( acqT0, VK_WP_ACQ );
@@ -687,6 +691,8 @@ void RB_ExecuteRenderCommands( const void *data )
 				RB_FrameOpen( slot );
 				if ( !VK_Frame_RecordBegin( slot ) ) {
 					VK_WALK_ADD( openT0, VK_WP_OPEN );
+					/* same prepared slot, and the pass still never opened */
+					VK_Frame_Abandon( slot );
 					goto abandoned;
 				}
 				VK_WALK_ADD( openT0, VK_WP_OPEN );
