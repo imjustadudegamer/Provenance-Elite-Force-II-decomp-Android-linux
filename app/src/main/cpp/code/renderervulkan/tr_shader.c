@@ -63,6 +63,14 @@ static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS];
 static qboolean shader_noPicMip;
 static qboolean shader_noMipMaps;
 static qboolean shader_force32bit;
+/* retail's tr.nofog (PEF data @0x22A664): the shader-text parser sets it on
+   the 'nofog' token, R_RealFindShader / CreateInternalShaders / InitGlobalShader
+   clear it, and GeneratePermanentShader consumes it by pointing a nofog shader's
+   fog stage lists at its unfogged list.  Without it every nofog sprite on a
+   global-fog map draws the appended global fog stage -- a flat fog-coloured
+   rectangle over the sprite quad, the square the colony rain and the BFG
+   saturation glow show. */
+static qboolean shader_noFog;
 static shadertext_t* currentShader = NULL;
 static shadertext_t* hashTable[FILE_HASH_SIZE];
 
@@ -822,7 +830,10 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 		}
 		else if (!Q_stricmp(token, "nofog"))
 		{
-			fogBits = VKS_FOG;
+			/* retail sets tr.nofog on this token, it never arms the fog state bit
+			   on the stage -- the flag is what GeneratePermanentShader consumes
+			   to neutralise the shader's fog lists */
+			shader_noFog = qtrue;
 			continue;
 		}
 		else if (!Q_stricmp(token, "map"))
@@ -2360,6 +2371,7 @@ static qboolean ParseShader( char **text, qboolean picmip )
 		}
 		else if (!Q_stricmp(token, "nofog"))
 		{
+			shader_noFog = qtrue;
 			continue;
 		}
 		else if (!Q_stricmp(token, "fogParms"))
@@ -2746,6 +2758,7 @@ static int R_AllocStageList(shaderStage_t *dst[], shaderStage_t *src, int count)
 
 static shader_t *GeneratePermanentShader( void ) {
 	shader_t	*newShader;
+	int		stage;
 
 	if ( tr.numShaders == MAX_SHADERS ) {
 		ri.Printf( PRINT_WARNING, "WARNING: GeneratePermanentShader - MAX_SHADERS hit\n");
@@ -2775,6 +2788,20 @@ static shader_t *GeneratePermanentShader( void ) {
 	newShader->numUnfoggedPasses = R_AllocStageList( newShader->unfoggedStages, unfoggedStages, newShader->numUnfoggedPasses );
 	newShader->numFogPasses = R_AllocStageList( newShader->fogStages, fogStages, newShader->numFogPasses );
 	newShader->numGlobalFogPasses = R_AllocStageList( newShader->globalFogStages, globalFogStages, newShader->numGlobalFogPasses );
+
+	/* retail GeneratePermanentShader: a nofog shader's fog stage lists are its
+	   unfogged list, whose tail slots are inactive, so a fogNum pass draws the
+	   shader's own stages and never the appended fog quad.  The fogDensityArm the
+	   FinishShader pass set on the fog list stages dies with the swap, exactly as
+	   retail's does, so a nofog sprite carries no fog fade at all. */
+	if ( shader_noFog ) {
+		for ( stage = 0; stage < newShader->numFogPasses; stage++ ) {
+			newShader->fogStages[stage] = newShader->unfoggedStages[stage];
+		}
+		for ( stage = 0; stage < newShader->numGlobalFogPasses; stage++ ) {
+			newShader->globalFogStages[stage] = newShader->unfoggedStages[stage];
+		}
+	}
 
 	SortNewShader();
 
@@ -2866,6 +2893,8 @@ static shader_t	*FinishShader( void );
 
 static void InitGlobalShader( void ) {
 	int		i, j;
+
+	shader_noFog = qfalse;		/* retail InitGlobalShader clears tr.nofog */
 
 	Com_Memset( &shader, 0, sizeof( shader ) );
 	Com_Memset( &unfoggedStages, 0, sizeof( unfoggedStages ) );
@@ -3242,6 +3271,8 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 	char		*shaderText;
 	image_t		*image;
 	shader_t	*sh;
+
+	shader_noFog = qfalse;		/* retail R_RealFindShader clears tr.nofog per shader */
 
 	if ( name[0] == 0 ) {
 		SMP_ShaderDefaultProbe( "empty-name", name, "R_RealFindShader", lightmapIndex, variant );
@@ -3815,6 +3846,8 @@ void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char
 
 static void CreateInternalShaders( void ) {
 	tr.numShaders = 0;
+
+	shader_noFog = qfalse;		/* retail CreateInternalShaders clears tr.nofog */
 
 	Com_Memset( &shader, 0, sizeof( shader ) );
 	Com_Memset( &unfoggedStages, 0, sizeof( unfoggedStages ) );
