@@ -2,13 +2,16 @@
 # AppRun — ProvenanceEF2 (Star Trek: Voyager — Elite Force II; native Linux port)
 #
 # The AppImage runtime executes this once it has mounted the image at $APPDIR.
-# It does three things:
+# It does four things:
 #
 #   1. puts the bundled libraries on LD_LIBRARY_PATH, and with them the two game
 #      modules the engine dlopen()s by bare name (game.so, cgame.so);
 #   2. picks the Vulkan loader (the host's when there is one, the bundled
 #      fallback copy otherwise) through SDL's SDL_VULKAN_LIBRARY;
-#   3. execs the engine, passing the user's arguments through untouched.
+#   3. on a first boot -- no installation remembered, none on the command line
+#      -- asks for the retail installation with a directory dialog and
+#      remembers the answer; it is referenced in place, never copied;
+#   4. execs the engine, passing the user's arguments through untouched.
 #
 # Everything else is the engine's own code, and this script implements none of
 # it: no retail discovery, no validation, no copying, and no fs_basepath or
@@ -44,8 +47,10 @@ ProvenanceEF2 $VERSION — Star Trek: Voyager — Elite Force II (native Linux)
 
   ProvenanceEF2-*.AppImage [engine arguments]
 
-The retail game data is not included. Point the game at your own retail
-installation:
+The retail game data is not included. On a first run without game data a window
+asks for your retail installation and remembers the answer (never copied, only
+referenced; PROVENANCEEF2_SKIP_PICKER=1 disables the question). You can also
+point the game at your own retail installation yourself:
 
   ProvenanceEF2-*.AppImage +set fs_basepath /path/to/elite-force-ii
 
@@ -113,7 +118,71 @@ elif ! ldconfig -p 2>/dev/null | grep -q 'libvulkan\.so\.1'; then
     fi
 fi
 
-# --------------------------------------------------------------- 3. hand over
+# ------------------------------------------------- 3. first-boot install picker
+# The Android build asks for the retail files in a first-run import; the Linux
+# release selects the installation instead, and references it in place -- this
+# script never copies anything.  The choice persists in basepath.conf under the
+# engine's data root; a +set fs_basepath on the command line overrides all of
+# it, and PROVENANCEEF2_SKIP_PICKER=1 turns the dialog off for headless runs.
+have_basepath_arg=0
+_prev=""
+for _a in "$@"; do
+    [ "$_prev" = "+set" ] && [ "$_a" = "fs_basepath" ] && have_basepath_arg=1
+    _prev="$_a"
+done
+
+# an EF2 installation root carries EF2.exe and a base/ directory holding paks;
+# a base/ directory handed over directly is accepted as its parent
+valid_root() {
+    [ -f "$1/EF2.exe" ] && ls "$1/base/"*.pk3 >/dev/null 2>&1
+}
+
+if [ "$have_basepath_arg" = 0 ]; then
+    _root=""
+    _conf="$DATA_ROOT/basepath.conf"
+    if [ -f "$_conf" ]; then
+        _root="$(head -n 1 "$_conf")"
+        valid_root "$_root" || { say "the remembered installation ($_root) is gone — asking again"; _root=""; }
+    fi
+    if [ -z "$_root" ] && [ -z "${PROVENANCEEF2_SKIP_PICKER:-}" ] \
+        && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+        _tries=0
+        while [ -z "$_root" ] && [ "$_tries" -lt 3 ]; do
+            _tries=$((_tries + 1))
+            if command -v zenity >/dev/null 2>&1; then
+                _pick="$(zenity --file-selection --directory \
+                    --title="Select your Star Trek: Elite Force II installation" \
+                    --text="Pick the folder that holds EF2.exe and its base/ directory." \
+                    2>/dev/null)"
+            elif command -v kdialog >/dev/null 2>&1; then
+                _pick="$(kdialog --getexistingdirectory "$HOME" \
+                    --title "Select your Star Trek: Elite Force II installation" 2>/dev/null)"
+            else
+                say "no directory picker available (zenity/kdialog) — install one, or pass +set fs_basepath <path>"
+                break
+            fi
+            [ -z "$_pick" ] && break
+            if valid_root "$_pick"; then
+                _root="$_pick"
+            elif [ -f "$_pick/pak0.pk3" ]; then
+                _root="$(dirname -- "$_pick")"
+            else
+                zenity --error --text="That folder does not look like an Elite Force II installation (no EF2.exe with a base/ directory of paks)." 2>/dev/null \
+                    || say "not an Elite Force II installation: $_pick"
+            fi
+        done
+        if [ -n "$_root" ]; then
+            mkdir -p "$DATA_ROOT"
+            printf '%s\n' "$_root" > "$_conf"
+            say "using the installation at $_root (remembered in basepath.conf)"
+        fi
+    fi
+    if [ -n "$_root" ]; then
+        set -- "$@" +set fs_basepath "$_root"
+    fi
+fi
+
+# --------------------------------------------------------------- 4. hand over
 # Arguments are forwarded verbatim: the engine owns every flag, including
 # +set fs_basepath, and the working directory is left alone so relative paths
 # given on the command line keep working.
