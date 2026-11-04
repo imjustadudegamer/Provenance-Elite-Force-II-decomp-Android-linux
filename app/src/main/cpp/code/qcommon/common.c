@@ -1639,6 +1639,9 @@ void Com_Init( char *commandLine ) {
 	Cbuf_Execute( 0 );
 	cvar_inConfig = qfalse;
 
+	/* the version is the build's, never the archive's */
+	Cvar_Set2( "shortversion", PRODUCT_VERSION, qtrue );
+
 	/* the port's one defaults source, folded in once on EVERY platform: the compiled EF2_ANDROID_DEFAULT_COMMANDS (the union of the shipped defaultcontrols.cfg
 	   and defaultoptions.cfg, platform-neutral where those are not).  The gate is `port_defaultsSeed', a cvar only this code writes, so a seed bump is the only way
 	   new rows reach an install that already archived an older one -- this block runs AFTER the config exec and therefore beats the archived value.  The pin is

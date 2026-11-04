@@ -1090,7 +1090,10 @@ static void MENUVersionCornerFixup(Menu *m)
             /* Its draw reads the cvar ahead of the title (uilabel.cpp tries
                m_labelText, then m_cvarname, then m_title), so a blank title
                cannot silence it; the established hide is the only thing that
-               can. */
+               can.  The cvar link goes too: the corner never draws or
+               round-trips cfg state, it stamps the compiled number. */
+            mainw->LinkCvar(str());
+            mainw->setTitle(str(PRODUCT_VERSION_FULL));
             mainw->Disable();
         } else if (maintitle && !strcmp(maintitle, "EF2")) {
             Event *rect = new Event(EV_Layout_Rect);
