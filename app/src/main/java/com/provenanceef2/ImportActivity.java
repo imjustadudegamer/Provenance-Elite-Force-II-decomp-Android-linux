@@ -1,16 +1,21 @@
 package com.provenanceef2;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.ProgressDialog;
+import android.app.Dialog;
 import android.content.ContentResolver;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.util.Log;
+import android.view.View;
+import android.view.Window;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -44,7 +49,6 @@ public class ImportActivity extends Activity {
     private static final String RENDERER_VULKAN = "vulkan";
     private static final String RENDERER_GLES3 = "gles3";
     private static final String[] RENDERER_VALUES = {RENDERER_VULKAN, RENDERER_GLES3};
-    private static final String[] RENDERER_LABELS = {"Vulkan", "OpenGL ES 3.2"};
 
     /** The engine's one archive: <obb>/base/config.cfg (qcommon.h EF2_CONFIG_FILE). */
     private static final String CONFIG_FILE = "config.cfg";
@@ -68,7 +72,7 @@ public class ImportActivity extends Activity {
 
     /** The picker's current value; null until the import screen has been shown. */
     private String mRendererChoice;
-    private AlertDialog mImportDialog;
+    private Dialog mImportDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -348,6 +352,7 @@ public class ImportActivity extends Activity {
         }
     }
 
+    /** The picker screen: our own panel, every colour literal (no theme). */
     private void showImportDialog(String extraLine) {
         if (mImportDialog != null) {
             mImportDialog.dismiss();
@@ -358,58 +363,56 @@ public class ImportActivity extends Activity {
             mRendererChoice = readRendererChoice();
         }
 
+        View panel = getLayoutInflater().inflate(R.layout.import_dialog, null);
         String msg = (extraLine != null ? extraLine + "\n\n" : "")
-                + "Star Trek: Elite Force II needs the game data from "
-                + "your retail copy of the game:\n\n"
-                + "    pak0.pk3\n    pak10.pk3\n    pak15.pk3\n    pak16.pk3\n"
-                + "    pak20.pk3\n    pak30.pk3\n    pak31.pk3\n    pak32.pk3\n"
-                + "    pak50.pk3\n    gamex86.dll\n\n"
-                + "(They are in the \"base\" folder of an installed copy; the "
-                + "nine paks together are about 840 MB, so put them somewhere "
-                + "the picker can reach -- e.g. the Downloads folder.)\n\n"
-                + "Copy them onto this device, then tap \"Select game files\" "
+                + "Star Trek: Elite Force II needs the game data from your "
+                + "retail copy of the game.\n\n"
+                + "Copy these nine files out of the retail \"base\" folder to "
+                + "somewhere this picker can reach (e.g. Downloads) -- the paks "
+                + "together are about 840 MB -- then tap \"Select game files\" "
                 + "and pick all of them.\n\n"
-                + "Still missing: " + missingList() + "\n\n"
-                + "Renderer for the next start:";
+                + "    pak0.pk3  pak10.pk3  pak15.pk3  pak16.pk3\n"
+                + "    pak20.pk3  pak30.pk3  pak31.pk3  pak32.pk3\n"
+                + "    pak50.pk3  gamex86.dll";
+        ((TextView) panel.findViewById(R.id.import_body)).setText(msg);
 
-        AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setTitle("Game data required");
-        b.setMessage(msg);
-        b.setCancelable(false);
-        b.setSingleChoiceItems(RENDERER_LABELS, rendererIndex(mRendererChoice),
-                new DialogInterface.OnClickListener() {
+        RadioButton vulkan = panel.findViewById(R.id.import_renderer_vulkan);
+        RadioButton gles3 = panel.findViewById(R.id.import_renderer_gles3);
+        (rendererIndex(mRendererChoice) == 1 ? gles3 : vulkan).setChecked(true);
+        RadioGroup group = panel.findViewById(R.id.import_renderer_group);
+        group.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup g, int id) {
+                chooseRenderer(id == R.id.import_renderer_gles3
+                        ? RENDERER_GLES3 : RENDERER_VULKAN);
+            }
+        });
+        panel.findViewById(R.id.import_select).setOnClickListener(
+                new View.OnClickListener() {
                     @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        chooseRenderer(RENDERER_VALUES[which]);
+                    public void onClick(View v) {
+                        openPicker();
                     }
                 });
-        b.setPositiveButton("Select game files", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                openPicker();
-            }
-        });
-        b.setNegativeButton("Quit", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                finish();
-            }
-        });
-        mImportDialog = b.show();
+        panel.findViewById(R.id.import_quit).setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        finish();
+                    }
+                });
+
+        Dialog d = new Dialog(this);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        d.setContentView(panel);
+        d.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        d.setCancelable(false);
+        mImportDialog = d;
+        d.show();
     }
 
     private void showFatal(String msg) {
-        AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setTitle("Error");
-        b.setMessage(msg);
-        b.setCancelable(false);
-        b.setPositiveButton("Quit", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                finish();
-            }
-        });
-        b.show();
+        UiPanel.error(this, "Error", msg);
     }
 
     private void openPicker() {
@@ -453,9 +456,13 @@ public class ImportActivity extends Activity {
     }
 
     private void copyPickedFiles(final Uri[] uris) {
-        final ProgressDialog progress = new ProgressDialog(this);
-        progress.setTitle("Importing game data");
-        progress.setMessage("Starting…");
+        View panel = getLayoutInflater().inflate(R.layout.import_progress, null);
+        final TextView progressText = panel.findViewById(R.id.import_progress_message);
+        progressText.setText("Starting…");
+        final Dialog progress = new Dialog(this);
+        progress.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        progress.setContentView(panel);
+        progress.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         progress.setCancelable(false);
         progress.show();
 
@@ -470,11 +477,11 @@ public class ImportActivity extends Activity {
                         Log.w(TAG, "skipping document with unknown name: " + uri);
                         continue;
                     }
-                    setProgressText(progress, "Copying " + name
+                    setProgressText(progress, progressText, "Copying " + name
                             + " (" + (copied + 1) + "/" + uris.length + ")…\n"
                             + "The two largest are ~185 MB each; this can take a while.");
                     try {
-                        copyDocument(uri, new File(mBaseDir, name), progress, name);
+                        copyDocument(uri, new File(mBaseDir, name), progress, progressText, name);
                         copied++;
                     } catch (Exception e) {
                         Log.e(TAG, "failed to import " + name, e);
@@ -499,7 +506,9 @@ public class ImportActivity extends Activity {
                         } else if (allRequiredPresent()) {
                             launchGame();
                         } else {
-                            showImportDialog("Some required files are still missing.");
+                            /* the body no longer lists what is absent: the only place that
+                               names it after a clean copy run is this retry line */
+                            showImportDialog("Still missing: " + missingList() + ".");
                         }
                     }
                 });
@@ -507,12 +516,16 @@ public class ImportActivity extends Activity {
         }, "ef2-pak-import").start();
     }
 
-    private void setProgressText(final ProgressDialog progress, final String text) {
+    private void setProgressText(final Dialog d, final TextView tv, final String text) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (progress.isShowing()) {
-                    progress.setMessage(text);
+                if (d.isShowing()) {
+                    tv.setText(text);
+                    // a dialog window keeps its show-time frame; re-wrap after each text change
+                    d.getWindow().setLayout(
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
                 }
             }
         });
@@ -539,7 +552,7 @@ public class ImportActivity extends Activity {
         return null;
     }
 
-    private void copyDocument(Uri uri, File dest, ProgressDialog progress,
+    private void copyDocument(Uri uri, File dest, Dialog progress, TextView progressText,
                               String name) throws Exception {
         ContentResolver resolver = getContentResolver();
         File tmp = new File(dest.getParentFile(), dest.getName() + ".tmp");
@@ -561,7 +574,7 @@ public class ImportActivity extends Activity {
                 total += n;
                 if (total - lastReported >= 32L * 1024 * 1024) {
                     lastReported = total;
-                    setProgressText(progress, "Copying " + name + "…\n"
+                    setProgressText(progress, progressText, "Copying " + name + "…\n"
                             + (total / (1024 * 1024)) + " MB written");
                 }
             }

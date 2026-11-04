@@ -1,7 +1,5 @@
 package com.provenanceef2;
 
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.pm.ActivityInfo;
 import android.content.res.AssetManager;
 import android.os.Bundle;
@@ -84,17 +82,8 @@ public class EF2Activity extends SDLActivity {
         applyImmersiveMode();
 
         if (mFatalError != null) {
-            AlertDialog.Builder b = new AlertDialog.Builder(this);
-            b.setTitle("ProvenanceEF2 error");
-            b.setMessage(mFatalError + "\n\nThe game cannot start.");
-            b.setCancelable(false);
-            b.setPositiveButton("Quit", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    finish();
-                }
-            });
-            b.show();
+            UiPanel.error(this, "ProvenanceEF2 error",
+                    mFatalError + "\n\nThe game cannot start.");
         }
     }
 
