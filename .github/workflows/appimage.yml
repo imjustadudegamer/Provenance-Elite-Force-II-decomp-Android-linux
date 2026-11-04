@@ -1,0 +1,68 @@
+# Build the Linux release AppImage on demand.
+#
+# Manual only: there is no tag, no release and no push trigger here.  Releases
+# are the operator's call; this lane only produces a downloadable artifact so a
+# release can be cut from something a clean runner built.
+#
+# Why ubuntu-22.04 and not ubuntu-latest: the engine is linked where it is built,
+# so the runner's glibc becomes the image's floor.  `ubuntu-latest` currently
+# resolves to Ubuntu 24.04 (glibc 2.39); `ubuntu-22.04` is a pinned label that
+# gives glibc 2.35, the floor the EF1 lane treats as its baseline
+# (actions/runner-images README, "Available Images" table).  This is the same
+# job the EF1 lane does with its unprivileged Ubuntu 22.04 build box, without
+# the box.
+#
+# NOT executed by the lane author: this workflow has never been run.  It is
+# structurally reviewed only, and the first `workflow_dispatch` is the test.
+name: appimage
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # version.cmake reads the commit hash at build time
+
+      - name: Install build and packaging dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libvulkan-dev \
+            desktop-file-utils \
+            appstream \
+            file \
+            patchelf
+          # Ubuntu 22.04's apt cmake is 3.22; the tree requires 3.25
+          # (app/src/main/cpp/CMakeLists.txt:1).  Kitware's PyPI wheel is the
+          # same cmake, without adding an apt repository.
+          python3 -m pip install --quiet "cmake>=3.31" ninja
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build and package the AppImage
+        run: |
+          set -euo pipefail
+          app/package_appimage.sh --jobs "$(nproc)"
+
+      - name: Upload the AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProvenanceEF2-${{ github.sha }}-x86_64
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            app/appimage/dist/*.AppImage
+            app/appimage/dist/*.AppImage.sha256
+            app/appimage/dist/*.build-info.txt
