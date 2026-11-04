@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metadata for the ProvenanceEF2 AppImage.
+  Keep <id> and this file's name identical, and keep the .desktop file name
+  matched by <launchable>: appimagetool looks the component up by that id when
+  it embeds the metadata (appimagetool hardcodes <desktop-id>.appdata.xml).
+  The id is the AppStream reverse-DNS form of the repository's own origin
+  (github.com/imjustadudegamer/Provenance-Elite-Force-II-decomp-Android-linux).
+-->
+<component type="desktop-application">
+  <id>io.github.imjustadudegamer.provenanceef2</id>
+
+  <name>ProvenanceEF2</name>
+  <summary>Star Trek: Voyager — Elite Force II, natively on Linux</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+
+  <developer id="io.github.imjustadudegamer">
+    <name>ProvenanceEF2 contributors</name>
+  </developer>
+
+  <description>
+    <p>
+      ProvenanceEF2 runs Star Trek: Voyager — Elite Force II natively on Linux:
+      the id Tech 3 engine lineage through OpenMoHAA, the reconstructed game and
+      client-game modules, and a from-scratch Vulkan renderer — every function
+      held to a witness in the retail binaries.
+    </p>
+    <p>
+      The retail game data is not included and cannot be downloaded here. An
+      installation of the original game (retail CD or the GOG release) is
+      required. Point the game at it with +set fs_basepath /path/to/install, or
+      put your retail base/ directory under ~/.local/share/provenanceef2/.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Vulkan renderer, widescreen and arbitrary resolutions</li>
+      <li>Gamepad support (SDL GameController, EF1-style layout)</li>
+      <li>Keyboard and mouse keep the retail layout</li>
+      <li>Self-contained: no distribution packages needed beyond a Vulkan driver</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.imjustadudegamer.provenanceef2.desktop</launchable>
+
+  <url type="homepage">https://github.com/imjustadudegamer/Provenance-Elite-Force-II-decomp-Android-linux</url>
+
+  <provides>
+    <binary>provenanceef2</binary>
+  </provides>
+
+  <categories>
+    <category>Game</category>
+    <category>ActionGame</category>
+  </categories>
+
+  <keywords>
+    <keyword>star trek</keyword>
+    <keyword>elite force</keyword>
+    <keyword>voyager</keyword>
+    <keyword>shooter</keyword>
+    <keyword>fps</keyword>
+  </keywords>
+
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-fantasy">moderate</content_attribute>
+  </content_rating>
+
+  <releases>
+    <release version="__PROVENANCEEF2_VERSION__" date="__PROVENANCEEF2_DATE__"/>
+  </releases>
+
+  <requires>
+    <internet>offline-only</internet>
+  </requires>
+</component>

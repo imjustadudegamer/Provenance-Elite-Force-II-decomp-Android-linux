@@ -1,0 +1,32 @@
+# tools.lock — the exact third-party binaries this pipeline downloads, and their
+# checksums. Sourced by app/package_appimage.sh. Nothing here is committed: the
+# downloads land under $HOME/.local/share/appimage-tools (outside the repository)
+# and are verified against these pins on every run, so a re-run is a re-download
+# only when a file is absent.
+#
+# Why these exact ones:
+#   * appimagetool 1.9.1 is a *tagged* release, not `continuous`: the continuous
+#     tag moves, a tag does not. Its AppImage carries no embedded GPG signature,
+#     so the sha256 below is the only integrity anchor — verify it before
+#     trusting a copy.
+#   * the type-2 runtime is pinned to the 20251108 release asset instead of
+#     letting appimagetool download "the latest runtime" at build time (its
+#     default). That download is the one non-reproducible step in a naive
+#     AppImage build. The runtime *is* GPG-signed; verify it with the .sig and
+#     the pubkey, both fetched next to it.
+#
+# Both pins were verified against the VoyagerSP AppImage lane's own tools.lock
+# (the EF1 port's packaging/appimage/tools.lock) and independently re-hashed on
+# this host at adoption: the digests agree.
+
+APPIMAGETOOL_VERSION=1.9.1
+APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"
+APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+
+RUNTIME_RELEASE=20251108
+RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/${RUNTIME_RELEASE}/runtime-x86_64"
+RUNTIME_SHA256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+RUNTIME_SIG_URL="https://github.com/AppImage/type2-runtime/releases/download/${RUNTIME_RELEASE}/runtime-x86_64.sig"
+RUNTIME_PUBKEY_URL="https://github.com/AppImage/type2-runtime/releases/download/${RUNTIME_RELEASE}/signing-pubkey.asc"
+# AppImage type 2 runtime <type2-runtime@appimage.org>, EDDSA
+RUNTIME_SIGNING_FPR=570C77ACEA40C0F1B758902CBF96CCA56490F695

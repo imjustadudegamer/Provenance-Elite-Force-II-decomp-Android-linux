@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ProvenanceEF2
+GenericName=First-person shooter
+Comment=Star Trek: Voyager — Elite Force II, native Linux port
+Exec=provenanceef2
+Icon=io.github.imjustadudegamer.provenanceef2
+Terminal=false
+Categories=Game;ActionGame;
+Keywords=star trek;elite force;voyager;shooter;fps;
+StartupNotify=true
+StartupWMClass=provenanceef2

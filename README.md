@@ -58,6 +58,9 @@ comes from and there is an answer.
 adb push base/. /sdcard/Android/obb/com.provenanceef2/base/
 ```
 
+On Linux, take the AppImage from Releases instead and point it at your install —
+see the Linux release paragraph under [Build](#build).
+
 ## Controls
 
 Gamepad (EF1-style layout, remappable in the in-game menu):
@@ -101,7 +104,8 @@ almost all of the graphical bugs reported here are fixed. What is still open:
   dampening-field volumes draw only where retail itself draws them.
 - **The GLES 3.2 renderer is selectable, not the default** — Graphics → Renderer
   switches between Vulkan and the GLES 3.2 twin; Vulkan remains the default and
-  the renderer the release ships first.
+  the renderer the release ships first. (On Linux the release is Vulkan only:
+  the AppImage does not carry the GLES 3.2 module.)
 - **Saves are one way in practice** — a save written here can load oddly or
   crash in retail, so back your saves up and finish a run in this port.
 - **One deliberate divergence** — some scripted movement threads resume in this
@@ -131,6 +135,41 @@ cd app/src/main/cpp && cmake --preset linux-gles3 && ninja -C build -j16
 The Linux output lands in `build/Release/` (`provenanceef2` plus `game.so`,
 `cgame.so`, `renderer_vulkan.so`, `renderer_gles3.so`), and reads its game data
 from a `base/` directory beside it, or `+set fs_basepath /path/to/install`.
+
+Linux release: `app/package_appimage.sh` builds the engine and packs one
+relocatable AppImage, `app/appimage/dist/ProvenanceEF2-<version>-x86_64.AppImage`,
+with a `.sha256` and a build-information file beside it. It needs CMake 3.31.5+,
+Ninja and the SDL 2 and Vulkan development headers (`libsdl2-dev`,
+`libvulkan-dev`); the AppImage tools themselves are downloaded once into
+`~/.local/share/appimage-tools` and checked against the pins in
+`app/appimage/tools.lock`. The version in the file name comes from
+`app/src/main/cpp/VERSION`, the same file the engine banner and the APK read.
+The Linux release is **Vulkan only** — the GLES 3.2 twin is an Android concern
+and is configured out of this build (`-DBUILD_RENDERER_GLES3=OFF`).
+
+```sh
+app/package_appimage.sh
+```
+
+The AppImage carries no game data. Run it and point it at your own retail
+installation:
+
+```sh
+./ProvenanceEF2-0.9.5-x86_64.AppImage +set fs_basepath /path/to/elite-force-ii
+```
+
+or drop the retail `base/` directory into `~/.local/share/provenanceef2/`, which
+the engine searches on its own; configs and saves land in the same tree. The
+image is bundled with the SDL it was linked against and nothing else from the
+desktop — glibc, the X11/Wayland client libraries, ALSA/PulseAudio and the
+Vulkan loader and driver all come from the host, so the image needs the build
+machine's glibc or newer (that floor is measured and printed, not assumed).
+`.github/workflows/appimage.yml` builds it by hand on an Ubuntu 22.04 runner,
+which is the same 2.35 floor the EF1 port targets, and uploads it as an
+artifact — no release is cut. The pipeline never runs the game: the image is
+verified statically (`ldd -r`, `readelf`, `objdump`, `desktop-file-validate`,
+`appstreamcli`, and an `--appimage-extract` round trip), and first launch is
+yours.
 
 ## Licence
 

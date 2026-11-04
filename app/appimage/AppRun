@@ -1,0 +1,120 @@
+#!/bin/sh
+# AppRun — ProvenanceEF2 (Star Trek: Voyager — Elite Force II; native Linux port)
+#
+# The AppImage runtime executes this once it has mounted the image at $APPDIR.
+# It does three things:
+#
+#   1. puts the bundled libraries on LD_LIBRARY_PATH, and with them the two game
+#      modules the engine dlopen()s by bare name (game.so, cgame.so);
+#   2. picks the Vulkan loader (the host's when there is one, the bundled
+#      fallback copy otherwise) through SDL's SDL_VULKAN_LIBRARY;
+#   3. execs the engine, passing the user's arguments through untouched.
+#
+# Everything else is the engine's own code, and this script implements none of
+# it: no retail discovery, no validation, no copying, and no fs_basepath or
+# fs_homepath of its own.  The engine reads its game data from the search paths
+# it already has (code/qcommon/files.cpp: FS_InitPathVars) and writes its
+# configs and saves to the home paths it already derives from XDG
+# (code/sys/sys_unix.c: Sys_HomeDataPath).  Nothing is ever written into the
+# AppImage, which is a read-only squashfs.
+#
+# Environment:
+#   PROVENANCEEF2_BUNDLED_VULKAN=1  force the bundled libvulkan.so.1 even if the host has one
+#
+# Engine flags (passed through, handled by the engine):
+#   +set fs_basepath <path>   where the retail base/ directory is
+#   +set fs_homepath <path>   where configs and saves go
+#   +set cl_renderer vulkan   the renderer module to load (renderer_vulkan.so)
+
+set -u
+
+APPDIR="${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)}"
+export APPDIR
+VERSION="__PROVENANCEEF2_VERSION__"
+BIN="$APPDIR/usr/bin/provenanceef2"
+BUNDLED_VULKAN="$APPDIR/usr/lib/vulkan/libvulkan.so.1"
+DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/provenanceef2"
+
+say() { printf 'provenanceef2: %s\n' "$*" >&2; }
+die() { printf 'provenanceef2: error: %s\n' "$*" >&2; exit "${2:-1}"; }
+
+usage() {
+    cat <<EOF
+ProvenanceEF2 $VERSION — Star Trek: Voyager — Elite Force II (native Linux)
+
+  ProvenanceEF2-*.AppImage [engine arguments]
+
+The retail game data is not included. Point the game at your own retail
+installation:
+
+  ProvenanceEF2-*.AppImage +set fs_basepath /path/to/elite-force-ii
+
+or put the retail base/ directory (pak0.pk3 ... and the rest) where the engine
+looks for it on its own:
+
+  $DATA_ROOT/base/
+
+Configs and saves land in the same tree, under the engine's own home paths.
+Set XDG_DATA_HOME before launching to move that root somewhere else.
+
+Everything after this text is passed to the engine unchanged, including:
+  +set <cvar> <value>  (engine console commands)
+  e.g. +set r_mode -1 +set r_customwidth 1920 +set r_customheight 1080
+       +set s_initsound 0
+
+AppImage runtime options:
+  --appimage-extract-and-run  run without FUSE (slower; extracts to \$TMPDIR)
+  --appimage-extract          unpack the AppDir under ./squashfs-root
+  --appimage-version          print the runtime version
+  --apprun-version            print the ProvenanceEF2 version
+  --apprun-help               this text
+EOF
+}
+
+case "${1:-}" in
+    --apprun-help)    usage; exit 0 ;;
+    --apprun-version) printf 'ProvenanceEF2 %s\n' "$VERSION"; exit 0 ;;
+esac
+
+[ -x "$BIN" ] || die "the engine binary is missing from the image ($BIN) — the AppImage is broken" 3
+[ -f "$APPDIR/usr/bin/renderer_vulkan.so" ] \
+    || die "renderer_vulkan.so is missing from the image — the engine cannot start without it" 3
+
+# --------------------------------------------------------------- 1. bundled libs
+# usr/lib holds the third-party closure (SDL and whatever it drags in that is
+# not desktop-owned).  usr/bin holds the engine and the three modules it loads:
+# renderer_vulkan.so by path (Sys_LoadDll is called with useSystemLib=qfalse, so
+# the bare-name lookup is skipped and Sys_BinaryPath() is tried instead --
+# code/client/cl_main.cpp and code/sys/sys_main.c:601) and game.so / cgame.so by
+# bare dlopen (Sys_LoadGameDll, code/sys/sys_main.c:689), which LD_LIBRARY_PATH
+# resolves.  usr/lib goes first so the bundled SDL wins over the host's.
+LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+
+# ------------------------------------------------------------ 2. Vulkan loader
+# Neither the client nor renderer_vulkan.so links Vulkan: NEEDED carries only
+# libm/libc/libstdc++/libgcc_s/libSDL2, and the client calls
+# SDL_Vulkan_CreateSurface, so *SDL* dlopens libvulkan.so.1 at run time.  That
+# is the loader, not the driver: it reads the host's /usr/share/vulkan/icd.d and
+# loads the host GPU driver, none of which can be shipped here.  Loader and
+# driver ship from the same stack, so the host's loader is the right one
+# whenever it exists; the copy under usr/lib/vulkan is only for a host that has
+# a driver but no loader package.  SDL_VULKAN_LIBRARY is SDL's hook for it.
+if [ -n "${PROVENANCEEF2_BUNDLED_VULKAN:-}" ] && [ -f "$BUNDLED_VULKAN" ]; then
+    SDL_VULKAN_LIBRARY="$BUNDLED_VULKAN"
+    export SDL_VULKAN_LIBRARY
+elif ! ldconfig -p 2>/dev/null | grep -q 'libvulkan\.so\.1'; then
+    if [ -f "$BUNDLED_VULKAN" ]; then
+        say "no system libvulkan.so.1 — using the bundled loader"
+        SDL_VULKAN_LIBRARY="$BUNDLED_VULKAN"
+        export SDL_VULKAN_LIBRARY
+    else
+        say "warning: no Vulkan loader found; the renderer will fail to initialise"
+    fi
+fi
+
+# --------------------------------------------------------------- 3. hand over
+# Arguments are forwarded verbatim: the engine owns every flag, including
+# +set fs_basepath, and the working directory is left alone so relative paths
+# given on the command line keep working.
+exec "$BIN" "$@"
