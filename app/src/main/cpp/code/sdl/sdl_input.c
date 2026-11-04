@@ -1550,7 +1550,7 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 			float a  = IN_TouchAspect( );
 			float dx = f->x - tc_moveOx;
 			float dy = ( f->y - tc_moveOy ) / a;          
-			float dz = 0.035f;
+			float dz = TC_PAD_DEADZONE;
 			float len = sqrtf( dx * dx + dy * dy );
 			int st = 0;
 			if ( dy < -dz ) st |= 1;  

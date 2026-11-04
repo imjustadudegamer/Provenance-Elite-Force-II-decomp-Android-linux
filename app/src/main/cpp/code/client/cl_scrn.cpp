@@ -329,6 +329,7 @@ void SCR_Init( void ) {
 static qhandle_t tc_circleShader;
 static qhandle_t tc_ringShader;
 static qhandle_t tc_pillShader;
+static qhandle_t tc_arrowShader[4];   /* up, right, down, left -- the mode-select cross */
 
 static fontheader_t *tc_labelFont;
 
@@ -367,6 +368,10 @@ static void CL_DrawTouchText( float ncx, float ncy, const char *label,
 static void CL_DrawTouchShader( float ncx, float ncy, float nr, qhandle_t shader,
 	float cr, float cg, float cb, float alpha )
 {
+	/* 0 is a legal index -> tr.shaders[0], not a white fill: refuse */
+	if ( !shader )
+		return;
+
 	float W = cls.glconfig.vidWidth, H = cls.glconfig.vidHeight;
 	float da = ( touchControl.deviceW > 0 && touchControl.deviceH > 0 )
 		? touchControl.deviceW / touchControl.deviceH
@@ -380,57 +385,186 @@ static void CL_DrawTouchShader( float ncx, float ncy, float nr, qhandle_t shader
 	re.SetColor( NULL );
 }
 
-static void CL_DrawTouchPill( float ncx, float ncy, float nhw, float nhh, qboolean pressed,
-	const char *label, float cr, float cg, float cb, float opacity )
+/* same aspect the hit test resolves through IN_TouchAspect */
+static float TC_DrawAspect( void )
 {
 	float W = cls.glconfig.vidWidth, H = cls.glconfig.vidHeight;
-	float da = ( touchControl.deviceW > 0 && touchControl.deviceH > 0 )
-		? touchControl.deviceW / touchControl.deviceH
-		: ( H > 0 ? W / H : 2.0f );
+	if ( touchControl.deviceW > 0 && touchControl.deviceH > 0 )
+		return touchControl.deviceW / touchControl.deviceH;
+	return ( H > 0 ? W / H : 2.0f );
+}
+
+/* LCARS bar: semicircular cap one end, flat cut the other; the cap stays inside the hit rect */
+/* pill.tga's vertical middle is opaque (ST 0.2383..0.7578), so it draws as a sharp-cornered solid rect */
+#define TC_PILL_SOLID_S1 0.2383f
+#define TC_PILL_SOLID_S2 0.7578f
+
+static void CL_DrawTouchBar( float ncx, float ncy, float nhw, float nhh,
+	qboolean capLeft, const char *label, qboolean pressed,
+	float cr, float cg, float cb, float opacity )
+{
+	float W = cls.glconfig.vidWidth, H = cls.glconfig.vidHeight;
+	float da     = TC_DrawAspect();
 	float pillhh = TC_PillHalfH( nhh, da );
+	float cap    = TC_BarCapR( nhh, da );
+	/* body runs to the flat cut, so the bar spans exactly cx +/- nhw */
+	float bodyW  = ( 2.0f * nhw - cap ) * W;
+	float bodyX  = capLeft ? ( ncx - nhw + cap ) * W : ( ncx - nhw ) * W;
+	float capX   = capLeft ? ( ncx - nhw ) * W : ( ncx + nhw - 2.0f * cap ) * W;
+	float bodyY  = ( ncy - pillhh ) * H;
+	float bodyH  = 2.0f * pillhh * H;
+	float capW   = 2.0f * cap * W;
+	if ( !tc_pillShader || !tc_circleShader )
+		return;
+
 	float black[4] = { 0, 0, 0, 1 };
 	float col[4];
+
+	/* a bar too short to hold a body and a cap degrades to a whole pill */
+	if ( cap >= nhw ) { bodyW = 0.0f; capX = ( ncx - nhw ) * W; capW = 2.0f * nhw * W; }
+
+	col[0] = cr; col[1] = cg; col[2] = cb;
 	if ( pressed ) {
+		/* hopbush, the live-finger flash this overlay has always used */
 		col[0] = 0.80f; col[1] = 0.40f; col[2] = 0.60f; col[3] = 1.0f * opacity;
 	} else {
-		col[0] = cr; col[1] = cg; col[2] = cb; col[3] = 0.82f * opacity;
+		col[3] = 0.82f * opacity;
 	}
 	re.SetColor( col );
-	re.DrawStretchPic( ( ncx - nhw ) * W, ( ncy - pillhh ) * H, 2.0f * nhw * W, 2.0f * pillhh * H,
-		0, 0, 1, 1, tc_pillShader );
+	if ( bodyW > 0.0f )
+		re.DrawStretchPic( bodyX, bodyY, bodyW, bodyH,
+			TC_PILL_SOLID_S1, 0.0f, TC_PILL_SOLID_S2, 1.0f, tc_pillShader );
+	re.DrawStretchPic( capX, bodyY, capW, bodyH, 0, 0, 1, 1, tc_circleShader );
 	re.SetColor( NULL );
+
 	if ( label && *label ) {
-		float pillW  = 2.0f * nhw * W;
-		float pillH  = 2.0f * pillhh * H;
-		float cap    = pillhh * H;
-		float avail  = pillW - 2.0f * cap;
-		if ( avail < pillW * 0.5f ) avail = pillW * 0.5f;
+		/* label clears the cap on both sides */
+		float barW  = 2.0f * nhw * W;
+		float avail = barW - 2.0f * capW;
+		if ( avail < barW * 0.5f ) avail = barW * 0.5f;
 		black[3] = opacity;
-		CL_DrawTouchText( ncx, ncy, label, avail, pillH * 0.72f, black );
+		CL_DrawTouchText( ncx, ncy, label, avail, bodyH * 0.72f, black );
 	}
+}
+
+/* sized in x-normalised units on both axes, so the pad's four arms stay square */
+static void CL_DrawTouchRect( float ncx, float ncy, float nw, float nh,
+	float cr, float cg, float cb, float alpha )
+{
+	if ( !tc_pillShader )
+		return;
+
+	float W = cls.glconfig.vidWidth, H = cls.glconfig.vidHeight;
+	float da = TC_DrawAspect();
+	float col[4];
+	col[0] = cr; col[1] = cg; col[2] = cb; col[3] = alpha;
+	re.SetColor( col );
+	re.DrawStretchPic( ( ncx - nw ) * W, ( ncy - nh / da ) * H,
+		2.0f * nw * W, 2.0f * ( nh / da ) * H,
+		TC_PILL_SOLID_S1, 0.0f, TC_PILL_SOLID_S2, 1.0f, tc_pillShader );
+	re.SetColor( NULL );
+}
+
+/* LCARS mode-select cross: bezel, four arms to arrowheads, thumb dot.  Draw-only: the pad has no hit rect */
+#define TC_PAD_ARM_W  0.024f    /* an arm's thickness, x-normalised */
+#define TC_PAD_HUB_R  0.016f    /* the hub cap where the arms meet */
+#define TC_PAD_TIP    0.66f     /* arms reach this far into TC_PAD_R */
+#define TC_PAD_HEAD   0.034f    /* an arrowhead's x radius */
+
+static void CL_DrawTouchModeSelect( float ncx, float ncy, float scale,
+	float opacity )
+{
+	float R    = TC_PAD_R * scale;
+	float dx   = touchControl.thumbX - ncx;
+	float dy   = ( touchControl.thumbY - ncy ) / TC_DrawAspect();
+	float tip  = R * TC_PAD_TIP;
+	/* half-length: the bar runs from the hub's edge out to the tip */
+	float arm  = ( tip - TC_PAD_HUB_R ) * 0.5f;
+	float mid  = ( tip + TC_PAD_HUB_R ) * 0.5f;
+	float dim  = ( touchControl.moveActive ? 0.60f : 0.42f ) * opacity;
+	float d[4];
+	static const float px[4] = {  0.0f, 1.0f, 0.0f, -1.0f };
+	static const float py[4] = { -1.0f, 0.0f, 1.0f,  0.0f };
+	int i;
+
+	/* the bezel, orange over tangerine with the black channel between them */
+	CL_DrawTouchShader( ncx, ncy, R, tc_ringShader, LCARS_ORANGE,
+		( touchControl.moveActive ? 0.42f : 0.30f ) * opacity );
+	CL_DrawTouchShader( ncx, ncy, R * 0.80f, tc_ringShader, LCARS_TANGERINE,
+		( touchControl.moveActive ? 0.30f : 0.20f ) * opacity );
+
+	/* the four arms, chunky as the show's own cross is, in hopbush */
+	CL_DrawTouchRect( ncx, ncy - mid, TC_PAD_ARM_W, arm / TC_DrawAspect(),
+		LCARS_HOPBUSH, dim );
+	CL_DrawTouchRect( ncx, ncy + mid, TC_PAD_ARM_W, arm / TC_DrawAspect(),
+		LCARS_HOPBUSH, dim );
+	CL_DrawTouchRect( ncx - mid, ncy, arm, TC_PAD_ARM_W / TC_DrawAspect(),
+		LCARS_HOPBUSH, dim );
+	CL_DrawTouchRect( ncx + mid, ncy, arm, TC_PAD_ARM_W / TC_DrawAspect(),
+		LCARS_HOPBUSH, dim );
+
+	/* how far the thumb has pushed along each arm, in x-normalised pixels */
+	/* an idle pad must not light an arm from a stale thumb */
+	if ( !touchControl.moveActive ) { dx = 0.0f; dy = 0.0f; }
+
+	d[0] = ( dy < 0.0f ) ? -dy : 0.0f;   /* up */
+	d[1] = ( dx > 0.0f ) ?  dx : 0.0f;   /* right */
+	d[2] = ( dy > 0.0f ) ?  dy : 0.0f;   /* down */
+	d[3] = ( dx < 0.0f ) ? -dx : 0.0f;   /* left */
+
+	for ( i = 0; i < 4; i++ ) {
+		float t = ( d[i] - TC_PAD_DEADZONE ) / ( TC_PAD_R - TC_PAD_DEADZONE );
+		float r, g, b, a;
+		if ( t < 0.0f ) t = 0.0f;
+		if ( t > 1.0f ) t = 1.0f;
+		/* tanoi -> mars as the direction engages */
+		r = 1.00f;
+		g = 0.80f + ( 0.133f - 0.80f ) * t;
+		b = 0.60f + ( 0.000f - 0.60f ) * t;
+		a = ( 0.50f + 0.50f * t ) * opacity;
+		CL_DrawTouchShader( ncx + px[i] * tip, ncy + py[i] * tip,
+			TC_PAD_HEAD * scale, tc_arrowShader[i], r, g, b, a );
+	}
+
+	/* the hub cap where the arms meet */
+	CL_DrawTouchShader( ncx, ncy, TC_PAD_HUB_R * scale, tc_circleShader,
+		LCARS_VIOLET, ( touchControl.moveActive ? 0.75f : 0.55f ) * opacity );
+
+	/* the thumb dot: the one part of the pad that still reads as a stick */
+	CL_DrawTouchShader(
+		touchControl.moveActive ? touchControl.thumbX : ncx,
+		touchControl.moveActive ? touchControl.thumbY : ncy,
+		TC_PAD_R * 0.20f * scale, tc_circleShader, LCARS_GOLD,
+		( touchControl.moveActive ? 0.95f : 0.55f ) * opacity );
 }
 
 void CL_TouchRegisterShaders( void )
 {
-	// uivk-android: the names MUST carry the real extension.  Retail's R_LoadImage
+	// the names MUST carry the real extension.  Retail's R_LoadImage
 	tc_circleShader = re.RegisterShaderNoMip( "gfx/touch/circle.tga" );
 	tc_ringShader   = re.RegisterShaderNoMip( "gfx/touch/ring.tga" );
 	tc_pillShader   = re.RegisterShaderNoMip( "gfx/touch/pill.tga" );
+	tc_arrowShader[0] = re.RegisterShaderNoMip( "gfx/touch/arrow_up.tga" );
+	tc_arrowShader[1] = re.RegisterShaderNoMip( "gfx/touch/arrow_right.tga" );
+	tc_arrowShader[2] = re.RegisterShaderNoMip( "gfx/touch/arrow_down.tga" );
+	tc_arrowShader[3] = re.RegisterShaderNoMip( "gfx/touch/arrow_left.tga" );
 
-	if ( !tc_circleShader || !tc_ringShader || !tc_pillShader ) {
+	if ( !tc_circleShader || !tc_ringShader || !tc_pillShader
+		|| !tc_arrowShader[0] || !tc_arrowShader[1]
+		|| !tc_arrowShader[2] || !tc_arrowShader[3] ) {
 		Com_Printf( S_COLOR_RED "WARNING: touch overlay images missing "
-			"(circle=%d ring=%d pill=%d) -- using the white fallback. "
-			"Is zpak-android.pk3 present in base/?\n",
-			tc_circleShader, tc_ringShader, tc_pillShader );
+			"(circle=%d ring=%d pill=%d up=%d right=%d down=%d left=%d) "
+			"-- using the white fallback.  Is zpak-android.pk3 in base/?\n",
+			tc_circleShader, tc_ringShader, tc_pillShader,
+			tc_arrowShader[0], tc_arrowShader[1],
+			tc_arrowShader[2], tc_arrowShader[3] );
 	}
-	if ( !tc_circleShader ) tc_circleShader = cls.whiteShader;
-	if ( !tc_ringShader )   tc_ringShader   = cls.whiteShader;
-	if ( !tc_pillShader )   tc_pillShader   = cls.whiteShader;
+	/* no white fallback: cls.whiteShader is never assigned, so 0 would reach tr.shaders[0] */
 
 	tc_labelFont = re.LoadFont( "tahoma-10" );
 	if ( !tc_labelFont ) {
 		Com_Printf( S_COLOR_RED "WARNING: touch overlay label font 'tahoma-10' "
-			"failed to load -- pill labels will be blank.\n" );
+			"failed to load -- bar labels will be blank.\n" );
 	}
 }
 
@@ -441,7 +575,6 @@ void CL_DrawTouchControls( void ) {
 
 	if ( !tc_pillShader )
 		return;
-
 
 	if ( !touchControl.overlayStartMs )
 		touchControl.overlayStartMs = Sys_Milliseconds();
@@ -470,24 +603,23 @@ void CL_DrawTouchControls( void ) {
 		opacity = o;
 	}
 
+	/* the pad follows the finger: floating origin */
 	if ( touchControl.moveActive ) {
 		padCx = touchControl.padCx; padCy = touchControl.padCy;
 	} else {
 		padCx = TC_PAD_CX; padCy = TC_PAD_CY;
 	}
-	CL_DrawTouchShader( padCx, padCy, TC_PAD_R * scale, tc_ringShader, LCARS_ORANGE,
-		0.45f * opacity * ( touchControl.moveActive ? 1.55f : 1.0f ) );
-	CL_DrawTouchShader(
-		touchControl.moveActive ? touchControl.thumbX : padCx,
-		touchControl.moveActive ? touchControl.thumbY : padCy,
-		TC_PAD_R * 0.45f * scale, tc_circleShader, LCARS_GOLD,
-		( touchControl.moveActive ? 1.0f : 0.7f ) * opacity );
+	CL_DrawTouchModeSelect( padCx, padCy, scale, opacity );
+
+	/* the spine: drawn here, so it has no key and no hit rect */
+	CL_DrawTouchBar( TC_SPINE_CX, TC_SPINE_CY, TC_SPINE_HW * scale,
+		TC_SPINE_HH * scale, qfalse, NULL, qfalse, LCARS_HOPBUSH, opacity );
 
 	for ( i = 0; i < TC_NUM_ACTION; i++ ) {
 		const tcActionButton_t *ab = &tcActionButtons[i];
 		qboolean pressed = ( touchControl.actionPressed & ( 1 << i ) ) != 0;
-		CL_DrawTouchPill( ab->cx, ab->cy, ab->hw * scale, ab->hh * scale, pressed, ab->label,
-			ab->r, ab->g, ab->b, opacity );
+		CL_DrawTouchBar( ab->cx, ab->cy, ab->hw * scale, ab->hh * scale,
+			ab->capLeft, ab->label, pressed, ab->r, ab->g, ab->b, opacity );
 	}
 }
 
@@ -502,7 +634,7 @@ qboolean CL_TouchControlsVisible( void ) {
 	return qtrue;
 }
 
-#endif 
+#endif
 
 void SCR_DrawScreenField( void ) {
 	if ( cls.state != CA_ACTIVE ) {
