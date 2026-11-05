@@ -16,6 +16,10 @@ set(PROJECT_NAME provenanceef2)
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../VERSION" PROJECT_VERSION)
 string(STRIP "${PROJECT_VERSION}" PROJECT_VERSION)
 
+# a VERSION bump must reconfigure: the cached configure otherwise keeps the old base version
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+	"${CMAKE_CURRENT_LIST_DIR}/../VERSION")
+
 if(NOT PROJECT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
 	message(FATAL_ERROR "app/src/main/cpp/VERSION must hold a MAJOR.MINOR.PATCH version, got '${PROJECT_VERSION}'")
 endif()
