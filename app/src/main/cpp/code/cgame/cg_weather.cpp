@@ -418,7 +418,16 @@ void CG_Weather(void)
         emitter->cgd.velocity = Vector(drop->velocity);
 
         vectoangles(drop->velocity, angles);
-        AnglesToAxis(angles, emitter->axis);
+        /* CG_Weather @0x00060260 tail: the drop direction is written into the emitter's
+         * AIM AXIS (spawnthing+1692..1724), never into `axis' (+1756..1788).  SpawnTempModel
+         * @0x00017080 head copies aim_axis -> axis and takes its flight forward from
+         * aim_axis[0], then replaces cgd.velocity with that forward * forwardVelocity -- so
+         * a direction written into `axis' is discarded and every drop spawns on the identity
+         * forward: velocity (|v|,0,0), i.e. the colony rain flying flat along world +X.  The
+         * aim_axis write is what makes the same forwardVelocity land on the drop's own
+         * (vertical) direction again.  `axis' itself is rebuilt two lines into SpawnTempModel
+         * from aim_axis, so nothing else consumed the value written here. */
+        AnglesToAxis(angles, emitter->aim_axis);
 
         emitter->cgd.life        = (int)drop->lifeMs;
         emitter->life_random     = 0;
