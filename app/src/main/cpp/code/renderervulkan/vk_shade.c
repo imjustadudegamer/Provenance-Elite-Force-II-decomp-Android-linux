@@ -3061,6 +3061,11 @@ void VK_Shade_PermRow( const char *shader, int family, unsigned defines );
 
 static void VK_Shade_BuildNote( const char *shader, unsigned stateBits, int family,
 								unsigned defines, long long usec );
+static qboolean VK_Shade_WarmOn( void );
+static qboolean VK_Shade_DeferRegister( const char *shader, unsigned stateBits, int family,
+										unsigned defines, cullType_t cull, qboolean polygonOffset,
+										int topology );
+static qboolean	s_shadeDeferred;
 
 VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family,
 							  unsigned defines, cullType_t cull,
@@ -3090,6 +3095,8 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 	unsigned phash;
 	int newIndex;
 	int probe;
+
+	s_shadeDeferred = qfalse;
 
 	/* the cache key names the modules, so it keys on the permutation bits alone */
 	defines &= ~VKP_FAMILY_MASK;
@@ -3131,6 +3138,15 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade pipeline table full", VK_INCOMPLETE );
 		return VK_NULL_HANDLE;
 	}
+
+	/* A pass is recording, so a build here parks the walk thread and the front end behind it: the key is parked for the next walk's slice and this
+	   surface skips one frame.  Warm off or a full park table means today's build, which draws the same surface one frame earlier. */
+	if ( vk.passOpen && VK_Shade_WarmOn()
+		 && VK_Shade_DeferRegister( shader, stateBits, family, defines, cull, polygonOffset, topology ) ) {
+		s_shadeDeferred = qtrue;
+		return VK_NULL_HANDLE;
+	}
+
 	newIndex = vk_numShadePipelines;
 	slot = &vk_shadePipelines[newIndex];
 
@@ -4040,7 +4056,7 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 								  s_shade.cull, s_shade.polygonOffset, s_shade.topology );
 	if ( pipeline == VK_NULL_HANDLE ) {
 		s_frameShadeDrops++;
-		VK_Shade_DropRow( "pipeline-table" );
+		VK_Shade_DropRow( s_shadeDeferred ? "pipeline-deferred" : "pipeline-table" );
 		return qfalse;
 	}
 	if ( s_shade.texBound[0] ) {
@@ -6889,6 +6905,91 @@ static int		s_warmLateRows;
 static long long s_warmLateUsec;
 static int		s_warmNewPipelines;
 
+/* A key the walk missed while a pass was recording.  Only the walk thread
+   writes it and only the walk thread drains it, at the top of the next walk
+   before the pass opens. */
+#define VK_SHADE_DEFER_MAX	128
+#define VK_SHADE_DEFER_NAME	48
+
+typedef struct {
+	unsigned	stateBits;
+	int			family;
+	unsigned	defines;
+	cullType_t	cull;
+	qboolean	polygonOffset;
+	int			topology;
+	char		shader[VK_SHADE_DEFER_NAME];
+} vkShadeDefer_t;
+
+static vkShadeDefer_t	s_shadeDefer[VK_SHADE_DEFER_MAX];
+static int				s_shadeDeferCount;
+
+static qboolean VK_Shade_WarmOn( void )
+{
+	return ( r_vkShadeWarm && r_vkShadeWarm->integer ) ? qtrue : qfalse;
+}
+
+static qboolean VK_Shade_DeferRegister( const char *shader, unsigned stateBits, int family,
+										unsigned defines, cullType_t cull, qboolean polygonOffset,
+										int topology )
+{
+	vkShadeDefer_t *d;
+	int i;
+
+	for ( i = 0; i < s_shadeDeferCount; i++ ) {
+		d = &s_shadeDefer[i];
+		if ( d->stateBits == stateBits && d->family == family && d->defines == defines
+			 && d->cull == cull && d->polygonOffset == polygonOffset && d->topology == topology ) {
+			return qtrue;
+		}
+	}
+
+	if ( s_shadeDeferCount >= VK_SHADE_DEFER_MAX ) {
+		return qfalse;
+	}
+
+	d = &s_shadeDefer[s_shadeDeferCount++];
+	d->stateBits = stateBits;
+	d->family = family;
+	d->defines = defines;
+	d->cull = cull;
+	d->polygonOffset = polygonOffset;
+	d->topology = topology;
+	Q_strncpyz( d->shader, shader ? shader : "(null)", sizeof( d->shader ) );
+
+	return qtrue;
+}
+
+/* One slice a frame: each entry is a driver build, so the budget is checked
+   after it rather than before, and a slow build still finishes the frame it
+   started in instead of being abandoned mid-call. */
+static void VK_Shade_DeferDrain( int budgetMsec )
+{
+	long long t0;
+	int i;
+
+	if ( !s_shadeDeferCount ) {
+		return;
+	}
+
+	t0 = BE_Microseconds64();
+	for ( i = 0; i < s_shadeDeferCount; i++ ) {
+		vkShadeDefer_t *d = &s_shadeDefer[i];
+
+		VK_Shade_Pipeline( d->shader, d->stateBits, d->family, d->defines,
+						   d->cull, d->polygonOffset, d->topology );
+
+		if ( BE_Microseconds64() - t0 >= ( long long )budgetMsec * 1000LL ) {
+			i++;
+			break;
+		}
+	}
+
+	memmove( &s_shadeDefer[0], &s_shadeDefer[i],
+			 ( s_shadeDeferCount - i ) * sizeof( s_shadeDefer[0] ) );
+	s_shadeDeferCount -= i;
+}
+
 static void VK_Shade_BuildNote( const char *shader, unsigned stateBits, int family,
 								unsigned defines, long long usec )
 {
@@ -7080,6 +7181,9 @@ int VK_Shade_WarmRegistration( int budgetMsec )
 void VK_Shade_WarmFrameStep( int budgetMsec )
 {
 	long long t0;
+
+	/* the parked mid-pass keys come first, before the pass this walk is about to open */
+	VK_Shade_DeferDrain( budgetMsec );
 
 	if ( s_warmCursor >= tr.numShaders || !VK_Shade_WarmRoom() ) {
 		return;

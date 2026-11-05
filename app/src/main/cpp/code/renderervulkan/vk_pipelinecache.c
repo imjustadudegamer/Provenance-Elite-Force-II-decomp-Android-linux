@@ -129,16 +129,12 @@ qboolean VK_PipelineCache_Open( void )
 		home = VK_PCache_Home();
 	}
 
-	/* Loaded by default on the phone, opt-in on the desktop.  Mesa's ANV 25.2.8
-	   segfaults inside vkCreatePipelineCache parsing a blob it saved itself
-	   (memcpy from libvulkan_intel, fault at blob+0x51010 on every reopen), so
-	   the marker below turns that from a repeat into a one-boot cost; the
-	   phone's pipeline compiles are the slow leg of a cold boot. */
-#ifdef __ANDROID__
+	/* Loaded by default on both targets.  Mesa's ANV 25.2.8 segfaults inside
+	   vkCreatePipelineCache parsing a blob it saved itself (memcpy from
+	   libvulkan_intel, fault at blob+0x51010 on every reopen), so the marker
+	   below turns that from a repeat into a one-boot cost; the desktop's
+	   cold compiles are the slow leg of a menu page transition. */
 	loadCvar = ri.Cvar_Get( "r_vkPipelineCacheLoad", "1", 0 );
-#else
-	loadCvar = ri.Cvar_Get( "r_vkPipelineCacheLoad", "0", 0 );
-#endif
 
 	if ( home && home[0] && loadCvar->integer ) {
 		snprintf( path, sizeof( path ), "%s/%s", home, VK_PCACHE_FILE );

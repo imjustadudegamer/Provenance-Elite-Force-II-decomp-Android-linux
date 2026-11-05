@@ -155,6 +155,9 @@ typedef struct {
 	   predicate instead of guessed at. */
 	uint32_t swapchainMinImageCount;
 	int imagesHeld;
+	/* A present that answered SUBOPTIMAL on the desktop: the rebuild waits for
+	   the next acquire instead of restarting inside a present that landed. */
+	qboolean swapchainRebuildDue;
 	VkImage *swapchainImages;
 	VkImageView *swapchainViews;
 	VkPipelineCache pipelineCache;

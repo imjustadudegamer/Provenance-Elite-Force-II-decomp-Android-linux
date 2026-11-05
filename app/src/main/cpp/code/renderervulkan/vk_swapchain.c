@@ -322,6 +322,9 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 		VK_Guard_Hit( VK_GSITE_SWAPCHAIN_CREATE, "swapchain image count", result );
 		qvk.DestroySwapchainKHR( vk.device, vk.swapchain, NULL );
 		vk.swapchain = VK_NULL_HANDLE;
+		/* the query wrote the count before the verdict: a stale count with a NULL
+		   swapchain is the state Destroy just cleared */
+		vk.swapchainImageCount = 0;
 		return qfalse;
 	}
 
@@ -597,6 +600,21 @@ qboolean VK_Swapchain_Recreate( int windowWidth, int windowHeight )
 {
 	vkSwapchainPlan_t plan;
 
+#if !defined( __ANDROID__ )
+	/* A minimized or unmapped window answers currentExtent 0x0, an extent no
+	   swapchain may be created at (VUID-VkSwapchainCreateInfoKHR-imageExtent-01274,
+	   Vulkan-Docs issue #590); refusing before the destroy keeps the live one. */
+	if ( vk.surface != VK_NULL_HANDLE && vk.physicalDevice != VK_NULL_HANDLE ) {
+		VkSurfaceCapabilitiesKHR caps;
+
+		if ( qvk.GetPhysicalDeviceSurfaceCapabilitiesKHR( vk.physicalDevice, vk.surface, &caps ) == VK_SUCCESS
+			 && caps.currentExtent.width == 0 && caps.currentExtent.height == 0 ) {
+			VK_Guard_Hit( VK_GSITE_SWAPCHAIN_RECREATE, "degenerate extent", VK_ERROR_INITIALIZATION_FAILED );
+			return qfalse;
+		}
+	}
+#endif
+
 	if ( vk.swapchain != VK_NULL_HANDLE ) {
 		VK_Sync_DeviceWaitIdle( "swapchain-recreate", "present" );
 		VK_Swapchain_Destroy();
@@ -618,6 +636,9 @@ qboolean VK_Swapchain_Recreate( int windowWidth, int windowHeight )
 	if ( !VK_Swapchain_Create( &plan ) ) {
 		return qfalse;
 	}
+
+	/* whatever asked for this rebuild has had it */
+	vk.swapchainRebuildDue = qfalse;
 
 	return qtrue;
 }

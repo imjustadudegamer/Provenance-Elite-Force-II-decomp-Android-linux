@@ -254,6 +254,7 @@ qboolean VK_Frame_Init( void )
 	vk.acquiredImage = 0;
 	vk.lastPresentedImage = 0;
 	vk.imagesHeld = 0;
+	vk.swapchainRebuildDue = qfalse;
 
 	/* The GPU pass split needs one timestamp query per mark per slot.  Its
 	   availability is the graphics queue family's own timestampValidBits plus a
@@ -633,7 +634,7 @@ qboolean VK_Frame_Acquire( int slot )
 {
 	VkResult result;
 
-	if ( !vk.frameReady || vk.swapchain == VK_NULL_HANDLE ) {
+	if ( !vk.frameReady ) {
 		return qfalse;
 	}
 
@@ -644,17 +645,7 @@ qboolean VK_Frame_Acquire( int slot )
 #if defined( __ANDROID__ )
 	/* Android replaced the ANativeWindow across suspend and the driver is not obliged to report SURFACE_LOST for a surface whose window is gone,
 	   so the window identity -- not an error return -- is the deterministic signal; rebinding before the acquire costs one compare per frame. */
-	if ( vk.swapchain == VK_NULL_HANDLE ) {
-		/* A recreate that already failed once lands here every frame after: the
-		   walk would short-circuit on the NULL below forever.  Retrying is the
-		   recovery, and the attempt is cheap while the window is still absent. */
-		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
-			return qfalse;
-		}
-		if ( !VK_Target_Recreate() ) {
-			return qfalse;
-		}
-	} else if ( VK_Surface_WindowChanged() ) {
+	if ( vk.swapchain != VK_NULL_HANDLE && VK_Surface_WindowChanged() ) {
 		VK_Guard_Row( "VK:surface", "rebind window f=%d", RB_FrameCount() );
 		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
 			return qfalse;
@@ -664,6 +655,27 @@ qboolean VK_Frame_Acquire( int slot )
 		}
 	}
 #endif
+
+	/* The rebuild a present's SUBOPTIMAL asked for, taken once, before this
+	   frame has an image: no swapchain is torn down under a frame that was
+	   already handed to the presentation engine. */
+	if ( vk.swapchainRebuildDue && vk.swapchain != VK_NULL_HANDLE ) {
+		if ( VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+			VK_Target_Recreate();
+		}
+	}
+
+	/* A recreate that already failed once lands here every frame after: the walk
+	   would short-circuit on a NULL forever.  Retrying is the recovery, and the
+	   attempt is cheap while the surface still cannot host a swapchain. */
+	if ( vk.swapchain == VK_NULL_HANDLE ) {
+		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+			return qfalse;
+		}
+		if ( !VK_Target_Recreate() ) {
+			return qfalse;
+		}
+	}
 
 	result = VK_Frame_AcquireOnce( slot );
 
@@ -741,6 +753,13 @@ void VK_Frame_Abandon( int slot )
 	vk.fenceRetired[slot] = qtrue;
 	vk.acquired = qfalse;
 	vk.acquiredImage = 0;
+
+	/* Begin cleared acquired before the acquire ran and the acquire set it, so
+	   qtrue here is this walk's own image and not a leftover: a walk that never
+	   presents owes the count back, or the acquire's spare-image test runs out. */
+	if ( vk.acquired && vk.imagesHeld > 0 ) {
+		vk.imagesHeld--;
+	}
 }
 
 /* The pass opens at RC_VK_BEGIN and closes at RC_VK_PRESENT, so the UI
@@ -953,6 +972,12 @@ qboolean VK_Frame_Submit( int slot )
 	result = VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, vk.fences[slot] );
 
 	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, result, "vkQueueSubmit" ) ) {
+		/* a refused submit means this frame never presents, so the acquired image
+		   owes the count back -- Present's own paths cover every other refusal */
+		vk.acquired = qfalse;
+		if ( vk.imagesHeld > 0 ) {
+			vk.imagesHeld--;
+		}
 		return qfalse;
 	}
 
@@ -1009,12 +1034,26 @@ qboolean VK_Frame_Present( int slot )
 		}
 #endif
 
-		if ( VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
-			VK_Target_Recreate();
+		if ( result == VK_ERROR_OUT_OF_DATE_KHR ) {
+			/* the presentation engine refused the image: this swapchain is not
+			   presentable again, so the recreate runs where it stands on both
+			   platforms -- the recreate retires every image it owned */
+			if ( VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
+				VK_Target_Recreate();
+			}
+			vk.acquired = qfalse;
+			return qfalse;
 		}
+
+		/* The desktop's SUBOPTIMAL reaches here, and it is the other answer: the
+		   image went out.  Its rebuild is owed to the next acquire, because a
+		   surface whose properties drifted rebuilds once and stops answering
+		   SUBOPTIMAL, while one torn down here restarts the swapchain for a
+		   present that already landed -- once a frame. */
+		vk.swapchainRebuildDue = qtrue;
 		vk.acquired = qfalse;
 
-		return ( result == VK_SUBOPTIMAL_KHR ) ? qtrue : qfalse;
+		return qtrue;
 	}
 
 	if ( result == VK_ERROR_SURFACE_LOST_KHR ) {
@@ -1033,7 +1072,12 @@ qboolean VK_Frame_Present( int slot )
 	}
 
 	if ( !VK_Guard_Result( VK_GSITE_PRESENT, result, "vkQueuePresentKHR" ) ) {
+		/* a present that failed does not hand the image back, and nothing will
+		   present it later: the count drops or the spare-image test runs dry */
 		vk.acquired = qfalse;
+		if ( vk.imagesHeld > 0 ) {
+			vk.imagesHeld--;
+		}
 		return qfalse;
 	}
 

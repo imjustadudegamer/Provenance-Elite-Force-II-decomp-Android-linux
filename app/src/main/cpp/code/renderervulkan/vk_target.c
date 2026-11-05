@@ -389,7 +389,15 @@ qboolean VK_Target_Recreate( void )
 		vk.depthMemory = VK_NULL_HANDLE;
 	}
 
-	return VK_Target_Init();
+	if ( !VK_Target_Init() ) {
+		/* the old target is gone and the new one did not land: RecordBegin refuses
+		   on the framebuffer range until something rebuilds, so the next acquire
+		   owes the pair */
+		vk.swapchainRebuildDue = qtrue;
+		return qfalse;
+	}
+
+	return qtrue;
 }
 
 /* ---- the stencil plane's readback --------------------------------------- */
