@@ -171,7 +171,7 @@ The AppImage carries no game data. Run it and point it at your own retail
 installation:
 
 ```sh
-./ProvenanceEF2-0.9.5-x86_64.AppImage +set fs_basepath /path/to/elite-force-ii
+./ProvenanceEF2-<version>-x86_64.AppImage +set fs_basepath /path/to/elite-force-ii
 ```
 
 or drop the retail `base/` directory into `~/.local/share/provenanceef2/`, which
