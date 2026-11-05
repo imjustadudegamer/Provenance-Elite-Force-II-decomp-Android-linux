@@ -359,10 +359,14 @@ PackageManager::PackageManager( Actor *actor )
 {
 	if ( actor )
 		act = actor;
-	else 
+	else
 		gi.Error( ERR_FATAL, "PackageManager::PackageManager -- actor is NULL" );
-	
+
 	_currentPackageIndex = -1;
+
+	/* never-run actors must not archive allocation garbage where retail archives 0 */
+	_currentFVarIndex           = 0;
+	_currentFVarLastExecuteTime = 0;
 }
 
 
