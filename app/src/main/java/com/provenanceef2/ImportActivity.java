@@ -55,14 +55,21 @@ public class ImportActivity extends Activity {
     private static final String RENDERER_CVAR = "cl_renderer";
 
     /**
-     * EVERY retail pak, and all of them are required (the rule: "make all retail
-     * paks required").  The set is the retail install's own base/ directory, in its own order:
-     * multiplayer map paks.  The proof-of-ownership gamex86.dll is required alongside them.
+     * The paks the single-player campaign needs.  The multiplayer map paks
+     * (ctf_tartirus, ctf_vor2, dm_ctf_voy1, hm_ctf_exigent) and the 1.1 patch
+     * paks some installs carry (pak50, locpak50) are OPTIONAL: several retail
+     * distributions do not ship them at all, the campaign references no file
+     * that lives only in them, and the engine tolerates a missing pak with a
+     * per-file warning at use time.  They are copied when picked, never demanded.
      */
     private static final String[] REQUIRED_PAKS = {
             "pak0.pk3", "pak10.pk3", "pak15.pk3", "pak16.pk3",
-            "pak20.pk3", "pak30.pk3", "pak31.pk3", "pak32.pk3", "pak50.pk3",
-            "locpak1.pk3", "locpak50.pk3",
+            "pak20.pk3", "pak30.pk3", "pak31.pk3", "pak32.pk3",
+            "locpak1.pk3"
+    };
+    /** Multiplayer map paks and patch paks: optional, copied when the player picks them. */
+    private static final String[] OPTIONAL_PAKS = {
+            "pak50.pk3", "locpak50.pk3",
             "ctf_tartirus.pk3", "ctf_vor2.pk3", "dm_ctf_voy1.pk3", "hm_ctf_exigent.pk3"
     };
     /** A genuine retail DLL must accompany the paks as proof of ownership. */
@@ -141,6 +148,19 @@ public class ImportActivity extends Activity {
         if (!dllPresent()) {
             if (sb.length() > 0) sb.append(", ");
             sb.append(REQUIRED_DLL);
+        }
+        return sb.toString();
+    }
+
+    /** The optional paks (multiplayer maps, patch content) that are not in place yet. */
+    private String optionalMissingList() {
+        StringBuilder sb = new StringBuilder();
+        for (String pak : OPTIONAL_PAKS) {
+            File f = new File(mBaseDir, pak);
+            if (!f.isFile() || f.length() == 0) {
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(pak);
+            }
         }
         return sb.toString();
     }
@@ -364,16 +384,22 @@ public class ImportActivity extends Activity {
         }
 
         View panel = getLayoutInflater().inflate(R.layout.import_dialog, null);
+        String optional = optionalMissingList();
+        String optionalLine = optional.isEmpty() ? ""
+                : "\nThe multiplayer map paks and patch paks below are OPTIONAL -- "
+                + "the campaign does not need them. Copy them too only if you want "
+                + "the multiplayer maps:\n\n    " + optional + "\n\n";
         String msg = (extraLine != null ? extraLine + "\n\n" : "")
                 + "Star Trek: Elite Force II needs the game data from your "
                 + "retail copy of the game.\n\n"
-                + "Copy these nine files out of the retail \"base\" folder to "
-                + "somewhere this picker can reach (e.g. Downloads) -- the paks "
-                + "together are about 840 MB -- then tap \"Select game files\" "
+                + "Copy these ten files out of the retail \"base\" folder to "
+                + "somewhere this picker can reach (e.g. Downloads) -- together "
+                + "they are about 1 GB -- then tap \"Select game files\" "
                 + "and pick all of them.\n\n"
                 + "    pak0.pk3  pak10.pk3  pak15.pk3  pak16.pk3\n"
                 + "    pak20.pk3  pak30.pk3  pak31.pk3  pak32.pk3\n"
-                + "    pak50.pk3  gamex86.dll";
+                + "    locpak1.pk3  gamex86.dll"
+                + optionalLine;
         ((TextView) panel.findViewById(R.id.import_body)).setText(msg);
 
         RadioButton vulkan = panel.findViewById(R.id.import_renderer_vulkan);
