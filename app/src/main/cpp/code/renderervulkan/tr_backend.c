@@ -2181,6 +2181,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	int				i;
 	drawSurf_t		*drawSurf;
 	int				oldSort;
+	int				sphereEntity;
 	int				portalDraws = 0;
 
 	RB_BeginDrawingView ();
@@ -2194,6 +2195,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	oldDlightMap = 0;
 	oldSort = -1;
 	oldbStaticModel = qfalse;
+	sphereEntity = -1;
 	depthRange = qfalse;
 
 	backEnd.pc.c_surfaces += numDrawSurfs;
@@ -2383,11 +2385,15 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			}
 			shadeParts += VK_Shade_PartCharge( VK_WS_STATICDLIGHTS, partT0, partNested0 );
 		}
-		else if (backEnd.currentEntity->e.tiki && shader->needsLSpherical)
+		/* the setup depends on the entity and the view, not the shader: one pass
+		   per entity instead of one per spherical draw surface */
+		else if (backEnd.currentEntity->e.tiki && shader->needsLSpherical
+			&& entityNum != sphereEntity)
 		{
 			partT0 = VK_WALK_T0();
 			partNested0 = VK_WalkStat_Nested();
 			R_Sphere_SetupEntity();
+			sphereEntity = entityNum;
 			shadeParts += VK_Shade_PartCharge( VK_WS_SPHERE, partT0, partNested0 );
 		}
 

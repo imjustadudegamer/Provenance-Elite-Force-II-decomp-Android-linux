@@ -961,6 +961,7 @@ sysEvent_t	Sys_GetEvent(void);
 
 void		Com_QueueEvent( int time, sysEventType_t type, int value, int value2, size_t ptrLength, void *ptr );
 int			Com_EventLoop( void );
+int			Com_EventLoopAt( int nowMs );
 sysEvent_t	Com_GetSystemEvent( void );
 
 void	Sys_Init (void);
@@ -994,6 +995,9 @@ char	*Sys_GetClipboardData( void );
 void	Sys_Print( const char *msg );
 
 int		Sys_Milliseconds (void);
+/* Sys_Milliseconds' own value for a monotonic-microsecond sample the caller
+   already holds, so a pass that needs both does not read the clock twice */
+int		Sys_MillisecondsFromUsec ( int64_t usec );
 
 qboolean Sys_RandomBytes( byte *string, int len );
 

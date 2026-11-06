@@ -1011,7 +1011,9 @@ void Com_QueueEvent( int time, sysEventType_t type, int value, int value2, size_
 	ev->evPtr = ptr;
 }
 
-sysEvent_t Com_GetSystemEvent(void)
+/* the empty event is stamped from the caller's clock sample; the plain entry
+   point still stamps it from Sys_Milliseconds */
+static sysEvent_t Com_GetSystemEventAt( int nowMs )
 {
 	sysEvent_t  ev;
 	char        *s;
@@ -1043,12 +1045,17 @@ sysEvent_t Com_GetSystemEvent(void)
 	}
 
 	memset( &ev, 0, sizeof( ev ) );
-	ev.evTime = Sys_Milliseconds();
+	ev.evTime = nowMs;
 
 	return ev;
 }
 
-sysEvent_t	Com_GetRealEvent( void ) {
+sysEvent_t Com_GetSystemEvent(void)
+{
+	return Com_GetSystemEventAt( Sys_Milliseconds() );
+}
+
+static sysEvent_t Com_GetRealEventAt( int nowMs ) {
 	int			r;
 	sysEvent_t	ev;
 
@@ -1065,7 +1072,7 @@ sysEvent_t	Com_GetRealEvent( void ) {
 			}
 		}
 	} else {
-		ev = Com_GetSystemEvent();
+		ev = Com_GetSystemEventAt( nowMs );
 
 		if ( com_journal->integer == 1 ) {
 			r = FS_Write( &ev, sizeof(ev), com_journalFile );
@@ -1117,12 +1124,20 @@ void Com_PushEvent( sysEvent_t *event ) {
 	com_pushedEventsHead++;
 }
 
-sysEvent_t	Com_GetEvent( void ) {
+sysEvent_t	Com_GetRealEvent( void ) {
+	return Com_GetRealEventAt( Sys_Milliseconds() );
+}
+
+static sysEvent_t Com_GetEventAt( int nowMs ) {
 	if ( com_pushedEventsHead > com_pushedEventsTail ) {
 		com_pushedEventsTail++;
 		return com_pushedEvents[ (com_pushedEventsTail-1) & (MAX_PUSHED_EVENTS-1) ];
 	}
-	return Com_GetRealEvent();
+	return Com_GetRealEventAt( nowMs );
+}
+
+sysEvent_t	Com_GetEvent( void ) {
+	return Com_GetEventAt( Sys_Milliseconds() );
 }
 
 void Com_RunAndTimeServerPacket( netadr_t *evFrom, msg_t *buf ) {
@@ -1146,6 +1161,12 @@ void Com_RunAndTimeServerPacket( netadr_t *evFrom, msg_t *buf ) {
 }
 
 int Com_EventLoop( void ) {
+	return Com_EventLoopAt( Sys_Milliseconds() );
+}
+
+/* nowMs is the empty event's stamp and nothing else; a caller that already
+   sampled the monotonic clock passes its own value so the pump costs no read. */
+int Com_EventLoopAt( int nowMs ) {
 	sysEvent_t	ev;
 	netadr_t	evFrom;
 	byte		bufData[MAX_MSGLEN];
@@ -1154,7 +1175,7 @@ int Com_EventLoop( void ) {
 	MSG_Init( &buf, bufData, sizeof( bufData ) );
 
 	while ( 1 ) {
-		ev = Com_GetEvent();
+		ev = Com_GetEventAt( nowMs );
 
 		if ( ev.evType == SE_NONE ) {
 			while ( NET_GetLoopPacket( NS_CLIENT, &evFrom, &buf ) ) {
@@ -2461,6 +2482,10 @@ static void SMP_BudgetFrame( int serverMsec, int clientMsec, int spinMsec, int t
 }
 
 
+/* how often the spinning frame wait drains events, network and the frame clock;
+   5 kHz is above every input source's rate */
+#define COM_PACE_EVENT_POLL_USEC 200
+
 /* The pace clock: microseconds of monotonic time.  Sys_Milliseconds stays the game's
    clock; the frame budget only ever reads deltas off this one. */
 static int64_t Com_PaceUsec( void ) {
@@ -2947,13 +2972,31 @@ void Com_Frame( void ) {
     {
     int limitSpinT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
 
+    /* one monotonic sample per pass, handed to the pump as its event stamp; the
+       pump runs at a fixed 5 kHz cadence instead of once per pass, and the
+       deadline test still samples after the pump, so the decision is unchanged */
+    {
+    int64_t paceNow = ( minUsec > 0 ) ? Com_PaceUsec() : 0;
+    int64_t nextPoll = 0;
+    int64_t lastPoll = -1;
+
     do
     {
-        int ui_evT = ( ui_statsOn ? UI_Microseconds() : 0 );
+        /* an off budget has no deadline to test, so it keeps the old pump-per-pass
+           loop and only the budgeted wait trades pumps for a poll cadence */
+        if ( minUsec <= 0 || paceNow >= nextPoll )
+        {
+            int ui_evT = ( ui_statsOn ? UI_Microseconds() : 0 );
 
-        com_frameTime = Com_EventLoop();
+            com_frameTime = ( minUsec > 0 )
+                            ? Com_EventLoopAt( Sys_MillisecondsFromUsec( paceNow ) )
+                            : Com_EventLoop();
 
-        if ( ui_statsOn ) { ui_evUsec += UI_Microseconds() - ui_evT; }
+            if ( ui_statsOn ) { ui_evUsec += UI_Microseconds() - ui_evT; }
+            nextPoll = paceNow + COM_PACE_EVENT_POLL_USEC;
+            lastPoll = paceNow;
+        }
+
         ui_spinIters++;
 
         if ( lastTime > com_frameTime ) {
@@ -2961,12 +3004,23 @@ void Com_Frame( void ) {
         }
 
         msec = com_frameTime - lastTime;
-    } while ( ( minUsec > 0 && Com_PaceUsec() - lastPace < minUsec )
+
+        if ( minUsec > 0 ) {
+            paceNow = Com_PaceUsec();
+        }
+    } while ( ( minUsec > 0 && paceNow - lastPace < minUsec )
            || ( !com_dedicated->integer && msec < 1 ) );
     /* an off budget still owes its millisecond (Com_Frame @0x000CAAC0: v23 < 1 -> 1),
        so frame_msec downstream never reads zero */
 
+    /* the pass that leaves the wait polls, so the frame's last events and its
+       exit time are not up to one poll interval stale */
+    if ( minUsec > 0 && lastPoll != paceNow ) {
+        com_frameTime = Com_EventLoopAt( Sys_MillisecondsFromUsec( paceNow ) );
+    }
+
     if ( ui_statsOn ) { ui_spinUsec = UI_Microseconds() - limitSpinT0; }
+    }
     }
 
     {

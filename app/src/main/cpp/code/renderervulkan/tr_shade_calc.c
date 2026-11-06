@@ -1043,7 +1043,9 @@ void RB_CalcWaveAlpha( const waveForm_t *wf, unsigned char *dstColors )
 
 /* the walk's texcoord bodies are per-vertex heavier than the pack, so their
    break-even sits lower than VK_PACK_CHUNK's -- docs/controls/threadroot */
-#define MT_VERTEX_CHUNK 1024
+/* tess tops out at 3000 vertices, so 1024 only ever split a full char mesh;
+   512 fans a realistic batch out to every worker.  Matches the GLES3 twin. */
+#define MT_VERTEX_CHUNK 512
 
 typedef struct {
 	float		*st;

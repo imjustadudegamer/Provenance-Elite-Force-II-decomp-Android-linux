@@ -2223,7 +2223,10 @@ void CL_Init( void ) {
 
 	start = Sys_Milliseconds();
 
+	/* forced before the read-only flag: a +set cl_jobs 0 creates the cvar first */
 	cl_jobs = Cvar_Get( "cl_jobs", "-1", 0 );
+	Cvar_Set( "cl_jobs", "-1" );
+	cl_jobs->flags |= CVAR_ROM;
 	JobPool_Init( "cljob", cl_jobs->integer );
 
 	CL_ClearState ();

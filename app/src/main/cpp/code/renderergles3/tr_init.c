@@ -1261,10 +1261,11 @@ void R_Register( void )
 
 	r_skipBackEnd = ri.Cvar_Get ("r_skipBackEnd", "0", CVAR_CHEAT);
 
-	/* always on, the same ROM value the Vulkan twin registers: the core-count
-	   gate below is the only thing that may still run this renderer serial */
-	r_smp = ri.Cvar_Get ("r_smp", "1", CVAR_ROM);
+	/* forced before the read-only flag: a +set r_smp 0 creates the cvar first;
+	   the core-count gate below is the only thing that may still run serial */
+	r_smp = ri.Cvar_Get ("r_smp", "1", 0);
 	ri.Cvar_Set ("r_smp", "1");
+	r_smp->flags |= CVAR_ROM;
 
 	r_measureOverdraw = ri.Cvar_Get( "r_measureOverdraw", "0", CVAR_CHEAT );
 	r_depthFuncAlways = ri.Cvar_Get( "r_depthFuncAlways", "0", CVAR_CHEAT );
@@ -1349,8 +1350,11 @@ void R_Register( void )
 
 	r_developer = ri.Cvar_Get("developer", "", 0);
 
-	// PORT-ONLY, no retail counterpart and no effect on what is drawn: it runs
-	r_jobs = ri.Cvar_Get("r_jobs", "-1", CVAR_LATCH);
+	/* PORT-ONLY, no retail counterpart and no effect on what is drawn.  Forced
+	   like r_smp; left registered as a read-only census of the workers. */
+	r_jobs = ri.Cvar_Get("r_jobs", "-1", 0);
+	ri.Cvar_Set("r_jobs", "-1");
+	r_jobs->flags |= CVAR_ROM;
 
 	r_jobsStats = ri.Cvar_Get("r_jobsStats", "0", CVAR_CHEAT);
 	ri.Cvar_SetDescription(r_jobsStats, "Print one [MT] measurement line per second: frame-interval "

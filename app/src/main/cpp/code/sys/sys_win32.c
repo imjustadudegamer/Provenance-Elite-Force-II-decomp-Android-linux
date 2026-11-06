@@ -242,6 +242,12 @@ int Sys_Milliseconds (void)
 	return sys_curtime;
 }
 
+int Sys_MillisecondsFromUsec( int64_t usec )
+{
+	/* the Windows pace clock is Sys_Milliseconds scaled, so it is exact */
+	return (int)( usec / 1000 );
+}
+
 qboolean Sys_RandomBytes( byte *string, int len )
 {
 	HCRYPTPROV  prov;

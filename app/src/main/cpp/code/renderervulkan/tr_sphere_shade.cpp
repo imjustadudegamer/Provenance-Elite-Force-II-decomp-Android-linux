@@ -151,6 +151,73 @@ static void R_Sphere_AccumulateBasis(const vec3_t vColor, float fScale, const ve
     }
 }
 
+/* These point traces repeat per spherical shader and per frame an entity holds
+   still, and on a loaded world each is a pure function of its exact endpoints
+   plus the two cvars that edit a trace, so the verdict is memoised on those. */
+
+#define SPHERE_TRACE_MEMO 64
+
+typedef struct {
+    unsigned epoch;
+    unsigned cvars;
+    unsigned start[3];
+    unsigned end[3];
+    trace_t  trace;
+    qboolean valid;
+} sphereTraceMemo_t;
+
+static sphereTraceMemo_t s_sphereTraceMemo[SPHERE_TRACE_MEMO];
+static unsigned          s_sphereTraceEpoch = 1;
+
+static unsigned R_Sphere_TraceCvarKey(void)
+{
+    static cvar_t *noCurves, *playerCurveClip;
+    unsigned       key = 0;
+
+    if (!noCurves) {
+        noCurves        = ri.Cvar_Get("cm_noCurves", "0", 0);
+        playerCurveClip = ri.Cvar_Get("cm_playerCurveClip", "1", 0);
+    }
+    if (noCurves && noCurves->integer) {
+        key |= 1;
+    }
+    if (playerCurveClip && playerCurveClip->integer) {
+        key |= 2;
+    }
+    return key;
+}
+
+static void R_Sphere_PointTrace(const vec3_t vStart, const vec3_t vEnd, trace_t *trace)
+{
+    unsigned           key[6], h, cvars;
+    sphereTraceMemo_t *m;
+
+    Com_Memcpy(key, vStart, sizeof(float) * 3);
+    Com_Memcpy(key + 3, vEnd, sizeof(float) * 3);
+
+    h = key[0] ^ (key[1] * 2654435761u) ^ (key[2] * 2246822519u)
+      ^ (key[3] * 3266489917u) ^ (key[4] * 668265263u) ^ (key[5] * 374761393u);
+    h ^= h >> 15;
+    m = &s_sphereTraceMemo[h % SPHERE_TRACE_MEMO];
+    cvars = R_Sphere_TraceCvarKey();
+
+    if (m->valid && m->epoch == s_sphereTraceEpoch && m->cvars == cvars
+        && !memcmp(m->start, key, sizeof(key[0]) * 3)
+        && !memcmp(m->end, key + 3, sizeof(key[0]) * 3)) {
+        *trace = m->trace;
+        return;
+    }
+
+    ri.CM_BoxTrace(trace, vStart, vEnd, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, 0);
+
+    m->valid = qtrue;
+    m->epoch = s_sphereTraceEpoch;
+    m->cvars = cvars;
+    Com_Memcpy(m->start, key, sizeof(key[0]) * 3);
+    Com_Memcpy(m->end, key + 3, sizeof(key[0]) * 3);
+    m->trace = *trace;
+}
+
 /* the sky trace's verdict, for the DOCC:slight row */
 static int g_sunSkyHit;
 
@@ -162,9 +229,7 @@ static void R_Sphere_Light_Sun(const vec3_t vDir, const vec3_t vColor)
     qboolean hitSun;
 
     VectorMA(backEnd.currentSphere->worldOrigin, 131072.0, vDir, vEnd);
-    ri.CM_BoxTrace(
-        &trace, backEnd.currentSphere->worldOrigin, vEnd, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, 0
-    );
+    R_Sphere_PointTrace(backEnd.currentSphere->worldOrigin, vEnd, &trace);
 
     hitSun = (qboolean)((trace.surfaceFlags >> 2) & 1);
     g_sunSkyHit = hitSun ? 1 : 0;
@@ -361,16 +426,7 @@ static void R_Sphere_AddNewLight(const spherel_t *thislight)
             }
 
             if (bWorthTracing) {
-                ri.CM_BoxTrace(
-                    &trace,
-                    backEnd.currentSphere->worldOrigin,
-                    thislight->origin,
-                    vec3_origin,
-                    vec3_origin,
-                    0,
-                    CONTENTS_SOLID,
-                    0
-                );
+                R_Sphere_PointTrace(backEnd.currentSphere->worldOrigin, thislight->origin, &trace);
                 bVisible = (qboolean)(trace.fraction >= 1.0f);
             } else {
                 bVisible = qfalse;
@@ -1058,6 +1114,14 @@ void R_Sphere_InitLights()
 
     s_sun.szFlareName[0] = 0;
     s_sun.exists         = qfalse;
+
+    /* a new world: every verdict names geometry that is gone */
+    Com_Memset(s_sphereTraceMemo, 0, sizeof(s_sphereTraceMemo));
+    s_sphereTraceEpoch++;
+    if (!s_sphereTraceEpoch) {
+        Com_Memset(s_sphereTraceMemo, 0, sizeof(s_sphereTraceMemo));
+        s_sphereTraceEpoch = 1;
+    }
 
     /* retail @0x000471C0 seeds ambientlight from the float at 0x22A718[0]+8, and
        R_Sphere_NormalizeColors compares overbrightMult against that same slot, so

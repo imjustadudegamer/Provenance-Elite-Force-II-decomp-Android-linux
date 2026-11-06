@@ -1091,10 +1091,10 @@ void R_InitCommandBuffers( void )
 {
 	int i;
 
-	/* always on: ROM keeps a config row or a console set from turning the walk
-	   off, and the forced set beats a row already read this boot */
-	r_smp = ri.Cvar_Get( "r_smp", "1", CVAR_ROM );
+	/* forced before the read-only flag: a +set r_smp 0 creates the cvar first */
+	r_smp = ri.Cvar_Get( "r_smp", "1", 0 );
 	ri.Cvar_Set( "r_smp", "1" );
+	r_smp->flags |= CVAR_ROM;
 	vk.smpActive = r_smp->integer ? qtrue : qfalse;
 	vk.frameSlot = 0;
 

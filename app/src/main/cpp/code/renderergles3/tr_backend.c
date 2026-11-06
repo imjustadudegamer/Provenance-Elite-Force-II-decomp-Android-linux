@@ -1188,6 +1188,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	int				i;
 	drawSurf_t		*drawSurf;
 	int				oldSort;
+	int				sphereEntity;
 	float			originalTime;
 
 	originalTime = backEnd.refdef.floatTime;
@@ -1203,6 +1204,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	oldDlightMap = 0;
 	oldSort = -1;
 	oldbStaticModel = -1;
+	sphereEntity = -1;
 	depthRange = qfalse;
 
 	backEnd.pc.c_surfaces += numDrawSurfs;
@@ -1324,9 +1326,13 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				RB_Static_SetupModel();
 			}
 		}
-		else if (backEnd.currentEntity->e.tiki && shader->needsLSpherical)
+		/* the setup depends on the entity and the view, not the shader: one pass
+		   per entity instead of one per spherical draw surface */
+		else if (backEnd.currentEntity->e.tiki && shader->needsLSpherical
+			&& entityNum != sphereEntity)
 		{
 			R_Sphere_SetupEntity();
+			sphereEntity = entityNum;
 		}
 
 		if (*drawSurf->surface == SF_SPRITE) {

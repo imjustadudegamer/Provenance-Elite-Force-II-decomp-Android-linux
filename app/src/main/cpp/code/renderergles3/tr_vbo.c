@@ -317,7 +317,8 @@ qboolean RB_VboSendTake( beSendRow_t *out ) {
 }
 
 /* One range of the repack: chunks are disjoint, so the bytes do not depend on
- * the split, and the measured split is slower than inline at every size. */
+ * the split, and the measured split is slower than inline at every size -- the
+ * repack is streaming stores, so it stays inline by decision, not by accident. */
 #define RB_VBO_PACK_CHUNK	SHADER_MAX_VERTEXES
 
 typedef struct {

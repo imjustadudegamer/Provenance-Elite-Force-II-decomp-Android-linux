@@ -282,7 +282,10 @@ void R_RegisterCvars( void )
 	r_farplane_nocull = ri.Cvar_Get("r_farplane_nocull", "0", CVAR_CHEAT);
 	r_farplane_nofog = ri.Cvar_Get("r_farplane_nofog", "0", CVAR_CHEAT);
 	r_ignore = ri.Cvar_Get( "r_ignore", "1", CVAR_CHEAT );
-	r_jobs = ri.Cvar_Get("r_jobs", "-1", CVAR_LATCH);
+	/* forced before the read-only flag: a +set r_jobs 0 creates the cvar first */
+	r_jobs = ri.Cvar_Get("r_jobs", "-1", 0);
+	ri.Cvar_Set("r_jobs", "-1");
+	r_jobs->flags |= CVAR_ROM;
 	r_light_ambientEmphasize = ri.Cvar_Get("r_light_ambientEmphasize", "1.6", 0);
 	r_light_ambientFudge = ri.Cvar_Get("r_light_ambientFudge", "0.7", 0);
 	r_light_emphasize = ri.Cvar_Get("r_light_emphasize", "0", 0);

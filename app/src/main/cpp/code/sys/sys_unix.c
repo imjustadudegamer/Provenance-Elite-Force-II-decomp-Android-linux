@@ -624,6 +624,16 @@ int Sys_Milliseconds (void)
 	return curtime;
 }
 
+int Sys_MillisecondsFromUsec( int64_t usec )
+{
+	if ( !sys_timeBase ) {
+		/* the first Sys_Milliseconds call returns the nanosecond field alone */
+		return (int)( ( usec % 1000000 ) / 1000 );
+	}
+
+	return (int)( usec / 1000 - (int64_t)sys_timeBase * 1000 );
+}
+
 qboolean Sys_RandomBytes( byte *string, int len )
 {
 	FILE *fp;
