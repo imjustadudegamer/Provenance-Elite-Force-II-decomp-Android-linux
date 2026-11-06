@@ -1123,6 +1123,28 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 	static cvar_t *cv;
 #endif 
 
+	/* THE SWEPT BOX NEVER TOUCHED THIS PATCH: no facet walk can lower the
+	   fraction, so the patch is skipped whole.
+
+	   Both boxes err outward, which is what makes this exact rather than a
+	   heuristic.  pc->bounds is the axis-aligned hull of every subdivided grid
+	   point of the patch, pushed out by one unit at CM_GeneratePatchCollide, so
+	   it contains every facet plane, every border bevel and the sign-bit offsets
+	   the walk below applies to them.  tw->bounds is the axis-aligned hull of
+	   the box's path from start to end (size[0] at one end, size[1] at the
+	   other), so it contains every point the moving box can occupy.  A contact
+	   needs a point in both, so disjoint hulls mean there is nothing to find --
+	   including the point variant below, whose offsets are zero because a point
+	   trace has no extents.
+
+	   CM_PositionTestInPatchCollide has rejected patches with this same test
+	   since retail; this is the same test applied to the moving side. */
+	for ( i = 0; i < 3; i++ ) {
+		if ( tw->bounds[0][i] > pc->bounds[1][i] || tw->bounds[1][i] < pc->bounds[0][i] ) {
+			return;
+		}
+	}
+
 	if (tw->isPoint) {
 		CM_TracePointThroughPatchCollide( tw, pc );
 		return;
