@@ -3110,6 +3110,10 @@ qboolean VK_Texture_Upload( int handle, int mipLevel, int width, int height,
 							const void *data, size_t bytes );
 qboolean VK_Texture_Flush( int handle );
 qboolean VK_Texture_Publish( int handle );
+/* the frame's dirty lightmap pages in one submit, one staging, one wait */
+qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int count,
+								  const byte *src, size_t pageBytes );
+void     VK_Lightmap_Shutdown( void );
 qboolean VK_Texture_ReadTexel( int handle, int x, int y, unsigned char out[4], int *blocked );
 qboolean VK_Texture_ReadBlock( int handle, int x, int y, unsigned char out[4],
 							   unsigned char blockOut[16], int *blocked );

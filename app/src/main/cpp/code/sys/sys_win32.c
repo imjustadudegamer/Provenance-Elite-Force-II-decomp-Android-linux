@@ -604,6 +604,17 @@ void Sys_Sleep( int msec )
 #endif
 }
 
+/* The frame budget's sub-millisecond sleep.  Windows' timer granularity is
+   whole milliseconds, so this truncates exactly as Sys_Sleep did and the budget
+   keeps its current shape here; the microsecond tail is the posix path's gain. */
+void Sys_SleepUsec( int usec )
+{
+	if( usec <= 0 )
+		return;
+
+	Sleep( usec / 1000 );
+}
+
 void Sys_ErrorDialog( const char *error )
 {
 	Sys_Print( va( "%s\n", error ) );

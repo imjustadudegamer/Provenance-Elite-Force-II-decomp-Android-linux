@@ -986,6 +986,26 @@ void Sys_Sleep( int msec )
 	SMP_BudgetAdd( SMP_ZONE_SLEEP, Sys_Milliseconds() - smpSleepStart );
 }
 
+/* The frame budget's sub-millisecond sleep: nanosleep already takes microseconds,
+   so the budget's spin tail is the margin alone instead of the margin plus up to
+   999us of whole-ms truncation (common.c LIMIT_WaitDecision's caller). */
+void Sys_SleepUsec( int usec )
+{
+	struct timespec req;
+	int smpSleepStart;
+
+	if( usec <= 0 )
+		return;
+
+	smpSleepStart = Sys_Milliseconds();
+
+	req.tv_sec = usec / 1000000;
+	req.tv_nsec = (usec % 1000000) * 1000;
+	nanosleep(&req, NULL);
+
+	SMP_BudgetAdd( SMP_ZONE_SLEEP, Sys_Milliseconds() - smpSleepStart );
+}
+
 void Sys_ErrorDialog( const char *error )
 {
 	char buffer[ 1024 ];

@@ -982,11 +982,8 @@ void RB_RenderThread( void )
 		}
 
 		rb_activeFrame = frame;
-		/* Claimed in the handoff, so the front end cannot be writing this list
-		   while it is read.  The clear stays inside the claim because used is
-		   the front end's write position: clearing it after releasing the slot
-		   would clobber a frame the front end had already started. */
-		VKimp_WalkBegin( frame->smpFrame );
+		/* the handoff claimed the slot (vk_renderthread.c RendererSleep);
+		   re-writing it here cost two mutex ops a frame */
 		walkStart = VK_WALK_T0();
 		if ( frame->list ) {
 			RB_ExecuteRenderCommands( frame->list->cmds );

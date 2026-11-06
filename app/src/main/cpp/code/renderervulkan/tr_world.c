@@ -515,22 +515,30 @@ void R_ClearDynamicLightmaps( void ) {
 }
 
 void R_UploadDynamicLightmaps( void ) {
-	int		i;
+	int		i, n;
+	int		handles[MAX_LIGHTMAPS];
+	int		pages[MAX_LIGHTMAPS];
 
 	if ( !tr.world ) {
 		return;
 	}
 
+	n = 0;
 	for ( i = 0; i < tr.numBaseLightmaps; i++ ) {
 		if ( !tr.world->baseLightmapFrame[i] ) {
 			continue;
 		}
-		/* The texture path uploads the whole lightmap, not the dirty rows, so
-		   the frame flag selects the same set of maps. */
-		VK_Texture_Upload( tr.baseLightmaps[i]->texnum, 0, LIGHTMAP_WIDTH, LIGHTMAP_HEIGHT,
-			tr.world->baseLightmapImage + i * LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT * 4,
+		/* the whole page, as before; one submit, not one per page */
+		if ( n < MAX_LIGHTMAPS ) {
+			handles[n] = tr.baseLightmaps[i]->texnum;
+			pages[n]   = i;
+			n++;
+		}
+	}
+
+	if ( n ) {
+		VK_Lightmap_UploadBatch( handles, pages, n, tr.world->baseLightmapImage,
 			( size_t )LIGHTMAP_WIDTH * LIGHTMAP_HEIGHT * 4 );
-		VK_Texture_Publish( tr.baseLightmaps[i]->texnum );
 	}
 }
 

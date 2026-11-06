@@ -416,7 +416,10 @@ void main()
 		/* RB_CalcAlphaFogBlend @0x30420 writes 255 * the density, and the 9999
 		   arm of RB_CalcAlphaFogDensities is min(fog.oolen * |pos - viewOrigin|,
 		   1) -- a viewmodel at one unit is 0.04% fogged, a far wall fully. */
-		color.a = floor(255.0 * min(u_FogOolen * length(pos - u_ViewOrigin), 1.0));
+		/* oolen is negative when the view has no global fog at all; without the
+		   lower clamp the byte alpha goes negative and the pass composites the
+		   whole surface instead of contributing nothing. */
+		color.a = floor(255.0 * clamp(u_FogOolen * length(pos - u_ViewOrigin), 0.0, 1.0));
 	}
 	else if (u_AlphaGen == 19) {				/* AGEN_SKYALPHA :1186 */
 		color.a = floor(u_SkyAlpha * 255.0);

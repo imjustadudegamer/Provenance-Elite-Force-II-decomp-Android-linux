@@ -2612,11 +2612,13 @@ void S_OPENAL_Update()
             continue;
         }
 
-        if (!pChannel->is_playing()) {
+        /* a channel skipped by either guard is skipped by both; the struct read
+           is cheap, alGetSourcei's source lock is not */
+        if (pChannel->fNewPitchMult <= 0) {
             continue;
         }
 
-        if (pChannel->fNewPitchMult <= 0) {
+        if (!pChannel->is_playing()) {
             continue;
         }
 

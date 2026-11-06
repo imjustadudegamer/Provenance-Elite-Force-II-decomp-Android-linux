@@ -986,6 +986,8 @@ patchCollide_t *CM_GeneratePatchCollide( int width, int height, vec3_t *points, 
 void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc ) {
 	qboolean	frontFacing[MAX_PATCH_PLANES];
 	float		intersection[MAX_PATCH_PLANES];
+	float		enterDist[MAX_PATCH_PLANES];
+	float		leaveDist[MAX_PATCH_PLANES];
 	float		intersect;
 	const patchPlane_t	*pcPlanes;
 	const facet_t	*facet;
@@ -994,7 +996,7 @@ void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollid
 	float		d1, d2;
 #ifndef BSPC
 	static cvar_t *cv;
-#endif 
+#endif
 
 #ifndef BSPC
 	if ( !cm_playerCurveClip->integer || !tw->isPoint ) {
@@ -1007,6 +1009,8 @@ void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollid
 		offset = DotProduct( tw->offsets[ pcPlanes->signbits ], pcPlanes->plane );
 		d1 = DotProduct( tw->start, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
 		d2 = DotProduct( tw->end, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
+		enterDist[i] = d1;
+		leaveDist[i] = d2;
 		if ( d1 <= 0 ) {
 			frontFacing[i] = qfalse;
 		} else {
@@ -1030,10 +1034,10 @@ void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollid
 		}
 		intersect = intersection[facet->surfacePlane];
 		if ( intersect < 0 ) {
-			continue;		
+			continue;
 		}
 		if ( intersect > tw->trace.fraction ) {
-			continue;		
+			continue;
 		}
 		for ( j = 0 ; j < facet->numBorders ; j++ ) {
 			k = facet->borderPlanes[j];
@@ -1056,12 +1060,10 @@ void CM_TracePointThroughPatchCollide( traceWork_t *tw, const struct patchCollid
 				debugPatchCollide = pc;
 				debugFacet = facet;
 			}
-#endif 
-			pcPlanes = &pc->planes[facet->surfacePlane];
-
-			offset = DotProduct( tw->offsets[ pcPlanes->signbits ], pcPlanes->plane );
-			d1 = DotProduct( tw->start, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
-			d2 = DotProduct( tw->end, pcPlanes->plane ) - pcPlanes->plane[3] + offset;
+#endif
+			/* the prepass already computed these for this plane */
+			d1 = enterDist[facet->surfacePlane];
+			d2 = leaveDist[facet->surfacePlane];
 			tw->trace.fraction = ( d1 - SURFACE_CLIP_EPSILON ) / ( d1 - d2 );
 
 			if ( tw->trace.fraction < 0 ) {

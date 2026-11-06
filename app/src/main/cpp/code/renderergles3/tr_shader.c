@@ -774,6 +774,28 @@ static void ParseTexMod( char *_text, shaderStage_t *stage, int cntBundle )
 }
 
 
+/* tr.lightmaps[]/tr.baseLightmaps[] are the one pointer table no registration
+ * retires (tr_shader.c R_SetupShaders; the cure 2e6b416 gave tr.models[]), so a
+ * row past the new map's own count names a row R_FreeUnusedImages has zeroed. */
+static image_t *R_LightmapImageForIndex( int lightmapIndex )
+{
+	if ( lightmapIndex < 0 ) {
+		return tr.whiteImage;
+	}
+	if ( lightmapIndex & DYNAMIC_LIGHTMAP_BIT ) {
+		int	idx = lightmapIndex & LIGHTMAP_BASE_MASK;
+
+		if ( idx < 0 || idx >= tr.numBaseLightmaps ) {
+			return tr.whiteImage;
+		}
+		return tr.baseLightmaps[idx];
+	}
+	if ( lightmapIndex >= tr.numLightmaps ) {
+		return tr.whiteImage;
+	}
+	return tr.lightmaps[lightmapIndex];
+}
+
 static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 {
 	char* token;
@@ -837,16 +859,7 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 			else if (!Q_stricmp(token, "$lightmap"))
 			{
 				stage->bundle[cntBundle].isLightmap = qtrue;
-				if (shader.lightmapIndex < 0) {
-					stage->bundle[cntBundle].image[0] = tr.whiteImage;
-				}
-				else if (shader.lightmapIndex & DYNAMIC_LIGHTMAP_BIT) {
-					stage->bundle[cntBundle].image[0] =
-						tr.baseLightmaps[shader.lightmapIndex & LIGHTMAP_BASE_MASK];
-				}
-				else {
-					stage->bundle[cntBundle].image[0] = tr.lightmaps[shader.lightmapIndex];
-				}
+				stage->bundle[cntBundle].image[0] = R_LightmapImageForIndex( shader.lightmapIndex );
 				continue;
 			}
 			else if (!Q_stricmp(token, "$bumpmap"))
@@ -3061,6 +3074,8 @@ static shader_t *FinishShader( void ) {
 		pFogStage = &fogStages[stage];
 		pFogStage->active = qtrue;
 		pFogStage->bundle[0].image[0] = tr.fogImage;
+		pFogStage->bundle[0].numImageAnimations = 1;
+		pFogStage->bundle[0].isLightmap = qfalse;
 		pFogStage->bundle[0].tcGen = TCGEN_FOG;
 		pFogStage->rgbGen = CGEN_FOG;
 		pFogStage->alphaGen = AGEN_IDENTITY;
@@ -3069,6 +3084,10 @@ static shader_t *FinishShader( void ) {
 		pFogStage = &globalFogStages[stage];
 		pFogStage->active = qtrue;
 		pFogStage->bundle[0].image[0] = tr.whiteImage;
+		/* the bundle is a memcpy of the unfogged stage: an inherited animation
+		   count or lightmap flag makes the bind pick another slot */
+		pFogStage->bundle[0].numImageAnimations = 1;
+		pFogStage->bundle[0].isLightmap = qfalse;
 		pFogStage->bundle[0].tcGen = TCGEN_IDENTITY;
 		pFogStage->rgbGen = CGEN_FOG_BLEND;
 		pFogStage->alphaGen = AGEN_FOG_GLOBAL;
@@ -3348,12 +3367,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		unfoggedStages[1].rgbGen = CGEN_IDENTITY_LIGHTING;
 		unfoggedStages[1].stateBits |= GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO;
 	} else {
-		if ( shader.lightmapIndex & DYNAMIC_LIGHTMAP_BIT ) {
-			unfoggedStages[0].bundle[0].image[0] =
-				tr.baseLightmaps[shader.lightmapIndex & LIGHTMAP_BASE_MASK];
-		} else {
-			unfoggedStages[0].bundle[0].image[0] = tr.lightmaps[shader.lightmapIndex];
-		}
+		unfoggedStages[0].bundle[0].image[0] = R_LightmapImageForIndex( shader.lightmapIndex );
 		unfoggedStages[0].bundle[0].isLightmap = qtrue;
 		unfoggedStages[0].active = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_IDENTITY;	

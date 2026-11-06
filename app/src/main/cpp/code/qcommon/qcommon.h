@@ -1043,6 +1043,7 @@ char	*Sys_DefaultOutputPath( void );
 char **Sys_ListFiles( const char *directory, const char *extension, const char *filter, int *numfiles, qboolean wantsubs );
 void	Sys_FreeFileList( char **list );
 void	Sys_Sleep(int msec);
+void	Sys_SleepUsec(int usec);
 
 void Sys_InitStreamThread(void);
 void Sys_ShutdownStreamThread(void);

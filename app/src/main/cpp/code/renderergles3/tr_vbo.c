@@ -114,6 +114,9 @@ static GLuint	s_eboStream;
 /* ---- the per-frame tessellation stream store: three rotating stores ----- */
 #define RB_TESS_ARENA_COUNT		3
 #define RB_TESS_ARENA_ALIGN		32
+/* The teardown's wait is bounded so a wedged submission cannot hang the frame;
+ * past the bound GL's own deferred destruction is the backstop it always was. */
+#define RB_ARENA_DRAIN_TIMEOUT_NS	( (GLuint64)200 * 1000 * 1000 )
 /* PAD is power-of-two only and a whole vertex cannot be one: the store's vertex
  * stream needs this general form. */
 #define RB_TESS_ARENA_VALIGN	( (GLintptr)( RB_VERTEX_STRIDE * ( RB_TESS_ARENA_ALIGN / 4 ) ) )
@@ -123,8 +126,24 @@ typedef char rb_arena_valign_is_vertex_aligned[
 static GLintptr RB_VboAlignUp( GLintptr v, GLintptr align ) {
 	return ( ( v + align - 1 ) / align ) * align;
 }
-#define RB_TESS_ARENA_VBO_BYTES	( (GLsizeiptr)( (size_t)2u * 1024u * 1024u ) )
-#define RB_TESS_ARENA_EBO_BYTES	( (GLsizeiptr)( (size_t)1u * 1024u * 1024u ) )
+#define RB_TESS_ARENA_VBO_SEED	( (GLsizeiptr)( (size_t)2u * 1024u * 1024u ) )
+#define RB_TESS_ARENA_EBO_SEED	( (GLsizeiptr)( (size_t)1u * 1024u * 1024u ) )
+#define RB_TESS_ARENA_VBO_MAX	( (GLsizeiptr)( (size_t)64u * 1024u * 1024u ) )
+#define RB_TESS_ARENA_EBO_MAX	( (GLsizeiptr)( (size_t)32u * 1024u * 1024u ) )
+#define RB_TESS_ARENA_STEP		( (GLsizeiptr)( (size_t)1u * 1024u * 1024u ) )
+
+/* A frame's tess output has no compile-time bound, so the store is measured and
+   not guessed: the seed is the first allocation and a frame that overruns it
+   re-allocates the whole pool at its own peak (RB_VboArenaSend).  The 2 MiB seed
+   is smaller than an in-game frame -- the device read 45,917 verts/frame against
+   it, so 16% of every frame spilled to the ring's per-send orphan. */
+static GLsizeiptr	s_arenaVboBytes = RB_TESS_ARENA_VBO_SEED;
+static GLsizeiptr	s_arenaEboBytes = RB_TESS_ARENA_EBO_SEED;
+/* The end offsets this frame wanted, whether the store held them or spilled them. */
+static GLintptr		s_arenaVboNeed;
+static GLintptr		s_arenaEboNeed;
+/* Latched by the overrun, cleared at the frame boundary that re-allocates. */
+static qboolean		s_arenaResize;
 
 static GLuint	s_vboArena[RB_TESS_ARENA_COUNT];
 static GLuint	s_eboArena[RB_TESS_ARENA_COUNT];
@@ -148,9 +167,9 @@ static cvar_t	*s_mapCvar;
 /* The arm as the cvars ask for it, before the store's own verdict; `fall='
  * counts against this, for a store asked for and refused every batch. */
 static qboolean	s_arenaArmed;
-/* the ring's own send shape; 1 is the fresh-orphan `glBufferData' per send and the default: the same-view A/B measured 47,093 us/window against 381,283 for
-   the sub-data shape, because Mali prices a write into a buffer the GPU last read eight batches ago as a drain.  The re-specification happens with the default
-   VAO bound and the slot's own VAO opens after it.  0 is the sub-data shape, kept for the A/B. */
+/* the ring's own send shape; 1 is the fresh-orphan `glBufferData' per send and the default *for the ring*, which `r_tessMap 1' no longer hands the feed to: the
+   same-view A/B measured 47,093 us/window against 381,283 for the sub-data shape, because Mali prices a write into a buffer the GPU last read eight batches ago
+   as a drain.  The re-specification happens with the default VAO bound and the slot's own VAO opens after it.  0 is the sub-data shape, kept for the A/B. */
 static cvar_t	*s_freshCvar;
 /* Latched at the first send: the two shapes are not mixable within a session,
  * so flipping r_tessFresh mid-session does nothing until the next map load. */
@@ -494,7 +513,8 @@ void RB_VBO_Shutdown( void )
 }
 
 /* one batch's two sends: `slot' rotates per batch and a batch's vertex and index sends share it, so the pair a draw reads is the pair just written.  Both sizes
-   and both payloads are the batch's exact values, no padding; the fresh arm's call set is two glBufferData, the subdata arm's two glBufferSubData, and neither maps nor fences. */
+   and both payloads are the batch's exact values, no padding; the fresh arm's call set is two glBufferData, the subdata arm's two glBufferSubData, and neither maps
+   nor fences.  Reached only when the store is closed (`r_tessMap 0') or a frame outran it: the feed itself is RB_VboArenaSend. */
 static void RB_VboSendTess( int numVertexes, const glIndex_t *indexes, int numIndexes )
 {
 	int		slot = s_tessRingNext;
@@ -1076,13 +1096,13 @@ static qboolean RB_VboArenaMapPair( int slot ) {
 	}
 
 	RB_BindBuffer( GL_ARRAY_BUFFER, s_vboArena[slot] );
-	qglBufferStorageEXT( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, RB_TESS_STORE_FLAGS );
-	s_arenaMapV[slot] = (byte *)qglMapBufferRange( GL_ARRAY_BUFFER, 0, RB_TESS_ARENA_VBO_BYTES,
+	qglBufferStorageEXT( GL_ARRAY_BUFFER, s_arenaVboBytes, NULL, RB_TESS_STORE_FLAGS );
+	s_arenaMapV[slot] = (byte *)qglMapBufferRange( GL_ARRAY_BUFFER, 0, s_arenaVboBytes,
 												   RB_TESS_STORE_FLAGS );
 
 	RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_eboArena[slot] );
-	qglBufferStorageEXT( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, RB_TESS_STORE_FLAGS );
-	s_arenaMapI[slot] = (byte *)qglMapBufferRange( GL_ELEMENT_ARRAY_BUFFER, 0, RB_TESS_ARENA_EBO_BYTES,
+	qglBufferStorageEXT( GL_ELEMENT_ARRAY_BUFFER, s_arenaEboBytes, NULL, RB_TESS_STORE_FLAGS );
+	s_arenaMapI[slot] = (byte *)qglMapBufferRange( GL_ELEMENT_ARRAY_BUFFER, 0, s_arenaEboBytes,
 												   RB_TESS_STORE_FLAGS );
 
 	if ( !s_arenaMapV[slot] || !s_arenaMapI[slot] ) {
@@ -1194,7 +1214,7 @@ static void RB_VboArenaMapFrame( void ) {
 				s_arenaMapDead = qtrue;
 				if ( R_ProbeStatsOn() ) {
 					ri.Printf( PRINT_ALL,
-							   "[BE:arm] store stood down (%s glerror=0x%x): ring runs, fall counts\n",
+							   "[BE:arm] store unmapped (%s glerror=0x%x): sub-data store runs\n",
 							   s_arenaMapWhy == RB_ARM_NOEXT ? "no GL_EXT_buffer_storage"
 												  : "persistent map refused",
 							   (unsigned)s_arenaMapErr );
@@ -1231,6 +1251,14 @@ static void RB_VboArenaShutdown( void ) {
 
 	if ( !s_arenaInit ) {
 		return;
+	}
+
+	/* The fences are the only record of a frame still reading the store, and the
+	 * resize is a mid-session teardown, so they are waited on and not dropped. */
+	for ( i = 0; i < RB_TESS_ARENA_COUNT; i++ ) {
+		if ( s_arenaFence[i] ) {
+			qglClientWaitSync( s_arenaFence[i], 0, RB_ARENA_DRAIN_TIMEOUT_NS );
+		}
 	}
 
 	/* The map pointers and the stand-down latch are file statics, so they die
@@ -1280,6 +1308,26 @@ static void RB_VboArenaShutdown( void ) {
 	s_arenaMapBatches   = 0;
 	s_armPrinted        = qfalse;
 	s_armMode           = -1;
+	/* the pool's size is the frame's measured demand, not per-session state: it
+	   survives the teardown so a re-sized pool is not re-grown */
+
+	/* Deleting a bound object reverts the real binding to 0 and a driver may hand
+	 * the same names back, so the caches must not carry them into the new pool. */
+	r_vaoBound           = (GLuint)~0u;
+	s_arrayBufferBound   = (GLuint)~0u;
+	s_elementBufferBound = (GLuint)~0u;
+	RB_BindVAO( 0 );
+}
+
+/* One MiB granularity, twice the demand: the demand settles, so the pool is
+   re-allocated a handful of times a session and then never again. */
+static GLsizeiptr RB_VboArenaGrow( GLintptr need, GLsizeiptr cap ) {
+	GLsizeiptr	want = (GLsizeiptr)need * 2;
+
+	if ( want > cap ) {
+		want = cap;
+	}
+	return RB_VboAlignUp( want, RB_TESS_ARENA_STEP );
 }
 
 void RB_VBO_BeginFrame( void ) {
@@ -1330,6 +1378,7 @@ void RB_VBO_BeginFrame( void ) {
 					   " why=%d %s(0x%x) carried=%d orphans=%d f=%d\n",
 					   map, legacy, s_freshLatched ? ( s_fresh ? 1 : 0 ) : ( s_freshCvar ? s_freshCvar->integer : 0 ),
 					   s_arenaMapped ? "mapped"
+					   : s_arenaArmed ? "sub-data store"
 					   : ( legacy == 1 ) ? "per-frame store"
 					   : ( legacy == 2 ) ? "a/b" : "ring",
 					   RB_VboArenaMode(), s_arenaMapDead ? 1 : 0,
@@ -1356,7 +1405,10 @@ void RB_VBO_BeginFrame( void ) {
 			s_arenaFull = qtrue;
 			return;
 		}
-	} else if ( !s_arenaMapped && !s_arenaCvar->integer ) {
+	} else if ( !s_arenaArmed && !s_arenaCvar->integer ) {
+		/* Nobody asked for a store.  `r_tessMap 1' with a dead map still asked, so it
+		   keeps the store and runs it as sub-data -- the append-only shape, not the
+		   ring's two orphans a batch. */
 		s_arenaActive = qfalse;
 		s_arenaFull = qtrue;
 		return;
@@ -1373,6 +1425,39 @@ void RB_VBO_BeginFrame( void ) {
 		return;
 	}
 	s_arenaFrame = RB_FrameCount();
+
+	/* A frame that outran the store re-allocates the pool at its own peak before
+	 * this one opens, so the overrun is paid once and the ring never becomes the
+	 * feed.  Nothing is drawn from the pool here, so the shutdown deletes nothing
+	 * in flight; the map's own verdict is carried across so a host without the
+	 * extension is not re-probed every resize. */
+	if ( s_arenaResize ) {
+		GLsizeiptr	vWant = RB_VboArenaGrow( s_arenaVboNeed, RB_TESS_ARENA_VBO_MAX );
+		GLsizeiptr	iWant = RB_VboArenaGrow( s_arenaEboNeed, RB_TESS_ARENA_EBO_MAX );
+		qboolean	mapDead  = s_arenaMapDead;
+		GLenum		mapErr   = s_arenaMapErr;
+		int			mapWhy   = s_arenaMapWhy;
+
+		s_arenaResize = qfalse;
+		if ( vWant > s_arenaVboBytes || iWant > s_arenaEboBytes ) {
+			s_arenaVboBytes = vWant > s_arenaVboBytes ? vWant : s_arenaVboBytes;
+			s_arenaEboBytes = iWant > s_arenaEboBytes ? iWant : s_arenaEboBytes;
+			if ( R_ProbeStatsOn() ) {
+				ri.Printf( PRINT_ALL, "[BE:arm] store re-sized to %d/%d KiB f=%d\n",
+						   (int)( s_arenaVboBytes / 1024 ), (int)( s_arenaEboBytes / 1024 ),
+						   RB_FrameCount() );
+			}
+			RB_VboArenaShutdown();
+			s_arenaMapDead = mapDead;
+			s_arenaMapErr  = mapErr;
+			s_arenaMapWhy  = mapWhy;
+			RB_VboArenaInit();
+			/* the shutdown's own frame stamp must not reopen this frame's store */
+			s_arenaFrame = RB_FrameCount();
+		}
+	}
+	s_arenaVboNeed = 0;
+	s_arenaEboNeed = 0;
 
 	/* The refusals are decided below; the flag is cleared here and nowhere
 	 * else, or clearing it after the fence check erased the refusal. */
@@ -1410,9 +1495,9 @@ void RB_VBO_BeginFrame( void ) {
 		   point of use, and no other VAO is left naming it. */
 		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_arenaVbo );
-		qglBufferData( GL_ARRAY_BUFFER, RB_TESS_ARENA_VBO_BYTES, NULL, GL_STREAM_DRAW );
+		qglBufferData( GL_ARRAY_BUFFER, s_arenaVboBytes, NULL, GL_STREAM_DRAW );
 		RB_BindBuffer( GL_ELEMENT_ARRAY_BUFFER, s_arenaEbo );
-		qglBufferData( GL_ELEMENT_ARRAY_BUFFER, RB_TESS_ARENA_EBO_BYTES, NULL, GL_STREAM_DRAW );
+		qglBufferData( GL_ELEMENT_ARRAY_BUFFER, s_arenaEboBytes, NULL, GL_STREAM_DRAW );
 		RB_BindVAO( s_vaoArena[s_arenaNext] );
 	}
 
@@ -1494,8 +1579,17 @@ static qboolean RB_VboArenaSend( int numVertexes, const glIndex_t *indexes, int 
 		iBytes = (GLsizeiptr)( ( size_t )numIndexes * sizeof( glIndex_t ) );
 	}
 
-	if ( vOff + vBytes > RB_TESS_ARENA_VBO_BYTES
-		 || iOff + iBytes > RB_TESS_ARENA_EBO_BYTES ) {
+	if ( vOff + vBytes > s_arenaVboBytes
+		 || iOff + iBytes > s_arenaEboBytes ) {
+		/* Note what the frame wanted, not what fit: the next frame's pool is
+		   re-allocated at this peak, so the overrun is paid once. */
+		if ( vOff + vBytes > (GLintptr)s_arenaVboNeed ) {
+			s_arenaVboNeed = vOff + vBytes;
+		}
+		if ( iOff + iBytes > (GLintptr)s_arenaEboNeed ) {
+			s_arenaEboNeed = iOff + iBytes;
+		}
+		s_arenaResize = qtrue;
 		s_arenaFull = qtrue;
 		s_arenaFall++;
 		return qfalse;
@@ -1578,8 +1672,15 @@ qboolean RB_VboImmSend( int numVertexes, const glIndex_t *indices, int numIndice
 	vBytes = (GLsizeiptr)( ( size_t )numVertexes * RB_VERTEX_STRIDE );
 	iBytes = (GLsizeiptr)( ( size_t )numIndices * sizeof( glIndex_t ) );
 
-	if ( vOff + vBytes > RB_TESS_ARENA_VBO_BYTES
-		 || iOff + iBytes > RB_TESS_ARENA_EBO_BYTES ) {
+	if ( vOff + vBytes > s_arenaVboBytes
+		 || iOff + iBytes > s_arenaEboBytes ) {
+		if ( vOff + vBytes > (GLintptr)s_arenaVboNeed ) {
+			s_arenaVboNeed = vOff + vBytes;
+		}
+		if ( iOff + iBytes > (GLintptr)s_arenaEboNeed ) {
+			s_arenaEboNeed = iOff + iBytes;
+		}
+		s_arenaResize = qtrue;
 		s_arenaFull = qtrue;
 		s_arenaFall++;
 		return qfalse;
@@ -2133,7 +2234,8 @@ void RB_ImmFlush( void )
 		/* The store is not open.  The single stream buffer is never rotated, so a
 		   write into it is the driver's shadow copy of the whole buffer; a
 		   re-specification with the run's own bytes is not.  The bytes, the records
-		   and their order are the same either way. */
+		   and their order are the same either way.  `r_tessMap 1' now keeps the store
+		   open even where the map is refused, so this is the explicit opt-out path. */
 		RB_BindVAO( 0 );
 		RB_BindBuffer( GL_ARRAY_BUFFER, s_vboStream );
 		qglBufferData( GL_ARRAY_BUFFER,

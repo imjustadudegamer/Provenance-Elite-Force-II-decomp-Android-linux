@@ -456,7 +456,6 @@ void VK_Flare_QueryReset( int slot );
 void VK_Flare_QueryCollect( int slot );
 void VK_Flare_QueryShutdown( void );
 
-void VKimp_WalkBegin( int slot );
 void VKimp_WalkEnd( int slot );
 qboolean VKimp_SlotBusy( int slot );
 void VKimp_FrontEndWaitSlot( int slot );

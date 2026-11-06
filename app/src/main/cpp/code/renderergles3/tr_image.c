@@ -1257,6 +1257,11 @@ image_t* R_CreateImageOld(
 	   every shader image by one level at r_picmip=0. */
 	int			picmip = allowPicmip ? r_picmip->integer : 0;
 
+	/* the lightmap path selects unit 1 for its upload and the create must not
+	   leave the engine's active unit there: every bind that does not name a
+	   unit reads glState.currenttmu, so the create restores what it found */
+	int			savedTmu = glState.currenttmu;
+
 	if (strlen(name) >= MAX_QPATH ) {
 		ri.Error (ERR_DROP, "R_CreateImage: \"%s\" is too long\n", name);
 	}
@@ -1501,6 +1506,8 @@ image_t* R_CreateImageOld(
 	image->next = hashTable[hash];
 	hashTable[hash] = image;
 	image->r_sequence = r_sequencenumber;
+
+	GL_SelectTexture( savedTmu );
 
 	return image;
 }
@@ -2671,14 +2678,27 @@ int R_CountTextureMemory(void) {
 }
 
 void R_FreeUnusedImages(void) {
-    int i;
+    int i, freed = 0, lmfreed = 0;
 
     for (i = 0; i < tr.numImages; i++) {
         image_t* image = &tr.images[i];
 
         if (image->imgName[0] && image->r_sequence != r_sequencenumber && image->r_sequence != -1) {
+            if (R_ProbeStatsOn() && !strncmp(image->imgName, "*lightmap", 9)) {
+                ri.Printf(PRINT_ALL,
+                          "[GLES3:event] ev=freelmap name=%s tx=%d seq=%d now=%d frame=%d\n",
+                          image->imgName, image->texnum, image->r_sequence,
+                          r_sequencenumber, tr.frameCount);
+                lmfreed++;
+            }
             R_FreeImage(image);
+            freed++;
         }
+    }
+
+    if (R_ProbeStatsOn()) {
+        ri.Printf(PRINT_ALL, "[GLES3:event] ev=purge frame=%d freed=%d lmfreed=%d images=%d\n",
+                  tr.frameCount, freed, lmfreed, tr.numImages);
     }
 }
 

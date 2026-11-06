@@ -213,13 +213,6 @@ int VKimp_ParkMsec( void )
 /* handing a frame to the walk thread releases the front end, so it can come back to this slot while the walk is still reading it -- with two
    slots that is the very next frame, and the walk reads byte offsets the front end is appending to.  These three make "the walk thread owns this list" a testable state. */
 
-void VKimp_WalkBegin( int slot )
-{
-	SDL_LockMutex( vk_smpMutex );
-	vk_walkingSlot = slot;
-	SDL_UnlockMutex( vk_smpMutex );
-}
-
 void VKimp_WalkEnd( int slot )
 {
 	SDL_LockMutex( vk_smpMutex );

@@ -171,6 +171,8 @@ void VK_Texture_Shutdown( void )
 		VK_Texture_Destroy( i );
 	}
 
+	VK_Lightmap_Shutdown();
+
 	for ( i = 0; i < VK_SAMPLER_SLOTS; i++ ) {
 		if ( vk_samplers[i].sampler != VK_NULL_HANDLE && qvk.DestroySampler ) {
 			qvk.DestroySampler( vk.device, vk_samplers[i].sampler, NULL );
@@ -325,6 +327,8 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
    above is its last caller. */
 static void VK_Texture_StagingFree( vkTexture_t *tex );
 static void VK_Texture_QueueFree( vkTexture_t *tex );
+/* the lightmap batch's own staging, declared here for the shutdown above */
+void VK_Lightmap_Shutdown( void );
 
 /* the batching instrument: submits and the copies they carried.  per= is mips
    per submit -- 1.0 is the per-mip submit-and-wait this replaces.  fallback=
@@ -773,8 +777,10 @@ done:
 /* Every queued copy of one chain, in one submit.  The bytes are the per-mip
    path's bytes in the per-mip path's regions, one submit later: the pre-submit
    host writes reach this submit through s7.9's own queue-submission dependency,
-   and the staging is HOST_COHERENT (s11.2.1), so no flush call is owed. */
-qboolean VK_Texture_Flush( int handle )
+   and the staging is HOST_COHERENT (s11.2.1), so no flush call is owed.
+   `publish` folds the SHADER_READ_ONLY transition into that same submit, so a
+   rewritten texture costs one round trip instead of two. */
+static qboolean VK_Texture_FlushPub( int handle, qboolean publish )
 {
 	vkTexture_t *tex;
 	VkCommandBufferAllocateInfo allocInfo;
@@ -906,6 +912,15 @@ qboolean VK_Texture_Flush( int handle )
 	qvk.CmdCopyBufferToImage( cmd, tex->staging, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							  (uint32_t)count, regionList );
 
+	/* The publish rides this submit: the barrier's own scopes order it after the
+	   copies above, so one submit retires both. */
+	if ( publish ) {
+		VK_Texture_Barrier( cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+							VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+							tex->mipLevels );
+	}
+
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(flush)" ) ) {
 		goto done;
 	}
@@ -933,8 +948,10 @@ qboolean VK_Texture_Flush( int handle )
 		goto done;
 	}
 
-	/* the transition is known to have run */
-	if ( oldLayout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
+	/* the transitions are known to have run */
+	if ( publish ) {
+		tex->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	} else if ( oldLayout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
 		tex->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	}
 	ok = qtrue;
@@ -973,6 +990,11 @@ done:
 	VK_Upload_End();
 
 	return ok;
+}
+
+qboolean VK_Texture_Flush( int handle )
+{
+	return VK_Texture_FlushPub( handle, qfalse );
 }
 
 static qboolean VK_Texture_UploadBatched( int handle, vkTexture_t *tex, int mipLevel,
@@ -1060,9 +1082,10 @@ qboolean VK_Texture_Publish( int handle )
 
 	/* the chain's queued copies run before the layout that publishes them: a
 	   barrier out of TRANSFER_DST with no copy behind it would publish mips the
-	   device never received */
-	if ( !VK_Texture_Flush( handle ) ) {
-		return qfalse;
+	   device never received.  A queued chain takes the merged path, so the copies
+	   and the transition retire in one submit and one wait instead of two. */
+	if ( tex->pendingCount > 0 ) {
+		return VK_Texture_FlushPub( handle, qtrue );
 	}
 
 	VK_Upload_Begin();
@@ -1149,6 +1172,217 @@ done:
 	VK_Upload_End();
 
 	return ok;
+}
+
+/* ---- the lightmap page upload ------------------------------------------- */
+
+/* the frame's dirty lightmap pages: one staging, one fence, one submit, one wait
+   (the shared path retires its epoch per flush and re-faults 16 pages per page) */
+
+static VkBuffer       s_lmStaging;
+static VkDeviceMemory s_lmStagingMemory;
+static byte          *s_lmStagingMapped;
+static VkDeviceSize   s_lmStagingBytes;
+static VkFence        s_lmFence;
+
+void VK_Lightmap_Shutdown( void )
+{
+	if ( vk.device == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	if ( s_lmStagingMapped != NULL ) {
+		qvk.UnmapMemory( vk.device, s_lmStagingMemory );
+		s_lmStagingMapped = NULL;
+	}
+	if ( s_lmStaging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+		qvk.DestroyBuffer( vk.device, s_lmStaging, NULL );
+	}
+	s_lmStaging = VK_NULL_HANDLE;
+	if ( s_lmStagingMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+		qvk.FreeMemory( vk.device, s_lmStagingMemory, NULL );
+	}
+	s_lmStagingMemory = VK_NULL_HANDLE;
+	s_lmStagingBytes  = 0;
+
+	if ( s_lmFence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+		qvk.DestroyFence( vk.device, s_lmFence, NULL );
+	}
+	s_lmFence = VK_NULL_HANDLE;
+}
+
+/* handles[i]/pageIndex[i] name slot i's texture and its page in src; same bytes,
+   regions and layout order as one upload-plus-publish per page, one submit for all */
+qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int count,
+								  const byte *src, size_t pageBytes )
+{
+	VkCommandBufferAllocateInfo allocInfo;
+	VkCommandBufferBeginInfo    beginInfo;
+	VkSubmitInfo                submitInfo;
+	VkCommandBuffer             cmd = VK_NULL_HANDLE;
+	VkDeviceSize                need;
+	VkResult                    result;
+	int                         i;
+
+	if ( !VK_Upload_Ready() || handles == NULL || pageIndex == NULL || src == NULL
+		 || count < 1 || pageBytes == 0 ) {
+		return qfalse;
+	}
+
+	for ( i = 0; i < count; i++ ) {
+		if ( handles[i] < 0 || handles[i] >= VK_MAX_TEXTURES || !vk_textures[handles[i]].inUse ) {
+			return qfalse;
+		}
+	}
+
+	need = (VkDeviceSize)pageBytes * (VkDeviceSize)count;
+
+	/* grown once, never retired: a retire re-faults the copy's pages */
+	if ( s_lmStagingMapped == NULL || s_lmStagingBytes < need ) {
+		VkBuffer       buffer = VK_NULL_HANDLE;
+		VkDeviceMemory memory = VK_NULL_HANDLE;
+		void          *mapped = NULL;
+
+		if ( !VK_Memory_CreateBuffer( need, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+									  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+									  &buffer, &memory ) ) {
+			VK_Guard_Hit( VK_GSITE_ALLOC, "lightmap staging buffer", VK_ERROR_OUT_OF_HOST_MEMORY );
+			return qfalse;
+		}
+		if ( !VK_Guard_Result( VK_GSITE_ALLOC, qvk.MapMemory( vk.device, memory, 0, need, 0, &mapped ),
+							   "vkMapMemory(lightmap staging)" ) ) {
+			qvk.DestroyBuffer( vk.device, buffer, NULL );
+			qvk.FreeMemory( vk.device, memory, NULL );
+			return qfalse;
+		}
+
+		VK_Lightmap_Shutdown();
+		s_lmStaging       = buffer;
+		s_lmStagingMemory = memory;
+		s_lmStagingMapped = (byte *)mapped;
+		s_lmStagingBytes  = need;
+	}
+
+	if ( s_lmFence == VK_NULL_HANDLE ) {
+		VkFenceCreateInfo fenceInfo;
+
+		memset( &fenceInfo, 0, sizeof( fenceInfo ) );
+		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &s_lmFence ),
+							   "vkCreateFence(lightmap)" ) ) {
+			return qfalse;
+		}
+	}
+
+	/* one walk join for the batch; the transition writes images the walk samples */
+	VK_Upload_Quiesce();
+
+	VK_Upload_Begin();
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.ResetFences( vk.device, 1, &s_lmFence ),
+						   "vkResetFences(lightmap)" ) ) {
+		VK_Upload_End();
+		return qfalse;
+	}
+
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = VK_Upload_Pool();
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( VK_Upload_Pool(), &allocInfo, &cmd ),
+						   "vkAllocateCommandBuffers(lightmap)" ) ) {
+		VK_Upload_End();
+		return qfalse;
+	}
+
+	memset( &beginInfo, 0, sizeof( beginInfo ) );
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.BeginCommandBuffer( cmd, &beginInfo ),
+						   "vkBeginCommandBuffer(lightmap)" ) ) {
+		goto done;
+	}
+
+	/* the two transitions upload and publish made, in the order they ran */
+	for ( i = 0; i < count; i++ ) {
+		vkTexture_t *tex = &vk_textures[handles[i]];
+
+		if ( tex->layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
+			VK_Texture_Barrier( cmd, tex->image, tex->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_Texture_LayoutAccess( tex->layout ),
+								VK_ACCESS_TRANSFER_WRITE_BIT, tex->mipLevels );
+		}
+	}
+
+	for ( i = 0; i < count; i++ ) {
+		vkTexture_t *tex = &vk_textures[handles[i]];
+		VkBufferImageCopy region;
+
+		memset( &region, 0, sizeof( region ) );
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.layerCount = 1;
+		region.imageExtent.width = (uint32_t)tex->width;
+		region.imageExtent.height = (uint32_t)tex->height;
+		region.imageExtent.depth = 1;
+		region.bufferOffset = (VkDeviceSize)( (size_t)i * pageBytes );
+
+		qvk.CmdCopyBufferToImage( cmd, s_lmStaging, tex->image,
+								  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
+	}
+
+	for ( i = 0; i < count; i++ ) {
+		vkTexture_t *tex = &vk_textures[handles[i]];
+
+		VK_Texture_Barrier( cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+							VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+							tex->mipLevels );
+	}
+
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.EndCommandBuffer( cmd ), "vkEndCommandBuffer(lightmap)" ) ) {
+		goto done;
+	}
+
+	for ( i = 0; i < count; i++ ) {
+		memcpy( s_lmStagingMapped + ( (VkDeviceSize)i * (VkDeviceSize)pageBytes ),
+				src + ( (VkDeviceSize)pageIndex[i] * (VkDeviceSize)pageBytes ), pageBytes );
+	}
+
+	memset( &submitInfo, 0, sizeof( submitInfo ) );
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, s_lmFence ),
+						   "vkQueueSubmit(lightmap)" ) ) {
+		goto done;
+	}
+
+	result = VK_Sync_WaitForFences( s_lmFence, VK_TRUE, "lightmap-batch", "upload" );
+	if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(lightmap)" ) ) {
+		goto done;
+	}
+
+	/* the transitions are known to have run */
+	for ( i = 0; i < count; i++ ) {
+		vk_textures[handles[i]].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	}
+
+	vk_uploadSubmits++;
+	vk_uploadMips += count;
+
+done:
+	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
+		VK_Pool_FreeBuffers( VK_Upload_Pool(), 1, &cmd );
+	}
+
+	VK_Upload_End();
+
+	return qtrue;
 }
 
 /* A readback of one texel: the offline proof that the copy actually landed, and

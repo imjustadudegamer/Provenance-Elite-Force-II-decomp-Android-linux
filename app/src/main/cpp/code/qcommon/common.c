@@ -2933,8 +2933,10 @@ void Com_Frame( void ) {
         if ( limitRemain > 0 ) {
             int limitT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
 
-            /* whole milliseconds to the OS, the spin loop takes the tail */
-            Sys_Sleep( limitRemain / 1000 );
+            /* the whole remainder to the OS in one sleep, so the spin tail is the
+               margin it exists to absorb and not the margin plus a whole-ms
+               truncation (LIMIT_WaitDecision already subtracted that margin) */
+            Sys_SleepUsec( limitRemain );
 
             if ( ui_statsOn ) { ui_waitUsec = UI_Microseconds() - limitT0; }
         }

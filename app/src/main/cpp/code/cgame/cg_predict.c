@@ -134,7 +134,27 @@ void CG_ClipMoveToEntities(
     clipHandle_t   cmodel;
     vec3_t         bmins, bmaxs;
     vec3_t         origin, angles;
+    vec3_t         sweepMin, sweepMax;
     centity_t     *cent;
+
+    /* callers pass NULL extents (cg_footprints, cg_view); CM substitutes vec3_origin (cm_trace.c:956) */
+    if ( !mins ) {
+        mins = vec3_origin;
+    }
+    if ( !maxs ) {
+        maxs = vec3_origin;
+    }
+
+    /* the swept box's world AABB, the box CM_BoxTraceInternal builds as tw.bounds */
+    for (i = 0; i < 3; i++) {
+        if (start[i] < end[i]) {
+            sweepMin[i] = start[i] + mins[i];
+            sweepMax[i] = end[i] + maxs[i];
+        } else {
+            sweepMin[i] = end[i] + mins[i];
+            sweepMax[i] = start[i] + maxs[i];
+        }
+    }
 
     for (i = 0; i < cg_numSolidEntities; i++) {
         cent = cg_solidEntities[i];
@@ -144,6 +164,8 @@ void CG_ClipMoveToEntities(
             continue;
         }
 
+        VectorCopy(cent->lerpOrigin, origin);
+
         if (ent->solid == SOLID_BMODEL) {
             cmodel = cgi.CM_InlineModel(ent->modelindex);
             if (!cmodel) {
@@ -151,6 +173,15 @@ void CG_ClipMoveToEntities(
             }
         } else {
             IntegerToBoundingBox(ent->solid, bmins, bmaxs);
+
+            /* a translated box missing tw.bounds (cm_trace.c:1030) cannot hit;
+               rotated bmodels keep the full trace */
+            if (    origin[0] + bmins[0] > sweepMax[0] || origin[0] + bmaxs[0] < sweepMin[0]
+                 || origin[1] + bmins[1] > sweepMax[1] || origin[1] + bmaxs[1] < sweepMin[1]
+                 || origin[2] + bmins[2] > sweepMax[2] || origin[2] + bmaxs[2] < sweepMin[2] ) {
+                continue;
+            }
+
             boxContents = CG_CLIP_BOX_CONTENTS;
             cmodel      = cgi.CM_TempBoxModel(bmins, bmaxs, boxContents);
 
@@ -188,7 +219,8 @@ void CG_ClipMoveToEntities(
             VectorCopy(vec3_origin, angles);
         }
 
-        cgi.CM_TransformedBoxTrace(&trace, start, end, mins, maxs, cmodel, mask, origin, angles, cylinder);
+        cgi.CM_TransformedBoxTrace(&trace, start, end, mins, maxs, cmodel, mask, origin, angles,
+                                   cylinder);
 
         if (trace.allsolid || trace.fraction < tr->fraction) {
             trace.entityNum = ent->number;
