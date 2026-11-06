@@ -4828,10 +4828,25 @@ void Entity::SetMassEvent(Event *ev)
     mass = ev->GetFloat(1);
 }
 
+/* Cached once, like every other gi.cvar pointer in this module; the value is
+   re-read per call, so a map change is answered by the engine's own Cvar_Set. */
+qboolean G_MapHasTerrainSurfaces(void)
+{
+    static cvar_t *row;
+
+    if (!row) {
+        row = gi.cvar("cm_mapHasTerrain", "1", 0);
+    }
+
+    return (row && row->integer) ? qtrue : qfalse;
+}
+
 void Entity::CheckGround(void)
 {
     Vector  point;
     trace_t trace;
+    qboolean probed = qfalse;
+    float   probeLength = sv_groundtracelength->value;
 
     if (flags & (FL_SWIM | FL_FLY)) {
         return;
@@ -4843,10 +4858,22 @@ void Entity::CheckGround(void)
     }
 
     point = origin;
-    point.z -= sv_groundtracelength->value;
-    trace = G_Trace(origin, mins, maxs, point, this, edict->clipmask, false, "Entity::CheckGround");
+    point.z -= probeLength;
 
-    if (!(trace.surfaceFlags & SURF_TERRAIN)) {
+    /* The long probe is only there to ask whether the surface under the entity
+       is terrain; its trace is thrown away and repeated at a quarter unit
+       unless the answer was yes.  Two cases make the first trace dead work and
+       both leave the *same* trace behind it:
+         - the map cannot report SURF_TERRAIN at all (G_MapHasTerrainSurfaces),
+         - the groundtracelength is itself a quarter unit, so the repeat is the
+           same trace with the same end point.
+       The repeat below is what retail ends up with in both cases. */
+    if (G_MapHasTerrainSurfaces() && probeLength != 0.25f) {
+        trace = G_Trace(origin, mins, maxs, point, this, edict->clipmask, false, "Entity::CheckGround");
+        probed = (trace.surfaceFlags & SURF_TERRAIN) ? qtrue : qfalse;
+    }
+
+    if (!probed) {
         point.z = origin.z - 0.25f; 
         trace   = G_Trace(origin, mins, maxs, point, this, edict->clipmask, false, "Entity::CheckGround");
     }

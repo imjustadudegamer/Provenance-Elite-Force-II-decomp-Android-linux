@@ -859,6 +859,27 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	CM_FloodAreaConnections();
 	_R( 41 );
 
+	/* THE MAP'S TERRAIN FACT, published for the movement code.
+
+	   SURF_TERRAIN is written in exactly one place -- CMod_LoadTerrainEF2 above,
+	   onto the terrain surfaces themselves -- and no shader keyword produces it
+	   (no surfaceparm in either renderer's shader parser maps to it).  A map whose
+	   terrain lump produced no surface therefore cannot report SURF_TERRAIN on
+	   any trace, and two movement routines in the game modules spend a whole
+	   extra trace finding that out: PM_GroundTrace's nine-unit probe and
+	   Entity::CheckGround's groundtracelength probe both keep their result only
+	   when it says terrain, and otherwise throw it away and trace again.
+
+	   It rides a cvar because the game interface carries no map-property query
+	   and one bit is not worth an import slot for two call sites.  "1" is the
+	   probing path, so a map that has not been loaded -- or a build of the game
+	   module that predates the row -- keeps retail behaviour exactly. */
+	{
+		cvar_t	*row = Cvar_Get( "cm_mapHasTerrain", "1", 0 );
+
+		Cvar_Set( "cm_mapHasTerrain", ( row && cm.terrainEF2 ) ? "1" : "0" );
+	}
+
 	if ( !clientload ) {
 		Q_strncpyz( cm.name, name, sizeof( cm.name ) );
 	}

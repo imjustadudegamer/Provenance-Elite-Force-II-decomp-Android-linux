@@ -2784,6 +2784,10 @@ void Player::SetMoveInfo( pmove_t *pmove, const usercmd_t *ucmd )
 	
 	pmove->easyJump       = cl_easyJump->integer ? qtrue : qfalse;
 
+	/* the map cannot report SURF_TERRAIN, so PM_GroundTrace's probe is dead
+	   work (qcommon/cm_load.c owns cm_mapHasTerrain) */
+	pmove->noTerrainSurfaces = G_MapHasTerrainSurfaces() ? qfalse : qtrue;
+
 	if ( PROBE_On() && lastEasyJump != pmove->easyJump )
 	{
 		PROBE( "easyjump", "srv state easy=%d was=%d\n", (int)pmove->easyJump, lastEasyJump );

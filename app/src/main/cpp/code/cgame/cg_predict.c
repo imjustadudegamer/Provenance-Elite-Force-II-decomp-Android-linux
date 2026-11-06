@@ -34,6 +34,10 @@ pmove_t cg_pmove;
 static cvar_t *cg_easyJump;
 static int     cg_easyJumpLast = -1;
 
+/* qcommon/cm_load.c's per-map terrain row: 0 means no surface in this map can
+   report SURF_TERRAIN, which is what lets PM_GroundTrace skip its probe */
+static cvar_t *cg_mapHasTerrain;
+
 static int        cg_numSolidEntities;
 static centity_t *cg_solidEntities[MAX_ENTITIES_IN_SNAPSHOT];
 static int        cg_numTriggerEntities;
@@ -481,6 +485,11 @@ void CG_PredictPlayerState(void)
         cg_easyJump = cgi.Cvar_Get("cl_easyJump", "0", 0);
     }
     cg_pmove.easyJump = cg_easyJump->integer ? qtrue : qfalse;
+
+    if (!cg_mapHasTerrain) {
+        cg_mapHasTerrain = cgi.Cvar_Get("cm_mapHasTerrain", "1", 0);
+    }
+    cg_pmove.noTerrainSurfaces = (cg_mapHasTerrain && !cg_mapHasTerrain->integer) ? qtrue : qfalse;
 
     if (PROBE_On() && cg_easyJumpLast != cg_pmove.easyJump) {
         PROBE("easyjump", "cgame state easy=%d was=%d\n", (int)cg_pmove.easyJump, cg_easyJumpLast);

@@ -1290,14 +1290,26 @@ void PM_GroundTrace
 	vec3_t   point;
 	vec3_t	tmporg;
 	trace_t  trace;
+	qboolean probed = qfalse;
 
 	point[ 0 ] = pm->ps->origin[ 0 ];
 	point[ 1 ] = pm->ps->origin[ 1 ];
 	point[ 2 ] = pm->ps->origin[ 2 ] - 9.0f; 
 
-	pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, point, pm->ps->clientNum, pm->tracemask, qtrue );
+	/* The nine-unit probe exists for one reason: to learn whether the surface
+	   9 units down is terrain.  Its trace is then overwritten by the quarter-unit
+	   one unless it was.  On a map that cannot report SURF_TERRAIN (pm->
+	   noTerrainSurfaces) the answer is always no, so the probe trace is dead
+	   work and the body below is the trace retail would have ended up with.
+	   `point' is left at the fallback distance because the allsolid path below
+	   re-uses it as a target. */
+	if ( !pm->noTerrainSurfaces )
+	{
+		pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, point, pm->ps->clientNum, pm->tracemask, qtrue );
+		probed = ( trace.surfaceFlags & SURF_TERRAIN ) ? qtrue : qfalse;
+	}
 
-	if (!(trace.surfaceFlags & SURF_TERRAIN )) 
+	if ( !probed )
 	{
 		point[ 2 ] = pm->ps->origin[ 2 ] - 0.25f;
 		pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, point, pm->ps->clientNum, pm->tracemask, qtrue );

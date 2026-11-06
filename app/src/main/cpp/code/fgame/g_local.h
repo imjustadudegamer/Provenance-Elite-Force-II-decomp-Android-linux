@@ -174,6 +174,10 @@ Entity *findclientsinradius(Entity *startent, Vector org, float rad);
 void G_TouchTriggers(gentity_t *ent);
 void G_TouchSolids(gentity_t *ent);
 
+/* the clip map cannot report SURF_TERRAIN on this map (qcommon/cm_load.c owns
+   the row); false keeps the retail probing path */
+qboolean G_MapHasTerrainSurfaces(void);
+
 int G_NumClients(void);
 
 int G_WeaponIndex(const char *name);

@@ -265,6 +265,11 @@ typedef struct {
 	qboolean		easyJump;		/* cl_easyJump: plain immediate jump */
 	int			jumpResult;		/* 0 none, 1 jumped, 2 the duck gate ate the press */
 
+	/* The map cannot report SURF_TERRAIN on any trace (qcommon/cm_load.c
+	   publishes cm_mapHasTerrain at load).  False is the probing, retail path,
+	   so a caller that does not set it keeps retail behaviour. */
+	qboolean		noTerrainSurfaces;
+
 	void        (*trace)( trace_t *result, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask, qboolean cylinder );
 	int			(*pointcontents)( const vec3_t point, int passEntityNum );
 	qboolean		(*trypush)( int entnum, vec3_t move_origin, vec3_t move_end );
