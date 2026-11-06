@@ -22,11 +22,24 @@ root, for more details.
 
 #include <SDL_thread.h>
 #include <SDL_cpuinfo.h>
+#include <SDL_atomic.h>
 #include <string.h>
 
 #include "q_jobs_workers.h"
 
 #define JOBPOOL_MAX_JOBS    128
+
+/* How long a thread looks for work before it sleeps.  A running frame kicks a
+   batch per tessellated surface flush, so the next batch is tens of microseconds
+   away and a thread that parks for it pays a futex pair plus a scheduler round
+   trip every time -- that traffic is 4.5 % of the whole process on the GLES3
+   renderer and 6 % on Vulkan (`_raw_spin_unlock_irqrestore`, reached through
+   futex_wake/try_to_wake_up).  A bounded spin turns back-to-back batches into no
+   syscalls at all, and the bound is what keeps an idle engine from burning a
+   core in the pool: past it the thread parks exactly as before.  It is a spin
+   count rather than a duration because a duration would need a clock read per
+   pass, which is the thing the spin exists to avoid. */
+#define JOBPOOL_SPIN_ITERS	2000
 
 typedef struct job_s {
 	void ( *fn )( void *ctx, int begin, int end );
@@ -35,9 +48,16 @@ typedef struct job_s {
 	int end;
 } job_t;
 
-/* Same mutex-guarded handoff the pool always had; what changed is what a
-   worker does when it finds the batch already handed out, and what the
-   producer does while its batch runs.  Both used to spin. */
+/* The handoff stays mutex-guarded -- every transition below is taken under
+   `mutex`, and every chunk is claimed under it.  What changed is who pays a
+   syscall to enter or leave the sleep: `live` is polled without the mutex so a
+   thread can decide *whether* to sleep cheaply, and the mutex then confirms or
+   refutes that decision.  A stale poll can therefore
+   only cost a sleep, never a chunk, and each parking counter below is touched
+   only under the mutex, which is what makes "signal only the threads that are
+   actually parked" safe: a thread that has not parked yet re-checks the batch
+   when it does, because the producer cannot be inside its own critical section
+   at the same time. */
 typedef struct jobpool_s {
 	const char *name;
 	int critical;		
@@ -55,11 +75,24 @@ typedef struct jobpool_s {
 	job_t jobs[JOBPOOL_MAX_JOBS];
 	int numJobs;		
 	int nextJob;		
-	int pending;		
+	int pending;		/* chunks of the published batch not yet finished */
 
 	qboolean running;	
 
 	int batchSeq;		
+
+	/* parking census, mutex-guarded: a signal or a broadcast is worth a syscall
+	   only when one of these is non-zero */
+	int parked;			/* workers inside SDL_CondWait( work ) */
+	int idleWaiters;	/* workers inside SDL_CondWait( idle ) */
+	int producerWaiting;/* the producer inside SDL_CondWait( done ) */
+
+	/* the one status a sleeper polls without the mutex: 1 while the published
+	   batch has chunks left, 0 once it is closed.  Only stored, never
+	   incremented, so polling it from every worker does not turn it into a
+	   contended read-modify-write. */
+	SDL_atomic_t live;
+
 	qboolean shutdown;
 	qboolean started;
 } jobpool_t;
@@ -87,11 +120,30 @@ static int JobPool_ResolveWorkers( int requested ) {
 	return n;
 }
 
-/* A worker whose batch was handed out before it got there used to loop on this
-   mutex at full speed until the last chunk landed.  It waits now. */
+/* A worker whose batch was handed out before it got there waits for the last
+   chunk to land.  That wait is short -- the chunks are slices of one vertex
+   loop -- so it looks for the batch to close before it sleeps on it.  Called
+   and returns with the mutex held. */
 static void JobPool_WaitForBatchEnd( jobpool_t *pool ) {
+	int spins;
+
+	if ( pool->running ) {
+		SDL_UnlockMutex( pool->mutex );
+
+		for ( spins = 0; spins < JOBPOOL_SPIN_ITERS; spins++ ) {
+			if ( !SDL_AtomicGet( &pool->live ) ) {
+				break;
+			}
+			SDL_CPUPauseInstruction();
+		}
+
+		SDL_LockMutex( pool->mutex );
+	}
+
 	while ( !pool->shutdown && pool->running && pool->nextJob >= pool->numJobs ) {
+		pool->idleWaiters++;
 		SDL_CondWait( pool->idle, pool->mutex );
+		pool->idleWaiters--;
 	}
 }
 
@@ -104,12 +156,22 @@ static qboolean JobPool_Take( jobpool_t *pool, job_t *job ) {
 	return qtrue;
 }
 
-/* The chunk that takes the batch to zero closes it. */
+/* The chunk that takes the batch to zero closes it.  Called with the mutex
+   held.  A signal or a broadcast to nobody still costs a futex_wake that comes
+   straight back EAGAIN, so both answer the park census. */
 static void JobPool_FinishChunk( jobpool_t *pool ) {
 	pool->pending--;
-	if ( pool->pending <= 0 ) {
-		pool->running = qfalse;
+	if ( pool->pending > 0 ) {
+		return;
+	}
+
+	pool->running = qfalse;
+	SDL_AtomicSet( &pool->live, 0 );
+
+	if ( pool->producerWaiting ) {
 		SDL_CondSignal( pool->done );
+	}
+	if ( pool->idleWaiters ) {
 		SDL_CondBroadcast( pool->idle );
 	}
 }
@@ -119,11 +181,24 @@ static int SDLCALL JobPool_Worker( void *arg ) {
 
 	for ( ;; ) {
 		job_t job;
+		int spins;
+
+		/* A worker that just finished a chunk lands here with the next batch
+		   often only microseconds away.  Look for it before sleeping; nothing
+		   is decided here, the mutex below still decides. */
+		for ( spins = 0; spins < JOBPOOL_SPIN_ITERS; spins++ ) {
+			if ( SDL_AtomicGet( &pool->live ) ) {
+				break;
+			}
+			SDL_CPUPauseInstruction();
+		}
 
 		SDL_LockMutex( pool->mutex );
 
 		while ( !pool->shutdown && !pool->running ) {
+			pool->parked++;
 			SDL_CondWait( pool->work, pool->mutex );
+			pool->parked--;
 		}
 
 		if ( pool->shutdown ) {
@@ -179,6 +254,11 @@ void JobPool_Init( const char *name, int requestedWorkers ) {
 	jobs_pool.idle  = SDL_CreateCond();
 
 	jobs_pool.producer = SDL_CreateMutex();
+
+	jobs_pool.parked = 0;
+	jobs_pool.idleWaiters = 0;
+	jobs_pool.producerWaiting = 0;
+	SDL_AtomicSet( &jobs_pool.live, 0 );
 
 	if ( !jobs_pool.mutex || !jobs_pool.work || !jobs_pool.done || !jobs_pool.idle
 		 || !jobs_pool.producer ) {
@@ -236,6 +316,7 @@ void JobPool_Shutdown( void ) {
 	jobs_pool.numJobs = 0;
 	jobs_pool.nextJob = 0;
 	jobs_pool.pending = 0;
+	SDL_AtomicSet( &jobs_pool.live, 0 );
 	SDL_CondBroadcast( jobs_pool.work );
 	SDL_CondBroadcast( jobs_pool.idle );
 	SDL_CondBroadcast( jobs_pool.done );
@@ -313,21 +394,31 @@ void JobPool_Add( void ( *fn )( void *ctx, int begin, int end ), void *ctx, int 
 
 void JobPool_RunAndWait( void ) {
 	job_t job;
-	int wake, i;
+	int wake, i, spins;
 
 	SDL_LockMutex( jobs_pool.mutex );
 
 	jobs_pool.nextJob = 0;
-	jobs_pool.pending = jobs_pool.numJobs;
 	jobs_pool.batchSeq++;
+
+	jobs_pool.pending = jobs_pool.numJobs;
 
 	if ( jobs_pool.pending > 0 ) {
 		jobs_pool.running = qtrue;
-		/* Wake what the batch can feed, not the whole park: the rest stay
-		   asleep and the batch closes without them. */
+		SDL_AtomicSet( &jobs_pool.live, 1 );
+
+		/* Wake what the batch can feed, and of those only the workers that are
+		   actually asleep: an awake one comes back for a chunk by itself, and a
+		   signal to a thread that is not waiting is a futex_wake that returns
+		   EAGAIN.  The park census is under this mutex, so it cannot be stale
+		   here, and a worker that parks after this point re-reads the batch
+		   under the mutex and finds it live. */
 		wake = jobs_pool.numWorkers;
 		if ( wake > jobs_pool.numJobs ) {
 			wake = jobs_pool.numJobs;
+		}
+		if ( wake > jobs_pool.parked ) {
+			wake = jobs_pool.parked;
 		}
 		for ( i = 0; i < wake; i++ ) {
 			SDL_CondSignal( jobs_pool.work );
@@ -345,13 +436,31 @@ void JobPool_RunAndWait( void ) {
 
 			SDL_LockMutex( jobs_pool.mutex );
 			JobPool_FinishChunk( &jobs_pool );
-			if ( jobs_pool.pending <= 0 ) {
+			if ( !jobs_pool.running ) {
 				break;
 			}
 		}
 
-		while ( jobs_pool.running && !jobs_pool.shutdown ) {
-			SDL_CondWait( jobs_pool.done, jobs_pool.mutex );
+		/* What is left is running on other threads, and a chunk is a slice of a
+		   vertex loop: look for it to land before paying a park.  The look is
+		   taken with the mutex released so the chunk that closes the batch is
+		   not blocked behind it. */
+		if ( SDL_AtomicGet( &jobs_pool.live ) ) {
+			SDL_UnlockMutex( jobs_pool.mutex );
+
+			for ( spins = 0; spins < JOBPOOL_SPIN_ITERS; spins++ ) {
+				if ( !SDL_AtomicGet( &jobs_pool.live ) ) {
+					break;
+				}
+				SDL_CPUPauseInstruction();
+			}
+
+			SDL_LockMutex( jobs_pool.mutex );
+			while ( jobs_pool.running && !jobs_pool.shutdown ) {
+				jobs_pool.producerWaiting++;
+				SDL_CondWait( jobs_pool.done, jobs_pool.mutex );
+				jobs_pool.producerWaiting--;
+			}
 		}
 	}
 
