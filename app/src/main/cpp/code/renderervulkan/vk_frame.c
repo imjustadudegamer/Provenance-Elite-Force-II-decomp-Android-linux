@@ -751,15 +751,17 @@ void VK_Frame_Abandon( int slot )
 
 	vk.fencePending[slot] = qfalse;
 	vk.fenceRetired[slot] = qtrue;
-	vk.acquired = qfalse;
-	vk.acquiredImage = 0;
 
 	/* Begin cleared acquired before the acquire ran and the acquire set it, so
-	   qtrue here is this walk's own image and not a leftover: a walk that never
-	   presents owes the count back, or the acquire's spare-image test runs out. */
+	   this is the walk's own image and not a leftover: a walk that never
+	   presents owes the count back, or the acquire's spare-image test runs out.
+	   Read it BEFORE clearing the flag -- the old test cleared first and then
+	   asked, so no abandoned frame ever gave its image back. */
 	if ( vk.acquired && vk.imagesHeld > 0 ) {
 		vk.imagesHeld--;
 	}
+	vk.acquired = qfalse;
+	vk.acquiredImage = 0;
 }
 
 /* The pass opens at RC_VK_BEGIN and closes at RC_VK_PRESENT, so the UI

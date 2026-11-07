@@ -699,6 +699,10 @@ void FS_FCloseFile( fileHandle_t f ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization\n" );
 	}
 
+	if ( f < 1 || f >= MAX_FILE_HANDLES ) {
+		return;
+	}
+
 	if (fsh[f].zipFile == qtrue) {
 		unzCloseCurrentFile( fsh[f].handleFiles.file.z );
 		if ( fsh[f].handleFiles.unique ) {
@@ -1208,7 +1212,9 @@ size_t FS_Read( void *buffer, size_t len, fileHandle_t f ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization\n" );
 	}
 
-	if ( !f ) {
+	/* the table is engine-global and the walk thread may have raced an open;
+	   an out-of-range index is stale, not zero */
+	if ( f < 1 || f >= MAX_FILE_HANDLES ) {
 		return 0;
 	}
 
@@ -1256,7 +1262,7 @@ size_t FS_Write( const void *buffer, size_t len, fileHandle_t h ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization\n" );
 	}
 
-	if ( !h ) {
+	if ( h < 1 || h >= MAX_FILE_HANDLES ) {
 		return 0;
 	}
 
@@ -1320,6 +1326,10 @@ int FS_Seek( fileHandle_t f, long offset, int origin ) {
 			whence = SEEK_CUR;
 			Com_Error( ERR_FATAL, "Bad origin in FS_Seek\n" );
 			break;
+	}
+
+	if ( f < 1 || f >= MAX_FILE_HANDLES ) {
+		return -1;
 	}
 
 	if ( fsh[f].zipFile == qtrue ) {

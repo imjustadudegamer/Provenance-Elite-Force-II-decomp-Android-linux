@@ -1176,39 +1176,81 @@ done:
 
 /* ---- the lightmap page upload ------------------------------------------- */
 
-/* the frame's dirty lightmap pages: one staging, one fence, one submit, one wait
-   (the shared path retires its epoch per flush and re-faults 16 pages per page) */
+/* The frame's dirty lightmap pages: one submit for the batch (the shared path
+   retires its epoch per flush and re-faults 16 pages per page).  Two write
+   slots.  The batch is still one submit per frame, but nothing waits
+   for that submit inside the front end: the fence that used to be waited right
+   after the submit is now the NEXT batch's reuse gate, and the walk join is
+   gone with it.  Queue order does the ordering the wait did -- the upload is
+   submitted before the frame whose draws sample it -- and the barriers carry
+   the dependency to whatever was already in flight.  A slot keeps its command
+   buffer and staging until its fence signals, so the host copy can never race
+   the previous submission. */
+#define VK_LIGHTMAP_SLOTS 2
 
-static VkBuffer       s_lmStaging;
-static VkDeviceMemory s_lmStagingMemory;
-static byte          *s_lmStagingMapped;
-static VkDeviceSize   s_lmStagingBytes;
-static VkFence        s_lmFence;
+typedef struct {
+	VkBuffer        staging;
+	VkDeviceMemory  stagingMemory;
+	byte           *stagingMapped;
+	VkDeviceSize    stagingBytes;
+	VkFence         fence;
+	qboolean        fenceUsed;
+	VkCommandBuffer cmd;			/* in flight until fence signals */
+} vkLightmapSlot_t;
+
+static vkLightmapSlot_t	s_lmSlots[VK_LIGHTMAP_SLOTS];
+static int				s_lmNextSlot;
+
+/* the slot's previous submission owns the staging and the command buffer */
+static void VK_Lightmap_SlotRelease( vkLightmapSlot_t *slot )
+{
+	if ( slot->fenceUsed && slot->fence != VK_NULL_HANDLE ) {
+		VK_Guard_Result( VK_GSITE_FENCE,
+						 VK_Sync_WaitForFences( slot->fence, VK_TRUE, "lightmap-reuse", "upload" ),
+						 "vkWaitForFences(lightmap reuse)" );
+		slot->fenceUsed = qfalse;
+	}
+
+	if ( slot->cmd != VK_NULL_HANDLE ) {
+		if ( qvk.FreeCommandBuffers ) {
+			VK_Pool_FreeBuffers( VK_Upload_Pool(), 1, &slot->cmd );
+		}
+		slot->cmd = VK_NULL_HANDLE;
+	}
+}
 
 void VK_Lightmap_Shutdown( void )
 {
+	int i;
+
 	if ( vk.device == VK_NULL_HANDLE ) {
 		return;
 	}
 
-	if ( s_lmStagingMapped != NULL ) {
-		qvk.UnmapMemory( vk.device, s_lmStagingMemory );
-		s_lmStagingMapped = NULL;
-	}
-	if ( s_lmStaging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
-		qvk.DestroyBuffer( vk.device, s_lmStaging, NULL );
-	}
-	s_lmStaging = VK_NULL_HANDLE;
-	if ( s_lmStagingMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
-		qvk.FreeMemory( vk.device, s_lmStagingMemory, NULL );
-	}
-	s_lmStagingMemory = VK_NULL_HANDLE;
-	s_lmStagingBytes  = 0;
+	for ( i = 0; i < VK_LIGHTMAP_SLOTS; i++ ) {
+		vkLightmapSlot_t *slot = &s_lmSlots[i];
 
-	if ( s_lmFence != VK_NULL_HANDLE && qvk.DestroyFence ) {
-		qvk.DestroyFence( vk.device, s_lmFence, NULL );
+		VK_Lightmap_SlotRelease( slot );
+
+		if ( slot->stagingMapped != NULL ) {
+			qvk.UnmapMemory( vk.device, slot->stagingMemory );
+			slot->stagingMapped = NULL;
+		}
+		if ( slot->staging != VK_NULL_HANDLE && qvk.DestroyBuffer ) {
+			qvk.DestroyBuffer( vk.device, slot->staging, NULL );
+		}
+		slot->staging = VK_NULL_HANDLE;
+		if ( slot->stagingMemory != VK_NULL_HANDLE && qvk.FreeMemory ) {
+			qvk.FreeMemory( vk.device, slot->stagingMemory, NULL );
+		}
+		slot->stagingMemory = VK_NULL_HANDLE;
+		slot->stagingBytes  = 0;
+
+		if ( slot->fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
+			qvk.DestroyFence( vk.device, slot->fence, NULL );
+		}
+		slot->fence = VK_NULL_HANDLE;
 	}
-	s_lmFence = VK_NULL_HANDLE;
 }
 
 /* handles[i]/pageIndex[i] name slot i's texture and its page in src; same bytes,
@@ -1219,9 +1261,11 @@ qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int 
 	VkCommandBufferAllocateInfo allocInfo;
 	VkCommandBufferBeginInfo    beginInfo;
 	VkSubmitInfo                submitInfo;
+	VkFenceCreateInfo           fenceInfo;
+	vkLightmapSlot_t           *slot;
 	VkCommandBuffer             cmd = VK_NULL_HANDLE;
 	VkDeviceSize                need;
-	VkResult                    result;
+	qboolean                    ok = qfalse;
 	int                         i;
 
 	if ( !VK_Upload_Ready() || handles == NULL || pageIndex == NULL || src == NULL
@@ -1235,10 +1279,15 @@ qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int 
 		}
 	}
 
+	slot = &s_lmSlots[s_lmNextSlot];
+	s_lmNextSlot = ( s_lmNextSlot + 1 ) % VK_LIGHTMAP_SLOTS;
+
+	VK_Lightmap_SlotRelease( slot );
+
 	need = (VkDeviceSize)pageBytes * (VkDeviceSize)count;
 
 	/* grown once, never retired: a retire re-faults the copy's pages */
-	if ( s_lmStagingMapped == NULL || s_lmStagingBytes < need ) {
+	if ( slot->stagingMapped == NULL || slot->stagingBytes < need ) {
 		VkBuffer       buffer = VK_NULL_HANDLE;
 		VkDeviceMemory memory = VK_NULL_HANDLE;
 		void          *mapped = NULL;
@@ -1256,33 +1305,36 @@ qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int 
 			return qfalse;
 		}
 
-		VK_Lightmap_Shutdown();
-		s_lmStaging       = buffer;
-		s_lmStagingMemory = memory;
-		s_lmStagingMapped = (byte *)mapped;
-		s_lmStagingBytes  = need;
+		if ( slot->stagingMapped != NULL ) {
+			qvk.UnmapMemory( vk.device, slot->stagingMemory );
+			slot->stagingMapped = NULL;
+		}
+		if ( slot->staging != VK_NULL_HANDLE ) {
+			qvk.DestroyBuffer( vk.device, slot->staging, NULL );
+		}
+		if ( slot->stagingMemory != VK_NULL_HANDLE ) {
+			qvk.FreeMemory( vk.device, slot->stagingMemory, NULL );
+		}
+		slot->staging       = buffer;
+		slot->stagingMemory = memory;
+		slot->stagingMapped = (byte *)mapped;
+		slot->stagingBytes  = need;
 	}
 
-	if ( s_lmFence == VK_NULL_HANDLE ) {
-		VkFenceCreateInfo fenceInfo;
-
+	if ( slot->fence == VK_NULL_HANDLE ) {
 		memset( &fenceInfo, 0, sizeof( fenceInfo ) );
 		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-		if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &s_lmFence ),
+		if ( !VK_Guard_Result( VK_GSITE_FENCE, qvk.CreateFence( vk.device, &fenceInfo, NULL, &slot->fence ),
 							   "vkCreateFence(lightmap)" ) ) {
 			return qfalse;
 		}
 	}
 
-	/* one walk join for the batch; the transition writes images the walk samples */
-	VK_Upload_Quiesce();
-
 	VK_Upload_Begin();
 
-	if ( !VK_Guard_Result( VK_GSITE_SYNC, qvk.ResetFences( vk.device, 1, &s_lmFence ),
+	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Fence_ResetResult( slot->fence ),
 						   "vkResetFences(lightmap)" ) ) {
-		VK_Upload_End();
-		return qfalse;
+		goto done;
 	}
 
 	memset( &allocInfo, 0, sizeof( allocInfo ) );
@@ -1293,8 +1345,7 @@ qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int 
 
 	if ( !VK_Guard_Result( VK_GSITE_SYNC, VK_Pool_AllocBuffers( VK_Upload_Pool(), &allocInfo, &cmd ),
 						   "vkAllocateCommandBuffers(lightmap)" ) ) {
-		VK_Upload_End();
-		return qfalse;
+		goto done;
 	}
 
 	memset( &beginInfo, 0, sizeof( beginInfo ) );
@@ -1330,7 +1381,7 @@ qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int 
 		region.imageExtent.depth = 1;
 		region.bufferOffset = (VkDeviceSize)( (size_t)i * pageBytes );
 
-		qvk.CmdCopyBufferToImage( cmd, s_lmStaging, tex->image,
+		qvk.CmdCopyBufferToImage( cmd, slot->staging, tex->image,
 								  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
 	}
 
@@ -1348,7 +1399,7 @@ qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int 
 	}
 
 	for ( i = 0; i < count; i++ ) {
-		memcpy( s_lmStagingMapped + ( (VkDeviceSize)i * (VkDeviceSize)pageBytes ),
+		memcpy( slot->stagingMapped + ( (VkDeviceSize)i * (VkDeviceSize)pageBytes ),
 				src + ( (VkDeviceSize)pageIndex[i] * (VkDeviceSize)pageBytes ), pageBytes );
 	}
 
@@ -1357,23 +1408,26 @@ qboolean VK_Lightmap_UploadBatch( const int *handles, const int *pageIndex, int 
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
-	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, s_lmFence ),
+	if ( !VK_Guard_Result( VK_GSITE_SUBMIT, VK_Queue_Submit( vk.graphicsQueue, 1, &submitInfo, slot->fence ),
 						   "vkQueueSubmit(lightmap)" ) ) {
 		goto done;
 	}
 
-	result = VK_Sync_WaitForFences( s_lmFence, VK_TRUE, "lightmap-batch", "upload" );
-	if ( !VK_Guard_Result( VK_GSITE_FENCE, result, "vkWaitForFences(lightmap)" ) ) {
-		goto done;
-	}
-
-	/* the transitions are known to have run */
+	/* The copy is ordered before this frame's draws by the queue itself, and
+	   the barrier's dependency covers whatever was already in flight.  The
+	   layouts are therefore the ones the submission will leave; nothing here
+	   waits for it.  The slot's fence is the reuse gate. */
 	for ( i = 0; i < count; i++ ) {
 		vk_textures[handles[i]].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 
 	vk_uploadSubmits++;
 	vk_uploadMips += count;
+
+	slot->cmd = cmd;			/* owned by the slot until its fence signals */
+	slot->fenceUsed = qtrue;
+	cmd = VK_NULL_HANDLE;
+	ok = qtrue;
 
 done:
 	if ( cmd != VK_NULL_HANDLE && qvk.FreeCommandBuffers ) {
@@ -1382,7 +1436,7 @@ done:
 
 	VK_Upload_End();
 
-	return qtrue;
+	return ok;
 }
 
 /* A readback of one texel: the offline proof that the copy actually landed, and
