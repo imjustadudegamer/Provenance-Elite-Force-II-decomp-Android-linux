@@ -137,6 +137,7 @@ typedef struct {
 	VkPhysicalDeviceProperties deviceProps;
 	VkPhysicalDeviceVulkan12Properties props12;
 	qboolean has12Props;
+	uint32_t driverID;
 	qboolean headless;
 	VkDevice device;
 	uint32_t graphicsFamily;
@@ -164,6 +165,9 @@ typedef struct {
 	qboolean pipelineCacheLoaded;
 	qboolean pipelineCacheForeign;
 	size_t pipelineCacheBytes;
+	/* a creation call is consulting the loaded cache: a fault inside that
+	   window accuses the blob the same way a load fault does */
+	qboolean pipelineConsultInFlight;
 	qboolean descriptorIndexing;
 	qboolean descriptorIndexingExt;
 	uint32_t bindlessTextures;
@@ -258,6 +262,8 @@ typedef struct {
 extern const vkDemoVertex_t vk_demoVertices[VK_VERTEX_DEMO_COUNT];
 
 qboolean VK_Descriptor_Init( void );
+void VK_PCache_ConsultBegin( void );
+void VK_PCache_ConsultEnd( void );
 qboolean VK_Texture_Init( void );
 void VK_Texture_Shutdown( void );
 qboolean VK_Draw_Init( void );

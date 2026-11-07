@@ -75,6 +75,26 @@ static void VK_PCache_MarkerClear( const char *name )
 	}
 }
 
+/* A pipeline creation that consults the loaded cache opens the same window
+   the boot-time parse opens: if the driver dies inside, the marker survives
+   and the next boot retires the blob.  A cold cache has none of our bytes in
+   the driver, so it opens no window. */
+void VK_PCache_ConsultBegin( void )
+{
+	if ( vk.pipelineCacheLoaded ) {
+		VK_PCache_MarkerWrite( VK_PCACHE_LOAD_MARKER );
+		vk.pipelineConsultInFlight = qtrue;
+	}
+}
+
+void VK_PCache_ConsultEnd( void )
+{
+	if ( vk.pipelineConsultInFlight ) {
+		VK_PCache_MarkerClear( VK_PCACHE_LOAD_MARKER );
+		vk.pipelineConsultInFlight = qfalse;
+	}
+}
+
 typedef struct {
 	uint32_t magic;
 	uint32_t version;
@@ -114,11 +134,13 @@ qboolean VK_PipelineCache_Open( void )
 	VkResult result;
 	cvar_t *homeCvar;
 	cvar_t *loadCvar;
+	qboolean pcacheGated;
 
 	vk.pipelineCache = VK_NULL_HANDLE;
 	vk.pipelineCacheLoaded = qfalse;
 	vk.pipelineCacheForeign = qfalse;
 	vk.pipelineCacheBytes = 0;
+	vk.pipelineConsultInFlight = qfalse;
 
 	memset( &createInfo, 0, sizeof( createInfo ) );
 	createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -136,7 +158,21 @@ qboolean VK_PipelineCache_Open( void )
 	   cold compiles are the slow leg of a menu page transition. */
 	loadCvar = ri.Cvar_Get( "r_vkPipelineCacheLoad", "1", 0 );
 
-	if ( home && home[0] && loadCvar->integer ) {
+	/* Intel-Mesa keeps its cache cold: the same 25.2.8 driver also died inside
+	   vkCreateGraphicsPipelines once the blob was armed, so the load marker
+	   guards the load parse but not the only other reader of the data.  The
+	   async warm path already carries the first-build cost off the frame, and
+	   the save below still writes, so a driver line that can parse its own
+	   data starts from real bytes.  The row carries the raw driver version so
+	   a fixed line can re-arm this from evidence. */
+	pcacheGated = ( vk.driverID == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA );
+
+	if ( pcacheGated && home && home[0] && loadCvar->integer && R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:pcache", "status=driver-gated driverid=%u driverversion=0x%08x",
+					  (unsigned int)vk.driverID, (unsigned int)vk.deviceProps.driverVersion );
+	}
+
+	if ( home && home[0] && loadCvar->integer && !pcacheGated ) {
 		snprintf( path, sizeof( path ), "%s/%s", home, VK_PCACHE_FILE );
 		fh = fopen( path, "rb" );
 	} else {

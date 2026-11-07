@@ -266,8 +266,10 @@ qboolean VK_Pipeline_Init( void )
 		pipelineInfo.renderPass = vk.renderPass;
 		pipelineInfo.subpass = 0;
 
+		VK_PCache_ConsultBegin();
 		result = qvk.CreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &pipelineInfo, NULL,
 											  &vk_pipeline.demoPipeline );
+		VK_PCache_ConsultEnd();
 	}
 
 	if ( result != VK_SUCCESS ) {

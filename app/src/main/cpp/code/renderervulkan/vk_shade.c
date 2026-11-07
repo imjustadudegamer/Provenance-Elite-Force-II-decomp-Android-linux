@@ -3276,7 +3276,9 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 	info.subpass = 0;
 
 	buildT0 = BE_Microseconds64();
+	VK_PCache_ConsultBegin();
 	result = qvk.CreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &info, NULL, &slot->pipeline );
+	VK_PCache_ConsultEnd();
 	if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkCreateGraphicsPipelines(shade)" ) ) {
 		return VK_NULL_HANDLE;
 	}

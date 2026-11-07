@@ -623,7 +623,9 @@ static qboolean VK_Draw_Build( const vkPipelineKey_t *key, VkPipeline *out )
 	pipelineInfo.renderPass = vk.renderPass;
 	pipelineInfo.subpass = 0;
 
+	VK_PCache_ConsultBegin();
 	result = qvk.CreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &pipelineInfo, NULL, out );
+	VK_PCache_ConsultEnd();
 
 	return VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkCreateGraphicsPipelines(draw)" );
 }
