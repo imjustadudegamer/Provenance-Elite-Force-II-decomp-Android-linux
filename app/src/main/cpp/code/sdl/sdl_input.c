@@ -118,6 +118,7 @@ static cvar_t *in_joystickThreshold = NULL;
 static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
 static cvar_t *in_padPollUsec       = NULL;
+static cvar_t *in_eventPollUsec     = NULL;
 
 static Uint64 in_padPollLast = 0;
 
@@ -1612,9 +1613,28 @@ static void IN_ProcessEvents( void )
 	SDL_Event e;
 	keyNum_t key = 0;
 	static keyNum_t lastKeyDown = 0;
+	static Uint64 pollFreq, pollLast;
 
 	if( !SDL_WasInit( SDL_INIT_VIDEO ) )
 			return;
+
+	/* The frame-pace loop re-enters Sys_SendKeyEvents several times a frame and
+	   every pass is a full SDL pump: on X11 that takes the display lock and
+	   dispatches D-Bus, and the lock it shares with the present path is the
+	   hottest contended lock in the frame.  1 kHz is below any input a player
+	   can feel, and 0 restores the old every-pass pump. */
+	if ( in_eventPollUsec && in_eventPollUsec->integer > 0 )
+	{
+		Uint64 now;
+
+		if ( !pollFreq )
+			pollFreq = SDL_GetPerformanceFrequency();
+
+		now = SDL_GetPerformanceCounter();
+		if ( pollLast && now - pollLast < pollFreq * (Uint64)in_eventPollUsec->integer / 1000000ull )
+			return;
+		pollLast = now;
+	}
 
 	while( SDL_PollEvent( &e ) )
 	{
@@ -2002,6 +2022,7 @@ void IN_Init( void *windowData )
 #endif
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
 	in_padPollUsec       = Cvar_Get( "in_padPollUsec", "1000", 0 );
+	in_eventPollUsec     = Cvar_Get( "in_eventPollUsec", "1000", 0 );
 
 #ifdef __ANDROID__
 	cl_touchLook    = Cvar_Get( "cl_touchLook",    "2.2", CVAR_ARCHIVE );
