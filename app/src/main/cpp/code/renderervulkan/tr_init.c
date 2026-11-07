@@ -1137,8 +1137,10 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	if ( frontEndMsec ) {
 		*frontEndMsec = tr.frontEndMsec;
 	}
+	/* the walk's own frame total: backEnd.backEndMsec has no writer, so the
+	   caller's renderBack= was always 0 on this backend */
 	if ( backEndMsec ) {
-		*backEndMsec = backEnd.backEndMsec;
+		*backEndMsec = ( int )( RB_WalkFrameUsec64() / 1000 );
 	}
 
 	VK_PerfFpsRow();

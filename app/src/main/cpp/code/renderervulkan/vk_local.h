@@ -370,6 +370,8 @@ int RB_FrameSlot( const void *frame );
 void RB_CommandListReset( void );
 int RB_WalkMsec( void );
 long long RB_WalkUsec64( void );
+/* the frame-scoped twin, drained by RE_EndFrame for [SMP:frame]'s renderBack= */
+long long RB_WalkFrameUsec64( void );
 
 /* The walk's cost split, printed by the r_perfFps row that owns the gate.  Every
    opcode the walk executes lands in one of these, so `rest` is the accounting
