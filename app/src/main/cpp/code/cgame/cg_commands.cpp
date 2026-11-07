@@ -4085,7 +4085,7 @@ Vector ClientGameCommandManager::GetViewEndPoint(int entnum, Vector org, qboolea
         VectorScale(dir_org, 1.0f / len, dir_org);
     }
 
-    VectorMA(org, 0.814f + len, dir_org, end);
+    VectorMA(org, 2.0f + len, dir_org, end);
 
     return Vector(end);
 }

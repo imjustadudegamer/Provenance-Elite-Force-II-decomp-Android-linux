@@ -569,12 +569,21 @@ void CG_Beam(centity_t *cent)
         modulate[i] = (byte)(cent->color[i] * 255.0f);
     }
 
-    // The port copied s1->origin, which is not retail's start for either arm.
-    if (s1->parent == ENTITYNUM_NONE) {
-        VectorCopy(cent->lerpOrigin, origin);
-    } else {
-        centity_t *parent = &cg_entities[s1->parent];
-        VectorAdd(cent->lerpOrigin, parent->lerpOrigin, origin);
+    /* the beam starts at the networked origin, and a parented beam adds the
+       origin the parent was actually drawn at this frame -- not its lerped
+       world origin, which carries none of the attach offset */
+    VectorCopy(s1->origin, origin);
+
+    if (s1->parent != ENTITYNUM_NONE) {
+        refEntity_t *parent;
+
+        parent = cgi.R_GetRenderEntity(s1->parent);
+        if (!parent) {
+            cgi.Com_WDPrintf("CG_Beam: Could not find beam entity for owner:%d\n", s1->parent);
+            return;
+        }
+
+        VectorAdd(origin, parent->origin, origin);
     }
 
     CG_CreateBeam(
