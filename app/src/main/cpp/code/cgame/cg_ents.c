@@ -571,15 +571,17 @@ void CG_Beam(centity_t *cent)
 
     /* the beam starts at the networked origin, and a parented beam adds the
        origin the parent was actually drawn at this frame -- not its lerped
-       world origin, which carries none of the attach offset */
+       world origin, which carries none of the attach offset.  The owner rides
+       torso_anim on a beam entity, not parent: FuncBeam has no skeleton, so
+       the animation slot is free and retail stores the handle there. */
     VectorCopy(s1->origin, origin);
 
-    if (s1->parent != ENTITYNUM_NONE) {
+    if (s1->torso_anim != ENTITYNUM_NONE) {
         refEntity_t *parent;
 
-        parent = cgi.R_GetRenderEntity(s1->parent);
+        parent = cgi.R_GetRenderEntity(s1->torso_anim);
         if (!parent) {
-            cgi.Com_WDPrintf("CG_Beam: Could not find beam entity for owner:%d\n", s1->parent);
+            cgi.Com_WDPrintf("CG_Beam: Could not find beam entity for owner:%d\n", s1->torso_anim);
             return;
         }
 
