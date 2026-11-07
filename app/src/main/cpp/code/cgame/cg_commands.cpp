@@ -4052,6 +4052,12 @@ Vector ClientGameCommandManager::GetViewEndPoint(int entnum, Vector org, qboolea
     }
 
     CG_Trace(&trace1, vieworg, vec3_origin, vec3_origin, end, entnum, MASK_SHOT, qfalse, qtrue, "GetViewEndPoint1");
+
+    /* the eye ray's traced hit is the answer; without this copy the far point
+       stays the un-traced vieworg + forward*znear*2000 and every beam aimed
+       from it runs parallel to the view instead of converging on the crosshair */
+    VectorCopy(trace1.endpos, end);
+
     CG_Trace(&trace2, org, vec3_origin, vec3_origin, trace1.endpos, entnum, MASK_SHOT, qfalse, qtrue, "GetViewEndPoint2");
 
     VectorSubtract(trace1.endpos, vieworg, dir_view);
