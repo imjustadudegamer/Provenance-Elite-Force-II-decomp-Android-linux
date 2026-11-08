@@ -1634,7 +1634,33 @@ int RE_GetRegistrationSequence( void ) {
 }
 
 void RE_SetRenderTime(int t) {
-	backEnd.refdef.floatTime = (long double)t / 1000.0;
+	/* THE ANIMATION CLOCK IS THE REFDEF'S, AND THIS SITE MUST NOT WRITE IT.
+	   The client calls this with cls.realtime (client uptime); retail writes
+	   backEnd.refdef.floatTime from it RELATIVE TO THE LEVEL'S OWN CLOCK --
+	   decomp RE_SetRenderTime @0x0001A380 computes (t - <level clock>) / <scale>,
+	   not t / <scale>.  The subtraction is what makes retail's two writers agree,
+	   and this twin dropped it, so the value written here (uptime, ~423 s into a
+	   session) fought the per-frame refdef copy the walk performs
+	   (backEnd.refdef = cmd->refdef, whose floatTime is tr.refdef.time * 0.001 --
+	   the LEVEL clock, a few seconds).  Whichever write landed last won:
+	   a device boot's [GLES3:wave] rows on ONE emissive shader read
+	   u=5.205, 423.442, 427.193, 8.109, 426.153, 7.595 ... the two bases
+	   alternating ~418 s apart, which is exactly the session's menu time before
+	   the level loaded.  Every `rgbGen wave` stage on the BSP light panels
+	   re-phased between those two clocks every frame, so the additive glow
+	   vanished and returned -- the reported flicker, GLES3-only because the
+	   Vulkan lane's SetRenderTime writes a separate field (refdefFloatTime) and
+	   leaves backEnd.refdef.floatTime to the refdef.
+
+	   So the field is left alone here.  The walk's own copy of the command's
+	   refdef is the single value every stage samples, it advances with the
+	   level, and no front-end write can re-phase a stage mid-frame.  The ghost
+	   textures do not read this field at all (tr_ghost.cpp takes tr.refdef.time
+	   directly), so they are unaffected.  (void)t, named rather than silently
+	   dropped: the client clock is still the right numerator for retail's
+	   arithmetic the day someone needs the loading-screen flasher to advance
+	   before a refdef exists -- that would be a separate field, like VK's. */
+	(void)t;
 	R_UpdateGhostTextures();
 }
 
