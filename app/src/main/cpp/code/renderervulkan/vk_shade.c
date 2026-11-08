@@ -2329,27 +2329,31 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 static const float			*s_fpStageFloats;
 static const vkStaticItemView_t	*s_fpItems;
 static int					s_fpItemCount;
-/* the arena batch's own index block, and its first position in the batch; the
-   tess index array is not written on the arena arm, so reading it would price
-   the previous batch's geometry and call every arena draw out-of-range */
-static const vkIndex_t		*s_fpArenaIdx;
-static int					s_fpArenaFirst;
 
 /* The batch-relative vertex index the draw reads at footprint position i.  Off
    the arena arm the caller's array is already batch-relative; on it, the block
    holds arena-relative values, so each maps back through the item that owns its
-   position.  Positions are item-ordered, so one forward walk prices the batch. */
+   position -- and through that item's OWN block.  A batch's items are not
+   adjacent in the arena (the compose is what makes them one draw: devrun=0 on
+   every shipped boot says no run ever reached MIN_IBO_RUN), so one block stepped
+   by position decoded another item's indexes and priced a correct batch as
+   carrying out-of-range vertices. */
 static int VK_Shade_FootprintIndex( int i )
 {
 	int	k, pos = 0;
 
-	if ( !s_fpArenaIdx ) {
+	if ( !s_fpItems ) {
 		return i;
 	}
 	for ( k = 0; k < s_fpItemCount; k++ ) {
 		if ( i < pos + s_fpItems[k].numIdx ) {
+			const vkIndex_t	*block = RB_VboStaticIndexBlock( s_fpItems[k].idxFirst );
+
+			if ( !block ) {
+				return -1;
+			}
 			return s_fpItems[k].vertStart
-				   + ( s_fpArenaIdx[s_fpArenaFirst + i] - s_fpItems[k].first );
+				   + ( block[i - pos] - s_fpItems[k].first );
 		}
 		pos += s_fpItems[k].numIdx;
 	}
@@ -2477,12 +2481,10 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 	s_fpStageFloats = RB_VboStaticStageFloats();
 	s_fpItems = items;
 	s_fpItemCount = numItems;
-	s_fpArenaIdx = RB_VboStaticBatchIndexes( &s_fpArenaFirst );
 	VK_Shade_FootprintRow( input, stage, input->indexes, input->numIndexes );
 	s_fpStageFloats = NULL;
 	s_fpItems = NULL;
 	s_fpItemCount = 0;
-	s_fpArenaIdx = NULL;
 
 	{
 		/* the arena arm's bind and record are charged where the streaming arm charges its own, so they leave the enclosing SHADE
@@ -3627,6 +3629,12 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 #ifndef PROBE_BUILD_SILENT
 #define VK_BLKDRAW_ROWS_PER_FRAME 16
 #define VK_BLKDRAW_ROWS_TOTAL     1024
+/* The world's own budget: the total above was spent by the menu's 3D previews
+   inside the first 300 frames of every armed boot, so not one in-game world draw
+   ever had a draw-time texel witness -- the single row that says whether the
+   sampled texel is the image's own art or a hole.  World rows keep a separate
+   budget (behind the same per-frame cap) so the menu cannot starve them. */
+#define VK_BLKDRAW_WORLD_TOTAL    8192
 
 static void VK_Shade_BlkDrawRow( const shader_t *shader, const shaderStage_t *pStage,
 								 const shaderCommands_t *input, int stageIndex,
@@ -3635,6 +3643,8 @@ static void VK_Shade_BlkDrawRow( const shader_t *shader, const shaderStage_t *pS
 	static int s_frame = -1;
 	static int s_frameRows;
 	static int s_totalRows;
+	static int s_worldRows;
+	qboolean		isWorld = ( backEnd.currentEntity == &tr.worldEntity ) ? qtrue : qfalse;
 	unsigned char	px[4], mid[4], blk[16];
 	unsigned char	px1[4], mid1[4], blk1[16];
 	int				blocked = 0, blocked1 = 0;
@@ -3654,11 +3664,22 @@ static void VK_Shade_BlkDrawRow( const shader_t *shader, const shaderStage_t *pS
 		s_frame = RB_FrameCount();
 		s_frameRows = 0;
 	}
-	if ( s_frameRows >= VK_BLKDRAW_ROWS_PER_FRAME || s_totalRows >= VK_BLKDRAW_ROWS_TOTAL ) {
+	if ( s_frameRows >= VK_BLKDRAW_ROWS_PER_FRAME ) {
+		return;
+	}
+	if ( isWorld ) {
+		if ( s_worldRows >= VK_BLKDRAW_WORLD_TOTAL ) {
+			return;
+		}
+	} else if ( s_totalRows >= VK_BLKDRAW_ROWS_TOTAL ) {
 		return;
 	}
 	s_frameRows++;
-	s_totalRows++;
+	if ( isWorld ) {
+		s_worldRows++;
+	} else {
+		s_totalRows++;
+	}
 
 	t0 = VK_Image_SlotTenant( s_shade.texNum[0] );
 	t1 = VK_Image_SlotTenant( s_shade.texNum[1] );

@@ -160,6 +160,13 @@ const float *RB_VboStaticStageFloats( void );
    back through the item that owns that position. */
 const vkIndex_t *RB_VboStaticBatchIndexes( int *firstOut );
 
+/* The index block one item of a batch draws from, at the same arena offset the
+   draw names.  The census reads each item's own block from here: a batch's items
+   are not adjacent in the arena (devrun=0 on every shipped boot says no run ever
+   reached MIN_IBO_RUN), so one block stepped by position decodes another item's
+   indexes and prices a correct batch as out of range. */
+const vkIndex_t *RB_VboStaticIndexBlock( int idxFirst );
+
 /* Items the arena has baked, arena bytes in use, and the refusals that made a
    surface stream instead: one row a second on the boundary that ends it. */
 void RB_VboStaticRow( void );

@@ -723,10 +723,44 @@ void RB_VboStaticAuditBatch( int ringByteBase )
 			}
 		}
 
+		/* The other half of the draw's input.  The vertex compare above cannot
+		   see the index block, and the block is what turns a region's vertexes
+		   into triangles: one rebased against another surface's span draws this
+		   surface's own vertexes as triangles somewhere else, so the surface
+		   covers nothing while every counter, every texture name and every unit
+		   still agrees.  The draw reads exactly these bytes -- the compose copies
+		   s_stageIboMap verbatim and a device run holds the same values -- and the
+		   bake writes e->first + own[].  Resident records only: a streamed one was
+		   written by the pack the draw just made. */
+		if ( bad < 0 && r->resident ) {
+			const vkIndex_t	*block = RB_VboStaticIndexBlock( e->idxFirst );
+			const int		*own = NULL;
+			int				j;
+
+			if ( *(const surfaceType_t *)r->surf == SF_FACE ) {
+				const srfSurfaceFace_t	*f = (const srfSurfaceFace_t *)r->surf;
+
+				own = (const int *)( (const char *)f + f->ofsIndices );
+			} else if ( *(const surfaceType_t *)r->surf == SF_TRIANGLES ) {
+				own = ( (const srfTriangles_t *)r->surf )->indexes;
+			}
+			if ( block && own ) {
+				for ( j = 0; j < r->numIdx; j++ ) {
+					vkIndex_t	wantIdx = (vkIndex_t)( own[j] + e->first );
+
+					if ( block[j] != wantIdx ) {
+						bad = j; field = "index";
+						want = (double)wantIdx; got = (double)block[j];
+						break;
+					}
+				}
+			}
+		}
+
 		if ( bad >= 0 ) {
 			surf = r->surf;
 			region = r->region;
-			numVerts = r->numVerts;
+			numVerts = ( field && !strcmp( field, "index" ) ) ? r->numIdx : r->numVerts;
 		}
 	}
 
@@ -827,6 +861,21 @@ const vkIndex_t *RB_VboStaticBatchIndexes( int *firstOut )
 		*firstOut = s_rec[0].idxStart;
 	}
 	return s_stageIboMap + s_hash[s_rec[0].region].idxFirst;
+}
+
+/* One item's own index block, addressed the way the draw addresses it: the
+   compose copies s_stageIboMap + items[k].idxFirst and a device run draws at
+   that offset, so a census that wants the k-th item's indexes must start at
+   that item's block.  A batch's items are NOT adjacent in the arena -- devrun=0
+   on every shipped boot says no run ever reached MIN_IBO_RUN -- so reading one
+   block and stepping by position decodes another item's indexes, which is a row
+   full of out-of-range vertices on a batch that is drawing correctly. */
+const vkIndex_t *RB_VboStaticIndexBlock( int idxFirst )
+{
+	if ( !s_ready || !s_stageIboMap || idxFirst < 0 || idxFirst >= s_arenaIdxes ) {
+		return NULL;
+	}
+	return s_stageIboMap + idxFirst;
 }
 
 qboolean RB_VboStaticArenaBatch( void )
