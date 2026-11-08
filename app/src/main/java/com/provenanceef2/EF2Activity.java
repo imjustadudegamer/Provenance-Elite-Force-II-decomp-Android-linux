@@ -15,6 +15,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * <obb>/base are owned by whoever pushed the retail tree and a new subdirectory
@@ -129,10 +131,43 @@ public class EF2Activity extends SDLActivity {
         if (!LogGate.on()) {
             return super.getArguments();
         }
-        return new String[] {
-                "+set", "qa_probe", "1",
-                "+set", "logfile", "3",
-        };
+        /* Armed, the property carries two things: the engine diagnostic arm
+           (qa_probe + logfile) and, optionally, a comma-separated list of
+           `cvar=value` overrides -- so an experiment on the device costs
+           `adb shell setprop log.tag.ProvenanceEF2 "r_dynamiclightmaps=0"` and
+           never a write into the player's config.cfg.
+
+             adb shell setprop log.tag.ProvenanceEF2 1                      # rows only
+             adb shell setprop log.tag.ProvenanceEF2 "r_flares=0"           # rows + one cvar
+             adb shell setprop log.tag.ProvenanceEF2 "a=1,b=0"              # rows + many
+             adb shell setprop log.tag.ProvenanceEF2 0                      # shipped argv
+        */
+        List<String> args = new ArrayList<>();
+        args.add("+set");
+        args.add("qa_probe");
+        args.add("1");
+        args.add("+set");
+        args.add("logfile");
+        args.add("3");
+
+        String extra = LogGate.value();
+        if (extra != null) {
+            for (String pair : extra.split(",")) {
+                int eq = pair.indexOf('=');
+                if (eq <= 0 || eq == pair.length() - 1) {
+                    continue;
+                }
+                String name = pair.substring(0, eq).trim();
+                String value = pair.substring(eq + 1).trim();
+                if (name.startsWith("log.tag")) {
+                    continue;
+                }
+                args.add("+set");
+                args.add(name);
+                args.add(value);
+            }
+        }
+        return args.toArray(new String[0]);
     }
 
     @Override
