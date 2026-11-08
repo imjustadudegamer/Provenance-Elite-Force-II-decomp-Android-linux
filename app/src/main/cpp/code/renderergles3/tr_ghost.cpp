@@ -1027,6 +1027,21 @@ void R_UpdateGhostTextures()
     lastTime  = tr.refdef.time;
 
     numTextures = ghostManager.m_textureList.NumObjects();
+
+    /* The same rule as the dynamic lightmap page write (tr_world.c
+       R_UploadDynamicLightmaps): this runs on the front end, from RE_SetRenderTime,
+       and the qglTexImage2D below is a write to an image the walk thread is drawing
+       this frame.  Vulkan quiesces the walk first for exactly this reason
+       (VK_Upload_Quiesce -- "an image the walk thread may still sample has to be
+       quiesced first"), and every other front-end GL upload in this tree claims the
+       context first (tr_draw.c RE_DrawBackground_TexSubImage / _DrawPixels,
+       tr_image.c R_FreeImage).  Claimed only when there is a ghost to burn and a
+       walk to park, so a level with no ghost texture -- or a single-threaded
+       session -- pays nothing and is unchanged byte for byte. */
+    if (numTextures > 0 && glConfig.smpActive) {
+        GL_ClaimContextForResource();
+    }
+
     for (i = 1; i <= numTextures; i++) {
         GhostTexture *gt = ghostManager.m_textureList.ObjectAt(i);
 
