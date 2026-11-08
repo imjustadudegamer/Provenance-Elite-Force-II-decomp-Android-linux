@@ -625,6 +625,128 @@ static qboolean VK_StaticBake( const vkStaticRec_t *r, const vkIndex_t *indexes,
 	return qtrue;
 }
 
+/* The batch the arena is about to draw, audited against the surfaces it claims:
+   the draw reads this module's copy and nothing else, so a vertex that is not
+   the surface's own is a texcoord that samples another texel -- the surface that
+   looks like its texture never loaded.  Positions and both texcoord pairs are
+   compared (the colour source has its own census); the sampled cadence keeps a
+   diag boot readable, and the first passing batch prints one row so a log with
+   no mismatch reads as an audit that ran, not one that never did. */
+void RB_VboStaticAuditBatch( int ringByteBase )
+{
+	static int	s_rows;
+	static int	s_okRows;
+	int			i, v, bad = -1;
+	const char	*field = NULL;
+	double		want = 0.0, got = 0.0;
+	const void	*surf = NULL;
+	int			region = -1, numVerts = 0;
+	const char	*shaderName;
+
+	if ( s_recCount <= 0 || s_recOverflow ) {
+		return;
+	}
+	s_rows++;
+	if ( s_rows > 8 && ( s_rows % 60 ) != 0 ) {
+		return;
+	}
+
+	shaderName = ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?";
+
+	for ( i = 0; i < s_recCount && bad < 0; i++ ) {
+		const vkStaticRec_t		*r = &s_rec[i];
+		const vkStaticRegion_t	*e;
+		const vkStreamVertex_t	*p;
+
+		if ( r->region < 0 ) {
+			continue;
+		}
+		if ( r->resident ) {
+			e = &s_hash[r->region];
+			if ( e->surf != r->surf ) {
+				continue;
+			}
+			p = (const vkStreamVertex_t *)( (const byte *)s_stageVboMap
+											+ (size_t)e->first * VK_STREAM_STRIDE );
+		} else if ( ringByteBase >= 0 ) {
+			p = (const vkStreamVertex_t *)( VK_VertexRing_Mapped() + ringByteBase
+											+ (size_t)r->vertStart * VK_STREAM_STRIDE );
+		} else {
+			continue;
+		}
+
+		for ( v = 0; v < r->numVerts && bad < 0; v++ ) {
+			double	x[3] = { 0, 0, 0 }, s0[2] = { 0, 0 }, s1[2] = { 0, 0 };
+			int		k;
+
+			if ( *(const surfaceType_t *)r->surf == SF_FACE ) {
+				const srfSurfaceFace_t	*f = (const srfSurfaceFace_t *)r->surf;
+				const float				*pt = f->points[v];
+
+				x[0] = pt[0]; x[1] = pt[1]; x[2] = pt[2];
+				s0[0] = pt[3]; s0[1] = pt[4];
+				s1[0] = pt[5]; s1[1] = pt[6];
+			} else if ( *(const surfaceType_t *)r->surf == SF_TRIANGLES ) {
+				const srfTriangles_t	*t = (const srfTriangles_t *)r->surf;
+				const drawVert_t		*dv = &t->verts[v];
+
+				x[0] = dv->xyz[0]; x[1] = dv->xyz[1]; x[2] = dv->xyz[2];
+				s0[0] = dv->st[0]; s0[1] = dv->st[1];
+				s1[0] = dv->lightmap[0]; s1[1] = dv->lightmap[1];
+			} else {
+				break;
+			}
+
+			for ( k = 0; k < 3; k++ ) {
+				if ( p[v].xyz[k] != (float)x[k] ) {
+					bad = v; field = "position"; want = x[k]; got = p[v].xyz[k];
+					break;
+				}
+			}
+			if ( bad >= 0 ) {
+				break;
+			}
+			for ( k = 0; k < 2; k++ ) {
+				if ( p[v].st[0][k] != (float)s0[k] ) {
+					bad = v; field = "texcoord0"; want = s0[k]; got = p[v].st[0][k];
+					break;
+				}
+			}
+			if ( bad >= 0 ) {
+				break;
+			}
+			for ( k = 0; k < 2; k++ ) {
+				if ( p[v].st[1][k] != (float)s1[k] ) {
+					bad = v; field = "texcoord1"; want = s1[k]; got = p[v].st[1][k];
+					break;
+				}
+			}
+		}
+
+		if ( bad >= 0 ) {
+			surf = r->surf;
+			region = r->region;
+			numVerts = r->numVerts;
+		}
+	}
+
+	if ( bad >= 0 ) {
+		VK_Guard_Row( "VK:vbo",
+					  "audit MISMATCH shader='%s' surf=%p type=%d vert=%d of %d "
+					  "field=%s want=%.6f arena=%.6f region=%d first=%d f=%d",
+					  shaderName, surf, (int)*(const surfaceType_t *)surf,
+					  bad, numVerts, field ? field : "?", want, got, region,
+					  s_hash[region].first, RB_FrameCount() );
+	}
+	else if ( s_okRows == 0 ) {
+		s_okRows = 1;
+		VK_Guard_Row( "VK:vbo",
+					  "audit ok surfaces=%d verts=%d idxes=%d shader='%s' f=%d",
+					  s_recCount, tess.numVertexes, tess.numIndexes, shaderName,
+					  RB_FrameCount() );
+	}
+}
+
 void RB_VboStaticBakeFrame( int ringByteBase )
 {
 	int		i;

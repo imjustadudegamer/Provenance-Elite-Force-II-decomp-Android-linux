@@ -134,6 +134,12 @@ qboolean RB_VboStaticArenaBatch( void );
    bytes at ringByteBase; the staging and device copies are recorded into cmd. */
 void RB_VboStaticBakeFrame( int ringByteBase );
 
+/* The probe-gated audit of the bytes this batch will draw: resident records
+   against the arena copy, and (when ringByteBase is the batch's pack base)
+   streamed records against the ring.  Positions and both texcoord pairs are
+   compared with the surface's own data. */
+void RB_VboStaticAuditBatch( int ringByteBase );
+
 /* The bake's copies: a command buffer of their own, submitted ahead of the
    frame's (a buffer copy may not be recorded inside a render pass), or
    VK_NULL_HANDLE when the walk baked nothing. */

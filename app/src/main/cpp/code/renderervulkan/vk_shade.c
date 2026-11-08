@@ -1478,11 +1478,15 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 		s_shade.texBound[tmu] = 0;
 		return;
 	}
-	/* texnum is unsigned: 0 is "no texture" at every other reader of it */
+	/* texnum is unsigned: 0 is "no texture" at every other reader of it.  A
+	   stage that binds it draws its surface with NO image -- the sampler reads
+	   the unit's previous view, or nothing at all, which is the surface that
+	   looks like it never loaded.  Gated like every other row: the diag boot is
+	   what arms it. */
 	if ( image->texnum == 0 ) {
 		static int s_zeroRows;
 
-		if ( R_ProbeMarkOn() && ( s_zeroRows < 8 || ( s_zeroRows % 600 ) == 0 ) ) {
+		if ( R_ProbeMarkOn() && ( s_zeroRows < 32 || ( s_zeroRows % 600 ) == 0 ) ) {
 			VK_Guard_Row( "VK:bind",
 						  "handle=0 image='%s' tmu=%d shader='%s' "
 						  "ent=%d iter=%s stage0='%s' f=%d",
@@ -2449,6 +2453,12 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 		return qtrue;
 	}
 
+	/* the census of the bytes this draw is about to read: a region that is not
+	   the surface's own names itself here, before the pixels are argued about */
+	if ( R_ProbeStatsOn() ) {
+		RB_VboStaticAuditBatch( -1 );
+	}
+
 	cmd = VK_Shade_CommandBuffer();
 
 	{
@@ -2641,6 +2651,13 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 		 && colors == (const unsigned char *)input->constantColor255
 		 && normals == input->normal[0] ) {
 		RB_VboStaticBakeFrame( base );
+		/* the same gate, the same audit: the ring bytes this draw reads are
+		   compared with the surfaces the batch claims, so a pack that is not the
+		   surface's own is named on the frame it is drawn, not argued about on
+		   the frame the arena serves it from */
+		if ( R_ProbeStatsOn() ) {
+			RB_VboStaticAuditBatch( base );
+		}
 	}
 
 	if ( stage && colors == NULL
@@ -4098,6 +4115,35 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	   Retail's single-texture stage never reads TMU1; a program without VKP_LIGHTMAP declares no u_Tex1 at all. */
 	if ( !( s_shade.prog->defines & VKP_LIGHTMAP ) ) {
 		v1 = VK_NULL_HANDLE;
+	}
+
+	/* The bind-side census of the world pass: a lightmapped program whose base
+	   or lightmap unit resolved to no image draws its surface with nothing to
+	   sample, which is the surface that looks like its texture never loaded.
+	   Names the shader and, per unit, the image the walk asked for and the
+	   texture it held; the diag gate is what arms it. */
+	if ( R_ProbeStatsOn() && ( s_shade.prog->defines & VKP_LIGHTMAP ) ) {
+		static int s_worldBindRows;
+
+		if ( ( !s_shade.texBound[0] || v0 == VK_NULL_HANDLE
+			   || !s_shade.texBound[1] || v1 == VK_NULL_HANDLE )
+			 && ( s_worldBindRows < 32 || ( s_worldBindRows % 600 ) == 0 ) ) {
+			VK_Guard_Row( "VK:worldbind",
+						  "unbound shader='%s' b0='%s' tex0=%u bnd0=%d b1='%s' tex1=%u bnd1=%d "
+						  "arena=%d iter=%s f=%d",
+						  ( shader && shader->name[0] ) ? shader->name : "?",
+						  ( s_shade.texImage[0] && s_shade.texImage[0]->imgName[0] )
+						  ? s_shade.texImage[0]->imgName : "",
+						  ( s_shade.texImage[0] ) ? (unsigned)s_shade.texImage[0]->texnum : 0u,
+						  s_shade.texBound[0] ? 1 : 0,
+						  ( s_shade.texImage[1] && s_shade.texImage[1]->imgName[0] )
+						  ? s_shade.texImage[1]->imgName : "",
+						  ( s_shade.texImage[1] ) ? (unsigned)s_shade.texImage[1]->texnum : 0u,
+						  s_shade.texBound[1] ? 1 : 0,
+						  RB_VboStaticArenaBatch() ? 1 : 0,
+						  VK_Shade_IterName(), RB_FrameCount() );
+		}
+		s_worldBindRows++;
 	}
 	/* created with the first draw that reads it; the shaders fetch single texels, so the sampler is nearest */
 	VK_CreateWaveTable();
