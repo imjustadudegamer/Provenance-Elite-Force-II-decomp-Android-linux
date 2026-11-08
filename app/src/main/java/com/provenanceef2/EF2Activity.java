@@ -112,6 +112,29 @@ public class EF2Activity extends SDLActivity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
+    /**
+     * The one diag arm for the ENGINE side, on the same property the Java and
+     * native log rows already answer (LogGate): armed, the engine is handed
+     * `qa_probe 1` and `logfile 3`, so the gated census rows ([GLES3:*], [VK:*],
+     * [SMP:*], [PERF:*]) arm and qconsole.log is written beside the game data --
+     * which is the only way to see them on a device, since the engine's own
+     * stdout never reaches logcat.  Without the property the argv is exactly what
+     * it was (SDLActivity's empty array), so a shipped boot is unchanged.
+     *
+     *   adb shell setprop log.tag.ProvenanceEF2 1     # arm
+     *   adb shell setprop log.tag.ProvenanceEF2 0     # disarm
+     */
+    @Override
+    protected String[] getArguments() {
+        if (!LogGate.on()) {
+            return super.getArguments();
+        }
+        return new String[] {
+                "+set", "qa_probe", "1",
+                "+set", "logfile", "3",
+        };
+    }
+
     @Override
     public void loadLibraries() {
         if (mFatalError != null) {
