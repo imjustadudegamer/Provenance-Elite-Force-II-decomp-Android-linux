@@ -2463,36 +2463,71 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 		RB_VboStaticAuditBatch( -1 );
 	}
 
-	cmd = VK_Shade_CommandBuffer();
-
+	/* THE ARENA IS A PACK CACHE, NOT A SECOND DRAW PATH.  Whatever the two paths
+	   could disagree about -- which buffer is bound, what firstIndex means, how
+	   many draws a batch becomes, whether the bytes came from a device copy --
+	   is removed by making the arena produce the STREAMING path's own input: its
+	   cached vertices are copied into the ring the stream would have packed into,
+	   its arena-absolute indexes are rebased to batch-relative, and the draw is
+	   the stream's own VK_Draw_BindRingOffset plus one DrawIndexed over the whole
+	   batch.  A cached surface therefore draws through the identical command
+	   sequence a streamed one does, so the two cannot differ in pixels at all. */
 	{
-		long long		walkT0 = VK_WALK_T0();
+		const byte	*stageBytes = (const byte *)RB_VboStaticStageFloats();
+		vkIndex_t	*idx;
+		byte		*dst;
+		int			base = 0, indexBase = 0, tessSlots, k, o;
 
+		if ( !stageBytes ) {
+			VK_Guard_Hit( VK_GSITE_QUIRK, "static batch has no staging arena", VK_INCOMPLETE );
+			return qtrue;
+		}
+
+		tessSlots = ( input->numVertexes * VK_STREAM_STRIDE + VK_TESS_VERTEX_BYTES - 1 )
+					/ VK_TESS_VERTEX_BYTES;
+		idx = VK_VertexRing_ReserveIndexes( input->numIndexes, &indexBase );
+		if ( !idx ) {
+			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
+			return qtrue;
+		}
+		if ( !VK_VertexRing_ReserveBytes( tessSlots * VK_TESS_VERTEX_BYTES, &base ) ) {
+			VK_VertexRing_RollBack( 0, input->numIndexes );
+			VK_Guard_Hit( VK_GSITE_ALLOC, "tess ring exhausted", VK_INCOMPLETE );
+			return qtrue;
+		}
+
+		dst = ( byte * )VK_VertexRing_Mapped() + base;
+		o = 0;
+		for ( k = 0; k < numItems; k++ ) {
+			const vkIndex_t	*block = RB_VboStaticIndexBlock( items[k].idxFirst );
+			int				j;
+
+			if ( !block ) {
+				VK_Guard_Hit( VK_GSITE_QUIRK, "static batch item has no index block", VK_INCOMPLETE );
+				return qtrue;
+			}
+			memcpy( dst + ( size_t )items[k].vertStart * VK_STREAM_STRIDE,
+					stageBytes + ( size_t )items[k].first * VK_STREAM_STRIDE,
+					( size_t )items[k].numVerts * VK_STREAM_STRIDE );
+			/* the block is arena-absolute; the ring draw is batch-relative */
+			for ( j = 0; j < items[k].numIdx; j++ ) {
+				idx[o + j] = block[j] - ( vkIndex_t )items[k].first
+							 + ( vkIndex_t )items[k].vertStart;
+			}
+			o += items[k].numIdx;
+		}
+		RB_VboStaticNoteCopied( o );
+
+		cmd = VK_Shade_CommandBuffer();
 		if ( !VK_Shade_Bind( cmd, input->shader ) ) {
 			/* nothing is bound: recording the draw anyway faults the driver, and
 			   VK_Shade_Bind's rows name the reason */
-			VK_WALK_ADD( walkT0, VK_WP_BIND );
+			VK_VertexRing_Flushed();
 			return qtrue;
 		}
-		VK_WALK_ADD( walkT0, VK_WP_BIND );
-	}
-
-	/* the census reads the positions the draw reads: the arena's staging copy */
-	s_fpStageFloats = RB_VboStaticStageFloats();
-	s_fpItems = items;
-	s_fpItemCount = numItems;
-	VK_Shade_FootprintRow( input, stage, input->indexes, input->numIndexes );
-	s_fpStageFloats = NULL;
-	s_fpItems = NULL;
-	s_fpItemCount = 0;
-
-	{
-		/* the arena arm's bind and record are charged where the streaming arm charges its own, so they leave the enclosing SHADE
-		   window's residual instead of reading as one undifferentiated per-flush cost; the sum is unchanged, only the attribution. */
-		long long		walkT0 = VK_WALK_T0();
-
-		RB_VboStaticDrawRuns( cmd, input->numIndexes, items, numItems );
-		VK_WALK_ADD( walkT0, VK_WP_REC );
+		VK_Draw_BindRingOffset( cmd, base );
+		VK_Draw_DrawIndexed( cmd, input->numIndexes, indexBase, 0 );
+		VK_VertexRing_Flushed();
 	}
 
 	return qtrue;

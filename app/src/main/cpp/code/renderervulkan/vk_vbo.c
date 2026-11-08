@@ -1125,6 +1125,15 @@ void RB_VboStaticDrawRuns( VkCommandBuffer cmd, int numIndexes,
 	}
 }
 
+/* The arena batch was drawn by copying its cached bytes into the ring and using
+   the streaming path's own commands: mode 3, the arm that replaced the separate
+   run/compose draw. */
+void RB_VboStaticNoteCopied( int numIdx )
+{
+	s_lastRunMode = 3;
+	s_lastRunIdx = numIdx;
+}
+
 /* the geometry the last arena batch actually submitted, for the census */
 void RB_VboStaticLastRun( int *modeOut, int *numIdxOut )
 {

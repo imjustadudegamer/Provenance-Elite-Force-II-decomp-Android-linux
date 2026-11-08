@@ -140,6 +140,10 @@ void RB_VboStaticBakeFrame( int ringByteBase );
    compared with the surface's own data. */
 void RB_VboStaticAuditBatch( int ringByteBase );
 
+/* Names the arm the batch was drawn through when it is the ring copy: the arena's
+   cached bytes went through the streaming path's own commands. */
+void RB_VboStaticNoteCopied( int numIdx );
+
 /* The bake's copies: a command buffer of their own, submitted ahead of the
    frame's (a buffer copy may not be recorded inside a render pass), or
    VK_NULL_HANDLE when the walk baked nothing. */
