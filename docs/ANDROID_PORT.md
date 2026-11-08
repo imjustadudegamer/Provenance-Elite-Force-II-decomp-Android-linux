@@ -267,11 +267,16 @@ puts the shipped default (0.15) a third of the way up.
 
 ## Networking and permissions
 
-The manifest declares zero permissions. Every `<uses-feature>` entry is
-optional, and game data lives in the app's own OBB directory, which needs no
-storage permission at any target SDK level. Because the app never joins
-Android's inet group, `socket()` returns `EACCES` -- which is the condition the
-networking path handles rather than hides.
+The manifest declares exactly one permission, `INTERNET`, and only for
+multiplayer: it is what lets `socket()` join Android's inet group and open the
+UDP socket. It is a normal, install-time permission -- no runtime prompt, nothing
+to grant, and no access to network state, accounts, storage or radios. Every
+`<uses-feature>` entry is optional, and game data lives in the app's own OBB
+directory, which needs no storage permission at any target SDK level.
+
+A build with the row stripped, or a device that refuses the socket, is still
+handled rather than hidden: without the inet group `socket()` returns `EACCES`,
+which is the condition the networking path reports and fails clean on (below).
 
 Single player never touches a socket: the client and the server talk through the
 in-memory `loopbacks[]` queues in `qcommon/net_chan.c`. `NET_Init` builds only

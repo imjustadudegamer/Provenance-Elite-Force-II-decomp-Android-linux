@@ -36,18 +36,25 @@
         android:name="android.hardware.type.pc"
         android:required="false" />
 
-    <!-- NO permissions at all.  Game data lives in the app's own OBB directory
-         (Android/obb/com.provenanceef2), which requires no storage permission at
-         any targetSdk.
+    <!-- INTERNET is the only permission this app asks for, and it buys exactly
+         one thing: a UDP socket for multiplayer.  It is a normal, install-time
+         permission, no runtime prompt, nothing to grant, and it gives no access
+         to the network state, the accounts, the storage or the radios.
 
-         netloop: single player rides the in-memory loopbacks[] queue
-         (qcommon/net_chan.c) and never touches a socket, and the real UDP socket
-         is no longer opened at boot either: qcommon/net_ip.c NET_Init builds
-         only the local address table, and the socket appears on the first packet
-         aimed at a non-loopback address.  Without this row the app never joins
-         Android's inet group, so socket() returns EACCES; that is exactly the
-         refusal the lazy open now handles as one logged row, and the client
-         reports a remote connect as "network unavailable" instead of stalling. -->
+         Game data still needs no storage permission: it lives in the app's own
+         OBB directory (Android/obb/com.provenanceef2) at any targetSdk.
+
+         Single player still never touches a socket: the client and the server
+         talk through the in-memory loopbacks[] queue (qcommon/net_chan.c), and
+         qcommon/net_ip.c NET_Init builds only the local address table.  The UDP
+         socket opens lazily, on the first packet aimed at a non-loopback address,
+         and it is still attempted once per networking session with a sticky
+         refusal: a build with this row stripped (or a device that denies the
+         socket) prints one row and reports a remote connect as "network
+         unavailable" instead of stalling.  The engine needs no other permission:
+         it never asks the platform about connectivity state, only about
+         addresses. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
 
     <!-- allowBackup=false: configs and saves live in the OBB dir (not backed up
