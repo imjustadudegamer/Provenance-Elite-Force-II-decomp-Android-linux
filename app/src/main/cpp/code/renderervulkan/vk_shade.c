@@ -2628,8 +2628,20 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 
 	/* A recorded surface's packed bytes are exactly the arena's, so the bake
 	   copies them out of the ring it just filled and the next frame draws from
-	   the device-local copy instead. */
-	RB_VboStaticBakeFrame( base );
+	   the device-local copy instead.  ONLY the pack that is the batch's own
+	   invariant geometry may feed it: a term whose texcoords and colours the
+	   walk computed itself -- the dlight projection, which runs after the world
+	   draw inside the same batch -- packs the same vertex count out of the same
+	   surface, so a bake there would copy the term's texcoords and colours into
+	   the world's region and the arena would draw them for the rest of the
+	   session.  The signature below is the one the lightmapped iterator packs. */
+	if ( tcStrideFloats == 4
+		 && texcoord0 == input->texCoords[0][0]
+		 && texcoord1 == input->texCoords[0][0] + 2
+		 && colors == (const unsigned char *)input->constantColor255
+		 && normals == input->normal[0] ) {
+		RB_VboStaticBakeFrame( base );
+	}
 
 	if ( stage && colors == NULL
 		 && texcoord0 == input->texCoords[0][0]

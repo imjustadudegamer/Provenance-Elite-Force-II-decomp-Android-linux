@@ -301,6 +301,25 @@ static int VK_StaticCounts( const void *surf, int type, int *vertsOut, int *idxO
 	return -1;
 }
 
+/* The surface's OWN dlight set for this frame, read exactly as its generator
+   reads it.  The batch test above cannot see it: a batch begins with
+   tess.dlightBits clear and it is the generator that ORs the surface's set in,
+   so the first surface of a batch passes that test whether or not a dynamic
+   light is on it.  Skipping such a surface loses the term the generator owes --
+   ProjectDlightTexture is gated on tess.dlightBits, and the arena draws no tess
+   arrays, so nothing else can restore it.  A surface carrying a set therefore
+   streams for that frame, which is the pixel the streaming path draws. */
+static int VK_StaticSurfaceDlights( const void *surf, int type )
+{
+	if ( type == SF_FACE ) {
+		return ( (const srfSurfaceFace_t *)surf )->dlightBits[RB_FrameSmpFrame()];
+	}
+	if ( type == SF_TRIANGLES ) {
+		return ( (const srfTriangles_t *)surf )->dlightBits[RB_FrameSmpFrame()];
+	}
+	return 0;
+}
+
 /* The resident region for a surface whose counts match what the arena baked. */
 static vkStaticRegion_t *VK_StaticResident( const void *surf, int numVerts, int numIdx )
 {
@@ -368,7 +387,8 @@ qboolean RB_VboStaticTrySurface( const void *surf, int type )
 		return qfalse;
 	}
 
-	if ( VK_StaticCounts( surf, type, &numVerts, &numIdx ) < 0 || !VK_StaticClassOK( &tess ) ) {
+	if ( VK_StaticCounts( surf, type, &numVerts, &numIdx ) < 0 || !VK_StaticClassOK( &tess )
+		 || VK_StaticSurfaceDlights( surf, type ) != 0 ) {
 		e = NULL;
 	} else {
 		e = VK_StaticResident( surf, numVerts, numIdx );
