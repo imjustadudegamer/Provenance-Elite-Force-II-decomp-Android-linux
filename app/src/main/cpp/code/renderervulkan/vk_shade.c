@@ -3098,6 +3098,13 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 
 	s_shadeDeferred = qfalse;
 
+	/* every 3D tess draw binds through VK_Shade_Bind, so this is where a pipeline
+	   that can write depth is noted: the pass's own clear no longer stands for the
+	   views after it once one of these has drawn (RB_BeginDrawingView, depth bit) */
+	if ( !( stateBits & VKS_DEPTHTEST_DISABLE ) && ( stateBits & VKS_DEPTHMASK_TRUE ) ) {
+		vk.depthWritten = qtrue;
+	}
+
 	/* the cache key names the modules, so it keys on the permutation bits alone */
 	defines &= ~VKP_FAMILY_MASK;
 

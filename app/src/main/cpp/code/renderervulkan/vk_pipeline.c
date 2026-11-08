@@ -339,5 +339,9 @@ qboolean VK_Pipeline_DrawDemo( VkCommandBuffer cmd )
 	qvk.CmdBindVertexBuffers( cmd, 0, 1, &vk.vertexBuffer, &offset );
 	qvk.CmdDraw( cmd, 3, 1, 0, 0 );
 
+	/* the demo pipeline writes depth, so it retires the pass's own depth clear
+	   for every view after it and no view's clear may be dropped */
+	vk.depthWritten = qtrue;
+
 	return qtrue;
 }

@@ -727,6 +727,14 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 	if ( !key ) {
 		return VK_NULL_HANDLE;
 	}
+
+	/* every draw in this renderer resolves its pipeline here, so this is where a
+	   draw that can leave the depth plane different from the pass's own clear is
+	   noted -- RB_BeginDrawingView leans on that clear for the views after it */
+	if ( key->depthTest && key->depthWrite ) {
+		vk.depthWritten = qtrue;
+	}
+
 	h = VK_Draw_PipelineHash( key );
 
 	for ( probe = 0; probe < VK_DRAW_PIPELINE_HASH; probe++ ) {

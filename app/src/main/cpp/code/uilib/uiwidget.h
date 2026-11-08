@@ -311,6 +311,7 @@ protected:
     void         PropogateCoordinateSystem(void);
     void         set2D(void);
     virtual void Draw(void);
+    qboolean     OpaqueChildCoversScreen(void);
     virtual void FrameInitialized(void);
     void         calculateDrawRegion(void);
     void         DrawTitle(float x, float y);

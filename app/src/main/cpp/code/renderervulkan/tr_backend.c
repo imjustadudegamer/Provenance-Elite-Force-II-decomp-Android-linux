@@ -1850,6 +1850,20 @@ void RB_BeginDrawingView (void) {
 			}
 		}
 
+		/* The pass's own LOAD_OP_CLEAR already wrote 1.0 into every depth texel
+		   this frame, and nothing that can write depth has been recorded since:
+		   re-clearing the same value over a rect the pass cleared is a no-op, so
+		   the depth aspect is dropped.  Only the depth bit goes -- the stencil
+		   plane is written by the volume pass, which nothing here counts. */
+		if ( vk.depthWritten == qfalse ) {
+			attachments[0].aspectMask &= (uint32_t)~(uint32_t)VK_IMAGE_ASPECT_DEPTH_BIT;
+
+			if ( attachments[0].aspectMask == 0 ) {
+				attachments[0] = attachments[1];
+				count--;
+			}
+		}
+
 		/* The clear rect is the view's own, flipped to the framebuffer's origin
 		   and clipped to the render area: a rect past the pass is a violation. */
 		{
@@ -1874,7 +1888,7 @@ void RB_BeginDrawingView (void) {
 			rect.layerCount = 1;
 		}
 
-		if ( rect.rect.extent.width && rect.rect.extent.height ) {
+		if ( count > 0 && rect.rect.extent.width && rect.rect.extent.height ) {
 			qvk.CmdClearAttachments( VK_Shade_CommandBuffer(), count, attachments, 1, &rect );
 		}
 	}

@@ -785,6 +785,9 @@ qboolean VK_Frame_RecordBegin( int slot )
 	   that said a pass was open while the command buffer had none, and the
 	   retire then ended a buffer that was never begun. */
 	vk.passOpen = qtrue;
+	/* the pass's own LOAD_OP_CLEAR leaves every depth texel at 1.0, so the first
+	   view's depth clear is redundant until a draw can write depth */
+	vk.depthWritten = qfalse;
 
 	memset( clearValues, 0, sizeof( clearValues ) );
 	clearValues[0].color.float32[0] = vk.clearColor[0];

@@ -223,6 +223,10 @@ typedef struct {
 	qboolean targetReady;
 	qboolean frameReady;
 	float clearColor[4];
+	/* The pass opened with a depth clear of its own.  Until something that can
+	   write depth is recorded, a view's depth clear re-writes 1.0 over values the
+	   pass already set, and the walk drops it. */
+	qboolean depthWritten;
 	/* GPU-side pass attribution.  One timestamp query per mark per slot; the
 	   pool is reset by the slot's own command buffer, and results are read only
 	   after that slot's fence has signalled, so no host wait is added. */

@@ -1489,6 +1489,71 @@ void UIWidget::Draw(void)
     }
 }
 
+/* A box I paint full-screen is invisible when a child paints its own opaque
+   full-screen background after it: Display runs this widget's Draw before any
+   child, so the child's box lands on top of mine.  Only a shown, settled child
+   qualifies -- a fading, sliding or load-hidden one can thin, move or skip the
+   box it would cover with, and then my box is visible again. */
+qboolean UIWidget::OpaqueChildCoversScreen(void)
+{
+    int         i;
+    UIRect2D    screen;
+
+    if (m_local_alpha < 1.0f) {
+        return qfalse;
+    }
+
+    screen = UIRect2D(0.0f, 0.0f, (float)uid.vidWidth, (float)uid.vidHeight);
+
+    if (screen.getMaxX() <= 0.0f || screen.getMaxY() <= 0.0f) {
+        return qfalse;
+    }
+
+    for (i = 1; i <= m_children.NumObjects(); i++) {
+        UIWidget *child = m_children.ObjectAt(i);
+        UIRect2D  box;
+
+        /* getShow is the pair Display gates its own draw on; m_visible is the
+           event state and either one false means the box this predicate would
+           trust is not painted */
+        if (!child->getShow() || !child->m_visible || child->m_direction != D_NONE
+            || child->m_fadetime != 0.0f || child->m_bMoveActive) {
+            continue;
+        }
+
+        if (child->m_hideDuringLoad && menuManager.getLoading()) {
+            continue;
+        }
+
+        /* Display paints the state background at bgColor.a * local_alpha, and
+           the local alpha is the child's own times mine: both must be 1 to
+           replace what is under the box rather than blend with it */
+        if (child->m_alpha < 1.0f || child->getStateBackgroundColor().a < 1.0f) {
+            continue;
+        }
+
+        /* the rect that box will occupy: the child's screen origin and its frame
+           size, the same pair its own set2D places DrawBox at */
+        box = UIRect2D(child->m_screenframe.pos, child->m_frame.size);
+
+        if (box.pos.x > screen.pos.x || box.pos.y > screen.pos.y
+            || box.getMaxX() < screen.getMaxX() || box.getMaxY() < screen.getMaxY()) {
+            continue;
+        }
+
+        /* and the scissor its set2D will clip the box with */
+        if (child->m_clippedframe.pos.x > screen.pos.x || child->m_clippedframe.pos.y > screen.pos.y
+            || child->m_clippedframe.getMaxX() < screen.getMaxX()
+            || child->m_clippedframe.getMaxY() < screen.getMaxY()) {
+            continue;
+        }
+
+        return qtrue;
+    }
+
+    return qfalse;
+}
+
 static int Fctiwz(float f)
 {
     if (!(f > -2147483648.0f)) { 
@@ -4007,24 +4072,30 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
     UColor bgColor = getStateBackgroundColor();
     if (bgColor.a != 0.0) {
         /* the opaque background wash a UIWidget paints is the only source of a flat light-blue screen in the front end (background.inc's RenderModel bgcolor
-           0.35 0.67 1.00): naming the writer, its class, its rect and its place in the draw order tells a composition defect from an order defect.  Gated and budgeted like the other census rows. */
+           0.35 0.67 1.00): naming the writer, its class, its rect and its place in the draw order tells a composition defect from an order defect.  Gated and budgeted like the other census rows.
+           covered=1 says a child's opaque full-screen background replaces this wash before anything can see it, so the box is not painted. */
+        qboolean covered = OpaqueChildCoversScreen();
+
         static int s_bgfillRows;
         s_bgfillRows++;
         if (s_bgfillRows <= 480 || (s_bgfillRows % 240) == 0) {
             UIVK_CENSUS_PROBE(
                 "bgfill",
-                "seq=%d class='%s' name='%s' rect=%.0f,%.0f %.0fx%.0f rgba=%.3f,%.3f,%.3f,%.3f local_alpha=%.3f",
+                "seq=%d class='%s' name='%s' rect=%.0f,%.0f %.0fx%.0f rgba=%.3f,%.3f,%.3f,%.3f local_alpha=%.3f covered=%d",
                 s_bgfillRows,
                 getClassname(),
                 getName() ? getName() : "(null)",
                 (double)m_frame.pos.x, (double)m_frame.pos.y,
                 (double)m_frame.size.width, (double)m_frame.size.height,
                 (double)bgColor.r, (double)bgColor.g, (double)bgColor.b, (double)bgColor.a,
-                (double)m_local_alpha
+                (double)m_local_alpha,
+                covered ? 1 : 0
             );
         }
 
-        DrawBox(0, 0, m_frame.size.width, m_frame.size.height, bgColor, bgColor.a * m_local_alpha);
+        if (!covered) {
+            DrawBox(0, 0, m_frame.size.width, m_frame.size.height, bgColor, bgColor.a * m_local_alpha);
+        }
     }
 
     if (m_borderStyle == border_outline) {
@@ -4870,8 +4941,10 @@ void UIWidgetContainer::Draw(void)
        filling it hid the 3D view behind every floating panel: the controls
        screen drew its starfield and ship and then had a full-screen box painted
        over it, because this had no fullscreen gate and the data's bgfill alpha
-       is not zero.  Only a fullscreen container fills the frame. */
-    if (m_bgfill.a != 0.0 && m_fullscreen) {
+       is not zero.  Only a fullscreen container fills the frame.
+       A fill under a child's opaque full-screen background is not part of the
+       picture at all, so it is only painted when nothing covers it. */
+    if (m_bgfill.a != 0.0 && m_fullscreen && !OpaqueChildCoversScreen()) {
         DrawBox(0, 0, uid.vidWidth, uid.vidHeight, m_bgfill, m_local_alpha);
     }
 
