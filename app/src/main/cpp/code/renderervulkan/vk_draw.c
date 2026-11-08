@@ -1423,20 +1423,39 @@ void VK_Draw_ResetRecordedDraws( void )
 
 void VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstIndex, int vertexBase )
 {
+	/* every indexed draw this renderer records is here, so the pass colour clear
+	   the pass did not do is paid by the first one of them that its call site did
+	   not already settle (VK_DeferredClear_Flush) */
+	VK_DeferredClear_Flush( cmd );
+
 	s_frameDrawIndexed++;
 	s_frameDrawIndexedIdx += indexCount;
 
 	qvk.CmdDrawIndexed( cmd, (uint32_t)indexCount, 1, (uint32_t)firstIndex, (int32_t)vertexBase, 0 );
 }
 
-/* The static arena's own binds.  Both keep the index elision cache honest: a
+/* The static arena's own binds.  Both keep the bind elision cache honest: a
    buffer bound here is what the next ring bind must compare against. */
 void VK_Draw_BindVertexBuffer( VkCommandBuffer cmd, VkBuffer buffer, VkDeviceSize offset )
 {
 	VkDeviceSize	offsets[1];
+	int				slot = RB_FrameSmpFrame();
 
 	offsets[0] = offset;
 	qvk.CmdBindVertexBuffers( cmd, 0, 1, &buffer, offsets );
+
+	/* The arena's vertex buffer is a bind like any other, and the ring's elision
+	   compares against these three words: left stale, the next ring bind at the
+	   cached offset was skipped with the arena buffer bound, and that batch drew
+	   the arena's first vertices as its own geometry -- the arena batch's own
+	   world art sampled through another surface's texcoords.  The arena arm packs
+	   no ring bytes, so the ring offset after it is routinely the cached one. */
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		slot = 0;
+	}
+	s_vertexBound[slot]        = buffer;
+	s_vertexBoundFrame[slot]   = RB_FrameCount();
+	s_vertexBoundOffset[slot]  = offset;
 }
 
 void VK_Draw_BindIndexBuffer( VkCommandBuffer cmd, VkBuffer buffer )
@@ -1454,6 +1473,9 @@ void VK_Draw_BindIndexBuffer( VkCommandBuffer cmd, VkBuffer buffer )
 
 void VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex )
 {
+	/* the immediate stream's draw: the same last point before a colour write */
+	VK_DeferredClear_Flush( cmd );
+
 	qvk.CmdDraw( cmd, (uint32_t)vertexCount, 1, (uint32_t)firstVertex, 0 );
 }
 

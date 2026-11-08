@@ -402,6 +402,9 @@ void Cvar_SetLatched( const char *var_name, const char *value);
 void	Cvar_SetValue( const char *var_name, float value );
 
 cvar_t	*Cvar_FindVar( const char *var_name );
+/* Bumped by every cvar create and every unset: a cached cvar_t* is only valid
+   for the generation it was resolved in, because the table reuses slots. */
+int		Cvar_Generation( void );
 float	Cvar_VariableValue( const char *var_name );
 int		Cvar_VariableIntegerValue(const char* var_name);
 float	Cvar_VariableFloatValue(const char* var_name);

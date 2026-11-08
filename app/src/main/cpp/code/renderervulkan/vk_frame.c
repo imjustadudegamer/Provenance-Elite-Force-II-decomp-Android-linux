@@ -769,6 +769,61 @@ void VK_Frame_Abandon( int slot )
 static VkRenderPassBeginInfo s_passInfo;
 static VkClearValue s_clearValues[2];
 
+/* ---- the pass colour clear, owed to the first colour write ----------------
+   With r_deferredClear the pass's colour attachment loads with DONT_CARE and
+   the value the pass clear would have written is held here.  The walk pays the
+   debt at the first command that writes colour: recording the same clear there
+   is the same picture, because nothing between the pass begin and that command
+   reads the plane (a draw or a clear is the only writer, and the clear is
+   recorded directly before the first one).  A write that provably covers the
+   whole render area opaquely settles the debt instead, so the menu's fullscreen
+   opaque background box costs no clear at all. */
+
+void VK_DeferredClear_Claim( void )
+{
+	vk.colorClearOwed = qfalse;
+}
+
+qboolean VK_DeferredClear_Owed( void )
+{
+	return vk.colorClearOwed;
+}
+
+/* Called with the command buffer of the current pass, immediately before the
+   command that would be the first colour write.  Outside the pass it leaves the
+   debt alone: CmdClearAttachments is only legal inside one. */
+void VK_DeferredClear_Flush( VkCommandBuffer cmd )
+{
+	VkClearAttachment	attachment;
+	VkClearRect			rect;
+
+	if ( !vk.colorClearOwed ) {
+		return;
+	}
+
+	if ( cmd == VK_NULL_HANDLE || !vk.passOpen ) {
+		return;
+	}
+
+	memset( &attachment, 0, sizeof( attachment ) );
+	attachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	attachment.colorAttachment = 0;
+	attachment.clearValue.color.float32[0] = vk.deferredClearColor[0];
+	attachment.clearValue.color.float32[1] = vk.deferredClearColor[1];
+	attachment.clearValue.color.float32[2] = vk.deferredClearColor[2];
+	attachment.clearValue.color.float32[3] = vk.deferredClearColor[3];
+
+	/* the whole render area: a clear is not clipped by the scissor, which is the
+	   one difference from the GL twin's glClear */
+	memset( &rect, 0, sizeof( rect ) );
+	rect.rect.extent = vk.swapchainExtent;
+	rect.layerCount = 1;
+
+	qvk.CmdClearAttachments( cmd, 1, &attachment, 1, &rect );
+
+	vk.colorClearOwed = qfalse;
+}
+
 qboolean VK_Frame_RecordBegin( int slot )
 {
 	VkClearValue clearValues[2];
@@ -788,6 +843,16 @@ qboolean VK_Frame_RecordBegin( int slot )
 	/* the pass's own LOAD_OP_CLEAR leaves every depth texel at 1.0, so the first
 	   view's depth clear is redundant until a draw can write depth */
 	vk.depthWritten = qfalse;
+
+	/* DONT_CARE loads leave the colour plane undefined, so the value the pass
+	   clear would have written is remembered here and paid at the first colour
+	   write (VK_DeferredClear_Flush): the pass's own clear value, not a later
+	   view's, so the pixels are the ones the load-op clear produced. */
+	vk.colorClearOwed = vk.colorLoadDeferred;
+	vk.deferredClearColor[0] = vk.clearColor[0];
+	vk.deferredClearColor[1] = vk.clearColor[1];
+	vk.deferredClearColor[2] = vk.clearColor[2];
+	vk.deferredClearColor[3] = vk.clearColor[3];
 
 	memset( clearValues, 0, sizeof( clearValues ) );
 	clearValues[0].color.float32[0] = vk.clearColor[0];
@@ -847,6 +912,7 @@ qboolean VK_Frame_RecordBegin( int slot )
 	if ( vk.demoDraw ) {
 		/* The demo triangle binds its own buffer, before the ring bind, so the
 		   pass's binding is the one the surfaces draw through. */
+		VK_DeferredClear_Flush( vk.commandBuffers[slot] );
 		VK_Pipeline_DrawDemo( vk.commandBuffers[slot] );
 	}
 
@@ -867,6 +933,10 @@ void VK_Frame_RecordEnd( int slot )
 {
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE ) {
 		RB_2D_Flush();
+		/* A frame that painted no colour at all still owes the pass clear, and
+		   it belongs inside the pass: the load op left the plane undefined, so
+		   the texels would otherwise be whatever the last presented frame held. */
+		VK_DeferredClear_Flush( vk.commandBuffers[slot] );
 		/* The flush is what records the 2D batch's draws, so the terminal
 		   timestamp comes after it: the UI interval has to contain them. */
 		VK_PerfGpu_FrameEnd( slot );
@@ -895,6 +965,7 @@ void VK_Frame_Retire( int slot )
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE && qvk.EndCommandBuffer ) {
 		VK_Guard_Row( "VK:frame", "retire-pass slot=%d f=%d", slot, RB_FrameCount() );
 		RB_2D_Flush();
+		VK_DeferredClear_Flush( vk.commandBuffers[slot] );
 		VK_PerfGpu_FrameEnd( slot );
 		if ( qvk.CmdEndRenderPass ) {
 			qvk.CmdEndRenderPass( vk.commandBuffers[slot] );

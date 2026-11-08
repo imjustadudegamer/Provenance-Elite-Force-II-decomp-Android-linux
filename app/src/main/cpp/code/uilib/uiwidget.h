@@ -115,6 +115,16 @@ struct WidgetCvarPair {
     str cvarname;
     str value;
     int type;
+
+    /* The gate is evaluated for every widget every frame, and both halves of the
+       resolution are constant for the life of the pair: the reference value is
+       written once by `cvarvisibility` and the cvar is a slot in a fixed table.
+       The cvar slot is only re-resolved when the table's generation moves, which
+       every create and every unset bumps (a reused slot is a different cvar). */
+    str   reftext;      /* value as it was parsed */
+    float refvalue;
+    cvar_t *cvar;
+    int     cvargen;
 };
 
 

@@ -2713,6 +2713,9 @@ void UIWidget::cvarVisibility(Event *ev)
     pair->cvarname = ev->GetString(1);
     pair->value    = ev->GetString(2);
     pair->type     = 0;
+    pair->refvalue = 0.0f;
+    pair->cvar     = NULL;
+    pair->cvargen  = -1;
 
     if (ev->NumArgs() > 2) {
         pair->type = getCheckType(ev->GetString(3));
@@ -2750,6 +2753,9 @@ int UIWidget::getCheckType(const str& op)
 
 bool UIWidget::testCvarTypes(const Container<WidgetCvarPair *>& data)
 {
+    /* a host that never filled the import keeps the old resolve-every-frame path */
+    const int gen = uii.Cvar_Generation ? uii.Cvar_Generation() : -1;
+
     for (int i = 1; i <= data.NumObjects(); i++) {
         WidgetCvarPair *pair = data.ObjectAt(i);
 
@@ -2757,7 +2763,24 @@ bool UIWidget::testCvarTypes(const Container<WidgetCvarPair *>& data)
             continue;
         }
 
-        cvar_t *cvar = uii.Cvar_Find(pair->cvarname.c_str());
+        /* The reference is the text `cvarvisibility` wrote, and both that text
+           and the cvar slot are fixed until the table's generation moves: the
+           pointer is re-resolved then, so a slot handed to a new name can never
+           be compared against this gate.  The cvar's own value is read fresh
+           every frame, latched string included. */
+        if (gen < 0 || pair->cvargen != gen) {
+            pair->reftext  = pair->value;
+            pair->refvalue = atof(pair->reftext.c_str());
+            pair->cvar     = uii.Cvar_Find(pair->cvarname.c_str());
+            pair->cvargen  = gen;
+        }
+
+        if (pair->reftext != pair->value) {
+            pair->reftext  = pair->value;
+            pair->refvalue = atof(pair->reftext.c_str());
+        }
+
+        cvar_t *cvar = pair->cvar;
 
         if (!cvar) {
             continue;
@@ -2769,7 +2792,7 @@ bool UIWidget::testCvarTypes(const Container<WidgetCvarPair *>& data)
             cur = atof(cvar->latchedString);
         }
 
-        const float ref = atof(pair->value.c_str());
+        const float ref = pair->refvalue;
 
         switch (pair->type) {
         case 3: 

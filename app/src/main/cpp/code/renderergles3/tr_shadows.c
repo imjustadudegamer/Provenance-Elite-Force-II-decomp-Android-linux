@@ -248,7 +248,7 @@ void RB_ShadowTessEnd( void ) {
 	GL_State( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO );
 	RB_ImmColor3f( 0.2f, 0.2f, 0.2f );
 
-	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+	GLES3_ColorMaskState( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
 
 	GLES3_StencilState( qtrue, GL_ALWAYS, 1, 255 );
 
@@ -275,7 +275,7 @@ void RB_ShadowTessEnd( void ) {
 	}
 
 
-	qglColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+	GLES3_ColorMaskState( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
 
 	if ( BE_On() ) {
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_shadow, BE_Microseconds() - shadowBuildT0 );

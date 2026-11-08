@@ -227,6 +227,15 @@ typedef struct {
 	   write depth is recorded, a view's depth clear re-writes 1.0 over values the
 	   pass already set, and the walk drops it. */
 	qboolean depthWritten;
+	/* The swapchain pass's colour attachment opened with LOAD_OP_DONT_CARE
+	   (r_deferredClear), so the clear the pass used to do at RC_VK_BEGIN is owed
+	   to the first draw that writes colour: that draw records it with the value
+	   the pass would have written, unless the write itself covers the plane
+	   opaquely and settles the debt.  Nothing between the pass begin and that
+	   write reads the plane, so the picture is the one the pass clear produced. */
+	qboolean colorLoadDeferred;
+	qboolean colorClearOwed;
+	float deferredClearColor[4];
 	/* GPU-side pass attribution.  One timestamp query per mark per slot; the
 	   pool is reset by the slot's own command buffer, and results are read only
 	   after that slot's fence has signalled, so no host wait is added. */
@@ -292,7 +301,8 @@ void VK_Vertex_Shutdown( void );
 qboolean VK_Target_Init( void );
 void VK_Target_Shutdown( void );
 qboolean VK_Target_Recreate( void );
-VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth );
+VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth,
+								 VkAttachmentLoadOp colourLoad );
 
 /* The stencil plane's readback, one throttled row per armed frame: the copy is
    recorded after the pass closes and counted once the frame's fence signals. */

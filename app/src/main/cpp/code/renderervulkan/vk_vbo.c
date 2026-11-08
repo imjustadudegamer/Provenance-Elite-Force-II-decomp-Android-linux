@@ -103,6 +103,10 @@ static qboolean			s_arenaFull;
 static qboolean			s_forgetPending;
 static qboolean			s_ready;
 static cvar_t			*s_cvar;
+/* The registration the table was last dropped for.  RB_VboStaticForget is the
+   one site that drops it, and this is the invariant behind it: a surface whose
+   shaders were re-parsed belongs to a table that was never keyed on them. */
+static int				s_shaderGen;
 
 /* what the last arena draw actually read from: the census reports the submitted
    geometry beside the expected stage set.  0 none, 1 device runs, 2 the compose */
@@ -347,6 +351,16 @@ static void VK_StaticSkip( const void *surf, int type, int vertBase, int idxBase
 
 qboolean RB_VboStaticTrySurface( const void *surf, int type )
 {
+	/* A registration that rebuilt the shaders left every resident surface naming
+	   a shader list that no longer exists: the table stands down for this frame
+	   and is dropped on the walk (the same drop the registration itself asks for),
+	   so the arena can only ever draw geometry of the current registration. */
+	if ( s_forgetPending || s_shaderGen != tr.shaderGen ) {
+		s_shaderGen = tr.shaderGen;
+		s_forgetPending = qtrue;
+		return qfalse;
+	}
+
 	int						numVerts = 0, numIdx = 0;
 	vkStaticRegion_t		*e;
 
@@ -476,6 +490,7 @@ static void VK_StaticApplyForget( void )
 	s_arenaVerts = 0;
 	s_arenaIdxes = 0;
 	s_arenaFull = qfalse;
+	s_shaderGen = tr.shaderGen;
 	RB_VboStaticReset();
 }
 
@@ -854,6 +869,7 @@ qboolean RB_VBO_Init( void )
 	s_arenaIdxes = 0;
 	s_arenaFull = qfalse;
 	s_forgetPending = qfalse;
+	s_shaderGen = tr.shaderGen;
 
 	if ( !VK_Memory_CreateBuffer( (VkDeviceSize)VK_STATIC_ARENA_VERTS * VK_STREAM_STRIDE,
 								  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,

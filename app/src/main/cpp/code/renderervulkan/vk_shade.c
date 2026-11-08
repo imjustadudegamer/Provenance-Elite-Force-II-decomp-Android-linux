@@ -4054,6 +4054,13 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	int family;
 
 	(void)shader;
+
+	/* Every 3D, sky and 2D-batch draw binds its pipeline here, before the draw
+	   is recorded, so this is where the pass colour clear is paid when the draw
+	   that follows can read the plane (VK_DeferredClear_Flush).  A refused bind
+	   still pays it: the clear is what the pass would have written anyway. */
+	VK_DeferredClear_Flush( cmd );
+
 	if ( !s_shade.prog ) {
 		s_frameShadeDrops++;
 		VK_Shade_DropRow( "no-program" );
