@@ -1112,6 +1112,7 @@ typedef struct {
 	VkPipeline	pipeline;
 	unsigned	shadowGen;	/* the stencil/cull/colour-mask state the run opened under */
 	qboolean	shadow;		/* the run armed the stencil: a volume pass */
+	qboolean	coverClaim;	/* this run's first quad covers the target opaquely */
 } vkImmRun_t;
 
 static vkImmRun_t	s_imm;
@@ -1206,11 +1207,32 @@ static qboolean RB_Imm_BindImage( image_t *image )
 	return VK_Draw_BindTexture( vk.commandBuffers[s_rbSlot], view, sampler );
 }
 
+/* A 2D writer whose first quad proves it covers the whole target, set for the
+   run it is about to open: the pass colour clear is then owed to that quad,
+   which writes every texel it would have cleared (RB_2D_Box).  Read where the
+   run's pipeline is resolved, because that is where the run's own state -- the
+   colour mask, the stencil, the blend -- is known. */
+static qboolean s_immCoverClaim;
+
+void RB_ImmCoverClaim( qboolean on ) {
+	s_immCoverClaim = on;
+}
+
+/* The run's quads are in the ring or they are not: a vertex the ring could not
+   take leaves the covering quad incomplete, and a clear claimed by it would
+   leave the texels it never reached undefined. */
+void RB_ImmCoverCancel( void ) {
+	s_imm.coverClaim = qfalse;
+}
+
 /* The run's pipeline state is the caller's, not a field of the run. */
 void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits )
 {
 	vkPipelineKey_t key;
 	vkImmRun_t *run = &s_imm;
+	qboolean coverClaim = s_immCoverClaim;
+
+	s_immCoverClaim = qfalse;
 
 	if ( run->open && ( run->topology != topology || run->image != image
 						|| run->shadowGen != VK_Shade_ShadowGen() ) ) {
@@ -1253,6 +1275,24 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 						  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 						  0, sizeof( push ), &push );
 
+	/* The claim only stands for a run that writes colour opaquely over its whole
+	   quad: two-sided, no depth test, no stencil, every channel of the colour
+	   mask, and SRC_ALPHA/ONE_MINUS_SRC_ALPHA, whose alpha-1 result is the source
+	   colour exactly.  The claim rides the run and is taken at its commit, where
+	   the draw is certain; anything else pays the clear the pass would have done,
+	   recorded here, before the run's draw. */
+	coverClaim = ( coverClaim
+				   && key.colorMask == ( VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+										 | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT )
+				   && !key.stencilTest && !key.depthTest
+				   && ( key.stateBits & ( VKS_SRCBLEND_BITS | VKS_DSTBLEND_BITS ) )
+					  == ( VKS_SRCBLEND_SRC_ALPHA | VKS_DSTBLEND_ONE_MINUS_SRC_ALPHA ) )
+				 ? qtrue : qfalse;
+
+	if ( !coverClaim ) {
+		VK_DeferredClear_Flush( vk.commandBuffers[s_rbSlot] );
+	}
+
 	run->pipeline = VK_Draw_Pipeline( &key );
 	if ( run->pipeline == VK_NULL_HANDLE ) {
 		return;
@@ -1275,6 +1315,7 @@ void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits
 	run->topology = topology;
 	run->image = image;
 	run->shadowGen = VK_Shade_ShadowGen();
+	run->coverClaim = coverClaim;
 	run->verts = 0;
 	run->base = VK_VertexRing_Used();
 }
@@ -1328,6 +1369,13 @@ void RB_ImmCommit( void )
 			s_dbg++;
 		}
 	}
+	/* the run's first quad covers every texel the pass clear would have written,
+	   so the clear it would have read is not owed at all (RB_2D_Box's proof) */
+	if ( run->coverClaim ) {
+		VK_DeferredClear_Claim();
+		run->coverClaim = qfalse;
+	}
+
 	VK_Draw_Draw( cmd, run->verts, run->base );
 
 	if ( run->shadow ) {
@@ -1349,6 +1397,7 @@ void RB_ImmEnd( void )
 		RB_ImmCommit();
 	}
 
+	s_imm.coverClaim = qfalse;
 	s_imm.open = qfalse;
 	s_imm.verts = 0;
 	s_imm.pending = qfalse;
@@ -1808,6 +1857,7 @@ void RB_BeginDrawingView (void) {
 	{
 		VkClearAttachment attachments[2];
 		VkClearRect rect;
+		qboolean colour = qfalse;	/* this view clears the colour plane too */
 		int count = 0;
 
 		memset( attachments, 0, sizeof( attachments ) );
@@ -1826,8 +1876,6 @@ void RB_BeginDrawingView (void) {
 
 		if ( ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) == 0 )
 		{
-			qboolean colour = qfalse;
-
 			if ( !backEnd.viewParms.farplane_distance || tr.skyRendered || tr.portalRendered )
 			{
 				if ( r_fastsky->integer )
@@ -1847,6 +1895,20 @@ void RB_BeginDrawingView (void) {
 				attachments[count].clearValue.color.float32[2] = vk.clearColor[2];
 				attachments[count].clearValue.color.float32[3] = vk.clearColor[3];
 				count++;
+			}
+		}
+
+		/* The pass's own LOAD_OP_CLEAR already wrote 1.0 into every depth texel
+		   this frame, and nothing that can write depth has been recorded since:
+		   re-clearing the same value over a rect the pass cleared is a no-op, so
+		   the depth aspect is dropped.  Only the depth bit goes -- the stencil
+		   plane is written by the volume pass, which nothing here counts. */
+		if ( vk.depthWritten == qfalse ) {
+			attachments[0].aspectMask &= (uint32_t)~(uint32_t)VK_IMAGE_ASPECT_DEPTH_BIT;
+
+			if ( attachments[0].aspectMask == 0 ) {
+				attachments[0] = attachments[1];
+				count--;
 			}
 		}
 
@@ -1874,7 +1936,23 @@ void RB_BeginDrawingView (void) {
 			rect.layerCount = 1;
 		}
 
-		if ( rect.rect.extent.width && rect.rect.extent.height ) {
+		/* The pass's colour clear (r_deferredClear) is still owed while nothing
+		   has written colour this frame.  A view clear that covers the pass's
+		   whole render area writes every texel the pass clear would have, so it
+		   settles the debt; any narrower write cannot, so the pass clear is
+		   recorded first, in the value the pass would have written. */
+		if ( vk.colorClearOwed ) {
+			if ( colour
+				 && rect.rect.offset.x == 0 && rect.rect.offset.y == 0
+				 && rect.rect.extent.width == vk.swapchainExtent.width
+				 && rect.rect.extent.height == vk.swapchainExtent.height ) {
+				VK_DeferredClear_Claim();
+			} else {
+				VK_DeferredClear_Flush( VK_Shade_CommandBuffer() );
+			}
+		}
+
+		if ( count > 0 && rect.rect.extent.width && rect.rect.extent.height ) {
 			qvk.CmdClearAttachments( VK_Shade_CommandBuffer(), count, attachments, 1, &rect );
 		}
 	}

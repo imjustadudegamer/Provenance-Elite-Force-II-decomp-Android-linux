@@ -233,6 +233,9 @@ static shader_t *s_2dBatchShader;
 static qboolean  s_2dBatchOpen;
 static int       s_2dBatchVerts;
 static qboolean  s_2dTriOpen;
+/* The run a covering box opens, and the frame's colour clear it settles at the
+   run's flush, where the vertex count says the quad reached the ring whole. */
+static qboolean  s_2dTriClaim;
 static int       s_2dTriBlend;
 static int       s_2dTriVerts;
 static int       s_2dTriBase;
@@ -252,6 +255,18 @@ void RB_2D_ScissorApplied( int x, int y, int width, int height ) {
 
 	s_walkScissorValid = qtrue;
 	s_walkScissor[0] = x; s_walkScissor[1] = y; s_walkScissor[2] = width; s_walkScissor[3] = height;
+}
+
+/* The box in force, so a clear that has to be full-target can take it and hand
+   it back (tr_backend.c RB_ColorClearPay). */
+qboolean RB_2D_ScissorState( int *box ) {
+	if ( !s_walkScissorValid ) {
+		return qfalse;
+	}
+
+	box[0] = s_walkScissor[0]; box[1] = s_walkScissor[1];
+	box[2] = s_walkScissor[2]; box[3] = s_walkScissor[3];
+	return qtrue;
 }
 
 /* The batch's own rect against the clip it is about to draw under.  Retail scissor
@@ -392,6 +407,14 @@ void RB_2D_Flush( void ) {
 						   s_2dTriVerts - got, s_2dTriVerts, got, RB_FrameCount() );
 			}
 		}
+
+		/* a quad the ring could not take whole does not write the texels the
+		   frame's clear would have, so it cannot settle the debt */
+		if ( s_2dTriClaim && got == s_2dTriVerts && s_2dTriVerts >= 6 ) {
+			RB_ColorClearClaim();
+		}
+		s_2dTriClaim = qfalse;
+
 		s_d2VertsDrawn += got;
 		RB_ImmFlush();
 		GLES3_GlErrAt( "2d_box_flush" );
@@ -558,6 +581,52 @@ void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t 
 	RB_StreamEnd();
 }
 
+/* Whether this box writes every texel of the target opaquely.  The proof is the
+   draw's own state: the box goes through the ortho the window set and the
+   widget's placement, is clipped by the scissor's box alone, and is drawn at
+   alpha 1 with SRC_ALPHA/ONE_MINUS_SRC_ALPHA and the 2D family's base colour at
+   1 -- so dst * 0 is added to every texel and the source colour replaces the
+   destination exactly.  What is underneath (the frame's colour clear) is then
+   not part of the picture. */
+static qboolean RB_2DBoxCoversScreen( float x, float y, float w, float h ) {
+	int		scn[4];
+	float	xlo, xhi, ylo, yhi;
+	float	ox = gles3_2dOrigin[0], oy = gles3_2dOrigin[1];
+
+	if ( !backEnd.in2D || !s_walkWindowValid || !s_walkScissorValid ) {
+		return qfalse;
+	}
+
+	/* a translucent box lets the cleared value through */
+	if ( backEnd.color2D[3] != 255 ) {
+		return qfalse;
+	}
+
+	/* the viewport the ortho lands in, and the clip the run draws under, each
+	   have to reach the target's edges */
+	if ( s_walkWindow[0] > 0 || s_walkWindow[1] > 0
+		 || s_walkWindow[0] + s_walkWindow[2] < glConfig.vidWidth
+		 || s_walkWindow[1] + s_walkWindow[3] < glConfig.vidHeight ) {
+		return qfalse;
+	}
+	if ( !RB_2D_ScissorState( scn )
+		 || scn[0] > 0 || scn[1] > 0
+		 || scn[0] + scn[2] < glConfig.vidWidth
+		 || scn[1] + scn[3] < glConfig.vidHeight ) {
+		return qfalse;
+	}
+
+	/* RB_OrthoProjection is handed (left, right, bottom, top) in the engine's
+	   top-down screen space, so either end of each interval may be the smaller */
+	xlo = s_walkWindowOrtho[0] < s_walkWindowOrtho[1] ? s_walkWindowOrtho[0] : s_walkWindowOrtho[1];
+	xhi = s_walkWindowOrtho[0] < s_walkWindowOrtho[1] ? s_walkWindowOrtho[1] : s_walkWindowOrtho[0];
+	ylo = s_walkWindowOrtho[2] < s_walkWindowOrtho[3] ? s_walkWindowOrtho[2] : s_walkWindowOrtho[3];
+	yhi = s_walkWindowOrtho[2] < s_walkWindowOrtho[3] ? s_walkWindowOrtho[3] : s_walkWindowOrtho[2];
+
+	return ( x + ox <= xlo && x + w + ox >= xhi
+			 && y + oy <= ylo && y + h + oy >= yhi ) ? qtrue : qfalse;
+}
+
 void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	gles3Program_t	*p2d;
 	int				 wantBlend = blend ? 1 : 0;
@@ -582,6 +651,13 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 		s_2dTriBlend = wantBlend;
 		s_2dTriVerts = 0;
 		s_2dTriBase  = RB_ImmStreamVerts();
+
+		/* The run's first quad can settle the frame's colour clear, but only
+		   when no colour has been written yet: the clear owes the frame's
+		   first content, and a frame that wrote colour before the 2D page had
+		   its clear erase it, so that must stay. */
+		s_2dTriClaim = ( blend && !RB_FrameColorDrawn() && RB_ColorClearOwed()
+						 && RB_2DBoxCoversScreen( x, y, w, h ) ) ? qtrue : qfalse;
 	}
 
 	RB_ImmColor4f( backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,

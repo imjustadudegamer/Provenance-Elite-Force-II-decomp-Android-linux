@@ -3390,8 +3390,14 @@ qboolean MUSIC_LoadSoundtrackFile(const char *filename)
                 com_token[MAX_RES_NAME - 1] = 0;
             }
 
-            Q_strncpyz(args[numargs], com_token, sizeof(args[numargs]));
-            numargs++;
+            /* args[] holds MAX_MUSIC_SONGS rows: a line with more tokens than
+               that wrote past the array and smashed this function's stack.
+               Retail has no bound here (its line editor is the only writer of
+               the format), so the surplus token is simply not stored. */
+            if (numargs < MAX_MUSIC_SONGS) {
+                Q_strncpyz(args[numargs], com_token, sizeof(args[numargs]));
+                numargs++;
+            }
         }
 
         if (!Q_stricmp(args[0], "path")) {
@@ -3438,9 +3444,23 @@ qboolean MUSIC_LoadSoundtrackFile(const char *filename)
                 Q_strncpyz(file, load_path, sizeof(file));
                 Q_strcat(file, sizeof(file), args[1]);
 
+                /* Retail strips the four-character extension with
+                   `strncpy(alias, args[0], strlen(args[0]) - 4)` (decomp
+                   MUSIC_LoadSoundtrackFile @0x001D1CC0, the numargs<=1 arm), and
+                   a token shorter than four characters reaches strncpy as a huge
+                   size_t -- the stack is smashed and the engine aborts before the
+                   "no songs defined" path can decline the file.  A one-byte
+                   music/m9l1a-klingon_base.mus shadowing pak30's real file did
+                   exactly that.  Every well-formed token is longer than four, so
+                   this guard cannot change a valid file's behaviour; below it the
+                   alias is the token itself and the entry is left unusable. */
                 len = (int)strlen(args[0]);
-                strncpy(alias, args[0], len - 4);
-                alias[len - 4] = 0;
+                if (len > 4) {
+                    strncpy(alias, args[0], len - 4);
+                    alias[len - 4] = 0;
+                } else {
+                    Q_strncpyz(alias, args[0], sizeof(alias));
+                }
             }
 
             if (music_numsongs >= MAX_MUSIC_SONGS) {

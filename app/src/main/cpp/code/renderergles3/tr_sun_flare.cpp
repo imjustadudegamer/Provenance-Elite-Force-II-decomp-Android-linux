@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 #include "tr_vbo.h"
+#include "tr_program.h"
 
 #define MAX_FLARES 20
 
@@ -626,6 +627,13 @@ typedef struct lensflareInfo_s {
 
 #define MAX_LENSFLARE_STATES 128
 
+/* The occlusion pool is sized to the state table; one query per state.  Kept as
+   the Vulkan lane keeps it (renderervulkan/tr_sun_flare.cpp:712-714,
+   `lensflareQueryPoolFit`), because the arm below indexes the pool by the
+   state's own slot. */
+#define LF_QUERY_POOL MAX_LENSFLARE_STATES
+typedef char lensflareQueryPoolFit[( MAX_LENSFLARE_STATES <= LF_QUERY_POOL ) ? 1 : -1];
+
 typedef struct lensflareState_s {
     struct lensflareState_s *next;
     qboolean                 inUse;
@@ -644,6 +652,7 @@ typedef struct lensflareState_s {
 
     vec2_t     screen;
     float      eyeZ;
+    float      ndcZ;
     vec3_t     origin;
     vec3_t     color;
     float      scale;             
@@ -658,6 +667,15 @@ static int               lf_numInfos;
 static lensflareState_t  lf_states[MAX_LENSFLARE_STATES];
 static lensflareState_t *lf_activeStates;
 static lensflareState_t *lf_freeStates;
+
+/* The occlusion pool, indexed by the state's own slot (see the arm below):
+   `pending` is "armed, its result not read yet", `seen` is "this slot has had an
+   answer", which is what lets a frame the GPU is still behind hold the last
+   answer instead of falling to a different law for one frame. */
+static GLuint   lf_queries[LF_QUERY_POOL];
+static qboolean lf_queryPending[LF_QUERY_POOL];
+static qboolean lf_querySeen[LF_QUERY_POOL];
+static qboolean lf_queryDead;
 
 static lensflareInfo_t *R_LensflareInfoForName(const char *name)
 {
@@ -968,6 +986,10 @@ void R_ShutdownLensflares(void)
     lf_numInfos = 0;
 }
 
+/* the occlusion pool's teardown, defined beside the arm that fills it: this is
+   where it dies with the state table it is indexed by */
+static void R_FlareQueryFree(void);
+
 void R_ClearLensflareStates(void)
 {
     int i;
@@ -981,6 +1003,11 @@ void R_ClearLensflareStates(void)
         lf_states[i].next = lf_freeStates;
         lf_freeStates     = &lf_states[i];
     }
+
+    /* the occlusion pool belongs to the state table it is indexed by, and this
+       runs at every map load (R_InitLensFlare) and after a vid_restart's new
+       context, whose query names are not the old ones */
+    R_FlareQueryFree();
 }
 
 static lensflareState_t *R_LensflareStateFor(void *key, qboolean clipped)
@@ -1019,10 +1046,24 @@ static lensflareState_t *R_LensflareStateFor(void *key, qboolean clipped)
     f->alpha          = 0.0f;
     f->nextVisTime    = 0;
 
+    /* the slot's query object may still hold the last tenant's answer, which is
+       a coverage result for a quad that is no longer there: the answer is
+       dropped and the fresh state starts on the trace until its own query
+       answers (a begin on an object with an unread result discards it, and that
+       is exactly what this wants) */
+    {
+        unsigned int index = (unsigned int)(f - lf_states);
+
+        if (index < LF_QUERY_POOL) {
+            lf_queryPending[index] = qfalse;
+            lf_querySeen[index]    = qfalse;
+        }
+    }
+
     return f;
 }
 
-static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen, float *eyeZ)
+static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen, float *eyeZ, float *ndcZ)
 {
     vec4_t   eye;
     vec4_t   clip;
@@ -1066,6 +1107,11 @@ static qboolean R_LensflareScreenCalc(const vec3_t org, vec2_t screen, float *ey
     if (eyeZ) {
         *eyeZ = eye[2];
     }
+    /* and the window z beside it, which the occlusion arm re-projects through
+       (-24 units of retail's grace) to place its quad */
+    if (ndcZ) {
+        *ndcZ = clip[2] / clip[3];
+    }
 
     return inside;
 }
@@ -1094,6 +1140,189 @@ static qboolean R_LensflareTraceVisible(const lensflareState_t *f)
     return (qboolean)(trace.fraction > need);
 }
 
+/* The pool's own teardown: R_ClearLensflareStates runs at every map load and at
+   registration, and a vid_restart's context never had the names the old one
+   handed out, so they are dropped here rather than carried across.  It is also
+   the export re.ClearFlares, which the client calls from its own thread while
+   the walk may be running, so the context is claimed exactly as this tree's
+   other front-end GL work claims it (tr_image.c R_FreeImage). */
+static void R_FlareQueryFree(void)
+{
+    int i;
+    int any = 0;
+
+    for (i = 0; i < LF_QUERY_POOL; i++) {
+        if (lf_queries[i]) {
+            any = 1;
+        }
+    }
+
+    if (any && qglDeleteQueries && glConfig.smpActive) {
+        GL_ClaimContextForResource();
+    }
+
+    for (i = 0; i < LF_QUERY_POOL; i++) {
+        if (lf_queries[i] && qglDeleteQueries) {
+            qglDeleteQueries(1, &lf_queries[i]);
+        }
+        lf_queries[i]       = 0;
+        lf_queryPending[i]  = qfalse;
+        lf_querySeen[i]     = qfalse;
+    }
+    lf_queryDead = qfalse;
+}
+
+/* ---- retail's occlusion-query arm (Lensflare::TestVisibility @0x00049150) ----
+   Retail draws a depth-tested quad at the flare's own depth inside a
+   GL_SAMPLES_PASSED query, writes no colour, and reads the answer on a later
+   test; the >= 2 tier is yes/no, so ES 3.0's GL_ANY_SAMPLES_PASSED is the same
+   question.  This is the twin of renderervulkan/vk_frame.c:326-450
+   (VK_Flare_QueryArm / _QueryEnd / _QueryResult, armed by
+   renderervulkan/tr_sun_flare.cpp:1174-1225 R_LensflareOcclusionArm), and it is
+   what retail's @0x00048AF0 occlusionDraw does.
+
+   The Vulkan pool is keyed by the frame slot (vk.flareSlot) because its queries
+   live in the slot's own command buffer.  The twin's frame has no per-slot
+   command buffer, so the pool is one query object a state and the discipline is
+   carried by the object instead: a result is read before the same object is
+   armed again, and an object whose result has not arrived is LEFT ALONE, so a
+   frame the GPU is still behind can never discard an answer the next frame would
+   have read.  A driver that never answers leaves every state on the trace law
+   the Vulkan lane also falls back to -- never on a latch that starts false and
+   stays there. */
+
+/* Begin the state's occlusion query.  qfalse means the arm below must not draw:
+   no query object, an answer still owed by the last arm, or a driver that cannot
+   answer at all. */
+static qboolean R_FlareQueryArm(unsigned int index)
+{
+    if (index >= LF_QUERY_POOL || lf_queryDead) {
+        return qfalse;
+    }
+    if (!qglGenQueries || !qglBeginQuery || !qglEndQuery || !qglGetQueryObjectuiv) {
+        lf_queryDead = qtrue;
+        return qfalse;
+    }
+
+    if (!lf_queries[index]) {
+        qglGenQueries(1, &lf_queries[index]);
+        if (!lf_queries[index]) {
+            lf_queryDead = qtrue;
+            return qfalse;
+        }
+        lf_queryPending[index] = qfalse;
+    }
+
+    if (lf_queryPending[index]) {
+        /* the previous answer has not been read yet; re-arming would discard it */
+        return qfalse;
+    }
+
+    qglBeginQuery(GL_ANY_SAMPLES_PASSED, lf_queries[index]);
+    lf_queryPending[index] = qtrue;
+    return qtrue;
+}
+
+static void R_FlareQueryEnd(unsigned int index)
+{
+    if (index >= LF_QUERY_POOL || !lf_queryPending[index] || !qglEndQuery) {
+        return;
+    }
+
+    qglEndQuery(GL_ANY_SAMPLES_PASSED);
+}
+
+/* The previous test's answer, never waited on: qfalse means "not in yet" and the
+   caller falls back to the trace, which is the Vulkan lane's own law. */
+static qboolean R_FlareQueryResult(unsigned int index, unsigned int *samples)
+{
+    GLuint available = 0;
+    GLuint value     = 0;
+
+    if (index >= LF_QUERY_POOL || lf_queryDead || !lf_queries[index] || !lf_queryPending[index]) {
+        return qfalse;
+    }
+    if (!qglGetQueryObjectuiv) {
+        lf_queryDead = qtrue;
+        return qfalse;
+    }
+
+    qglGetQueryObjectuiv(lf_queries[index], GL_QUERY_RESULT_AVAILABLE, &available);
+    if (!available) {
+        return qfalse;
+    }
+
+    qglGetQueryObjectuiv(lf_queries[index], GL_QUERY_RESULT, &value);
+    lf_queryPending[index] = qfalse;
+    lf_querySeen[index]    = qtrue;
+    *samples = (unsigned int)value;
+    return qtrue;
+}
+
+/* retail Lensflare::occlusionDraw @0x00048AF0, called from the query arm of
+   TestVisibility @0x00049150: a quad at the flare's own depth, depth-tested,
+   writing no colour, inside the occlusion query the next test reads.  The flare
+   pass has loaded an identity model-view and Ortho(-1, 1, -1, 1, ...)
+   (R_DrawLensFlares), so the quad is placed in NDC and its depth inverted through
+   the projection in force -- the same arithmetic the Vulkan arm uses
+   (renderervulkan/tr_sun_flare.cpp:1191-1202). */
+static void R_LensflareOcclusionArm(const lensflareState_t *f, unsigned int index)
+{
+    const float    *proj = RB_GetProjectionMatrix();
+    gles3Program_t *p2d;
+    float           half, z;
+    int             span;
+
+    if (!R_FlareQueryArm(index)) {
+        return;
+    }
+
+    span = backEnd.viewParms.viewportHeight > 0 ? backEnd.viewParms.viewportHeight : 1;
+    half = 8.0f / (float)span;
+
+    /* retail's readback arm hides the flare only when the depth under it is more
+       than 24 units nearer (TestVisibility @0x00049150: (-eyeZ + ze) < 24); the
+       query answers at whatever depth the quad is drawn at, so the quad is placed
+       that much nearer the eye to carry the same grace */
+    {
+        const float *view = backEnd.viewParms.projectionMatrix;
+        float        dist;
+        float        ndc;
+
+        dist = view[14] / (f->ndcZ + view[10]) - 24.0f;
+        if (dist < 1.0f) {
+            dist = 1.0f;
+        }
+        ndc = -view[10] + view[14] / dist;
+        z   = (ndc - proj[14]) / proj[10];
+    }
+
+    /* the 2D family's program is the twin's white-quad carrier: texEnv 1
+       modulates the white image by the vertex colour, and alpha 0 is what leaves
+       the frame untouched while the depth test still runs */
+    GLES3_ApplyStateBits(GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA);
+    GL_BindUnit0(tr.whiteImage);
+    p2d = GLES3_BeginFamily(GLP_FAMILY_2D, 1);
+    GLES3_SetBaseColor4f(p2d, 1.0f, 1.0f, 1.0f, 1.0f);
+
+    RB_ImmColor4f(f->color[0], f->color[1], f->color[2], 0.0f);
+    RB_ImmBegin(GL_TRIANGLE_STRIP);
+    RB_ImmVertex3f(f->screen[0] - half, f->screen[1] - half, z);
+    RB_ImmVertex3f(f->screen[0] + half, f->screen[1] - half, z);
+    RB_ImmVertex3f(f->screen[0] - half, f->screen[1] + half, z);
+    RB_ImmVertex3f(f->screen[0] + half, f->screen[1] + half, z);
+    RB_ImmEnd();
+    /* the twin's immediate stream records and a later flush draws; the query has
+       to close around the drawn quad, not around its recording */
+    RB_ImmFlush();
+
+    /* the stream's colour is its own state: leave it as this file found it, so
+       the next run that skips a colour keeps its own */
+    RB_ImmColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+    R_FlareQueryEnd(index);
+}
+
 static void R_LensflareTestVisibility(lensflareState_t *f)
 {
     lensflareInfo_t *info = f->info;
@@ -1103,6 +1332,11 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
     float            a;
     vec3_t           diff;
     float            d;
+    /* the arm's own record, printed after the fade law has decided the alpha the
+       state will draw with; why stays "-" for the arms that take no query */
+    unsigned int     index   = (unsigned int)(f - lf_states);
+    unsigned int     samples = 0;
+    const char      *why     = "-";
 
     if (f->viewFrameCount != backEnd.viewParms.frameCount || f->clipped) {
         visible = qfalse;
@@ -1112,54 +1346,38 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
         f->nextVisTime = backEnd.refdef.time + 50;
         visible        = R_LensflareTraceVisible(f);
     } else {
-        /* retail TestVisibility @0x00049150, the readback arm: the depth under
-           the flare's own pixel, unprojected to eye z.  Visible while nothing
-           stands the bias in front of it, so a closed door hides the flare. */
-        float z   = 1.0f;
-        float ndc;
-        float ze;
-        int   x, y;
-
-        x = backEnd.viewParms.viewportX
-          + (int)((f->screen[0] * 0.5f + 0.5f) * (float)backEnd.viewParms.viewportWidth);
-        y = backEnd.viewParms.viewportY
-          + (int)((f->screen[1] * 0.5f + 0.5f) * (float)backEnd.viewParms.viewportHeight);
-
-        if (x < backEnd.viewParms.viewportX) {
-            x = backEnd.viewParms.viewportX;
-        }
-        if (y < backEnd.viewParms.viewportY) {
-            y = backEnd.viewParms.viewportY;
-        }
-        if (x > backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth - 1) {
-            x = backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth - 1;
-        }
-        if (y > backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight - 1) {
-            y = backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight - 1;
-        }
-
-        /* DEPTH_COMPONENT/GL_FLOAT is a desktop-GL pair; ES drivers may refuse it
-           and leave the pixel unanswered (Adreno raises 0x502 here every frame). */
-        GLuint zbits = 0xffffffffu;
-        qglGetError();
-        qglReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, &zbits);
-
-        if (qglGetError() == GL_NO_ERROR) {
-            /* the inverse of the view's own projection: eye[2] is negative forward,
-               so a surface nearer than the flare reads as a larger value */
-            z   = (float)(zbits * (1.0 / 4294967295.0));
-            ndc = 2.0f * z - 1.0f;
-            ze  = -backEnd.viewParms.projectionMatrix[14]
-                / (ndc + backEnd.viewParms.projectionMatrix[10]);
-
-            visible = (qboolean)((ze - f->eyeZ) < 24.0f);
+        /* retail TestVisibility @0x00049150, the >= 2 arm: the occlusion query
+           over the quad the arm below draws, answered with the frame before this
+           one and never waited on (renderervulkan/tr_sun_flare.cpp:1268-1296) */
+        if (R_FlareQueryResult(index, &samples)) {
+            visible = (qboolean)(samples != 0);
+            why     = "query";
+        } else if (index < LF_QUERY_POOL && lf_querySeen[index]) {
+            /* the answer has not arrived yet (the GPU is more than a frame
+               behind) but this state has answered before: the frame's own hold
+               law keeps the last verdict, which is what the Vulkan lane gets for
+               free from the slot fence it waits on before it reads.  Falling to
+               the trace here instead would alternate two laws at the fallback's
+               own cadence, and the two disagree exactly where a flare is on the
+               edge of an occluder -- the pop this arm exists to remove. */
+            visible        = f->visible;
+            /* the hold lasts until the next test, where the same object is read
+               again and re-armed; it is the throttle both fallbacks use */
+            f->nextVisTime = backEnd.refdef.time + 50;
+            why            = "hold";
         } else {
-            /* no depth answer: retail hides on a pending answer, so the trace
-               decides — the law the Vulkan twin keeps since the query fallback */
-            visible = R_LensflareTraceVisible(f);
+            /* no answer has ever come back (first frames, a state whose query
+               the previous frame did not arm, or a driver that never resolves
+               it): retail's own simple-tier law keeps the flare alive instead of
+               holding a latch that starts false and never flips */
+            visible        = R_LensflareTraceVisible(f);
+            /* the fallback's own throttle, where the Vulkan lane keeps it (its
+               R_LensflareTraceVisible); the query path is decided every frame */
+            f->nextVisTime = backEnd.refdef.time + 50;
+            why            = "trace";
         }
 
-        f->nextVisTime = backEnd.refdef.time + 50;
+        R_LensflareOcclusionArm(f, index);
     }
 
     maxAlpha = 1.0f;
@@ -1208,6 +1426,23 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
     }
 
     f->alpha = a;
+
+    /* The discriminator for a flare that pops: which law answered this state, the
+       coverage answer it was given, the verdict the fade law acted on, and the
+       alpha (hence whether it drew).  Gated and throttled like every other row in
+       this lane, and silent for the arms that take no query. */
+    if (why[0] != '-' && R_ProbeStatsOn()) {
+        static int s_rows;
+
+        if (s_rows < 8 || (s_rows % 600) == 0) {
+            ri.Printf(PRINT_ALL,
+                      "[GLES3:flarevis] why=%s idx=%u info='%s' samples=%u vis=%d alpha=%.2f "
+                      "draw=%d f=%d\n",
+                      why, index, info ? info->name : "?", samples, visible ? 1 : 0, f->alpha,
+                      (f->alpha > 0.0f) ? 1 : 0, RB_FrameCount());
+        }
+        s_rows++;
+    }
 }
 
 static shader_t *R_LensflareShaderFor(const lensflareState_t *f, shader_t *defaultTo)
@@ -1361,6 +1596,7 @@ static void R_LensflareFeed(const lensflare_t *lf)
     lensflareState_t *f;
     vec2_t            screen;
     float             eyeZ;
+    float             ndcZ;
     qboolean          inside;
 
     info = R_LensflareInfoForNum(lf->num);
@@ -1368,7 +1604,7 @@ static void R_LensflareFeed(const lensflare_t *lf)
         return;
     }
 
-    inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ);
+    inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ, &ndcZ);
 
     f = R_LensflareStateFor(lf->key, (qboolean)!inside);
     if (!f) {
@@ -1390,6 +1626,7 @@ static void R_LensflareFeed(const lensflare_t *lf)
     f->screen[0] = screen[0];
     f->screen[1] = screen[1];
     f->eyeZ      = eyeZ;
+    f->ndcZ      = ndcZ;
 }
 
 static void R_LensflarePush(lensflare_t *out, void *key, const vec3_t org, const vec3_t color, int num)
@@ -1536,6 +1773,7 @@ static void R_DrawEmitterLensflares(void)
         lensflareInfo_t   *info;
         vec2_t             screen;
         float              eyeZ;
+        float              ndcZ;
         qboolean           inside;
 
         info = R_LensflareInfoForNum(lf->num);
@@ -1543,7 +1781,7 @@ static void R_DrawEmitterLensflares(void)
             continue;
         }
 
-        inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ);
+        inside = R_LensflareScreenCalc(lf->origin, screen, &eyeZ, &ndcZ);
 
         f = R_LensflareStateFor(lf->key, (qboolean)!inside);
         if (!f) {
@@ -1565,6 +1803,7 @@ static void R_DrawEmitterLensflares(void)
         f->screen[0] = screen[0];
         f->screen[1] = screen[1];
         f->eyeZ      = eyeZ;
+        f->ndcZ      = ndcZ;
     }
 
     draw = qfalse;

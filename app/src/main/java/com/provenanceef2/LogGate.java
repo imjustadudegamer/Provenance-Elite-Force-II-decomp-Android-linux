@@ -35,6 +35,23 @@ public final class LogGate {
         return armed.booleanValue();
     }
 
+    /**
+     * The property's raw value, or null when it is unset/empty.  {@link #on()}
+     * answers "is any row armed"; this answers "what did the operator ask for",
+     * which EF2Activity uses to carry cvar overrides into the engine's argv so a
+     * device experiment never has to edit the player's config.cfg.
+     */
+    public static String value() {
+        try {
+            Class<?> sysprops = Class.forName("android.os.SystemProperties");
+            java.lang.reflect.Method get = sysprops.getMethod("get", String.class, String.class);
+            String v = (String) get.invoke(null, "log.tag.ProvenanceEF2", "");
+            return (v == null || v.length() == 0) ? null : v;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     private static boolean readArm() {
         try {
             Class<?> sysprops = Class.forName("android.os.SystemProperties");

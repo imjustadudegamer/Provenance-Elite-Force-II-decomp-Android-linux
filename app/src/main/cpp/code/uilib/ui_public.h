@@ -109,6 +109,9 @@ extern "C" {
 
         const char *(*Cvar_GetString)(const char *name, const char *defval);   
         cvar_t *(*Cvar_Find)(const char *var_name);                            
+        /* bumped by every cvar create and unset: a cached cvar_t* is only as
+           good as the generation it was resolved in */
+        int (*Cvar_Generation)(void);
         void (*Cvar_Set)(const char *var_name, const char *value);             
         void (*Cvar_Reset)(const char *var_name);                              
         void (*Cmd_Stuff)(const char *text);                                   

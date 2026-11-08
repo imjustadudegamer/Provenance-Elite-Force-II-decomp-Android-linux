@@ -45,6 +45,10 @@ extern "C" {
 
 
 #include <climits>
+#include <thread>
+#include <mutex>
+#include <vector>
+#include <string>
 
 #ifdef USE_RENDERER_DLOPEN
 cvar_t* cl_renderer;
@@ -1585,10 +1589,15 @@ void CL_SetFrameNumber(int frameNumber) {
 	re.SetFrameNumber(frameNumber);
 }
 
+static void CL_RefDrainWrites(void);
+
 void CL_Frame ( int msec ) {
 	if ( !com_cl_running->integer ) {
 		return;
 	}
+
+	/* anything the walk handed us last frame lands here, on the FS owner */
+	CL_RefDrainWrites();
 
 #ifdef USE_CURL
 #endif
@@ -1813,8 +1822,64 @@ void CL_RefNoteBlockedMsec( int msec ) {
 	SMP_BudgetAdd( SMP_ZONE_SWAP, msec );
 }
 
+/* The renderer's file writes come from the walk thread, and the filesystem is
+   not the walk's to touch: FS_WriteFile takes a slot in the engine's global
+   handle table, which the client's own save writer and the music stream are
+   using.  An off-thread write is copied and drained on the client thread at
+   the top of CL_Frame -- same path, same bytes, one owner. */
+struct refPendingWrite_t {
+	std::string               qpath;
+	std::vector<unsigned char> data;
+};
+
+static std::thread::id              s_clientThreadId;
+static std::mutex                   s_refWriteMutex;
+static std::vector<refPendingWrite_t> s_refWrites;
+static int                          s_refWritesDropped;
+
+static void CL_RefDrainWrites(void) {
+	std::vector<refPendingWrite_t> pending;
+	int dropped;
+
+	{
+		std::lock_guard<std::mutex> lock( s_refWriteMutex );
+		pending.swap( s_refWrites );
+		dropped = s_refWritesDropped;
+		s_refWritesDropped = 0;
+	}
+
+	for ( size_t i = 0; i < pending.size(); i++ ) {
+		FS_WriteFile( pending[i].qpath.c_str(), pending[i].data.data(),
+					  (int)pending[i].data.size() );
+	}
+
+	if ( dropped ) {
+		Com_Printf( S_COLOR_YELLOW "CL_RefFS_WriteFile: %d deferred write(s) dropped\n",
+					dropped );
+	}
+}
+
 void CL_RefFS_WriteFile(const char* qpath, const void* buffer, int size) {
-	FS_WriteFile(qpath, buffer, size);
+	/* the client thread is the one that owns the filesystem; it captured its id
+	   in CL_Init before the renderer existed */
+	if ( std::this_thread::get_id() == s_clientThreadId ) {
+		FS_WriteFile(qpath, buffer, size);
+		return;
+	}
+
+	std::lock_guard<std::mutex> lock( s_refWriteMutex );
+
+	if ( s_refWrites.size() >= 8 || !qpath || size < 0 ) {
+		s_refWritesDropped++;		/* named by the drain, on the client thread */
+		return;
+	}
+
+	s_refWrites.push_back( refPendingWrite_t() );
+	refPendingWrite_t &w = s_refWrites.back();
+	w.qpath = qpath;
+	if ( size > 0 ) {
+		w.data.assign( (const unsigned char *)buffer, (const unsigned char *)buffer + size );
+	}
 }
 
 char** CL_RefFS_ListFiles(const char* dirPath, const char* extension, int* numfilesfound) {
@@ -2211,6 +2276,7 @@ static void CL_JobPoolStats_f( void ) {
 }
 
 void CL_Init( void ) {
+	s_clientThreadId = std::this_thread::get_id();
 	int start, end;
 
 	if( cl_bCLSystemStarted ) {
@@ -2433,6 +2499,9 @@ static void CL_ShutdownBody( void ) {
 		return;
 	
 	Com_Printf( "----- CL_Shutdown -----\n" );
+
+	/* a save thumbnail the walk handed over after the last CL_Frame still lands */
+	CL_RefDrainWrites();
 
 	if ( recursive ) {
 		printf ("recursive shutdown\n");

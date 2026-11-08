@@ -494,7 +494,11 @@ void JobPool_ParallelRange( int count, int minChunk,
 		return;
 	}
 
-	chunks = ( count + minChunk - 1 ) / minChunk;
+	/* floor, not ceil: `count + minChunk - 1' over minChunk made a range one
+	   element past the grain split into two sub-break-even chunks (513 -> 2x257),
+	   which paid the dispatch cost for no parallel work.  Count that cannot feed
+	   two full chunks runs inline. */
+	chunks = count / minChunk;
 	if ( chunks > jobs_pool.numWorkers + 1 ) {
 		chunks = jobs_pool.numWorkers + 1;
 	}

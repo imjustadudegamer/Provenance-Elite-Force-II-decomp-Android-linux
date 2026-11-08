@@ -216,8 +216,8 @@ FuncBeam::FuncBeam()
         edict->s.surfaces[4]       = 4;  
         edict->s.surfaces[0]       = 16; 
         edict->s.surfaces[9]       = 16; 
-        edict->s.parent       = ENTITYNUM_NONE;
-        edict->s.bone_angles[0][1] = 5; 
+        edict->s.torso_anim    = ENTITYNUM_NONE;
+        edict->s.bone_angles[0][1] = 5;
 
         if (spawnflags & 0x0001) { 
             PostEvent(EV_Activate, EV_POSTSPAWN);

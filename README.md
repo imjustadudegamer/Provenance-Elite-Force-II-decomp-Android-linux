@@ -161,7 +161,11 @@ Ninja and the SDL 2 and Vulkan development headers (`libsdl2-dev`,
 `app/appimage/tools.lock`. The version in the file name comes from
 `app/src/main/cpp/VERSION`, the same file the engine banner and the APK read.
 The Linux release is **Vulkan only** — the GLES 3.2 twin is an Android concern
-and is configured out of this build (`-DBUILD_RENDERER_GLES3=OFF`).
+and is configured out of this build (`-DBUILD_RENDERER_GLES3=OFF`). It is also
+probe-silent: the packaging lane sets `EF2_PROBE_RELEASE_SILENT`, so the image
+compiles every probe row family out, writes no `qconsole.log`, and fails its own
+payload check if a row format survives. The crash channel (the fatal backtrace,
+`crashlog.txt` and the fault rows) is never gated and stays.
 
 ```sh
 app/package_appimage.sh

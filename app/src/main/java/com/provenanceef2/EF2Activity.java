@@ -15,6 +15,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * <obb>/base are owned by whoever pushed the retail tree and a new subdirectory
@@ -110,6 +112,62 @@ public class EF2Activity extends SDLActivity {
     @Override
     public void setOrientationBis(int w, int h, boolean resizable, String hint) {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    }
+
+    /**
+     * The one diag arm for the ENGINE side, on the same property the Java and
+     * native log rows already answer (LogGate): armed, the engine is handed
+     * `qa_probe 1` and `logfile 3`, so the gated census rows ([GLES3:*], [VK:*],
+     * [SMP:*], [PERF:*]) arm and qconsole.log is written beside the game data --
+     * which is the only way to see them on a device, since the engine's own
+     * stdout never reaches logcat.  Without the property the argv is exactly what
+     * it was (SDLActivity's empty array), so a shipped boot is unchanged.
+     *
+     *   adb shell setprop log.tag.ProvenanceEF2 1     # arm
+     *   adb shell setprop log.tag.ProvenanceEF2 0     # disarm
+     */
+    @Override
+    protected String[] getArguments() {
+        if (!LogGate.on()) {
+            return super.getArguments();
+        }
+        /* Armed, the property carries two things: the engine diagnostic arm
+           (qa_probe + logfile) and, optionally, a comma-separated list of
+           `cvar=value` overrides -- so an experiment on the device costs
+           `adb shell setprop log.tag.ProvenanceEF2 "r_dynamiclightmaps=0"` and
+           never a write into the player's config.cfg.
+
+             adb shell setprop log.tag.ProvenanceEF2 1                      # rows only
+             adb shell setprop log.tag.ProvenanceEF2 "r_flares=0"           # rows + one cvar
+             adb shell setprop log.tag.ProvenanceEF2 "a=1,b=0"              # rows + many
+             adb shell setprop log.tag.ProvenanceEF2 0                      # shipped argv
+        */
+        List<String> args = new ArrayList<>();
+        args.add("+set");
+        args.add("qa_probe");
+        args.add("1");
+        args.add("+set");
+        args.add("logfile");
+        args.add("3");
+
+        String extra = LogGate.value();
+        if (extra != null) {
+            for (String pair : extra.split(",")) {
+                int eq = pair.indexOf('=');
+                if (eq <= 0 || eq == pair.length() - 1) {
+                    continue;
+                }
+                String name = pair.substring(0, eq).trim();
+                String value = pair.substring(eq + 1).trim();
+                if (name.startsWith("log.tag")) {
+                    continue;
+                }
+                args.add("+set");
+                args.add(name);
+                args.add(value);
+            }
+        }
+        return args.toArray(new String[0]);
     }
 
     @Override

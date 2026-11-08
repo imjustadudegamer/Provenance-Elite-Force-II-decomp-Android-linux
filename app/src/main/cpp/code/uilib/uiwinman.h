@@ -45,6 +45,21 @@ class UIWindowManager : public UIWidget
     str                           m_cursorname;
     bool                          m_showcursor;
     Container<UIReggedMaterial *> m_materiallist;
+    /* RegisterShader is a linear scan of the list, and UISwitchBox::Draw reaches
+       it every frame for the option on screen.  Between Shutdowns the list only
+       grows and nothing is re-pointed, so a name resolves to the same object for
+       the life of its entry: the name is mapped here at the add and the map is
+       dropped where the list is (Shutdown).  A full table answers a miss, which
+       falls back to the list's own scan. */
+    struct materialHashEntry_t {
+        unsigned hash;
+        int      index;         /* 1-based into m_materiallist; 0 = empty slot */
+    };
+    enum { MATERIAL_HASH_SIZE = 4096 };
+    struct materialHashEntry_t m_materialHash[MATERIAL_HASH_SIZE];
+    void    MaterialHashReset( void );
+    void    MaterialHashInsert( const str& name, int index );
+    int     MaterialHashFind( const str& name );
     Container<UIReggedModel *>    m_modellist;
     bool                          m_amidead;
     class UIWidget               *m_bindactive;

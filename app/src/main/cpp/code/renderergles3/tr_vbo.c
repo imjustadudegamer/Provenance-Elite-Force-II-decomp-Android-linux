@@ -1955,6 +1955,11 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		return;
 	}
 
+	/* every surface the walk draws comes through here or RB_ImmFlush, so this is
+	   where the frame's colour clear is paid before a draw can read the plane,
+	   and where a draw that can write depth retires the frame's depth clear */
+	RB_FramePlaneBeforeDraw();
+
 	BE_SUB( BE_FAM_DS, BE_DSZ_sub_vbo, {
 		rbVboPack_t	pack;
 		int			subT0;
@@ -2144,6 +2149,12 @@ void RB_ImmFlush( void )
 	GLintptr	vBase = 0;
 	GLintptr	iBase = 0;
 	qboolean	usedStore = qfalse;
+
+	if ( s_streamNumVerts != 0 ) {
+		/* the same last point before a draw: the boot's first 2D page is the
+		   immediate stream's, so the frame's colour clear is paid here */
+		RB_FramePlaneBeforeDraw();
+	}
 
 	if ( s_streamNumVerts == 0 ) {
 		s_streamNumRecs = 0;

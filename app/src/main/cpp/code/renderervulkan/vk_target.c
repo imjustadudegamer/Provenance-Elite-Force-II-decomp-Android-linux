@@ -97,7 +97,19 @@ static qboolean VK_Target_StencilArmed( void )
 
 static void VK_Target_StencilRelease( void );
 
-VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth )
+/* r_deferredClear: the swapchain pass's colour attachment opens with DONT_CARE
+   and the clear moves to the first colour write of the frame (VK_DeferredClear_*).
+   The pass is built once, so a change of the cvar takes a vid_restart; a pass
+   built with the load op it names is never cleared by both paths. */
+static qboolean VK_Target_DeferredClear( void )
+{
+	cvar_t	*cv = ri.Cvar_Get( "r_deferredClear", "1", 0 );
+
+	return ( cv && cv->integer ) ? qtrue : qfalse;
+}
+
+VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth,
+								 VkAttachmentLoadOp colourLoad )
 {
 	VkAttachmentDescription attachments[2];
 	VkAttachmentReference colourRef;
@@ -118,7 +130,7 @@ VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayou
 
 	attachments[0].format = colourFormat;
 	attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachments[0].loadOp = colourLoad;
 	attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -285,9 +297,16 @@ qboolean VK_Target_Init( void )
 	/* read before the pass and the image are created: the pair is the arm */
 	vk.stencilReadback = VK_Target_StencilArmed();
 
-	vk.renderPass = VK_Target_MakePass( vk.swapchainFormat, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, qtrue );
+	/* the walk's debt of a colour clear rides on the load op the pass is built
+	   with, so the two are chosen together and never disagree at run time */
+	vk.colorLoadDeferred = VK_Target_DeferredClear();
+	vk.renderPass = VK_Target_MakePass( vk.swapchainFormat, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, qtrue,
+										vk.colorLoadDeferred ? VK_ATTACHMENT_LOAD_OP_DONT_CARE
+															 : VK_ATTACHMENT_LOAD_OP_CLEAR );
+	/* an offscreen target's clear is its content: it keeps the load-op clear */
 	vk.offscreenPass = VK_Target_MakePass( VK_FORMAT_R8G8B8A8_UNORM,
-										   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, qfalse );
+										   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, qfalse,
+										   VK_ATTACHMENT_LOAD_OP_CLEAR );
 
 	if ( vk.renderPass == VK_NULL_HANDLE ) {
 		return qfalse;

@@ -137,6 +137,7 @@ typedef struct {
 	VkPhysicalDeviceProperties deviceProps;
 	VkPhysicalDeviceVulkan12Properties props12;
 	qboolean has12Props;
+	uint32_t driverID;
 	qboolean headless;
 	VkDevice device;
 	uint32_t graphicsFamily;
@@ -164,6 +165,9 @@ typedef struct {
 	qboolean pipelineCacheLoaded;
 	qboolean pipelineCacheForeign;
 	size_t pipelineCacheBytes;
+	/* a creation call is consulting the loaded cache: a fault inside that
+	   window accuses the blob the same way a load fault does */
+	qboolean pipelineConsultInFlight;
 	qboolean descriptorIndexing;
 	qboolean descriptorIndexingExt;
 	uint32_t bindlessTextures;
@@ -219,6 +223,19 @@ typedef struct {
 	qboolean targetReady;
 	qboolean frameReady;
 	float clearColor[4];
+	/* The pass opened with a depth clear of its own.  Until something that can
+	   write depth is recorded, a view's depth clear re-writes 1.0 over values the
+	   pass already set, and the walk drops it. */
+	qboolean depthWritten;
+	/* The swapchain pass's colour attachment opened with LOAD_OP_DONT_CARE
+	   (r_deferredClear), so the clear the pass used to do at RC_VK_BEGIN is owed
+	   to the first draw that writes colour: that draw records it with the value
+	   the pass would have written, unless the write itself covers the plane
+	   opaquely and settles the debt.  Nothing between the pass begin and that
+	   write reads the plane, so the picture is the one the pass clear produced. */
+	qboolean colorLoadDeferred;
+	qboolean colorClearOwed;
+	float deferredClearColor[4];
 	/* GPU-side pass attribution.  One timestamp query per mark per slot; the
 	   pool is reset by the slot's own command buffer, and results are read only
 	   after that slot's fence has signalled, so no host wait is added. */
@@ -258,6 +275,8 @@ typedef struct {
 extern const vkDemoVertex_t vk_demoVertices[VK_VERTEX_DEMO_COUNT];
 
 qboolean VK_Descriptor_Init( void );
+void VK_PCache_ConsultBegin( void );
+void VK_PCache_ConsultEnd( void );
 qboolean VK_Texture_Init( void );
 void VK_Texture_Shutdown( void );
 qboolean VK_Draw_Init( void );
@@ -282,7 +301,8 @@ void VK_Vertex_Shutdown( void );
 qboolean VK_Target_Init( void );
 void VK_Target_Shutdown( void );
 qboolean VK_Target_Recreate( void );
-VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth );
+VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayout, qboolean withDepth,
+								 VkAttachmentLoadOp colourLoad );
 
 /* The stencil plane's readback, one throttled row per armed frame: the copy is
    recorded after the pass closes and counted once the frame's fence signals. */
@@ -364,6 +384,8 @@ int RB_FrameSlot( const void *frame );
 void RB_CommandListReset( void );
 int RB_WalkMsec( void );
 long long RB_WalkUsec64( void );
+/* the frame-scoped twin, drained by RE_EndFrame for [SMP:frame]'s renderBack= */
+long long RB_WalkFrameUsec64( void );
 
 /* The walk's cost split, printed by the r_perfFps row that owns the gate.  Every
    opcode the walk executes lands in one of these, so `rest` is the accounting

@@ -188,10 +188,7 @@ root, for more details.
 	"set mp_warmUpTime 10\n" \
 	"set mp_minPlayers 0\n" \
 	"set sv_maxclients 1\n" \
-	"set r_mode -2\n" \
-	"set r_fullscreen 1\n" \
 	"set r_swapInterval 0\n" \
-	"set com_maxfps 60\n" \
 	"set in_joystick 1\n" \
 	"set in_joystickUseAnalog 1\n" \
 	"set joy_threshold 0.15\n" \
@@ -224,8 +221,15 @@ root, for more details.
 	"set r_lodCurveError 250\n" \
 	"set r_lodScaleDistance 1.0\n" \
 	"set r_light_simple 0\n" \
-	"set r_light_simple_dist 5000\n"
+	"set r_light_simple_dist 5000\n" \
+	"set r_vboStatic 1\n"
 
+/* The video mode, the fullscreen flag and the frame cap are NOT in this block:
+   they are the player's settings, and the renderer registers -2/fullscreen 1
+   and common.c registers 60 on a fresh install.  A seed bump must never re-pin
+   them -- the Nov-1 seed set -2 over an archived custom mode and the desktop's
+   1920x1200 replaced its 1280x720.  r_swapInterval stays: the compositor owns
+   the present. */
 #define EF2_ANDROID_DEFAULT_COMMANDS EF2_DEFAULT_BIND_COMMANDS EF2_DEFAULT_CVAR_COMMANDS
 #define EF2_ANDROID_DEFAULT_BIND_COUNT 74
 

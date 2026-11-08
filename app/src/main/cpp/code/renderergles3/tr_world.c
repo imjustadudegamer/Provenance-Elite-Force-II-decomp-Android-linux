@@ -497,11 +497,70 @@ void R_ClearDynamicLightmaps( void ) {
 	}
 }
 
+/* The dynamic light group's page write is a write to an image the walk thread may
+ * still be sampling: this runs on the front end, inside R_AddWorldSurfaces, while
+ * the render thread is walking the previous frame's draw list.  Vulkan states the
+ * rule this site was missing -- VK_Upload_Quiesce, "a layout transition is a write
+ * to the image, so an image the walk thread may still sample has to be quiesced
+ * first: the walk thread parked and holding no frame is the only state in which no
+ * command buffer referencing the image can still be recorded-and-unsubmitted", and
+ * its two callers are exactly the texture upload paths (vk_texture.c:661, :836).
+ * Vulkan's own lightmap pages never need that call because they are not written by
+ * the host at all: R_UploadDynamicLightmaps there hands them to VK_Lightmap_UploadBatch
+ * (vk_texture.c:1258), a staging copy recorded into a submitted command buffer whose
+ * slot reuse waits the previous upload's fence (vk_texture.c:1207).
+ * This tree states the same ownership rule for its own front-end GL work: every other
+ * front-end GL site claims the context first (tr_draw.c RE_DrawBackground_TexSubImage
+ * / _DrawPixels: R_SyncRenderThread + R_FlushRenderCommands; tr_image.c R_FreeImage:
+ * GL_ClaimContextForResource).  Without it the front-end thread wrote
+ * glState.currenttextures[] / glState.currenttmu / s_wrapImage[] / image->frameUsed
+ * under the walk's feet, so a walk GL_Bind whose texnum matched that write was
+ * ELIDED (tr_backend.c:418) against a binding GL never had -- the surface then
+ * sampled whatever image the previous stage left on that unit.  That is a surface
+ * present one frame and drawn with foreign art the next, at the frame's own timing,
+ * and on this map the dirty page is the light group's, i.e. the tables and floor
+ * panels the operator sees flicker.
+ *
+ * The claim is the twin's quiesce: it parks the walk and makes the context current
+ * on this thread, and it is taken only when a page is actually dirty -- a frame
+ * with nothing to upload pays nothing and never parks the walk. */
 void R_UploadDynamicLightmaps( void ) {
-	int		i;
+	int			i;
+	int			pages = 0;
 
 	if ( !tr.world ) {
 		return;
+	}
+
+	for ( i = 0; i < tr.numBaseLightmaps; i++ ) {
+		if ( tr.world->baseLightmapFrame[i] ) {
+			pages++;
+		}
+	}
+	if ( !pages ) {
+		return;
+	}
+
+	/* VK_Upload_Quiesce is itself a no-op where there is no other thread to park
+	 * ("if ( !vk.smpActive || VKimp_IsRenderThread() ) return;"), so this is too:
+	 * a single-threaded session keeps the byte-for-byte path it always had, and
+	 * only the r_smp session -- the one with a walk to park -- takes the claim. */
+	if ( glConfig.smpActive ) {
+		GL_ClaimContextForResource();
+	}
+
+	/* one gated fault-class row: the pages this frame rewrote in a texture the
+	 * walk samples, and whether the walk was parked for them (smp=0 says the
+	 * session ran single-threaded, where there is no walk to park) */
+	if ( R_ProbeStatsOn() ) {
+		static int s_rows;
+
+		s_rows++;
+		if ( s_rows <= 8 || ( s_rows % 600 ) == 0 ) {
+			ri.Printf( PRINT_ALL, "[GLES3:lmup] pages=%d of=%d smp=%d f=%d\n",
+					   pages, tr.numBaseLightmaps, glConfig.smpActive ? 1 : 0,
+					   RB_FrameCount() );
+		}
 	}
 
 	for ( i = 0; i < tr.numBaseLightmaps; i++ ) {

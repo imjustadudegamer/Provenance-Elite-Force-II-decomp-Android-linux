@@ -159,6 +159,7 @@ CLASS_DECLARATION(UIWidget, UIWindowManager, NULL) {
 
 UIWindowManager::UIWindowManager()
 {
+    MaterialHashReset();
     m_amidead          = false;
     m_lastbuttons      = 0;
     m_oldview          = NULL;
@@ -1269,10 +1270,81 @@ void UIWindowManager::CreateMenus(void)
     // list twice, and with retail's tie-breaking predicate (never answers 0) a second
 }
 
+/* FNV-1a over the name's own bytes, which is the comparison the list makes */
+static unsigned MaterialNameHash(const char *name)
+{
+    unsigned h = 2166136261u;
+
+    while (*name) {
+        h ^= (unsigned char)*name++;
+        h *= 16777619u;
+    }
+
+    return h;
+}
+
+void UIWindowManager::MaterialHashReset(void)
+{
+    memset(m_materialHash, 0, sizeof(m_materialHash));
+}
+
+/* A duplicate name keeps the entry it already owns, because the list's own scan
+   answers the first object it finds under that name too. */
+void UIWindowManager::MaterialHashInsert(const str& name, int index)
+{
+    unsigned h = MaterialNameHash(name.c_str());
+    unsigned slot = h & (MATERIAL_HASH_SIZE - 1);
+    int      probe;
+
+    if (index <= 0 || index > m_materiallist.NumObjects()) {
+        return;
+    }
+
+    for (probe = 0; probe < MATERIAL_HASH_SIZE; probe++) {
+        struct materialHashEntry_t *e = &m_materialHash[(slot + probe) & (MATERIAL_HASH_SIZE - 1)];
+
+        if (!e->index) {
+            e->hash  = h;
+            e->index = index;
+            return;
+        }
+        if (e->hash == h && m_materiallist.ObjectAt(e->index)->GetName() == name) {
+            return;
+        }
+    }
+}
+
+/* 0 is a miss, which the caller answers with the list's own scan */
+int UIWindowManager::MaterialHashFind(const str& name)
+{
+    unsigned h = MaterialNameHash(name.c_str());
+    unsigned slot = h & (MATERIAL_HASH_SIZE - 1);
+    int      probe;
+
+    for (probe = 0; probe < MATERIAL_HASH_SIZE; probe++) {
+        struct materialHashEntry_t *e = &m_materialHash[(slot + probe) & (MATERIAL_HASH_SIZE - 1)];
+
+        if (!e->index) {
+            return 0;
+        }
+        if (e->hash == h && m_materiallist.ObjectAt(e->index)->GetName() == name) {
+            return e->index;
+        }
+    }
+
+    return 0;
+}
+
 UIReggedMaterial *UIWindowManager::RegisterShader(const str& name)
 {
     int               i;
+    int               hit;
     UIReggedMaterial *regged;
+
+    hit = MaterialHashFind(name);
+    if (hit) {
+        return m_materiallist.ObjectAt(hit);
+    }
 
     for (i = 1; i <= m_materiallist.NumObjects(); i++) {
         regged = m_materiallist.ObjectAt(i);
@@ -1285,6 +1357,7 @@ UIReggedMaterial *UIWindowManager::RegisterShader(const str& name)
     regged->SetMaterial(name);
 
     m_materiallist.AddObject(regged);
+    MaterialHashInsert(name, m_materiallist.NumObjects());
     return regged;
 }
 
@@ -1305,6 +1378,7 @@ UIReggedMaterial *UIWindowManager::RefreshShader(const str& name)
     regged->SetMaterial(name);
 
     m_materiallist.AddObject(regged);
+    MaterialHashInsert(name, m_materiallist.NumObjects());
     return regged;
 }
 
@@ -1590,6 +1664,7 @@ void UIWindowManager::Shutdown(void)
 
         delete mat;
     }
+    MaterialHashReset();
 
     for (i = bindings.NumObjects(); i > 0; i--) {
         Binding *b = bindings.ObjectAt(i);

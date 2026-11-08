@@ -217,6 +217,12 @@ build_all() {
     info "ninja: $ninja_bin"
 
     log "configuring the Linux target ($ENGINE_BUILD)"
+    # EF2_PROBE_RELEASE_SILENT compiles every probe row family out of the
+    # engine and the renderer, and restores logfile=0: a shipped Linux image
+    # emits no row and writes no qconsole.log.  Fault paths (Sys_Error, the
+    # signal handler, VK_Guard_Hit, crashlog.txt) never consult the gate, so
+    # the crash channel is the one channel the image keeps.
+    #
     # No CMAKE_*_RPATH is set.  The engine loads the renderer by path
     # (Sys_BinaryPath()/renderer_<x>.so) and the game modules by bare dlopen, so
     # AppRun's LD_LIBRARY_PATH covers every lookup; a $ORIGIN RUNPATH emitted by
@@ -228,6 +234,7 @@ build_all() {
         -DEF2_RENDERER=gles3 \
         -DEF2_DEFAULT_RENDERER=vulkan \
         -DBUILD_RENDERER_GLES3=OFF \
+        -DEF2_PROBE_RELEASE_SILENT=ON \
         > "$LOGS/configure.log" 2>&1 \
         || { tail -30 "$LOGS/configure.log" >&2; die "cmake configure failed (logs/configure.log)"; }
 
@@ -509,6 +516,21 @@ verify_static() {
         fi
     done
 
+    # The release is probe-silent by construction (EF2_PROBE_RELEASE_SILENT
+    # above).  Prove it on the payload instead of trusting the configure: these
+    # row formats are compiled out by that macro and are present in a probe
+    # build, so a stray flag or a hand-built .so fails here.
+    local probe_rows=0
+    for n in provenanceef2 renderer_vulkan.so; do
+        # fingerprints chosen because PROBE_BUILD_SILENT removes them, not just
+        # because their emitters are runtime-gated
+        if strings -a "$APPDIR/usr/bin/$n" | grep -qE '^\[(PROBE:limit|PERF:frame|SMP:frame|VK:stencil|2D:sum)\]'; then
+            probe_rows=$((probe_rows + 1))
+            warn "$(basename "$n") carries probe row formats — the release is NOT probe-silent"
+        fi
+    done
+    [ "$probe_rows" = "0" ] || die "probe rows are compiled into the Linux release payload"
+
     # No host build path may leak into the shipped binaries.  Checked through
     # `strings`, because the host's grep is aliased to ugrep here and its
     # binary-file count is not dependable; `strings` is what the rule is about
@@ -669,7 +691,9 @@ write_release_info() {
         printf 'appimagetool    : %s  sha256 %s\n' "$APPIMAGETOOL_VERSION" "$APPIMAGETOOL_SHA256"
         printf 'runtime         : %s  sha256 %s  (GPG %s)\n' "$RUNTIME_RELEASE" "$RUNTIME_SHA256" "$RUNTIME_SIGNING_FPR"
         printf 'SDL2            : the copy the build linked (bundled)\n'
-        printf 'squashfs        : zstd level 19, all-time %s\n\n' "$EPOCH"
+        printf 'squashfs        : zstd level 19, all-time %s\n' "$EPOCH"
+        printf 'probes          : compiled out (EF2_PROBE_RELEASE_SILENT=ON); the crash\n'
+        printf '                  backtrace, crashlog.txt and the fault rows stay ungated\n\n'
         printf 'payload (built from the tree in this run):\n'
         for f in provenanceef2 renderer_vulkan.so game.so cgame.so; do
             printf '  %-20s %10s  sha256 %s\n' "$f" "$(stat -c%s "$SNAP/$f")" "$(sha256_of "$SNAP/$f")"

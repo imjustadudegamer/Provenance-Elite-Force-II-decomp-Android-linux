@@ -2677,6 +2677,51 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 		}
 	} );
 
+	/* The wave census: the emissive stages on the BSP light panels are additive
+	   stages whose brightness comes from `rgbGen wave`, evaluated against
+	   tess.shaderTime (WAVEVALUE in tr_shade_calc.c, and the GLSL twin in
+	   glsl/gles3_common.inc.glsl).  A stage whose *draw* is submitted every frame
+	   can still vanish visually if the clock it samples does, so this row names
+	   the value actually handed to the stage -- the clock, the authored wave, the
+	   program's define set, and the byte colour the frame feeds -- and lets one
+	   boot say whether the clock is the thing that moves.  Gated and throttled
+	   like every other row: first eight, then every six-hundredth wave stage. */
+	if ( R_ProbeStatsOn()
+		 && ( pStage->rgbGen == CGEN_WAVEFORM || pStage->rgbGen == CGEN_MULTIPLY_BY_WAVEFORM
+			  || pStage->alphaGen == AGEN_WAVEFORM ) )
+	{
+		static int s_waveRows;
+
+		s_waveRows++;
+		if ( s_waveRows <= 8 || ( s_waveRows % 600 ) == 0 ) {
+			int stageIndex = -1;
+			int k;
+
+			for ( k = 0; k < tess.numPasses; k++ ) {
+				if ( tess.xstages[k] == pStage ) {
+					stageIndex = k;
+					break;
+				}
+			}
+			ri.Printf( PRINT_ALL,
+					   "[GLES3:wave] f=%d shader='%s' stage=%d u=%.4f rgbGen=%d alphaGen=%d "
+					   "wave=(%.3f,%.3f,%.3f,%.3f) waveA=(%.3f,%.3f,%.3f,%.3f) "
+					   "def=0x%08x state=0x%08x byte=%d,%d,%d,%d n=%d\n",
+					   RB_FrameCount(),
+					   ( shader && shader->name[0] ) ? shader->name : "?",
+					   stageIndex, tess.shaderTime,
+					   (int)pStage->rgbGen, (int)pStage->alphaGen,
+					   pStage->rgbWave.base, pStage->rgbWave.amplitude,
+					   pStage->rgbWave.phase, pStage->rgbWave.frequency,
+					   pStage->alphaWave.base, pStage->alphaWave.amplitude,
+					   pStage->alphaWave.phase, pStage->alphaWave.frequency,
+					   prog ? prog->defines : 0u, (unsigned)pStage->stateBits,
+					   (int)tess.svars.colors[0][0], (int)tess.svars.colors[0][1],
+					   (int)tess.svars.colors[0][2], (int)tess.svars.colors[0][3],
+					   (int)tess.numVertexes );
+		}
+	}
+
 	if ( hudColorClobber && ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
 		 && pStage->rgbGen != CGEN_LIGHTING_SPHERICAL
 		 && pStage->rgbGen != CGEN_NOISE

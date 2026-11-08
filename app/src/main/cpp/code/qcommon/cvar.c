@@ -32,6 +32,16 @@ cvar_t		*cvar_vars = NULL;
 cvar_t		*cvar_cheats;
 int			cvar_modifiedFlags;
 
+/* The cvar table is a fixed array, so a cvar_t address is not a cvar's identity:
+   Cvar_Unset zeroes an entry and the next Cvar_Get hands that same slot to a new
+   name.  Anything that caches a cvar_t* (the UI's widget gates) has to know when
+   either happened, so every create and every unset bumps this. */
+static int	cvarGeneration = 1;
+
+int Cvar_Generation( void ) {
+	return cvarGeneration;
+}
+
 #define	MAX_CVARS	2048
 cvar_t		cvar_indexes[MAX_CVARS];
 int			cvar_numIndexes;
@@ -443,6 +453,8 @@ cvar_t *Cvar_Get( const char *var_name, const char *var_value, int flags ) {
 
 	hash = generateHashValue(var_name);
 	var->hashIndex = hash;
+
+	cvarGeneration++;
 
 	var->hashNext = hashTable[hash];
 	if(hashTable[hash])
@@ -1090,7 +1102,9 @@ cvar_t *Cvar_Unset(cvar_t *cv)
 		cv->hashNext->hashPrev = cv->hashPrev;
 
 	Com_Memset(cv, '\0', sizeof(*cv));
-	
+
+	cvarGeneration++;
+
 	return next;
 }
 

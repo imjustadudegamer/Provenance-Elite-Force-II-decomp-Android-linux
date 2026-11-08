@@ -1478,11 +1478,15 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 		s_shade.texBound[tmu] = 0;
 		return;
 	}
-	/* texnum is unsigned: 0 is "no texture" at every other reader of it */
+	/* texnum is unsigned: 0 is "no texture" at every other reader of it.  A
+	   stage that binds it draws its surface with NO image -- the sampler reads
+	   the unit's previous view, or nothing at all, which is the surface that
+	   looks like it never loaded.  Gated like every other row: the diag boot is
+	   what arms it. */
 	if ( image->texnum == 0 ) {
 		static int s_zeroRows;
 
-		if ( R_ProbeMarkOn() && ( s_zeroRows < 8 || ( s_zeroRows % 600 ) == 0 ) ) {
+		if ( R_ProbeMarkOn() && ( s_zeroRows < 32 || ( s_zeroRows % 600 ) == 0 ) ) {
 			VK_Guard_Row( "VK:bind",
 						  "handle=0 image='%s' tmu=%d shader='%s' "
 						  "ent=%d iter=%s stage0='%s' f=%d",
@@ -2325,27 +2329,31 @@ static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *st
 static const float			*s_fpStageFloats;
 static const vkStaticItemView_t	*s_fpItems;
 static int					s_fpItemCount;
-/* the arena batch's own index block, and its first position in the batch; the
-   tess index array is not written on the arena arm, so reading it would price
-   the previous batch's geometry and call every arena draw out-of-range */
-static const vkIndex_t		*s_fpArenaIdx;
-static int					s_fpArenaFirst;
 
 /* The batch-relative vertex index the draw reads at footprint position i.  Off
    the arena arm the caller's array is already batch-relative; on it, the block
    holds arena-relative values, so each maps back through the item that owns its
-   position.  Positions are item-ordered, so one forward walk prices the batch. */
+   position -- and through that item's OWN block.  A batch's items are not
+   adjacent in the arena (the compose is what makes them one draw: devrun=0 on
+   every shipped boot says no run ever reached MIN_IBO_RUN), so one block stepped
+   by position decoded another item's indexes and priced a correct batch as
+   carrying out-of-range vertices. */
 static int VK_Shade_FootprintIndex( int i )
 {
 	int	k, pos = 0;
 
-	if ( !s_fpArenaIdx ) {
+	if ( !s_fpItems ) {
 		return i;
 	}
 	for ( k = 0; k < s_fpItemCount; k++ ) {
 		if ( i < pos + s_fpItems[k].numIdx ) {
+			const vkIndex_t	*block = RB_VboStaticIndexBlock( s_fpItems[k].idxFirst );
+
+			if ( !block ) {
+				return -1;
+			}
 			return s_fpItems[k].vertStart
-				   + ( s_fpArenaIdx[s_fpArenaFirst + i] - s_fpItems[k].first );
+				   + ( block[i - pos] - s_fpItems[k].first );
 		}
 		pos += s_fpItems[k].numIdx;
 	}
@@ -2449,38 +2457,77 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 		return qtrue;
 	}
 
-	cmd = VK_Shade_CommandBuffer();
+	/* the census of the bytes this draw is about to read: a region that is not
+	   the surface's own names itself here, before the pixels are argued about */
+	if ( R_ProbeStatsOn() ) {
+		RB_VboStaticAuditBatch( -1 );
+	}
 
+	/* THE ARENA IS A PACK CACHE, NOT A SECOND DRAW PATH.  Whatever the two paths
+	   could disagree about -- which buffer is bound, what firstIndex means, how
+	   many draws a batch becomes, whether the bytes came from a device copy --
+	   is removed by making the arena produce the STREAMING path's own input: its
+	   cached vertices are copied into the ring the stream would have packed into,
+	   its arena-absolute indexes are rebased to batch-relative, and the draw is
+	   the stream's own VK_Draw_BindRingOffset plus one DrawIndexed over the whole
+	   batch.  A cached surface therefore draws through the identical command
+	   sequence a streamed one does, so the two cannot differ in pixels at all. */
 	{
-		long long		walkT0 = VK_WALK_T0();
+		const byte	*stageBytes = (const byte *)RB_VboStaticStageFloats();
+		vkIndex_t	*idx;
+		byte		*dst;
+		int			base = 0, indexBase = 0, tessSlots, k, o;
 
+		if ( !stageBytes ) {
+			VK_Guard_Hit( VK_GSITE_QUIRK, "static batch has no staging arena", VK_INCOMPLETE );
+			return qtrue;
+		}
+
+		tessSlots = ( input->numVertexes * VK_STREAM_STRIDE + VK_TESS_VERTEX_BYTES - 1 )
+					/ VK_TESS_VERTEX_BYTES;
+		idx = VK_VertexRing_ReserveIndexes( input->numIndexes, &indexBase );
+		if ( !idx ) {
+			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
+			return qtrue;
+		}
+		if ( !VK_VertexRing_ReserveBytes( tessSlots * VK_TESS_VERTEX_BYTES, &base ) ) {
+			VK_VertexRing_RollBack( 0, input->numIndexes );
+			VK_Guard_Hit( VK_GSITE_ALLOC, "tess ring exhausted", VK_INCOMPLETE );
+			return qtrue;
+		}
+
+		dst = ( byte * )VK_VertexRing_Mapped() + base;
+		o = 0;
+		for ( k = 0; k < numItems; k++ ) {
+			const vkIndex_t	*block = RB_VboStaticIndexBlock( items[k].idxFirst );
+			int				j;
+
+			if ( !block ) {
+				VK_Guard_Hit( VK_GSITE_QUIRK, "static batch item has no index block", VK_INCOMPLETE );
+				return qtrue;
+			}
+			memcpy( dst + ( size_t )items[k].vertStart * VK_STREAM_STRIDE,
+					stageBytes + ( size_t )items[k].first * VK_STREAM_STRIDE,
+					( size_t )items[k].numVerts * VK_STREAM_STRIDE );
+			/* the block is arena-absolute; the ring draw is batch-relative */
+			for ( j = 0; j < items[k].numIdx; j++ ) {
+				idx[o + j] = block[j] - ( vkIndex_t )items[k].first
+							 + ( vkIndex_t )items[k].vertStart;
+			}
+			o += items[k].numIdx;
+		}
+		RB_VboStaticNoteCopied( o );
+
+		cmd = VK_Shade_CommandBuffer();
 		if ( !VK_Shade_Bind( cmd, input->shader ) ) {
 			/* nothing is bound: recording the draw anyway faults the driver, and
 			   VK_Shade_Bind's rows name the reason */
-			VK_WALK_ADD( walkT0, VK_WP_BIND );
+			VK_VertexRing_Flushed();
 			return qtrue;
 		}
-		VK_WALK_ADD( walkT0, VK_WP_BIND );
-	}
-
-	/* the census reads the positions the draw reads: the arena's staging copy */
-	s_fpStageFloats = RB_VboStaticStageFloats();
-	s_fpItems = items;
-	s_fpItemCount = numItems;
-	s_fpArenaIdx = RB_VboStaticBatchIndexes( &s_fpArenaFirst );
-	VK_Shade_FootprintRow( input, stage, input->indexes, input->numIndexes );
-	s_fpStageFloats = NULL;
-	s_fpItems = NULL;
-	s_fpItemCount = 0;
-	s_fpArenaIdx = NULL;
-
-	{
-		/* the arena arm's bind and record are charged where the streaming arm charges its own, so they leave the enclosing SHADE
-		   window's residual instead of reading as one undifferentiated per-flush cost; the sum is unchanged, only the attribution. */
-		long long		walkT0 = VK_WALK_T0();
-
-		RB_VboStaticDrawRuns( cmd, input->numIndexes, items, numItems );
-		VK_WALK_ADD( walkT0, VK_WP_REC );
+		VK_Draw_BindRingOffset( cmd, base );
+		VK_Draw_DrawIndexed( cmd, input->numIndexes, indexBase, 0 );
+		VK_VertexRing_Flushed();
 	}
 
 	return qtrue;
@@ -2628,8 +2675,27 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 
 	/* A recorded surface's packed bytes are exactly the arena's, so the bake
 	   copies them out of the ring it just filled and the next frame draws from
-	   the device-local copy instead. */
-	RB_VboStaticBakeFrame( base );
+	   the device-local copy instead.  ONLY the pack that is the batch's own
+	   invariant geometry may feed it: a term whose texcoords and colours the
+	   walk computed itself -- the dlight projection, which runs after the world
+	   draw inside the same batch -- packs the same vertex count out of the same
+	   surface, so a bake there would copy the term's texcoords and colours into
+	   the world's region and the arena would draw them for the rest of the
+	   session.  The signature below is the one the lightmapped iterator packs. */
+	if ( tcStrideFloats == 4
+		 && texcoord0 == input->texCoords[0][0]
+		 && texcoord1 == input->texCoords[0][0] + 2
+		 && colors == (const unsigned char *)input->constantColor255
+		 && normals == input->normal[0] ) {
+		RB_VboStaticBakeFrame( base );
+		/* the same gate, the same audit: the ring bytes this draw reads are
+		   compared with the surfaces the batch claims, so a pack that is not the
+		   surface's own is named on the frame it is drawn, not argued about on
+		   the frame the arena serves it from */
+		if ( R_ProbeStatsOn() ) {
+			RB_VboStaticAuditBatch( base );
+		}
+	}
 
 	if ( stage && colors == NULL
 		 && texcoord0 == input->texCoords[0][0]
@@ -3098,6 +3164,13 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 
 	s_shadeDeferred = qfalse;
 
+	/* every 3D tess draw binds through VK_Shade_Bind, so this is where a pipeline
+	   that can write depth is noted: the pass's own clear no longer stands for the
+	   views after it once one of these has drawn (RB_BeginDrawingView, depth bit) */
+	if ( !( stateBits & VKS_DEPTHTEST_DISABLE ) && ( stateBits & VKS_DEPTHMASK_TRUE ) ) {
+		vk.depthWritten = qtrue;
+	}
+
 	/* the cache key names the modules, so it keys on the permutation bits alone */
 	defines &= ~VKP_FAMILY_MASK;
 
@@ -3276,7 +3349,9 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 	info.subpass = 0;
 
 	buildT0 = BE_Microseconds64();
+	VK_PCache_ConsultBegin();
 	result = qvk.CreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &info, NULL, &slot->pipeline );
+	VK_PCache_ConsultEnd();
 	if ( !VK_Guard_Result( VK_GSITE_DESCRIPTOR, result, "vkCreateGraphicsPipelines(shade)" ) ) {
 		return VK_NULL_HANDLE;
 	}
@@ -3589,6 +3664,12 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 #ifndef PROBE_BUILD_SILENT
 #define VK_BLKDRAW_ROWS_PER_FRAME 16
 #define VK_BLKDRAW_ROWS_TOTAL     1024
+/* The world's own budget: the total above was spent by the menu's 3D previews
+   inside the first 300 frames of every armed boot, so not one in-game world draw
+   ever had a draw-time texel witness -- the single row that says whether the
+   sampled texel is the image's own art or a hole.  World rows keep a separate
+   budget (behind the same per-frame cap) so the menu cannot starve them. */
+#define VK_BLKDRAW_WORLD_TOTAL    8192
 
 static void VK_Shade_BlkDrawRow( const shader_t *shader, const shaderStage_t *pStage,
 								 const shaderCommands_t *input, int stageIndex,
@@ -3597,6 +3678,8 @@ static void VK_Shade_BlkDrawRow( const shader_t *shader, const shaderStage_t *pS
 	static int s_frame = -1;
 	static int s_frameRows;
 	static int s_totalRows;
+	static int s_worldRows;
+	qboolean		isWorld = ( backEnd.currentEntity == &tr.worldEntity ) ? qtrue : qfalse;
 	unsigned char	px[4], mid[4], blk[16];
 	unsigned char	px1[4], mid1[4], blk1[16];
 	int				blocked = 0, blocked1 = 0;
@@ -3616,11 +3699,22 @@ static void VK_Shade_BlkDrawRow( const shader_t *shader, const shaderStage_t *pS
 		s_frame = RB_FrameCount();
 		s_frameRows = 0;
 	}
-	if ( s_frameRows >= VK_BLKDRAW_ROWS_PER_FRAME || s_totalRows >= VK_BLKDRAW_ROWS_TOTAL ) {
+	if ( s_frameRows >= VK_BLKDRAW_ROWS_PER_FRAME ) {
+		return;
+	}
+	if ( isWorld ) {
+		if ( s_worldRows >= VK_BLKDRAW_WORLD_TOTAL ) {
+			return;
+		}
+	} else if ( s_totalRows >= VK_BLKDRAW_ROWS_TOTAL ) {
 		return;
 	}
 	s_frameRows++;
-	s_totalRows++;
+	if ( isWorld ) {
+		s_worldRows++;
+	} else {
+		s_totalRows++;
+	}
 
 	t0 = VK_Image_SlotTenant( s_shade.texNum[0] );
 	t1 = VK_Image_SlotTenant( s_shade.texNum[1] );
@@ -4045,6 +4139,13 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	int family;
 
 	(void)shader;
+
+	/* Every 3D, sky and 2D-batch draw binds its pipeline here, before the draw
+	   is recorded, so this is where the pass colour clear is paid when the draw
+	   that follows can read the plane (VK_DeferredClear_Flush).  A refused bind
+	   still pays it: the clear is what the pass would have written anyway. */
+	VK_DeferredClear_Flush( cmd );
+
 	if ( !s_shade.prog ) {
 		s_frameShadeDrops++;
 		VK_Shade_DropRow( "no-program" );
@@ -4070,6 +4171,35 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	   Retail's single-texture stage never reads TMU1; a program without VKP_LIGHTMAP declares no u_Tex1 at all. */
 	if ( !( s_shade.prog->defines & VKP_LIGHTMAP ) ) {
 		v1 = VK_NULL_HANDLE;
+	}
+
+	/* The bind-side census of the world pass: a lightmapped program whose base
+	   or lightmap unit resolved to no image draws its surface with nothing to
+	   sample, which is the surface that looks like its texture never loaded.
+	   Names the shader and, per unit, the image the walk asked for and the
+	   texture it held; the diag gate is what arms it. */
+	if ( R_ProbeStatsOn() && ( s_shade.prog->defines & VKP_LIGHTMAP ) ) {
+		static int s_worldBindRows;
+
+		if ( ( !s_shade.texBound[0] || v0 == VK_NULL_HANDLE
+			   || !s_shade.texBound[1] || v1 == VK_NULL_HANDLE )
+			 && ( s_worldBindRows < 32 || ( s_worldBindRows % 600 ) == 0 ) ) {
+			VK_Guard_Row( "VK:worldbind",
+						  "unbound shader='%s' b0='%s' tex0=%u bnd0=%d b1='%s' tex1=%u bnd1=%d "
+						  "arena=%d iter=%s f=%d",
+						  ( shader && shader->name[0] ) ? shader->name : "?",
+						  ( s_shade.texImage[0] && s_shade.texImage[0]->imgName[0] )
+						  ? s_shade.texImage[0]->imgName : "",
+						  ( s_shade.texImage[0] ) ? (unsigned)s_shade.texImage[0]->texnum : 0u,
+						  s_shade.texBound[0] ? 1 : 0,
+						  ( s_shade.texImage[1] && s_shade.texImage[1]->imgName[0] )
+						  ? s_shade.texImage[1]->imgName : "",
+						  ( s_shade.texImage[1] ) ? (unsigned)s_shade.texImage[1]->texnum : 0u,
+						  s_shade.texBound[1] ? 1 : 0,
+						  RB_VboStaticArenaBatch() ? 1 : 0,
+						  VK_Shade_IterName(), RB_FrameCount() );
+		}
+		s_worldBindRows++;
 	}
 	/* created with the first draw that reads it; the shaders fetch single texels, so the sampler is nearest */
 	VK_CreateWaveTable();

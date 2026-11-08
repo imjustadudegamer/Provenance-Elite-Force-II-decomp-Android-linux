@@ -607,6 +607,7 @@ int VK_Device_Select( void )
 	vk.deviceProps = list[best].props;
 	vk.props12 = list[best].props12;
 	vk.has12Props = list[best].has12Props;
+	vk.driverID = list[best].hasDriverProps ? list[best].driverProps.driverID : 0;
 	memset( &vk.memProps, 0, sizeof( vk.memProps ) );
 	qvk.GetPhysicalDeviceMemoryProperties( vk.physicalDevice, &vk.memProps );
 	vk.deviceApiVersion = list[best].props.apiVersion;

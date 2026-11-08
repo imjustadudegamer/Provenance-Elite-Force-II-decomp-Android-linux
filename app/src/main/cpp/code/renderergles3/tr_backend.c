@@ -40,30 +40,113 @@ backEndState_t	backEnd;
    whichever comes first. */
 static qboolean	s_frameCleared;
 static int		s_frameClearedFor = -1;
+/* The frame's colour clear, owed to the first write of colour (r_deferredClear):
+   RB_FrameClearIfFirst takes the depth plane and hands the colour plane's clear
+   to whoever writes colour next, which either records it (RB_ColorClearPay) or
+   proves it writes every texel itself (RB_ColorClearClaim, RB_2D_Box). */
+static qboolean	s_colorClearOwed;
+static qboolean	s_frameClearTaken;		/* the once-per-frame clear step ran */
+static qboolean	s_frameColorDrawn;		/* some colour write has been recorded this frame */
+/* The whole depth plane is 1.0 from this frame's own clear and nothing that can
+   write depth has drawn since, so a view's depth clear is a no-op. */
+static qboolean	s_depthPlaneClear;
+/* The colour write mask the walk last issued.  glClear honours it, so the clear
+   takes it and hands it back, and the shadow volume's masked draws are known. */
+static qboolean	s_colorMaskOn[4] = { qtrue, qtrue, qtrue, qtrue };
+
+void GLES3_ColorMaskState( GLboolean r, GLboolean g, GLboolean b, GLboolean a ) {
+	s_colorMaskOn[0] = r ? qtrue : qfalse;
+	s_colorMaskOn[1] = g ? qtrue : qfalse;
+	s_colorMaskOn[2] = b ? qtrue : qfalse;
+	s_colorMaskOn[3] = a ? qtrue : qfalse;
+	qglColorMask( r, g, b, a );
+}
 
 static void RB_FrameClearOnce( void ) {
 	if ( s_frameClearedFor != RB_FrameCount() ) {
 		s_frameClearedFor = RB_FrameCount();
 		s_frameCleared = qfalse;
+		s_colorClearOwed = qfalse;
+		s_frameClearTaken = qfalse;
+		s_frameColorDrawn = qfalse;
+		s_depthPlaneClear = qfalse;
 	}
 }
 
-/* The 2D window calls this before it applies its own placement.  The box is
-   forced full-screen first so a stale widget clip cannot keep the clear off the
-   rest of the target. */
-void RB_FrameClearIfFirst( void ) {
-	RB_FrameClearOnce();
-	if ( s_frameCleared ) {
+/* r_deferredClear, read where the frame's clear is decided, so a change lands on
+   the next frame without a restart */
+qboolean RB_DeferredClearOn( void ) {
+	cvar_t *cv = ri.Cvar_Get( "r_deferredClear", "1", 0 );
+
+	return ( cv && cv->integer ) ? qtrue : qfalse;
+}
+
+/* Record the frame's colour clear over the whole target.  glClear is clipped by
+   the scissor and gated by the colour write mask, so this takes both, clears,
+   and hands them back: a draw's own clip and mask survive it.  The value is the
+   one RB_FrameClearIfFirst has always cleared with. */
+static void RB_ColorClearRecord( void ) {
+	qboolean save[4];
+	int i;
+
+	for ( i = 0; i < 4; i++ ) {
+		save[i] = s_colorMaskOn[i];
+	}
+
+	RB_2D_ScissorApplied( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
+	GLES3_ColorMaskState( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+	qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
+	qglClear( GL_COLOR_BUFFER_BIT );
+	GLES3_ColorMaskState( save[0] ? GL_TRUE : GL_FALSE, save[1] ? GL_TRUE : GL_FALSE,
+						  save[2] ? GL_TRUE : GL_FALSE, save[3] ? GL_TRUE : GL_FALSE );
+}
+
+/* Pay the frame's colour clear before the draw that would read the plane, and
+   put the walk's clip back afterwards. */
+void RB_ColorClearPay( void ) {
+	int			box[4];
+	qboolean	have;
+
+	if ( !s_colorClearOwed ) {
 		return;
 	}
 
-	/* the box the clear must cover; RB_2D_ScissorApplied keeps the walk's mirror
-	   with the box, so the next widget's dedupe still tests the truth */
-	RB_2D_ScissorApplied( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
-	qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
-	qglClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	s_colorClearOwed = qfalse;
 	s_frameCleared = qtrue;
+	s_frameColorDrawn = qtrue;
+
+	have = RB_2D_ScissorState( box );
+
+	RB_ColorClearRecord();
+
+	if ( have ) {
+		RB_2D_ScissorApplied( box[0], box[1], box[2], box[3] );
+	}
 }
+
+/* A write that covers every texel the clear would have settles the debt. */
+void RB_ColorClearClaim( void ) {
+	if ( !s_colorClearOwed ) {
+		return;
+	}
+
+	s_colorClearOwed = qfalse;
+	s_frameCleared = qtrue;
+	s_frameColorDrawn = qtrue;
+}
+
+qboolean RB_ColorClearOwed( void ) {
+	return s_colorClearOwed;
+}
+
+qboolean RB_FrameColorDrawn( void ) {
+	return s_frameColorDrawn;
+}
+
+qboolean RB_FrameDepthPlaneClear( void ) {
+	return s_depthPlaneClear;
+}
+
 
 
 static float	s_flipMatrix[16] = {
@@ -566,6 +649,70 @@ void GLES3_DepthStateReset( void )
 	s_depth2D    = qfalse;
 }
 
+/* Every draw of the walk comes through here before it is issued: the frame's
+   colour clear is paid if it is still owed, and the two planes the frame cleared
+   are marked as no longer matching their clear. */
+void RB_FramePlaneBeforeDraw( void ) {
+	RB_ColorClearPay();
+
+	if ( s_colorMaskOn[0] || s_colorMaskOn[1] || s_colorMaskOn[2] || s_colorMaskOn[3] ) {
+		s_frameColorDrawn = qtrue;
+	}
+
+	/* GL writes no depth while the test is off, whatever the mask says */
+	if ( s_depthTest && s_depthWrite ) {
+		s_depthPlaneClear = qfalse;
+	}
+}
+
+/* The 2D window calls this before it applies its own placement.  The box is
+   forced full-screen first so a stale widget clip cannot keep the clear off the
+   rest of the target. */
+void RB_FrameClearIfFirst( void ) {
+	qboolean deferred = RB_DeferredClearOn();
+
+	RB_FrameClearOnce();
+	if ( s_frameClearTaken || s_frameCleared ) {
+		return;
+	}
+	s_frameClearTaken = qtrue;
+
+	/* the box the clear must cover; RB_2D_ScissorApplied keeps the walk's mirror
+	   with the box, so the next widget's dedupe still tests the truth */
+	RB_2D_ScissorApplied( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
+
+	{
+		qboolean write = s_depthWrite;
+
+		/* glClear writes neither plane while its mask is shut, and the 2D
+		   window's state block has never touched either mask: both are taken
+		   for the clear and given back */
+		qglDepthMask( GL_TRUE );
+
+		if ( deferred ) {
+			/* the colour plane's clear is the first colour write's, below */
+			qglClear( GL_DEPTH_BUFFER_BIT );
+		} else {
+			qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
+			qglClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+		}
+
+		qglDepthMask( write ? GL_TRUE : GL_FALSE );
+	}
+
+	s_depthPlaneClear = qtrue;
+
+	if ( deferred ) {
+		s_colorClearOwed = qtrue;
+	} else {
+		s_frameCleared = qtrue;
+		s_frameColorDrawn = qtrue;
+	}
+}
+
+
+
+
 static qboolean	s_stenTest = qfalse;	/* the stencil gate, same discipline */
 static GLint	s_stenFunc = GL_ALWAYS;
 static GLint	s_stenRef  = 0;
@@ -880,6 +1027,11 @@ static void RB_Hyperspace( void ) {
 	}
 
 	c = ( backEnd.refdef.time & 255 ) / 255.0f;
+
+	/* nothing has cleared the frame's colour plane yet, and this is a colour
+	   write: the frame's clear goes first, as the pass clear did */
+	RB_ColorClearPay();
+
 	qglClearColor( c, c, c, 1 );
 	qglClear( GL_COLOR_BUFFER_BIT );
 
@@ -1097,10 +1249,42 @@ void RB_BeginDrawingView (void) {
 			qglClearColor(glState.fFogColor[0], glState.fFogColor[1], glState.fFogColor[2], 0.0f);
 		}
 	}
-	qglClear( clearBits );
+	/* The frame's own clear already left every depth texel at 1.0 and nothing
+	   that can write depth has drawn since, so this view's depth clear is a
+	   no-op: only the depth bit goes, and the stencil plane is not the frame's. */
+	if ( s_depthPlaneClear ) {
+		clearBits &= ~GL_DEPTH_BUFFER_BIT;
+	}
+
+	/* The frame's colour clear is still owed when nothing has written colour
+	   yet.  A view clear that covers the whole target writes every texel the
+	   frame's clear would have, so it settles the debt; any narrower one cannot,
+	   so the frame's clear is recorded first, over the whole target, and the
+	   view's own box is put back around its clear. */
+	if ( s_colorClearOwed ) {
+		if ( ( clearBits & GL_COLOR_BUFFER_BIT )
+			 && backEnd.viewParms.viewportX <= 0 && backEnd.viewParms.viewportY <= 0
+			 && backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth >= glConfig.vidWidth
+			 && backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight >= glConfig.vidHeight ) {
+			RB_ColorClearClaim();
+		} else {
+			RB_ColorClearRecord();
+			s_colorClearOwed = qfalse;
+			s_frameCleared = qtrue;
+			s_frameColorDrawn = qtrue;
+
+			RB_2D_ScissorApplied( backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
+								  backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight );
+		}
+	}
+
+	if ( clearBits ) {
+		qglClear( clearBits );
+	}
 
 	if ( clearBits & GL_COLOR_BUFFER_BIT ) {
 		s_frameCleared = qtrue;
+		s_frameColorDrawn = qtrue;
 	}
 
 	GLES3_DepthFuncApply( GL_LEQUAL );	/* pinned per view for the A/B cvar */
@@ -2152,6 +2336,8 @@ void RB_ShowImages( qboolean quiet ) {
 		RB_SetGL2D();
 	}
 
+	RB_ColorClearPay();
+
 	qglClear( GL_COLOR_BUFFER_BIT );
 
 	qglFinish();
@@ -2210,7 +2396,7 @@ const void *RB_ColorMask(const void *data)
 {
 	const colorMaskCommand_t *cmd = data;
 	
-	qglColorMask(cmd->rgba[0], cmd->rgba[1], cmd->rgba[2], cmd->rgba[3]);
+	GLES3_ColorMaskState(cmd->rgba[0], cmd->rgba[1], cmd->rgba[2], cmd->rgba[3]);
 	
 	return (const void *)(cmd + 1);
 }
@@ -2241,6 +2427,10 @@ const void	*RB_SwapBuffers( const void *data ) {
 	if ( r_showImages->integer ) {
 		RB_ShowImages(qfalse);
 	}
+
+	/* a frame that painted no colour at all still owes the frame's clear: the
+	   plane would otherwise present whatever it held before */
+	RB_ColorClearPay();
 
 	cmd = (const swapBuffersCommand_t *)data;
 

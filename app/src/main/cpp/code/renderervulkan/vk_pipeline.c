@@ -266,8 +266,10 @@ qboolean VK_Pipeline_Init( void )
 		pipelineInfo.renderPass = vk.renderPass;
 		pipelineInfo.subpass = 0;
 
+		VK_PCache_ConsultBegin();
 		result = qvk.CreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &pipelineInfo, NULL,
 											  &vk_pipeline.demoPipeline );
+		VK_PCache_ConsultEnd();
 	}
 
 	if ( result != VK_SUCCESS ) {
@@ -336,6 +338,10 @@ qboolean VK_Pipeline_DrawDemo( VkCommandBuffer cmd )
 	VK_Draw_BindPipeline( cmd, vk_pipeline.demoPipeline );
 	qvk.CmdBindVertexBuffers( cmd, 0, 1, &vk.vertexBuffer, &offset );
 	qvk.CmdDraw( cmd, 3, 1, 0, 0 );
+
+	/* the demo pipeline writes depth, so it retires the pass's own depth clear
+	   for every view after it and no view's clear may be dropped */
+	vk.depthWritten = qtrue;
 
 	return qtrue;
 }

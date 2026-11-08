@@ -1669,7 +1669,10 @@ void Com_Init( char *commandLine ) {
 	   registered every boot, not only when the seed runs: it is the one engine-internal row the config carries, and an unregistered pin would read 0 here and
 	   re-seed every boot. */
 /* 10: the shadow tier.  cg_shadows is archived, so an install that picked Stencil keeps a tier this depth format cannot draw; the fold re-takes the simple row. */
-#define PORT_DEFAULTS_SEED 10
+/* 11: the world arena.  r_vboStatic became the draw path every world batch
+   takes (the arena caches the pack and the streaming path draws it), and its one
+   row belongs in the seed with the rest of the port's defaults. */
+#define PORT_DEFAULTS_SEED 11
 	Cvar_Get( "port_defaultsSeed", "0", CVAR_ARCHIVE );
 	if ( Cvar_VariableIntegerValue( "port_defaultsSeed" ) < PORT_DEFAULTS_SEED )
 	{

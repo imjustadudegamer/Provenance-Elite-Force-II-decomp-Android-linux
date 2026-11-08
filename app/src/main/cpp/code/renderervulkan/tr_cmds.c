@@ -129,8 +129,21 @@ static qboolean			rb_inlineFallback;
    always 0.  Written on the walk thread and drained once per row (a benign race for a five second window); microseconds, because an
    integer-millisecond total left a quantisation error a residual cannot be read through. */
 static volatile long long	rb_walkUsec;
+/* the same total, frame-scoped: RE_EndFrame hands it to Com_Frame's [SMP:frame]
+   row, whose renderBack= read backEnd.backEndMsec and so was always 0.  Draining
+   it here keeps the fps row's own window total intact.  Mirrors the GLES3 twin's
+   RB_FrameBackEndMsec/RB_FrameBackEndReset, so both back ends report the same
+   quantity and a backend comparison reads two live numbers, not one live and
+   one dead. */
+static volatile long long	rb_walkFrameUsec;
 
 cvar_t *r_smp;
+
+static void RB_WalkUsecAdd( long long usec )
+{
+	rb_walkUsec     += usec;
+	rb_walkFrameUsec += usec;
+}
 
 int RB_WalkMsec( void )
 {
@@ -146,6 +159,16 @@ long long RB_WalkUsec64( void )
 	long long usec = rb_walkUsec;
 
 	rb_walkUsec = 0;
+
+	return usec;
+}
+
+/* the frame's own walk total, read and cleared at the frame boundary */
+long long RB_WalkFrameUsec64( void )
+{
+	long long usec = rb_walkFrameUsec;
+
+	rb_walkFrameUsec = 0;
 
 	return usec;
 }
@@ -990,7 +1013,7 @@ void RB_RenderThread( void )
 			frame->list->used = 0;
 		}
 		if ( walkStart >= 0 ) {
-			rb_walkUsec += BE_Microseconds64() - walkStart;
+			RB_WalkUsecAdd( BE_Microseconds64() - walkStart );
 		}
 		{
 			/* the demand the frame just walked: slots are vertices, and the
@@ -1055,7 +1078,7 @@ void R_IssueRenderCommands( void )
 				list->used = 0;
 			}
 			if ( walkStart >= 0 ) {
-				rb_walkUsec += BE_Microseconds64() - walkStart;
+				RB_WalkUsecAdd( BE_Microseconds64() - walkStart );
 			}
 			rb_activeFrame = NULL;
 			vk.frameSlot = ( vk.frameSlot + 1 ) % SMP_FRAMES;
@@ -1074,7 +1097,7 @@ void R_IssueRenderCommands( void )
 		list->used = 0;
 	}
 	if ( walkStart >= 0 ) {
-		rb_walkUsec += BE_Microseconds64() - walkStart;
+		RB_WalkUsecAdd( BE_Microseconds64() - walkStart );
 	}
 	rb_activeFrame = NULL;
 

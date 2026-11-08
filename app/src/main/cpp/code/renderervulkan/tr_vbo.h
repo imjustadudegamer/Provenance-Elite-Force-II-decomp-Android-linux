@@ -134,6 +134,16 @@ qboolean RB_VboStaticArenaBatch( void );
    bytes at ringByteBase; the staging and device copies are recorded into cmd. */
 void RB_VboStaticBakeFrame( int ringByteBase );
 
+/* The probe-gated audit of the bytes this batch will draw: resident records
+   against the arena copy, and (when ringByteBase is the batch's pack base)
+   streamed records against the ring.  Positions and both texcoord pairs are
+   compared with the surface's own data. */
+void RB_VboStaticAuditBatch( int ringByteBase );
+
+/* Names the arm the batch was drawn through when it is the ring copy: the arena's
+   cached bytes went through the streaming path's own commands. */
+void RB_VboStaticNoteCopied( int numIdx );
+
 /* The bake's copies: a command buffer of their own, submitted ahead of the
    frame's (a buffer copy may not be recorded inside a render pass), or
    VK_NULL_HANDLE when the walk baked nothing. */
@@ -153,6 +163,13 @@ const float *RB_VboStaticStageFloats( void );
    batch-relative index at position i is recovered by mapping the block's value
    back through the item that owns that position. */
 const vkIndex_t *RB_VboStaticBatchIndexes( int *firstOut );
+
+/* The index block one item of a batch draws from, at the same arena offset the
+   draw names.  The census reads each item's own block from here: a batch's items
+   are not adjacent in the arena (devrun=0 on every shipped boot says no run ever
+   reached MIN_IBO_RUN), so one block stepped by position decodes another item's
+   indexes and prices a correct batch as out of range. */
+const vkIndex_t *RB_VboStaticIndexBlock( int idxFirst );
 
 /* Items the arena has baked, arena bytes in use, and the refusals that made a
    surface stream instead: one row a second on the boundary that ends it. */

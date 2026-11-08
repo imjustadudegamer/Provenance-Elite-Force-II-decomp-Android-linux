@@ -2710,6 +2710,11 @@ void RB_ImmBegin( int topology );
 VkPipelineLayout VK_Draw_Layout( void );
 void RB_ImmBeginWithImage( int topology, image_t *image, unsigned long stateBits );
 void RB_ImmCommit( void );
+/* A 2D writer whose first quad covers the whole target opaquely: the pass colour
+   clear is then owed to that quad, which writes every texel the clear would have
+   (RB_2D_Box's proof, taken at the run's commit). */
+void RB_ImmCoverClaim( qboolean on );
+void RB_ImmCoverCancel( void );
 void RB_ImmEnd( void );
 void RB_ImmEndDeferred( void );
 void RB_ImmFlush( void );
@@ -3024,6 +3029,13 @@ void     VK_Draw_DrawIndexed( VkCommandBuffer cmd, int indexCount, int firstInde
 void     VK_Draw_RecordedDraws( int *draws, int *indexes );
 void     VK_Draw_ResetRecordedDraws( void );
 void     VK_Draw_Draw( VkCommandBuffer cmd, int vertexCount, int firstVertex );
+
+/* The pass colour clear, owed to the first colour write of the pass (r_deferredClear).
+   Pay it before the command that would read the plane, or claim it when that
+   command writes every texel the clear would have. */
+void     VK_DeferredClear_Flush( VkCommandBuffer cmd );
+void     VK_DeferredClear_Claim( void );
+qboolean VK_DeferredClear_Owed( void );
 const float *VK_Draw_CurrentOrtho( void );
 void     VK_Draw_Window2D( VkCommandBuffer cmd, int x, int y, int w, int h );
 void     VK_Draw_View3D( VkCommandBuffer cmd, int x, int y, int w, int h );

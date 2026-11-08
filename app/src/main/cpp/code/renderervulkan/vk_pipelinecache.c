@@ -48,30 +48,79 @@ root, for more details.
 #define VK_PCACHE_LOAD_MARKER ".vk_pcache_load"
 #define VK_PCACHE_DEAD_MARKER ".vk_pcache_dead"
 
+/* The marker is engine-global state and the consult window that arms it runs
+   on the walk thread, where the filesystem is not the walk's to touch
+   (tr_init.c:1119).  It therefore never takes the FS handle table: it is libc
+   against the same root the blob lives in, exactly like the blob itself above
+   and below.  The root is resolved once, on the main thread, at open. */
+static char s_markerHome[1024];
+
+static qboolean VK_PCache_MarkerPath( const char *name, char *out, size_t len )
+{
+	if ( !s_markerHome[0] ) {
+		return qfalse;
+	}
+	return ( snprintf( out, len, "%s/%s", s_markerHome, name ) < (int)len ) ? qtrue : qfalse;
+}
+
 static qboolean VK_PCache_MarkerPresent( const char *name )
 {
-	return ( ri.FS_FileExists && ri.FS_FileExists( name ) ) ? qtrue : qfalse;
+	char path[1024];
+	FILE *fh;
+
+	if ( !VK_PCache_MarkerPath( name, path, sizeof( path ) ) ) {
+		return qfalse;
+	}
+	fh = fopen( path, "rb" );
+	if ( !fh ) {
+		return qfalse;
+	}
+	fclose( fh );
+	return qtrue;
 }
 
 static void VK_PCache_MarkerWrite( const char *name )
 {
-	fileHandle_t f;
+	char path[1024];
+	FILE *fh;
 
-	if ( !ri.FS_OpenFileWrite ) {
+	if ( !VK_PCache_MarkerPath( name, path, sizeof( path ) ) ) {
 		return;
 	}
-
-	f = ri.FS_OpenFileWrite( name );
-	if ( f ) {
-		ri.FS_Write( "1", 1, f );
-		ri.FS_CloseFile( f );
+	fh = fopen( path, "wb" );
+	if ( !fh ) {
+		return;
 	}
+	fwrite( "1", 1, 1, fh );
+	fclose( fh );
 }
 
 static void VK_PCache_MarkerClear( const char *name )
 {
-	if ( ri.FS_RemoveHomeData ) {
-		ri.FS_RemoveHomeData( name );
+	char path[1024];
+
+	if ( VK_PCache_MarkerPath( name, path, sizeof( path ) ) ) {
+		remove( path );
+	}
+}
+
+/* A pipeline creation that consults the loaded cache opens the same window
+   the boot-time parse opens: if the driver dies inside, the marker survives
+   and the next boot retires the blob.  A cold cache has none of our bytes in
+   the driver, so it opens no window. */
+void VK_PCache_ConsultBegin( void )
+{
+	if ( vk.pipelineCacheLoaded ) {
+		VK_PCache_MarkerWrite( VK_PCACHE_LOAD_MARKER );
+		vk.pipelineConsultInFlight = qtrue;
+	}
+}
+
+void VK_PCache_ConsultEnd( void )
+{
+	if ( vk.pipelineConsultInFlight ) {
+		VK_PCache_MarkerClear( VK_PCACHE_LOAD_MARKER );
+		vk.pipelineConsultInFlight = qfalse;
 	}
 }
 
@@ -114,11 +163,13 @@ qboolean VK_PipelineCache_Open( void )
 	VkResult result;
 	cvar_t *homeCvar;
 	cvar_t *loadCvar;
+	qboolean pcacheGated;
 
 	vk.pipelineCache = VK_NULL_HANDLE;
 	vk.pipelineCacheLoaded = qfalse;
 	vk.pipelineCacheForeign = qfalse;
 	vk.pipelineCacheBytes = 0;
+	vk.pipelineConsultInFlight = qfalse;
 
 	memset( &createInfo, 0, sizeof( createInfo ) );
 	createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -129,6 +180,12 @@ qboolean VK_PipelineCache_Open( void )
 		home = VK_PCache_Home();
 	}
 
+	/* the marker helpers run off the main thread later; resolve their root now */
+	s_markerHome[0] = '\0';
+	if ( home && home[0] ) {
+		snprintf( s_markerHome, sizeof( s_markerHome ), "%s", home );
+	}
+
 	/* Loaded by default on both targets.  Mesa's ANV 25.2.8 segfaults inside
 	   vkCreatePipelineCache parsing a blob it saved itself (memcpy from
 	   libvulkan_intel, fault at blob+0x51010 on every reopen), so the marker
@@ -136,7 +193,21 @@ qboolean VK_PipelineCache_Open( void )
 	   cold compiles are the slow leg of a menu page transition. */
 	loadCvar = ri.Cvar_Get( "r_vkPipelineCacheLoad", "1", 0 );
 
-	if ( home && home[0] && loadCvar->integer ) {
+	/* Intel-Mesa keeps its cache cold: the same 25.2.8 driver also died inside
+	   vkCreateGraphicsPipelines once the blob was armed, so the load marker
+	   guards the load parse but not the only other reader of the data.  The
+	   async warm path already carries the first-build cost off the frame, and
+	   the save below still writes, so a driver line that can parse its own
+	   data starts from real bytes.  The row carries the raw driver version so
+	   a fixed line can re-arm this from evidence. */
+	pcacheGated = ( vk.driverID == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA );
+
+	if ( pcacheGated && home && home[0] && loadCvar->integer && R_ProbeStatsOn() ) {
+		VK_Guard_Row( "VK:pcache", "status=driver-gated driverid=%u driverversion=0x%08x",
+					  (unsigned int)vk.driverID, (unsigned int)vk.deviceProps.driverVersion );
+	}
+
+	if ( home && home[0] && loadCvar->integer && !pcacheGated ) {
 		snprintf( path, sizeof( path ), "%s/%s", home, VK_PCACHE_FILE );
 		fh = fopen( path, "rb" );
 	} else {

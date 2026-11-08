@@ -309,33 +309,77 @@ static qboolean s_vkSafeModeArmed = qfalse;
 /* SDK doc 8: a bring-up that dies inside the driver cannot be caught, so the
    next launch needs an on-disk fact.  The marker is armed before the compressed
    texture bring-up and cleared by the first present; present at launch means
-   the last attempt died there, and this launch takes the decode-only path. */
+   the last attempt died there, and this launch takes the decode-only path.
+
+   THE MARKER IS WRITTEN WITH LIBC, NOT THE ENGINE FILESYSTEM.  Arming happens
+   in the renderer's level registration, which runs on the WALK thread under
+   r_smp, at the exact moment the client thread is opening the level's music
+   script, shaders and save: FS_BuildOSPath composes into one shared static
+   buffer and FS_HandleForFile hands out slots without a lock, so the two opens
+   can cross and this one-byte write lands in the other file.  That is not a
+   theory -- a device boot left `music/m9l1a-klingon_base.mus` truncated to the
+   single byte "1" (this function's payload), the next boot's music load read it
+   and retail's extension strip walked a negative strncpy length, and the engine
+   aborted in MUSIC_LoadSoundtrackFile.  The pipeline cache moved its own crash
+   marker out of the filesystem for the same reason (vk_pipelinecache.c); this
+   one is the sibling that was left behind.  Raw libc beside the home directory
+   touches no engine state, so no other thread's open can be crossed. */
 #define VK_SAFE_MODE_MARKER ".vk_safe_mode"
+
+static qboolean VK_SafeModeMarkerPath( char *out, size_t len )
+{
+	cvar_t	*home;
+
+	home = ri.Cvar_Get ? ri.Cvar_Get( "fs_homepath", "", 0 ) : NULL;
+	if ( !home || !home->string[0] ) {
+		return qfalse;
+	}
+	if ( snprintf( out, len, "%s/%s", home->string, VK_SAFE_MODE_MARKER ) >= (int)len ) {
+		return qfalse;
+	}
+	return qtrue;
+}
 
 qboolean VK_SafeModeMarkerPresent( void )
 {
-	return ( ri.FS_FileExists && ri.FS_FileExists( VK_SAFE_MODE_MARKER ) ) ? qtrue : qfalse;
+	char	path[MAX_OSPATH];
+	FILE	*fh;
+
+	if ( !VK_SafeModeMarkerPath( path, sizeof( path ) ) ) {
+		return qfalse;
+	}
+	fh = fopen( path, "rb" );
+	if ( !fh ) {
+		return qfalse;
+	}
+	fclose( fh );
+	return qtrue;
 }
 
 void VK_SafeModeArm( void )
 {
-	fileHandle_t f;
+	char	path[MAX_OSPATH];
+	FILE	*fh;
 
-	if ( !ri.FS_OpenFileWrite ) {
+	if ( !VK_SafeModeMarkerPath( path, sizeof( path ) ) ) {
 		return;
 	}
-
-	f = ri.FS_OpenFileWrite( VK_SAFE_MODE_MARKER );
-	if ( f ) {
-		ri.FS_Write( "1", 1, f );
-		ri.FS_CloseFile( f );
+	fh = fopen( path, "wb" );
+	if ( !fh ) {
+		return;
 	}
+	fwrite( "1", 1, 1, fh );
+	fclose( fh );
 }
 
 void VK_SafeModeClear( void )
 {
-	if ( ri.FS_RemoveHomeData ) {
-		ri.FS_RemoveHomeData( VK_SAFE_MODE_MARKER );
+	char	path[MAX_OSPATH];
+
+	/* same reasoning as the arm: the clear runs at the first present, on the
+	   walk thread, and the engine filesystem is not this site's to use */
+	if ( VK_SafeModeMarkerPath( path, sizeof( path ) ) ) {
+		remove( path );
 	}
 }
 
@@ -1137,8 +1181,10 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 	if ( frontEndMsec ) {
 		*frontEndMsec = tr.frontEndMsec;
 	}
+	/* the walk's own frame total: backEnd.backEndMsec has no writer, so the
+	   caller's renderBack= was always 0 on this backend */
 	if ( backEndMsec ) {
-		*backEndMsec = backEnd.backEndMsec;
+		*backEndMsec = ( int )( RB_WalkFrameUsec64() / 1000 );
 	}
 
 	VK_PerfFpsRow();

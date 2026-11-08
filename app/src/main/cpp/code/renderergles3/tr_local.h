@@ -1679,6 +1679,9 @@ void RB_2D_Scissor( int x, int y, int width, int height );
 /* Applies a scissor and keeps the walk's mirror of the box GL holds with it;
  * every raw apply has to go through this or a dedupe names a stale rect. */
 void RB_2D_ScissorApplied( int x, int y, int width, int height );
+/* The box the walk's 2D path last issued, so a full-target clear can take it and
+   hand it back (RB_ColorClearPay). */
+qboolean RB_2D_ScissorState( int *box );
 void RB_2D_ShaderTime( float startTime );
 
 /* Drops the recorded window/scissor coalescing state; every command whose
@@ -2385,6 +2388,20 @@ extern	volatile qboolean	renderThreadActive;
 void *R_GetCommandBuffer( int bytes );
 void RB_CommandListReset( void );
 void RB_FrameClearIfFirst( void );
+/* The frame's colour clear (r_deferredClear), owed to the first colour write:
+   RB_FramePlaneBeforeDraw pays it at every draw, RB_ColorClearClaim settles it
+   with a write that covers the whole target, and the two questions around it
+   are what the depth-clear elision and the 2D box's proof read. */
+void RB_FramePlaneBeforeDraw( void );
+void RB_ColorClearPay( void );
+void RB_ColorClearClaim( void );
+qboolean RB_ColorClearOwed( void );
+qboolean RB_DeferredClearOn( void );
+qboolean RB_FrameColorDrawn( void );
+qboolean RB_FrameDepthPlaneClear( void );
+/* The colour write mask the walk last issued: glClear honours it, and the shadow
+   volume's masked draws are known by it. */
+void GLES3_ColorMaskState( GLboolean r, GLboolean g, GLboolean b, GLboolean a );
 void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs );
 void R_AddSpriteSurfCmd( drawSurf_t* drawSurfs, int numDrawSurfs );
 void RB_ExecuteRenderCommands( const void *data );

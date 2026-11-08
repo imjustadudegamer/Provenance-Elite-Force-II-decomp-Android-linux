@@ -647,12 +647,94 @@ void RB_2D_TrianglePic( shader_t *shader, const vec2_t vPoints[3], const vec2_t 
 	RB_StreamEnd();
 }
 
+/* Whether this box writes every texel of the pass's render area opaquely.
+   The proof is the draw's own state, read in the spaces the draw uses: the box
+   runs through the ortho the run pushes and the widget's placement, both of
+   which the 2D state mirrors hold, and it is clipped by the scissor alone.  A
+   box whose four corners leave the framebuffer on every side, under a viewport
+   and a clip that both reach the framebuffer's edges, at alpha 1 with
+   SRC_ALPHA/ONE_MINUS_SRC_ALPHA, leaves dst * 0 in every texel: the source
+   colour replaces the destination exactly, so the value underneath it -- the
+   pass's colour clear -- is never part of the picture. */
+static qboolean RB_2DBoxCoversScreen( float x, float y, float w, float h ) {
+	float	ortho[16];
+	int		win[4], scn[4];
+	float	ex = (float)vk.swapchainExtent.width;
+	float	ey = (float)vk.swapchainExtent.height;
+	float	px[4], py[4], minx, maxx, miny, maxy;
+	int		i;
+
+	/* only a 2D box under a 2D window has a frame-filling rect to prove */
+	if ( !backEnd.in2D || ex <= 0.0f || ey <= 0.0f ) {
+		return qfalse;
+	}
+
+	/* a translucent box lets the cleared value through */
+	if ( backEnd.color2D[3] != 255 ) {
+		return qfalse;
+	}
+
+	if ( !VK_Draw_2DStateGet( ortho, win, scn ) ) {
+		return qfalse;
+	}
+
+	/* the viewport the ortho is mapped through, and the clip the run draws under,
+	   each have to reach the framebuffer's edges */
+	if ( win[0] > 0 || win[1] > 0 || win[0] + win[2] < (int)ex || win[1] + win[3] < (int)ey ) {
+		return qfalse;
+	}
+	if ( scn[0] > 0 || scn[1] > 0 || scn[0] + scn[2] < (int)ex || scn[1] + scn[3] < (int)ey ) {
+		return qfalse;
+	}
+
+	/* the box's corners carry the widget's placement, as the vertices will */
+	px[0] = x + vk_2dOrigin[0];			py[0] = y + vk_2dOrigin[1];
+	px[1] = x + w + vk_2dOrigin[0];		py[1] = py[0];
+	px[2] = px[0];						py[2] = y + h + vk_2dOrigin[1];
+	px[3] = px[1];						py[3] = py[2];
+
+	minx = maxx = -1;
+	miny = maxy = -1;
+
+	for ( i = 0; i < 4; i++ ) {
+		float	cx = ortho[0] * px[i] + ortho[4] * py[i] + ortho[12];
+		float	cy = ortho[1] * px[i] + ortho[5] * py[i] + ortho[13];
+		float	cw = ortho[3] * px[i] + ortho[7] * py[i] + ortho[15];
+		float	sx, sy;
+
+		if ( !( cw > 0.0f ) ) {
+			return qfalse;
+		}
+
+		/* clip to the framebuffer in whole texels; a quarter texel of slack
+		   absorbs the matrix arithmetic and still demands every pixel's centre */
+		sx = ( ( cx / cw ) * 0.5f + 0.5f ) * ex;
+		sy = ( ( cy / cw ) * 0.5f + 0.5f ) * ey;
+
+		if ( i == 0 ) {
+			minx = maxx = sx;
+			miny = maxy = sy;
+		} else {
+			if ( sx < minx ) minx = sx;
+			if ( sx > maxx ) maxx = sx;
+			if ( sy < miny ) miny = sy;
+			if ( sy > maxy ) maxy = sy;
+		}
+	}
+
+	return ( minx <= 0.25f && maxx >= ex - 0.25f && miny <= 0.25f && maxy >= ey - 0.25f ) ? qtrue : qfalse;
+}
+
 void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	int wantBlend = blend ? 1 : 0;
 
 	if ( !s_2dTriOpen || s_2dTriBlend != wantBlend ) { /* state is the call's */
 		RB_2D_OwnStateTake();
 		RB_2D_Flush();
+
+		/* The run opens here and is the pass's first colour write when the pass
+		   still owes its clear, so a box that covers the frame settles it. */
+		RB_ImmCoverClaim( blend && VK_DeferredClear_Owed() && RB_2DBoxCoversScreen( x, y, w, h ) );
 
 		RB_ImmBeginWithImage( VK_IMM_TRIANGLES, tr.whiteImage,
 			wantBlend ? ( VKS_DEPTHTEST_DISABLE | VKS_SRCBLEND_SRC_ALPHA
@@ -668,13 +750,25 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	RB_ImmColor4f( backEnd.color2D[0] / 255.0f, backEnd.color2D[1] / 255.0f,
 				   backEnd.color2D[2] / 255.0f, backEnd.color2D[3] / 255.0f );
 
-	RB_ImmVertex2f(x, y);
-	RB_ImmVertex2f(x + w, y);
-	RB_ImmVertex2f(x + w, y + h);
-	RB_ImmVertex2f(x, y);
-	RB_ImmVertex2f(x + w, y + h);
-	RB_ImmVertex2f(x, y + h);
-	RB_ImmCommit();
+	{
+		int	first = RB_ImmStreamVerts();
+
+		RB_ImmVertex2f(x, y);
+		RB_ImmVertex2f(x + w, y);
+		RB_ImmVertex2f(x + w, y + h);
+		RB_ImmVertex2f(x, y);
+		RB_ImmVertex2f(x + w, y + h);
+		RB_ImmVertex2f(x, y + h);
+
+		/* the run's commit is where the claim is taken, so a quad the ring could
+		   not take whole has to give the claim up before it: an incomplete quad
+		   does not write the texels the pass clear would have */
+		if ( RB_ImmStreamVerts() - first != 6 ) {
+			RB_ImmCoverCancel();
+		}
+
+		RB_ImmCommit();
+	}
 
 	s_2dTriVerts   += 6;
 	s_d2VertsAsked += 6;
