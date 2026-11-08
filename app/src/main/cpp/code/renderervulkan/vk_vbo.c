@@ -298,10 +298,13 @@ static vkStaticRegion_t *VK_StaticFind( const void *surf )
 static qboolean VK_StaticEnabled( void )
 {
 	if ( !s_cvar ) {
-		/* off until it accounts for itself: an arena batch draws no tess arrays,
-		   so a wrong bake is invisible -- geometry that covers nothing and no
-		   row saying why */
-		s_cvar = ri.Cvar_Get( "r_vboStatic", "0", 0 );
+		/* ON by default (operator confirmation 11-08): the arena is a pack cache
+		   now, and the batch it serves is drawn by the streaming path's own
+		   commands from those cached bytes, so a cached surface cannot differ in
+		   pixels from a streamed one.  Off: `r_vboStatic 0'.  The cvar carries no
+		   archive flag, so this default is what every boot starts from -- no
+		   config.cfg edit, and no install can keep a stale value alive. */
+		s_cvar = ri.Cvar_Get( "r_vboStatic", "1", 0 );
 	}
 	return s_cvar->integer != 0;
 }
