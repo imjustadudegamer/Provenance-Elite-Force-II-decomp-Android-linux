@@ -790,6 +790,33 @@ static void ParseTexMod( char *_text, shaderStage_t *stage, int cntBundle )
 }
 
 
+
+/* tr.lightmaps[]/tr.baseLightmaps[] are the one pointer table no registration
+ * retires (R_SetupShaders wipes tr.shaders and every shadertext chain; the cure
+ * 2e6b416 gave tr.models[]), so a row past the new map's own count still names
+ * whatever the previous map left -- now a memset-zero image_t whose texnum is 0.
+ * Both $lightmap sites resolve through this one clamp, exactly as the GLES3 twin
+ * has since 89c6f0b, so a dead row falls back to white instead of binding the
+ * white fallback mid-surface.  Negative sentinels and in-range rows are unchanged. */
+static image_t *R_LightmapImageForIndex( int lightmapIndex )
+{
+	if ( lightmapIndex < 0 ) {
+		return tr.whiteImage;
+	}
+	if ( lightmapIndex & DYNAMIC_LIGHTMAP_BIT ) {
+		int	idx = lightmapIndex & LIGHTMAP_BASE_MASK;
+
+		if ( idx < 0 || idx >= tr.numBaseLightmaps ) {
+			return tr.whiteImage;
+		}
+		return tr.baseLightmaps[idx];
+	}
+	if ( lightmapIndex >= tr.numLightmaps ) {
+		return tr.whiteImage;
+	}
+	return tr.lightmaps[lightmapIndex];
+}
+
 static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 {
 	char* token;
@@ -853,16 +880,7 @@ static qboolean ParseStage(shaderStage_t* stage, char** text, qboolean picmip)
 			else if (!Q_stricmp(token, "$lightmap"))
 			{
 				stage->bundle[cntBundle].isLightmap = qtrue;
-				if (shader.lightmapIndex < 0) {
-					stage->bundle[cntBundle].image[0] = tr.whiteImage;
-				}
-				else if (shader.lightmapIndex & DYNAMIC_LIGHTMAP_BIT) {
-					stage->bundle[cntBundle].image[0] =
-						tr.baseLightmaps[shader.lightmapIndex & LIGHTMAP_BASE_MASK];
-				}
-				else {
-					stage->bundle[cntBundle].image[0] = tr.lightmaps[shader.lightmapIndex];
-				}
+				stage->bundle[cntBundle].image[0] = R_LightmapImageForIndex( shader.lightmapIndex );
 				continue;
 			}
 			else if (!Q_stricmp(token, "$bumpmap"))
@@ -3391,12 +3409,7 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		unfoggedStages[1].rgbGen = CGEN_IDENTITY_LIGHTING;
 		unfoggedStages[1].stateBits |= VKS_SRCBLEND_DST_COLOR | VKS_DSTBLEND_ZERO;
 	} else {
-		if ( shader.lightmapIndex & DYNAMIC_LIGHTMAP_BIT ) {
-			unfoggedStages[0].bundle[0].image[0] =
-				tr.baseLightmaps[shader.lightmapIndex & LIGHTMAP_BASE_MASK];
-		} else {
-			unfoggedStages[0].bundle[0].image[0] = tr.lightmaps[shader.lightmapIndex];
-		}
+		unfoggedStages[0].bundle[0].image[0] = R_LightmapImageForIndex( shader.lightmapIndex );
 		unfoggedStages[0].bundle[0].isLightmap = qtrue;
 		unfoggedStages[0].active = qtrue;
 		unfoggedStages[0].rgbGen = CGEN_IDENTITY;	
