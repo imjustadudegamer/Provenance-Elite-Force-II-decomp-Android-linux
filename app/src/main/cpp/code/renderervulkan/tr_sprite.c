@@ -58,7 +58,10 @@ sprite_t *SPR_RegisterSprite(const char *name)
 			ri.Printf(1, "Could not find image for sprite in shader %s\n", name);
 			return 0;
 		}
-		if ( !spriteImage ) {
+		/* a shader whose map failed to resolve hands back a built-in image:
+		   drawing it paints the quad's flat colour (the green rectangle the
+		   effect sprites showed), not the shipped radial.  Drop the sprite. */
+		if ( !spriteImage || spriteImage == tr.defaultImage || spriteImage == tr.whiteImage ) {
 			ri.Printf(1, "Could not find image for sprite in shader %s\n", name);
 			return 0;
 		}
