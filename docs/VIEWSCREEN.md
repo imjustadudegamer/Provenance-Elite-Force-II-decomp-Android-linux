@@ -79,3 +79,17 @@ rect stays as it was — black, or the previous frame's leftovers.
   `personal/viewscreen.zip` (frame 4023): two `DEPTH|STENCIL` clears, both views
   on the identical `(240,0) 1440x1080` rect, and the second view issuing its
   draws — geometry was always arriving; the plane was discarding it.
+
+## The endgame viewscreen placeholder
+
+`maps/m12-end.bsp` reuses the bridge diorama, including a second, non-cinematic
+`char_npc_krindo_krindo-noweapon` Actor (targetname `krindo`, model
+`char/krindo-noweapon.tik`, origin `1952 -6080 -352`, scale `5`). The cinematic
+`cins/m12-end.cin` puts `armRomgeneral` (`char/romulan_stx-commander.tik`) at
+`1951.65 -6080.36 -351.95`, the same spot, and `m12-end.scr` scales that actor
+to `5`. The bridge script retires the placeholder through
+`viewscreenAddActor()`/`globalCommon_AiDummyHide()`; `m12-end.scr` never runs
+that init, so the leftover stood in front of the scripted general. A spawned
+cinematic actor now retires any non-cinematic portal/dual actor already on its
+spot (game `CinematicActor::_spawn`), which is the bridge's own hide rule
+applied where the map script omits it.

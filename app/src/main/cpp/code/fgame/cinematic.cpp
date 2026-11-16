@@ -420,6 +420,43 @@ void CinematicActor::_spawn(void)
     _actor->ProcessEvent(ev);
 
     _actor->SetTargetName(_name.c_str());
+
+    /* A cinematic actor that always spawns owns the spot it is spawned on.  The
+       m12-end map still carries ent-deck1_bridge's viewscreen placeholder -- a
+       full char_npc_krindo_krindo-noweapon Actor, targetname "krindo", model
+       char/krindo-noweapon.tik, scale 5 -- at the same origin as the cinematic
+       Romulan general (1951.65 -6080.36 -351.95).  The bridge script retires
+       that placeholder through viewscreenAddActor/globalCommon_AiDummyHide;
+       m12-end's script never runs that init, so the placeholder stays live,
+       solid and portal-drawn in front of the general.  Retire the stale actor
+       rather than let the duplicate stand in the scripted character's spot. */
+    if (_alwaysSpawn) {
+        const float staleRadiusSquared = 128.0f * 128.0f;
+
+        for (int i = 0; i < globals.num_entities; i++) {
+            gentity_t *otherEdict  = &g_entities[i];
+            Entity    *otherEntity = otherEdict->entity;
+
+            if (!otherEdict->inuse || !otherEntity || otherEntity == _actor) {
+                continue;
+            }
+            if (!otherEntity->isSubclassOf(Actor)) {
+                continue;
+            }
+            if (!(otherEdict->s.renderfx & (RF_PORTALENTITY | RF_DUALENTITY))) {
+                continue;
+            }
+            if (Vector::DistanceSquared(otherEntity->origin, _origin) > staleRadiusSquared) {
+                continue;
+            }
+
+            Actor *staleActor = static_cast<Actor *>(otherEntity);
+
+            staleActor->TurnAIOff();
+            staleActor->hideModel();
+            staleActor->setSolidType(SOLID_NOT);
+        }
+    }
 }
 
 void CinematicActor::playAnimation(void)
