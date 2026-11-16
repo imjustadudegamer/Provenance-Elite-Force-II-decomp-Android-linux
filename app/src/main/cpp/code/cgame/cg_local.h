@@ -144,7 +144,6 @@ extern "C" {
         int alphaFade;
         int fadein;
         markPoly_t* markPolys;
-        int lastProbeTime;
         /* retail CG_AddMarks @0x33980 reads three more record fields the port's
            object never carried: the light style (+12), the fade-byte selector
            (+20) and the mark's own normalized colour (+28..44).  `fadein' is the

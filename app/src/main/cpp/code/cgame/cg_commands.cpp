@@ -26,12 +26,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cg_footprints.h"
 #include "../corepp/tiki.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
-#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define WIDGET_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_widget.h"
 
 int          current_entity_number = -1;
 centity_t   *current_centity       = NULL;
@@ -1606,10 +1600,6 @@ void ClientGameCommandManager::SetWindEffect(Event *ev)
 }
 
 
-
-
-
-
 void ClientGameCommandManager::SetDecalRadius(Event *ev)
 {
     if (!m_spawnthing) {
@@ -2550,7 +2540,6 @@ void ClientGameCommandManager::SetFreq(Event *ev)
 }
 
 
-
 void ClientGameCommandManager::SetItemRingShader(Event *ev)
 {
     str name;
@@ -2704,29 +2693,6 @@ void ClientGameCommandManager::EndTagTraceImpactSpawn(void)
             );
 
             lastImpactTrace = trace;
-        }
-
-        static int uirows_i;
-        if (PROBE_On() && PROBE_Throttle(&uirows_i, 16, 2000)) {
-            UIROWS_PROBE(
-                "impact:spawn",
-                "ent=%d '%s' tag='%s' start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) "
-                "aim0=(%.2f,%.2f,%.2f) len=%.1f count=%d uselasttrace=%d uselastend=%d "
-                "-> hit=(%.1f,%.1f,%.1f) frac=%.3f ent=%d surf=0x%x\n",
-                current_entity_number,
-                current_tiki > 0 ? cgi.TIKI_Name(current_tiki) : "?",
-                m_spawnthing->tagname.c_str(),
-                start[0], start[1], start[2],
-                end[0], end[1], end[2],
-                aim0[0], aim0[1], aim0[2],
-                m_spawnthing->length,
-                m_spawnthing->traceCount,
-                m_spawnthing->useLastTrace,
-                m_spawnthing->use_last_trace_end,
-                trace.endpos[0], trace.endpos[1], trace.endpos[2],
-                trace.fraction,
-                trace.entityNum,
-                trace.surfaceFlags);
         }
 
         GetSpawnEffect(trace);
@@ -3269,7 +3235,6 @@ void ClientGameCommandManager::SetRandomVelocityAlongAxis(Event *ev)
 }
 
 
-
 void ClientGameCommandManager::SetVelocity(Event *ev)
 {
     if (!m_spawnthing) {
@@ -3385,7 +3350,6 @@ void ClientGameCommandManager::SetDrag(Event *ev)
 }
 
 
-
 void ClientGameCommandManager::SetCount(Event *ev)
 {
     if (!m_spawnthing) {
@@ -3460,7 +3424,6 @@ void ClientGameCommandManager::TagList(Event *ev)
         m_spawnthing->m_taglist.AddObject(s_arg);
     }
 }
-
 
 
 spawnthing_t *ClientGameCommandManager::InitializeSpawnthing(spawnthing_t *sp)
@@ -3972,43 +3935,6 @@ void ClientGameCommandManager::GetOrientation(int tagnum, spawnthing_t *sp)
     cgi.TIKI_Tag_LerpOrientation(&_or, current_tiki, current_entity, tagnum);
 
     {
-        static int widget_res;
-
-        if (WIDGET_On() && WIDGET_Throttle(&widget_res, 16, 48)) {
-            const char *widget_tn = cgi.TIKI_Name(current_tiki);
-
-            WIDGET_A1_PROBE(
-                "tag:resolve",
-                "host=%d tiki='%s' tagnum=%d or=(%.2f,%.2f,%.2f) ax0=(%.3f,%.3f,%.3f) "
-                "hostorg=(%.1f,%.1f,%.1f) legsLive=%d torsoLive=%d rawanim=%d maskanim=%d "
-                "oldanim=%d frame=%d state_anim=%d fail=%d"
-                " csc=%.6g esc=%.6g nsc=%.6g fi=%.6g lsc=%.6g\n",
-                current_entity_number,
-                widget_tn ? widget_tn : "?",
-                tagnum,
-                _or.origin[0], _or.origin[1], _or.origin[2],
-                _or.axis[0][0], _or.axis[0][1], _or.axis[0][2],
-                current_entity->origin[0], current_entity->origin[1], current_entity->origin[2],
-                current_entity->legsLive,
-                current_entity->torsoLive,
-                current_entity->anim,
-                current_entity->anim & ANIM_MASK,
-                current_entity->oldanim,
-                current_entity->frame,
-                (current_centity ? current_centity->animstate[0].base.anim : -1),
-                (_or.origin[0] == 0.0f && _or.origin[1] == 0.0f && _or.origin[2] == 0.0f
-                 && _or.axis[0][0] == 1.0f && _or.axis[0][1] == 0.0f && _or.axis[0][2] == 0.0f)
-                    ? 1
-                    : 0,
-                current_entity->scale,
-                (current_centity ? current_centity->currentState.scale : -1.0f),
-                (current_centity ? current_centity->nextState.scale : -1.0f),
-                cg.frameInterpolation,
-                (current_entity->tiki ? current_entity->tiki->load_scale : -1.0f));
-        }
-    }
-
-    {
     }
 
     VectorCopy(current_entity->origin, sp->cgd.origin);
@@ -4152,29 +4078,6 @@ void ClientGameCommandManager::GetOrientation(const str& tagname, spawnthing_t *
                 VectorClear(right);
                 VectorClear(up);
 
-                {
-                    static int widget_armgate;
-
-                    if (WIDGET_On() && WIDGET_Throttle(&widget_armgate, 12, 16)) {
-                        WIDGET_A1_PROBE(
-                            "beam:armgate",
-                            "beamowner=%d tag='%s' startTag='%s' parent=%d pclient=%d me=%d 3rd=%d "
-                            "esv=(%.1f,%.1f) esorg=(%.0f,%.0f,%.0f)\n",
-                            current_entity_number,
-                            tagname.c_str(),
-                            sp->startTag.c_str(),
-                            centnum,
-                            cent->currentState.clientNum,
-                            cg.snap ? cg.snap->ps.clientNum : -1,
-                            cg.renderingThirdPerson,
-                            cent->currentState.viewangles[1],
-                            cent->currentState.viewangles[0],
-                            cent->currentState.origin[0],
-                            cent->currentState.origin[1],
-                            cent->currentState.origin[2]);
-                    }
-                }
-
                 if (cent->currentState.clientNum != cg.snap->ps.clientNum || cg.renderingThirdPerson) {
                     if (cent->currentState.clientNum != ENTITYNUM_NONE) {
                         trace_t trace;
@@ -4193,53 +4096,6 @@ void ClientGameCommandManager::GetOrientation(const str& tagname, spawnthing_t *
                         GetOrientationAimAxis(dir, axis);
                         AxisCopy(axis, sp->aim_axis);    
 
-                        {
-                            static int widget_aimarm;
-
-                            if (WIDGET_On() && WIDGET_Throttle(&widget_aimarm, 12, 8)) {
-                                vec3_t aimfwd;
-                                float  esv_yaw, esv_pitch, aim_yaw, aim_pitch;
-                                float  dx, dy, dz, dl;
-
-                                AngleVectors(cent->currentState.viewangles, aimfwd, NULL, NULL);
-                                esv_yaw   = vectoyaw(cent->currentState.viewangles);
-                                esv_pitch = cent->currentState.viewangles[0];
-
-                                dx = axis[0][0];
-                                dy = axis[0][1];
-                                dz = axis[0][2];
-                                dl = sqrt(dx * dx + dy * dy + dz * dz);
-                                if (dl > 0.0f) {
-                                    aim_yaw   = vectoyaw(axis[0]);
-                                    aim_pitch = 180.0f * asin(dz / dl) / M_PI;
-                                } else {
-                                    aim_yaw   = 0.0f;
-                                    aim_pitch = 0.0f;
-                                }
-
-                                WIDGET_A1_PROBE(
-                                    "beam:aimarm",
-                                    "beamowner=%d tag='%s' parent=%d pclient=%d me=%d 3rd=%d "
-                                    "esv=(%.1f,%.1f) porg=(%.0f,%.0f,%.0f) fwd=(%.2f,%.2f,%.2f) "
-                                    "tstart=(%.0f,%.0f,%.0f) tend=(%.0f,%.0f,%.0f) hit=%d "
-                                    "aim0=(%.2f,%.2f,%.2f) aimYaw=%.1f aimPitch=%.1f refYaw=%.1f\n",
-                                    current_entity_number,
-                                    tagname.c_str(),
-                                    centnum,
-                                    cent->currentState.clientNum,
-                                    cg.snap ? cg.snap->ps.clientNum : -1,
-                                    cg.renderingThirdPerson,
-                                    esv_yaw, esv_pitch,
-                                    cent->currentState.origin[0], cent->currentState.origin[1],
-                                    cent->currentState.origin[2],
-                                    aimfwd[0], aimfwd[1], aimfwd[2],
-                                    start[0], start[1], start[2],
-                                    trace.endpos[0], trace.endpos[1], trace.endpos[2],
-                                    trace.fraction < 1.0f,
-                                    axis[0][0], axis[0][1], axis[0][2],
-                                    aim_yaw, aim_pitch, cg.refdefViewAngles[1]);
-                            }
-                        }
                     }
                 } else {
                     Vector endpt = GetViewEndPoint(cent->currentState.number, sp->cgd.origin, qtrue);
@@ -4350,26 +4206,6 @@ void ClientGameCommandManager::EndTagBeamSpawn(void)
                 + Vector(m_spawnthing->aim_axis[2]) * crandom() * m_spawnthing->spready;
             last_trace_end = end;
             widget_last_trace_end_time = cg.time;
-        }
-
-        {
-            static int widget_lt;
-
-            if (WIDGET_On() && WIDGET_Throttle(&widget_lt, 10, 40)) {
-                WIDGET_A1_PROBE(
-                    "beam:lasttrace",
-                    "beamowner=%d name='%s' useLastTrace=%d useLastEnd=%d end=(%.1f,%.1f,%.1f) "
-                    "age=%d start=(%.1f,%.1f,%.1f) len=%.1f\n",
-                    current_entity_number,
-                    m_spawnthing->emittername.c_str(),
-                    m_spawnthing->useLastTrace,
-                    m_spawnthing->use_last_trace_end,
-                    end[0], end[1], end[2],
-                    cg.time - widget_last_trace_end_time,
-                    m_spawnthing->cgd.origin[0], m_spawnthing->cgd.origin[1],
-                    m_spawnthing->cgd.origin[2],
-                    m_spawnthing->length);
-            }
         }
 
         CG_Trace(
@@ -4686,28 +4522,11 @@ void ClientGameCommandManager::PlaySound(
 
     {
         static cvar_t *movsnd_movsnd = NULL;
-        static int     movsnd_rows;
 
         if (!movsnd_movsnd) {
             movsnd_movsnd = cgi.Cvar_Get("qa_movsnd", "0", 0);
         }
 
-        movsnd_rows++;
-
-        if (PROBE_On() && movsnd_movsnd && movsnd_movsnd->integer && (movsnd_rows <= 48 || (movsnd_rows % 16) == 0)) {
-            cgi.Printf(
-                "[MOVSND:movsnd] built='%s' resolved='%s' handle=%d entnum=%d chan=%d vol=%.3f min_dist=%.3f pitch=%.3f origin=%s\n",
-                sound_name.c_str(),
-                name,
-                handle,
-                current_entity_number,
-                channel,
-                volume,
-                min_distance,
-                pitch,
-                origin ? "vec" : "NULL"
-            );
-        }
     }
 
     cgi.S_StartSound(
@@ -4905,7 +4724,6 @@ void ClientGameCommandManager::Cache(Event *ev)
 }
 
 
-
 void AliasResource(int pmdl, const char *alias, const char *realname, const char *parameters)
 {
     if (pmdl < 0) {
@@ -4970,7 +4788,6 @@ void ClientGameCommandManager::Footstep(Event *ev)
         CG_Footstep(current_centity, sTagName.c_str(), sCreatureType.c_str());
     }
 }
-
 
 
 void ClientGameCommandManager::Client(Event *ev)
@@ -5367,32 +5184,6 @@ void ClientGameCommandManager::UpdateEmitter(
             continue;
         }
 
-        {
-            static int effects_emitmatch_n;
-            const char *effects_emit_host = (tiki >= 0) ? cgi.TIKI_Name(tiki) : NULL;
-
-            if (PROBE_On() && PROBE_Throttle(&effects_emitmatch_n, 24, 512)) {
-                PROBE(
-                    "emit:match",
-                    "emitter=%d model='%s' emittername='%s' tiki=%d hosttiki='%s' "
-                    "ent=%d hostent=%d inst=%d et_ent=%d et_inst=%d active=%d "
-                    "hostorg=(%.1f,%.1f,%.1f)\n",
-                    i,
-                    m_spawnthing->GetModel().c_str(),
-                    m_spawnthing->emittername.c_str(),
-                    m_spawnthing->cgd.tiki,
-                    effects_emit_host ? effects_emit_host : "?",
-                    entity_number,
-                    (current_centity ? current_centity->currentState.number : -1),
-                    instance_number,
-                    et->entity_number,
-                    et->instance_number,
-                    (int)et->active,
-                    entity_origin[0], entity_origin[1], entity_origin[2]
-                );
-            }
-        }
-
         if ((m_spawnthing->cgd.flags & T_DETAIL) && !cg_detail->integer) {
             et->last_emit_time = 0;
             continue;
@@ -5586,7 +5377,6 @@ void ClientGameCommandManager::RemoveClientEntity(int number, int tiki, centity_
 }
 
 
-
 void CG_RestartCommandManager(int time)
 {
     commandManager.FreeAllTempModels();
@@ -5774,26 +5564,6 @@ void CG_UpdateEntityEmitters(int tiki, refEntity_t *ent, centity_t *cent)
     {
     }
 
-    {
-        static int uivk_beamfx_host_n;
-        const char *uivk_tn = (tiki >= 0) ? cgi.TIKI_Name(tiki) : NULL;
-
-        if (PROBE_On() && uivk_tn && Q_stristr(uivk_tn, "fx-beamsparkle")
-            && PROBE_Throttle(&uivk_beamfx_host_n, 4, 512)) {
-            UIVK_PROBE(
-                "BEAMFX:host",
-                "ent=%d tiki='%s' refentscale=%.4f esscale=0x%08x origin=(%.1f,%.1f,%.1f)\n",
-                cent->currentState.number,
-                uivk_tn,
-                ent->scale,
-                *(unsigned int *)&cent->currentState.scale,
-                ent->origin[0],
-                ent->origin[1],
-                ent->origin[2]
-            );
-        }
-    }
-
     if (cent->currentState.parent != ENTITYNUM_NONE) {
         commandManager.UpdateEmitter(
             current_tiki, ent->axis, cent->currentState.number, cent->currentState.instanceNumber,
@@ -5831,25 +5601,6 @@ void CG_ProcessEntityCommands(int tiki, int frame, int anim, int entnum, refEnti
         CG_AnimationDebugMessage(entnum, "Processing Ent Commands: Entity: %3d Anim:#(%i) Frame:#(%i)\n", entnum, anim, frame);
 
         {
-        }
-
-        {
-            static int widget_ccmd;
-
-            if (WIDGET_On() && WIDGET_Throttle(&widget_ccmd, 8, 64) && cent
-                && (cent->currentState.eType == ET_MODELANIM || cent->currentState.eType == ET_PLAYER)) {
-                WIDGET_A1_PROBE(
-                    "ccmd",
-                    "ent=%d etype=%d anim=%d frame=%d(%s) num_cmds=%d verb0='%s' tiki=%d\n",
-                    entnum,
-                    cent->currentState.eType,
-                    anim,
-                    frame,
-                    (frame == TIKI_FRAME_ENTRY) ? "ENTRY" : (frame == TIKI_FRAME_EXIT) ? "EXIT" : "frame",
-                    tikicmds.num_cmds,
-                    (tikicmds.num_cmds > 0 && tikicmds.cmds[0].num_args > 0) ? tikicmds.cmds[0].args[0] : "-",
-                    tiki);
-            }
         }
 
         for (i = 0; i < tikicmds.num_cmds; i++) {
@@ -5948,61 +5699,6 @@ void CG_ClientCommands(int tiki, int frame, int anim, animstate_t *state, refEnt
 
         state->last_cmd_anim  = anim + 1;
         state->last_cmd_frame = frame + 1;
-    } else {
-        static int uirows_q;
-        if (PROBE_On() && PROBE_Throttle(&uirows_q, 8, 1000)) {
-            const char *uirows_tn  = cgi.TIKI_Name(tiki);
-            const char *uirows_an  = cgi.Anim_NameForNum(tiki, anim);
-            const char *uirows_an2 = cgi.Anim_NameForNum(tiki, cent->currentState.anim & ANIM_MASK);
-
-            UIROWS_PROBE(
-                "fx:reject2",
-                "ent=%d tiki=%d '%s' anim=%d '%s' frame=%d state_nf=%d animframes=%d "
-                "es_anim_name='%s' es.frame=0x%x es.anim=%d last_cmd_anim=%d last_cmd_frame=%d eff0=%d\n",
-                cent ? cent->currentState.number : -1,
-                tiki,
-                uirows_tn ? uirows_tn : "?",
-                anim,
-                uirows_an ? uirows_an : "?",
-                frame,
-                state ? state->numframes : -1,
-                cgi.Anim_NumFrames(tiki, anim),
-                uirows_an2 ? uirows_an2 : "?",
-                cent ? cent->currentState.frame : 0,
-                cent ? cent->currentState.anim : -1,
-                state ? state->last_cmd_anim - 1 : -1,
-                state ? state->last_cmd_frame : -1,
-                cent ? cent->currentState.effectsAnims[0] : -2);
-        }  
-        {
-            static int widget_rej;
-
-            if (WIDGET_On() && WIDGET_Throttle(&widget_rej, 8, 32)) {
-                const char *widget_bn = cgi.Anim_NameForNum(tiki, state->base.anim & ANIM_MASK);
-
-                WIDGET_A1_PROBE(
-                    "fx:reject3",
-                    "ent=%d tiki=%d anim=%d '%s' frame=%d state_nf=%d animframes=%d "
-                    "base.anim=%d base_idx=%d base_anim_nf=%d base_name='%s' es.frame=0x%x "
-                    "es.anim=%d last_cmd_anim_idx=%d last_cmd_frame=%d\n",
-                    cent ? cent->currentState.number : -1,
-                    tiki,
-                    anim,
-                    cgi.Anim_NameForNum(tiki, anim)
-                        ? cgi.Anim_NameForNum(tiki, anim) : "?",
-                    frame,
-                    state->numframes,
-                    cgi.Anim_NumFrames(tiki, anim),
-                    state->base.anim,
-                    state->base.anim & ANIM_MASK,
-                    cgi.Anim_NumFrames(tiki, state->base.anim & ANIM_MASK),
-                    widget_bn ? widget_bn : "?",
-                    cent ? cent->currentState.frame : 0,
-                    cent ? cent->currentState.anim : -1,
-                    state->last_cmd_anim - 1,
-                    state->last_cmd_frame);
-            }
-        }
     }
 }
 
@@ -6326,17 +6022,6 @@ void ClientGameCommandManager::CGEvent(centity_t *cent)
 
     tiki = cgi.R_Model_GetHandle(cgs.model_draw[cent->currentState.modelindex]);
 
-    {
-        static int uivk_dfx_n;
-        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 64, 64)) {
-            PROBE("DFX:etevent", "ent=%d modelindex=%d tiki=%d org=(%.1f,%.1f,%.1f)\n",
-                       cent->currentState.number,
-                       cent->currentState.modelindex,
-                       tiki,
-                       cent->lerpOrigin[0], cent->lerpOrigin[1], cent->lerpOrigin[2]);
-        }
-    }
-
     if (tiki < 0) {
         return;
     }
@@ -6373,7 +6058,6 @@ void CG_Event(centity_t *cent)
 {
     commandManager.CGEvent(cent);
 }
-
 
 
 int ClientGameCommandManager::IdForTempModel(const ctempmodel_t *model)
@@ -6438,8 +6122,6 @@ spawnthing_t *ClientGameCommandManager::SpawnThingForId(int id)
 
     return m_emitters.ObjectAt(id);
 }
-
-
 
 
 int CompareData(const void *elem1, const void *elem2)

@@ -234,7 +234,7 @@ static void R_FlareWitness( shader_t *sh, const char *fam, const float *color )
     image_t    *img;
     image_t    *tenant;
 
-    if (!R_ProbeMarkOn() || !sh) {
+    if (!sh) {
         return;
     }
 
@@ -244,23 +244,13 @@ static void R_FlareWitness( shader_t *sh, const char *fam, const float *color )
     if (tenant && tenant != img) {
         s_tenant++;
         if (s_tenant <= 8 || (s_tenant % 600) == 0) {
-            VK_Guard_Row("VK:flare",
-                          "why=tenant f=%d fam=%s shader='%s' img='%s' tex=%d tenant='%s'",
-                          RB_FrameCount(), fam, sh->name,
-                          (img && img->imgName[0]) ? img->imgName : "(none)",
-                          img ? (int)img->texnum : -1,
-                          (tenant && tenant->imgName[0]) ? tenant->imgName : "-");
+
         }
     }
     if (img && sh->unfoggedStages[0]->bundle[0].imgStamp != img->imgStamp) {
         s_stale++;
         if (s_stale <= 8 || (s_stale % 600) == 0) {
-            VK_Guard_Row("VK:flare",
-                          "why=stale f=%d fam=%s shader='%s' img='%s' bstamp=%d istamp=%d tex=%d",
-                          RB_FrameCount(), fam, sh->name,
-                          (img && img->imgName[0]) ? img->imgName : "(none)",
-                          sh->unfoggedStages[0]->bundle[0].imgStamp, img->imgStamp,
-                          (int)img->texnum);
+
         }
     }
 
@@ -270,15 +260,7 @@ static void R_FlareWitness( shader_t *sh, const char *fam, const float *color )
     s_frame = RB_FrameCount();
     s_rows++;
     if (s_rows <= 8 || (s_rows % 30) == 0) {
-        VK_Guard_Row("VK:flare",
-                      "fam=%s f=%d shader='%s' img='%s' stamp=%d tex=%d upto=%dx%d "
-                      "col=%.3f,%.3f,%.3f",
-                      fam, RB_FrameCount(), sh->name,
-                      (img && img->imgName[0]) ? img->imgName : "(none)",
-                      img ? img->imgStamp : -1,
-                      img ? (int)img->texnum : -1,
-                      img ? img->uploadWidth : 0, img ? img->uploadHeight : 0,
-                      color ? color[0] : 0.f, color ? color[1] : 0.f, color ? color[2] : 0.f);
+
     }
 }
 
@@ -1281,15 +1263,6 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
                own simple-tier law keeps the flare alive instead of holding a
                latch that starts false and never flips */
             visible = R_LensflareTraceVisible(f);
-            if (R_ProbeMarkOn()) {
-                static int s_fallbackRows;
-
-                if (s_fallbackRows < 8 || (s_fallbackRows % 300) == 0) {
-                    VK_Guard_Row("VK:flarefallback", "f=%d idx=%u vis=%d",
-                                 RB_FrameCount(), index, visible);
-                }
-                s_fallbackRows++;
-            }
         }
 
         R_LensflareOcclusionArm(f, index);
@@ -1725,20 +1698,6 @@ static void R_DrawEmitterLensflares(void)
             /* the state walk had no witness at all: this is the row that says
                whether a state exists, whether visible flips, and what alpha
                reaches, so the draw-side silence stops being ambiguous */
-            if ( R_ProbeMarkOn() ) {
-                static int s_stateRows;
-
-                s_stateRows++;
-                if ( s_stateRows <= 12 || ( s_stateRows % 300 ) == 0 ) {
-                    VK_Guard_Row( "VK:flarestate",
-                                  "f=%d idx=%u clip=%d vis=%d alpha=%.3f mode=%d "
-                                  "screen=%.3f,%.3f ndcZ=%.4f",
-                                  RB_FrameCount(), (unsigned)( f - lf_states ), f->clipped,
-                                  f->visible, f->alpha, r_flares->integer,
-                                  f->screen[0], f->screen[1], f->ndcZ );
-                }
-            }
-
             if (f->alpha > 0.0f) {
                 draw = qtrue;
             }

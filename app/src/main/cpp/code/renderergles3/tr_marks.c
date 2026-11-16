@@ -23,9 +23,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 static int s_markVisited;       
 static int s_markRejFlags;      
@@ -38,7 +35,6 @@ static int s_markGridTri, s_markGridAcc;
 static int s_markTerrTri, s_markTerrAcc;
 static int s_markFaceTri, s_markFaceAcc, s_markFaceRejNormal;
 static int s_markAddCalls, s_markAddChopOverflow, s_markAddChopEmpty, s_markAddNoSpace, s_markAddOk;
-static int s_markBailCount;
 
 #define UIVK_MARK_RESET() do { \
     s_markVisited = s_markRejFlags = s_markRejPlane = s_markRejAABB = s_markRejType = 0; \
@@ -448,22 +444,6 @@ int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projectio
 	R_BoxSurfaces_r(tr.world->nodes, mins, maxs, surfaces, MAX_MARK_SURFACES, &numsurfaces, projectionDir);
 
 	if (!numsurfaces) {
-		if (PROBE_On()) {
-			UIVK_PROBE(
-				"MARK:bail",
-				"%d EMPTY-LIST np=%d proj=(%.2f,%.2f,%.2f) pdir=(%.3f,%.3f,%.3f)"
-				" push=%.2f mins=(%.1f,%.1f,%.1f) maxs=(%.1f,%.1f,%.1f)"
-				" vis=%d add=%d listfull=%d rejflag=%d rejplane=%d rejaabb=%d rejtype=%d\n",
-				s_markBailCount++,
-				numPoints,
-				projection[0], projection[1], projection[2],
-				projectionDir[0], projectionDir[1], projectionDir[2],
-				fPushDist,
-				mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2],
-				s_markVisited, s_markAdded, s_markListFull,
-				s_markRejFlags, s_markRejPlane, s_markRejAABB, s_markRejType
-			);
-		}
 		return 0;
 	}
 
@@ -482,28 +462,6 @@ int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projectio
         fragmentBuffer
 	);
 
-	if (PROBE_On()) {
-		UIVK_PROBE(
-			"MARK:bail",
-			"%d np=%d proj=(%.2f,%.2f,%.2f) pdir=(%.3f,%.3f,%.3f) push=%.2f"
-			" vis=%d add=%d listfull=%d rejflag=%d rejplane=%d rejaabb=%d rejtype=%d"
-			" grid=%d/%d terr=%d/%d face=%d/%d facenorm=%d"
-			" addcalls=%d clipempty=%d clipover=%d nospace=%d ok=%d"
-			" nsurf=%d nfrag=%d npts=%d maxp=%d maxf=%d\n",
-			s_markBailCount++,
-			numPoints,
-			projection[0], projection[1], projection[2],
-			projectionDir[0], projectionDir[1], projectionDir[2],
-			fPushDist,
-			s_markVisited, s_markAdded, s_markListFull,
-			s_markRejFlags, s_markRejPlane, s_markRejAABB, s_markRejType,
-			s_markGridAcc, s_markGridTri, s_markTerrAcc, s_markTerrTri,
-			s_markFaceAcc, s_markFaceTri, s_markFaceRejNormal,
-			s_markAddCalls, s_markAddChopEmpty, s_markAddChopOverflow,
-			s_markAddNoSpace, s_markAddOk,
-			numsurfaces, returnedFragments, returnedPoints, maxPoints, maxFragments
-		);
-	}
 
     return returnedFragments;
 }

@@ -23,16 +23,12 @@
 
 #include "g_local.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
 
 #include "g_spawn.h"
 #include "level.h"
 #include "earthquake.h" 
 #include "armor.h"       
 #include "navigate.h"
-#include "smp_spawnstats.h"
 #include "helper_node.h"
 #include "gravpath.h"
 #include "entity.h"
@@ -59,13 +55,9 @@ Level level;
 gclient_t *spawn_client = NULL;
 
 
-
-
 CLASS_DECLARATION(Listener, Level, NULL) {
     {NULL, NULL}
 };
-
-
 
 
 Level::Level()
@@ -181,8 +173,6 @@ void Level::Init(void)
     memset(&impact_trace, 0, sizeof(trace_t));
 
 }
-
-
 
 
 void Level::CleanUp(qboolean restart_shadow1)
@@ -352,8 +342,6 @@ void Level::setSkill(int value)
 }
 
 
-
-
 void Level::loadLevelStrings(void)
 {
     const char *environmentName = NULL;
@@ -383,13 +371,9 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
     SpawnArgs   args;
     const char *spawnpos;
 
-    SMP_SpawnEnter( themapname, 0 );
-    SMP_SP_BEGIN( ents );
 
     {
-        SMP_SP_BEGIN( init );
         Init();
-        SMP_SP_END( init );
     }
 
     spawnpos = strchr(themapname, '$');
@@ -411,16 +395,12 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
     sv_numtraces = 0;
 
     if (!LoadingServer) {
-        SMP_SP_BEGIN( pinit );
         thePathManager.Init(mapname.c_str());
-        SMP_SP_END( pinit );
     }
 
-    SMP_SP_BEGIN( wparse );
     entities     = args.Parse((char *)entities);
     spawn_entnum = ENTITYNUM_WORLD;
     args.Spawn();
-    SMP_SP_END( wparse );
 
     if (!world) {
         Com_Error(ERR_FATAL, "No world\n");
@@ -434,7 +414,6 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
 
     inhibit = 0;
 
-    SMP_SP_BEGIN( loop );
     for (entities = args.Parse((char *)entities); entities != NULL; entities = args.Parse((char *)entities)) {
         spawnflags = 0;
         value      = args.getArg("spawnflags");
@@ -447,33 +426,16 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
             }
         }
 
-        {
-            const char *smp_cn = NULL;
-            int         smp_t0 = 0;
-
-            if ( smp_spawnOn ) {
-                smp_cn = args.getArg( "classname" );
-                smp_t0 = SMP_SpawnNow();
-            }
-
-            args.Spawn();
-
-            if ( smp_spawnOn ) {
-                SMP_SpawnClass( smp_cn, SMP_SpawnNow() - smp_t0 );
-            }
-        }
+        args.Spawn();
         count++;
 
         gi.ProcessLoadingScreen("$$SpawningEntities$$");
     }
-    SMP_SP_END( loop );
 
     gi.DPrintf("%i entities spawned\n", count);
     gi.DPrintf("%i entities inhibited\n", inhibit);
 
-    SMP_SP_BEGIN( drain );
     L_ProcessPendingEvents();
-    SMP_SP_END( drain );
 
     if (multiplayerManager.inMultiplayer()) {
         multiplayerManager.initItems();
@@ -481,15 +443,11 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
 
 
     if (!LoadingServer || game.autosaved) {
-        SMP_SP_BEGIN( start );
         Start();
-        SMP_SP_END( start );
     }
 
     {
-        SMP_SP_BEGIN( postload );
         postLoad();
-        SMP_SP_END( postload );
     }
 
     hNodeController = new HelperNodeController;
@@ -498,16 +456,11 @@ void Level::SpawnEntities(const char *themapname, const char *entities, int leve
     }
 
     if (game.maxclients == 1) {
-        SMP_SP_BEGIN( player );
         spawn_entnum = 0;
         new Player;
-        SMP_SP_END( player );
     }
 
-    SMP_SP_END( ents );
-    SMP_SpawnLeave( count, inhibit );
 }
-
 
 
 void Level::Precache(void)
@@ -525,14 +478,14 @@ void Level::Precache(void)
 
         if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
             if (consoleThread) {
-                WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+
                 consoleThread->Parse(filename.c_str());
             }
         } else {
             break;
         }
     }
-    WIDGET_PROBE("archive", "precache: global.scr chain done (%d files)\n", i);
+
 
     if (!mapname.length()) {
         return;
@@ -572,7 +525,7 @@ void Level::Precache(void)
 
             if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
                 if (consoleThread) {
-                    WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+
                     consoleThread->Parse(filename.c_str());
                 }
             } else {
@@ -591,7 +544,7 @@ void Level::Precache(void)
 
             if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
                 if (consoleThread) {
-                    WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+
                     consoleThread->Parse(filename.c_str());
                 }
             } else {
@@ -610,7 +563,7 @@ void Level::Precache(void)
 
             if (gi.FS_ReadFile(filename.c_str(), NULL, qtrue) != -1) {
                 if (consoleThread) {
-                    WIDGET_PROBE("archive", "precache: parsing %s\n", filename.c_str());
+
                     consoleThread->Parse(filename.c_str());
                 }
             } else {
@@ -811,22 +764,6 @@ void Level::AddAutomaticCamera(Camera *cam)
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void Level::addEarthquake(Earthquake *e)
 {
     if (e && !_earthquakes.ObjectInList(e)) {
@@ -853,35 +790,8 @@ float Level::getEarthquakeMagnitudeAtPosition(const Vector& pos)
         }
     }
 
-    {
-        static int uivk_dfx_n;
-        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 48, 48)) {
-            PROBE("DFX:quake-lookup", "nquakes=%d total=%.3f\n",
-                       _earthquakes.NumObjects(), totalMagnitude);
-        }
-    }
-
     return totalMagnitude;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void Level::Archive(Archiver& arc)
@@ -948,8 +858,7 @@ void Level::Archive(Archiver& arc)
         /* The cvar owns this value (G_InitGame, SDK g_main.cpp:196). A savegame a build with the
            zeroing Init wrote carries a zero, and the restore runs after G_InitGame, so restoring
            it would disarm ClientThink's ten-second gate for the whole loaded session. */
-        WIDGET_PROBE("missionend", "archive load advance=%.3f cvar=%d\n",
-                     intermission_advancetime, g_intermissiontime->integer);
+
         intermission_advancetime = (float)g_intermissiontime->integer;
     }
     arc.ArchiveBool(&_showIntermission);
@@ -972,7 +881,6 @@ void Level::Archive(Archiver& arc)
            (LevelAIOn needs _levelAIOff, which only the level gate sets).  Same shape as the
            intermission_advancetime guard below: the slot stays, the value re-arms. */
         ai_on = qtrue;
-        SAVE_PROBE("airearm", "level %s carried ai_on=0, re-armed\n", mapname.c_str());
     }
 
     arc.ArchiveBoolean(&mission_failed);
@@ -1030,13 +938,6 @@ void Level::Archive(Archiver& arc)
 }
 
 
-
-
-
-
-
-
-
 void Level::Restart()
 {
 	theCinematicArmature.deleteAllCinematics();
@@ -1048,7 +949,6 @@ void Level::Restart()
 	G_ClientConnect( 0, true, false, true );
 	G_ClientBegin( &g_entities[ 0 ], NULL );
 }
-
 
 
 void Level::EndIntermission()
@@ -1102,9 +1002,7 @@ void Level::Start( void )
 
 	
 	{
-		SMP_SP_BEGIN( precache );
 		Precache();
-		SMP_SP_END( precache );
 	}
 
 
@@ -1157,7 +1055,6 @@ void Level::postSublevelLoad( const char *spawnPosName )
 	Player *player;
 
 
-
 	spawnpoint = spawnPosName;
 
 
@@ -1175,7 +1072,6 @@ void Level::postSublevelLoad( const char *spawnPosName )
 			player->ChooseSpawnPoint();
 		}
 	}
-
 
 
 	G_ClearFade();
@@ -1211,8 +1107,6 @@ void Level::update( int levelTime, int frameTime )
 		}
 	}
 }
-
-
 
 
 str	Level::getPlayerDeathThread( void )

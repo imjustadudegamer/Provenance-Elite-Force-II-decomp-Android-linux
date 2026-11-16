@@ -32,6 +32,7 @@ root, for more details.
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tr_local.h"
+#include "../renderercommon/tr_frame_stats.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -48,129 +49,6 @@ int VK_Frame_Count( void )
 }
 
 /* ---- the GPU side of the frame ------------------------------------------ */
-
-static long long s_gpuBucketUsec[VK_GPU_BUCKETS];
-static long long s_gpuMarks;
-static long long s_gpuHitCap;
-
-/* One command buffer per slot, and the slot's results are read only after its
-   own fence has signalled, so a mark costs a timestamp and nothing waits on it.
-   The slot is reset by the same command buffer that fills it: CmdResetQueryPool
-   is legal outside a render pass, which is exactly where RecordBegin is. */
-void VK_PerfGpu_FrameBegin( int slot )
-{
-	vk.gpuMarkCount[slot] = 0;
-	vk.gpuFrameOpen = qfalse;
-
-	if ( !vk.gpuPerfReady || !VK_WalkStatOn() || !qvk.CmdResetQueryPool ) {
-		return;
-	}
-
-	vk.gpuFrameOpen = qtrue;
-
-	qvk.CmdResetQueryPool( vk.commandBuffers[slot], vk.gpuQueryPool,
-						   (uint32_t)( slot * VK_GPU_MAX_MARKS ), (uint32_t)VK_GPU_MAX_MARKS );
-
-	VK_PerfGpu_Mark( slot, VK_GPU_CLEAR );
-}
-
-void VK_PerfGpu_Mark( int slot, int bucket )
-{
-	int i;
-
-	if ( !vk.gpuFrameOpen || !vk.gpuPerfReady || !qvk.CmdWriteTimestamp ) {
-		return;
-	}
-
-	i = vk.gpuMarkCount[slot];
-	if ( i >= VK_GPU_MAX_MARKS ) {
-		s_gpuHitCap++;
-		return;
-	}
-
-	qvk.CmdWriteTimestamp( vk.commandBuffers[slot], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-						   vk.gpuQueryPool, (uint32_t)( slot * VK_GPU_MAX_MARKS + i ) );
-	vk.gpuMarkBucket[slot][i] = (unsigned char)bucket;
-	vk.gpuMarkCount[slot] = i + 1;
-}
-
-/* The terminal mark closes the last class's interval; it carries no bucket of
-   its own.  Without it the final interval -- the 2D batch's flushed draws -- is
-   unattributed. */
-void VK_PerfGpu_FrameEnd( int slot )
-{
-	int i;
-
-	if ( !vk.gpuFrameOpen || !vk.gpuPerfReady || !qvk.CmdWriteTimestamp ) {
-		return;
-	}
-
-	i = vk.gpuMarkCount[slot];
-	if ( i > 0 && i < VK_GPU_MAX_MARKS ) {
-		qvk.CmdWriteTimestamp( vk.commandBuffers[slot], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-							   vk.gpuQueryPool, (uint32_t)( slot * VK_GPU_MAX_MARKS + i ) );
-		vk.gpuMarkCount[slot] = i + 1;
-	}
-
-	vk.gpuFrameOpen = qfalse;
-}
-
-void VK_PerfGpu_Collect( int slot )
-{
-	uint64_t stamps[VK_GPU_MAX_MARKS];
-	int count, i;
-
-	if ( !vk.gpuPerfReady ) {
-		return;
-	}
-
-	count = vk.gpuMarkCount[slot];
-	vk.gpuMarkCount[slot] = 0;
-
-	if ( count < 2 || !qvk.GetQueryPoolResults ) {
-		return;
-	}
-
-	if ( !VK_Guard_Result( VK_GSITE_QUIRK,
-						   qvk.GetQueryPoolResults( vk.device, vk.gpuQueryPool,
-													(uint32_t)( slot * VK_GPU_MAX_MARKS ), (uint32_t)count,
-													sizeof( stamps ), stamps, sizeof( uint64_t ),
-													VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT ),
-						   "vkGetQueryPoolResults(timestamp)" ) ) {
-		return;
-	}
-
-	/* The interval between two marks belongs to the class the earlier mark
-	   opened, so the bucket is read one index back from the closing stamp. */
-	for ( i = 1; i < count; i++ ) {
-		int		 bucket = vk.gpuMarkBucket[slot][i - 1];
-		uint64_t delta = stamps[i] - stamps[i - 1];
-
-		if ( bucket >= 0 && bucket < VK_GPU_BUCKETS ) {
-			s_gpuBucketUsec[bucket] += (long long)( (double)delta * (double)vk.gpuTimestampPeriod * 0.001 );
-		}
-	}
-
-	s_gpuMarks += count;
-}
-
-void VK_PerfGpu_Take( long long *usecOut, long long *marksOut, long long *hitCapOut )
-{
-	int i;
-
-	for ( i = 0; i < VK_GPU_BUCKETS; i++ ) {
-		usecOut[i] = s_gpuBucketUsec[i];
-		s_gpuBucketUsec[i] = 0;
-	}
-	if ( marksOut ) {
-		*marksOut = s_gpuMarks;
-	}
-	if ( hitCapOut ) {
-		*hitCapOut = s_gpuHitCap;
-	}
-	s_gpuMarks = 0;
-	s_gpuHitCap = 0;
-}
 
 qboolean VK_Frame_Init( void )
 {
@@ -256,44 +134,6 @@ qboolean VK_Frame_Init( void )
 	vk.imagesHeld = 0;
 	vk.swapchainRebuildDue = qfalse;
 
-	/* The GPU pass split needs one timestamp query per mark per slot.  Its
-	   availability is the graphics queue family's own timestampValidBits plus a
-	   usable period; where either is missing the row simply reports no device
-	   split instead of costing anything. */
-	vk.gpuPerfReady = qfalse;
-	vk.gpuQueryPool = VK_NULL_HANDLE;
-	vk.gpuTimestampPeriod = vk.deviceProps.limits.timestampPeriod;
-
-	if ( vk.gpuTimestampPeriod > 0.0f && qvk.CreateQueryPool && qvk.CmdResetQueryPool
-		 && qvk.CmdWriteTimestamp && qvk.GetQueryPoolResults
-		 && qvk.GetPhysicalDeviceQueueFamilyProperties ) {
-		uint32_t				familyCount = 0;
-		uint32_t				validBits = 0;
-		VkQueueFamilyProperties	*families;
-		VkQueryPoolCreateInfo	queryInfo;
-
-		qvk.GetPhysicalDeviceQueueFamilyProperties( vk.physicalDevice, &familyCount, NULL );
-		families = (VkQueueFamilyProperties *)malloc( familyCount * sizeof( *families ) );
-
-		if ( families && familyCount > vk.graphicsFamily ) {
-			qvk.GetPhysicalDeviceQueueFamilyProperties( vk.physicalDevice, &familyCount, families );
-			validBits = families[vk.graphicsFamily].timestampValidBits;
-		}
-		free( families );
-
-		memset( &queryInfo, 0, sizeof( queryInfo ) );
-		queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
-		queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
-		queryInfo.queryCount = VK_FRAMES_IN_FLIGHT * VK_GPU_MAX_MARKS;
-
-		if ( validBits > 0
-			 && VK_Guard_Result( VK_GSITE_QUIRK,
-								 qvk.CreateQueryPool( vk.device, &queryInfo, NULL, &vk.gpuQueryPool ),
-								 "vkCreateQueryPool(timestamp)" ) ) {
-			vk.gpuPerfReady = qtrue;
-		}
-	}
-
 	/* The occlusion queries retail's flare visibility reads.  Same reset
 	   discipline as the timestamps: the slot's own command buffer resets its own
 	   half, before the render pass opens. */
@@ -314,10 +154,6 @@ qboolean VK_Frame_Init( void )
 		} else {
 			vk.flareQueryPool = VK_NULL_HANDLE;
 		}
-	}
-
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:frame", "ready slots=%d images=%u", frames, vk.swapchainImageCount );
 	}
 
 	return qtrue;
@@ -344,7 +180,7 @@ void VK_Flare_QueryCollect( int slot )
 	/* VK_NOT_READY leaves the pairs undefined: reading them gave the precise tier stack garbage */
 	uint32_t	out[VK_FLARE_QUERIES * 2] = { 0 };
 	VkResult	result;
-	int			i, ready = 0, drawing = 0;
+	int			i;
 
 	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
 		return;
@@ -369,22 +205,9 @@ void VK_Flare_QueryCollect( int slot )
 		if ( out[i * 2 + 1] ) {
 			s_flareQueryValid[slot][i]   = qtrue;
 			s_flareQuerySamples[slot][i] = out[i * 2];
-			ready++;
-			if ( out[i * 2] ) {
-				drawing++;
-			}
 		}
 	}
 
-	if ( R_ProbeStatsOn() ) {
-		static int s_rows;
-
-		if ( s_rows < 8 || ( s_rows % 300 ) == 0 ) {
-			VK_Guard_Row( "VK:flareq", "slot=%d ready=%d drawing=%d f=%d",
-						  slot, ready, drawing, RB_FrameCount() );
-		}
-		s_rows++;
-	}
 }
 
 void VK_Flare_QueryReset( int slot )
@@ -468,13 +291,6 @@ void VK_Frame_Shutdown( void )
 
 	VK_Flare_QueryShutdown();
 
-	if ( vk.gpuQueryPool != VK_NULL_HANDLE && qvk.DestroyQueryPool ) {
-		qvk.DestroyQueryPool( vk.device, vk.gpuQueryPool, NULL );
-	}
-	vk.gpuQueryPool = VK_NULL_HANDLE;
-	vk.gpuPerfReady = qfalse;
-	memset( vk.gpuMarkCount, 0, sizeof( vk.gpuMarkCount ) );
-
 	/* Every pool the renderer created, the frame pool included, dies in one
 	   place.  RE_Shutdown joined the render thread before this, so no buffer
 	   can still be recorded from a pool that is being destroyed. */
@@ -524,7 +340,7 @@ qboolean VK_Frame_Begin( int slot )
 		if ( vk.fenceRetired[slot] ) {
 			vk.fenceRetired[slot] = qfalse;
 		} else if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) ) {
-			VK_Guard_Row( "VK:frame", "begin-without-submit slot=%d f=%d", slot, RB_FrameCount() );
+
 		}
 	} else {
 		result = VK_Sync_WaitForFences( vk.fences[slot], VK_FALSE, "frame-fence", "frame" );
@@ -533,17 +349,11 @@ qboolean VK_Frame_Begin( int slot )
 		}
 		vk.fencePending[slot] = qfalse;
 
-		/* The slot's fence has signalled, so its timestamps are resolvable and
-		   no wait is added by reading them. */
-		VK_PerfGpu_Collect( slot );
 	}
 
 	{
-		long long openT0 = VK_WALK_T0();
-
 		if ( !VK_Guard_Result( VK_GSITE_FENCE, VK_Fence_ResetResult( vk.fences[slot] ),
 							   "vkResetFences" ) ) {
-			VK_WALK_ADD( openT0, VK_WP_OPEN );
 			return qfalse;
 		}
 
@@ -554,10 +364,8 @@ qboolean VK_Frame_Begin( int slot )
 		if ( !VK_Guard_Result( VK_GSITE_SYNC,
 							   qvk.BeginCommandBuffer( vk.commandBuffers[slot], &beginInfo ),
 							   "vkBeginCommandBuffer" ) ) {
-			VK_WALK_ADD( openT0, VK_WP_OPEN );
 			return qfalse;
 		}
-		VK_WALK_ADD( openT0, VK_WP_OPEN );
 	}
 
 	vk.acquired = qfalse;
@@ -646,7 +454,7 @@ qboolean VK_Frame_Acquire( int slot )
 	/* Android replaced the ANativeWindow across suspend and the driver is not obliged to report SURFACE_LOST for a surface whose window is gone,
 	   so the window identity -- not an error return -- is the deterministic signal; rebinding before the acquire costs one compare per frame. */
 	if ( vk.swapchain != VK_NULL_HANDLE && VK_Surface_WindowChanged() ) {
-		VK_Guard_Row( "VK:surface", "rebind window f=%d", RB_FrameCount() );
+
 		if ( !VK_Swapchain_Recreate( (int)vk.swapchainExtent.width, (int)vk.swapchainExtent.height ) ) {
 			return qfalse;
 		}
@@ -697,8 +505,7 @@ qboolean VK_Frame_Acquire( int slot )
 	   next walk retries from a state that has an image to take. */
 	if ( result == VK_TIMEOUT || result == VK_NOT_READY ) {
 		if ( VK_TraceOn( VK_TRACE_CVAR, 1 ) ) {
-			VK_Guard_Row( "VK:frame", "acquire-empty slot=%d %s f=%d", slot,
-						  VK_Guard_ResultName( result ), RB_FrameCount() );
+
 		}
 		return qfalse;
 	}
@@ -875,11 +682,6 @@ qboolean VK_Frame_RecordBegin( int slot )
 	beginInfo.clearValueCount = 2;
 	beginInfo.pClearValues = clearValues;
 
-	/* The pool is reset and the frame's first timestamp written here, before the
-	   pass opens: CmdResetQueryPool is legal outside a render pass, and the
-	   clear the pass performs is then the first interval. */
-	VK_PerfGpu_FrameBegin( slot );
-
 	/* the last complete answers are read before this frame's reset is recorded */
 	VK_Flare_QueryCollect( slot );
 
@@ -937,13 +739,9 @@ void VK_Frame_RecordEnd( int slot )
 		   it belongs inside the pass: the load op left the plane undefined, so
 		   the texels would otherwise be whatever the last presented frame held. */
 		VK_DeferredClear_Flush( vk.commandBuffers[slot] );
-		/* The flush is what records the 2D batch's draws, so the terminal
-		   timestamp comes after it: the UI interval has to contain them. */
-		VK_PerfGpu_FrameEnd( slot );
 		qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
 		/* after the pass, never inside it: an attachment may not be a copy source
 		   while a render pass records against it */
-		VK_Target_StencilCopy( vk.commandBuffers[slot] );
 		/* Ending the buffer belongs with ending the pass, so the present path and
 		   the retire path both leave the command buffer in the same state: ended
 		   once, ready to submit. */
@@ -963,10 +761,9 @@ void VK_Frame_Retire( int slot )
 	}
 
 	if ( vk.commandBuffers[slot] != VK_NULL_HANDLE && qvk.EndCommandBuffer ) {
-		VK_Guard_Row( "VK:frame", "retire-pass slot=%d f=%d", slot, RB_FrameCount() );
+
 		RB_2D_Flush();
 		VK_DeferredClear_Flush( vk.commandBuffers[slot] );
-		VK_PerfGpu_FrameEnd( slot );
 		if ( qvk.CmdEndRenderPass ) {
 			qvk.CmdEndRenderPass( vk.commandBuffers[slot] );
 		}
@@ -1074,7 +871,6 @@ qboolean VK_Frame_Present( int slot )
 
 	/* the plane the frame just wrote is counted here, while its submission is the
 	   one this slot's fence names; the present does not depend on the answer */
-	VK_Target_StencilReadback( slot );
 
 	memset( &presentInfo, 0, sizeof( presentInfo ) );
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1085,6 +881,14 @@ qboolean VK_Frame_Present( int slot )
 	presentInfo.pImageIndices = &vk.acquiredImage;
 
 	result = VK_Queue_Present( vk.presentQueue, &presentInfo );
+
+	/* One sample per frame the walk hands to the display.  It is taken here,
+	   after the present call and before any recovery path, so the interval
+	   measures the pacing the player sees rather than the front end's own
+	   cadence; a failed present still counts as the frame it was. */
+	R_FrameStats_Present( "vulkan", VK_Swapchain_PresentModeName(),
+						  ( r_swapInterval == NULL || r_swapInterval->integer != 0 ) ? 1 : 0,
+						  tr.frontEndMsec, backEnd.backEndMsec );
 
 	/* SUBOPTIMAL means the image went to the presentation engine, so it is back
 	   in the pool and the held count drops.  OUT_OF_DATE means it may not have,

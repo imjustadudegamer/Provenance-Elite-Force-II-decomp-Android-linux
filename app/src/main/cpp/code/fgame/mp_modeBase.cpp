@@ -30,9 +30,6 @@
 #include "weaputils.h"
 extern Event EV_Player_DeadBody;  
 
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
 
 const float	MultiplayerModeBase::_defaultStartinghealth = 100.0f;
 const int	MultiplayerModeBase::_defaultPointsPerKill = 1;
@@ -875,27 +872,9 @@ bool MultiplayerModeBase::shouldStartMatch( void )
 
 	if ( numPlayers < mp_minPlayers->integer )
 	{
-		{
-			static int n = 0;
-			if (PROBE_Throttle(&n, 4, 500)) {
-				PROBE(
-					"npc:warmup",
-					"BLOCKED minPlayers: numPlayers=%d mp_minPlayers=%d warmupElapsed=%d",
-					numPlayers,
-					mp_minPlayers->integer,
-					(int)(multiplayerManager.getTime() - (_matchStartTime + mp_warmUpTime->value))
-				);
-			}
-		}
 		return false;
 	}
 
-	PROBE(
-		"npc:warmup",
-		"WARMUP DONE -> startMatch: numPlayers=%d maxPlayers=%d",
-		numPlayers,
-		(int)_maxPlayers
-	);
 	return true;
 }
 
@@ -946,8 +925,6 @@ void MultiplayerModeBase::startMatch( void )
 
 	_gameStarted = true;
 	multiplayerManager.allowFighting( true );
-
-	PROBE("npc:matchstart", "startMatch: _maxPlayers=%d", (int)_maxPlayers);
 
 
 	for ( i = 0 ; i < ( int )_maxPlayers ; i++ )
@@ -1019,39 +996,6 @@ Player *MultiplayerModeBase::getPlayer( int entnum )
 
 	return (Player *)g_entities[ entnum ].entity;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void MultiplayerModeBase::score( const Player *player )
@@ -1229,7 +1173,6 @@ void MultiplayerModeBase::getSpawnpoints( void )
 		deathmatchStart = ( PlayerDeathmatchStart * )G_FindClass( deathmatchStart, "info_player_deathmatch" );
 	}
 }
-
 
 
 void MultiplayerModeBase::_beginMatch()

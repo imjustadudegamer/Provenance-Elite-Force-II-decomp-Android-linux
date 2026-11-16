@@ -24,10 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "ui_local.h"
 #include "../qcommon/stringresource.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
-#define PROBE_PRINT                       Com_Printf
-#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)  
-#include "../qcommon/qa_probe.h"
 
 Event EV_UILabel_LinkString
 (
@@ -227,29 +223,6 @@ void UILabel::Draw(void)
         string = "";
     }
 
-    if (!strcmp(getName(), "prologueText") || !strcmp(getName(), "prologueText2")) {
-        static int paint_lbl;
-
-        if (PROBE_On() && PROBE_Throttle(&paint_lbl, 4, 300)) {
-            PAINT_PROBE(
-                "text:label",
-                "label='%s' labelLen=%d titleLen=%d labeltextLen=%d cvarnameLen=%d "
-                "srcLen=%d frame=(%.1f,%.1f %.1fx%.1f) virtual=%d keyframes=%d mwcIndex=%d",
-                getName(),
-                (int)label.length(),
-                (int)m_title.length(),
-                (int)m_labelText.length(),
-                (int)m_cvarname.length(),
-                string ? (int)strlen(string) : -1,
-                (double)m_frame.pos.x,
-                (double)m_frame.pos.y,
-                (double)m_frame.size.width,
-                (double)m_frame.size.height,
-                m_bVirtual ? 1 : 0,
-                m_mover ? m_mover->NumCommands() : 0,
-                m_mover ? m_mover->CurrentCommand() : 0);
-        }
-    }
 
     if (string && *string) {
         char converted[0x400];

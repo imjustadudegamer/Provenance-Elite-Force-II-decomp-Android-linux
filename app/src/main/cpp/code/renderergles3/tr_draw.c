@@ -24,9 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_local.h"
 #include "gles3_g1_api.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 vec4_t r_colorWhite = { 1.0, 1.0, 1.0, 1.0 };
 
@@ -108,9 +105,9 @@ static int		s_d2Drops;
 
 static qboolean D2_On( void ) {
 	if ( !s_d2Cvar ) {
-		s_d2Cvar = ri.Cvar_Get( "d2_stallStats", "1", 0 );
+		s_d2Cvar = ri.Cvar_Get( "d2_stallStats", "0", 0 );
 	}
-	return ( PROBE_On() && s_d2Cvar && s_d2Cvar->integer ) ? qtrue : qfalse;
+	return ( s_d2Cvar && s_d2Cvar->integer ) ? qtrue : qfalse;
 }
 
 static int D2_T0( void ) {
@@ -335,15 +332,6 @@ void RB_2D_Flush( void ) {
 	   parked the walk first (R_FlushRenderCommands, the font run's fallback); one
 	   that has not is drawing under the render thread's hands, and the batch it
 	   catches is closed with its quads never issued. */
-	if ( PROBE_On() && glConfig.smpActive && !GLimp_IsRenderThread()
-		 && !GLimp_GLMainOwnsContext() && !RB_SerialIssueActive() ) {
-		static int	s_rows;
-
-		if ( s_rows < 8 || ( s_rows % 256 ) == 0 ) {
-			ri.Printf( PRINT_ALL, "[2D:thread] flush off the render thread f=%d\n", RB_FrameCount() );
-		}
-		s_rows++;
-	}
 
 	if ( s_2dBatchOpen ) {
 		int	verts;
@@ -381,7 +369,6 @@ void RB_2D_Flush( void ) {
 		s_d2Batches++;
 
 		RB_EndSurface();
-		GLES3_GlErrAt( "2d_tess_flush" );
 	}
 	if ( s_2dTriOpen ) {
 		int	got;
@@ -417,7 +404,6 @@ void RB_2D_Flush( void ) {
 
 		s_d2VertsDrawn += got;
 		RB_ImmFlush();
-		GLES3_GlErrAt( "2d_box_flush" );
 	}
 }
 
@@ -809,12 +795,6 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 		/* The 3D view is still what is on screen here: the viewport has not been
 		   moved and no 2D quad has been issued since it finished.  The rect comes
 		   from a live query, so it is only asked for while the readback runs. */
-		if ( GLES3_PixelProbeWanted() ) {
-			GLint	vp[4];
-
-			qglGetIntegerv( GL_VIEWPORT, vp );
-			GLES3_PixelProbe( "view", vp[0] + vp[2] / 2 - 8, vp[1] + vp[3] / 2 - 8, 16, 16 );
-		}
 
 		backEnd.refdef.time = ri.Milliseconds();
 		backEnd.in2D = qtrue;
@@ -856,7 +836,6 @@ void RB_2D_SetWindow( int x, int y, int w, int h, float left, float right, float
 
 	qglViewport(x, y, w, h);
 	qglScissor(x, y, w, h);
-	SMP_VpProbe( "2d", "Set2DWindow/arg", x, y, w, h, 0, qtrue );
 	RB_LoadIdentityProjection();
 	RB_OrthoProjection(left, right, bottom, top, n, f);
 	RB_LoadIdentityModelView();
@@ -882,7 +861,6 @@ void RB_2D_Scissor( int x, int y, int width, int height ) {
 	RB_2D_Flush();
 
 	RB_2D_ScissorApplied( x, y, width, height );
-	SMP_VpProbe( "scissor", "RE_Scissor/arg", x, y, width, height, 0, qfalse );
 }
 
 void RB_2D_ShaderTime( float startTime ) {

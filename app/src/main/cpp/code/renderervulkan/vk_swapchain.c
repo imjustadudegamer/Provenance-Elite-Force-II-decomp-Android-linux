@@ -32,6 +32,7 @@ root, for more details.
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "vk_local.h"
+#include "../renderercommon/tr_frame_stats.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,6 +86,11 @@ static const char *VK_PresentModeName( VkPresentModeKHR mode )
 	case VK_PRESENT_MODE_FIFO_RELAXED_KHR:	return "FIFO_RELAXED";
 	default:								return "FIFO";
 	}
+}
+
+const char *VK_Swapchain_PresentModeName( void )
+{
+	return VK_PresentModeName( vk.presentMode );
 }
 
 /* The first mode in the preference list the surface actually reports, FIFO last: it is
@@ -284,7 +290,6 @@ qboolean VK_Swapchain_CreateViews( void )
 							   "vkCreateImageView(swapchain)" ) ) {
 			return qfalse;
 		}
-		VK_Life_NoteCreate( VK_LIFE_VIEW );
 	}
 
 	return qtrue;
@@ -345,20 +350,14 @@ qboolean VK_Swapchain_Create( const vkSwapchainPlan_t *plan )
 	vk.swapchainFormat = plan->format.format;
 	vk.swapchainColorSpace = plan->format.colorSpace;
 	vk.swapchainExtent = plan->extent;
+	vk.presentMode = plan->presentMode;
+
+	/* a rebuilt swapchain is not a frame: the next present starts a new
+	   interval instead of inheriting the gap the rebuild spent */
+	R_FrameStats_Reset();
 
 	if ( !VK_Swapchain_CreateViews() ) {
 		return qfalse;
-	}
-
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:swapchain",
-					  "created images=%u %ux%u format=%d present=%s currentExtent=%ux%u currentTransform=0x%x supportedTransforms=0x%x preTransform=0x%x",
-					  vk.swapchainImageCount,
-					  plan->extent.width, plan->extent.height,
-					  (int)plan->format.format, VK_PresentModeName( plan->presentMode ),
-					  plan->currentExtent.width, plan->currentExtent.height,
-					  (unsigned)plan->currentTransform, (unsigned)plan->supportedTransforms,
-					  (unsigned)plan->preTransform );
 	}
 
 	return qtrue;
@@ -378,7 +377,6 @@ void VK_Swapchain_Destroy( void )
 		for ( i = 0; i < vk.swapchainImageCount; i++ ) {
 			if ( vk.swapchainViews[i] != VK_NULL_HANDLE ) {
 				qvk.DestroyImageView( vk.device, vk.swapchainViews[i], NULL );
-				VK_Life_NoteDestroy( VK_LIFE_VIEW );
 			}
 		}
 	}

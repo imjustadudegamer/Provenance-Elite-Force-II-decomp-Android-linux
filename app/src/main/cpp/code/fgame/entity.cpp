@@ -49,12 +49,8 @@
 #include "../script/scriptvariable.h"
 #include "sentient.h"
 #include "../qcommon/gameplaymanager.h"
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
 #include <time.h>
 
-#define GRS_NOW() ( PROBE_On() ? ( long long )clock() * 1000000LL / CLOCKS_PER_SEC : 0 )
 #include "misc.h"
 #include "specialfx.h"
 #include "object.h"
@@ -67,7 +63,6 @@
 #include "g_spawn.h"
 #include "g_phys.h"
 #include "debuglines.h"
-#include "smp_spawnstats.h"
 #include "groupcoordinator.h"
 #include "earthquake.h"  
 #include "usedata.h"     
@@ -91,7 +86,6 @@ Event EV_ClientEndFrame (	"client_endframe",
 	NULL,
 	"Called at the end of each frame for each client."
 	);
-
 
 
 Event EV_Classname (    "classname",
@@ -919,10 +913,6 @@ Event EV_NetworkDetail (    "networkDetail",
     "Sets this entity as detail that doesn't get sent across the network of set as low bandwidth by the client");
 
 
-
-
-
-
 Event EV_DamageType
 (
 	"damage_type",
@@ -1172,8 +1162,6 @@ void Entity::SetObjectProgram
 		return;
 
 	ObjectProgram->Load( ev->GetString( 1 )  );
-
-
 
 
 	}
@@ -1767,8 +1755,6 @@ CLASS_DECLARATION(Listener, Entity, NULL) {
 	}
 ;
 
-static int uivk_layout_loadctor_frame = -1;
-
 Entity::Entity()
 {
     total_delta = Vector(0, 0, 0);  
@@ -1850,20 +1836,6 @@ Entity::Entity()
 
     lightRadius = 0;
 
-    if (UIVK_EntTrashOn() && LoadingSavegame) {
-        if (uivk_layout_loadctor_frame > level.framenum) {
-            uivk_layout_loadctor_frame = -1; 
-        }
-        if (uivk_layout_loadctor_frame < 0) {
-            uivk_layout_loadctor_frame = level.framenum;
-            gi.Printf("[UIVK:LAYOUT:loadctor] ent=%d class='%s' movetype=%d mass=%d "
-                      "gravity=%f health=%f flags=%d solid=%d\n",
-                      entnum,
-                      getClassname() ? getClassname() : "?",
-                      movetype, mass, gravity, health, flags,
-                      edict ? (int)edict->solid : -1);
-        }
-    }
 }
 
 Entity::Entity(int create_flag)
@@ -1960,7 +1932,6 @@ void Entity::ClassnameEvent(Event *ev)
 {
     strncpy(edict->entname, ev->GetString(1), sizeof(edict->entname) - 1);
 }
-
 
 
 qboolean Entity::MorphChannelMatches(int morph_channel1, int morph_channel2)
@@ -2316,9 +2287,6 @@ void Entity::GetHealth(Event *ev)
 }
 
 
-
-
-
 void Entity::SetKillTarget(const char *text)
 {
     if (text) {
@@ -2333,7 +2301,6 @@ void Entity::setModel(const char *mdl)
 {
     str temp;
 
-    SMP_SP_BEGIN( model );
 
     if (LoadingSavegame && (this == world)) {
         return;
@@ -2354,39 +2321,18 @@ void Entity::setModel(const char *mdl)
 
     /* The model leg is the restore's whole cost and this is the engine call inside it, so it
        carries its own split rather than letting the leg report one number for four different jobs. */
-    long long leg0 = GRS_NOW();
     {
-        long long st0 = GRS_NOW();
 
         setModel();
 
-        g_restoreSplitUs[GRS_SETMODEL] += GRS_NOW() - st0;
-        g_restoreSplitN[GRS_SETMODEL]++;
     }
 
     if (gi.IsModel(edict->s.modelindex)) {
-        long long ns0 = GRS_NOW();
 
         numsurfaces = gi.NumSurfaces(edict->s.modelindex);
 
-        g_restoreSplitUs[GRS_NUMSURF] += GRS_NOW() - ns0;
-        g_restoreSplitN[GRS_NUMSURF]++;
 
         /* The aggregate names the call; only this names the model. */
-        if (PROBE_On() && LoadingSavegame) {
-            long long leg = GRS_NOW() - leg0;
-
-            if (leg >= 10000) {
-                static int s_rows;
-
-                s_rows++;
-                if (s_rows <= 48 || (s_rows % 32) == 0) {
-                    WIDGET_PROBE("archive",
-                        "model leg %dus idx=%d surf=%d '%s'\n",
-                        ( int )leg, edict->s.modelindex, numsurfaces, model.c_str());
-                }
-            }
-        }
 
         if (!LoadingSavegame) {
             Event *ev;
@@ -2441,7 +2387,6 @@ void Entity::setModel(const char *mdl)
         player->LoadStateTable();
     }
 
-    SMP_SP_END( model );
 }
 
 void Entity::setModel(const str& mdl)
@@ -2742,7 +2687,6 @@ void Entity::setOriginEveryFrame(Event *ev)
 }
 
 
-
 void Entity::GetRawTag(int tagnum, orientation_t *orient, bodypart_t part)
 {
     int anim;
@@ -2850,9 +2794,6 @@ qboolean Entity::GetTag(const char *name, Vector *pos, Vector *forward, Vector *
     GetTag(tagnum, pos, forward, left, up);
     return true;
 }
-
-
-
 
 
 void Entity::addAngles(Vector add)
@@ -3051,17 +2992,6 @@ void Entity::DamageEvent(Event *ev)
         return;
     }
 
-    if (gi.cvar("qa_probe", "0", 0)->integer && (isSubclassOf(Actor) || isClient())) {
-        gi.Printf("[UIVK:dmg] tgt=%d atk=%d mod=%d(%s) amt=%.1f hp=%.1f wasdead=%d vic=%s\n",
-                  entnum,
-                  attacker->entnum,
-                  ev->GetInteger(9),
-                  MOD_NumToName(ev->GetInteger(9)),
-                  damage,
-                  health,
-                  deadflag ? 1 : 0,
-                  getClassname());
-    }
 
     if ((inflictor != world) && (movetype != MOVETYPE_NONE) && (movetype != MOVETYPE_STATIONARY)
         && (movetype != MOVETYPE_BOUNCE) && (movetype != MOVETYPE_PUSH) && (movetype != MOVETYPE_STOP)) {
@@ -3150,9 +3080,6 @@ qboolean Entity::IsTouching(const Entity *e1)
 
     return true;
 }
-
-
-
 
 
 void Entity::FadeNoRemove(Event *ev)
@@ -3340,9 +3267,6 @@ const str Entity::getArchetype() const
 }
 
 
-
-
-
 void Entity::SetEntityExplosionModel(Event *ev)
 {
     explosionModel = ev->GetString(1);
@@ -3508,15 +3432,6 @@ void Entity::CreateEarthquake(Event *ev)
 
     earthquake = new Earthquake;
 
-    {
-        static int uivk_dfx_n;
-        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 32, 32)) {
-            PROBE("DFX:quake-create", "ent=%d model='%s' mag=%.3f dur=%.3f dist=%.1f org=(%.1f,%.1f,%.1f)\n",
-                       entnum, model.c_str(), magnitude, duration, distance,
-                       origin[0], origin[1], origin[2]);
-        }
-    }
-
     newEvent = new Event(EV_SetOrigin);
     newEvent->AddVector(origin);
     earthquake->ProcessEvent(newEvent);
@@ -3536,14 +3451,6 @@ void Entity::CreateEarthquake(Event *ev)
     }
 
     earthquake->ProcessEvent(EV_Trigger_Effect);
-
-    {
-        static int uivk_dfx_n;
-        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 32, 32)) {
-            PROBE("DFX:quake-dispatch", "ent=%d registered_on_level=%d\n",
-                       entnum, earthquake->EarthquakeActive() ? 1 : 0);
-        }
-    }
 
     earthquake->PostEvent(EV_Remove, duration);
 }
@@ -3611,23 +3518,6 @@ Entity *Entity::SpawnEffect(const str& name, const Vector& spawnOrigin, const Ve
 
     newEntity->animate->RandomAnimate("idle");
 
-    if (PROBE_On()) {
-        UIVK_PROBE(
-            "BEAMFX:sv-spawn",
-            "ent=%d model='%s' mi=%d scale=0x%08x(%.3f) origin=(%.1f,%.1f,%.1f) remove=%.3f "
-            "parent=%d\n",
-            newEntity->entnum,
-            modelName.c_str(),
-            newEntity->edict->s.modelindex,
-            *(unsigned int *)&newEntity->edict->s.scale,
-            (double)newEntity->edict->s.scale,
-            newEntity->origin[0],
-            newEntity->origin[1],
-            newEntity->origin[2],
-            removeTime,
-            newEntity->edict->s.parent
-        );
-    }
 
     return newEntity;
 }
@@ -3884,12 +3774,6 @@ void Entity::removeAffectingViewModes(unsigned int mask)
 }
 
 
-
-
-
-
-
-
 void Entity::SetAngles(Event *ev)
 {
     setAngles(ev->GetVector(1));
@@ -3999,32 +3883,6 @@ void Entity::GetStringVar(Event *ev)
         ev->ReturnString("");
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void Entity::ForceAlpha(Event *ev)
@@ -4303,24 +4161,6 @@ void Entity::DisplayEffect(Event *ev)
 
                 currentEffectPos = effectPos;
 
-                UIVK_PROBE(
-                    "BEAMFX:disp-in",
-                    "obj='%s' fx='%s' pos='%s' nfx=%d attach=%d etime=%.3f ttime=%.3f "
-                    "host=%d hostscale=0x%08x(%.3f) hostorg=(%.1f,%.1f,%.1f)\n",
-                    gameplayObjectName.c_str(),
-                    effectTikiName.c_str(),
-                    effectPos.c_str(),
-                    numEffects,
-                    attach,
-                    effectTime,
-                    transportTime,
-                    entnum,
-                    *(unsigned int *)&edict->s.scale,
-                    (double)edict->s.scale,
-                    origin[0],
-                    origin[1],
-                    origin[2]
-                );
 
                 for (i = 0; i < numEffects; i++)
                 {
@@ -5199,23 +5039,6 @@ void Entity::SetControllerAngles(int num, const vec3_t newAngles)
         return;
     }
 
-    {
-        static int aim_rows;
-
-        /* head and torso slots: player HEAD/TORSO 0/1, actor MOUTH/HEAD/TORSO 0/1/2 */
-        if (num <= 2 && aim_rows < 200 && gi.cvar("qa_probe", "0", 0)->integer) {
-            aim_rows++;
-            gi.Printf(
-                "[AIM:head] ent=%d slot=%d tag=%d aim=(%.2f,%.2f,%.2f)\n",
-                edict->s.number,
-                num,
-                edict->s.bone_tag[num],
-                newAngles[0],
-                newAngles[1],
-                newAngles[2]
-            );
-        }
-    }
 
     VectorCopy(newAngles, edict->s.bone_angles[num]);
     EulerToQuat(edict->s.bone_angles[num], edict->s.bone_quat[num]);
@@ -6653,18 +6476,6 @@ bool    monkeycheck = false;
 cvar_t *thereisnomonkey;
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 void Entity::GetVelocity(Event *ev)
 {
     // retail @0x001B4F20 returns the vector through ReturnVector (this->velocity at +220).
@@ -6675,19 +6486,6 @@ void Entity::SetVelocity(Event *ev)
 {
     velocity = ev->GetVector(1);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void Entity::LookAtMe(Event *ev)
@@ -6766,11 +6564,6 @@ int Entity::CurrentAnim(int slot) const
 }
 
 
-
-
-
-
-
 int Entity::CurrentFrame(int part) const
 {
     if (animate) {
@@ -6787,9 +6580,7 @@ void Entity::Archive(Archiver& arc)
     qboolean true_bool = true;
     qboolean false_bool = false;
     int      i;
-    long long t0, t1;
 
-    t0 = GRS_NOW();
 
     arc.ArchiveVector(&_localOrigin);  
 
@@ -6800,23 +6591,12 @@ void Entity::Archive(Archiver& arc)
 
     G_ArchiveEdict(arc, edict);
 
-    t1 = GRS_NOW();
-    if (t0) {
-        g_restoreSplitUs[GRS_EDICT] += t1 - t0;
-        g_restoreSplitN[GRS_EDICT]++;
-    }
-    t0 = t1;
 
     arc.ArchiveString(&_archetype);
     if (arc.Loading()) {
         edict->s.archeTypeIndex = gi.archetypeindex(_archetype.c_str());
     }
 
-    t1 = GRS_NOW();
-    if (t0) {
-        g_restoreSplitUs[GRS_ARCHTYPE] += t1 - t0;
-    }
-    t0 = t1;
 
     arc.ArchiveBool(&_missionObjective);  
     arc.ArchiveString(&_targetPos);
@@ -6837,12 +6617,6 @@ void Entity::Archive(Archiver& arc)
         setModel(model.c_str());
     }
 
-    t1 = GRS_NOW();
-    if (t0) {
-        g_restoreSplitUs[GRS_MODEL] += t1 - t0;
-        g_restoreSplitN[GRS_MODEL]++;
-    }
-    t0 = t1;
 
     arc.ArchiveVector(&total_delta);  
     arc.ArchiveVector(&mins);
@@ -6900,12 +6674,6 @@ void Entity::Archive(Archiver& arc)
 
     entityVars.Archive(arc);
 
-    t1 = GRS_NOW();
-    if (t0) {
-        g_restoreSplitUs[GRS_VARS] += t1 - t0;
-        g_restoreSplitN[GRS_VARS]++;
-    }
-    t0 = t1;
 
     arc.ArchiveUnsigned(&_affectingViewModes);
 
@@ -7075,23 +6843,8 @@ void Entity::Archive(Archiver& arc)
         }
     }
 
-    t1 = GRS_NOW();
-    if (t0) {
-        g_restoreSplitUs[GRS_REST] += t1 - t0;
-        g_restoreSplitN[GRS_REST]++;
-    }
 
 }
-
-
-
-
-
-
-
-
-
-
 
 
 void Entity::SetModelEvent(Event *ev)
@@ -7107,25 +6860,6 @@ void Entity::SetModelEvent(Event *ev)
 
     setModel(ev->GetString(1));
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void Entity::setMoveType(Event *ev)
@@ -7847,16 +7581,6 @@ void Entity::setViewModel(const char *mdl)
 }
 
 
-
-
-
-
-
-
-
-
-
-
 void Entity::GetRawTargetName
 	(
 	Event *ev
@@ -7897,10 +7621,6 @@ void Entity::GetTargetName
 	}
 
 
-
-
-
-
 void World::addAvailableViewMode( Event *ev )
 {
 	_availableViewModes.AddUniqueObject( ev->GetString( 1 ) );
@@ -7920,8 +7640,6 @@ void World::removeAvailableViewMode( Event *ev )
 		_availableViewModes.RemoveObject( ev->GetString( 1 ) );
 	}
 }
-
-
 
 
 void ScriptModel::AnimOnceEvent( Event *ev )
@@ -7958,10 +7676,6 @@ void ScriptModel::Think( void )
 }
 
 
-
-
-
-
 bool World::isAnyViewModeAvailable( void )
 {
 	if ( _availableViewModes.NumObjects() )
@@ -7969,8 +7683,6 @@ bool World::isAnyViewModeAvailable( void )
 	else
 		return false;
 }
-
-
 
 
 bool World::isViewModeAvailable( const char *name )
@@ -7988,7 +7700,6 @@ void Entity::CinematicAnimDone
 	{
 	CinematicAnimDone();
 	}
-
 
 
 qboolean Entity::isBoundTo
@@ -8022,7 +7733,6 @@ void Entity::ProcessInitCommands
 
 	{
    tiki_cmd_t cmds;
-   long long t0, t1;
 
    if ( LoadingSavegame && !cache )
       {
@@ -8035,7 +7745,6 @@ void Entity::ProcessInitCommands
       return;
       }
 
-   t0 = GRS_NOW();
 
    if ( gi.InitCommands( index, &cmds ) )
       {
@@ -8074,11 +7783,6 @@ void Entity::ProcessInitCommands
          }
       }
 
-   t1 = GRS_NOW();
-   if ( t0 ) {
-      g_restoreSplitUs[GRS_PROCINIT] += t1 - t0;
-      g_restoreSplitN[GRS_PROCINIT]++;
-   }
 	}
 
 

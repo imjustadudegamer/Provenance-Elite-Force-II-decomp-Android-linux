@@ -24,10 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_local.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
-
 
 #define MAX_MARK_FRAGMENTS 128
 #define MAX_MARK_POINTS    384
@@ -399,25 +395,6 @@ qboolean CG_ImpactMark_PerPolyCallback(const vec3_t *markPoints, markFragment_t 
             v->modulate[3] = pInfo->colors[3];
         }
 
-        {
-            static int faultMarkPlaceRows;
-
-            if (PROBE_On() && PROBE_Throttle(&faultMarkPlaceRows, 24, 400)) {
-                UIVK_PROBE(
-                    "MARK:place",
-                    "n=%d sh=%d '%s' iIndex=%d npts=%d temp=%d org=(%.2f,%.2f,%.2f) "
-                    "dir=(%.3f,%.3f,%.3f) radius=%.4f "
-                    "poly0=(%.2f,%.2f,%.2f) poly1=(%.2f,%.2f,%.2f) polyN=(%.2f,%.2f,%.2f)\n",
-                    faultMarkPlaceRows, pInfo->shader, cgi.R_GetShaderName(pInfo->shader),
-                    mf->iIndex, mf->numPoints, pInfo->temporary,
-                    pInfo->origin[0], pInfo->origin[1], pInfo->origin[2],
-                    pInfo->dir[0], pInfo->dir[1], pInfo->dir[2], pInfo->radius,
-                    verts[0].xyz[0], verts[0].xyz[1], verts[0].xyz[2],
-                    verts[1].xyz[0], verts[1].xyz[1], verts[1].xyz[2],
-                    verts[mf->numPoints - 1].xyz[0], verts[mf->numPoints - 1].xyz[1],
-                    verts[mf->numPoints - 1].xyz[2]);
-            }
-        }
     } else {
         if (!CG_GetMarkInlineModelOrientation(mf->iIndex)) {
             return qfalse;
@@ -443,7 +420,6 @@ qboolean CG_ImpactMark_PerPolyCallback(const vec3_t *markPoints, markFragment_t 
 
     return qtrue;
 }
-
 
 
 void CG_ImpactMark(
@@ -524,59 +500,9 @@ void CG_ImpactMark(
 
     VectorScale(dir, -32, projection);
 
-    if (PROBE_On()) {
-        static int s_iMarkQuadCount = 0;
-
-        if (PROBE_Throttle(&s_iMarkQuadCount, 24, 400)) {
-            UIVK_PROBE(
-                "MARK:quad",
-                "n=%d sh=%d '%s' org=(%.2f,%.2f,%.2f) r=%.4f proj=(%.2f,%.2f,%.2f)"
-                " a1=(%.3f,%.3f,%.3f) a2=(%.3f,%.3f,%.3f)"
-                " P0=(%.2f,%.2f,%.2f) P1=(%.2f,%.2f,%.2f) P2=(%.2f,%.2f,%.2f) P3=(%.2f,%.2f,%.2f)\n",
-                s_iMarkQuadCount, markShader, cgi.R_GetShaderName(markShader),
-                origin[0], origin[1], origin[2], radius,
-                projection[0], projection[1], projection[2],
-                info.axis[1][0], info.axis[1][1], info.axis[1][2],
-                info.axis[2][0], info.axis[2][1], info.axis[2][2],
-                originalPoints[0][0], originalPoints[0][1], originalPoints[0][2],
-                originalPoints[1][0], originalPoints[1][1], originalPoints[1][2],
-                originalPoints[2][0], originalPoints[2][1], originalPoints[2][2],
-                originalPoints[3][0], originalPoints[3][1], originalPoints[3][2]
-            );
-        }
-    }
 
     numFragments = CG_GetMarkFragments(4, originalPoints, projection, markPoints, markFragments, 20.0f);
 
-    if (PROBE_On()) {
-        static int s_iDoccNewRows = 0;
-        static int s_iDoccShader;
-        int        iPts = 0;
-
-        for (i = 0, mf = markFragments; i < numFragments; i++, mf++) {
-            iPts += mf->numPoints;
-        }
-
-        /* A shader the boot has not marked with yet always names itself: the
-           shared cadence is spent on the per-frame shadow mark, and a decal that
-           creates once would otherwise never print the fragment count that
-           splits a dead creation path from a dead draw path. */
-        if (markShader != s_iDoccShader || PROBE_Throttle(&s_iDoccNewRows, 24, 400)) {
-            s_iDoccShader = markShader;
-            UIVK_PROBE(
-                "DOCC:new",
-                "sh=%d '%s' org=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f) radius=%.4f nfrag=%d npts=%d temp=%d\n",
-                markShader,
-                cgi.R_GetShaderName(markShader),
-                origin[0], origin[1], origin[2],
-                dir[0], dir[1], dir[2],
-                radius,
-                numFragments,
-                iPts,
-                temporary ? 1 : 0
-            );
-        }
-    }
 
     /* retail CG_ImpactMark fetches no lighting here: the four channels are one
        255-scaled write and nothing else, so the decal's tint is the entity colour */
@@ -910,39 +836,6 @@ void CG_AddMarks(void)
                 pVert = tmpVerts;
             } else {
                 pVert = pPoly->verts;
-            }
-
-            if (PROBE_On() && pPoly->numVerts > 0 && cg.time - pMark->lastProbeTime > 1000) {
-                vec3_t  vMarkPos;
-                vec3_t  vToView;
-                trace_t trace;
-                float   fDist;
-
-                pMark->lastProbeTime = cg.time;
-
-                if (pPoly->iIndex < 0) {
-                    CG_GetMarkInlineModelOrientation(pPoly->iIndex);
-                    CG_FragmentPosToWorldPos(pPoly->verts[0].xyz, vMarkPos);
-                } else {
-                    VectorCopy(pPoly->verts[0].xyz, vMarkPos);
-                }
-
-                VectorSubtract(cg.refdef.vieworg, vMarkPos, vToView);
-                fDist = VectorNormalize(vToView);
-                cgi.CM_BoxTrace(&trace, vMarkPos, cg.refdef.vieworg, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse);
-
-                UIVK_PROBE(
-                    "DOCC:mark",
-                    "polys=%d iIndex=%d pos=(%.1f,%.1f,%.1f) viewdist=%.1f frac=%.3f startsolid=%d leaf=%d radius=%.1f\n",
-                    pPoly->numVerts,
-                    pPoly->iIndex,
-                    vMarkPos[0], vMarkPos[1], vMarkPos[2],
-                    fDist,
-                    trace.fraction,
-                    trace.startsolid ? 1 : 0,
-                    pMark->leafnum,
-                    pMark->radius
-                );
             }
 
             CG_AddFragmentToScene(pPoly->iIndex, pMark->markShader, pPoly->numVerts, pVert);

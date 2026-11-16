@@ -25,11 +25,6 @@
 #include "navigate.h" 
 #include "gamecvars.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
-
-#define CLIP_PROBE(tag, ...) PROBE_EMIT("[CLIP:", tag, __VA_ARGS__)
 
 Vector MovementSubsystem::_step;
 
@@ -427,41 +422,6 @@ stepmoveresult_t MovementSubsystem::IsMoveValid(
 
     if (horizontalTrace.startsolid || (horizontalTrace.fraction < 0.0001f)) {
         return STEPMOVE_STUCK;
-    }
-
-    if (horizontalTrace.fraction < 1.0f) {
-        static int s_clipActorRows;
-        /* a flat plane under a feet-at-origin actor is the floor answering a ground trace,
-           not a blocker; skip the row so the budget stays for real contacts */
-        if (!(horizontalTrace.plane.normal[2] > 0.99f && act->mins.z == 0.0f)
-            && PROBE_Throttle(&s_clipActorRows, 2000, 100000)) {
-            const char *blocker = "world";
-            if (horizontalTrace.entityNum != ENTITYNUM_WORLD) {
-                blocker = "";
-                if (horizontalTrace.ent && horizontalTrace.ent->entity) {
-                    if (horizontalTrace.ent->entity->targetname.length()) {
-                        blocker = horizontalTrace.ent->entity->targetname.c_str();
-                    } else {
-                        blocker = horizontalTrace.ent->entity->getClassID();
-                    }
-                }
-                if (!blocker || !*blocker) {
-                    blocker = "unnamed";
-                }
-            }
-            CLIP_PROBE("actorblock", "act=%s blocker=%s org=(%.1f %.1f %.1f) "
-                "box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) ground=%d move=(%.1f %.1f) f=%.3f "
-                "n=(%.3f %.3f %.3f) mask=0x%x ent=%d\n",
-                act->getName().c_str(), blocker,
-                act->origin.x, act->origin.y, act->origin.z,
-                act->mins.x, act->mins.y, act->mins.z,
-                act->maxs.x, act->maxs.y, act->maxs.z,
-                act->groundentity ? act->groundentity->s.number : -1,
-                _move.x, _move.y, horizontalTrace.fraction,
-                horizontalTrace.plane.normal[0], horizontalTrace.plane.normal[1],
-                horizontalTrace.plane.normal[2],
-                act->edict->clipmask, horizontalTrace.entityNum);
-        }
     }
 
     if (_isBlockedByDoor(horizontalTrace)) {
@@ -912,7 +872,6 @@ void MovementSubsystem::_saveGroundInformation(trace_t& trace)
 }
 
 
-
 void MovementSubsystem::Archive(Archiver& arc)
 {
 
@@ -948,7 +907,6 @@ void MovementSubsystem::DoArchive(Archiver& arc, Actor *actor)
         gi.Error(ERR_FATAL, "MovementSubsystem::DoArchive -- actor is NULL");
     }
 }
-
 
 
 const Vector& MovementSubsystem::getStep() const  
@@ -1108,8 +1066,5 @@ void MovementSubsystem::clearBlockingEntity()
 {
     _blockingEntity = NULL;
 }
-
-
-
 
 

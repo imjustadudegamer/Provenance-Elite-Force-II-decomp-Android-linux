@@ -1071,17 +1071,6 @@ enum {
 	RB_ARM_ORPHAN		/* armed and mapped, but the frame's fence held */
 };
 
-static const char *RB_ArmWhyName( int why ) {
-	switch ( why ) {
-	case RB_ARM_ASKED:	return "asked";
-	case RB_ARM_UNARMED:	return "r_tessMap 0";
-	case RB_ARM_VETOED:	return "r_tessArena override";
-	case RB_ARM_NOEXT:	return "no GL_EXT_buffer_storage";
-	case RB_ARM_REFUSED:	return "allocation refused";
-	case RB_ARM_ORPHAN:	return "fence held, store skipped";
-	default:			return "unknown";
-	}
-}
 
 static int		s_arenaMapWhy;		/* RB_ARM_*, printed by name */
 static GLenum	s_arenaMapErr;
@@ -1213,13 +1202,6 @@ static void RB_VboArenaMapFrame( void ) {
 		if ( s_arenaMapDead || !RB_VboArenaMapPair( slot ) ) {
 			if ( !s_arenaMapDead ) {
 				s_arenaMapDead = qtrue;
-				if ( R_ProbeStatsOn() ) {
-					ri.Printf( PRINT_ALL,
-							   "[BE:arm] store unmapped (%s glerror=0x%x): sub-data store runs\n",
-							   s_arenaMapWhy == RB_ARM_NOEXT ? "no GL_EXT_buffer_storage"
-												  : "persistent map refused",
-							   (unsigned)s_arenaMapErr );
-				}
 			}
 			s_arenaFull   = qtrue;
 			s_arenaActive = qfalse;
@@ -1344,7 +1326,6 @@ void RB_VBO_BeginFrame( void ) {
 	{
 		int	legacy = s_arenaCvar ? s_arenaCvar->integer : 0;
 		int	map    = s_mapCvar ? s_mapCvar->integer : 0;
-		int	mode;
 
 		/* `r_tessMap' is the switch, so the `r_tessArena' override may NAME an arm but not VETO the
 		   switch: the old `map && legacy != 1 && legacy != 2' let a `r_tessArena 2' left in a config by
@@ -1367,28 +1348,11 @@ void RB_VBO_BeginFrame( void ) {
 			}
 		}
 
-		mode = s_arenaMapped ? 2 : ( legacy ? legacy : 0 );
 
 		/* Every capture must be able to say which arm ran. The row names the resolution once, on any
 		   change and every 600 frames. `ran=` is what the previous frame used, not the intent: 0.3.20
 		   said "mapped" for a whole session while every [BE:send] window read arena=0. `carried=` and
 		   `orphans=` are the store's own session totals. */
-		if ( R_ProbeStatsOn() && ( !s_armPrinted || s_armMode != mode || ( RB_FrameCount() % 600 ) == 0 ) ) {
-			ri.Printf( PRINT_ALL,
-					   "[BE:arm] store: map=%d legacy=%d fresh=%d -> %s ran=%d dead=%d"
-					   " why=%d %s(0x%x) carried=%d orphans=%d f=%d\n",
-					   map, legacy, s_freshLatched ? ( s_fresh ? 1 : 0 ) : ( s_freshCvar ? s_freshCvar->integer : 0 ),
-					   s_arenaMapped ? "mapped"
-					   : s_arenaArmed ? "sub-data store"
-					   : ( legacy == 1 ) ? "per-frame store"
-					   : ( legacy == 2 ) ? "a/b" : "ring",
-					   RB_VboArenaMode(), s_arenaMapDead ? 1 : 0,
-					   s_arenaMapWhy, RB_ArmWhyName( s_arenaMapWhy ),
-					   (unsigned)s_arenaMapErr, s_arenaMapBatches, s_arenaMapOrphans,
-					   RB_FrameCount() );
-			s_armPrinted = qtrue;
-			s_armMode    = mode;
-		}
 	}
 
 	if ( s_arenaCvar->integer == 2 ) {
@@ -1396,10 +1360,6 @@ void RB_VBO_BeginFrame( void ) {
 
 		if ( on != s_arenaAlternate ) {
 			s_arenaAlternate = on;
-			if ( R_ProbeStatsOn() ) {
-				ri.Printf( PRINT_ALL, "[BE:arm] r_tessArena A/B -> %s f=%d\n",
-						   on ? "store" : "ring", RB_FrameCount() );
-			}
 		}
 		if ( !on ) {
 			s_arenaActive = qfalse;
@@ -1443,11 +1403,6 @@ void RB_VBO_BeginFrame( void ) {
 		if ( vWant > s_arenaVboBytes || iWant > s_arenaEboBytes ) {
 			s_arenaVboBytes = vWant > s_arenaVboBytes ? vWant : s_arenaVboBytes;
 			s_arenaEboBytes = iWant > s_arenaEboBytes ? iWant : s_arenaEboBytes;
-			if ( R_ProbeStatsOn() ) {
-				ri.Printf( PRINT_ALL, "[BE:arm] store re-sized to %d/%d KiB f=%d\n",
-						   (int)( s_arenaVboBytes / 1024 ), (int)( s_arenaEboBytes / 1024 ),
-						   RB_FrameCount() );
-			}
 			RB_VboArenaShutdown();
 			s_arenaMapDead = mapDead;
 			s_arenaMapErr  = mapErr;
@@ -1729,217 +1684,8 @@ qboolean RB_VboImmSend( int numVertexes, const glIndex_t *indices, int numIndice
 void RB_VboImmDone( void ) {
 }
 
-/* ---- [GLES3:pixd] what one 3D draw adds to the framebuffer --------------- The menu's 3D view
-   submits 13 draws a frame whose counts, order, blend and clear all match retail's own captured
-   frame, and the screen keeps the 2D background. A submit that reaches no pixel is invisible from
-   the command list, so the first "menu/" draw of a frame is followed by one small readback plus
-   the live GL state it ran under; GLES3_ModelPixelAtSwap re-reads it. */
-static int	s_menuProbeX, s_menuProbeY, s_menuProbeR, s_menuProbeG, s_menuProbeB;
-static qboolean s_menuProbeRect;
-
-static void RB_MenuDrawProbe( const shaderCommands_t *input, int numIndexes )
-{
-	static int	s_frame;
-	static int	s_rows;
-	GLint		vp[4], sc[4];
-	GLint		src, dst, dfn, cullmode, frontface;
-	GLint		attr[5];
-	GLint		curProg, atest;
-	GLfloat		drange[2], dclear, poffFactor, poffUnits, zbuf[8 * 8];
-	GLfloat		zsum;
-	GLuint		zraw[8 * 8];
-	qboolean	depthOk;
-	GLint		dbits;
-	GLboolean	dtest, dmask, blend, cullen, poff;
-	GLboolean	dmaskRaw, stenRaw;
-	GLint		sfunc, sref, smask;
-	GLfloat		sclear;
-	GLuint		errBefore, errAfter;
-	byte		buf[8 * 8 * 4];
-	int			x, y, w, h, i, n, r, g, b, a;
-
-	if ( !R_ProbeStatsOn() || backEnd.in2D || !input || !input->shader ) {
-		return;
-	}
-	if ( Q_stricmpn( input->shader->name, "menu/", 5 ) ) {
-		return;
-	}
-	if ( numIndexes <= 0 ) {
-		return;
-	}
-	if ( (int)RB_FrameCount() == s_frame ) {
-		return;
-	}
-	s_frame = (int)RB_FrameCount();
-	s_rows++;
-	if ( s_rows > 4 && ( s_rows % 240 ) != 0 ) {
-		return;
-	}
-
-	qglGetIntegerv( GL_VIEWPORT, vp );
-	qglGetIntegerv( GL_SCISSOR_BOX, sc );
-	w = 8;
-	h = 8;
-	n = w * h;
-	x = vp[0] + ( vp[2] - w ) / 2;
-	y = vp[1] + ( vp[3] - h ) / 2;
-
-	qglGetIntegerv( GL_BLEND_SRC_RGB, &src );
-	qglGetIntegerv( GL_BLEND_DST_RGB, &dst );
-	qglGetIntegerv( GL_DEPTH_FUNC, &dfn );
-	qglGetIntegerv( GL_CULL_FACE_MODE, &cullmode );
-	qglGetIntegerv( GL_FRONT_FACE, &frontface );
-	dtest = qglIsEnabled( GL_DEPTH_TEST );
-	qglGetBooleanv( GL_DEPTH_WRITEMASK, &dmaskRaw );
-	dmask = dmaskRaw;
-	blend = qglIsEnabled( GL_BLEND );
-	cullen = qglIsEnabled( GL_CULL_FACE );
-	for ( i = 0; i < 5; i++ ) {
-		qglGetVertexAttribiv( ATTR_POSITION + i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &attr[i] );
-	}
-	/* the gates a colour readback cannot see, and what is left now that state, bytes, winding and attributes all came back clean: `depth' is what the depth
-	   buffer holds at this pixel (a clear that never landed, or a surface that wrote near zero, rejects every fragment through LEQUAL), `dr' the range the
-	   fragments are squeezed into, `clear' the last glClearDepth, `atest' the discard that fires before the depth test. */
-	qglGetFloatv( GL_DEPTH_RANGE, drange );
-	qglGetFloatv( GL_DEPTH_CLEAR_VALUE, &dclear );
-	qglGetIntegerv( GL_DEPTH_BITS, &dbits );
-	qglGetBooleanv( GL_STENCIL_TEST, &stenRaw );
-	qglGetIntegerv( GL_STENCIL_FUNC, &sfunc );
-	qglGetIntegerv( GL_STENCIL_REF, &sref );
-	qglGetIntegerv( GL_STENCIL_VALUE_MASK, &smask );
-	qglGetFloatv( GL_STENCIL_CLEAR_VALUE, &sclear );
-	poff = qglIsEnabled( GL_POLYGON_OFFSET_FILL );
-	qglGetFloatv( GL_POLYGON_OFFSET_FACTOR, &poffFactor );
-	qglGetFloatv( GL_POLYGON_OFFSET_UNITS, &poffUnits );
-	qglGetIntegerv( GL_CURRENT_PROGRAM, &curProg );
-	atest = -9999;
-	if ( curProg ) {
-		GLint loc = qglGetUniformLocation( curProg, "u_AlphaTest" );
-		if ( loc >= 0 ) {
-			qglGetUniformiv( curProg, loc, &atest );
-		}
-	}
-	errBefore = qglGetError();
-
-	Com_Memset( buf, 0, sizeof( buf ) );
-	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
-
-	/* The depth plane.  The type now follows the attachment's own
-	   precision, the read's error is taken before anything can clear it, and a read that did not
-	   happen prints as -1 rather than as a value. */
-	depthOk = qfalse;
-	zsum = 0.0f;
-	switch ( dbits ) {
-	case 32:
-		Com_Memset( zbuf, 0, sizeof( zbuf ) );
-		qglReadPixels( x, y, w, h, GL_DEPTH_COMPONENT, GL_FLOAT, zbuf );
-		if ( qglGetError() == GL_NO_ERROR ) {
-			depthOk = qtrue;
-			for ( i = 0; i < n; i++ ) {
-				zsum += zbuf[i];
-			}
-		}
-		break;
-	case 24:
-	case 16:
-		Com_Memset( zraw, 0, sizeof( zraw ) );
-		qglReadPixels( x, y, w, h, GL_DEPTH_COMPONENT,
-					   ( dbits == 24 ) ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, zraw );
-		if ( qglGetError() == GL_NO_ERROR ) {
-			/* A 24-bit plane read as UNSIGNED_INT may come back scaled; the top
-			 * eight bits say which, and the row names the convention. */
-			unsigned	wide = 0;
-			double		denom = ( dbits == 24 ) ? 16777215.0 : 65535.0;
-			for ( i = 0; i < n; i++ ) {
-				unsigned	v = zraw[i];
-				if ( v & 0xFF000000u ) {
-					wide++;
-				}
-				zsum += (float)( (double)( v & 0x00FFFFFFu ) / denom );
-			}
-			if ( wide ) {
-				zsum = 0.0f;
-				for ( i = 0; i < n; i++ ) {
-					zsum += (float)( (double)zraw[i] / 4294967295.0 );
-				}
-			}
-			depthOk = qtrue;
-		}
-		break;
-	default:
-		/* No depth attachment to read. */
-		break;
-	}
-	if ( !depthOk ) {
-		zsum = -1.0f * n;
-	}
-
-	errAfter = qglGetError();
-	r = g = b = a = 0;
-	for ( i = 0; i < n; i++ ) {
-		r += buf[i * 4 + 0];
-		g += buf[i * 4 + 1];
-		b += buf[i * 4 + 2];
-		a += buf[i * 4 + 3];
-	}
-
-	/* Remember the rect and this read for the swap's re-read. */
-	s_menuProbeX = x;
-	s_menuProbeY = y;
-	s_menuProbeR = r / n;
-	s_menuProbeG = g / n;
-	s_menuProbeB = b / n;
-	s_menuProbeRect = qtrue;
-
-	ri.Printf( PRINT_ALL,
-		"[GLES3:pixd] sh=%s idx=%d rect=%d,%d mean=%d,%d,%d a=%d"
-		" vp=%d,%d,%dx%d sc=%d,%d,%dx%d scen=%d"
-		" blend=%d src=0x%x dst=0x%x dtest=%d dmask=%d dfunc=0x%x"
-		" dbits=%d depth=%.4f clear=%.3f dr=%.3f,%.3f"
-		" sten=%d sfunc=0x%x sref=%d smask=0x%x sclear=%.1f"
-		" cull=%d mode=0x%x front=0x%x poff=%d(%.1f,%.1f) atest=%d clip=%d"
-		" attr=%d%d%d%d%d err=%d/%d f=%d\n",
-		input->shader->name, numIndexes, x, y, r / n, g / n, b / n, a / n,
-		vp[0], vp[1], vp[2], vp[3], sc[0], sc[1], sc[2], sc[3],
-		qglIsEnabled( GL_SCISSOR_TEST ) ? 1 : 0,
-		(int)blend, (unsigned)src, (unsigned)dst, dtest ? 1 : 0, dmask ? 1 : 0,
-		(unsigned)dfn,
-		dbits, zsum / n, dclear, drange[0], drange[1],
-		(int)stenRaw, (unsigned)sfunc, sref, (unsigned)smask, sclear,
-		(int)cullen, (unsigned)cullmode, (unsigned)frontface,
-		poff ? 1 : 0, poffFactor, poffUnits, atest,
-		s_clipPlaneEnabled ? 1 : 0,
-		attr[0], attr[1], attr[2], attr[3], attr[4],
-		(unsigned)errBefore, (unsigned)errAfter, RB_FrameCount() );
-}
 
 /* The rect [GLES3:pixd] read mid-view, re-read at swap. */
-void GLES3_ModelPixelAtSwap( void )
-{
-	byte	buf[8 * 8 * 4];
-	int		i, n, r, g, b;
-
-	if ( !R_ProbeStatsOn() || !s_menuProbeRect ) {
-		return;
-	}
-	s_menuProbeRect = qfalse;
-
-	n = 8 * 8;
-	qglReadPixels( s_menuProbeX, s_menuProbeY, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, buf );
-	r = g = b = 0;
-	for ( i = 0; i < n; i++ ) {
-		r += buf[i * 4 + 0];
-		g += buf[i * 4 + 1];
-		b += buf[i * 4 + 2];
-	}
-
-	ri.Printf( PRINT_ALL,
-			   "[GLES3:pixm] rect=%d,%d post3d=%d,%d,%d swap=%d,%d,%d %s f=%d\n",
-			   s_menuProbeX, s_menuProbeY,
-			   s_menuProbeR, s_menuProbeG, s_menuProbeB, r / n, g / n, b / n,
-			   ( r / n != s_menuProbeR || g / n != s_menuProbeG || b / n != s_menuProbeB )
-			   ? "OVERWROTE" : "same", RB_FrameCount() );
-}
 
 void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 							const glIndex_t *indexes, int numIndexes,
@@ -2037,17 +1783,6 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 			s_sendVerts += input->numVertexes;
 
 			/* A phase that outcosts a frame is the wobble; name the arm. */
-			if ( R_ProbeStatsOn() && phase >= 2000 ) {
-				s_sendStalls++;
-				if ( s_sendStallShown < 8 || ( s_sendStalls % 64 ) == 0 ) {
-					s_sendStallShown++;
-					ri.Printf( PRINT_ALL,
-							   "[BE:stall] arm=%s verts=%d idx=%d usec=%d gap=%dus w=%d f=%d\n",
-							   localDraw ? "local" : ( stored ? "arena" : ( staticDraw ? "static" : "tess" ) ),
-							   input->numVertexes, numIndexes, phase, gap, writes,
-							   RB_FrameCount() );
-				}
-			}
 			if ( staticDraw ) {
 				s_sendStatics++;
 			}
@@ -2092,7 +1827,6 @@ void RB_VBO_DrawTessArrays( const shaderCommands_t *input,
 		} else {
 			qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, ( const void * )0 );
 		}
-		RB_MenuDrawProbe( input, numIndexes );
 		BE_Sub( BE_FAM_DS, BE_DSZ_sub_draw, BE_Microseconds() - subT0 );
 
 		BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
@@ -2117,23 +1851,6 @@ void RB_VBO_DrawTess( const shaderCommands_t *input )
 	RB_VBO_DrawTessIndexed( input, input->indexes, input->numIndexes );
 }
 
-void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
-							  int *normalized, const void **pointer )
-{
-	if ( !s_vboInitialised ) {
-		RB_VBO_Init();
-	}
-
-	RB_BindVAO( s_vaoTessRing[0] );
-	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_ENABLED,    enabled );
-	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_SIZE,       size );
-	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_TYPE,       type );
-	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_STRIDE,     stride );
-	qglGetVertexAttribiv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, normalized );
-	qglGetVertexAttribPointerv( ATTR_COLOR, GL_VERTEX_ATTRIB_ARRAY_POINTER, (void **)pointer );
-
-	RB_BindVAO( 0 );
-}
 
 
 static void RB_ImmResetCurrent( void )
@@ -2289,23 +2006,6 @@ void RB_ImmFlush( void )
 
 			qglDrawArrays( rec->mode, rec->first, rec->count );
 			BE_Bump( BE_FAM_BE, BE_BEC_draws, 1 );
-		}
-	}
-
-	{
-		static int	s_immRows;
-
-		s_immRows++;
-		if ( R_ProbeStatsOn() && ( s_immRows <= 8 || ( s_immRows % 240 ) == 0 ) ) {
-			unsigned	issued = 0, skipped = 0;
-
-			GLES3_UnifBlockStats( &issued, &skipped );
-			ri.Printf( PRINT_ALL,
-					   "[2D:imm] arm=%s verts=%d idx=%d vBase=%d iBase=%d recs=%d "
-					   "blk=%u/%u f=%d\n",
-					   usedStore ? "store" : "ring",
-					   s_streamNumVerts, nIndices, (int)vBase, (int)iBase, s_streamNumRecs,
-					   skipped, issued, RB_FrameCount() );
 		}
 	}
 

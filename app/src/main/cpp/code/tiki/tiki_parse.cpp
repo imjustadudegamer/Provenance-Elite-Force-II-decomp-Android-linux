@@ -417,15 +417,22 @@ void TIKI_ParseAnimations(dloaddef_t *ld)
     if (Q_stricmp(token, "{") && TikiScript::currentScript) {
         size_t len;
 
-        Q_strncpyz(TikiScript::currentScript->path, token, sizeof(TikiScript::currentScript->path));
-        len = strlen(TikiScript::currentScript->path);
-        if (len && TikiScript::currentScript->path[len - 1] != '/'
-            && len + 1 < sizeof(TikiScript::currentScript->path)) {
-            TikiScript::currentScript->path[len]     = '/';
-            TikiScript::currentScript->path[len + 1] = '\0';
+        Q_strncpyz(TikiScript::currentScript->animpath, token, sizeof(TikiScript::currentScript->animpath));
+        len = strlen(TikiScript::currentScript->animpath);
+        if (len && TikiScript::currentScript->animpath[len - 1] != '/'
+            && len + 1 < sizeof(TikiScript::currentScript->animpath)) {
+            TikiScript::currentScript->animpath[len]     = '/';
+            TikiScript::currentScript->animpath[len + 1] = '\0';
         }
 
         ld->tikiFile.GetToken(true); 
+    } else if (TikiScript::currentScript) {
+        /* an animations block with no directory uses the tiki's setup path.
+           Clearing here is what keeps a path inherited from an included tiki
+           (e.g. base-female2) from capturing the next block's animations --
+           the boss tiki's precloak was being looked up under the included
+           animation directory and never became an animation at all. */
+        TikiScript::currentScript->animpath[0] = '\0';
     }
 
     while (ld->tikiFile.TokenAvailable(true)) {
@@ -498,7 +505,10 @@ void TIKI_ParseAnimations(dloaddef_t *ld)
 
             token = ld->tikiFile.GetToken(false);
             if (strncmp(token, "models/", 7) && strncmp(token, "models\\", 7)) {
-                Q_strncpyz(anim->name, TikiScript::currentScript->path, sizeof(anim->name));
+                const char *apath = TikiScript::currentScript->animpath[0]
+                                        ? TikiScript::currentScript->animpath
+                                        : TikiScript::currentScript->path;
+                Q_strncpyz(anim->name, apath, sizeof(anim->name));
                 Q_strcat(anim->name, sizeof(anim->name), token);
             } else {
                 Q_strncpyz(anim->name, token, sizeof(anim->name));

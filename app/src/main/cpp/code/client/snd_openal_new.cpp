@@ -29,9 +29,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "snd_codec.h"
 #include "../qcommon/cm_public.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 typedef struct {
     const char *funcname;
@@ -1219,10 +1216,6 @@ static int S_OPENAL_PickChannel3D(sfx_t *pSfx, int iEntNum, int iEntChannel)
     return S_OPENAL_PickChannelBase(pSfx, iEntNum, iEntChannel, 0, s_iNumChannels3D - 1);
 }
 
-static void SND_SndRow(
-    const char *stage, const char *name, int handle, int iEntNum, int iEntChannel, float fVol, float fMin, float fMax,
-    float fPitch, float gain, int iPick, int iStolen
-);
 
 static void S_OPENAL_Start2DSound(
     const vec3_t vOrigin,
@@ -1296,13 +1289,11 @@ static void S_OPENAL_Start2DSound(
 
         if (iVictim >= 0) {
             iFreeChannel = MAX_SOUNDSYSTEM_CHANNELS_3D + iVictim;
-            SndMix_NoteDialogSteal();
         }
     }
 
     if (iFreeChannel < 0) {
         Com_DPrintf("Could not find a free dialog channel\n");
-        SndMix_NoteDialogDrop();
         return;
     }
 
@@ -1357,10 +1348,6 @@ static void S_OPENAL_Start2DSound(
     pChannel->set_sample_pan(64); 
     pChannel->set_gain_3d(fRealVolume);
 
-    SND_SndRow(
-        "start2d", pSfx->name, (int)( pSfx - s_knownSfx ), iEntNum, iEntChannel, fVolume, fMinDistance, 0.0f, fPitch,
-        S_EF2_GainLaw(fRealVolume), iFreeChannel, 0
-    );
 
     pChannel->iStartTime    = cl.serverTime;
     pChannel->iEndTime      = 0;
@@ -1402,55 +1389,6 @@ static void S_EF2_ArmSampleLoop(openal_channel *pChannel, sfx_t *pSfx, const sfx
     }
 }
 
-static void SND_SndRow(
-    const char *stage, const char *name, int handle, int iEntNum, int iEntChannel, float fVol, float fMin, float fMax,
-    float fPitch, float gain, int iPick, int iStolen
-)
-{
-    static cvar_t *snd = NULL;
-    static int     rows;
-    static int     capped;
-
-    if (!snd) {
-        snd = Cvar_Get("qa_snd", "0", 0);
-    }
-
-    if (!PROBE_On() || !snd->integer) {
-        return;
-    }
-
-    rows++;
-
-    if (rows == 97 && !capped) {
-        capped = 1;
-        Com_Printf("[SND:snd] row budget 96 spent -- one in 16 from here; `qa_snd 0' silences\n");
-    }
-
-    /* The gate samples the world; a weapon's own fire row is the one event this
-       census exists to see, so it is never one of the sampled-away rows. */
-    if (rows > 96 && (rows % 16) != 0
-        && !(name && (strstr(name, "_fire") || strstr(name, "/fire") || strstr(name, "firestop")))) {
-        return;
-    }
-
-    ALfloat fRef = 0.0f, fMaxd = 0.0f, fRoll = 0.0f;
-    ALint   fRel = 0;
-
-    if (iPick >= 0) {
-        qalGetSourcef(openal.channel[iPick]->source, AL_REFERENCE_DISTANCE, &fRef);
-        qalGetSourcef(openal.channel[iPick]->source, AL_MAX_DISTANCE, &fMaxd);
-        qalGetSourcef(openal.channel[iPick]->source, AL_ROLLOFF_FACTOR, &fRoll);
-        qalGetSourcei(openal.channel[iPick]->source, AL_SOURCE_RELATIVE, &fRel);
-    }
-
-    Com_Printf(
-        "[SND:snd] stage=%s name='%s' handle=%d ent=%d echan=%d vol=%.3f min=%.2f max=%.2f pitch=%.3f "
-        "bus=%.4f gain=%.4f ref=%.2f maxd=%.2f roll=%.1f rel=%d pick=%d stolen=%d\n",
-        stage, name, handle, iEntNum, iEntChannel, fVol, fMin, fMax, fPitch,
-        S_EF2_ChannelVolume(iEntChannel), gain, fRef, fMaxd, fRoll, fRel, iPick, iStolen
-    );
-}
-
 void S_OPENAL_StartSound(
     const vec3_t vOrigin,
     int          iEntNum,
@@ -1464,7 +1402,6 @@ void S_OPENAL_StartSound(
 )
 {
     int             iChannel;
-    int             iStolen;
     openal_channel *pChannel;
     sfx_info_t     *pSfxInfo;
     sfx_t          *pSfx;
@@ -1485,7 +1422,6 @@ void S_OPENAL_StartSound(
 
     if (!S_OPENAL_ShouldPlay(pSfx)) {
         Com_DPrintf("OpenAL: ^~^~^ Not playing sound '%s'\n", pSfx->name);
-        SND_SndRow("reject=maxnumber", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
         return;
     }
 
@@ -1500,11 +1436,8 @@ void S_OPENAL_StartSound(
             iEntNum,
             S_ChannelNumToName(iEntChannel)
         );
-        SND_SndRow("reject=nochannel", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, -1, 0);
         return;
     }
-
-    iStolen = !openal.chan_3D[iChannel].is_free();
 
     pChannel = &openal.chan_3D[iChannel];
 
@@ -1514,7 +1447,6 @@ void S_OPENAL_StartSound(
     pChannel->iEntChannel   = iEntChannel;
     if (!pChannel->set_sfx(pSfx)) {
         Com_DPrintf("Set sample error - %s for %s\n", pSfx->name, pSfx->name);
-        SND_SndRow("reject=setfx", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch, 0.0f, iChannel, iStolen);
         return;
     }
 
@@ -1541,10 +1473,6 @@ void S_OPENAL_StartSound(
     pChannel->fDistGain    = 1.0f; 
     pChannel->set_gain_3d(S_EF2_ChannelVolume(iEntChannel) * pChannel->fVolume);
 
-    SND_SndRow(
-        "start", pSfx->name, sfxHandle, iEntNum, iEntChannel, fVolume, fMinDist, fMaxDist, fPitch,
-        S_EF2_GainLaw(S_EF2_ChannelVolume(iEntChannel) * pChannel->fVolume), iChannel, iStolen
-    );
 
     if (s_show_sounds->integer > 0) {
         Com_DPrintf("%d - %s (vol %f, mindist %f)\n", iChannel, pSfx->name, pChannel->fVolume, fMinDist);
@@ -1803,7 +1731,6 @@ static int S_OPENAL_Start3DLoopSound(
 {
     int             iChannel;
     int             iSoundOffset;
-    float           fLoopPitch;
     openal_channel *pChan3D;
 
     if (!pLoopSound->pSfx->data || !pLoopSound->pSfx->length) {
@@ -1848,16 +1775,6 @@ static int S_OPENAL_Start3DLoopSound(
     pChan3D->set_gain_3d(fVolumeToPlay);
     pChan3D->play();
 
-    /* a loop has no sfxHandle of its own, so `handle' is the loop's index in the known-sfx table and `pitch' is the rate the channel is actually playing
-       at over its base rate (the loop's own multiplier is applied later, in the resample pass).  Both fields were call-site constants here, which is why every loop row read handle=0 pitch=0.000. */
-    fLoopPitch = ( pChan3D->iBaseRate > 0 )
-                     ? (float)pChan3D->sample_playback_rate() / (float)pChan3D->iBaseRate : 1.0f;
-
-    SND_SndRow(
-        "startloop", pLoopSound->pSfx->name, (int)( pLoopSound->pSfx - s_knownSfx ), 0, CHAN_AUTO,
-        fVolumeToPlay, fMinDistance, fMaxDistance, fLoopPitch,
-        S_EF2_GainLaw(fVolumeToPlay), iChannel, 0
-    );
 
     S_OPENAL_reverb(iChannel, s_iReverbType, s_fReverbLevel);
 
@@ -2458,7 +2375,6 @@ void S_OPENAL_SetReverb(int iType, float fLevel)
    already ran this frame, inside SCR_UpdateScreen, before CL_Frame's S_Update. */
 static void S_OPENAL_FlushPendingStarts()
 {
-    static int s_iTotal;
     openal_channel *pChannel;
     int             i;
 
@@ -2498,11 +2414,7 @@ static void S_OPENAL_FlushPendingStarts()
         pChannel->play();
         pChannel->iStartTime = cl.serverTime;
         pChannel->iEndTime   = cl.serverTime + (int)pChannel->pSfx->time_length + 250;
-        s_iTotal++;
 
-        PROBE_EMIT_N("[SND:", "menuflush", 64,
-                     "pool=3d slot=%d chan=%d name='%s' total=%d\n",
-                     i, pChannel->iEntChannel, pChannel->pSfx ? pChannel->pSfx->name : "", s_iTotal);
     }
 
     for (i = MAX_SOUNDSYSTEM_CHANNELS_3D; i < MAX_SOUNDSYSTEM_CHANNELS_3D + MAX_SOUNDSYSTEM_CHANNELS_2D; i++) {
@@ -2519,11 +2431,7 @@ static void S_OPENAL_FlushPendingStarts()
         pChannel->bPendingStart = qfalse;
         pChannel->play();
         pChannel->iStartTime = cl.serverTime;
-        s_iTotal++;
 
-        PROBE_EMIT_N("[SND:", "menuflush", 64,
-                     "pool=2d slot=%d chan=%d name='%s' total=%d\n",
-                     i, pChannel->iEntChannel, pChannel->pSfx ? pChannel->pSfx->name : "", s_iTotal);
     }
 }
 

@@ -25,12 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/q_version.h"
 #include "../qcommon/stringresource.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
-#define PROBE_PRINT                       Com_Printf
-#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)  
-#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_ui.h"
 
 MenuManager menuManager;
 
@@ -140,14 +135,6 @@ void Menu::ShowMenu(Event *ev)
             wid->UpdateData();
             wid->ExecuteShowCommands();
             wid->CancelEventsOfType(EV_Widget_Hide);
-        } else {
-            PROBE(
-                "inv:showmenu",
-                "SKIPPED disabled widget: menu='%s' widget='%s' enabled=0 visible=%d",
-                m_name.c_str(),
-                wid->getName(),
-                wid->getShow() ? 1 : 0
-            );
         }
     }
 
@@ -157,16 +144,6 @@ void Menu::ShowMenu(Event *ev)
         activate = qtrue;
     }
 
-    if (PROBE_On() && !strcmp(m_name.c_str(), "dm_scoreboard")) {
-        static int uirect_sbmenu;
-
-        if (PROBE_Throttle(&uirect_sbmenu, 6, 20)) {
-            UIRECT_PROBE("sb:menuwidgets", "menu='%s' widgets=%d", m_name.c_str(), n);
-            for (int uirecti = 1; uirecti <= n; uirecti++) {
-                m_itemlist.ObjectAt(uirecti)->PAINTDumpState(uirecti, m_name.c_str());
-            }
-        }
-    }
 
     if (n && activate) {
         UIWidgetContainer *widcon = (UIWidgetContainer *)m_itemlist.ObjectAt(1);
@@ -486,10 +463,6 @@ void Menu::SaveCVars(void)
             } else {
                 wid->m_cvarvalue = "";
             }
-            if (PROBE_On()) {
-                PROBE_PRINT("[UI:cvarsave] menu='%s' %s='%s'\n", m_name.c_str(),
-                            wid->m_cvarname.c_str(), wid->m_cvarvalue.c_str());
-            }
         }
     }
 }
@@ -510,15 +483,7 @@ void Menu::RestoreCVars(void)
 
             // Cvar_Set2("") zeroes the cvar: an empty save must not round-trip.
             if (!wid->m_cvarvalue.length()) {
-                if (PROBE_On()) {
-                    PROBE_PRINT("[UI:cvarrestore] menu='%s' %s SKIP(empty)\n",
-                                m_name.c_str(), wid->m_cvarname.c_str());
-                }
                 continue;
-            }
-            if (PROBE_On()) {
-                PROBE_PRINT("[UI:cvarrestore] menu='%s' %s='%s'\n", m_name.c_str(),
-                            wid->m_cvarname.c_str(), wid->m_cvarvalue.c_str());
             }
             uii.Cvar_Set(wid->m_cvarname, wid->m_cvarvalue);
         }
@@ -537,13 +502,6 @@ void Menu::ResetCVars(void)
         if (wid->m_cvarname.length()) {
             /* the dlight hunt: a reset lands on the cvar's reset string, which a
                pak `setd' may have rewritten -- name the pair */
-            if (PROBE_On()) {
-                cvar_t *cv = uii.Cvar_Find(wid->m_cvarname.c_str());
-
-                PROBE_PRINT("[UI:cvarreset] menu='%s' %s -> '%s'\n", m_name.c_str(),
-                            wid->m_cvarname.c_str(),
-                            cv ? (cv->latchedString ? cv->latchedString : cv->resetString) : "-");
-            }
 
             uii.Cvar_Reset(wid->m_cvarname);
         }
@@ -589,9 +547,6 @@ void Menu::CheckRestart(void)
     qboolean do_ter_restart = false;
     int      i;
     int      n;
-    const char *latchname = "";
-    const char *sndname   = "";
-    const char *tername   = "";
 
     n = m_itemlist.NumObjects();
     for (i = 1; i <= n; i++) {
@@ -603,29 +558,16 @@ void Menu::CheckRestart(void)
                 if (str::icmp(wid->m_cvarvalue, cvar->latchedString)) {
                     if (cvar->flags & CVAR_LATCH) {
                         do_restart = true;
-                        latchname = wid->m_cvarname.c_str();
                     } else if (cvar->flags & CVAR_SOUND_LATCH) {
                         do_snd_restart = true;
-                        sndname = wid->m_cvarname.c_str();
                     } else if (cvar->flags & CVAR_TERRAIN_LATCH) {
                         do_ter_restart = true;
-                        tername = wid->m_cvarname.c_str();
                     }
                 }
             }
         }
     }
 
-    if (PROBE_On()) {
-        PROBE_PRINT("[UI:checkrestart] menu='%s' latch=%s snd=%s ter=%s -> %s\n",
-                    m_name.c_str(),
-                    do_restart ? latchname : "-",
-                    do_snd_restart ? sndname : "-",
-                    do_ter_restart ? tername : "-",
-                    do_restart ? "vid_restart"
-                               : (do_snd_restart || do_ter_restart) ? "snd/ter_restart"
-                                                                    : "none");
-    }
 
     // Retail: LATCH -> vid_restart (CheckRestart @0x0006DEB0); the old Android arm dropped it.
     if (do_restart) {
@@ -811,8 +753,6 @@ void UI_SettingsAutoApply(void)
         }
 
         if (!s_settingsRestartPending) {
-            UIVK_PROBE("settings", "op=autoapply cvar=%s old=%s new=%s", base->cvar,
-                       base->value, now);
         }
         changed++;
     }
@@ -835,7 +775,6 @@ void UI_SettingsAutoApplyFrame(void)
 
     s_settingsRestartPending = 0;
     uii.Cmd_Stuff("vid_restart\n");
-    UIVK_PROBE("settings", "op=autoapply restart=vid_restart");
 }
 
 #ifdef __ANDROID__
@@ -1238,7 +1177,6 @@ bool MenuManager::ShowMenu(str name)
     Menu *m;
     float maxintime;
 
-    PAINT_PROBE("menu:show", "name='%s' lock=%d", name.c_str(), m_lock ? 1 : 0);
 
     if (m_lock) {
         return false;
@@ -1247,7 +1185,6 @@ bool MenuManager::ShowMenu(str name)
     m = FindMenu(name);
     if (!m) {
         uii.Sys_Printf("Couldn't find menu %s\n", name.c_str());
-        PAINT_PROBE("menu:show", "MISS name='%s'", name.c_str());
         return false;
     }
 
@@ -1263,15 +1200,6 @@ bool MenuManager::ShowMenu(str name)
     m->SaveCVars();
     m->ProcessEvent(new Event("showmenu"));
 
-    {
-        int painti;
-        int paintn = m->GetWidgetCount();
-
-        PAINT_PROBE("menu:widgets", "menu='%s' widgets=%d", name.c_str(), paintn);
-        for (painti = 1; painti <= paintn; painti++) {
-            m->GetWidget(painti)->PAINTDumpState(painti, name.c_str());
-        }
-    }
 
     maxintime = m->GetMaxMotionTime();
 
@@ -1495,27 +1423,12 @@ void MenuManager::UpdateAllMenus(void)
     int i;
     int num;
 
-    UI_ROOT_BEGIN(UI_FAM_WALK);
-
     num = m_menulist.NumObjects();
-    UI_COUNT(UI_FAM_WALK, UI_WC_menus, num);
 
     for (i = 1; i <= num; i++) {
         Menu     *menu = m_menulist.ObjectAt(i);
-        UIWidget *cont = menu ? menu->GetContainerWidget() : NULL;
-        int       ui_vis = ( cont && cont->IsVisible() ) ? 1 : 0;
-        int       ui_t   = ( ui_statsOn ? UI_Microseconds() : 0 );
-
         menu->Update();
-
-        if ( ui_statsOn ) {
-            UI_Add( UI_FAM_WALK, ui_vis ? UI_WZ_vis : UI_WZ_hid,
-                      UI_Microseconds() - ui_t );
-            UI_Bump( UI_FAM_WALK, ui_vis ? UI_WC_visw : UI_WC_hidw, 1 );
-        }
     }
-
-    UI_ROOT_END(UI_FAM_WALK);
 }
 
 void MenuManager::Lock(Event *ev)
@@ -2144,8 +2057,6 @@ static int SettingsBuildRows(
     labelw += SET_LABEL_PAD;
 
     if (labelw > cols[0].labelw) {
-        UIVK_PROBE("settings", "op=labelw authored=%.0f measured=%.0f",
-                   cols[0].labelw, labelw);
     }
 
     for (i = 0; i < built; i++) {
@@ -2241,8 +2152,6 @@ static void SettingsHideVideoRetail(UIWidget *container)
 {
     Container<UIWidget *>& children = container->getChildren();
     int                    i;
-    int                    hidden = 0;
-    int                    art    = 0;
 
     for (i = 1; i <= children.NumObjects(); i++) {
         UIWidget   *wid  = children.ObjectAt(i);
@@ -2251,22 +2160,14 @@ static void SettingsHideVideoRetail(UIWidget *container)
         if (SettingsNameKeeps(name)) {
             /* the chrome a rebuild has to leave standing: the row names it, so a boot
                proves the art is still there instead of assuming it */
-            if (strcmp(name, "tooltip_video")) {
-                art++;
-                UIVK_PROBE("settings", "op=keep art='%s' shader='%s' show=%d",
-                           name, wid->getMaterialName() ? wid->getMaterialName() : "-",
-                           wid->getShow() ? 1 : 0);
-            }
             continue;
         }
 
         if (!SettingsVideoKeeps(wid)) {
             wid->Disable();
-            hidden++;
         }
     }
 
-    UIVK_PROBE("settings", "op=hide menu='video' hidden=%d art=%d", hidden, art);
 }
 
 /* The value `cl_renderer` is loaded by (CL_InitRef builds "renderer_%s" from it), and the
@@ -2304,7 +2205,6 @@ static void SettingsRendererPromptPush(const char *value)
     char      text[256];
 
     if (!menu || !(cont = menu->GetContainerWidget())) {
-        UIVK_PROBE("settings", "op=renderer prompt=MISSING");
         return;
     }
 
@@ -2323,7 +2223,6 @@ static void SettingsRendererPromptPush(const char *value)
     }
 
     if (!label || !yes || !no) {
-        UIVK_PROBE("settings", "op=renderer prompt=INCOMPLETE");
         return;
     }
 
@@ -2341,7 +2240,6 @@ static void SettingsRendererPromptPush(const char *value)
     AdaptCommand(no, "stuffcommand", "ui_rendererrevert;popmenu 0", NULL);
 
     uii.Cmd_Stuff("pushmenu promptvidrestart\n");
-    UIVK_PROBE("settings", "op=renderer prompt=push value=%s", value);
 }
 
 /* The row's write.  Cvar_Set is the forced form: it skips CVAR_LATCH entirely, so
@@ -2377,7 +2275,6 @@ void UI_SetRenderer_f(void)
        quit, and the exit write is the only other writer of the archive -- the
        choice used to be lost that way and the next start loaded the old module. */
     uii.Cmd_Stuff("writeconfig\n");
-    UIVK_PROBE("settings", "op=renderer set want=%s prev=%s", want, s_rendererPrev);
     UI_RendererAudit_f();
     uii.Cmd_Stuff("ui_rendereraudit\n");
 
@@ -2392,12 +2289,9 @@ void UI_RendererAudit_f(void)
     cvar_t *var = uii.Cvar_Find("cl_renderer");
 
     if (!var) {
-        UIVK_PROBE("settings", "op=renderer audit MISSING");
         return;
     }
 
-    UIVK_PROBE("settings", "op=renderer audit string='%s' latched='%s' flags=0x%x",
-               var->string, var->latchedString ? var->latchedString : "(none)", var->flags);
 }
 
 void UI_RendererRevert_f(void)
@@ -2408,7 +2302,6 @@ void UI_RendererRevert_f(void)
 
     Cvar_Set("cl_renderer", s_rendererPrev);
     uii.Cmd_Stuff("writeconfig\n");
-    UIVK_PROBE("settings", "op=renderer revert to=%s", s_rendererPrev);
     UI_RendererAudit_f();
 }
 
@@ -2527,7 +2420,6 @@ static void SettingsGreyRow(UIWidget *label, UIWidget *ctl)
 static void SettingsAdaptVideo(UIWidget *container)
 {
     float bottom = 0.0f;
-    int   built;
     int   i;
 
     s_settingsTooltipBar = "tooltip_video";
@@ -2540,7 +2432,7 @@ static void SettingsAdaptVideo(UIWidget *container)
     SettingsBaselineClear();
     SettingsHideVideoRetail(container);
 
-    built = SettingsBuildRows(container, s_videoRows,
+    SettingsBuildRows(container, s_videoRows,
                               (int)(sizeof(s_videoRows) / sizeof(s_videoRows[0])),
                               s_videoCol, 2, SET_PAGE_Y, &bottom);
 
@@ -2563,11 +2455,7 @@ static void SettingsAdaptVideo(UIWidget *container)
 
         if (lbl && ctl) {
             SettingsGreyRow(lbl, ctl);
-            UIVK_PROBE("settings", "op=row cvar=%s state=greyed target=" SET_TARGET,
-                       s_videoRows[i].cvar);
         } else {
-            UIVK_PROBE("settings", "op=row cvar=%s state=MISSING target=" SET_TARGET,
-                       s_videoRows[i].cvar);
         }
     }
 
@@ -2576,12 +2464,9 @@ static void SettingsAdaptVideo(UIWidget *container)
         int                j;
 
         for (j = 0; list[j]; j++) {
-            UIVK_PROBE("settings", "op=row cvar=%s state=%s target=" SET_TARGET, list[j],
-                       SettingsRowIsGreyed(list[j]) ? "greyed" : "live");
         }
     }
 
-    UIVK_PROBE("settings", "op=build menu='video' rows=%d bottom=%.0f", built, bottom);
 }
 
 #ifdef __ANDROID__
@@ -2704,7 +2589,6 @@ static void SettingsRetireControls(UIWidget *container)
 {
     Container<UIWidget *>& children = container->getChildren();
     int                    i;
-    int                    n = 0;
 
     /* The page's own showcommand re-arms the Weapons table every time it opens, so the
        split it serves goes with the tables: nothing the page shows needs to re-arm. */
@@ -2722,7 +2606,6 @@ static void SettingsRetireControls(UIWidget *container)
         for (j = 0; s_ctlRetired[j]; j++) {
             if (!strcmp(name, s_ctlRetired[j])) {
                 wid->Disable();
-                n++;
                 break;
             }
         }
@@ -2749,12 +2632,10 @@ static void SettingsRetireControls(UIWidget *container)
 
             if (f.pos.x > 400.0f && f.pos.y < 130.0f) {
                 wid->Disable();
-                n++;
             }
         }
     }
 
-    UIVK_PROBE("settings", "op=hide menu='controls' retired=%d", n);
 }
 
 /* The one bind list is built from the shipped page's own templates: the same column events
@@ -2793,16 +2674,12 @@ static void SettingsBuildBindList(UIWidget *container)
         AdaptCommand(list, "addrow", s_bindRows[i].label, s_bindRows[i].command, s_bindRows[i].command, NULL);
     }
 
-    UIVK_PROBE("settings", "op=bindlist rows=%d frame=%.0f,%.0f %.0fx%.0f",
-               ( int )( sizeof( s_bindRows ) / sizeof( s_bindRows[0] ) ),
-               ( double )CTL_LIST_X, ( double )CTL_LIST_Y, ( double )CTL_LIST_W, ( double )CTL_LIST_H);
 }
 
 static void SettingsAdaptControls(UIWidget *container)
 {
     const settingsGeom_s ctlCols[2] = {s_ctlCol, s_ctlCol};
     float                bottom = 0.0f;
-    int                  built;
 
     s_settingsTooltipBar = "tooltip_controls";
 
@@ -2815,11 +2692,10 @@ static void SettingsAdaptControls(UIWidget *container)
 
     /* every width the helper lays out comes from cols[1]; a one-column page hands the same
        column twice, and the column opens on the shipped page's own right edge */
-    built = SettingsBuildRows(container, s_ctlRows,
+    SettingsBuildRows(container, s_ctlRows,
                               (int)(sizeof(s_ctlRows) / sizeof(s_ctlRows[0])),
                               ctlCols, 1, SET_PAGE_Y, &bottom);
 
-    UIVK_PROBE("settings", "op=build menu='controls' rows=%d bottom=%.0f", built, bottom);
 }
 #endif /* __ANDROID__ */
 

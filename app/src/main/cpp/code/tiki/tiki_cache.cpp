@@ -222,7 +222,7 @@ dtiki_t *TIKI_RegisterTikiFlags(const char *path, qboolean use)
 {
     dtiki_t     *tiki     = NULL;
     dtikianim_t *tikianim = NULL;
-    int          t0;    const char  *next_path;
+    const char  *next_path;
     str          key;
     str          value;
     const char  *name;
@@ -263,21 +263,16 @@ dtiki_t *TIKI_RegisterTikiFlags(const char *path, qboolean use)
 
         t = tikicache->find(full_filename);
         if (t) {
-            TIKI_TikiRollWarm();
             return *t;
         }
     }
 
-    t0 = TIKI_Millis();
     tikianim = TIKI_RegisterTikiAnimFlags(filename, use);
-    TIKI_TikiRollParse(TIKI_Millis() - t0);
 
-    t0 = TIKI_Millis();
     if (tikianim) {
         size_t defsize = 0;
 
         tiki = TIKI_LoadTikiModel(tikianim, full_filename, &defsize);
-        TIKI_TikiRollBuild(TIKI_Millis() - t0);
         if (tiki) {
             int row;
 
@@ -305,7 +300,6 @@ int TIKI_RegisterTiki(const char *path)
     dtiki_t *tiki;
     int      i;
 
-    TIKI_TikiRoll();
     for (i = 0; i < TIKI_MAX_DEFS; i++) {
         if (s_tikis[i].tiki && !Q_stricmp(s_tikis[i].name, path)) {
             if (s_tikis[i].tiki->a) {
@@ -412,7 +406,6 @@ void TIKI_FreeAll()
     dtiki_t      *tiki;
     dtikianim_t  *tikianim;
     int           i;
-    int           kept = 0;
 
     TIKI_DropAllAnimBoneMappings();
 
@@ -428,13 +421,11 @@ void TIKI_FreeAll()
                 delete skeletor;
                 tiki->skeletor = NULL;
             }
-            kept++;
         }
 
         /* the skeletons stay too: dropping them made every save restore re-read, re-validate and re-repack every skb/skd/tan of every character model (120 ms per
            model, 758 ms of model work over 141 setModels).  TIKI_RegisterSkel finds a retained row by path; TIKI_LoadSkelCache below restores the retail teardown. */
         if (TIKI_KeepSkel()) {
-            TIKI_TikiRollKeep(kept);
 
             tiki_loading = true;
             return;

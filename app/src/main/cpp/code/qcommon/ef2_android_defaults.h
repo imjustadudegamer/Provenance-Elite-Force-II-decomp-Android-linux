@@ -161,7 +161,15 @@ root, for more details.
 	"bind PAD0_START \"togglemenu\"\n" \
 
 /* the cvar pins, the seed block's own half */
+#ifdef __ANDROID__
+/* frame pacing on by default; the archived cvar is the switch */
+#define EF2_DEFAULT_PERF_COMMAND "seta r_perfFps 1\n"
+#else
+#define EF2_DEFAULT_PERF_COMMAND ""
+#endif
+
 #define EF2_DEFAULT_CVAR_COMMANDS \
+	EF2_DEFAULT_PERF_COMMAND \
 	"set ui_dialogdisplaymode 1\n" \
 	"set ui_radarviewmode 0\n" \
 	"set m_aim 0\n" \
@@ -187,7 +195,7 @@ root, for more details.
 	"set mp_respawnInvincibilityTime 4\n" \
 	"set mp_warmUpTime 10\n" \
 	"set mp_minPlayers 0\n" \
-	"set sv_maxclients 1\n" \
+	"set sv_maxclients 8\n" \
 	"set r_swapInterval 0\n" \
 	"set in_joystick 1\n" \
 	"set in_joystickUseAnalog 1\n" \

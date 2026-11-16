@@ -17,7 +17,6 @@
 //
 
 
-
 #include "g_local.h"
 #include "../qcommon/qcommon.h"
 #include "botlib.h"		
@@ -42,9 +41,6 @@
 
 #include "player.h"
 
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
 
 #define MAX_PATH		144
 
@@ -744,7 +740,6 @@ void RemoveColorEscapeSequences( char *text ) {
 }
 
 
-
 int BotAI(int client, float thinktime) {
 	bot_state_t *bs;
 	char buf[1024], *args,cmd[1024], *ptr, *ptr2;
@@ -784,7 +779,6 @@ int BotAI(int client, float thinktime) {
 		args = strchr(args,' ');
 		Q_strncpyz(cmd,ptr,++args - ptr );
 		cmd[(args - ptr) - 1] = 0;
-
 
 
 		if (!Q_stricmp(buf, "cp "))
@@ -856,7 +850,6 @@ int BotAI(int client, float thinktime) {
 
 	UI_BotAIBump( UI_BAIC_calls, 1 );
 	UI_BotAIFrame( UI_BotAITock( ui_t0 ) );
-	LIMIT_BotFrame();
 
 	return qtrue;
 }
@@ -1423,154 +1416,6 @@ void UI_BotAIFrame( int totalUsec ) {
 	}
 }
 
-#define LIMIT_BN_WINDOW_MS	1000
-#define LIMIT_BN_MAX_FRAMES	3600
-
-typedef struct {
-	const char	*name;
-	int			(*fn)(bot_state_t *bs);
-} limit_bnode_t;
-
-static const limit_bnode_t limit_bNodeTab[LIMIT_BNODE_MAX] = {
-	{ "intermission", AINode_Intermission },
-	{ "observer",     AINode_Observer },
-	{ "respawn",      AINode_Respawn },
-	{ "stand",        AINode_Stand },
-	{ "activate",     AINode_Seek_ActivateEntity },
-	{ "seeknbg",      AINode_Seek_NBG },
-	{ "seekltg",      AINode_Seek_LTG },
-	{ "battlefight",  AINode_Battle_Fight },
-	{ "battlechase",  AINode_Battle_Chase },
-	{ "battleretreat",AINode_Battle_Retreat },
-	{ "battlenbg",    AINode_Battle_NBG },
-	{ "unknown",      NULL }
-};
-
-static cvar_t	*limit_bStats;
-static int		limit_bStatsLast = -1;
-static int		limit_bNodeCalls[LIMIT_BNODE_MAX];
-static int		limit_bNodeUsec[LIMIT_BNODE_MAX];
-static int		limit_bNodeMax[LIMIT_BNODE_MAX];
-static int		limit_bLoops, limit_bSat, limit_bOther;
-static int		limit_bCurNode;
-static int		limit_bCurT0;
-static int		limit_bWindowStart, limit_bFrames;
-
-static int LIMIT_BotOn( void ) {
-	return ( limit_bStats && limit_bStats->integer ) ? 1 : 0;
-}
-
-static void LIMIT_BotSyncSwitch( void ) {
-	if ( !limit_bStats ) {
-		limit_bStats = gi.cvar( "limit_stats", "0", 0 );
-	}
-	if ( limit_bStats && limit_bStats->integer != limit_bStatsLast ) {
-		char v[2];
-
-		limit_bStatsLast = limit_bStats->integer;
-		v[0] = limit_bStatsLast ? '1' : '0';
-		v[1] = '\0';
-		gi.BotLibVarSet( "limit_stats", v );
-	}
-}
-
-static int LIMIT_BotTick( void ) {
-	return LIMIT_BotOn() ? UI_BotAIMicro() : 0;
-}
-
-static int LIMIT_BotTock( int t0 ) {
-	return LIMIT_BotOn() ? ( UI_BotAIMicro() - t0 ) : 0;
-}
-
-void LIMIT_BotNodeBegin( bot_state_t *bs ) {
-	int i;
-
-	if ( !LIMIT_BotOn() ) {
-		return;
-	}
-
-	limit_bCurNode = LIMIT_BN_unknown;
-	for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
-		if ( limit_bNodeTab[i].fn && limit_bNodeTab[i].fn == bs->ainode ) {
-			limit_bCurNode = i;
-			break;
-		}
-	}
-	limit_bCurT0 = LIMIT_BotTick();
-}
-
-void LIMIT_BotNodeEnd( void ) {
-	int usec;
-
-	if ( !LIMIT_BotOn() ) {
-		return;
-	}
-
-	usec = LIMIT_BotTock( limit_bCurT0 );
-	limit_bLoops++;
-	if ( limit_bCurNode < 0 || limit_bCurNode >= LIMIT_BNODE_MAX ) {
-		limit_bOther++;
-		return;
-	}
-	limit_bNodeCalls[limit_bCurNode]++;
-	limit_bNodeUsec[limit_bCurNode] += usec;
-	if ( usec > limit_bNodeMax[limit_bCurNode] ) {
-		limit_bNodeMax[limit_bCurNode] = usec;
-	}
-}
-
-void LIMIT_BotNodeSat( void ) {
-	if ( !LIMIT_BotOn() ) {
-		return;
-	}
-	limit_bSat++;
-}
-
-void LIMIT_BotFrame( void ) {
-	int window, i;
-	char line[1024], part[64];
-
-	if ( !LIMIT_BotOn() ) {
-		limit_bLoops = limit_bSat = limit_bOther = 0;
-		limit_bWindowStart = limit_bFrames = 0;
-		for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
-			limit_bNodeCalls[i] = limit_bNodeUsec[i] = limit_bNodeMax[i] = 0;
-		}
-		return;
-	}
-
-	if ( !limit_bWindowStart ) {
-		limit_bWindowStart = gi.Milliseconds();
-	}
-
-	window = gi.Milliseconds() - limit_bWindowStart;
-	limit_bFrames++;
-	if ( window < LIMIT_BN_WINDOW_MS && limit_bFrames < LIMIT_BN_MAX_FRAMES ) {
-		return;
-	}
-
-	line[0] = '\0';
-	Com_sprintf( part, sizeof( part ), " loops=%d sat=%d other=%d",
-				 limit_bLoops, limit_bSat, limit_bOther );
-	Q_strcat( line, sizeof( line ), part );
-	for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
-		int mean = limit_bNodeCalls[i] ? ( limit_bNodeUsec[i] / limit_bNodeCalls[i] ) : 0;
-
-		Com_sprintf( part, sizeof( part ), " %s=%d/%d/%d",
-					 limit_bNodeTab[i].name, limit_bNodeCalls[i], mean, limit_bNodeMax[i] );
-		Q_strcat( line, sizeof( line ), part );
-	}
-	gi.Printf( "[LIMIT:bot] window=%dms%s\n", window, line );
-
-	limit_bWindowStart = gi.Milliseconds();
-	limit_bFrames = 0;
-	limit_bLoops = limit_bSat = limit_bOther = 0;
-	for ( i = 0; i < LIMIT_BNODE_MAX; i++ ) {
-		limit_bNodeCalls[i] = limit_bNodeUsec[i] = limit_bNodeMax[i] = 0;
-	}
-}
-
-
 static int local_time;
 static int botlib_residual;
 static int lastbotthink_time;
@@ -1584,8 +1429,6 @@ int BotAIStartFrame(int time) {
 	int smp_bots = 0, smp_ents = 0;
 
 	smp_t0 = gi.Milliseconds();
-
-	LIMIT_BotSyncSwitch();
 
 	G_CheckBotSpawn();
 
@@ -1605,8 +1448,6 @@ int BotAIStartFrame(int time) {
 	}
 
 	if (bot_pause.integer) {
-		BOT_PROBE("bot:pause", "bot_pause=%d -- the WHOLE think leg is parked, ucmds still sent\n",
-		           bot_pause.integer);
 		for( i = 0; i < MAX_CLIENTS; i++ ) {
 			if( !botstates[i] || !botstates[i]->inuse ) {
 				continue;
@@ -1659,8 +1500,6 @@ int BotAIStartFrame(int time) {
 
 		if (!gi.AAS_Initialized()) {
 			static int bot_aas;
-			BOT_PROBE("bot:aasdead", "AAS NOT initialized at BotLibStartFrame, returning qfalse (call %d)\n",
-			           ++bot_aas);
 			return qfalse;
 		}
 
@@ -1737,25 +1576,14 @@ int BotAIStartFrame(int time) {
 
 			if (!gi.AAS_Initialized()) {
 				static int bot_aas2;
-				BOT_PROBE("bot:aasdead2", "AAS NOT initialized before BotAI(%d), returning qfalse (call %d)\n",
-				           i, ++bot_aas2);
 				return qfalse;
 			}
 
 			if (g_entities[i].client->pers.enterTime) { 
 				static int bot_think;
-				if (PROBE_Throttle(&bot_think, 4, 200)) {
-					BOT_PROBE("bot:think", "BotAI(%d) thinktime=%d residual_budget=%d enterTime=%.0f level.time=%.0f\n",
-					           i, thinktime, botstates[i]->botthink_residual,
-					           g_entities[i].client->pers.enterTime, level.time);
-				}
 				BotAI(i, (float) thinktime / 1000);
 			} else {
 				static int bot_skip;
-				if (PROBE_Throttle(&bot_skip, 4, 200)) {
-					BOT_PROBE("bot:skipthink", "bot %d SKIPPED by enterTime==0 gate (retail ai_main.cpp:1587) level.time=%.0f\n",
-					           i, level.time);
-				}
 			}
 		}
 	}
@@ -1774,18 +1602,6 @@ int BotAIStartFrame(int time) {
 		BotUpdateInput(botstates[i], time, elapsed_time);
 		{
 			static int bot_ucmd;
-			if (PROBE_Throttle(&bot_ucmd, 8, 400)) {
-				BOT_PROBE("bot:ucmd", "BotUserCommand(%d) fwd=%d right=%d up=%d buttons=%d weapon=%d "
-				                       "ucmdYaw=%.1f ucmdPitch=%.1f botYaw=%.1f botPitch=%.1f velYaw=%.1f\n",
-				           i, botstates[i]->lastucmd.forwardmove, botstates[i]->lastucmd.rightmove,
-				           botstates[i]->lastucmd.upmove, botstates[i]->lastucmd.buttons,
-				           botstates[i]->lastucmd.weapon,
-				           SHORT2ANGLE(botstates[i]->lastucmd.angles[YAW]),
-				           SHORT2ANGLE(botstates[i]->lastucmd.angles[PITCH]),
-				           botstates[i]->viewangles[YAW],
-				           botstates[i]->viewangles[PITCH],
-				           botstates[i]->cur_ps.delta_angles[YAW] * 360.0 / 65536.0);
-			}
 		}
 		gi.BotUserCommand(botstates[i]->client, &botstates[i]->lastucmd);
 	}

@@ -111,54 +111,6 @@ const char *Z_NumberStringPointer( int iNum )
 	return ( const char * )numberstring[ iNum - '0' ].mem;
 }
 
-/* One increment per call on the allocator's single funnel; Z_ChurnMeterFrame
- * prints the one-second window. */
-static long long	z_churnAllocs;
-static long long	z_churnFrees;
-static long long	z_churnBytes;
-
-void Z_ChurnGet( long long *allocs, long long *frees, long long *bytes ) {
-	if ( allocs ) *allocs = z_churnAllocs;
-	if ( frees )  *frees  = z_churnFrees;
-	if ( bytes )  *bytes  = z_churnBytes;
-}
-
-void Z_ChurnReset( void ) {
-	z_churnAllocs = 0;
-	z_churnFrees = 0;
-	z_churnBytes = 0;
-}
-
-void Z_ChurnMeterFrame( void ) {
-	static int	windowStart;
-	int			now, window;
-	long long	allocs, frees, bytes;
-
-	if ( !Cvar_VariableIntegerValue( "mem_churnStats" ) || !Cvar_VariableIntegerValue( "qa_probe" ) ) {
-		Z_ChurnReset();
-		windowStart = 0;
-		return;
-	}
-
-	now = Sys_Milliseconds();
-	if ( !windowStart ) {
-		windowStart = now;
-		Z_ChurnReset();
-		return;
-	}
-
-	window = now - windowStart;
-	if ( window < 1000 ) {
-		return;
-	}
-
-	Z_ChurnGet( &allocs, &frees, &bytes );
-	Com_Printf( "[MEM:churn] window=%dms allocs=%lld frees=%lld bytes=%lld live=%lld\n",
-				window, allocs, frees, bytes, allocs - frees );
-	windowStart = now;
-	Z_ChurnReset();
-}
-
 void Z_Free( void *ptr )
 {
 	memblock_t *block = ( memblock_t * )( ( byte * )ptr - sizeof( memblock_t ) );
@@ -211,7 +163,6 @@ void Z_Free( void *ptr )
 	block->prev = block;
 	block->next = block;
 
-	z_churnFrees++;
 	free( block );
 }
 
@@ -263,8 +214,6 @@ void *Z_TagMalloc( int size, int tag ) {
 		Com_Error( ERR_FATAL, "Z_TagMalloc: failed on allocation of %i bytes", size );
 		return NULL;
 	}
-	z_churnAllocs++;
-	z_churnBytes += ( long long )size;
 	block->id = ZONEID;
 	block->size = size;
 	block->next = &mem_blocks[ tag ];

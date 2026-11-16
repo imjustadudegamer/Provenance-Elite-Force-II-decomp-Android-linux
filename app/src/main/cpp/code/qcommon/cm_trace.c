@@ -22,16 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "cm_local.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                          Com_Printf
-#include "qa_probe.h"
 
-#define CLIP_PROBE(tag, ...) PROBE_EMIT("[CLIP:", tag, __VA_ARGS__)
-#define CLIP_CENSUS_PROBE(tag, ...) PROBE_CENSUS_EMIT("[CLIP:", tag, __VA_ARGS__)
 
-static int s_clipReenter;
-/* CM_TransformedBoxTrace hands CM_BoxTrace model-space coordinates; these carry the
-   caller's world-space numbers through so a probe row can still print them. */
 static vec3_t s_clipRawStart, s_clipRawEnd, s_clipRawMins, s_clipRawMaxs;
 static int s_clipRawCyl, s_clipRawValid;
 
@@ -146,20 +138,6 @@ void CM_TestBoxInBrush( traceWork_t *tw, cbrush_t *brush ) {
 	tw->trace.startsolid = tw->trace.allsolid = qtrue;
 	tw->trace.fraction = 0;
 	tw->trace.contents = brush->contents;
-	{
-		static int s_clipInside;
-		if (PROBE_Throttle(&s_clipInside, 4000, 100000)) {
-			CLIP_CENSUS_PROBE("inside", "b=%d sh=%s cont=0x%x "
-				"box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) org=(%.1f %.1f %.1f) "
-				"brush=(%.0f %.0f %.0f)-(%.0f %.0f %.0f)\n",
-				(int)(brush - cm.brushes), cm.shaders[brush->shaderNum].shader, brush->contents,
-				tw->rawMins[0], tw->rawMins[1], tw->rawMins[2],
-				tw->rawMaxs[0], tw->rawMaxs[1], tw->rawMaxs[2],
-				tw->rawStart[0], tw->rawStart[1], tw->rawStart[2],
-				brush->bounds[0][0], brush->bounds[0][1], brush->bounds[0][2],
-				brush->bounds[1][0], brush->bounds[1][1], brush->bounds[1][2]);
-		}
-	}
 }
 
 
@@ -285,85 +263,6 @@ void CM_TraceThroughPatch( traceWork_t *tw, cPatch_t *patch ) {
 		tw->trace.surfaceFlags = patch->surfaceFlags;
 		tw->trace.contents = patch->contents;
 	}
-}
-
-/* [CLIP:block] budget: per-shader slices, a smaller one for the point traces
-   (box 0 0 0 are AI rays, not movement contacts), and cm_drawblockRegion
-   "xmin ymin zmin xmax ymax zmax" to hold the census to the stretch in
-   question.  Empty means no region filter. */
-#define CM_DRAWBLOCK_SHADERS	24
-#define CM_DRAWBLOCK_PER_SHADER	600
-#define CM_DRAWBLOCK_POINTS		800
-
-typedef struct {
-	char	name[64];
-	int		rows;
-} cmDrawBlockShader_t;
-
-static cmDrawBlockShader_t	s_cmDrawBlockShader[ CM_DRAWBLOCK_SHADERS ];
-static int					s_cmDrawBlockShaderCount;
-static int					s_cmDrawBlockPoint;
-
-static qboolean CM_DrawBlockWants( traceWork_t *tw, cbrush_t *brush )
-{
-	static cvar_t				*region;
-	cmDrawBlockShader_t			*s;
-	const char					*shader;
-	int							i;
-	int							*counter;
-
-	if ( !region ) {
-		region = Cvar_Get( "cm_drawblockRegion", "", 0 );
-	}
-
-	if ( region->string[ 0 ] ) {
-		float	b[ 6 ];
-
-		if ( sscanf( region->string, "%f %f %f %f %f %f",
-			&b[ 0 ], &b[ 1 ], &b[ 2 ], &b[ 3 ], &b[ 4 ], &b[ 5 ] ) == 6 ) {
-			if ( tw->rawStart[ 0 ] < b[ 0 ] || tw->rawStart[ 0 ] > b[ 3 ] ||
-			     tw->rawStart[ 1 ] < b[ 1 ] || tw->rawStart[ 1 ] > b[ 4 ] ) {
-				return qfalse;
-			}
-		}
-	}
-
-	if ( !tw->rawMins[ 0 ] && !tw->rawMins[ 1 ] && !tw->rawMins[ 2 ] &&
-	     !tw->rawMaxs[ 0 ] && !tw->rawMaxs[ 1 ] && !tw->rawMaxs[ 2 ] ) {
-		counter = &s_cmDrawBlockPoint;
-		if ( *counter >= CM_DRAWBLOCK_POINTS ) {
-			return qfalse;
-		}
-		( *counter )++;
-		return qtrue;
-	}
-
-	shader = cm.shaders[ brush->shaderNum ].shader;
-
-	for ( i = 0; i < s_cmDrawBlockShaderCount; i++ ) {
-		if ( !strcmp( s_cmDrawBlockShader[ i ].name, shader ) ) {
-			break;
-		}
-	}
-
-	if ( i == s_cmDrawBlockShaderCount ) {
-		if ( i == CM_DRAWBLOCK_SHADERS ) {
-			return qtrue;
-		}
-		s = &s_cmDrawBlockShader[ s_cmDrawBlockShaderCount++ ];
-		Q_strncpyz( s->name, shader, sizeof( s->name ) );
-		s->rows = 0;
-	}
-	else {
-		s = &s_cmDrawBlockShader[ i ];
-	}
-
-	if ( s->rows >= CM_DRAWBLOCK_PER_SHADER ) {
-		return qfalse;
-	}
-
-	s->rows++;
-	return qtrue;
 }
 
 void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
@@ -517,42 +416,6 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 					   disarmed. */
 					if ( clipplane->normal[2] > 0.99f && tw->rawMins[2] == 0.0f ) {
 						return;
-					}
-					static int s_clipRows;
-					if (PROBE_On() && CM_DrawBlockWants(tw, brush) && PROBE_Throttle(&s_clipRows, 40000, 400000)) {
-						const char *crouch = "n/a";
-						vec3_t		cmins, cmaxs;
-						trace_t		ct;
-						if (!s_clipReenter && (tw->rawMaxs[2] - tw->rawMins[2]) > 60.0f) {
-							sphere_t		savedSphere = sphere;
-							int				savedCheck = cm.checkcount;
-							s_clipReenter = qtrue;
-							VectorCopy( tw->rawMins, cmins );
-							VectorCopy( tw->rawMaxs, cmaxs );
-							cmaxs[2] = 49.0f;
-							CM_BoxTrace( &ct, tw->rawStart, tw->rawEnd, cmins, cmaxs, 0,
-								tw->contents, tw->rawCyl );
-							sphere = savedSphere;
-							cm.checkcount = savedCheck;
-							s_clipReenter = qfalse;
-							crouch = ( ct.fraction > tw->trace.fraction + 0.001f ) ? "crouch-clears" : "crouch-blocked";
-						}
-						CLIP_CENSUS_PROBE("block", "b=%d sh=%s cont=0x%x side=%d n=(%.3f %.3f %.3f) d=%.2f "
-							"org=(%.1f %.1f %.1f) box=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) "
-							"brush=(%.0f %.0f %.0f)-(%.0f %.0f %.0f) f=%.3f end=(%.1f %.1f %.1f) %s\n",
-							(int)(brush - cm.brushes), cm.shaders[brush->shaderNum].shader, brush->contents,
-							(int)(leadside - brush->sides),
-							clipplane->normal[0], clipplane->normal[1], clipplane->normal[2], clipplane->dist,
-							tw->rawStart[0], tw->rawStart[1], tw->rawStart[2],
-							tw->rawMins[0], tw->rawMins[1], tw->rawMins[2],
-							tw->rawMaxs[0], tw->rawMaxs[1], tw->rawMaxs[2],
-							brush->bounds[0][0], brush->bounds[0][1], brush->bounds[0][2],
-							brush->bounds[1][0], brush->bounds[1][1], brush->bounds[1][2],
-							tw->trace.fraction,
-							tw->rawStart[0] + tw->trace.fraction * (tw->rawEnd[0] - tw->rawStart[0]),
-							tw->rawStart[1] + tw->trace.fraction * (tw->rawEnd[1] - tw->rawStart[1]),
-							tw->rawStart[2] + tw->trace.fraction * (tw->rawEnd[2] - tw->rawStart[2]),
-							crouch);
 					}
 				}
 			}

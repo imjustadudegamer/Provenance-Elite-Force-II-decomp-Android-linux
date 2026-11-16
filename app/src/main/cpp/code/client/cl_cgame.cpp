@@ -23,9 +23,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "client.h"
 #include "cl_ui.h"
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 #include "cg_import_verify_gen.h"
 #include "../corepp/tiki.h"
 #include "../corepp/script.h"
@@ -1015,7 +1012,6 @@ void CL_InitCGame( void ) {
 	int					t1, t2;
 	clientGameImport_t	cgi;
 
-	SMP_LOAD_BEGIN( initcg );
 
 	t1 = Sys_Milliseconds();
 
@@ -1034,8 +1030,6 @@ void CL_InitCGame( void ) {
 
 	if( !cls.vid_restart )
 	{
-		PROBE_CENSUS_EMIT( "[", "BOUND:tiki", "map='%s' clear=1 tiki=%d skel=%d ent=%d vidrestart=0",
-			  mapname, TIKI_CacheTikiCount(), TIKI_CacheSkelCount(), TIKI_EntityCacheLive() );
 		TIKI_End();
 		TIKI_Begin();
 		// TIKI_FreeLevelData stays in SV_SpawnServer; the alias list is re-read by spawn.
@@ -1043,14 +1037,10 @@ void CL_InitCGame( void ) {
 	}
 	else
 	{
-		PROBE_CENSUS_EMIT( "[", "BOUND:tiki", "map='%s' clear=0 tiki=%d skel=%d ent=%d vidrestart=1",
-			  mapname, TIKI_CacheTikiCount(), TIKI_CacheSkelCount(), TIKI_EntityCacheLive() );
 	}
 
 	// sent just before a gamestate are not dropped" has no retail counterpart and
-	SMP_LOAD_BEGIN( cginit );
 	cge->CG_Init(&cgi, clc.serverMessageSequence, clc.serverCommandSequence);
-	SMP_LOAD_END( cginit );
 
 	ClearNewConfigFlag();
 	TIKI_FinishLoad();
@@ -1064,7 +1054,6 @@ void CL_InitCGame( void ) {
 
 	Com_Printf( "CL_InitCGame: %5.2f seconds\n", ( t2 - t1 ) / 1000.0 );
 
-	SMP_LOAD_END( initcg );
 }
 
 
@@ -1144,12 +1133,10 @@ void CL_AdjustTimeDelta( void ) {
 
 void CL_FirstSnapshot( void ) {
 	if ( cl.snap.snapFlags & SNAPFLAG_NOT_ACTIVE ) {
-		WIDGETM1_PROBE( "first", "HOLD state=%d snapFlags=%d msgNum=%d", cls.state, cl.snap.snapFlags, cl.snap.messageNum );
 		return;
 	}
 	cls.state = CA_ACTIVE;
 
-	WIDGETM1_PROBE( "first", "ACTIVE state=%d snapFlags=%d cmdNum=%d snapTime=%d", cls.state, cl.snap.snapFlags, cl.cmdNumber, cl.snap.serverTime );
 
 	// 5 -> 4 latch, UI_ServerLoaded @0x00197CA0 repeats it as its sixth step), but
 	StopLoadingScreen();
@@ -1186,9 +1173,6 @@ void CL_SetCGameTime( void ) {
 		if ( cls.state != CA_PRIMED ) {
 			return;
 		}
-		WIDGETM1_PROBE( "sgt", "state=%d newSnap=1 snapFlags=%d cmdNum=%d msgNum=%d snapTime=%d paused=%d svrun=%d",
-			cls.state, cl.snap.snapFlags, cl.cmdNumber, cl.snap.messageNum, cl.snap.serverTime,
-			paused->integer, com_sv_running->integer );
 		if ( clc.demoplaying ) {
 			if ( !clc.firstDemoFrameSkipped ) {
 				clc.firstDemoFrameSkipped = qtrue;

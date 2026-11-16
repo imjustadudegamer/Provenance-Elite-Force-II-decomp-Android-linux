@@ -26,13 +26,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cg_commands.h"
 #include "../corepp/tiki.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define WIDGET_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
-#include "../qcommon/qa_widget.h"
-
 
 cvar_t *cg_showtempmodels;
 cvar_t *cg_detail;
@@ -264,14 +257,6 @@ void ClientGameCommandManager::AnimateTempModel(ctempmodel_t *p, Vector origin, 
     numframes = cgi.Anim_NumFrames(p->cgd.tiki, p->ent.anim);
 
     if (!p->addedOnce) {
-        {
-            static int uivk_dfx_n;
-            const char *uivk_tn = cgi.TIKI_Name(p->cgd.tiki);
-            if (PROBE_On() && uivk_tn && Q_stristr(uivk_tn, "fx") && PROBE_Throttle(&uivk_dfx_n, 32, 64)) {
-                PROBE("DFX:fxentry", "tiki=%d '%s' anim=%d nf=%d ft=%d\n",
-                           p->cgd.tiki, uivk_tn, p->ent.anim, numframes, frametime);
-            }
-        }
         CG_ProcessEntityCommands(p->cgd.tiki, TIKI_FRAME_ENTRY, p->ent.anim, -1, &p->ent, NULL);
     }
 
@@ -609,47 +594,6 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
     if (p->cgd.flags2 & (T2_MOVE | T2_ACCEL)) {
         p->cgd.origin += p->cgd.velocity * ftime * scale + p->cgd.accel * ftimeSquared;
 
-        // lifecycle-beamstep -- THE GATE WAS UNREACHABLE, SO THE PROBE NEVER FIRED.  It required
-        {
-            static cvar_t *bones_probe = NULL;
-            static int bones_beamstep_reports = 0;
-            const char *bones_step_model = p->modelname.c_str();
-
-            if (!bones_probe) {
-                bones_probe = cgi.Cvar_Get("qa_probe", "0", 0);
-            }
-
-            if (bones_step_model && bones_step_model[0]
-                && (Q_stristr(bones_step_model, "fx")
-                    || Q_stristr(bones_step_model, "spark")
-                    || Q_stristr(bones_step_model, "beam")
-                    || Q_stristr(bones_step_model, "cylinder")
-                    || Q_stristr(bones_step_model, "lines"))) {
-                Vector bones_step = p->cgd.velocity * ftime * scale + p->cgd.accel * ftimeSquared;
-
-                if (bones_probe->integer && bones_beamstep_reports < 24) {
-                    bones_beamstep_reports++;
-                    cgi.Printf(
-                        "[BONES:beamstep] n=%d model='%s' step=(%.2f,%.2f,%.2f) ftime=%.5f "
-                        "ftimeSq=%.6f scale=%.4f vel=(%.2f,%.2f,%.2f) accel=(%.2f,%.2f,%.2f) "
-                        "life=%d alive=%.3f physRate=%d reType=%d org=(%.2f,%.2f,%.2f) "
-                        "oldorg=(%.2f,%.2f,%.2f)\n",
-                        bones_beamstep_reports, bones_step_model,
-                        bones_step[0], bones_step[1], bones_step[2],
-                        ftime, ftimeSquared, scale,
-                        p->cgd.velocity[0], p->cgd.velocity[1], p->cgd.velocity[2],
-                        p->cgd.accel[0], p->cgd.accel[1], p->cgd.accel[2],
-                        (int)p->cgd.life, p->aliveTime, p->cgd.physicsRate, p->ent.reType,
-                        p->cgd.origin[0], p->cgd.origin[1], p->cgd.origin[2],
-                        p->cgd.oldorigin[0], p->cgd.oldorigin[1], p->cgd.oldorigin[2]
-                    );
-                } else if (bones_beamstep_reports == 24) {
-                    bones_beamstep_reports++;
-                    cgi.Printf("[BONES:beamstep] capped at 24 rows for this run; no further "
-                               "rows\n");
-                }
-            }
-        }
     }
 
     if (p->cgd.flags2 & (T2_PARTICLESPIN | T2_EMITTERSPIN)) {
@@ -837,27 +781,6 @@ qboolean ClientGameCommandManager::TempModelPhysics(ctempmodel_t *p, float ftime
     if (p->cgd.flags & (T_PARENTLINK | T_HARDLINK)) {
         VectorAdd(p->ent.origin, parentOrigin, p->ent.origin);
 
-        {
-            static int l1_flash;
-
-            if (WIDGET_On() && WIDGET_Throttle(&l1_flash, 8, 64)) {
-                WIDGET_A1_PROBE(
-                    "flash:phys",
-                    "parent=%d porg=(%.1f,%.1f,%.1f) cgdorg=(%.1f,%.1f,%.1f) org=(%.1f,%.1f,%.1f) "
-                    "sh='%s' life=%d age=%d scale=%.4f pla=(%.1f,%.1f,%.1f)\n",
-                    p->cgd.parent,
-                    parentOrigin[0], parentOrigin[1], parentOrigin[2],
-                    p->cgd.origin[0], p->cgd.origin[1], p->cgd.origin[2],
-                    p->ent.origin[0], p->ent.origin[1], p->ent.origin[2],
-                    p->cgd.shadername.c_str(),
-                    p->cgd.life,
-                    cg.time - p->cgd.createTime,
-                    p->ent.scale,
-                    p->cgd.parentLinkAngles[0],
-                    p->cgd.parentLinkAngles[1],
-                    p->cgd.parentLinkAngles[2]);
-            }
-        }
     }
 
     if (!p->lastEntValid) {
@@ -987,13 +910,6 @@ void ClientGameCommandManager::AddTempModels(void)
     for (; p != &m_active_tempmodels; p = next) {
         next = p->prev;
 
-        if (PROBE_On()) {
-            const char *uivk_cn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
-
-            if (uivk_cn && Q_stristr(uivk_cn, "cylinder")) {
-                uivk_beamfx_cyl_live++;
-            }
-        }
 
         if ((p->cgd.flags & T_DETAIL) && !cg_detail->integer) {
             FreeTempModel(p);
@@ -1084,28 +1000,6 @@ void ClientGameCommandManager::AddTempModels(void)
 
         AnimateTempModel(p, newEnt.origin, &newEnt);
 
-        {
-            static int uivk_beamfx_add_n;
-            const char *uivk_tn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
-
-            if (PROBE_On() && uivk_tn && Q_stristr(uivk_tn, "cylinder") && PROBE_Throttle(&uivk_beamfx_add_n, 6, 256)) {
-                UIVK_PROBE(
-                    "BEAMFX:tm-add",
-                    "tiki='%s' scale=%.4f alive=%d frame=%d oldframe=%d anim=%d "
-                    "org=(%.1f,%.1f,%.1f)\n",
-                    uivk_tn,
-                    newEnt.scale,
-                    p->aliveTime,
-                    newEnt.frame,
-                    newEnt.oldframe,
-                    newEnt.anim,
-                    newEnt.origin[0],
-                    newEnt.origin[1],
-                    newEnt.origin[2]
-                );
-            }
-        }
-
         // field retail does not have.
         newEnt.anim      = p->ent.anim;
         newEnt.oldanim   = p->ent.oldanim;
@@ -1140,28 +1034,6 @@ void ClientGameCommandManager::AddTempModels(void)
             }
         }
 
-        {
-            static int effects_tmpsub_n;
-            if (PROBE_On() && PROBE_Throttle(&effects_tmpsub_n, 24, 512)) {
-                PROBE(
-                    "tmp:submit",
-                    "ent=%d reType=%d model='%s' hModel=%d arm=%s org=(%.1f,%.1f,%.1f) "
-                    "scale=%.4f alpha=%d customShader=%d hide=%d\n",
-                    p->number,
-                    (int)p->ent.reType,
-                    p->modelname.c_str(),
-                    p->ent.hModel,
-                    (p->cgd.flags & T_DLIGHT) ? "dlight"
-                        : (p->ent.reType == RT_SPRITE ? "sprite" : (p->hide ? "hidden" : "model")),
-                    newEnt.origin[0], newEnt.origin[1], newEnt.origin[2],
-                    newEnt.scale,
-                    newEnt.shaderRGBA[3],
-                    newEnt.customShader,
-                    (int)p->hide
-                );
-            }
-        }
-
         p->addedOnce = qtrue;
 
         count++;
@@ -1175,19 +1047,6 @@ void ClientGameCommandManager::AddTempModels(void)
         cgi.DPrintf("TC:%i\n", count);
     }
 
-    if (PROBE_On() && uivk_beamfx_cyl_live) {
-        static int uivk_beamfx_census_n;
-
-        if (PROBE_Throttle(&uivk_beamfx_census_n, 8, 128)) {
-            UIVK_PROBE(
-                "BEAMFX:census",
-                "cyl_live=%d tm_added=%d cg.time=%d\n",
-                uivk_beamfx_cyl_live,
-                count,
-                cg.time
-            );
-        }
-    }
 }
 
 void ClientGameCommandManager::SpawnTempModel(int count, spawnthing_t *sp)
@@ -1369,48 +1228,6 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
                 * current_entity_scale;
         }
 
-        {
-            static cvar_t *bones_probe = NULL;
-            static int bones_beampart_reports = 0;
-            const char *bones_em_model = m_spawnthing->GetModel();
-
-            if (!bones_probe) {
-                bones_probe = cgi.Cvar_Get("qa_probe", "0", 0);
-            }
-            Vector      bones_skew;
-
-            bones_skew = p->cgd.origin - m_spawnthing->cgd.origin;
-
-            if (bones_em_model && bones_em_model[0]
-                && (Q_stristr(bones_em_model, "fx")
-                    || Q_stristr(bones_em_model, "spark")
-                    || Q_stristr(bones_em_model, "beam")
-                    || Q_stristr(bones_em_model, "cylinder")
-                    || Q_stristr(bones_em_model, "lines"))
-                && bones_probe->integer && bones_beampart_reports < 24) {
-                bones_beampart_reports++;
-                cgi.Printf(
-                    "[BONES:beampart] n=%d em='%s' model='%s' skew=(%.1f,%.1f,%.1f) "
-                    "emitorg=(%.1f,%.1f,%.1f) flags=0x%x flags2=0x%x sphereR=%.2f coneH=%.2f "
-                    "vel=(%.2f,%.2f,%.2f) rvamp=(%.2f,%.2f,%.2f) life=%d physRate=%d scale=%.4f "
-                    "hostscale=%.4f\n",
-                    bones_beampart_reports,
-                    m_spawnthing->emittername.c_str(),
-                    bones_em_model,
-                    bones_skew[0], bones_skew[1], bones_skew[2],
-                    m_spawnthing->cgd.origin[0], m_spawnthing->cgd.origin[1],
-                    m_spawnthing->cgd.origin[2],
-                    (unsigned)m_spawnthing->cgd.flags, (unsigned)m_spawnthing->cgd.flags2,
-                    m_spawnthing->sphereRadius, m_spawnthing->coneHeight,
-                    p->cgd.velocity[0], p->cgd.velocity[1], p->cgd.velocity[2],
-                    m_spawnthing->randvel_amplitude[0], m_spawnthing->randvel_amplitude[1],
-                    m_spawnthing->randvel_amplitude[2],
-                    (int)p->cgd.life, p->cgd.physicsRate, ent.scale,
-                    current_entity ? current_entity->scale : -1.0f
-                );
-            }
-        }
-
         p->cgd.oldorigin = p->cgd.origin;
 
         // SpawnTempModel @0x00017B48 seeds the particle-spin base: the emitter origin when
@@ -1427,22 +1244,6 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
 
         // SpawnTempModel @0x00017080 has no gate here: the name is copied, registered only
         // when non-empty, and the record lives to its own expiry.
-        {
-            static int s_tm_nm_hits;
-            static int s_tm_nm_rows;
-
-            s_tm_nm_hits++;
-            if (PROBE_On() && PROBE_Throttle(&s_tm_nm_rows, 4, 512)) {
-                PROBE(
-                    "tmfree",
-                    "site=nomodelname hits=%d em='%s' flags=0x%x flags2=0x%x\n",
-                    s_tm_nm_hits,
-                    m_spawnthing->emittername.c_str(),
-                    (unsigned)p->cgd.flags,
-                    (unsigned)p->cgd.flags2
-                );
-            }
-        }
 
         p->addedOnce    = qfalse;
         p->lastEntValid = qfalse;
@@ -1452,18 +1253,6 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
 
             // SpawnTempModel @0x00017080 never checks the handle; a dead model still lives.
             if (!ent.hModel) {
-                static int s_tm_rf_hits;
-                static int s_tm_rf_rows;
-
-                s_tm_rf_hits++;
-                if (PROBE_On() && PROBE_Throttle(&s_tm_rf_rows, 4, 512)) {
-                    PROBE(
-                        "tmfree",
-                        "site=regfail hits=%d model='%s'\n",
-                        s_tm_rf_hits,
-                        p->modelname.c_str()
-                    );
-                }
             }
         }
 
@@ -1525,28 +1314,6 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         }
 
         ent.scale *= current_entity_scale;
-
-        {
-            static int uivk_beamfx_n;
-            const char *uivk_tn = (p->cgd.tiki >= 0) ? cgi.TIKI_Name(p->cgd.tiki) : NULL;
-
-            if (PROBE_On() && uivk_tn && Q_stristr(uivk_tn, "cylinder") && PROBE_Throttle(&uivk_beamfx_n, 6, 256)) {
-                UIVK_PROBE(
-                    "BEAMFX:tm-spawn",
-                    "em='%s' tiki='%s' cgdscale=%.4f hostscale=%.4f csscale=%.4f spawn=%.4f rate=%.4f "
-                    "life=%d hostent=%d\n",
-                    m_spawnthing->emittername.c_str(),
-                    uivk_tn,
-                    m_spawnthing->cgd.scale,
-                    current_entity ? current_entity->scale : -1.0f,
-                    current_scale,
-                    ent.scale,
-                    p->cgd.scaleRate,
-                    p->cgd.life,
-                    (current_entity ? current_entity->entityNumber : -1)
-                );
-            }
-        }
 
         if (current_entity) {
             ent.renderfx |= (current_entity->renderfx & ~(RF_FLAGS_NOT_INHERITED | RF_LIGHTING_ORIGIN));
@@ -1887,18 +1654,6 @@ void ClientGameCommandManager::SpawnTempModel(int mcount, int timealive)
         // retail's tail is the globalfade block then the loop increment: no brush-model
         // test, no printf, no break.
         if (!(p->cgd.flags & T_DLIGHT) && p->ent.reType == RT_MODEL && !p->ent.hModel) {
-            static int s_tm_bm_hits;
-            static int s_tm_bm_rows;
-
-            s_tm_bm_hits++;
-            if (PROBE_On() && PROBE_Throttle(&s_tm_bm_rows, 4, 512)) {
-                PROBE(
-                    "tmfree",
-                    "site=brushmodel hits=%d model='%s'\n",
-                    s_tm_bm_hits,
-                    p->modelname.c_str()
-                );
-            }
         }
 
         if (m_spawnthing->cgd.flags2 & T2_RELATIVEANGLES) {

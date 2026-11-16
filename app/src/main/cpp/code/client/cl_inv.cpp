@@ -23,9 +23,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cl_ui.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 typedef struct {
     const char *string;
@@ -1309,25 +1306,6 @@ qboolean CL_HasInventoryItem(const char *name)
 {
     int i;
 
-    {
-        int    filled = 0;
-        static int n = 0;
-        for (int probe_i = 0; probe_i < MAX_INVENTORY; probe_i++) {
-            if (cl.snap.ps.inventory_name_index[probe_i] > 0) {
-                filled++;
-            }
-        }
-        if (PROBE_Throttle(&n, 6, 400)) {
-            PROBE(
-                "inv:mirror",
-                "CL_HasInventoryItem('%s') filled=%d/%d -> %s",
-                name ? name : "(null)",
-                filled,
-                MAX_INVENTORY,
-                filled ? "mirror populated" : "MIRROR EMPTY"
-            );
-        }
-    }
 
     // Resolve availability by NAME, matching retail sub_41BD54 (NOT the MOHAA
     for (i = 0; i < MAX_INVENTORY; i++) {

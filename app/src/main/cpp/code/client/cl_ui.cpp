@@ -31,13 +31,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cl_ui.h"
 #include "cl_savemanager.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_ui.h"
 
-#include "../uilib/limit_uiprobe.h"
 
 #ifdef __ANDROID__
 #include <SDL.h>
@@ -575,97 +570,6 @@ void UI_FocusMenuIfExists(void)
         // focus pass must perform exactly what retail's ActivateMenu does -- one
         currentMenu->ActivateMenu();
 
-        if (PROBE_On() && view3d) {
-            int    painttotal = uWinMan.GetChildCount();
-            int    paintv3d = 0;
-            int    paintmenu = 0;
-            int    painttie = 0;   
-            int    painttieNC = 0; 
-            int    paintcon_ = 0;  
-            UIWidget *paintcon = currentMenu->GetContainerWidget();
-
-            for (int painti = 1; painti <= painttotal; painti++) {
-                UIWidget *paintw = uWinMan.GetChild(painti);
-
-                if (paintw == view3d) {
-                    paintv3d = painti;
-                }
-                if (paintcon && paintw == paintcon) {
-                    paintmenu = painti;
-                }
-                if (!paintw->isSubclassOf(UIWidgetContainer) && paintw != view3d) {
-                    paintcon_++;
-                }
-                // the shipped data does not produce.  tieNC splits them by class: retail's
-                if (paintw->getDepth() >= 1.0f) {
-                    painttie++;
-                    if (!paintw->isSubclassOf(UIWidgetContainer)) {
-                        painttieNC++;
-                    }
-                }
-            }
-
-            char paintfront[512];
-            paintfront[0] = 0;
-            for (int paintf = 1; paintf <= 8 && paintf <= painttotal; paintf++) {
-                UIWidget *paintw = uWinMan.GetChild(paintf);
-                const char *paintnm = paintw ? paintw->getName() : "(null)";
-
-                Q_strcat(paintfront, sizeof(paintfront), va("%d:%s/%.2f ", paintf, paintnm ? paintnm : "?", (double)(paintw ? paintw->getDepth() : -1.0f)));
-            }
-
-            char painttieNames[2048];
-            painttieNames[0] = 0;
-            for (int paintt = 1; paintt <= painttotal && strlen(painttieNames) < 1800; paintt++) {
-                UIWidget *paintw = uWinMan.GetChild(paintt);
-
-                if (paintw && paintw->getDepth() >= 1.0f) {
-                    const char *paintnm = paintw->getName();
-
-                    Q_strcat(painttieNames, sizeof(painttieNames), va("%s/%.2f ", paintnm ? paintnm : "?", (double)paintw->getDepth()));
-                }
-            }
-
-            static int uivk_prevv3d;
-            static int uivk_prevmenu;
-            int        uivk_flip = 0;
-
-            if (uivk_prevmenu && paintmenu && paintv3d) {
-                int wasOver = (uivk_prevmenu < uivk_prevv3d);
-                int isOver  = (paintmenu < paintv3d);
-
-                uivk_flip = (wasOver != isOver) ? 1 : 0;
-            }
-            uivk_prevv3d = paintv3d;
-            uivk_prevmenu = paintmenu;
-
-            int uivk_gap = (paintmenu && paintv3d) ? (paintv3d - paintmenu) : 0;
-
-            PAINT_CENSUS_PROBE("paint:order",
-                       "menu='%s' children=%d containerIndex=%d depth=%.3f visible=%d | "
-                       "view3dIndex=%d depth=%.3f visible=%d cls.state=%d tie=%d tieNC=%d nonurc=%d flip=%d prev3d=%d gap=%d | %s| front=%s| tieNames=%s guimouse=%d",
-                       currentMenu->m_name.c_str(),
-                       painttotal,
-                       paintmenu,
-                       paintcon ? (double)paintcon->getDepth() : -1.0,
-                       (currentMenu->isVisible()) ? 1 : 0,
-                       paintv3d,
-                       (double)view3d->getDepth(),
-                       view3d->getShow() ? 1 : 0,
-                       cls.state,
-                       painttie,
-                       painttieNC,
-                       paintcon_,
-                       uivk_flip,
-                       uivk_prevv3d,
-                       uivk_gap,
-                       (paintmenu && paintv3d && paintmenu < paintv3d)
-                           ? "VIEW3D PAINTS OVER THE MENU"
-                           : "menu paints over view3d",
-                       paintfront,
-                       painttieNames,
-                       in_guimouse ? 1 : 0);
-        }
     }
 
     if (ui_newvidmode->integer == -1) {
@@ -701,7 +605,6 @@ void UI_CloseConsole(void)
     if (fakk_console && fakk_console->getShow()) {
         fakk_console->setShow(false);
     }
-    UIVK_PROBE("focus", "caller=UI_CloseConsole State=%d", cls.state);
     UI_FocusMenuIfExists();
 }
 
@@ -716,7 +619,6 @@ void UI_ToggleConsole(void)
             fakk_console->setShow(false);
         }
 
-        UIVK_PROBE("focus", "caller=UI_ToggleConsole hide State=%d", cls.state);
         UI_FocusMenuIfExists();
     } else {
         fakk_console->setShow(true);
@@ -743,17 +645,6 @@ void UI_ClearBackground(void)
     /* g_color_table[0] is opaque black, so this is the full-screen fill I
        read as "the bgcolor fill".  Naming the branch that took it is what
        separates a real background from a wash painted under one. */
-    {
-        static int rows;
-        rows++;
-        if (PROBE_On() && (rows <= 16 || (rows % 600) == 0)) {
-            Menu *m = menuManager.CurrentMenu();
-            Com_Printf(
-                "[UI:bkgfill] n=%d menu='%s' full=%d state=%d rect=%gx%g\n", rows,
-                m ? m->m_name.c_str() : "(none)", (m && m->isFullscreen()) ? 1 : 0,
-                (int)cls.state, (float)uid.vidWidth, (float)uid.vidHeight);
-        }
-    }
 
     re.Set2DWindow(
         uid.originX,
@@ -983,13 +874,11 @@ static void UI_StatHudUpdate(Menu *hud, int stat)
             return;
         }
 
-        PROBE("statmenu", "menu='%s' stat=%d vis=0 arm=show\n", hud->m_name.c_str(), stat);
 
         Event *event = new Event(EV_ShowMenu);
         event->AddInteger(false);
         hud->ProcessEvent(event);
     } else if (hud->isVisible()) {
-        PROBE("statmenu", "menu='%s' stat=%d vis=1 arm=hide\n", hud->m_name.c_str(), stat);
 
         hud->ProcessEvent(EV_HideMenu);
     }
@@ -999,15 +888,6 @@ void CL_ServerRefresh(void);
 
 static void UI_Update_Impl(void);
 
-#define UI_UI_STATE_END() \
-    do { \
-        if ( ui_statsOn && ui_stateT0 >= 0 ) { \
-            UI_Add( UI_FAM_UI, UI_UIZ_state, UI_Microseconds() - ui_stateT0 ); \
-            ui_stateT0 = -1; \
-            LIMIT_StateEnd(); \
-        } \
-    } while ( 0 )
-
 void UI_Update(void)
 {
     /* One update descent per UI update: the stamp is what stops the window
@@ -1015,13 +895,8 @@ void UI_Update(void)
     UIWidget::FrameStampBump();
     UI_SettingsAutoApplyFrame();
 
-    UI_ROOT_BEGIN(UI_FAM_UI);
-
     UI_Update_Impl();
 
-    UI_ROOT_END(UI_FAM_UI);
-
-    LIMIT_UiFrameEnd();
 }
 
 /* Per-frame convergence: the shipped pages hand the pointer and the catcher back
@@ -1071,31 +946,21 @@ static void UI_Update_Impl(void)
     const char  *rightHud;
     int          ammoIdx;
     str          menuName;
-    static int   uivk_orderRows;
 
-    int          ui_z0, ui_z1, ui_z2, ui_z3;
-    int          ui_stateT0 = -1;
-
-    ui_z0 = ( ui_statsOn ? UI_Microseconds() : 0 );
     re.SetRenderTime(cls.realtime);                       
-    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_setrt, UI_Microseconds() - ui_z0 ); }
 
     {
         int dx, dy, dw, dh;
 
-        int limit_uit_aspect = LIMIT_Leg();
 
         SCR_AndroidDisplayRect(cls.glconfig.vidWidth, cls.glconfig.vidHeight, &dx, &dy, &dw, &dh);
         if (dx != uid.originX || dy != uid.originY || dw != uid.vidWidth || dh != uid.vidHeight) {
             UI_ResolutionChange();
         }
 
-        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_aspect, limit_uit_aspect);
     }
 
-    ui_z1 = ( ui_statsOn ? UI_Microseconds() : 0 );
     CL_FillUIDef();
-    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_filluid, UI_Microseconds() - ui_z1 ); }
 
     if ( ui_hudScale && ui_hudScale->modified ) {
         ui_hudScale->modified = false;
@@ -1104,7 +969,6 @@ static void UI_Update_Impl(void)
     }
 
     if (cl.snap.ps.stats[STAT_CINEMATIC] & 1) {
-        int limit_uit_cine = LIMIT_Leg();
 
         Cbuf_AddText("globalwidgetcommand InventoryBar inventoryhide\n"); 
         if (!hudListHidden) {
@@ -1112,29 +976,21 @@ static void UI_Update_Impl(void)
             hudListHidden = qtrue;
         }
 
-        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_cine, limit_uit_cine);
     }
 
-    ui_z2 = ( ui_statsOn ? UI_Microseconds() : 0 );
     uWinMan.ServiceEvents();
-    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_service, UI_Microseconds() - ui_z2 ); }
 
-    ui_z3 = ( ui_statsOn ? UI_Microseconds() : 0 );
     UI_SetupConsoles();
-    if ( ui_statsOn ) { UI_Add( UI_FAM_UI, UI_UIZ_consoles, UI_Microseconds() - ui_z3 ); }
 
-    ui_stateT0 = ( ui_statsOn ? UI_Microseconds() : 0 );
-    LIMIT_StateBegin();
 
     /* The save's thumbnail holds this flag while it waits for a world frame, and a
        page on screen is not one: the save page keeps drawing, and the capture takes
        the first frame after it closes. */
     if (cls.no_menus && cls.state == CA_ACTIVE && !UI_MenuActive()) {
-        int limit_uis_nomenu = LIMIT_Leg();
 
         view3d->setShow(true);
         frame = uWinMan.getFrame();
-        UI_ZONE(UI_FAM_UI, UI_UIZ_views, view3d->Display(frame, 1.0));
+        view3d->Display(frame, 1.0);
 
         if (ui_hud && !view3d->LetterboxActive()) {
             weapHud = NULL;
@@ -1161,12 +1017,9 @@ static void UI_Update_Impl(void)
             }
         }
 
-        LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_nomenu, limit_uis_nomenu);
-        UI_UI_STATE_END();
         return;
     }
 
-    int limit_uis_machine = LIMIT_Leg();
 
     currentMenu = menuManager.CurrentMenu();
 
@@ -1175,36 +1028,6 @@ static void UI_Update_Impl(void)
        covered on others reads as a flash.  This one is taken every frame the
        menu paints, rate limited, and carries the child order itself: the first
        entry in front= is what paints first. */
-    if (currentMenu && PROBE_On() && view3d && PROBE_Throttle(&uivk_orderRows, 16, 60)) {
-        int  orderTotal = uWinMan.GetChildCount();
-        int  orderV3d   = 0;
-        int  orderMenu  = 0;
-        char orderFront[1024];
-
-        orderFront[0] = 0;
-        for (int orderi = 1; orderi <= orderTotal && strlen(orderFront) < 900; orderi++) {
-            UIWidget *orderw = uWinMan.GetChild(orderi);
-
-            if (orderw == view3d) {
-                orderV3d = orderi;
-            }
-            if (orderw == currentMenu->GetContainerWidget()) {
-                orderMenu = orderi;
-            }
-            if (orderi <= 10) {
-                Q_strcat(orderFront, sizeof(orderFront),
-                         va("%d:%s ", orderi, orderw ? orderw->getName() : "(null)"));
-            }
-        }
-
-        PAINT_PROBE("paint:order",
-                    "perframe menu='%s' state=%d view3d=%d menu=%d "
-                    "verdict=%s | front=%s",
-                    currentMenu->m_name.c_str(), (int)cls.state, orderV3d, orderMenu,
-                    (orderV3d && orderMenu && orderV3d < orderMenu)
-                        ? "VIEW3D_OVER_MENU" : "menu_over_view3d",
-                    orderFront);
-    }
 
     if (ui_minicon->modified && ui_minicon->integer) {
         ui_minicon->modified = false;
@@ -1298,11 +1121,9 @@ static void UI_Update_Impl(void)
         }
     }
 
-    LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_machine, limit_uis_machine);
 
 
     if (!ui_hud || cls.state != CA_ACTIVE || view3d->LetterboxActive() || (currentMenu && currentMenu->isFullscreen())) {
-        int limit_uis_hudhide = LIMIT_Leg();
         // statics that retail never writes, so the branch is live only while
         if (server_loading) {
             if (headhud && headhud->isVisible()) {
@@ -1352,9 +1173,7 @@ static void UI_Update_Impl(void)
         if (hud_targetName) {
             hud_targetName->ForceHide();                  
         }
-        LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_hudhide, limit_uis_hudhide);
     } else {
-        int limit_uis_hudshow = LIMIT_Leg();
         if (cl.snap.ps.stats[STAT_HEALTH] > 0) {
             lastScoreboardTime = cls.realtime;
         }
@@ -1363,14 +1182,6 @@ static void UI_Update_Impl(void)
             && ((cl.snap.ps.pm_flags & PMF_INTERMISSION)
                 || (cl.snap.ps.stats[STAT_HEALTH] <= 0 && cg_gametype->integer
                     && cls.realtime > lastScoreboardTime + 1000))) {
-            static int tikanim_sb_arm;
-            if (PROBE_Throttle(&tikanim_sb_arm, 1, 20)) {
-                TIKIANIM_PROBE("sb:deadarmlive",
-                           "health=%d gametype=%d intermission=%d realtime=%d lastScore=%d",
-                           cl.snap.ps.stats[STAT_HEALTH], cg_gametype->integer,
-                           (cl.snap.ps.pm_flags & PMF_INTERMISSION) ? 1 : 0,
-                           cls.realtime, lastScoreboardTime);
-            }
             if (!cg_gametype->integer) {
                 if (missionsuccess && !missionsuccess->isVisible()) {
                     menuManager.HideAllMenus();
@@ -1381,18 +1192,13 @@ static void UI_Update_Impl(void)
                 CL_ServerRefresh();                       
             }
 
-            UI_UI_STATE_END();
-            UI_ZONE(UI_FAM_UI, UI_UIZ_menus, menuManager.UpdateAllMenus());
-            UI_ZONE(UI_FAM_UI, UI_UIZ_views, uWinMan.UpdateViews());
+                menuManager.UpdateAllMenus();
+            uWinMan.UpdateViews();
             return;
         }
 
         if (cg_gametype->integer) {
             if (!in_scoreboardShown) {
-                static int tikanim_sb_uhide;
-                if (PROBE_Throttle(&tikanim_sb_uhide, 1, 20)) {
-                    TIKIANIM_PROBE("sb:uihide", "cg_gametype=%d in_scoreboardShown=0 -> UI_HideScoreboard_f", cg_gametype->integer);
-                }
                 UI_HideScoreboard_f();
             }
         } else if (missionsuccess && missionsuccess->isVisible()) {
@@ -1419,8 +1225,7 @@ static void UI_Update_Impl(void)
            the failure screen's level_ai 0 into the level loading now. */
         if (!server_loading && (cl.snap.ps.missionStatus & 1)) {
             UI_ShowMissionFailed(true);
-            UI_UI_STATE_END();
-            UI_ZONE(UI_FAM_UI, UI_UIZ_views, uWinMan.UpdateViews());
+                uWinMan.UpdateViews();
             return;
         }
         UI_ShowMissionFailed(false);
@@ -1478,21 +1283,16 @@ static void UI_Update_Impl(void)
             UI_ShowHudList();
             hudListHidden = qfalse;
         }
-        LIMIT_LegEnd(LIMIT_FAM_UIS, LIMIT_UISZ_hudshow, limit_uis_hudshow);
     }
 
-    UI_UI_STATE_END();
 
     {
-        int limit_uit_srvref = LIMIT_Leg();
 
         CL_ServerRefresh();
 
-        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_srvref, limit_uit_srvref);
     }
 
     {
-        int limit_uit_print = LIMIT_Leg();
 
         if (ui_printStrings.NumObjects()) {
             str s = ui_printStrings.ObjectAt(1);
@@ -1500,11 +1300,10 @@ static void UI_Update_Impl(void)
             ui_printStrings.RemoveObjectAt(1);
         }
 
-        LIMIT_LegEnd(LIMIT_FAM_UIT, LIMIT_UITZ_printpop, limit_uit_print);
     }
 
-    UI_ZONE(UI_FAM_UI, UI_UIZ_menus, menuManager.UpdateAllMenus());
-    UI_ZONE(UI_FAM_UI, UI_UIZ_views, uWinMan.UpdateViews());
+    menuManager.UpdateAllMenus();
+    uWinMan.UpdateViews();
 }
 
 void UI_ToggleMenu(str name)
@@ -1542,7 +1341,6 @@ void UI_PopMenu(qboolean restore_cvars)
         menuManager.PopMenu(restore_cvars);
     }
 
-    UIVK_PROBE("focus", "caller=UI_PopMenu State=%d", cls.state);
     UI_FocusMenuIfExists();
 }
 
@@ -1560,11 +1358,6 @@ void UI_PushMenu(const char *name)
         menuManager.PushMenu(name);
     }
 
-    UIVK_PROBE("focus",
-               "caller=UI_PushMenu name='%s' pushed=%d State=%d",
-               name,
-               bDiff ? 1 : 0,
-               cls.state);
     UI_FocusMenuIfExists();
 }
 
@@ -1608,7 +1401,6 @@ void UI_ShowMenu(const char *name, qboolean bForce)
     //    widgetContainerCompare (@0x000B4450), which NEVER answers 0 -- a tie
     menuManager.ShowMenu(name);
 
-    UIVK_PROBE("focus", "caller=UI_ShowMenu name='%s' State=%d", name, cls.state);
     UI_FocusMenuIfExists();
 }
 
@@ -1723,7 +1515,6 @@ void UI_GlobalWidgetCommand_f(void)
     commandstring = Cmd_Argv(2);
     Event *event  = new Event(commandstring);
 
-    PROBE("inv:gwc", "widget='%s' event='%s' argc=%d", name.c_str(), commandstring.c_str(), Cmd_Argc());
 
     for (int i = 3; i < Cmd_Argc(); i++) {
         event->AddToken(Cmd_Argv(i));
@@ -1760,13 +1551,11 @@ extern "C" qboolean UI_IsHudActive_C(void)
 void UI_MenuEscape(const char *name)
 {
     if (uWinMan.BindActive()) {
-        UIVK_PROBE("key", "key='ESCAPE' MenuEscape arm=BindActive");
         UI_KeyEvent(K_ESCAPE, qfalse);
         return;
     }
 
     if (server_loading) {
-        UIVK_PROBE("key", "key='ESCAPE' MenuEscape arm=server_loading State=%d", cls.state);
         return;
     }
 
@@ -1782,9 +1571,6 @@ void UI_MenuEscape(const char *name)
         Menu *hud = hudList.ObjectAt(i);
 
         if (hud && hud->isNoEscape()) {
-            UIVK_PROBE("key",
-                       "key='ESCAPE' MenuEscape arm=noEscape-hud-scan -> return (hud '%s')",
-                       hud->m_name.c_str());
             return;
         }
     }
@@ -1793,26 +1579,14 @@ void UI_MenuEscape(const char *name)
         Menu *cur = menuManager.CurrentMenu();
 
         if (!cur->isNoEscape()) {
-            UIVK_PROBE("key",
-                       "key='ESCAPE' MenuEscape arm=PopMenu '%s' State=%d",
-                       cur->m_name.c_str(),
-                       cls.state);
             /* retail's own MenuEscape pops 0 (@0x00194A00): a page owns the cvars it
                read at open, so leaving it never writes them back */
             menuManager.PopMenu(qfalse);
-        } else {
-            UIVK_PROBE("key",
-                       "key='ESCAPE' MenuEscape arm=noEscape '%s' -> focus pass only State=%d",
-                       cur->m_name.c_str(),
-                       cls.state);
         }
 
         UI_FocusMenuIfExists();
         return;
     } else if (!Q_stricmp(name, "main") && cls.state == CA_ACTIVE && cg_gametype->integer == 0) {
-        UIVK_PROBE("key",
-                   "key='ESCAPE' MenuEscape arm=PushMenu ingame_singleplayer State=%d",
-                   cls.state);
         UI_PushMenu("ingame_singleplayer");
     } else if (!Q_stricmp(name, "main") && cls.state == CA_ACTIVE && cg_gametype->integer > 0) {
         UI_PushMenu("ingame_multiplayer");
@@ -1900,7 +1674,6 @@ void CL_PingServers_f(void)
     char        name[32];
     const char *adrstring;
     cvar_t     *noudp;
-    cvar_t     *noipx;
 
     Com_Printf("pinging broadcast...\n");
 
@@ -1911,12 +1684,9 @@ void CL_PingServers_f(void)
         CL_NET_OutOfBandPrint(adr, "info %i", 8);
     }
 
-    noipx = Cvar_Get("noipx", "0", CVAR_INIT);
-    if (!noipx->integer) {
-        adr.type = NA_BROADCAST_IPX;
-        adr.port = BigShort(12203);
-        CL_NET_OutOfBandPrint(adr, "info %i", 8);
-    }
+    /* The IPX probe that sat here is gone: this net layer has no IPX, so
+       Sys_SendPacket sent it to 0.0.0.0 -- dead traffic that only muddied packet
+       logs.  The LAN scan proper is CL_LocalServers_f (client/cl_main.cpp). */
 
     for (i = 0; i < 16; i++) {
         Com_sprintf(name, sizeof(name), "adr%i", i);
@@ -2543,7 +2313,6 @@ void CL_FillUIImports(void)
 
 void CL_BeginRegistration(void)
 {
-    SMP_LOAD_BEGIN( rendreg );
     re.BeginRegistration(&cls.glconfig);
 #ifdef __ANDROID__
     {
@@ -2555,7 +2324,6 @@ void CL_BeginRegistration(void)
     uWinMan.RefreshShadersFromList();
     // Models have no lazy path: retail re-registers them eagerly, and they MUST be
     uWinMan.RegisterModelsFromList();
-    SMP_LOAD_END( rendreg );
 }
 
 void CL_EndRegistration(void)
@@ -2663,8 +2431,6 @@ void UI_ServerLoaded(void)
 {
     cvar_t *pMaxClients;
 
-    WIDGETM1_PROBE( "svloaded", "state=%d svrun=%d paused=%d serverLoading=%d", cls.state,
-        com_sv_running->integer, paused ? paused->integer : -1, UI_IsServerLoading() );
 
     CL_UpdateSnapFlags();
     // Retail UI_ServerLoaded @0x00197CA0 (228 B) never touches sv.state: its body is
@@ -5189,7 +4955,6 @@ void UI_StopLoading(void)
     menuManager.setLoading(false);
     menuManager.Unlock(NULL);
     menuManager.ClearMenus(true);
-    UIVK_PROBE("focus", "caller=UI_StopLoading State=%d", cls.state);
     UI_FocusMenuIfExists();
     StopLoadingScreen();
 }
@@ -6082,7 +5847,6 @@ void CL_InitializeUI(void)
     {
         int uivkn = uWinMan.GetChildCount();
 
-        UIVK_PROBE("creation", "children=%d", uivkn);
 
         for (int uivki = 1; uivki <= uivkn && strlen(uivk_creation) < 24000; uivki++) {
             UIWidget *uivkw = uWinMan.GetChild(uivki);
@@ -6095,31 +5859,6 @@ void CL_InitializeUI(void)
     uWinMan.CreateMenus();
     uWinMan.sortWidgetContainers();
 
-    if (PROBE_On()) {
-        static const char *paint_ids[3] = {"$$Prologue$$", "$$Prologue2$$", "$$SkipPrologue$$"};
-        int                 painti;
-
-        PAINT_PROBE("loc:resource", "local_language='%s'", CvarGetForUI("local_language", "Eng"));
-
-        for (painti = 0; painti < 3; painti++) {
-            const char *paint_id = paint_ids[painti];
-            const char *paint_val = isStringResource(paint_id) ? getStringResource(paint_id) : NULL;
-
-            PAINT_PROBE("loc:resource",
-                       "id='%s' isResource=%d valueLen=%d%s",
-                       paint_id,
-                       isStringResource(paint_id) ? 1 : 0,
-                       paint_val ? (int)strlen(paint_val) : -1,
-                       (paint_val && !strlen(paint_val)) ? "  <-- EMPTY LOOKUP: the crawl text is blank"
-                                                       : "");
-        }
-
-        PAINT_PROBE("loc:resource",
-                   "menu 'prologue' %s; ui_addhud list=%d creation=%s",
-                   menuManager.FindMenu(str("prologue")) ? "FOUND" : "MISSING",
-                   (int)hudList.NumObjects(),
-                   uivk_creation);
-    }
 
     getAllWeaponHuds();
     hud_health = menuManager.FindMenu("healthhud");          

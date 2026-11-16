@@ -27,9 +27,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/vector.h"
 #include "../tiki/tiki_skan.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 #define LL(x) x = LittleLong(x)
 
@@ -193,7 +190,6 @@ void R_FreeUnusedModels(void)
 }
 
 
-
 void R_RegisterShaders(model_t *mod)
 {
     R_TikiRefreshShaders(mod->d.tiki);
@@ -221,18 +217,18 @@ void R_TikiRefreshShaders(dtiki_t *tiki)
         assert(psurface->numskins <= MAX_TIKI_SHADER);
         for (j = 0; j < psurface->numskins; j++) {
             if (psurface->shader[j][0]) {
+                /* retail R_CacheModel @0x279B0 passes -1, mip=!(flags&0x100),
+                   picmip=!(flags&0x200), wrapx=1, wrapy=0.  A default result is
+                   not cached as success: the next draw retries the resolve. */
                 sh = R_FindShader(
                     psurface->shader[j],
                     LIGHTMAP_NONE,
                     !(psurface->flags & TIKI_SURF_NOMIPMAPS),
-                    r_picmip->integer,
+                    !(psurface->flags & TIKI_SURF_NOPICMIP),
                     qtrue,
-                    qtrue
+                    qfalse
                 );
                 psurface->hShader[j] = sh->index;
-                if ( sh == tr.defaultShader ) {
-                    SMP_ShaderDefaultProbe( "tiki-surface", psurface->shader[j], tiki->name, i, j );
-                }
             } else {
                 psurface->hShader[j] = 0;
             }
@@ -996,10 +992,25 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
     int lodMaxStep;
     const int boneArena = tr.smpFrame;
 
-    tiki = ent->e.tiki;
+    /* retail R_AddSkelSurfaces @0x21B20 resolves the tiki through the model
+       table this registration re-registered, not the entity's own copy: a tiki
+       replaced at reload must not leave the skel arm reading the previous
+       generation's surface hShader[].  A tiki actually drawn here is live, so
+       its model row is stamped and cannot be retired as a stale slot. */
+    tiki = (tr.currentModel && tr.currentModel->type == MOD_TIKI) ? tr.currentModel->d.tiki : NULL;
+    if (!tiki) {
+        tiki = ent->e.tiki;
+    }
+    if (!tiki) {
+        return;
+    }
+    if (tr.currentModel && tr.currentModel->type == MOD_TIKI) {
+        /* a draw inside the registration window (the load-screen models) makes
+           this row live, so the retire pass cannot treat it as unseen */
+        tr.currentModel->r_sequence = r_sequencenumber;
+    }
 
-    /* the same stamp the tiki arm checks: a surface read here is a read of the
-       slot this generation handed out, not the one before it */
+    /* a surface read here is a read of the slot this generation handed out */
     R_TikiRefreshShaders(tiki);
 
     if (!ent->e.legsLive && !ent->e.torsoLive) {
@@ -1034,15 +1045,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
             /* A bail here drops the surface silently: PRINT_DEVELOPER never
              * reaches a device log, and a dropped skel surface is the flat-blue /
              * missing-model end state.  Name it at the master gate, throttled. */
-            static int skelbail_rows;
-            if (PROBE_On() && PROBE_Throttle(&skelbail_rows, 4, 240)) {
-                ri.Printf(
-                    PRINT_ALL,
-                    "[GLES3:skelbail] arena=%d cursor=%d bones=%d model='%s' f=%d\n",
-                    boneArena, TIKI_Skel_Bones_Cursor[boneArena], skel->numBones,
-                    tiki->a->name ? tiki->a->name : "?", RB_FrameCount()
-                );
-            }
             ri.Printf(
                 PRINT_DEVELOPER, "R_AddSkelSurfaces: too many skeleton models visible on '%s'\n", tiki->a->name
             );
@@ -1126,7 +1128,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
         fogNum = R_CalcFogNum(fogOrigin, fogRadius);
     }
 
-    ri.TIKI_Skan_SetProbeSubject(ent->e.entityNumber, ent->e.origin);
 
     boneCount = ri.TIKI_SkelBonesFromRecords(
         tiki,
@@ -1254,7 +1255,8 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
             }
 
             if (!personalModel && r_shadows->integer == 2 && fogNum == 0
-                && !(ent->e.renderfx & RF_FIRST_PERSON) && (ent->e.renderfx & RF_SHADOW)
+                /* retail @0x21B20 / @0x26950 tests renderfx & 4 (RF_DEPTHHACK), not RF_FIRST_PERSON */
+                && !(ent->e.renderfx & RF_DEPTHHACK) && (ent->e.renderfx & RF_SHADOW)
                 && (ent->e.renderfx & RF_SHADOW_PRECISE) && shader->sort == (float)SS_OPAQUE) {
                 R_AddDrawSurf((surfaceType_t *)drawnSurface, tr.shadowShader, 0, 0);
             }
@@ -1865,29 +1867,6 @@ void RB_SkelMesh(skelSurfaceGame_t *sf)
 
     /* what the mesh path actually wrote, for the screen-class surfaces: the
        tiki-lib census recomputes, this one reads the submitted verts */
-    if (PROBE_On() && sf->numVerts <= 8 && (int)render_count == sf->numVerts) {
-        static int s_attachRows;
-        if (PROBE_Throttle(&s_attachRows, 24, 600)) {
-            const float *pv = &tess.xyz[baseVertex][0];
-            ri.Printf(PRINT_ALL,
-                      "[GLES3:meshattach] model='%s' surf='%s' verts=%d bone0=%d lod=%d scale=%.4f org=(%.2f,%.2f,%.2f) "
-                      "v0=(%.3f,%.3f,%.3f) v1=(%.3f,%.3f,%.3f) v2=(%.3f,%.3f,%.3f) v3=(%.3f,%.3f,%.3f) f=%d\n",
-                      skelmodel ? skelmodel->name : "?",
-                      sf->name,
-                      sf->numVerts,
-                      sf->pVerts ? ((skelWeight_t *)((byte *)sf->pVerts + sizeof(skeletorVertex_t)))->boneIndex : -1,
-                      lod_cutoff,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.scale : 0.0f,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[0] : 0.0f,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[1] : 0.0f,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[2] : 0.0f,
-                      pv[0], pv[1], pv[2],
-                      pv[4], pv[5], pv[6],
-                      pv[8], pv[9], pv[10],
-                      pv[12], pv[13], pv[14],
-                      RB_FrameCount());
-        }
-    }
 
 
 #if 0
@@ -2331,7 +2310,7 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
                             }
 
                             if (!personalModel && r_shadows->integer == 2 && fogNum == 0
-                                && !(ent->e.renderfx & RF_FIRST_PERSON) && (ent->e.renderfx & RF_SHADOW)
+                                && !(ent->e.renderfx & RF_DEPTHHACK) && (ent->e.renderfx & RF_SHADOW)
                                 && (ent->e.renderfx & RF_SHADOW_PRECISE) && shader->sort == (float)SS_OPAQUE) {
                                 R_AddDrawSurf((surfaceType_t *)surface, tr.shadowShader, 0, 0);
                             }
@@ -2608,7 +2587,6 @@ static int R_CullSkelModel(dtiki_t *tiki, refEntity_t *e, skelFrame_t *nf, skelF
     }
 
     cull = R_CullLocalBox(bounds);
-
 
 
     switch (cull) {

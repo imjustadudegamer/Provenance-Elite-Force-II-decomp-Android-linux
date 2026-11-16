@@ -22,9 +22,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "client.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 #include "cl_ui.h"
 #include "cl_cin.h"
 #include "../uilib/ui_public.h"
@@ -873,7 +870,6 @@ void CL_AddKeyUpCommands(int key, char *kb, unsigned time)
             *buttonPtr = '\0';
             if (button[0] == '+') {
                 Com_sprintf(cmd, sizeof(cmd), "-%s %i %i\n", button + 1, key, time);
-                PROBE("input:bindexec", "key=%d executed(-arm)='-%s'", key, button + 1);
                 Cbuf_AddText(cmd);
                 keyevent = qtrue;
             } else {
@@ -928,10 +924,7 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
         }
 
         if (Cvar_VariableIntegerValue("ui_console")) {
-            UIVK_PROBE("key", "key='`' consumer=UI_ToggleConsole (ui_console=1)");
             UI_ToggleConsole();
-        } else {
-            UIVK_PROBE("key", "key='`' consumer=none (ui_console=0)");
         }
         return;
     }
@@ -976,83 +969,46 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
     if (key == K_ESCAPE) {
         if (down) {
             qboolean wasup = UI_MenuUp();
-            char     uivkhudbuf[256];
 
-            UIVK_PROBE("key",
-                       "key='ESCAPE' down=1 State=%d catcher=0x%x menuup=%d hudnoescape=%d cin=%d "
-                       "hudcount=%d huds='%s' svloading=%d cinflag=%d",
-                       cls.state,
-                       Key_GetCatcher(),
-                       wasup ? 1 : 0,
-                       UI_IsHudActive() ? 1 : 0,
-                       cinematicRunning() ? 1 : 0,
-                       UI_HudCount(),
-                       UI_HudNames(uivkhudbuf, sizeof(uivkhudbuf)),
-                       UI_IsServerLoading() ? 1 : 0,
-                       (cl.snap.ps.stats[STAT_CINEMATIC] & 1) ? 1 : 0);
             // every UIFloatingWindow/UIPopupMenu on ESC, a state change retail never makes.
 
             if (cinematicRunning()) {
-                UIVK_PROBE("key", "key='ESCAPE' consumer=StopCinematic (cinematic up)");
                 StopCinematic();
                 return;
             }
 
             UIWidget *uivkdmcon = uWinMan.ActiveControl();
             if (uivkdmcon && uivkdmcon->getName() && !Q_stricmp(uivkdmcon->getName(), "dm_console")) {
-                UIVK_PROBE("key", "key='ESCAPE' consumer=UI_ConsoleEscape (dm_console)");
                 uivkdmcon->KeyEvent(K_ESCAPE, time);
                 return;
             }
 
             if (wasup) {
-                UIVK_PROBE("key",
-                           "key='ESCAPE' consumer=UI_MenuEscape(current menu up, State=%d)",
-                           cls.state);
                 UI_MenuEscape("main");
                 return;
             }
 
             // to the main menu and NEVER skipped a cinematic. Removed that dead check so
             if (cl.snap.ps.stats[STAT_CINEMATIC] & 1 && cls.state == CA_ACTIVE) {
-                UIVK_PROBE("key", "key='ESCAPE' consumer=skipcinematic (STAT_CINEMATIC)");
                 Cbuf_AddText("skipcinematic\n");
                 return;
             }
 
             if ((unsigned int)(cls.state - CA_CONNECTING) <= 1 || cls.state == CA_CONNECTED) {
-                UIVK_PROBE("key",
-                           "key='ESCAPE' consumer=CL_Disconnect+UI_MenuEscape (State=%d)",
-                           cls.state);
                 CL_Disconnect(1);
                 UI_MenuEscape("main");
                 return;
             }
 
             if (cls.state <= CA_DISCONNECTED || cls.state == CA_ACTIVE) {
-                UIVK_PROBE("key",
-                           "key='ESCAPE' consumer=UI_MenuEscape(no menu up, State=%d)",
-                           cls.state);
                 UI_MenuEscape("main");
             } else {
-                UIVK_PROBE("key",
-                           "key='ESCAPE' consumer=none (State=%d, no retail arm)",
-                           cls.state);
             }
             return;
         }
     } else if (down) {
         if ((Key_GetCatcher() & KEYCATCH_UI && !menubound[key]) || UI_BindActive()) {
             // instead of the binding executor.  Digits are NOT menubound in retail's
-            PROBE(
-                "input:swallowed",
-                "key=%d catcher=0x%x menubound=%d bindActive=%d bind='%s'",
-                key,
-                Key_GetCatcher(),
-                menubound[key] ? 1 : 0,
-                UI_BindActive() ? 1 : 0,
-                keys[key].binding ? keys[key].binding : "(none)"
-            );
             UI_KeyEvent(key, time);
         } else if (Key_GetCatcher() & KEYCATCH_MESSAGE) {
             Message_Key(key);
@@ -1086,7 +1042,6 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
                         *buttonPtr = '\0';
                         if (button[0] == '+') {
                             Com_sprintf(cmd, sizeof(cmd), "%s %i %i\n", button, key, time);
-                            PROBE("input:bindexec", "key=%d executed(+arm)='%s'", key, button);
                             Cbuf_AddText(cmd);
                         } else {
                             Cbuf_AddText(button);
@@ -1103,7 +1058,6 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
                     }
                 }
             } else {
-                PROBE("input:bindexec", "key=%d executed='%s'", key, kb);
                 Cbuf_AddText(kb);
                 Cbuf_AddText("\n");
             }

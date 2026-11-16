@@ -14,11 +14,6 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #include "../qcommon/gameplaymanager.h" 
 #include "../corepp/tiki.h"
 
-// MENU3D MENU3D TEMP PROBE (change menu3d-menu3d, tree-only, NEVER merge): one
-#define PROBE_GET(name, def, flags) ((cvar_t *)0)
-#define PROBE_PRINT                 Com_Printf
-#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "0")) != 0)
-#include "../qcommon/qa_probe.h"
 
 
 Event EV_RMWidget_RenderModel
@@ -317,52 +312,6 @@ void UIRenderModel::Draw(void)
 
     UIWidget::Draw();
 
-    {
-        /* one row per model per frame for the first frames of a screen, then sparsely: the shared PROBE_Throttle counter this replaced sampled whichever widget
-           landed on the throttle's phase and hid the other (the CONTROLS boot carried 17 rows for its munro preview and none for the stardome).  Keyed on the widget,
-           and it comes after UIWidget::Draw, so the row is the fill that was just painted. */
-        static const void *s_menu3dWidget[16];
-        static int         s_menu3dRows[16];
-        static int         s_menu3dWidgets;
-        int                slot = -1;
-
-        for (i = 0; i < s_menu3dWidgets; i++) {
-            if (s_menu3dWidget[i] == (const void *)this) {
-                slot = i;
-                break;
-            }
-        }
-        if (slot < 0 && s_menu3dWidgets < (int)(sizeof(s_menu3dWidget) / sizeof(s_menu3dWidget[0]))) {
-            slot                     = s_menu3dWidgets;
-            s_menu3dWidget[slot]     = (const void *)this;
-            s_menu3dRows[slot]       = 0;
-            s_menu3dWidgets++;
-        }
-
-        if (slot >= 0) {
-            s_menu3dRows[slot]++;
-            if (s_menu3dRows[slot] <= 8 || (s_menu3dRows[slot] % 240) == 0) {
-                UIVK_CENSUS_PROBE(
-                    "menu3d",
-                    "rm_draw widget=%p seq=%d state=%d vis=%d show=%d alpha=%.3f screen=%.0f,%.0f %.0fx%.0f "
-                    "static='%s' cvar='%s' cv='%s'",
-                    (const void *)this,
-                    s_menu3dRows[slot],
-                    (int)m_widgetState,
-                    m_visible ? 1 : 0,
-                    getShow() ? 1 : 0,
-                    (double)m_local_alpha,
-                    (double)m_screenframe.pos.x,
-                    (double)m_screenframe.pos.y,
-                    (double)m_screenframe.size.width,
-                    (double)m_screenframe.size.height,
-                    m_modelName.c_str(),
-                    m_cvarname.c_str(),
-                    m_cvarname.length() ? Cvar_VariableString(m_cvarname) : ""
-                );
-            }
-        }
-    }
 
     // empty, i.e. it drew a model retail does not draw.
     if (m_cvarname.length()) {
@@ -373,13 +322,6 @@ void UIRenderModel::Draw(void)
     } else if (m_modelName.length()) {
         modelName = m_modelName.c_str();
     } else {
-        {
-            static int menu3dmvk_noname;
-            if (PROBE_Throttle(&menu3dmvk_noname, 4, 300)) {
-                UIVK_PROBE("menu3d", "rm_early return=noname static='%s' cvar='%s'",
-                           m_modelName.c_str(), m_cvarname.c_str());
-            }
-        }
         return;
     }
 
@@ -396,12 +338,6 @@ void UIRenderModel::Draw(void)
     }
 
     if (!handle) {
-        {
-            static int menu3dmvk_nohandle;
-            if (PROBE_Throttle(&menu3dmvk_nohandle, 4, 300)) {
-                UIVK_PROBE("menu3d", "rm_early return=nohandle model='%s'", modelName);
-            }
-        }
         return;
     }
 
@@ -413,12 +349,6 @@ void UIRenderModel::Draw(void)
         m_modelHandle   = 0;
         m_resolvedModel = str();
         m_modelSequence = -1;
-        {
-            static int menu3dmvk_notiki;
-            if (PROBE_Throttle(&menu3dmvk_notiki, 4, 300)) {
-                UIVK_PROBE("menu3d", "rm_early return=notiki model='%s' handle=%d", modelName, handle);
-            }
-        }
         return;
     }
 
@@ -437,27 +367,6 @@ void UIRenderModel::Draw(void)
         animName = m_animName;
     }
 
-    {
-        static int menu3dmvk_submit;
-        if (PROBE_Throttle(&menu3dmvk_submit, 4, 120)) {
-            UIVK_PROBE(
-                "menu3d",
-                "rm_submit model='%s' handle=%d tiki=%p state=%d anim='%s' fov=%.0fx%.0f rect=%.0f,%.0f %.0fx%.0f realtime=%d",
-                modelName,
-                handle,
-                (void *)tiki,
-                (int)m_widgetState,
-                animName.c_str(),
-                (double)m_fovX,
-                (double)m_fovY,
-                (double)m_screenframe.pos.x,
-                (double)m_screenframe.pos.y,
-                (double)m_screenframe.size.width,
-                (double)m_screenframe.size.height,
-                cls.realtime
-            );
-        }
-    }
 
     // invention; it reproduced the retail main-menu framing by construction --
     VectorClear(origin);

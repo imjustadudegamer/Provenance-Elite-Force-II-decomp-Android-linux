@@ -48,7 +48,7 @@ public:
 
     void      AddMenuItem(UIWidget *item);
     void      DeleteMenuItem(UIWidget *item);
-    // PAINT TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  MenuManager::
+    // paint-order accessors accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  MenuManager::
     int       GetWidgetCount(void);
     UIWidget *GetWidget(int index);
     void      setName(str name);

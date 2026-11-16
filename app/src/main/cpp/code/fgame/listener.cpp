@@ -36,12 +36,6 @@
 #include "scriptmaster.h"
 #include "mp_manager.hpp"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
-
-static const char *WIDGETF3_ClassOf( Class *c );
-static void        WIDGETF3_Report( Listener *L, const char *where, Event *posting );
 
 Event EV_Remove (	"immediateremove",
 	EV_DEFAULT,
@@ -930,7 +924,6 @@ qboolean Event::EVENT_NodeIsRecycled( Event *e )
 	return bits == WIDGETF3_POOLSTAMP_BITS;
 }
 
-static int EVENT_EntityOf( void *p );
 
 #endif 
 
@@ -962,16 +955,11 @@ void * Event::operator new( size_t s )
 
 			if ( evnewFirstUse == 1 || evnewFirstUse == 6000 )
 			{
-				WIDGET_PROBE(
-					"evnew",
-					"pool-firstuse n=%d nF=%d (not inspected: raw memory, no ctor)\n",
-					evnewFirstUse,
-					numFreeEvents );
+
 			}
 		}
 		else
 		{
-			int event_tent;
 
 			SafePtrBase::WIDGETF3_FillNode(
 				( SafePtrBase * )&newevent->m_sourceobject, &nprev, &nnext, &ntgt );
@@ -985,22 +973,7 @@ void * Event::operator new( size_t s )
 				{
 					evnewPrinted++;
 
-					event_tent = EVENT_EntityOf( ntgt );
 
-					WIDGET_PROBE(
-						"evnew",
-						"node=%p dirty tgt=%p ent=%d(%s) prev=%p next=%p name=%s nF=%d hit=%d\n",
-						( void * )newevent,
-						ntgt,
-						event_tent,
-						event_tent >= 0
-							? WIDGETF3_ClassOf( ( Class * )G_GetEntity( event_tent ) )
-							: "no-match",
-						nprev,
-						nnext,
-						newevent->getName(),
-						numFreeEvents,
-						evnewPrinted );
 				}
 			}
 		}
@@ -1027,34 +1000,6 @@ void Event::operator delete( void *ptr )
 #if defined( GAME_DLL )
 	if ( event->m_sourceobject.Pointer() )
 	{
-		static int widget_evdelPrinted;
-
-		if (PROBE_Throttle(&widget_evdelPrinted, 32, 4096))
-		{
-			void *nprev;
-			void *nnext;
-			void *ntgt;
-			int   event_tent;
-
-			SafePtrBase::WIDGETF3_FillNode(
-				( SafePtrBase * )&event->m_sourceobject, &nprev, &nnext, &ntgt );
-
-			event_tent = EVENT_EntityOf( ntgt );
-
-			WIDGET_PROBE(
-				"evdel",
-				"event=%p ev=%s stillRegistered tgt=%p ent=%d(%s) prev=%p next=%p nQ=%d nF=%d\n",
-				( void * )event,
-				event->getName(),
-				ntgt,
-				event_tent,
-				event_tent >= 0
-					? WIDGETF3_ClassOf( ( Class * )G_GetEntity( event_tent ) )
-					: "no-match",
-				nprev,
-				nnext,
-				numEvents, numFreeEvents );
-		}
 	}
 #endif
 
@@ -1371,7 +1316,6 @@ void Event::PrintEvent( Event * event )
 }
 
 #else
-
 
 
 #endif
@@ -2643,177 +2587,13 @@ qboolean Listener::ProcessEvent( Event *event )
 #if defined( GAME_DLL )
 
 
-static const char *WIDGETF3_ClassOf( Class *c )
-{
-	const char *n;
-
-	if ( !c )
-	{
-		return "null";
-	}
-
-	n = c->getClassname();
-	return n ? n : "?";
-}
-
-static int EVENT_EntityOf( void *p )
-{
-	int ei;
-
-	if ( !p || !g_entities || globals.max_entities <= 0 )
-	{
-		return -1;
-	}
-
-	for ( ei = 0; ei < globals.max_entities; ei++ )
-	{
-		if ( g_entities[ ei ].inuse && ( void * )g_entities[ ei ].entity == p )
-		{
-			return ei;
-		}
-	}
-
-	return -1;
-}
-
-static void *WIDGETF3_SafePtrVt( void )
-{
-	static void *vt;
-
-	if ( !vt )
-	{
-		vt = *( void ** )EventQueue->GetSourceObjectPointer();
-	}
-
-	return vt;
-}
-
-static void WIDGETF3_Report( Listener *L, const char *where, Event *posting )
-{
-	SafePtrBase::WIDGETF3_HeadInfo h;
-	Event                       *w;
-	const char                  *cls;
-	const char                  *tgtcls;
-	int                          entnum = -1;
-	int                          inQ = 0, inA = 0, inF = 0;
-	int                          span = -1;
-	Event                       *spanOwner = NULL;
-	static int                   printed = 0;
-	int                          isSafePtr;
-	int                          event_tent = -1;
-	int                          spanOwnerFree = 0;
-	const char                  *spanname;
-
-	if ( !L )
-	{
-		return;
-	}
-
-	SafePtrBase::WIDGETF3_FillHead( L, &h );
-
-	if ( !h.head || h.prev )
-	{
-		return; 
-	}
-
-	if ( printed >= 8 )
-	{
-		return;
-	}
-	printed++;
-
-	cls = WIDGETF3_ClassOf( L );
-	if ( L->isSubclassOf( Entity ) )
-	{
-		entnum = ( ( Entity * )L )->entnum;
-	}
-
-	isSafePtr = ( h.vtword == WIDGETF3_SafePtrVt() );
-	if ( isSafePtr && h.target )
-	{
-		event_tent = EVENT_EntityOf( h.target );
-		tgtcls = event_tent >= 0
-			     ? WIDGETF3_ClassOf( ( Class * )G_GetEntity( event_tent ) )
-			     : "no-match";
-	}
-	else if ( !isSafePtr )
-	{
-		tgtcls = "NOT-A-SAFEPTR";
-	}
-	else
-	{
-		tgtcls = "null";
-	}
-
-	for ( w = EventQueue->next; w != EventQueue; w = w->next )
-	{
-		if ( w->GetSourceObjectPointer() == ( SafePtr<Listener> * )h.head ) { inQ = 1; break; }
-		if ( ( Event * )h.head == w )       { inQ = 2; break; }
-	}
-
-	for ( w = ActiveEvents->next; w != ActiveEvents; w = w->next )
-	{
-		if ( w->GetSourceObjectPointer() == ( SafePtr<Listener> * )h.head ) { inA = 1; break; }
-		if ( ( Event * )h.head == w )       { inA = 2; break; }
-		if ( span < 0 &&
-			 ( char * )h.head > ( char * )w &&
-			 ( char * )h.head < ( char * )w + sizeof( Event ) )
-		{
-			span = ( int )( ( char * )h.head - ( char * )w );
-			spanOwner = w;
-		}
-	}
-
-	for ( w = FreeEvents->next; w != FreeEvents; w = w->next )
-	{
-		if ( w->GetSourceObjectPointer() == ( SafePtr<Listener> * )h.head ) { inF = 1; break; }
-		if ( ( Event * )h.head == w )       { inF = 2; break; }
-		if ( span < 0 &&
-			 ( char * )h.head > ( char * )w &&
-			 ( char * )h.head < ( char * )w + sizeof( Event ) )
-		{
-			span = ( int )( ( char * )h.head - ( char * )w );
-			spanOwner = w;
-			spanOwnerFree = 1;
-		}
-	}
-
-	spanname = "-";
-	if ( spanOwner )
-	{
-		if ( !spanOwnerFree || Event::EVENT_NodeIsRecycled( spanOwner ) )
-		{
-			spanname = spanOwner->getName();
-		}
-		else
-		{
-			spanname = "(raw-pool)";
-		}
-	}
-
-	WIDGET_PROBE(
-		"head",
-		"%s this=%p cls=%s ent=%d head=%p prev=NULL next=%p tgt=%p ent=%d(%s) vt=%p isSP=%d | "
-		"Q=%d A=%d F=%d span=%d(spanOwner=%p evtgt=%s) | nQ=%d nF=%d | post=%s\n",
-		where,
-		( void * )L, cls, entnum,
-		h.head, h.next, h.target, event_tent, tgtcls, h.vtword, isSafePtr,
-		inQ, inA, inF, span,
-		( void * )spanOwner,
-		spanname,
-		numEvents, numFreeEvents,
-		posting ? ( posting->getName() ? posting->getName() : "?" ) : "-" );
-}
-
 static void WIDGETF3_SweepHeads( void )
 {
-	static int  frame = 0;
 	int         ei;
 	int         bad = 0, firstBad = -1;
 	Listener   *L;
 	Event      *w;
 
-	frame++;
 
 	for ( ei = 0; ei < globals.max_entities; ei++ )
 	{
@@ -2844,10 +2624,9 @@ static void WIDGETF3_SweepHeads( void )
 
 	if ( bad )
 	{
-		WIDGET_PROBE( "sweep", "frame=%d bad=%d firstBadEnt=%d\n", frame, bad, firstBad );
+
 		if ( firstBad >= 0 )
 		{
-			WIDGETF3_Report( ( Listener * )G_GetEntity( firstBad ), "sweep", NULL );
 		}
 	}
 }
@@ -2898,8 +2677,6 @@ void Listener::PostEvent( Event *ev, float time, int flags )
 	}
 	
 	LL_Remove( ev, next, prev );
-
-	WIDGETF3_Report( this, "postevent", ev );
 
 	ev->SetSourceObject( this );
 	ev->time		= EVENT_time + time;

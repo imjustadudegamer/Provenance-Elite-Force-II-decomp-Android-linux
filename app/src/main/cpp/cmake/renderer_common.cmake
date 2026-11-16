@@ -9,6 +9,7 @@ set(RENDERER_COMMON_SOURCES
     ${SOURCE_DIR}/renderercommon/tr_image_pvr.c
     ${SOURCE_DIR}/renderercommon/tr_image_tga.c
     ${SOURCE_DIR}/renderercommon/tr_noise.c
+    ${SOURCE_DIR}/renderercommon/tr_frame_stats.c
     ${SOURCE_DIR}/renderercommon/puff.c
 	${SOURCE_DIR}/tiki/tiki_mesh.cpp
 )

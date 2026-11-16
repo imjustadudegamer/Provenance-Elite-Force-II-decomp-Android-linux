@@ -21,16 +21,11 @@
 #include "stationaryvehicle.hpp"
 #include "player.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                          gi.Printf
-#include "../qcommon/qa_probe.h"
-
 
 CLASS_DECLARATION(Vehicle, StationaryVehicle, NULL)
 {
 	{ NULL, NULL }
 };
-
 
 
 StationaryVehicle::StationaryVehicle()
@@ -47,18 +42,9 @@ StationaryVehicle::~StationaryVehicle()
 }
 
 
-
 void StationaryVehicle::Postthink()
 {
-	float apply_yaw      = 0.0f;
-	float apply_pitch    = 0.0f;
-	int   apply_restrict = 0;
 
-	if (PROBE_On()) {
-		apply_yaw      = _yawDeltaDegrees;
-		apply_pitch    = _pitchDeltaDegrees;
-		apply_restrict = ( _restrictPitch ? 1 : 0 ) | ( _restrictYaw ? 2 : 0 );
-	}
 
 	if(drivable)
 	{
@@ -78,21 +64,8 @@ void StationaryVehicle::Postthink()
 
 	PositionVehicleAndDriver();
 
-	if (PROBE_On()) {
-		static int probe_throttle = 0;
-
-		if (PROBE_Throttle(&probe_throttle, 1, 100)) {
-			PROBE("turret:delta",
-			      "ent=%d dyaw=%.4f dpitch=%.4f angles=(%.2f,%.2f,%.2f) restr=%d",
-			      entnum, apply_yaw, apply_pitch,
-			      angles[0], angles[1], angles[2], apply_restrict);
-		}
-	}
 
 }
-
-
-
 
 
 qboolean StationaryVehicle::Drive(usercmd_t* ucmd)
@@ -127,7 +100,6 @@ qboolean StationaryVehicle::Drive(usercmd_t* ucmd)
 
 	return qtrue;
 }
-
 
 
 void StationaryVehicle::PositionVehicleAndDriver(void)

@@ -248,8 +248,13 @@ static void ProjectDlightTexture( void ) {
 
 		dl = &backEnd.refdef.dlights[l];
 		VectorCopy( dl->transformed, origin );
-		radius = dl->radius * 1.75f;
-		scale = 1.75f / radius;
+		/* retail ProjectDlightTexture @0x34F60 uses the raw radius with the
+		   literal 0.75 as the texcoord scale and 4/3 as the falloff factor:
+		   the packed Q3 1.75 belongs to neither EF2 value.  The old 1.75 extent
+		   plus the 2.0 core made a non-additive teal dlight (the Attrexian
+		   canister) a stretched pool instead of a local glow. */
+		radius = dl->radius;
+		scale = 0.75f / radius;
 
 		floatColor[0] = dl->color[0] * 255.0f;
 		floatColor[1] = dl->color[1] * 255.0f;
@@ -316,13 +321,9 @@ static void ProjectDlightTexture( void ) {
 				modulate = 0.0f;
 			}
 			else {
-				dist[2] = Q_fabs(dist[2]);
-				if (dist[2] < radius * 0.5f) {
-					modulate = 1.0f;
-				}
-				else {
-					modulate = 2.0f * (radius - dist[2]) * scale;
-				}
+				/* retail: v44 = (0.75/radius) * (4/3) * (radius - |vertdist|),
+				   the plane distance, with no saturated half-radius core */
+				modulate = ( 4.0f / 3.0f ) * scale * ( radius - Q_fabs( vertdist ) );
 			}
 			clipBits[i] = clip;
 

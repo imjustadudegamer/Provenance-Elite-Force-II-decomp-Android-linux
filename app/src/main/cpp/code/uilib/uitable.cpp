@@ -14,10 +14,6 @@ Elite Force II SDK agreement.  See LICENSING.md.
 #include "../qcommon/stringresource.h"
 #include "uiwidgets_ef2.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
-#define PROBE_PRINT                       Com_Printf
-#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)  
-#include "../qcommon/qa_probe.h"
 
 
 
@@ -439,102 +435,7 @@ void UIRowColumn::Draw(void)
         }
     }
 
-    static int uirows_rows;
-    static int uirect_sb;
-    if (PROBE_On()
-        && (!strcmp(getName(), "dmscore") ? PROBE_Throttle(&uirect_sb, 8, 200) : PROBE_Throttle(&uirows_rows, 4, 400))) {
-        UIRow    *row1  = m_rows.NumObjects() >= 1 ? m_rows.ObjectAt(1) : NULL;
-        UIWidget *cell  = row1 ? row1->getWidget(1) : NULL;
-        UIVertScroll *sb = getScrollBar();
 
-        UIRECT_PROBE(
-            "sb:rowrender",
-            "rc='%s' rows=%d cols=%d itemh=%.1f top=%d bottom=%d sb=%d sbnum=%d sbpage=%d sbtop=%d "
-            "fr=(%.0f,%.0f %.0fx%.0f) "
-            "row1=%s row1kids=%d row1vis=%d row1fr=(%.0f,%.0f %.0fx%.0f) row1scr=(%.0f,%.0f) "
-            "row1clip=(%.0f,%.0f %.0fx%.0f) "
-            "cell1=%s cell1vis=%d cell1fr=(%.0f,%.0f %.0fx%.0f) cell1scr=(%.0f,%.0f) "
-            "cell1clip=(%.0f,%.0f %.0fx%.0f) cell1font=%d cell1virt=%d cell1data='%s'\n",
-            getName(),
-            m_rows.NumObjects(),
-            m_columns.NumObjects(),
-            getItemHeight(),
-            m_topItem,
-            m_bottomItem,
-            sb ? 1 : 0,
-            sb ? sb->getNumItems() : -1,
-            sb ? sb->getPageHeight() : -1,
-            sb ? sb->getTopItem() : -1,
-            frame.pos.x,
-            frame.pos.y,
-            frame.size.width,
-            frame.size.height,
-            row1 ? row1->getClassname() : "(none)",
-            row1 ? row1->getNumCells() : 0,
-            (row1 && row1->getShow()) ? 1 : 0,
-            row1 ? row1->getFrame().pos.x : 0.0f,
-            row1 ? row1->getFrame().pos.y : 0.0f,
-            row1 ? row1->getFrame().size.width : 0.0f,
-            row1 ? row1->getFrame().size.height : 0.0f,
-            row1 ? row1->UIRECTProbeScreenOrigin().x : 0.0f,
-            row1 ? row1->UIRECTProbeScreenOrigin().y : 0.0f,
-            row1 ? row1->UIRECTProbeClippedFrame().pos.x : 0.0f,
-            row1 ? row1->UIRECTProbeClippedFrame().pos.y : 0.0f,
-            row1 ? row1->UIRECTProbeClippedFrame().size.width : 0.0f,
-            row1 ? row1->UIRECTProbeClippedFrame().size.height : 0.0f,
-            cell ? cell->getClassname() : "(none)",
-            (cell && cell->getShow()) ? 1 : 0,
-            cell ? cell->getFrame().pos.x : 0.0f,
-            cell ? cell->getFrame().pos.y : 0.0f,
-            cell ? cell->getFrame().size.width : 0.0f,
-            cell ? cell->getFrame().size.height : 0.0f,
-            cell ? cell->UIRECTProbeScreenOrigin().x : 0.0f,
-            cell ? cell->UIRECTProbeScreenOrigin().y : 0.0f,
-            cell ? cell->UIRECTProbeClippedFrame().pos.x : 0.0f,
-            cell ? cell->UIRECTProbeClippedFrame().pos.y : 0.0f,
-            cell ? cell->UIRECTProbeClippedFrame().size.width : 0.0f,
-            cell ? cell->UIRECTProbeClippedFrame().size.height : 0.0f,
-            (cell && cell->getFont()) ? 1 : 0,
-            cell ? (cell->UIRECTProbeVirtual() ? 1 : 0) : 0,
-            cell ? cell->getData() : ""
-        );
-    }
-
-    if (PROBE_On() && !strcmp(getName(), "dmscore") && m_rows.NumObjects()) {
-        static int widget_cells;
-
-        if (PROBE_Throttle(&widget_cells, 4, 200)) {
-            UIRow *row1 = m_rows.ObjectAt(1);
-
-            WIDGET_PROBE(
-                "sb:cells",
-                "rows=%d cols=%d itemh=%.1f top=%d bottom=%d\n",
-                m_rows.NumObjects(),
-                m_columns.NumObjects(),
-                getItemHeight(),
-                m_topItem,
-                m_bottomItem);
-
-            for (int c = 1; c <= m_columns.NumObjects() && c <= 13; c++) {
-                UIWidget *cell = row1->getWidget(c);
-
-                if (!cell) {
-                    WIDGET_PROBE("sb:cells", "  col%d=(none)\n", c);
-                    continue;
-                }
-
-                WIDGET_PROBE(
-                    "sb:cells",
-                    "  col%d class=%s w=%.0f mat='%s' data='%s' vis=%d\n",
-                    c,
-                    cell->getClassname(),
-                    m_columns.ObjectAt(c)->width,
-                    cell->WIDGETProbeMaterialName(),
-                    cell->getData(),
-                    cell->getShow() ? 1 : 0);
-            }
-        }
-    }
 }
 
 int UIRowColumn::getNumItems(void)

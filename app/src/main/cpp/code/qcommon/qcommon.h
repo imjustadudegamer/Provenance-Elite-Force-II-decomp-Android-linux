@@ -165,6 +165,10 @@ static_assert(offsetof(netadr_t, port) == 18, "");
 void		NET_Init( void );
 void		NET_Shutdown( void );
 void		NET_Restart_f( void );
+// netpump: drains the UDP socket into the game, once per Com_Frame.  Nothing
+// else reads it -- Com_EventLoop only pumps the in-memory loopback queues, and
+// a DEDICATED build skips Com_EventLoop entirely.
+void		NET_Event( void );
 void		NET_Config( qboolean enableNetworking );
 void		NET_SendPacket (netsrc_t sock, size_t length, const void *data, netadr_t to);
 // netloop: qtrue when a real UDP socket can be had.  Opens it on the first
@@ -182,6 +186,7 @@ const char	*NET_AdrToString (netadr_t a);
 const char	*NET_AdrToStringwPort (netadr_t a);
 const char	*NET_AdrToLogString (netadr_t a);
 int		NET_StringToAdr ( const char *s, netadr_t *a);
+int		NET_GetBroadcastAdrs ( netadr_t *adrs, int maxadrs );
 qboolean	NET_GetLoopPacket (netsrc_t sock, netadr_t *net_from, msg_t *net_message);
 void		NET_Sleep(int msec);
 
@@ -250,7 +255,11 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg );
 #define	PORT_AUTHORIZE		29252
 #endif
 #define	PORT_SERVER			12203
-#define	NUM_SERVER_PORTS	4		
+/* NET_OpenIP binds the first free port of PORT_SERVER..PORT_SERVER+NUM_SERVER_PORTS-1,
+   so this is one number for the bind window, the LAN scan window (CL_LocalServers_f)
+   and the direct-connect probe window (CL_Connect_f).  Four was narrower than the
+   bind loop's ten and left a host that lost 12203..12206 invisible on the LAN. */
+#define	NUM_SERVER_PORTS	10
 
 
 enum svc_ops_e {
@@ -709,50 +718,6 @@ extern	int		time_game;
 extern	int		time_frontend;
 extern	int		time_backend;		
 
-#define SMP_ZONE_AUDIO		0
-#define SMP_ZONE_SLEEP		1
-#define SMP_ZONE_SWAP		2
-
-void	SMP_BudgetAdd( int zone, int msec );
-
-#define SMP_BUDGET_ZONES	11
-qboolean SMP_BudgetLastWindow( int *framesOut, int *mean10Out );
-
-#define SMP_LZ_spawn		0
-#define SMP_LZ_cmap		1
-#define SMP_LZ_hunkclr		2
-#define SMP_LZ_svinit		3
-#define SMP_LZ_spawnent	4
-#define SMP_LZ_clmap		5
-#define SMP_LZ_hunkusr		6
-#define SMP_LZ_rendreg		7
-#define SMP_LZ_initcg		8
-#define SMP_LZ_cginit		9
-#define SMP_LZ_fs		10
-#define SMP_LZ_sndinit		11
-#define SMP_LZ_scr		12
-#define SMP_LZ_cgame		13
-#define SMP_LZ_ui		14
-#define SMP_LZ_COUNT		15
-
-extern	int		smp_loadOn;
-extern	int		smp_loadInClient;
-
-void	SMP_LoadAdd( int zone, int msec, int depth );
-
-#define SMP_LOAD_BEGIN(z) \
-	int smp_ld_##z = ( smp_loadOn ? smp_loadDepth++ : 0 ); \
-	int smp_lt_##z = ( smp_loadOn ? Sys_Milliseconds() : 0 )
-#define SMP_LOAD_END(z) \
-	do { \
-		if ( smp_loadOn ) { \
-			smp_loadDepth--; \
-			SMP_LoadAdd( SMP_LZ_##z, Sys_Milliseconds() - smp_lt_##z, smp_ld_##z ); \
-		} \
-	} while ( 0 )
-
-extern	int		smp_loadDepth;
-
 extern	int		com_frameTime;
 extern	int		com_frameMsec;
 
@@ -801,10 +766,6 @@ void Z_Free( void *ptr );
 void Z_FreeTags( int tag );
 int Z_AvailableMemory( void );
 void Z_LogHeap( void );
-
-void Z_ChurnGet( long long *allocs, long long *frees, long long *bytes );
-void Z_ChurnReset( void );
-void Z_ChurnMeterFrame( void );
 
 void Hunk_Clear( void );
 void Hunk_SetClearNotify( void (*fn)( void ) );

@@ -26,9 +26,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_vbo.h"
 #include "tr_program.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 trGlobals_t		tr;
 
@@ -957,29 +954,6 @@ static void R_SortField_Note( shader_t *shader )
 	}
 }
 
-static void R_SortField_Row( int surfs, int sprites )
-{
-	static int	s_prev, s_rows, s_crossed, s_maxShaders;
-
-	if ( !PROBE_On() || s_sfMaxIndex == s_prev ) {
-		return;
-	}
-	if ( tr.numShaders > s_maxShaders ) {
-		s_maxShaders = tr.numShaders;
-	}
-	s_prev = s_sfMaxIndex;
-	s_rows++;
-	if ( s_sfMaxIndex > QSORT_SHADERNUM_MASK ) {
-		s_crossed++;
-	}
-	if ( s_crossed == 1 || s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
-		PROBE_EMIT( "[GLES3:", "sortfield",
-					"maxidx=%d maxtable=%d cap=%d masked=%d surfs=%d spr=%d f=%d\n",
-					s_sfMaxIndex, s_maxShaders, QSORT_SHADERNUM_MASK + 1,
-					s_sfMaxIndex & QSORT_SHADERNUM_MASK, surfs, sprites,
-					RB_FrameCount() );
-	}
-}
 
 void R_AddDrawSurf(surfaceType_t* surface, shader_t* shader, int fogNum, int dlightMap) {
 	int			index;
@@ -1074,7 +1048,6 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 		}
 	}
 
-	R_SortField_Row( numDrawSurfs, numSpriteSurfs );
 
 	R_Sky_Render();
 
@@ -1200,8 +1173,6 @@ void R_AddEntitySurfaces (void) {
 
 			tr.currentModel = R_GetModelByHandle( ent->e.hModel );
 			if (!tr.currentModel) {
-				SMP_ShaderDefaultProbe( "entity-nomodel", "-", "R_AddEntitySurfaces/null-model",
-										 ent->e.entityNumber, ent->e.hModel );
 				R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0 );
 			} else {
 				switch ( tr.currentModel->type ) {
@@ -1220,8 +1191,6 @@ void R_AddEntitySurfaces (void) {
 						break;
 					}
 					shader = R_GetShaderByHandle( ent->e.customShader );
-					SMP_ShaderDefaultProbe( "entity-nomodel", tr.currentModel->name, "R_AddEntitySurfaces/MOD_BAD",
-											 ent->e.entityNumber, ent->e.hModel );
 					R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0 );
 					break;
 				default:

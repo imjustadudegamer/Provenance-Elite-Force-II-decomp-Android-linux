@@ -25,7 +25,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cl_ui.h"
 #include "cl_cin.h"
 
-#include "../uilib/limit_uiprobe.h"
 
 qboolean	scr_initialized;		
 stereoFrame_t	s_scr_stereoFrame;
@@ -104,14 +103,12 @@ void SCR_DrawAndroidBars( void ) {
 	right  = dx + dw;
 	bottom = dy + dh;
 
-	int limit_subT0 = LIMIT_SubT0();
 
 	re.Set2DWindow(
 		0, 0, cls.glconfig.vidWidth, cls.glconfig.vidHeight,
 		0, cls.glconfig.vidWidth, cls.glconfig.vidHeight, 0,
 		-1, 1 );
 
-	LIMIT_SubPushEnd( limit_subT0 );
 
 	re.SetColor( g_color_table[0] );   
 	if ( dy > 0 ) {
@@ -186,14 +183,15 @@ static void SCR_DrawStringFont( fontheader_t *font, float x, float y, float scal
 	re.SetColor( NULL );
 }
 
-#define	FPS_FRAMES	4
+/* one second, not four frames: a single hitch must not make the counter lie */
+#define	FPS_WINDOW_MS	1000
 static void SCR_DrawFPS( void ) {
-	static int	previousTimes[FPS_FRAMES];
-	static int	index;
-	static int	previous;
+	static int	fpsWindowStart;
+	static int	fpsWindowFrames;
+	static int	framesPerSecond;
 	static fontheader_t *fpsFont;
 	char		line[160];
-	int			t, frameTime, i, total, framesPerSecond;
+	int			t, elapsed;
 	float		W, H, scale, x, y;
 	float		white[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 
@@ -202,23 +200,19 @@ static void SCR_DrawFPS( void ) {
 	}
 
 	t = Com_Milliseconds();
-	frameTime = t - previous;
-	previous = t;
-
-	previousTimes[index % FPS_FRAMES] = frameTime;
-	index++;
-	if ( index <= FPS_FRAMES ) {
-		return;		
+	if ( !fpsWindowStart ) {
+		fpsWindowStart = t;
 	}
-
-	total = 0;
-	for ( i = 0; i < FPS_FRAMES; i++ ) {
-		total += previousTimes[i];
+	fpsWindowFrames++;
+	elapsed = t - fpsWindowStart;
+	if ( elapsed >= FPS_WINDOW_MS ) {
+		framesPerSecond = ( fpsWindowFrames * 1000 + elapsed / 2 ) / elapsed;
+		fpsWindowFrames = 0;
+		fpsWindowStart = t;
 	}
-	if ( total < 1 ) {
-		total = 1;
+	if ( !framesPerSecond ) {
+		return;
 	}
-	framesPerSecond = 1000 * FPS_FRAMES / total;
 
 	if ( !fpsFont ) {
 		fpsFont = re.LoadFont( "tahoma-10" );
@@ -251,24 +245,6 @@ static void SCR_DrawFPS( void ) {
 	y = 4.0f * scale;
 	SCR_DrawStringFont( fpsFont, x, y, scale, white, line );
 
-	if ( cl_drawFPS->integer >= 2 ) {
-		int	frames = 0, mean10[SMP_BUDGET_ZONES];
-
-		y += re.GetFontHeight( fpsFont ) * scale + 2.0f * scale;
-
-		if ( SMP_BudgetLastWindow( &frames, mean10 ) ) {
-			Com_sprintf( line, sizeof( line ),
-				"srv=%d.%d cli=%d.%d ren=%d.%d/%d.%d aud=%d.%d swp=%d.%d spin=%d.%d tot=%d.%d n=%d",
-				mean10[0] / 10, mean10[0] % 10, mean10[1] / 10, mean10[1] % 10,
-				mean10[2] / 10, mean10[2] % 10, mean10[3] / 10, mean10[3] % 10,
-				mean10[4] / 10, mean10[4] % 10, mean10[7] / 10, mean10[7] % 10,
-				mean10[8] / 10, mean10[8] % 10, mean10[10] / 10, mean10[10] % 10,
-				frames );
-		} else {
-			Q_strncpyz( line, "(frame budget: no window closed yet)", sizeof( line ) );
-		}
-		SCR_DrawStringFont( fpsFont, x, y, scale, white, line );
-	}
 }
 
 void SCR_DebugGraph (float value)
@@ -531,17 +507,12 @@ void SCR_DrawScreenField( void ) {
 	case CA_PRIMED:
 	case CA_ACTIVE:
 		{
-			SMP_LOAD_BEGIN( cgame );
 			CL_CGameRendering(s_scr_stereoFrame);
-			SMP_LOAD_END( cgame );
 		}
-		LIMIT_SubArm();
 		{
-			int limit_subT0 = LIMIT_SubT0();
 
 			SCR_DrawAndroidBars();
 
-			LIMIT_SubZoneEnd( LIMIT_SUBZ_abars, limit_subT0 );
 		}
 		break;
 	case CA_CINEMATIC:
@@ -558,9 +529,7 @@ void UpdateStereoSide( stereoFrame_t s ) {
 	if (cls.state == CA_CINEMATIC || GetBackgroundMode() == 2 || cinematicRunning()) {
 		SCR_DrawScreenField();
 	} else {
-		SMP_LOAD_BEGIN( ui );
 		UI_Update();
-		SMP_LOAD_END( ui );
 	}
 
 	/* on every frame, and BEFORE both overlays: SCR_DrawScreenField can be skipped, so the bands would keep an undefined back-buffer, and the touch
@@ -642,7 +611,6 @@ void SCR_UpdateScreen( void ) {
 
 	scr_update_recursive = qtrue;
 
-	SMP_LOAD_BEGIN( scr );
 
 	CL_StartHunkUsers(qfalse);
 
@@ -702,7 +670,6 @@ void SCR_UpdateScreen( void ) {
 
 	scr_update_recursive = qfalse;
 
-	SMP_LOAD_END( scr );
 }
 
 int cl_loadingScreenStage = 0;

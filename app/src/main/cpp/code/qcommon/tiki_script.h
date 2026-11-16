@@ -59,6 +59,7 @@ class TikiScript
 		char*	buffer;
 		int 	length;
 		char	path[ MAX_QPATH ];
+		char	animpath[ MAX_QPATH ];
 		char	texturepath[ MAX_QPATH ];
 		static TikiScript*	currentScript;
 

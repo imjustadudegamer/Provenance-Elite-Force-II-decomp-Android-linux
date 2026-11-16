@@ -26,14 +26,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/stringresource.h"
 #include "../qcommon/gameplaymanager.h"
 
-#define PROBE_GET(name, def, flags) ((cvar_t *)0)
-#define PROBE_PRINT                 Com_Printf
-#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "0")) != 0)  
-#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_ui.h"
 
-#include "limit_uiprobe.h"
 
 /* The HUD scope's depth and factor.  Declared here because the layout pass
    (`ChangeResolution') reads them and is defined above their setter. */
@@ -1413,38 +1407,11 @@ void UIWidget::PropogateCoordinateSystem(void)
 
 void UIWidget::set2D(void)
 {
-    int limit_subT0 = LIMIT_SubT0();
 
     /* ONE window for the whole 2D pass and the widget clips with the scissor.  Retail's TEXT/BOX widgets keep the screen window; a MATERIAL widget gets its own
        viewport, local ortho and scissor, one per widget (retail-menu-jul04.trace 12613-12620, 12645-12649).  The constant screen window plus the vertex placement covers both shapes. */
     /* a zero-extent window is the whole 2D defect: the ortho is degenerate, so every queued quad lands at raw coordinates and the 0-wide viewport and empty scissor
        then clip it away -- text misplaced and fills missing, no refusal anywhere.  Retail authors these (dm_scoreboard.urc's zero-width columns); the row names the source. */
-    if (m_screenframe.size.width == 0.0f || m_screenframe.size.height == 0.0f) {
-        static int s_zeroRows;
-
-        s_zeroRows++;
-        if (s_zeroRows <= 240 || (s_zeroRows % 240) == 0) {
-            UIVK_CENSUS_PROBE(
-                "zerowin",
-                "n=%d class='%s' name='%s' screen=%.0f,%.0f %.0fx%.0f "
-                "frame=%.0f,%.0f %.0fx%.0f authored=%.0f,%.0f %.0fx%.0f "
-                "clip=%.0f,%.0f %.0fx%.0f scale=%.3f,%.3f hud=%.3f/%d",
-                s_zeroRows,
-                getClassname(),
-                getName() ? getName() : "(null)",
-                (double)m_screenframe.pos.x, (double)m_screenframe.pos.y,
-                (double)m_screenframe.size.width, (double)m_screenframe.size.height,
-                (double)m_frame.pos.x, (double)m_frame.pos.y,
-                (double)m_frame.size.width, (double)m_frame.size.height,
-                (double)m_authoredFrame.pos.x, (double)m_authoredFrame.pos.y,
-                (double)m_authoredFrame.size.width, (double)m_authoredFrame.size.height,
-                (double)m_clippedframe.pos.x, (double)m_clippedframe.pos.y,
-                (double)m_clippedframe.size.width, (double)m_clippedframe.size.height,
-                (double)uid.scaleRes[0], (double)uid.scaleRes[1],
-                (double)s_hudScaleValue, s_hudScaleDepth
-            );
-        }
-    }
 
     uii.Rend_Set2D(
         uid.originX,
@@ -1464,7 +1431,6 @@ void UIWidget::set2D(void)
         m_screenframe.pos.y - m_clippedorigin.y
     );
 
-    LIMIT_SubPushEnd(limit_subT0);
 
     uii.Rend_Scissor(
         uid.originX + (int)m_clippedframe.pos.x,
@@ -1478,8 +1444,6 @@ void UIWidget::set2D(void)
 //      EV_Widget_Hide, not draw_widget (that one is slot 0x2287F8).  The delivered
 void UIWidget::Draw(void)
 {
-    UI_COUNT(UI_FAM_UI, UI_UC_draw, 1);
-
     if (m_mover) {
         m_mover->Motion();
     }
@@ -1612,20 +1576,6 @@ void UIWidget::Motion(void)
        settled widget stops printing, while a restarting one keeps printing with
        frac back near 0 and m_starttime equal to the current t.  Gated by the
        master probe, so a normal boot is silent. */
-    if (PROBE_On() && (m_direction || m_fadetime != 0.0f)) {
-        static int motion_rows;
-
-        if (PROBE_Throttle(&motion_rows, 4, 4)) {
-            Com_Printf(
-                "[UI:motion] name='%s' dir=%d dir_orig=%d type=%d fade=%.3f mtime=%.3f t=%.3f "
-                "start=%.3f alpha=%.3f frame=(%.1f,%.1f %.1fx%.1f) show=%d move=%d\n",
-                m_name.c_str(), (int)m_direction, (int)m_direction_orig, (int)m_motiontype,
-                m_fadetime, m_motiontime, t, m_starttime, m_alpha,
-                m_frame.pos.x, m_frame.pos.y, m_frame.size.width, m_frame.size.height,
-                getShow() ? 1 : 0, m_bMoveActive ? 1 : 0
-            );
-        }
-    }
 
     if (m_fadetime != 0.0f) {
         m_alpha = (t - m_starttime) / m_fadetime;
@@ -1947,21 +1897,6 @@ void UIWidget::LayoutBgColor(Event *ev)
 {
     setBackgroundColor(UColor(ev->GetFloat(1), ev->GetFloat(2), ev->GetFloat(3), ev->GetFloat(4)), WIDGET_STATE_NORMAL, true);
 
-    {
-        static cvar_t *shadow_inv = NULL;
-        static int     shadow_invRows;
-
-        if (!shadow_inv) {
-            shadow_inv = Cvar_Get("shadow_invStats", "0", 0);
-        }
-        if (shadow_inv && shadow_inv->integer && shadow_invRows < 8
-            && getName() && !Q_stricmp(getName(), "InventoryBar")) {
-            UColor c = getBackgroundColor();
-            if (PROBE_On()) Com_Printf("[SHADOW:inv] bgcolor= event on '%s' -> bg=(%.3f,%.3f,%.3f,%.3f)\n",
-                       getName(), c.r, c.g, c.b, c.a);
-            shadow_invRows++;
-        }
-    }
 }
 
 void UIWidget::LayoutFgColor(Event *ev)
@@ -2314,61 +2249,6 @@ bool UIWidget::IsDisabled(void)
     return false;
 }
 
-void UIWidget::UITEXTDumpTextColor(const char *accessor)
-{
-    static int uitext_text;
-    char       table[5 * 40];
-    int        used;
-    int        i;
-
-    if (!PROBE_On() || atoi(CvarGetForUI("r_2dTrace", "0")) == 0) {
-        return;
-    }
-
-    if (!PROBE_Throttle(&uitext_text, 40, 400)) {
-        return;
-    }
-
-    used     = m_foregroundColors[m_widgetState].set ? (int)m_widgetState : 0;
-    table[0] = '\0';
-
-    for (i = 0; i < WIDGET_STATE_COUNT; i++) {
-        char row[40];
-
-        if (m_foregroundColors[i].set) {
-            Com_sprintf(
-                row,
-                sizeof(row),
-                " e%d=%d,%d,%d,%d#1",
-                i,
-                (int)(m_foregroundColors[i].color.r * 255.0f + 0.5f),
-                (int)(m_foregroundColors[i].color.g * 255.0f + 0.5f),
-                (int)(m_foregroundColors[i].color.b * 255.0f + 0.5f),
-                (int)(m_foregroundColors[i].color.a * 255.0f + 0.5f)
-            );
-        } else {
-            Com_sprintf(row, sizeof(row), " e%d=unset", i);
-        }
-
-        Q_strcat(table, sizeof(table), row);
-    }
-
-    Com_Printf(
-        "[UITEXT:uitext] accessor=%s class='%s' name='%s' state=%d fg=%d,%d,%d,%d "
-        "src=e%d(%s) table=[%s ]\n",
-        accessor,
-        getClassname(),
-        getName(),
-        (int)m_widgetState,
-        (int)(m_foregroundColors[used].color.r * 255.0f + 0.5f),
-        (int)(m_foregroundColors[used].color.g * 255.0f + 0.5f),
-        (int)(m_foregroundColors[used].color.b * 255.0f + 0.5f),
-        (int)(m_foregroundColors[used].color.a * 255.0f + 0.5f),
-        used,
-        m_foregroundColors[m_widgetState].set ? "state-set" : "normal-fallback",
-        table
-    );
-}
 
 static WidgetState UIWidgetStateIndex(WidgetState state, bool set)
 {
@@ -2381,8 +2261,6 @@ static WidgetState UIWidgetStateIndex(WidgetState state, bool set)
 UColor UIWidget::getStateForegroundColor(void)
 {
     WidgetState state = m_widgetState;
-
-    UITEXTDumpTextColor("getStateForegroundColor");
 
     return m_foregroundColors[UIWidgetStateIndex(state, m_foregroundColors[state].set)].color;
 }
@@ -2490,18 +2368,6 @@ void UIWidget::Layout_TextureCoordinates(Event *ev)
     m_textureCoordinates[3] = ev->GetFloat(4);
 
     /* the puzzle's only lever on the wave art: name the tick and the values */
-    if (PROBE_On() && getName() && !strncmp(getName(), "tri_mod_", 8)) {
-        static int s_trimod;
-
-        if (PROBE_Throttle(&s_trimod, 24, 256)) {
-            UIVK_PROBE(
-                "trimod",
-                "texcmd widget='%s' class='%s' st=(%.3f,%.3f)-(%.3f,%.3f)",
-                getName(), getClassname() ? getClassname() : "?",
-                (double)m_textureCoordinates[0], (double)m_textureCoordinates[1],
-                (double)m_textureCoordinates[2], (double)m_textureCoordinates[3]);
-        }
-    }
 }
 
 void UIWidget::LayoutFadeIn(Event *ev)
@@ -3128,29 +2994,6 @@ void UIWidget::ChangeResolution(void)
     }
 }
 
-// PAINT TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  One line per widget: name,
-void UIWidget::PAINTDumpState(int index, const char *menuName)
-{
-    if (!PROBE_On()) {
-        return;
-    }
-
-    Com_Printf(
-        "[PAINT:menu:widgets]   [%d] menu='%s' name='%s' class='%s' enabled=%d visible=%d "
-        "depth=%.3f frame=(%.1f,%.1f %.1fx%.1f) children=%d\n",
-        index,
-        menuName,
-        getName(),
-        getClassname(),
-        isEnabled() ? 1 : 0,
-        getShow() ? 1 : 0,
-        (double)m_depth,
-        (double)m_frame.pos.x,
-        (double)m_frame.pos.y,
-        (double)m_frame.size.width,
-        (double)m_frame.size.height,
-        (int)m_children.NumObjects());
-}
 
 void UIWidget::setShow(bool visible)
 {
@@ -3208,19 +3051,13 @@ void UIWidget::update(void)
 
     m_updateStamp = s_updateStamp;
 
-    int limit_t0 = LIMIT_VW_UpdEnter();
-    int limit_self;
-
-    UI_COUNT(UI_FAM_UI, UI_UC_upd, 1);
 
     updateVisibility();
     updateCvarVisibility();
     updateStatVisibility();
 
-    limit_self = LIMIT_VW_UpdSelf(limit_t0, getClassname(), getName());
 
     if (!m_visible) {
-        LIMIT_VW_UpdExit(limit_self);
         return;
     }
 
@@ -3244,7 +3081,6 @@ void UIWidget::update(void)
         m_children.ObjectAt(i)->update();
     }
 
-    LIMIT_VW_UpdExit(limit_self);
 }
 
 void UIWidget::updateVisibility(void)
@@ -3442,7 +3278,6 @@ UColor UIWidget::getForegroundColor(void)
 {
     WidgetState state = m_widgetState;
 
-    UITEXTDumpTextColor("getForegroundColor");
 
     if (!m_foregroundColors[state].set) {
         state = WIDGET_STATE_NORMAL;
@@ -4056,20 +3891,14 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
     int    i;
     vec4_t col = {1, 1, 1, 1};
 
-    int    limit_t0 = LIMIT_VW_Enter();
-    int    limit_self;
 
-    UI_COUNT(UI_FAM_UI, UI_UC_disp, 1);
-    UI_COUNT(UI_FAM_DISP, UI_DC_disps, 1);
 
     // shown but disabled draws in retail and did not draw here.  Nothing depends on it
     if (!getShow()) {
-        LIMIT_VW_Exit(LIMIT_VW_Self(limit_t0, getClassname(), getName()));
         return;
     }
 
     if (m_hideDuringLoad && menuManager.getLoading()) {
-        LIMIT_VW_Exit(LIMIT_VW_Self(limit_t0, getClassname(), getName()));
         return;
     }
 
@@ -4099,22 +3928,6 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
            covered=1 says a child's opaque full-screen background replaces this wash before anything can see it, so the box is not painted. */
         qboolean covered = OpaqueChildCoversScreen();
 
-        static int s_bgfillRows;
-        s_bgfillRows++;
-        if (s_bgfillRows <= 480 || (s_bgfillRows % 240) == 0) {
-            UIVK_CENSUS_PROBE(
-                "bgfill",
-                "seq=%d class='%s' name='%s' rect=%.0f,%.0f %.0fx%.0f rgba=%.3f,%.3f,%.3f,%.3f local_alpha=%.3f covered=%d",
-                s_bgfillRows,
-                getClassname(),
-                getName() ? getName() : "(null)",
-                (double)m_frame.pos.x, (double)m_frame.pos.y,
-                (double)m_frame.size.width, (double)m_frame.size.height,
-                (double)bgColor.r, (double)bgColor.g, (double)bgColor.b, (double)bgColor.a,
-                (double)m_local_alpha,
-                covered ? 1 : 0
-            );
-        }
 
         if (!covered) {
             DrawBox(0, 0, m_frame.size.width, m_frame.size.height, bgColor, bgColor.a * m_local_alpha);
@@ -4169,19 +3982,6 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
 
         /* the LCARS chrome is the menu/ namespace: the row says whether its quads went
            out at all, which is how a disabled widget reads as a broken draw */
-        if (PROBE_On() && statematerial->GetName().c_str()
-            && !strncmp(statematerial->GetName().c_str(), "menu/", 5)) {
-            static int s_artRows;
-
-            if (PROBE_Throttle(&s_artRows, 8, 60)) {
-                UIVK_PROBE("art",
-                           "draw widget='%s' shader='%s' alpha=%.3f show=%d",
-                           getName() ? getName() : "?",
-                           statematerial->GetName().c_str(),
-                           (double)(getStateShaderColor().a * m_local_alpha),
-                           getShow() ? 1 : 0);
-            }
-        }
 
         UColor shaderColor = getStateShaderColor();
         col[0] = shaderColor.r;
@@ -4206,18 +4006,6 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
         } else {
             /* Display @0x000A47F0 loads +0x63c..+0x648 into the four ST args: the
                widget's own texcoords, so `texturecoordinates' reaches the quad. */
-            if (PROBE_On() && getName() && !strncmp(getName(), "tri_mod_", 8)) {
-                static int s_trimod;
-
-                if (PROBE_Throttle(&s_trimod, 24, 256)) {
-                    UIVK_PROBE(
-                        "trimod",
-                        "draw widget='%s' class='%s' st=(%.3f,%.3f)-(%.3f,%.3f)",
-                        getName(), getClassname() ? getClassname() : "?",
-                        (double)m_textureCoordinates[0], (double)m_textureCoordinates[1],
-                        (double)m_textureCoordinates[2], (double)m_textureCoordinates[3]);
-                }
-            }
 
             uii.Rend_DrawPicStretched(
                 0, 0, m_frame.size.width, m_frame.size.height,
@@ -4230,7 +4018,6 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
 
     Draw();
 
-    limit_self = LIMIT_VW_Self(limit_t0, getClassname(), getName());
 
     for (i = 1; i <= m_children.NumObjects(); i++) {
         UIWidget *child = m_children.ObjectAt(i);
@@ -4244,7 +4031,6 @@ void UIWidget::Display(const UIRect2D& drawframe, float parent_alpha)
         HudScalePop();
     }
 
-    LIMIT_VW_Exit(limit_self);
 }
 
 qboolean UIWidget::KeyEvent(int key, unsigned int time)
@@ -4630,30 +4416,6 @@ void UIWidget::BringToFrontPropogated(void)
 
     uWinMan.sortWidgetContainers();
 
-    UIWidget *painttop = this;
-
-    while (painttop->getParent() != NULL && painttop->getParent() != &uWinMan) {
-        painttop = painttop->getParent();
-    }
-
-    int paintindex = 0;
-    int painttotal = uWinMan.GetChildCount();
-
-    for (int painti = 1; painti <= painttotal; painti++) {
-        if (uWinMan.GetChild(painti) == painttop) {
-            paintindex = painti;
-            break;
-        }
-    }
-
-    PAINT_PROBE("raise:order",
-               "name='%s' class='%s' depth=%.3f top='%s' managerIndex=%d of=%d\n",
-               getName() ? getName() : "?",
-               getClassname() ? getClassname() : "?",
-               (double)m_depth,
-               painttop->getName() ? painttop->getName() : "?",
-               paintindex,
-               painttotal);
 }
 
 UIWidget *UIWidget::IsThisOrChildActive(void)
@@ -4798,12 +4560,6 @@ bool UIWidget::PassEventToWidget(str name, Event *ev, qboolean deleteOnFail)
 
     // NOTE: do NOT early-out on !isEnabled() here. This function delivers a NAMED
     if (!str::cmp(name, m_name)) {
-        PROBE("inv:deliver", "widget='%s' event='%s' HIT", name.c_str(), ev->getName());
-        BOT_PROBE("sb:owner",
-                   "widget='%s' event='%s' parent='%s' iscontainer=%d enabled=%d visible=%d numchildren=%d",
-                   name.c_str(), ev->getName(),
-                   m_parent ? m_parent->getName() : "(root)", m_parent ? 0 : 1,
-                   m_enabled ? 1 : 0, m_visible ? 1 : 0, m_children.NumObjects());
         ProcessEvent(ev);
         return true;
     }
@@ -5256,18 +5012,6 @@ qboolean UIWidgetContainer::moveFocus(int dir, int key, qboolean directional)
         } else {
             /* Nothing lies in the pressed direction, so the board holds the row: the
                sorted-neighbour step would wrap a 9x11 board onto the next row. */
-            static int s_edgeRows;
-
-            s_edgeRows++;
-            if (s_edgeRows <= 16 || (s_edgeRows % 200) == 0) {
-                UIVK_PROBE(
-                    "padnav:edge",
-                    "key=%d at='%s' cols=%d rows=%d",
-                    key,
-                    rows[cur].wid->getName() ? rows[cur].wid->getName() : "(null)",
-                    cols,
-                    rowNums);
-            }
 
             return qfalse;
         }
@@ -5290,33 +5034,6 @@ qboolean UIWidgetContainer::moveFocus(int dir, int key, qboolean directional)
 
     /* Names the walk, so a menu the pad cannot move in says which rows it has.
        A list stop adds its own row count and where its selection sits. */
-    {
-        static int    s_navRows;
-        UIRowColumn  *list = NULL;
-
-        if (rows[next].wid->isSubclassOf(UITable)) {
-            list = ((UITable *)rows[next].wid)->getRowColumn();
-        } else if (rows[next].wid->isSubclassOf(UIRowColumn)) {
-            list = (UIRowColumn *)rows[next].wid;
-        }
-
-        s_navRows++;
-        if (s_navRows <= 16 || (s_navRows % 200) == 0) {
-            UIVK_PROBE("padnav",
-                       "dir=%d key=%d grid=%d rows=%d from='%s' to='%s'%s%s active='%s' menu='%s'",
-                       dir,
-                       key,
-                       (directional && cols >= 2 && rowNums >= 2) ? 1 : 0,
-                       count,
-                       m_focusWidget && m_focusWidget->getName() ? m_focusWidget->getName() : "(null)",
-                       rows[next].wid->getName() ? rows[next].wid->getName() : "(null)",
-                       list ? " list" : "",
-                       list ? va(" items=%d sel=%d", list->getNumItems(), list->getSelectedIndex()) : "",
-                       uWinMan.ActiveControl() && uWinMan.ActiveControl()->getName()
-                           ? uWinMan.ActiveControl()->getName() : "(null)",
-                       menuManager.CurrentMenu() ? menuManager.CurrentMenu()->m_name.c_str() : "(none)");
-        }
-    }
 
     setFocusWidget(rows[next].wid);
     return qtrue;

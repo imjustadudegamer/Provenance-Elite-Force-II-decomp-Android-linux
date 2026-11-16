@@ -27,9 +27,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "client.h"
 #include "cl_ui.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 // the success and the "not initializing." arms, exactly where retail emits it.
 #define S_SOUND_SEPARATOR "------------------------------------\n"
@@ -86,7 +83,6 @@ void S_Init(qboolean full_startup)
 {
     cvar_t *cv;
 
-    SMP_LOAD_BEGIN( sndinit );
 
     Com_Printf("\n------- sound initialization -------\n");
 
@@ -136,7 +132,6 @@ void S_Init(qboolean full_startup)
         Com_Printf(S_SOUND_SEPARATOR);
         s_bSoundStarted = 0;
     }
-    SMP_LOAD_END( sndinit );
 }
 
 void S_Shutdown(qboolean full_shutdown)
@@ -254,14 +249,12 @@ sfx_t *S_FindName(const char *name, int sequenceNumber)
 
 void S_BeginRegistration()
 {
-    SMP_LOAD_BEGIN( sndinit );
     s_inRegistration = true;
 
     s_registrationSequence++;
     s_knownSfx[0].registration_sequence = s_registrationSequence;
 
     S_StopAllSounds(true);
-    SMP_LOAD_END( sndinit );
 }
 
 void S_DefaultSound(sfx_t *sfx)
@@ -356,7 +349,6 @@ void S_EndRegistration()
     int    i;
     sfx_t *sfx;
 
-    SMP_LOAD_BEGIN( sndinit );
 
     s_inRegistration = qfalse;
 
@@ -375,7 +367,6 @@ void S_EndRegistration()
             *sfx = {};
         }
     }
-    SMP_LOAD_END( sndinit );
 }
 
 void S_UpdateEntity(int entityNum, const vec3_t origin, const vec3_t vel, qboolean use_listener)
@@ -483,10 +474,6 @@ void S_StartLocalSoundChannel(const char *sound_name, qboolean force_load, sound
        warns through Com_WDPrintf, which a quiet boot never prints) and a
        non-CHAN_MENU channel arms instead of starting, so this row plus
        [SND:menuflush] is the whole chain a --diag boot needs. */
-    PROBE_EMIT_N("[SND:", "uisound", 64,
-                 "name='%s' chan=%d handle=%d %s\n",
-                 name ? name : "(null)", (int)channel, (int)sfxHandle,
-                 sfxHandle ? "ok" : "LOAD-FAILED");
 
     S_StartSoundExt(NULL, s_iListenerNumber, channel, sfxHandle, -1.0, -1.0, 1.0, -1.0, qfalse);
 }

@@ -25,9 +25,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../client/client.h"
 #include "../corepp/tiki.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       Com_Printf
-#include "../qcommon/qa_probe.h"
 
 static char last_mapname[ MAX_QPATH ];
 static int g_iSvsTimeFixupCount;
@@ -341,14 +338,6 @@ static int sv_stickyChecksumFeed = 0;
 #define SPAWN_LEG_SVINIT	10
 #define SPAWN_LEG_SPAWNENT	11
 
-static int	s_spawnLegs[SPAWN_LEG_COUNT];
-static int	s_spawnLegT0[SPAWN_LEG_COUNT];
-static int	s_spawnTotalT0;
-
-#define SPAWN_LEG_BEGIN( leg ) \
-	do { if ( PROBE_On() ) { s_spawnLegT0[ leg ] = Sys_Milliseconds(); } } while ( 0 )
-#define SPAWN_LEG_END( leg ) \
-	do { if ( PROBE_On() ) { s_spawnLegs[ leg ] += Sys_Milliseconds() - s_spawnLegT0[ leg ]; } } while ( 0 )
 
 /* the twelve legs bracket the fresh-map path: a solo savegame load runs the other arm of the `if ( loadgame )' fork and skips both `if ( !ge )' and
    `if ( !loadgame )', so it needs windows of its own (0 name parse and first init, 1 hunk clear/map load/checksum/portals/world clear, 2 the loadgame
@@ -359,13 +348,6 @@ static int	s_spawnTotalT0;
 #define SPAWN_WIN_RESTORE	2
 #define SPAWN_WIN_TAIL		3
 
-static int	s_spawnWins[SPAWN_WIN_COUNT];
-static int	s_spawnWinT0[SPAWN_WIN_COUNT];
-
-#define SPAWN_WIN_BEGIN( win ) \
-	do { if ( PROBE_On() ) { s_spawnWinT0[ win ] = Sys_Milliseconds(); } } while ( 0 )
-#define SPAWN_WIN_END( win ) \
-	do { if ( PROBE_On() ) { s_spawnWins[ win ] += Sys_Milliseconds() - s_spawnWinT0[ win ]; } } while ( 0 )
 
 void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 					 qboolean sublevelLoad, qboolean areSublevels ) {
@@ -394,21 +376,8 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	differentmap = qtrue;
 
-	if ( PROBE_On() ) {
-		int	leg;
 
-		for ( leg = 0; leg < SPAWN_LEG_COUNT; leg++ ) {
-			s_spawnLegs[ leg ] = 0;
-		}
-		for ( leg = 0; leg < SPAWN_WIN_COUNT; leg++ ) {
-			s_spawnWins[ leg ] = 0;
-		}
-		s_spawnTotalT0 = Sys_Milliseconds();
-	}
 
-	SMP_LOAD_BEGIN( spawn );
-
-	SPAWN_WIN_BEGIN( SPAWN_WIN_NAME );
 
 	hash = strchr( server, '#' );
 	if ( hash ) {
@@ -438,6 +407,14 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	Com_Printf( "------ Server Initialization ------\n" );
 	Com_Printf( "Server: %s\n", server );
 
+	/* Both rows are CVAR_LATCH, so a console `set g_gametype 0' or `set
+	   sv_maxclients 8' is parked in latchedString and says "will be changed upon
+	   restarting".  A spawn IS that restart: this Cvar_Get applies the parked
+	   value, before anything below reads the gametype or sizes the client array.
+	   Without it the console host recipe changed neither. */
+	Cvar_Get( "g_gametype", "0", 0 );
+	Cvar_Get( "sv_maxclients", "8", 0 );
+
 	if ( svs.initialized ) {
 		if ( sv_maxclients->modified ) {
 			SV_ChangeMaxClients();
@@ -446,7 +423,6 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		restart = qfalse;
 		differentmap = qtrue;
 
-		Cvar_Get( "sv_maxclients", "8", 0 );
 		svs.nextSnapshotEntities = 0;
 		if ( sv_maxclients->integer < 1 ) {
 			Cvar_Set( "sv_maxclients", va( "%i", 1 ) );
@@ -465,31 +441,19 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	/* the boundary row survives the ring: one per spawn, naming which class of load
 	   this is, so a boundary that never reaches CL_InitCGame still answers */
-	PROBE_CENSUS_EMIT( "[", "BOUND:spawn",
-					  "map='%s' loadgame=%d restart=%d sublevel=%d areSublevels=%d "
-					  "differentmap=%d ge=%d",
-					  map, loadgame, restart, sublevelLoad, areSublevels, differentmap,
-					  ge ? 1 : 0 );
 
-	SPAWN_WIN_END( SPAWN_WIN_NAME );
 
-	SPAWN_LEG_BEGIN( 0 );
+
 	CL_MapLoading( differentmap, map, strchr( server, '#' ), areSublevels );
-	SPAWN_LEG_END( 0 );
 
 	if ( ge ) {
-		SPAWN_LEG_BEGIN( 1 );
 		ge->Cleanup( restart );
-		SPAWN_LEG_END( 1 );
 	}
 
 	if ( differentmap ) {
-		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
-		SMP_LOAD_BEGIN( hunkclr );
 		Hunk_Clear();
 		CM_ClearMap();
-		SMP_LOAD_END( hunkclr );
 
 		svs.snapshotEntities = Hunk_Alloc( sizeof( entityState_t ) * svs.numSnapshotEntities, h_dontcare );
 
@@ -503,34 +467,24 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 			sv.configstrings[ i ] = CopyString( "" );
 		}
 
-		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 	}
 
 	if ( differentmap ) {
 		// 0x001DEC10.  Retail does NOT unload the game module here -- that is the
-		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
 		SV_ClearGameInterface();
 
 		Com_sprintf( filename, sizeof( filename ), "maps/%s.bsp", map );
-		SMP_LOAD_BEGIN( cmap );
-		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 
-		SPAWN_LEG_BEGIN( SPAWN_LEG_CMAP );
 		CM_LoadMap( filename, qfalse, &checksum );
-		SPAWN_LEG_END( SPAWN_LEG_CMAP );
 
-		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
-		SMP_LOAD_END( cmap );
 
 		Cvar_Set( "sv_mapChecksum", va( "%i", checksum ) );
 		Cvar_Set( "mapname", svs.rawServerName );
 
-		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 	}
 
-	SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
 	if ( differentmap || loadgame ) {
 		sv.serverId = com_frameTime;
@@ -542,32 +496,24 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 	Cvar_Set( "sv_serverid", va( "%i", sv.serverId ) );
 
-	SPAWN_WIN_END( SPAWN_WIN_SETUP );
 
 	if ( sv_stickyChecksumFeed ) {
 		sv.checksumFeed = sv_stickyChecksumFeed;
 	} else if ( restart ) {
 		sv.checksumFeed = sv_stickyChecksumFeed;
 	} else {
-		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
 		srand( Com_Milliseconds() );
 		sv.checksumFeed = ( ( rand() << 16 ) ^ rand() ) ^ Com_Milliseconds();
 
-		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 
-		SPAWN_LEG_BEGIN( 2 );
 		FS_Restart( sv.checksumFeed );
-		SPAWN_LEG_END( 2 );
 
-		SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
 		sv_stickyChecksumFeed = sv.checksumFeed;
 
-		SPAWN_WIN_END( SPAWN_WIN_SETUP );
 	}
 
-	SPAWN_WIN_BEGIN( SPAWN_WIN_SETUP );
 
 	svs.snapFlagServerBit ^= SNAPFLAG_SERVERCOUNT;
 
@@ -584,12 +530,10 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 	sv.state = SS_LOADING;
 	sv.restarting = restart;
 
-	SPAWN_WIN_END( SPAWN_WIN_SETUP );
 
 	if ( loadgame ) {
-		SPAWN_WIN_BEGIN( SPAWN_WIN_RESTORE );
 
-		WIDGET_PROBE("svstime", "pre-archive: svs.time=%d map=%s\n", svs.time, svs.mapName);
+
 
 		if ( sublevelLoad ) {
 			Q_strncpyz( levelExt, "sub", sizeof( levelExt ) );
@@ -603,8 +547,6 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 			if ( !sublevelLoad ) {
 				/* retail (SV_SpawnServer @0x1DE820) drops to a fresh level here;
 				   a silently unscripted level is worse than a refused load */
-				SAVE_PROBE( "load", "slot %s restore failed: %s unreadable, refusing the fresh-level fallback\n",
-				           svs.gameName, levelExt );
 				Com_Error( ERR_DROP, "Savegame '%s' could not be restored; load refused.\n",
 				           svs.gameName );
 			}
@@ -613,8 +555,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 			sv.restarting = qfalse;
 		}
 
-		WIDGET_PROBE("svstime", "after archive restore: svs.time=%d map=%s loadgame=%d\n",
-		           svs.time, svs.mapName, loadgame);
+
 
 		if ( sublevelLoad ) {
 			Q_strncpyz( svs.gameName, "current", sizeof( svs.gameName ) );
@@ -624,33 +565,21 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 		ge->PostLoad();
 
-		SPAWN_WIN_END( SPAWN_WIN_RESTORE );
 	}
 
 	if ( !ge ) {
-		SMP_LOAD_BEGIN( svinit );
-		SPAWN_LEG_BEGIN( SPAWN_LEG_SVINIT );
 		SV_InitGameProgs();
-		SPAWN_LEG_END( SPAWN_LEG_SVINIT );
-		SMP_LOAD_END( svinit );
 	}
 
 	// argument, so a load NEVER zeroes it.  The whole branch reads:
 	// MOVED, not just documented: the assignment now sits where retail's does, as the
 	if ( !loadgame ) {
-		SPAWN_WIN_BEGIN( SPAWN_WIN_TAIL );
 
 		svs.time = 0;
 
-		SPAWN_WIN_END( SPAWN_WIN_TAIL );
 
-		SMP_LOAD_BEGIN( spawnent );
-		SPAWN_LEG_BEGIN( SPAWN_LEG_SPAWNENT );
 		ge->SpawnEntities( map, CM_EntityString(), svs.time );
-		SPAWN_LEG_END( SPAWN_LEG_SPAWNENT );
-		SMP_LOAD_END( spawnent );
 
-		SPAWN_WIN_BEGIN( SPAWN_WIN_TAIL );
 
 		p = ge->error_message;
 		if ( p ) {
@@ -662,9 +591,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 		g_gametype->modified = qfalse;
 
-		SPAWN_WIN_END( SPAWN_WIN_TAIL );
 
-		SPAWN_LEG_BEGIN( 3 );
 		CL_ProcessLoadingScreen( "$$RunningFirstGameFrames$$" );
 
 		for ( i = 0; i < 3; i++ ) {
@@ -678,23 +605,17 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 
 			svs.time += 100;
 		}
-		SPAWN_LEG_END( 3 );
 	}
 
-	SPAWN_LEG_BEGIN( 3 );
 	for ( i = 0; i < 3; i++ ) {
 		ge->RunFrame( svs.time, 100 );
 		SV_BotFrame( svs.time );
 		svs.time += 100;
 	}
-	SPAWN_LEG_END( 3 );
 
 	if ( differentmap ) {
-		SPAWN_LEG_BEGIN( 4 );
 		SV_CreateBaseline();
-		SPAWN_LEG_END( 4 );
 
-		SPAWN_LEG_BEGIN( SPAWN_LEG_CLIENTS );
 		for ( i = 0; i < sv_maxclients->integer; i++ ) {
 			if ( svs.clients[ i ].state >= CS_CONNECTED ) {
 				const char	*denied;
@@ -722,9 +643,7 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 				}
 			}
 		}
-		SPAWN_LEG_END( SPAWN_LEG_CLIENTS );
 
-		SPAWN_LEG_BEGIN( SPAWN_LEG_PURE );
 		if ( sv_pure->integer ) {
 			p = FS_LoadedPakChecksums();
 			Cvar_Set( "sv_paks", p );
@@ -737,30 +656,24 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 			Cvar_Set( "sv_paks", "" );
 			Cvar_Set( "sv_pakNames", "" );
 		}
-		SPAWN_LEG_END( SPAWN_LEG_PURE );
 
 		// Cvar_InfoString (0x001DF14C / 0x001DF184), not the _Big variant, and
-		SPAWN_LEG_BEGIN( SPAWN_LEG_CSTRINGS );
 		Q_strncpyz( systemInfo, Cvar_InfoString( CVAR_SYSTEMINFO ), sizeof( systemInfo ) );
 		cvar_modifiedFlags &= ~CVAR_SYSTEMINFO;
 		SV_SetConfigstring( CS_SYSTEMINFO, systemInfo );
 
 		SV_SetConfigstring( CS_SERVERINFO, Cvar_InfoString( CVAR_SERVERINFO ) );
 		cvar_modifiedFlags &= ~CVAR_SERVERINFO;
-		SPAWN_LEG_END( SPAWN_LEG_CSTRINGS );
 
 		sv.state = SS_GAME;
 
-		SPAWN_LEG_BEGIN( SPAWN_LEG_MARK );
 		SV_Heartbeat_f();
 
 		Hunk_SetMark();
-		SPAWN_LEG_END( SPAWN_LEG_MARK );
 	} else {
 		sv.restarting = qfalse;
 		sv.state = SS_GAME;
 
-		SPAWN_LEG_BEGIN( SPAWN_LEG_CLIENTS );
 		for ( i = 0; i < sv_maxclients->integer; i++ ) {
 			if ( svs.clients[ i ].state >= CS_CONNECTED ) {
 				const char	*denied;
@@ -784,16 +697,12 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 				}
 			}
 		}
-		SPAWN_LEG_END( SPAWN_LEG_CLIENTS );
 	}
 
-	SPAWN_LEG_BEGIN( 3 );
 	ge->RunFrame( svs.time, 100 );
 	SV_BotFrame( svs.time );
 	svs.time += 100;
-	SPAWN_LEG_END( 3 );
 
-	SPAWN_LEG_BEGIN( SPAWN_LEG_PURE );
 	if ( sv_pure->integer ) {
 		p = FS_LoadedPakChecksums();
 		Cvar_Set( "sv_paks", p );
@@ -806,43 +715,14 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart,
 		Cvar_Set( "sv_paks", "" );
 		Cvar_Set( "sv_pakNames", "" );
 	}
-	SPAWN_LEG_END( SPAWN_LEG_PURE );
 
-	SPAWN_WIN_BEGIN( SPAWN_WIN_TAIL );
 
 	Q_strncpyz( svs.gameName, "current", sizeof( svs.gameName ) );
 
 	Com_Printf( "-----------------------------------\n" );
 
-	SMP_LOAD_END( spawn );
 
-	SPAWN_WIN_END( SPAWN_WIN_TAIL );
 
-	if ( PROBE_On() ) {
-		int	total = Sys_Milliseconds() - s_spawnTotalT0;
-		int	named = 0;
-		int	leg;
-
-		for ( leg = 0; leg < SPAWN_LEG_COUNT; leg++ ) {
-			named += s_spawnLegs[ leg ];
-		}
-		for ( leg = 0; leg < SPAWN_WIN_COUNT; leg++ ) {
-			named += s_spawnWins[ leg ];
-		}
-
-		LOADSTALL_PROBE( "spawn",
-						"total=%d map=%s mapload=%d cleanup=%d fsrestart=%d warm=%d baseline=%d resid=%d"
-						" cmap=%d svinit=%d spawnent=%d pure=%d cstrings=%d clients=%d mark=%d"
-						" win_name=%d win_setup=%d win_restore=%d win_tail=%d legs=%d\n",
-						total, map, s_spawnLegs[ 0 ], s_spawnLegs[ 1 ], s_spawnLegs[ 2 ],
-						s_spawnLegs[ 3 ], s_spawnLegs[ 4 ], total - named,
-						s_spawnLegs[ SPAWN_LEG_CMAP ], s_spawnLegs[ SPAWN_LEG_SVINIT ],
-						s_spawnLegs[ SPAWN_LEG_SPAWNENT ], s_spawnLegs[ SPAWN_LEG_PURE ],
-						s_spawnLegs[ SPAWN_LEG_CSTRINGS ], s_spawnLegs[ SPAWN_LEG_CLIENTS ],
-						s_spawnLegs[ SPAWN_LEG_MARK ],
-						s_spawnWins[ SPAWN_WIN_NAME ], s_spawnWins[ SPAWN_WIN_SETUP ],
-						s_spawnWins[ SPAWN_WIN_RESTORE ], s_spawnWins[ SPAWN_WIN_TAIL ], named );
-	}
 }
 
 qboolean SV_DoneLoading( void ) {
@@ -883,7 +763,13 @@ void SV_Init (void)
 	sv_mapname = Cvar_Get ("mapname", "nomap", CVAR_SERVERINFO | CVAR_ROM);
 	sv_privateClients = Cvar_Get ("sv_privateClients", "0", CVAR_SERVERINFO);
 	sv_hostname = Cvar_Get ("sv_hostname", "noname", CVAR_SERVERINFO);
-	sv_maxclients = Cvar_Get ("sv_maxclients", "1", CVAR_SERVERINFO | CVAR_LATCH);
+	/* 8, the same default SV_BoundMaxClients (:218) and SV_SpawnServer (:447) use,
+	   and what Q3 and the retail-derived engines register.  At 1 a listen server
+	   started from the host screen accepted one player, silently, unless that
+	   screen set the row itself (its defaults live in .uilib data, not in this
+	   tree).  Single player still runs one client: SV_ClientsAlloc special-cases
+	   GT_SINGLE_PLAYER for the snapshot ring. */
+	sv_maxclients = Cvar_Get ("sv_maxclients", "8", CVAR_SERVERINFO | CVAR_LATCH);
 	sv_maxRate = Cvar_Get ("sv_maxRate", "0", CVAR_SERVERINFO);
 	sv_floodProtect = Cvar_Get ("sv_floodProtect", "1", CVAR_SERVERINFO);
 	Cvar_Get ("cheats", "0", CVAR_LATCH | CVAR_SYSTEMINFO);

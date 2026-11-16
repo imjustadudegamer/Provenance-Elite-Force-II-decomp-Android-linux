@@ -24,9 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_commands.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
 
 swipething_t        m_swipes[MAX_SWIPES];
 extern int          current_entity_number;
@@ -205,35 +202,6 @@ void ClientGameCommandManager::Swipe(Event *ev)
             /* Names whether the trail's anchor still tracks the entity: the ring holds
                `life` worth of cntPoint copies, so a frozen origin means the strip is
                pinned to one spot no matter how far the ship has flown. */
-            {
-                static int swipe_org_n;
-
-                if (PROBE_On() && PROBE_Throttle(&swipe_org_n, 8, 256) && current_entity) {
-                    PROBE(
-                        "swipeorg",
-                        "ent=%d t=%d org=(%.1f,%.1f,%.1f) axis0=(%.3f,%.3f,%.3f) "
-                        "live=%d first=(%.1f,%.1f,%.1f) cnt=(%.1f,%.1f,%.1f)\n",
-                        swipe.entitynum,
-                        cg.time,
-                        current_entity->origin[0],
-                        current_entity->origin[1],
-                        current_entity->origin[2],
-                        current_entity->axis[0][0],
-                        current_entity->axis[0][1],
-                        current_entity->axis[0][2],
-                        swipe.num_live_swipes,
-                        swipe.num_live_swipes
-                            ? swipe.swipepoints[swipe.first_swipe].points[0][0] : 0.f,
-                        swipe.num_live_swipes
-                            ? swipe.swipepoints[swipe.first_swipe].points[0][1] : 0.f,
-                        swipe.num_live_swipes
-                            ? swipe.swipepoints[swipe.first_swipe].points[0][2] : 0.f,
-                        swipe.cntPoint.points[0][0],
-                        swipe.cntPoint.points[0][1],
-                        swipe.cntPoint.points[0][2]);
-                }
-            }
-
             if (add_cnt_point) {
                 swipepoint_t& swipepoint =
                     swipe.swipepoints[(swipe.first_swipe + swipe.num_live_swipes) % MAX_SWIPE_POINTS];

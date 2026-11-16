@@ -27,12 +27,8 @@
 #include "entity.h"
 #include <new>
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
 #include <time.h>
 
-#define GRS_NOW() ( PROBE_On() ? ( long long )clock() * 1000000LL / CLOCKS_PER_SEC : 0 )
 
 enum
 {
@@ -256,18 +252,15 @@ void Archiver::Close( void )
 
 			// One bounded row: the lengths a save carries, so the next port save
 			// can be diffed against a retail archive without a debugger.
-			SAVE_PROBE( "archive", "%s ptrs=%d recs=%d bytes=%d maxrec=%d level=%d\n",
-			            filename.c_str(), numobjects, saverecords, savebytes,
-			            savemaxrec, savelevelrec );
 		}
 		
 		gi.FS_FCloseFile( file );
 		file = 0;
 	}
 	
-	WIDGET_PROBE("archive", "close: enter (read mode)\n");
+
 	readfile.Close();
-	WIDGET_PROBE("archive", "close: readfile closed\n");
+
 
 	if ( archivemode == ARCHIVE_READ )
 	{
@@ -276,8 +269,7 @@ void Archiver::Close( void )
 		pointer_fixup_t *fixup;
 
 		num = fixupList.NumObjects();
-		WIDGET_PROBE("archive", "close: %d fixups, %d classpointers\n", num,
-		           classpointerList.NumObjects());
+
 		for( i = 1; i <= num; i++ )
 		{
 			fixup = fixupList.ObjectAt( i );
@@ -300,15 +292,13 @@ void Archiver::Close( void )
 			delete fixup;
 
 			if ( ( i % 4096 ) == 0 ) {
-				WIDGET_PROBE("archive", "close: fixup %d of %d\n", i, num);
+
 			}
 		}
-		WIDGET_PROBE("archive", "close: fixups resolved (%d)\n", num);
+
 
 		{
 			int             ei;
-			int             ents = 0, bad = 0;
-			int             evs = 0, badSrc = 0;
 			int             firstBad = -1;
 			Listener       *L;
 			Event          *w;
@@ -320,32 +310,24 @@ void Archiver::Close( void )
 				if ( !L ) {
 					continue;
 				}
-				ents++;
 				if ( SafePtrBase::WIDGETP1_HeadPrevNull( L ) ) {
 					if ( firstBad < 0 ) {
 						firstBad = ei;
 					}
-					bad++;
 				}
 			}
 			for ( w = EventQueue->next; w != EventQueue; w = w->next ) {
 				L = w->GetSourceObject();
-				evs++;
 				if ( L && SafePtrBase::WIDGETP1_HeadPrevNull( L ) ) {
-					badSrc++;
 				}
 			}
-			WIDGET_PROBE(
-				"archive",
-				"closeresweep: entities=%d badHead=%d firstBadEnt=%d "
-				"queueEvents=%d badSrcHead=%d\n",
-				ents, bad, firstBad, evs, badSrc );
+
 		}
 
 		fixupList.FreeObjectList();
 		classpointerList.FreeObjectList();
 	}
-	WIDGET_PROBE("archive", "close: done\n");
+
 }
 
 size_t Archiver::Pos( void )
@@ -561,7 +543,6 @@ inline void Archiver::CheckType( int type )
 		}
 	}
 }
-
 
 
 inline void Archiver::ArchiveData( int type, void *data, size_t size )
@@ -875,9 +856,7 @@ Class * Archiver::ReadObject( void )
 	size_t	size;
 	qboolean isent;
 	int      type;
-	long long t0, t1;
 
-	t0 = GRS_NOW();
 	CheckRead();
 	
 	type = ReadType();
@@ -889,11 +868,6 @@ Class * Archiver::ReadObject( void )
 	size = ReadSize();
 	ArchiveString( &classname );
 
-	t1 = GRS_NOW();
-	if ( t0 ) {
-		g_restoreSplitUs[ GRS_HEAD ] += t1 - t0;
-	}
-	t0 = t1;
 
 	cls = getClass( classname.c_str() );
 	if ( !cls )
@@ -920,23 +894,11 @@ Class * Archiver::ReadObject( void )
 	ArchiveInteger( &index );
 	objstart = readfile.Pos();
 
-	t1 = GRS_NOW();
-	if ( t0 ) {
-		g_restoreSplitUs[ GRS_CLASS ] += t1 - t0;
-	}
-	t0 = t1;
 
-	WIDGET_PROBE("archive", "obj [%d] %s size=%u @0x%lx type=%s\n", index, classname.c_str(),
-	           (unsigned)size, (unsigned long)objstart, (type == ARC_Entity) ? "Entity" : "Object");
 	
 	
 	obj = ( Class * )cls->newInstance();
 
-	t1 = GRS_NOW();
-	if ( t0 ) {
-		g_restoreSplitUs[ GRS_NEW ] += t1 - t0;
-	}
-	t0 = t1;
 
 	if ( !obj )
 	{
@@ -947,12 +909,6 @@ Class * Archiver::ReadObject( void )
 		obj->Archive( *this );
 	}
 
-	t1 = GRS_NOW();
-	if ( t0 ) {
-		g_restoreSplitUs[ GRS_ARCH ] += t1 - t0;
-		g_restoreSplitN[ GRS_ARCH ]++;
-	}
-	t0 = t1;
 	
 	if ( !fileerror )
 	{
@@ -967,15 +923,10 @@ Class * Archiver::ReadObject( void )
 		}
 	}
 
-	WIDGET_PROBE("archive", "obj done %s [%d] (%u bytes)\n", classname.c_str(), index,
-	           (unsigned)size);
+
 	
 	classpointerList.AddObjectAt( index, obj );
 
-	t1 = GRS_NOW();
-	if ( t0 ) {
-		g_restoreSplitUs[ GRS_ADD ] += t1 - t0;
-	}
 	
 	return obj;
 }

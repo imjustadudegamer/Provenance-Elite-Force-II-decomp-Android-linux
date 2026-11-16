@@ -242,7 +242,6 @@ static unsigned	s_currentAlphaTest;
 int				gles3ProgramsCreated;
 int				gles3ProgramsCreatedAfterReg;
 static qboolean	s_registrationClosed;
-static int		s_progCreateProbeRows;
 
 #define GLES3_WAVETABLE_UNIT 2
 static GLuint	s_waveTable;
@@ -484,30 +483,13 @@ static unsigned GLES3_ProgCacheDefinesHash( void )
 /* The decal/mark families the fog-square round watches.  Retail ships these as
    one-effect-per-shader .spr/.tga pairs, so an exact name test is the whole
    selector -- there is no prefix family to walk. */
-static qboolean R_ProbeDecalShader( const char *name )
-{
-	static const char *const decalNames[] = {
-		"markShadow", "greensplat", "blastmark", "phaserburn"
-	};
-	int	i;
-
-	if ( !name ) {
-		return qfalse;
-	}
-	for ( i = 0; i < (int)( sizeof( decalNames ) / sizeof( decalNames[0] ) ); i++ ) {
-		if ( !Q_stricmp( name, decalNames[i] ) ) {
-			return qtrue;
-		}
-	}
-	return qfalse;
-}
 
 static void GLES3_ProgCacheRow( const char *why )
 {
 	progcacheProgCacheStats_t	st;
 	char					body[384];
 
-	if ( !PROGCACHE_ProgCache_On() || !R_ProbeStatsOn() )
+	if ( !PROGCACHE_ProgCache_On() )
 	{
 		return;
 	}
@@ -534,7 +516,7 @@ static void GLES3_ProgCacheInitRow( void )
 	char					body[384];
 	cvar_t					*home, *game, *base;
 
-	if ( !PROGCACHE_ProgCache_On() || !R_ProbeStatsOn()
+	if ( !PROGCACHE_ProgCache_On()
 		|| s_progcacheRows >= PROGCACHE_PROGCACHE_MAX_ROWS )
 	{
 		return;
@@ -653,13 +635,6 @@ static gles3Program_t *GLES3_NewProgram( const gles3ProgramDef_t *def, unsigned 
 	if ( s_registrationClosed )
 	{
 		gles3ProgramsCreatedAfterReg++;
-		if ( R_ProbeStatsOn() && s_progCreateProbeRows < 8 )
-		{
-			s_progCreateProbeRows++;
-			ri.Printf( PRINT_WARNING,
-					   "[SMP:progcreate] %s defines=0x%06x compiled AFTER RE_EndRegistration (#%d)\n",
-					   def->name, defines, gles3ProgramsCreatedAfterReg );
-		}
 	}
 
 	vsSource = GLES3_BuildSource( GLES3_GlslSource( def->vsName ), defines );
@@ -843,6 +818,14 @@ void GLES3_PrebuildPrograms( void )
 	for ( i = 0; i < gles3NumProgramDefs; i++ )
 	{
 		GLES3_GetProgram( gles3ProgramDefs[i].family );
+	}
+
+	/* every shipped permutation, not just the family defaults: a key the
+	   census names but the load did not build would link on first use in a
+	   fight, which is the GLES3 twin of the Vulkan late pipeline build */
+	for ( i = 0; i < gles3NumProgramKeys; i++ )
+	{
+		GLES3_GetProgram( gles3ProgramKeys[i].defines );
 	}
 
 	for ( i = 0; i < tr.numShaders; i++ )
@@ -1208,24 +1191,6 @@ static unifVerdict_t GLES3_UniformCached( gles3Program_t *p, int location, const
 }
 
 /* Names the site a uniform was refused at. */
-static void GLES3_UnifUnbound( gles3Program_t *p, gles3Uniform_t u )
-{
-	static int	s_rows;
-	static int	s_shown;
-
-	if ( !p || p->uniforms[u] == -1 ) {
-		return;
-	}
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-	s_rows++;
-	if ( s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
-		s_shown++;
-		ri.Printf( PRINT_ALL, "[GLES3:unifunbound] prog=%s u=%d n=%d shown=%d f=%d\n",
-				   p->name, (int)u, s_rows, s_shown, RB_FrameCount() );
-	}
-}
 
 void GLES3_SetUniform1i( gles3Program_t *p, gles3Uniform_t u, int v )
 {
@@ -1236,7 +1201,6 @@ void GLES3_SetUniform1i( gles3Program_t *p, gles3Uniform_t u, int v )
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform1i( p->uniforms[u], v );
@@ -1255,7 +1219,6 @@ void GLES3_SetUniform1f( gles3Program_t *p, gles3Uniform_t u, float v )
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform1f( p->uniforms[u], v );
@@ -1279,7 +1242,6 @@ void GLES3_SetUniform2f( gles3Program_t *p, gles3Uniform_t u, float x, float y )
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform2f( p->uniforms[u], x, y );
@@ -1304,7 +1266,6 @@ void GLES3_SetUniform3f( gles3Program_t *p, gles3Uniform_t u, float x, float y, 
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform3f( p->uniforms[u], x, y, z );
@@ -1330,7 +1291,6 @@ void GLES3_SetUniform4f( gles3Program_t *p, gles3Uniform_t u, float x, float y, 
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform4f( p->uniforms[u], x, y, z, w );
@@ -1349,7 +1309,6 @@ void GLES3_SetUniformMat4( gles3Program_t *p, gles3Uniform_t u, const float *m )
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniformMatrix4fv( p->uniforms[u], 1, GL_FALSE, m );
@@ -1368,7 +1327,6 @@ void GLES3_SetUniform3fv( gles3Program_t *p, gles3Uniform_t u, const float *v )
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform3fv( p->uniforms[u], 1, v );
@@ -1387,7 +1345,6 @@ void GLES3_SetUniform4fv( gles3Program_t *p, gles3Uniform_t u, const float *v )
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform4fv( p->uniforms[u], 1, v );
@@ -1406,7 +1363,6 @@ static void GLES3_SetUniform4fvN( gles3Program_t *p, gles3Uniform_t u, const flo
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniform4fv( p->uniforms[u], count, v );
@@ -1425,7 +1381,6 @@ static void GLES3_SetUniformMatrix3fv( gles3Program_t *p, gles3Uniform_t u, cons
 			BE_Bump( BE_FAM_DS, BE_DSC_unifskip, 1 );
 			break;
 		case UNIF_UNBOUND:	/* issuing here is GL_INVALID_OPERATION */
-			GLES3_UnifUnbound( p, u );
 			break;
 		default:
 			qglUniformMatrix3fv( p->uniforms[u], 1, GL_FALSE, m );
@@ -1458,7 +1413,9 @@ void GLES3_BindAnimatedImage( const textureBundle_t *bundle, int unit )
 
 	if ( bundle->numImageAnimations <= 1 )
 	{
-		GL_Bind( bundle->image[0] );
+		/* a stage with no map is a white/constant stage, not a fault:
+		   GL_Bind(NULL) is ERR_DROP and killed the walk on the boss effect */
+		GL_Bind( bundle->image[0] ? bundle->image[0] : tr.whiteImage );
 		return;
 	}
 
@@ -1479,6 +1436,11 @@ void GLES3_BindAnimatedImage( const textureBundle_t *bundle, int unit )
 		index = bundle->numImageAnimations - 1;
 	}
 
+	if ( !bundle->image[index] )
+	{
+		GL_Bind( tr.whiteImage );
+		return;
+	}
 	GL_Bind( bundle->image[index] );
 }
 
@@ -2039,66 +2001,10 @@ typedef struct {
 	int			 vcVerts;
 } gles3DrawKey_t;
 
-static void GLES3_FormatDrawKey( char *out, int outLen, const gles3DrawKey_t *k ) {
-	Com_sprintf( out, outLen,
-		"shader=%s prog=%s def=0x%06x img0=%s img1=%s rgb=%d alpha=%d tc=%d/%d state=0x%08x "
-		"cpuC=%d cpuTC=%d vc0=%08x vc=%02x%02x%02x..%02x%02x%02x n=%d",
-		k->shader, k->prog, k->defines, k->img0, k->img1,
-		k->rgbGen, k->alphaGen, k->tcGen0, k->tcGen1,
-		k->stateBits, k->cpuColor, k->cpuTexCoords, k->vc0,
-		k->vcMin[0], k->vcMin[1], k->vcMin[2],
-		k->vcMax[0], k->vcMax[1], k->vcMax[2], k->vcVerts );
-}
 
 /* One owned copy of a name a key compares.  The source dies at the next
    Hunk_Clear; the copy dies only at GLES3_CensusShutdownAll. */
-static char *GLES3_CensusOwn( const char *s ) {
-	int		len;
-	char	*out;
 
-	if ( !s ) {
-		s = "-";
-	}
-	len = (int)strlen( s );
-	out = (char *)ri.Malloc( len + 1 );
-	Com_Memcpy( out, s, len );
-	out[len] = '\0';
-	return out;
-}
-
-static unsigned GLES3_CensusHashKey( const gles3DrawKey_t *k ) {
-	unsigned	h = 2166136261u;
-	int			i;
-	const char	*parts[4];
-
-	parts[0] = k->shader;
-	parts[1] = k->prog;
-	parts[2] = k->img0;
-	parts[3] = k->img1;
-
-	for ( i = 0; i < 4; i++ ) {
-		const unsigned char	*p = ( const unsigned char * )parts[i];
-		while ( *p ) {
-			h ^= *p++;
-			h *= 16777619u;
-		}
-		h ^= 0x1fu;
-		h *= 16777619u;
-	}
-
-	{
-		const unsigned	words[6] = { k->defines, k->stateBits, k->vc0,
-									   (unsigned)k->rgbGen, (unsigned)k->alphaGen,
-									   (unsigned)( k->tcGen0 | ( k->tcGen1 << 8 )
-												   | ( k->cpuColor << 16 )
-												   | ( k->cpuTexCoords << 17 ) ) };
-		for ( i = 0; i < 6; i++ ) {
-			h ^= words[i];
-			h *= 16777619u;
-		}
-	}
-	return h;
-}
 
 typedef struct {
 	char		*key;
@@ -2121,16 +2027,6 @@ typedef struct {
 
 /* A key owns every string it compares, so no purge reaches it and the compare
    is exact; 0.3.9 stored the names raw and the read after the free faulted. */
-static qboolean GLES3_CensusKeyEqual( const gles3CensusKey_t *a, const gles3DrawKey_t *b,
-									  unsigned hash ) {
-	return ( a->hash == hash
-		  && a->defines == b->defines && a->stateBits == b->stateBits
-		  && a->vc0 == b->vc0 && a->rgbGen == b->rgbGen && a->alphaGen == b->alphaGen
-		  && a->tcGen0 == b->tcGen0 && a->tcGen1 == b->tcGen1
-		  && a->cpuColor == b->cpuColor && a->cpuTexCoords == b->cpuTexCoords
-		  && !Q_stricmp( a->shader, b->shader ) && !Q_stricmp( a->prog, b->prog )
-		  && !Q_stricmp( a->img0, b->img0 ) && !Q_stricmp( a->img1, b->img1 ) ) ? qtrue : qfalse;
-}
 
 typedef struct {
 	gles3CensusKey_t	*keys;
@@ -2182,222 +2078,14 @@ void GLES3_CensusShutdownAll( void ) {
 	GLES3_CensusShutdown( &s_gles3Census2D );
 }
 
-static void GLES3_CensusInit( gles3Census_t *c ) {
-	if ( c->keys ) {
-		return;
-	}
-	c->keys = (gles3CensusKey_t *)ri.Malloc( sizeof( gles3CensusKey_t ) * GLES3_CENSUS_MAXKEYS );
-	c->hash = (int *)ri.Malloc( sizeof( int ) * GLES3_CENSUS_HASHSIZE );
-	Com_Memset( c->hash, 0, sizeof( int ) * GLES3_CENSUS_HASHSIZE );
-	c->numKeys = 0;
-	c->printedThisFrame = 0;
-	c->lastFrame = -1;
-	c->lastSummaryFrame = -1;
-	c->totalDraws = 0;
-	c->budgetSuppressed = 0;
-	c->capacityDropped = 0;
-	c->truncatedKeys = 0;
-	c->noticeDone = qfalse;
-}
 
-static const char *GLES3_CensusShaderName( const char *key ) {
-	static char	name[80];
-	const char	*p = key;
-	int			n = 0;
 
-	if ( Q_strncmp( p, "shader=", 7 ) ) {
-		return "?";
-	}
-	p += 7;
-	while ( *p && *p != ' ' && n < (int)sizeof( name ) - 1 ) {
-		name[n++] = *p++;
-	}
-	name[n] = '\0';
-	return name;
-}
 
-static void GLES3_CensusSummary( gles3Census_t *c, qboolean in2D ) {
-	char		 top[10][80];
-	unsigned	 topCount[10];
-	int			 i, k;
-
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	for ( i = 0; i < 10; i++ ) {
-		top[i][0] = '\0';
-		topCount[i] = 0;
-	}
-	for ( i = 0; i < c->numKeys; i++ ) {
-		unsigned	v = c->keys[i].count;
-		for ( k = 0; k < 10; k++ ) {
-			if ( v > topCount[k] ) {
-				int j;
-				for ( j = 9; j > k; j-- ) {
-					Q_strncpyz( top[j], top[j - 1], sizeof( top[j] ) );
-					topCount[j] = topCount[j - 1];
-				}
-				Q_strncpyz( top[k], GLES3_CensusShaderName( c->keys[i].key ), sizeof( top[k] ) );
-				topCount[k] = v;
-				break;
-			}
-		}
-	}
-
-	ri.Printf( PRINT_ALL,
-		"[GLES3:drawsum] %s frame=%d distinct=%d total=%u budgetSuppressed=%u "
-		"capacityDropped=%u truncatedKeys=%u\n",
-		in2D ? "2D" : "3D", tr.frameCount, c->numKeys, c->totalDraws,
-		c->budgetSuppressed, c->capacityDropped, c->truncatedKeys );
-	ri.Printf( PRINT_ALL,
-		"[GLES3:drawsum] %s top:", in2D ? "2D" : "3D" );
-	for ( k = 0; k < 10 && top[k][0]; k++ ) {
-		ri.Printf( PRINT_ALL, " %s=%u", top[k], topCount[k] );
-	}
-	ri.Printf( PRINT_ALL, "\n" );
-}
-
-static void GLES3_DrawCensusKey( const gles3DrawKey_t *k, qboolean in2D ) {
-	gles3Census_t	*c = in2D ? &s_gles3Census2D : &s_gles3Census3D;
-	char			 keyBuf[GLES3_CENSUS_KEYLEN + 64];
-	const char		*key = NULL;
-	unsigned		 h;
-	int				 slot;
-	int				 idx;
-
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	GLES3_CensusInit( c );
-
-	if ( c->lastFrame != tr.frameCount ) {
-		c->lastFrame = tr.frameCount;
-		c->printedThisFrame = 0;
-	}
-
-	c->totalDraws++;
-
-	h = GLES3_CensusHashKey( k );
-	slot = (int)( h & ( GLES3_CENSUS_HASHSIZE - 1 ) );
-	while ( c->hash[slot] ) {
-		idx = c->hash[slot] - 1;
-		if ( GLES3_CensusKeyEqual( &c->keys[idx], k, h ) ) {
-			c->keys[idx].count++;
-			goto summary;
-		}
-		slot = ( slot + 1 ) & ( GLES3_CENSUS_HASHSIZE - 1 );
-	}
-
-	GLES3_FormatDrawKey( keyBuf, (int)sizeof( keyBuf ), k );
-	key = keyBuf;
-
-	if ( c->numKeys >= GLES3_CENSUS_MAXKEYS ) {
-		c->capacityDropped++;
-		if ( !c->noticeDone ) {
-			c->noticeDone = qtrue;
-			ri.Printf( PRINT_ALL,
-				"[GLES3:draw%s] KEY CAPACITY reached: %d distinct keys recorded; "
-				"further NEW keys are counted but NOT recorded (dropped=%u so far). "
-				"Rows already printed remain valid; [GLES3:drawsum] keeps counting.\n",
-				in2D ? "2d" : "", GLES3_CENSUS_MAXKEYS, c->capacityDropped );
-		}
-		goto summary;
-	}
-
-	{
-		int		 len = (int)strlen( key );
-		qboolean trunc = ( len >= GLES3_CENSUS_KEYLEN ) ? qtrue : qfalse;
-
-		if ( trunc ) {
-			len = GLES3_CENSUS_KEYLEN - 1;
-			c->truncatedKeys++;
-		}
-		idx = c->numKeys++;
-		c->keys[idx].key = ri.Malloc( len + 1 );
-		Com_Memcpy( c->keys[idx].key, key, len );
-		c->keys[idx].key[len] = '\0';
-		c->keys[idx].shader = GLES3_CensusOwn( k->shader );
-		c->keys[idx].prog   = GLES3_CensusOwn( k->prog );
-		c->keys[idx].img0   = GLES3_CensusOwn( k->img0 );
-		c->keys[idx].img1   = GLES3_CensusOwn( k->img1 );
-		c->keys[idx].count = 1;
-		c->keys[idx].hash = h;
-		c->keys[idx].defines = k->defines;
-		c->keys[idx].stateBits = k->stateBits;
-		c->keys[idx].vc0 = k->vc0;
-		c->keys[idx].rgbGen = k->rgbGen;
-		c->keys[idx].alphaGen = k->alphaGen;
-		c->keys[idx].tcGen0 = k->tcGen0;
-		c->keys[idx].tcGen1 = k->tcGen1;
-		c->keys[idx].cpuColor = k->cpuColor;
-		c->keys[idx].cpuTexCoords = k->cpuTexCoords;
-		c->hash[slot] = idx + 1;
-	}
-
-	if ( c->printedThisFrame < GLES3_CENSUS_NEW_PER_FRAME ) {
-		c->printedThisFrame++;
-		ri.Printf( PRINT_ALL, "[GLES3:draw%s] n=%u %s\n",
-				   in2D ? "2d" : "", c->keys[c->numKeys - 1].count, key );
-	} else {
-		c->budgetSuppressed++;
-	}
-
-summary:
-	if ( c->lastSummaryFrame < 0 ) {
-		c->lastSummaryFrame = tr.frameCount;
-	} else if ( tr.frameCount - c->lastSummaryFrame >= GLES3_CENSUS_SUMMARY_FRAMES ) {
-		c->lastSummaryFrame = tr.frameCount;
-		GLES3_CensusSummary( c, in2D );
-	}
-}
 
 
 /* One [NIGHTVISION:nv] row per 60 frames: `fullbright' is the `& 2' predicate retail's stage
    iterators test, `nightvision' the shipped view mode that sets it. They are separate because the
    bridge question is about the second. */
-void GLES3_FullbrightNote( void )
-{
-	static int s_nvSubs;
-	static int s_nvFrame = -1;
-	static int s_nvRows;
-	static cvar_t *s_nvCvar;
-
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	s_nvSubs++;
-
-	if ( s_nvRows > 200 ) {
-		return;						
-	}
-	if ( s_nvFrame != tr.frameCount ) {
-		s_nvFrame = tr.frameCount;
-		if ( tr.frameCount % 60 == 0 ) {
-			if ( !s_nvCvar ) {
-				s_nvCvar = ri.Cvar_Get( "nightvision_nvStats", "0", 0 );
-			}
-			if ( s_nvCvar && s_nvCvar->integer ) {
-				if ( s_nvRows == 200 ) {
-					ri.Printf( PRINT_ALL, "[NIGHTVISION:nv] capped at 200 rows; no further lines\n" );
-				} else {
-					ri.Printf( PRINT_ALL,
-						"[NIGHTVISION:nv] row=%d frame=%d beRDF=0x%08x trRDF=0x%08x "
-						"fullbright=%d nightvision=%d subsThisFrame=%d\n",
-						s_nvRows, tr.frameCount,
-						(unsigned)backEnd.refdef.rdflags, (unsigned)tr.refdef.rdflags,
-						( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) ? 1 : 0,
-						( backEnd.refdef.rdflags & RDF_NIGHTVISION ) ? 1 : 0,
-						s_nvSubs );
-				}
-				s_nvRows++;
-			}
-		}
-		s_nvSubs = 0;
-	}
-}
 
 /* Three budgets: ordinary rows, rows where the fullbright arm substituted a bind, and rows where a
    bind did not follow the stage's own image. The arm and the mismatch are different questions, so
@@ -2472,7 +2160,7 @@ void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 		s_surfCvar = ri.Cvar_Get( "lifecycle_surfStats", "0", 0 );
 	}
 
-	if ( !s_surfCvar || !s_surfCvar->integer || !R_ProbeStatsOn() ) {
+	if ( !s_surfCvar || !s_surfCvar->integer ) {
 		return;
 	}
 
@@ -2482,7 +2170,6 @@ void GLES3_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage,
 	nv = (qboolean)( ( backEnd.refdef.rdflags & RDF_NIGHTVISION ) ? qtrue : qfalse );
 
 	if ( fbarm ) {
-		GLES3_FullbrightNote();
 	}
 
 	claim = fbarm
@@ -2686,41 +2373,6 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	   program's define set, and the byte colour the frame feeds -- and lets one
 	   boot say whether the clock is the thing that moves.  Gated and throttled
 	   like every other row: first eight, then every six-hundredth wave stage. */
-	if ( R_ProbeStatsOn()
-		 && ( pStage->rgbGen == CGEN_WAVEFORM || pStage->rgbGen == CGEN_MULTIPLY_BY_WAVEFORM
-			  || pStage->alphaGen == AGEN_WAVEFORM ) )
-	{
-		static int s_waveRows;
-
-		s_waveRows++;
-		if ( s_waveRows <= 8 || ( s_waveRows % 600 ) == 0 ) {
-			int stageIndex = -1;
-			int k;
-
-			for ( k = 0; k < tess.numPasses; k++ ) {
-				if ( tess.xstages[k] == pStage ) {
-					stageIndex = k;
-					break;
-				}
-			}
-			ri.Printf( PRINT_ALL,
-					   "[GLES3:wave] f=%d shader='%s' stage=%d u=%.4f rgbGen=%d alphaGen=%d "
-					   "wave=(%.3f,%.3f,%.3f,%.3f) waveA=(%.3f,%.3f,%.3f,%.3f) "
-					   "def=0x%08x state=0x%08x byte=%d,%d,%d,%d n=%d\n",
-					   RB_FrameCount(),
-					   ( shader && shader->name[0] ) ? shader->name : "?",
-					   stageIndex, tess.shaderTime,
-					   (int)pStage->rgbGen, (int)pStage->alphaGen,
-					   pStage->rgbWave.base, pStage->rgbWave.amplitude,
-					   pStage->rgbWave.phase, pStage->rgbWave.frequency,
-					   pStage->alphaWave.base, pStage->alphaWave.amplitude,
-					   pStage->alphaWave.phase, pStage->alphaWave.frequency,
-					   prog ? prog->defines : 0u, (unsigned)pStage->stateBits,
-					   (int)tess.svars.colors[0][0], (int)tess.svars.colors[0][1],
-					   (int)tess.svars.colors[0][2], (int)tess.svars.colors[0][3],
-					   (int)tess.numVertexes );
-		}
-	}
 
 	if ( hudColorClobber && ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D
 		 && pStage->rgbGen != CGEN_LIGHTING_SPHERICAL
@@ -2797,342 +2449,20 @@ void GLES3_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage
 	/* The key's own payload walks every vertex of the draw to min/max the
 	   colours, and the census that reads it answers qfalse without the gate:
 	   the walk was being paid per draw to feed a row nobody prints. */
-	if ( R_ProbeStatsOn() )
-	{
-		gles3DrawKey_t k;
-
-		k.shader  = shader->name;
-		k.prog    = prog->name;
-		k.defines = prog->defines;
-		k.img0    = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
-					? pStage->bundle[0].image[0]->imgName : "-";
-		k.img1    = ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
-					? pStage->bundle[1].image[0]->imgName : "-";
-		k.rgbGen     = (int)pStage->rgbGen;
-		k.alphaGen   = (int)pStage->alphaGen;
-		k.tcGen0     = (int)pStage->bundle[0].tcGen;
-		k.tcGen1     = (int)pStage->bundle[1].tcGen;
-		k.stateBits  = stateBits;
-		k.cpuColor   = cpuColor ? 1 : 0;
-		k.cpuTexCoords = cpuTexCoords ? 1 : 0;
-		k.vc0        = *(const unsigned *)&input->vertexColors[0];
-		k.vcVerts    = input->numVertexes;
-		{
-			const byte	*v = colors;
-			int			n, j;
-
-			Com_Memcpy( k.vcMin, v, 3 );
-			Com_Memcpy( k.vcMax, v, 3 );
-			for ( j = 1, v += 4; j < input->numVertexes; j++, v += 4 ) {
-				for ( n = 0; n < 3; n++ ) {
-					if ( v[n] < k.vcMin[n] ) { k.vcMin[n] = v[n]; }
-					if ( v[n] > k.vcMax[n] ) { k.vcMax[n] = v[n]; }
-				}
-			}
-		}
-
-		GLES3_DrawCensusKey( &k, backEnd.in2D ? qtrue : qfalse );
-	}
 
 	/* Where a 3D surface actually lands on screen.  The menu's ship submits its
 	   draws every frame and reaches no pixel; a box off [0,1]x[0,1] names the
 	   loss a transform/position loss and a box inside one names a raster loss. */
-	if ( !backEnd.in2D && input->numVertexes > 0 && R_ProbeStatsOn()
-		 && !Q_stricmpn( shader->name, "menu/", 5 ) )
-	{
-		static int	s_gles3BBoxRows;
-		const float	*mv = RB_GetModelViewMatrix();
-		const float	*proj = RB_GetProjectionMatrix();
-		float		mvp[16], px, py, pz, pw;
-		float		minx, miny, minz, maxx, maxy, maxz, minw, maxw;
-		float		mins0, mins1, maxs0, maxs1;
-		float		minnx, minny, minnz, maxnx, maxny, maxnz;
-		int			v, nan;
-		int			wind = 0;
-
-		GLES3_Mat4Mul( mvp, proj, mv );
-
-		minx = miny = minz = minw = 1e30f;
-		maxx = maxy = maxz = maxw = -1e30f;
-		mins0 = mins1 = maxs0 = maxs1 = 0.0f;
-		nan = 0;
-		for ( v = 0; v < input->numVertexes; v++ )
-		{
-			const float *p = input->xyz[v];
-
-			px = mvp[0] * p[0] + mvp[4] * p[1] + mvp[8]  * p[2] + mvp[12];
-			py = mvp[1] * p[0] + mvp[5] * p[1] + mvp[9]  * p[2] + mvp[13];
-			pz = mvp[2] * p[0] + mvp[6] * p[1] + mvp[10] * p[2] + mvp[14];
-			pw = mvp[3] * p[0] + mvp[7] * p[1] + mvp[11] * p[2] + mvp[15];
-
-			if ( px < minx ) minx = px;
-			if ( px > maxx ) maxx = px;
-			if ( py < miny ) miny = py;
-			if ( py > maxy ) maxy = py;
-			if ( pz < minz ) minz = pz;
-			if ( pz > maxz ) maxz = pz;
-			if ( pw < minw ) minw = pw;
-			if ( pw > maxw ) maxw = pw;
-
-			if ( v == 0 )
-			{
-				mins0 = maxs0 = input->texCoords[ v ][ 0 ][ 0 ];
-				mins1 = maxs1 = input->texCoords[ v ][ 0 ][ 1 ];
-				minnx = maxnx = input->normal[ v ][ 0 ];
-				minny = maxny = input->normal[ v ][ 1 ];
-				minnz = maxnz = input->normal[ v ][ 2 ];
-				{
-					/* First triangle's clip-space signed area: +1 is CCW. */
-					const float *a = input->xyz[0];
-					const float *b = input->xyz[1];
-					const float *c = input->xyz[2];
-					float	ax, ay, bx, by, cx, cy, aw, bw, cw, area;
-
-					ax = mvp[0]*a[0] + mvp[4]*a[1] + mvp[8]*a[2] + mvp[12];
-					ay = mvp[1]*a[0] + mvp[5]*a[1] + mvp[9]*a[2] + mvp[13];
-					aw = mvp[3]*a[0] + mvp[7]*a[1] + mvp[11]*a[2] + mvp[15];
-					bx = mvp[0]*b[0] + mvp[4]*b[1] + mvp[8]*b[2] + mvp[12];
-					by = mvp[1]*b[0] + mvp[5]*b[1] + mvp[9]*b[2] + mvp[13];
-					bw = mvp[3]*b[0] + mvp[7]*b[1] + mvp[11]*b[2] + mvp[15];
-					cx = mvp[0]*c[0] + mvp[4]*c[1] + mvp[8]*c[2] + mvp[12];
-					cy = mvp[1]*c[0] + mvp[5]*c[1] + mvp[9]*c[2] + mvp[13];
-					cw = mvp[3]*c[0] + mvp[7]*c[1] + mvp[11]*c[2] + mvp[15];
-					if ( aw != 0.0f && bw != 0.0f && cw != 0.0f )
-					{
-						ax /= aw; ay /= aw; bx /= bw; by /= bw; cx /= cw; cy /= cw;
-						area = ( bx - ax ) * ( cy - ay ) - ( cx - ax ) * ( by - ay );
-						wind = ( area > 0.0f ) ? 1 : ( area < 0.0f ? -1 : 0 );
-					}
-					else {
-						wind = 2;	/* a w of zero: the triangle straddles the camera */
-					}
-				}
-			}
-			else
-			{
-				float s = input->texCoords[ v ][ 0 ][ 0 ];
-				float t = input->texCoords[ v ][ 0 ][ 1 ];
-
-				/* A NaN fails every comparison, so the running box never grows:
-				 * "max stayed below min" is the NaN detector. */
-				if ( s < mins0 ) mins0 = s;
-				if ( s > maxs0 ) maxs0 = s;
-				if ( t < mins1 ) mins1 = t;
-				if ( t > maxs1 ) maxs1 = t;
-				if ( !( maxs0 >= mins0 ) || !( maxs1 >= mins1 ) ) nan = 1;
-
-				if ( input->normal[ v ][ 0 ] < minnx ) minnx = input->normal[ v ][ 0 ];
-				if ( input->normal[ v ][ 0 ] > maxnx ) maxnx = input->normal[ v ][ 0 ];
-				if ( input->normal[ v ][ 1 ] < minny ) minny = input->normal[ v ][ 1 ];
-				if ( input->normal[ v ][ 1 ] > maxny ) maxny = input->normal[ v ][ 1 ];
-				if ( input->normal[ v ][ 2 ] < minnz ) minnz = input->normal[ v ][ 2 ];
-				if ( input->normal[ v ][ 2 ] > maxnz ) maxnz = input->normal[ v ][ 2 ];
-			}
-		}
-
-		s_gles3BBoxRows++;
-		if ( s_gles3BBoxRows <= 12 || ( s_gles3BBoxRows % 240 ) == 0 )
-		{
-			ri.Printf( PRINT_ALL,
-				"[GLES3:bbox] sh=%s n=%d ndc=(%.3f..%.3f, %.3f..%.3f, %.3f..%.3f) w=(%.3f..%.3f)"
-				" st=(%.3f..%.3f, %.3f..%.3f) tcm=%d nrm=(%.2f..%.2f, %.2f..%.2f, %.2f..%.2f)"
-				" nan=%d wind=%d f=%d\n",
-				shader->name, input->numVertexes,
-				minx, maxx, miny, maxy, minz, maxz, minw, maxw,
-				mins0, maxs0, mins1, maxs1,
-				pStage ? pStage->bundle[0].numTexMods : 0,
-				minnx, maxnx, minny, maxny, minnz, maxnz, nan, wind, RB_FrameCount() );
-		}
-	}
 
 	if ( shader == tr.defaultShader )
 	{
-		SMP_ShaderDefaultProbe( "draw", "-",
-			( backEnd.currentEntity && tr.currentModel ) ? tr.currentModel->name :
-			( tr.currentModel ? tr.currentModel->name : "(no-model)" ),
-			backEnd.currentEntity ? backEnd.currentEntity->e.entityNumber : -1,
-			backEnd.currentEntity ? backEnd.currentEntity->e.hModel : -1 );
 	}
 
 #define SMP_DECAL_MAX 16
-	if ( R_ProbeStatsOn() && R_ProbeDecalShader( shader->name ) )
-	{
-		static int		s_smpDecalCount;
-		static qboolean	s_smpDecalNotice;
-
-		if ( s_smpDecalCount < SMP_DECAL_MAX )
-		{
-			GLint		iLiveTex = -1, iSrc = -1, iDst = -1, iFunc = -1;
-			GLboolean	bMask = 2, bTest = 2;
-			unsigned	vc0 = 0, vc1 = 0;
-			float		s0x = 0.0f, s0y = 0.0f, s1x = 0.0f, s1y = 0.0f;
-			const char	*n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
-							   ? pStage->bundle[0].image[0]->imgName : "-";
-			unsigned	tex0 = pStage->bundle[0].image[0] ? (unsigned)pStage->bundle[0].image[0]->texnum : 0u;
-
-			if ( input->numVertexes > 0 )
-			{
-				vc0 = *(const unsigned *)&input->vertexColors[0];
-				s0x = input->texCoords[0][0][0];
-				s0y = input->texCoords[0][0][1];
-			}
-			if ( input->numVertexes > 1 )
-			{
-				vc1 = *(const unsigned *)&input->vertexColors[1];
-				s1x = input->texCoords[1][0][0];
-				s1y = input->texCoords[1][0][1];
-			}
-
-			qglGetIntegerv( GL_TEXTURE_BINDING_2D, &iLiveTex );
-			qglGetIntegerv( GL_BLEND_SRC_RGB, &iSrc );
-			qglGetIntegerv( GL_BLEND_DST_RGB, &iDst );
-			qglGetIntegerv( GL_DEPTH_FUNC, &iFunc );
-			qglGetBooleanv( GL_DEPTH_WRITEMASK, &bMask );
-			qglGetBooleanv( GL_DEPTH_TEST, &bTest );
-
-			s_smpDecalCount++;
-
-			ri.Printf(
-				PRINT_ALL,
-				"[SMP:decal] sh=%s prog=%s def=0x%06x state=0x%08x rgb=%d alpha=%d"
-				" acff=%d fogNum=%d"
-				" img0=%s tex0=%u cache0=%u"
-				" tmu=%d liveTex=%d blend=%d src=0x%04x dst=0x%04x"
-				" dtest=%d dmask=%d dfunc=0x%04x"
-				" vc0=%08x vc1=%08x st0=(%.4f,%.4f) st1=(%.4f,%.4f)\n",
-				shader->name, prog->name, prog->defines, stateBits,
-				(int)pStage->rgbGen, (int)pStage->alphaGen,
-				(int)pStage->acff, tess.fogNum,
-				n0, tex0, (unsigned)glState.currenttextures[0],
-				glState.currenttmu, iLiveTex,
-				(int)qglIsEnabled( GL_BLEND ), (unsigned)iSrc, (unsigned)iDst,
-				bTest ? 1 : 0, bMask ? 1 : 0, (unsigned)iFunc,
-				vc0, vc1, s0x, s0y, s1x, s1y
-			);
-		}
-		else if ( !s_smpDecalNotice )
-		{
-			s_smpDecalNotice = qtrue;
-			ri.Printf( PRINT_ALL, "[SMP:decal] capped at %d rows; no further lines\n", SMP_DECAL_MAX );
-		}
-	}
 #undef SMP_DECAL_MAX
 
 #define SMP_DECALTX_MAX 4
-	if ( R_ProbeStatsOn() && !Q_stricmp( shader->name, "markShadow" ) )
-	{
-		static int	s_smpDecaltxCount;
-
-		if ( s_smpDecaltxCount < SMP_DECALTX_MAX )
-		{
-			GLint	iMinF = 0, iMagF = 0, iMaxL = 0, iBaseL = 0, iAniso = 0;
-			GLint	iWrapS = 0, iWrapT = 0;
-			int		iEnabled = -1, iSize = -1, iStride = -1, iType = -1, iNorm = -1;
-			const void *pAttrib = NULL;
-			int		iCG = -9999, iAG = -9999, iAcff = -9999, iFogNum = -9999, iFogArm = -9999;
-
-			qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &iMinF );
-			qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &iMagF );
-			qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, &iBaseL );
-			qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, &iMaxL );
-			qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &iWrapS );
-			qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, &iWrapT );
-			if ( textureFilterAnisotropic ) {
-				qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, &iAniso );
-			}
-
-			RB_VBO_DecalAttribProbe( &iEnabled, &iSize, &iStride, &iType, &iNorm, &pAttrib );
-
-			if ( prog->uniforms[GLES3_U_COLORGEN] != -1 ) {
-				qglGetUniformiv( prog->program, prog->uniforms[GLES3_U_COLORGEN], &iCG );
-			}
-			if ( prog->uniforms[GLES3_U_ALPHAGEN] != -1 ) {
-				qglGetUniformiv( prog->program, prog->uniforms[GLES3_U_ALPHAGEN], &iAG );
-			}
-			if ( prog->uniforms[GLES3_U_ACFF] != -1 ) {
-				qglGetUniformiv( prog->program, prog->uniforms[GLES3_U_ACFF], &iAcff );
-			}
-			if ( prog->uniforms[GLES3_U_FOGNUM] != -1 ) {
-				qglGetUniformiv( prog->program, prog->uniforms[GLES3_U_FOGNUM], &iFogNum );
-			}
-			if ( prog->uniforms[GLES3_U_FOGDENSITYARM] != -1 ) {
-				qglGetUniformiv( prog->program, prog->uniforms[GLES3_U_FOGDENSITYARM], &iFogArm );
-			}
-
-			s_smpDecaltxCount++;
-
-			ri.Printf( PRINT_ALL,
-				"[SMP:decaltx] tex=%d minF=0x%04x magF=0x%04x baseL=%d maxL=%d aniso=%d wrap=%d,%d"
-				" aColor(en=%d size=%d type=0x%04x stride=%d norm=%d ptr=%p)"
-				" u_ColorGen=%d u_AlphaGen=%d u_Acff=%d u_FogNum=%d u_FogArm=%d\n",
-				glState.currenttextures[0],
-				(unsigned)iMinF, (unsigned)iMagF, (int)iBaseL, (int)iMaxL, (int)iAniso,
-				(int)iWrapS, (int)iWrapT,
-				iEnabled, iSize, (unsigned)iType, iStride, iNorm, pAttrib,
-				iCG, iAG, iAcff, iFogNum, iFogArm );
-		}
-	}
 #undef SMP_DECALTX_MAX
-
-#define SMP_UI2D_MAX 64
-	{
-		static int	s_smpui2dCount;
-		static char	*s_smpui2dSeen[SMP_UI2D_MAX];
-		int			i;
-		qboolean	isUI = backEnd.in2D
-			|| !Q_stricmpn( shader->name, "inv-", 4 )
-			|| !Q_stricmpn( shader->name, "hud/", 4 )
-			|| !Q_stricmpn( shader->name, "sysimg/", 7 );
-
-		if ( isUI && R_ProbeStatsOn() ) {
-			if ( s_smpui2dCount >= SMP_UI2D_MAX ) {
-				if ( s_smpui2dCount == SMP_UI2D_MAX ) {
-					s_smpui2dCount++;
-					ri.Printf( PRINT_ALL, "[SMP:ui2d] cap %d reached; no further rows\n",
-							   SMP_UI2D_MAX );
-				}
-			} else {
-				for ( i = 0; i < s_smpui2dCount; i++ ) {
-					if ( !Q_stricmp( s_smpui2dSeen[i], shader->name ) ) {
-						break;
-					}
-				}
-				if ( i == s_smpui2dCount ) {
-					const char *n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
-									 ? pStage->bundle[0].image[0]->imgName : "-";
-					const char *n1 = ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
-									 ? pStage->bundle[1].image[0]->imgName : "-";
-					unsigned tex0 = pStage->bundle[0].image[0] ? pStage->bundle[0].image[0]->texnum : 0;
-					unsigned tex1 = pStage->bundle[1].image[0] ? pStage->bundle[1].image[0]->texnum : 0;
-					unsigned vc0  = *(const unsigned *)&input->vertexColors[0];
-
-					s_smpui2dSeen[s_smpui2dCount] = ri.Malloc( (int)strlen( shader->name ) + 1 );
-					Q_strncpyz( s_smpui2dSeen[s_smpui2dCount], shader->name,
-								(int)strlen( shader->name ) + 1 );
-					s_smpui2dCount++;
-
-					ri.Printf( PRINT_ALL,
-						"[SMP:ui2d] sh=%s def=0x%06x in2D=%d rgb=%d alpha=%d tc=%d/%d st=0x%08x "
-						"const=%d,%d,%d,%d aConst=%d base_a=%.3f c2D=%d,%d,%d,%d vc0=%08x CPUc=%d "
-						"img0=%s(tex=%u) img1=%s(tex=%u) tmu=%d cur0=%u cur1=%u texenv=0x%x atest=%d\n",
-						shader->name, prog->defines, backEnd.in2D ? 1 : 0,
-						(int)pStage->rgbGen, (int)pStage->alphaGen,
-						(int)pStage->bundle[0].tcGen, (int)pStage->bundle[1].tcGen, stateBits,
-						(int)pStage->colorConst[0], (int)pStage->colorConst[1],
-						(int)pStage->colorConst[2], (int)pStage->colorConst[3],
-						(int)pStage->alphaConst,
-						pStage->alphaGen == AGEN_GLOBAL_ALPHA
-							? backEnd.color2D[3] / 255.0f
-							: pStage->colorConst[3] / 255.0f,
-						(int)backEnd.color2D[0], (int)backEnd.color2D[1],
-						(int)backEnd.color2D[2], (int)backEnd.color2D[3], vc0,
-						cpuColor ? 1 : 0, n0, tex0, n1, tex1,
-						glState.currenttmu, glState.currenttextures[0], glState.currenttextures[1],
-						GLES3_TexEnvForStage( pStage, shader ), (int)s_currentAlphaTest );
-				}
-			}
-		}
-	}
 
 	RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
 						   tc0, tc1, tcStride, colors, input->normal[0] );
@@ -3224,8 +2554,6 @@ gles3Program_t *GLES3_BeginFamily( unsigned family, int texEnv )
 	GLES3_SetupViewUniforms( p );
 
 	if ( family == GLP_FAMILY_2D && !backEnd.in2D && glConfig.vidWidth > 0 ) {
-		SMP_VpProbe( "2dfam", "GLES3_BeginFamily(2D)/in2D=0",
-			0, 0, glConfig.vidWidth, glConfig.vidHeight, 0, qtrue );
 	}
 	GLES3_SetUniform1i( p, GLES3_U_TEX0, 0 );
 	GLES3_SetUniform1i( p, GLES3_U_TEX1, 1 );
@@ -3236,14 +2564,6 @@ gles3Program_t *GLES3_BeginFamily( unsigned family, int texEnv )
 	GLES3_SetUniform1f( p, GLES3_U_FORCEALPHA, -1.0f );
 	GLES3_SetUniform1i( p, GLES3_U_ACFF, 0 );
 
-	{
-		static int s_gles3FamLogged;
-		if ( R_ProbeStatsOn() && s_gles3FamLogged < 150 ) {
-			ri.Printf( PRINT_ALL, "[GLES3:fam] family=%u texEnv=%d prog=%s curTMU=%d unit0tex=%d\n",
-				family, texEnv, p->name, glState.currenttmu, glState.currenttextures[0] );
-			s_gles3FamLogged++;
-		}
-	}
 	return p;
 }
 

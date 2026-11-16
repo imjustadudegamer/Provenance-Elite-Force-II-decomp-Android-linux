@@ -27,12 +27,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "animate.h"
 #include "scriptmaster.h"
 
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
 #include <time.h>
 
-#define GRS_NOW() ( PROBE_On() ? ( long long )clock() * 1000000LL / CLOCKS_PER_SEC : 0 )
 
 static const char *MoveControl_Names[] = {
     "user",         
@@ -1189,7 +1185,6 @@ StateMap *GetStatemap(
     qboolean           found = false;
     Conditional       *new_conditional;
     Conditional       *old_conditional;
-    long long          t0 = GRS_NOW(), t1;
 
     for (i = 1; i <= cached_statemaps.NumObjects(); i++) {
         cache = &cached_statemaps.ObjectAt(i);
@@ -1233,11 +1228,6 @@ StateMap *GetStatemap(
         }
     }
 
-    t1 = GRS_NOW();
-    if (t0) {
-        g_restoreSplitUs[GRS_STATEMAP] += t1 - t0;
-        g_restoreSplitN[GRS_STATEMAP]++;
-    }
 
     return cache->statemap;
 }
@@ -1284,7 +1274,6 @@ void ClearCachedStatemaps(void)
 
     cached_statemaps.FreeObjectList();
 }
-
 
 
 void State::GetTorsoAnims( Container<const char *> *c )

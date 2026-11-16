@@ -24,9 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_local.h"
 #include "tr_vbo.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 #include "tr_program.h"
 #include "gles3_firstlight.h"
 
@@ -40,18 +37,6 @@ int r_sequencenumber;
 
 static void GfxInfo_f( void );
 
-/* The per-event recorders (bind pairs, uploads, draw-key and stage-bind censuses)
- * run only under the `qa_probe' gate; the stage-bind
- * census scans up to SURFSTATS_ROWS rows for every stage once its table fills. */
-qboolean R_ProbeStatsOn( void ) {
-	static cvar_t	*probe;
-
-	if ( !probe ) {
-		probe = ri.Cvar_Get( "qa_probe", "0", 0 );
-	}
-
-	return ( probe && probe->integer ) ? qtrue : qfalse;
-}
 
 
 cvar_t	*r_ignoreFastPath;
@@ -520,19 +505,48 @@ void RB_TakeScreenshot( int x, int y, int width, int height, char *fileName ) {
 
 /* The GLES3 renderer consumes the screenshot request inside its own render list,
    so it never reports one pending. */
+static qboolean	s_shotPending;
+static int		s_shotX, s_shotY, s_shotWidth, s_shotHeight;
+static char		s_shotName[MAX_OSPATH];
+static qboolean	s_shotResample;
+static char		s_shotResampleName[MAX_OSPATH];
+static int		s_shotResampleW, s_shotResampleH;
+static void R_ResampledScreenShotNow(const char *filename, int destwidth, int destheight);
+
+qboolean R_ScreenshotPending( void ) {
+	return s_shotPending;
+}
+
+void R_FlushScreenshot( void ) {
+	if ( !s_shotPending ) {
+		return;
+	}
+	s_shotPending = qfalse;
+	if ( s_shotResample ) {
+		s_shotResample = qfalse;
+		R_ResampledScreenShotNow( s_shotResampleName, s_shotResampleW, s_shotResampleH );
+		return;
+	}
+	RB_TakeScreenshot( s_shotX, s_shotY, s_shotWidth, s_shotHeight, s_shotName );
+}
+
 qboolean R_ScreenShotPendingStub( void )
 {
-	return qfalse;
+	return s_shotPending;
 }
 
 const void *RB_TakeScreenshotCmd( const void *data ) {
 	const screenshotCommand_t	*cmd;
-	
+
 	cmd = (const screenshotCommand_t *)data;
-	
-	RB_TakeScreenshot( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
-	
-	return (const void *)(cmd + 1);	
+	/* the command is recorded before this frame's draws; read at swap instead */
+	Q_strncpyz( s_shotName, cmd->fileName, sizeof( s_shotName ) );
+	s_shotX = cmd->x;
+	s_shotY = cmd->y;
+	s_shotWidth = cmd->width;
+	s_shotHeight = cmd->height;
+	s_shotPending = qtrue;
+	return (const void *)(cmd + 1);
 }
 
 void R_TakeScreenshot( int x, int y, int width, int height, char *name ) {
@@ -594,6 +608,16 @@ void R_ScreenshotFilenameJPEG( int lastNumber, char *fileName ) {
 }
 
 void R_ResampledScreenShot(const char* filename, int destwidth, int destheight) {
+	/* the save thumbnail is requested before this frame draws; read it at swap,
+	   after the world is on the back buffer, exactly like the full-size arm */
+	Q_strncpyz( s_shotResampleName, filename, sizeof( s_shotResampleName ) );
+	s_shotResampleW = destwidth;
+	s_shotResampleH = destheight;
+	s_shotResample = qtrue;
+	s_shotPending = qtrue;
+}
+
+static void R_ResampledScreenShotNow(const char* filename, int destwidth, int destheight) {
 	byte		*buffer;
 	byte		*source, *allsource;
 	byte		*src, *dst;
@@ -603,9 +627,6 @@ void R_ResampledScreenShot(const char* filename, int destwidth, int destheight) 
 	int			r, g, b;
 	float		xScale, yScale;
 	int			xx, yy;
-
-	/* the save-game thumbnail: SCR_UpdateScreen runs this off the render thread */
-	R_SyncRenderThread();
 
 	allsource = RB_ReadPixels(0, 0, glConfig.vidWidth, glConfig.vidHeight, &offset, &padlen);
 	if ( !allsource ) {
@@ -1155,9 +1176,6 @@ static cvar_t *R_RegisterLightCvar( const char *name, const char *value )
 	if ( cv->defaultRecorded ) {
 		ri.Cvar_Set( name, value );
 		cv->defaultRecorded = qfalse;    /* once a boot: my own session value owns the rest of it */
-		if ( PROBE_On() ) {
-			PROBE_EMIT( "[GLES3:", "dlight", "site=register %s='%s'\n", name, value );
-		}
 	}
 
 	return cv;
@@ -1231,7 +1249,11 @@ void R_Register( void )
 	r_fastdlights = ri.Cvar_Get("r_fastdlights", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	r_drawSun = ri.Cvar_Get( "r_drawSun", "0", CVAR_ARCHIVE );
 	r_dlightBacks = ri.Cvar_Get( "r_dlightBacks", "1", CVAR_ARCHIVE );
-	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "1" );
+	/* retail ships `setd r_dynamiclight 0` in global/game.cfg:22, so its
+	   default frame carries no projected dlight pool.  The port opened it on,
+	   which is why a green grenade / blue ammo canister showed a coloured pool
+	   retail never draws.  The setting still turns it on; the default is retail. */
+	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "0" );
 	r_dynamiclightmaps = ri.Cvar_Get( "r_dynamiclightmaps", "1", CVAR_ARCHIVE );
 	r_finish = ri.Cvar_Get ("r_finish", "0", CVAR_ARCHIVE);
 	r_textureMode = ri.Cvar_Get( "r_textureMode", "GL_LINEAR_MIPMAP_NEAREST", CVAR_ARCHIVE );
@@ -1434,23 +1456,6 @@ void R_Init( void ) {
 
 		if ( !s_smpGltexLogged ) {
 			s_smpGltexLogged = qtrue;
-			if ( R_ProbeStatsOn() ) {
-			ri.Printf( PRINT_ALL,
-				"[GLES3:gltex] r_colorbits=%d r_texturebits=%d r_picmip=%d "
-				"r_roundImagesDown=%d r_vertexLight=%d r_lightmap=%d r_fullbright=%d "
-				"-> R_Upload32 samples==3 arm yields %s\n",
-				r_colorbits ? r_colorbits->integer : -1,
-				r_texturebits ? r_texturebits->integer : -1,
-				r_picmip ? r_picmip->integer : -1,
-				r_roundImagesDown ? r_roundImagesDown->integer : -1,
-				r_vertexLight ? r_vertexLight->integer : -1,
-				r_lightmap ? r_lightmap->integer : -1,
-				r_fullbright ? r_fullbright->integer : -1,
-				( r_texturebits && r_colorbits
-				  && r_texturebits->integer == 0 && r_colorbits->integer == 0 )
-					? "the literal 3 (INVALID with format=GL_RGBA)"
-					: "a legal RGBA-column format" );
-			}
 		}
 	}
 

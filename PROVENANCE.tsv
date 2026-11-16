@@ -64,8 +64,6 @@ botlib/l_script.h	gpl	recovered GPL banner	botlib/l_script.h	1.000	-	0.000
 botlib/l_struct.c	gpl	recovered GPL banner	botlib/l_struct.c	1.000	-	0.000
 botlib/l_struct.h	gpl	recovered GPL banner	botlib/l_struct.h	1.000	-	0.000
 botlib/l_utils.h	gpl	recovered GPL banner	botlib/l_utils.h	1.000	-	0.000
-cgame/be_cgprobe.cpp	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
-cgame/be_cgprobe.h	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
 cgame/cg_beam.cpp	gpl	recovered GPL banner	cgame/cg_beam.cpp	0.822	-	0.000
 cgame/cg_commands.cpp	gpl	recovered GPL banner	cgame/cg_commands.cpp	0.538	-	0.000
 cgame/cg_commands.h	gpl	recovered GPL banner	cgame/cg_commands.h	0.640	-	0.000
@@ -494,8 +492,6 @@ fgame/shrapnelbomb.h	sdk	port record names the EF2 SDK as the source	-	0.000	dll
 fgame/simpleentity.cpp	gpl	recovered GPL banner	fgame/simpleentity.cpp	0.073	-	0.000
 fgame/simpleentity.h	gpl	recovered GPL banner	fgame/simpleentity.h	0.025	-	0.000
 fgame/smp_pathpair.h	recon	no ancestor and no surviving notice	-	0.000	-	0.000
-fgame/smp_spawnstats.cpp	recon	no ancestor and no surviving notice	-	0.000	-	0.000
-fgame/smp_spawnstats.h	recon	no ancestor and no surviving notice	-	0.000	-	0.000
 fgame/snipeEnemy.cpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/snipeEnemy.cpp	0.987
 fgame/snipeEnemy.hpp	sdk	Ritual EF2 SDK	-	0.000	dlls/game/snipeEnemy.hpp	0.960
 fgame/soundman.cpp	gpl	recovered GPL banner	fgame/soundman.cpp	0.864	dlls/game/soundman.cpp	0.341
@@ -1119,9 +1115,6 @@ qcommon/q_platform.h	gpl	recovered GPL banner	qcommon/q_platform.h	0.892	-	0.000
 qcommon/q_shared.c	gpl	recovered GPL banner	qcommon/q_shared.c	0.973	dlls/game/q_shared.c	0.254
 qcommon/q_shared.h	gpl	recovered GPL banner	qcommon/q_shared.h	0.814	dlls/game/q_shared.h	0.490
 qcommon/q_version.h	gpl	recovered GPL banner	qcommon/q_version.h	0.762	-	0.000
-qcommon/qa_probe.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-qcommon/qa_ui.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
-qcommon/qa_widget.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 qcommon/qcommon.h	gpl	recovered GPL banner	qcommon/qcommon.h	0.793	-	0.000
 qcommon/qcommon/platform.h	sdk	Ritual EF2 SDK	-	0.000	Shared/qcommon/platform.h	1.000
 qcommon/qfiles.h	gpl	recovered GPL banner	qcommon/qfiles.h	0.670	Shared/qcommon/qfiles.h	0.616
@@ -1140,6 +1133,8 @@ renderercommon/puff.h	vendored	recovered third-party notice	renderercommon/puff.
 renderercommon/qgl.h	gpl	recovered GPL banner	renderercommon/qgl.h	0.966	-	0.000
 renderercommon/tr_common.h	gpl	recovered GPL banner	renderercommon/tr_common.h	0.924	-	0.000
 renderercommon/tr_font.c	gpl	recovered GPL banner	renderercommon/tr_font.c	1.000	-	0.000
+renderercommon/tr_frame_stats.c	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
+renderercommon/tr_frame_stats.h	gpl	id Tech 3 lineage (standard GPL notice)	-	0.000	-	0.000
 renderercommon/tr_image_bmp.c	gpl	recovered GPL banner	renderercommon/tr_image_bmp.c	1.000	-	0.000
 renderercommon/tr_image_jpg.c	gpl	recovered GPL banner	renderercommon/tr_image_jpg.c	1.000	-	0.000
 renderercommon/tr_image_pcx.c	gpl	recovered GPL banner	renderercommon/tr_image_pcx.c	1.000	-	0.000
@@ -1333,8 +1328,6 @@ tiki/tiki_tag.h	gpl	recovered GPL banner	tiki/tiki_tag.h	0.376	-	0.000
 tiki/tiki_utility.cpp	gpl	recovered GPL banner	tiki/tiki_utility.cpp	0.465	-	0.000
 tiki/tiki_utility.h	gpl	recovered GPL banner	tiki/tiki_utility.h	0.684	-	0.000
 uilib/editfield.h	gpl	recovered GPL banner	uilib/editfield.h	1.000	-	0.000
-uilib/limit_uiprobe.cpp	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
-uilib/limit_uiprobe.h	recon	no SDK basis; rebuilt from the retail binaries	-	0.000	-	0.000
 uilib/ucolor.cpp	gpl	recovered GPL banner	uilib/ucolor.cpp	0.904	-	0.000
 uilib/ucolor.h	gpl	recovered GPL banner	uilib/ucolor.h	0.983	-	0.000
 uilib/ui_extern.h	gpl	recovered GPL banner	uilib/ui_extern.h	0.889	-	0.000

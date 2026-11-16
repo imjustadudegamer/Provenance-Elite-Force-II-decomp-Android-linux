@@ -54,8 +54,6 @@ void RB_VboStaticRecord( const void *surf, int vertStart, int numVerts, int idxS
 
 void RB_VboStaticForget( void );
 
-void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
-							  int *normalized, const void **pointer );
 
 #include "tr_vbo_imm.h"
 

@@ -3439,7 +3439,6 @@ CLASS_DECLARATION( Sentient, Actor, "monster_generic" )
 ;
 
 
-
 Actor::Actor()
     : statemap(NULL)
     , currentState(NULL)
@@ -3632,12 +3631,6 @@ Actor::Actor()
     }
 
 
-
-
-
-
-
-
     edict->s.eType = ET_MODELANIM;
     edict->svflags |= SVF_MONSTER;
     edict->ownerNum = ENTITYNUM_NONE;
@@ -3664,9 +3657,6 @@ Actor::Actor()
     SetActorFlag(ACTOR_FLAG_ALLOWED_TO_KILL, qtrue);
 
 
-
-
-
     minEyeYawAngle   = -30.0f;
     maxEyeYawAngle   = 30.0f;
     minEyePitchAngle = -30.0f;
@@ -3677,33 +3667,6 @@ Actor::Actor()
     forcedEnemy        = NULL;  
 
     VectorClear(edict->s.viewangles);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     setAngles(angles);
@@ -3961,8 +3924,6 @@ Actor::~Actor()
 }
 
 
-
-
 void Actor::processGameplayData(Event *ev)
 {
     GameplayManager *gpm = GameplayManager::getTheGameplayManager();
@@ -3998,8 +3959,6 @@ void Actor::Start(Event *ev)
     // called below at retail's own position in Start), never with an unbounded drop.
 
 
-
-
     {
         Vector animDir;
         angles.AngleVectors(&animDir);
@@ -4031,30 +3990,6 @@ void Actor::Start(Event *ev)
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 bool Actor::CanTarget(void) const
 {
     return GetActorFlag( ACTOR_FLAG_TARGETABLE );
@@ -4072,8 +4007,6 @@ bool Actor::IsImmortal(void)
 {
     return GetActorFlag(ACTOR_FLAG_IMMORTAL) != 0;
 }
-
-
 
 
 trace_t Actor::Trace(const Vector& end, const char *reason) const
@@ -4214,12 +4147,10 @@ void Actor::ForwardSpeedEvent(Event *ev)
 }
 
 
-
 // occupy and do not survive a save.  That is a property of the flags, not of the
 // archive: retail never had them.
 
 #define RETAIL_ACTOR_FLAG_FORCE_LIFEBAR 94
-
 
 
 // The base call is Sentient::Archive, NOT SimpleActor::Archive: retail's Actor derives
@@ -4819,9 +4750,6 @@ void Actor::Archive(Archiver& arc)
 }
 
 
-
-
-
 void Actor::WarpTo(Event *ev)
 {
     PathNode *goal_node;
@@ -5025,8 +4953,6 @@ void Actor::ShowInfo(void)
 }
 
 
-
-
 void Actor::WalkTo(Event *ev)
 {
     if (!ModeAllowed(ACTOR_MODE_SCRIPT)) {
@@ -5078,11 +5004,6 @@ void Actor::SetMovementMode(Event *ev)
         movementSubsystem->setMovementType(MOVEMENT_TYPE_ANIM);
     }
 }
-
-
-
-
-
 
 
 void Actor::LookAt(Event *ev)
@@ -5185,16 +5106,6 @@ void Actor::SetEyeAngles(Event *ev)
 }
 
 
-
-
-
-
-
-
-
-
-
-
 void Actor::turnTowardsEntity(Entity *ent, float extraYaw)
 {
     Vector dir;
@@ -5283,16 +5194,6 @@ void Actor::TurnTowardsEntity(Event *ev)
 }
 
 
-
-
-
-
-
-
-
-
-
-
 void Actor::Killed(Event *ev)
 {
     ClassDef *cls;
@@ -5306,7 +5207,6 @@ void Actor::Killed(Event *ev)
     attacker = ev->GetEntity(1);
     damage   = ev->GetFloat(2);
 
-    G_EntTrash_KilledEntry(this, attacker, damage);
 
     if (ev->NumArgs() > 4) {
         fallingDeath = ev->GetBoolean(5);
@@ -5341,7 +5241,6 @@ void Actor::Killed(Event *ev)
     if (damage && attacker && attacker->isSubclassOf(Player)) {
         Player *player = (Player *)attacker;
 
-        G_EntTrash_Pointer("Killed", player, player->p_heuristics);
 
         float            points = 0.0f;
         GameplayManager *gpm    = GameplayManager::getTheGameplayManager();
@@ -5408,31 +5307,6 @@ void Actor::Killed(Event *ev)
             || means_of_death == MOD_PLASMASHOTGUN)) {
         float chance = G_Random();
 
-        if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "0", 0)->integer) {
-            gi.Printf("[UIVK:nanseed] ent=%d mod=%d(%s) roll=%.3f take=%d "
-                      "org=(%.1f,%.1f,%.1f) vel=(%.1f,%.1f,%.1f) atk=%d "
-                      "atkorg=(%.1f,%.1f,%.1f) mass=%d scale=%.6g mv=%d ge=%d "
-                      "dkv=%.1f dkh=%.1f hp=%.1f df=%d\n",
-                      entnum,
-                      means_of_death,
-                      MOD_NumToName(means_of_death),
-                      chance,
-                      chance >= .45 ? 1 : 0,
-                      origin[0], origin[1], origin[2],
-                      velocity[0], velocity[1], velocity[2],
-                      attacker ? attacker->entnum : -1,
-                      attacker ? attacker->origin[0] : 0.0f,
-                      attacker ? attacker->origin[1] : 0.0f,
-                      attacker ? attacker->origin[2] : 0.0f,
-                      mass,
-                      edict->s.scale,
-                      (int)movetype,
-                      groundentity ? (int)(groundentity - g_entities) : -1,
-                      deathKnockbackVerticalValue,
-                      deathKnockbackHorizontalValue,
-                      health,
-                      (int)deadflag);
-        }
 
         if (chance >= .45) {
             Vector attackerToSelf = origin - attacker->origin;
@@ -5441,39 +5315,7 @@ void Actor::Killed(Event *ev)
             attackerToSelf *= deathKnockbackHorizontalValue;
             velocity = attackerToSelf;
 
-            if (gi.cvar("qa_probe", "0", 0)->integer) {   /* qa_probe is the one switch; the old getenv arm was unarmanable off-PC */
-                Vector uivk_kb_raw = origin - attacker->origin;
-                int    uivk_kb_ge  = -1;
 
-                if (groundentity) {
-                    uivk_kb_ge = groundentity - g_entities;
-                }
-
-                gi.Printf("[UIVK:knockback] "
-                          "ent=%d mod=%d(%s) roll=%.4f fire=1 "
-                          "imp=(%.1f,%.1f,%.1f) spd=%.1f "
-                          "raw=(%.1f,%.1f,%.1f) dkh=%.1f dkv=%.1f "
-                          "atk=%d aorg=(%.1f,%.1f,%.1f) org=(%.1f,%.1f,%.1f) "
-                          "mass=%d ge=%d mv=%d svtime=%d\n",
-                          entnum,
-                          means_of_death,
-                          MOD_NumToName(means_of_death),
-                          chance,
-                          velocity[0], velocity[1], velocity[2],
-                          velocity.length(),
-                          uivk_kb_raw[0], uivk_kb_raw[1], uivk_kb_raw[2],
-                          deathKnockbackHorizontalValue,
-                          deathKnockbackVerticalValue,
-                          attacker->entnum,
-                          attacker->origin[0], attacker->origin[1], attacker->origin[2],
-                          origin[0], origin[1], origin[2],
-                          mass,
-                          uivk_kb_ge,
-                          (int)movetype,
-                          level.inttime);
-            }
-
-            UIVK_KB_Arm(entnum);
         }
     }
 
@@ -5638,78 +5480,10 @@ void Actor::Killed(Event *ev)
 }
 
 
-
-
 void Actor::FireWeapon(Event *ev)
 {
     combatSubsystem->FireWeapon();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 qboolean Actor::SetAnim(const str& anim, Event *ev, bodypart_t part, const float animationRate)
@@ -5727,14 +5501,6 @@ qboolean Actor::SetAnim(const str& anim, Event *ev, bodypart_t part, const float
 
 
     if (num != -1) {
-        if (gi.cvar("qa_probe", "0", 0)->integer && !strncmp(anim.c_str(), "assimilate", 10)) {
-            Entity *gameplay_enemy = enemyManager ? enemyManager->GetCurrentEnemy() : NULL;
-            float   gameplay_dist  = (gameplay_enemy ? (gameplay_enemy->centroid - centroid).length() : -1.0f);
-
-            gi.Printf("[GAMEPLAY:asml] ent=%d '%s' anim='%s' num=%d part=%d enemy=%d edist=%.1f hp=%.0f\n",
-                      entnum, model.c_str(), anim.c_str(), num, (int)part,
-                      gameplay_enemy ? gameplay_enemy->entnum : -1, gameplay_dist, health);
-        }
 
         if (part == legs) {
             newanim = anim;
@@ -5799,9 +5565,6 @@ qboolean Actor::SetAnim(const str& anim, Event& ev, bodypart_t part, const float
 }
 
 
-
-
-
 void Actor::ChangeAnim(void)
 {
     Vector totalmove;
@@ -5814,22 +5577,6 @@ void Actor::ChangeAnim(void)
             animate->SetAnimDoneEvent(newTorsoAnimEvent, torso);
         } else {
             TorsoAnimName = newTorsoAnim;
-            {
-                static int torso_sel_rows;
-
-                /* names the torso anim selection itself: which state or behavior
-                   resolved what, and to which alias index */
-                if (torso_sel_rows < 4000 && gi.cvar("qa_probe", "0", 0)->integer) {
-                    torso_sel_rows++;
-                    gi.Printf(
-                        "[AIM:torso] ent=%d name='%s' num=%d prev=%d\n",
-                        entnum,
-                        newTorsoAnim.c_str(),
-                        newTorsoAnimNum,
-                        CurrentAnim(torso)
-                    );
-                }
-            }
             animate->NewAnim(newTorsoAnimNum, newTorsoAnimEvent, torso);
         }
 
@@ -5853,9 +5600,6 @@ void Actor::ChangeAnim(void)
 }
 
 
-
-
-
 void Actor::Think(void)
 {
     if (!Director.PlayerReady()) {
@@ -5873,50 +5617,6 @@ void Actor::Think(void)
         LevelAIOn();
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void Actor::AttackPlayer(Event *ev)
@@ -6024,8 +5724,6 @@ void Actor::BroadcastAlert(Event *ev)
 }
 
 
-
-
 void Actor::SetTurretMode(Event *ev)
 {
     qboolean tmode = true;
@@ -6038,129 +5736,8 @@ void Actor::SetTurretMode(Event *ev)
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void Actor::Dead(Event *ev)
 {
-    {
-        static int    uivk_dw_calls[MAX_GENTITIES];
-        static int    uivk_dw_frame[MAX_GENTITIES];
-        static Vector uivk_dw_org[MAX_GENTITIES];
-
-        if (getenv("EF2_DEADWEDGE") && entnum >= 0 && entnum < MAX_GENTITIES) {
-            int uivk_dw_n;
-
-            if (uivk_dw_frame[entnum] > level.framenum) {
-                uivk_dw_calls[entnum] = 0;
-            }
-
-            uivk_dw_n = uivk_dw_calls[entnum]++;
-
-            if (uivk_dw_n > 0 && gi.cvar("qa_probe", "0", 0)->integer) {
-                int uivk_dw_ge = -1;
-
-                if (groundentity) {
-                    uivk_dw_ge = groundentity - g_entities;
-                }
-
-                gi.Printf("[UIVK:deadwedge] "
-                          "ent=%d n=%d ge=%d vel=(%.1f,%.1f,%.1f) mv=%d "
-                          "org=(%.1f,%.1f,%.1f) porg=(%.1f,%.1f,%.1f) "
-                          "td=(%.2f,%.2f,%.2f) mb=%d fl=%d par=%d imm=%d "
-                          "tkd=%d df=%d hp=%.1f "
-                          "mt=%d "
-                          "svtime=%d\n",
-                          entnum,
-                          uivk_dw_n,
-                          uivk_dw_ge,
-                          velocity[0], velocity[1], velocity[2],
-                          (int)movetype,
-                          origin[0], origin[1], origin[2],
-                          uivk_dw_org[entnum][0],
-                          uivk_dw_org[entnum][1],
-                          uivk_dw_org[entnum][2],
-                          total_delta[0], total_delta[1], total_delta[2],
-                          (int)M_CheckBottom(this),
-                          (int)flags,
-                          edict->s.parent,
-                          (flags & (FL_IMMOBILE | FL_PARTIAL_IMMOBILE)) ? 1 : 0,
-                          (int)takedamage,
-                          (int)deadflag,
-                          health,
-                          movementSubsystem ? (int)movementSubsystem->getMovementType() : -1,
-                          level.inttime);
-            }
-
-            uivk_dw_frame[entnum] = level.framenum;
-            uivk_dw_org[entnum]   = origin;
-        }
-    }
 
     // once"; retail calls it unconditionally (decomp __dt__ ordering: the
     animate->StopAnimatingAtEnd();
@@ -6198,62 +5775,6 @@ void Actor::Dead(Event *ev)
         PostEvent(EV_Actor_Fade, 5.0f);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void Actor::Active( Event *ev )
@@ -6494,7 +6015,6 @@ void Actor::ClearCurrentEnemy( Event *ev )
 	}
 
 
-
 void Actor::ClearLegAnim()
 {
 	
@@ -6581,7 +6101,6 @@ void Actor::EndBehavior( void	)
 		delete behavior;
 		behavior = NULL;
 		}
-
 
 
 	if ( scriptthread )
@@ -7140,8 +6659,6 @@ void Actor::KilledEffects( Entity *attacker )
    }
 
 
-
-
 void Actor::LevelAIOff()
 {
 	if ( GetActorFlag( ACTOR_FLAG_AI_ON ) )
@@ -7592,7 +7109,6 @@ void Actor::ProcessActorStateMachine( void )
 				{
 				gi.WDPrintf( "Invalid torso behavior name %s\n", torsoBehavior_name.c_str() );
 				}
-
 
 
 			InitState();
@@ -8172,7 +7688,6 @@ void Actor::RunCustomThread( const str& threadType )
 }
 
 
-
 void Actor::SaveMode( void )
 	{
 	if ( mode == ACTOR_MODE_IDLE )
@@ -8383,8 +7898,6 @@ void Actor::SetAnimSet( Event *ev )
 {
 	SetAnimSet(ev->GetString( 1 ) );
 }
-
-
 
 
 void Actor::SetBehavior ( Behavior *newbehavior, Event *startevent, CThread *newthread	)
@@ -8748,12 +8261,6 @@ void Actor::SetHeadWatchSpeed( Event *ev )
    }
 
 
-
-
-
-
-
-
 void Actor::SetHeadWatchTarget( Entity *ent ) 
    {
    if ( !ent )
@@ -8925,9 +8432,6 @@ void Actor::SetMaxHeadYaw( Event *ev )
 {
 	headWatcher->SetMaxHeadYaw( ev->GetFloat( 1 ) );
 }
-
-
-
 
 
 void Actor::SetMinimumMeleeHeight ( Event *ev )
@@ -9454,8 +8958,6 @@ void Actor::SpawnActorAtTag( Event *ev	)
 		addHeight = 0;
 
 
-
-
 	GetTag( tag_name.c_str(), &tag_orig, &tag_dir );
 	
 	if(spawn_offset)
@@ -9754,7 +9256,6 @@ void Actor::TryTalkToPlayer( void )
 	Talk *talk;
 
 
-
 	if ( level.cinematic )
 		next_player_near = level.time + 5.0f;
 
@@ -10043,9 +9544,6 @@ void Actor::WhatAreYouDoing( Event *ev )
 }
 
 
-
-
-
 void Actor::resetStateMachine( void )
 {
 	SetState( idle_state_name.c_str() );
@@ -10136,9 +9634,6 @@ qboolean Actor::GetClosestTag( const str &tag_name, int number_of_tags, const Ve
 
 	return found;
 	}
-
-
-
 
 
 qboolean Actor::RespondToHitscan( void )
@@ -11081,7 +10576,6 @@ qboolean Actor::checkTalking()
 
     return false;
 }
-
 
 
 qboolean Actor::checkTurretMode(	Conditional &condition )
@@ -12385,12 +11879,6 @@ qboolean Actor::checkused( Conditional &condition )
 	}
 
 
-
-
-
-
-
-
 bool Actor::ReleaseControl(Listener *controller)
 {
     if (!_controller) {
@@ -12404,20 +11892,6 @@ bool Actor::ReleaseControl(Listener *controller)
     _controlType = ACTOR_CONTROL_NONE;
     return true;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 qboolean Actor::CheckBottom( void )
@@ -12500,9 +11974,6 @@ qboolean Actor::CheckBottom( void )
 	}
 
 
-
-
-
 int Actor::NotifyFlag_string_to_int( const str &notifyflagstr )
    {
 	extern char actor_notify_strings[ACTOR_FLAG_MAX][32];
@@ -12520,16 +11991,10 @@ int Actor::NotifyFlag_string_to_int( const str &notifyflagstr )
    }
 
 
-
-
-
-
-
 void Actor::SetMinPainTime( Event *ev )
 {
 	SetMinPainTime( ev->GetFloat( 1 ) );
 }
-
 
 
 void Actor::WhatsWrong( Event *ev )
@@ -12549,23 +12014,16 @@ void Actor::WhatsWrong( Event *ev )
 }
 
 
-
-
 qboolean Actor::returntrue( Conditional &condition )
    {
    return true;
    }
 
 
-
-
 void Actor::setHeadTwitch( Event *ev )
 {
 	headWatcher->setHeadTwitch( ev->GetBoolean( 1 ) );
 }
-
-
-
 
 
 Entity* Group::GetNextMember( Entity *entity )
@@ -12594,10 +12052,6 @@ Entity* Group::GetNextMember( Entity *entity )
 }
 
 
-
-
-
-
 unsigned int Actor::ActorTypeStringToInt( const str &type )
 {
 	unsigned int retValue = 99999;
@@ -12620,7 +12074,6 @@ unsigned int Actor::ActorTypeStringToInt( const str &type )
 	assert( retValue != 99999 );
 	return retValue;
 }
-
 
 
 qboolean Actor::checkhaveenemy(Conditional &condition)
@@ -12776,10 +12229,6 @@ qboolean Actor::checkPatrolWaypointNodeInDistance(Conditional &condition)
 
     return false;
 }
-
-
-
-
 
 
 void Actor::ActivateAI( void )
@@ -13705,7 +13154,6 @@ void Actor::ClearStateFlags( void )
 	part_t *part;
 
 
-
 	state_flags = 0;
 
 
@@ -13854,7 +13302,6 @@ void Actor::DialogDone( Event *ev )
    }
 
 
-
 void Actor::_dropActorToGround()
 	{
 	trace_t	trace;
@@ -13956,7 +13403,6 @@ qboolean Actor::EntityInRange ( Entity *ent,	float range, float min_height, floa
 	float    r;
    Vector   delta , cent , enemyCent;
 	float    height_diff;
-
 
 
 	if ( !IsEntityAlive( ent ) )
@@ -14279,7 +13725,6 @@ void Actor::FireProjectile( Event *ev )
 		spread = ev->GetFloat( 8 );
 
 
-
 	if ( !GetClosestTag( tag_name, number_of_tags, currentEnemy->centroid, &orig ) )
 		{
 		orig[0] = centroid[0];
@@ -14344,7 +13789,6 @@ void Actor::FireProjectile( Event *ev )
 		offset_angle[YAW] += offset;		
 		offset_angle.AngleVectors( &dir );		
 		}
-
 
 
 	dir.normalize();
@@ -14700,19 +14144,11 @@ void Actor::MeleeEvent( Event *ev )
 
 	if ( GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_ON ) && GetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_DAMAGED ) )
 		{
-		if ( gi.cvar("qa_probe", "0", 0)->integer )
-			gi.Printf( "[GAMEPLAY:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_once_already_damaged\n",
-					   entnum, model.c_str(), ( ev->NumArgs() > 2 ) ? ev->GetString( 3 ) : "-",
-					   ( ev->NumArgs() > 0 ) ? ev->GetFloat( 1 ) : 0.0f );
 		return;
 		}
 
 	if ( !GetActorFlag( ACTOR_FLAG_DAMAGE_ALLOWED ) )
 		{
-		if ( gi.cvar("qa_probe", "0", 0)->integer )
-			gi.Printf( "[GAMEPLAY:melee] ent=%d '%s' GATED mod=%s dmg=%.2f flag=damage_not_allowed\n",
-					   entnum, model.c_str(), ( ev->NumArgs() > 2 ) ? ev->GetString( 3 ) : "-",
-					   ( ev->NumArgs() > 0 ) ? ev->GetFloat( 1 ) : 0.0f );
 		return;
 		}
 
@@ -14827,7 +14263,6 @@ void Actor::MeleeEvent( Event *ev )
 			SetActorFlag( ACTOR_FLAG_DAMAGE_ONCE_DAMAGED, true );
 		}
 	}
-
 
 
 qboolean Actor::ModeAllowed( int new_mode )
@@ -14953,7 +14388,6 @@ void Actor::Pain( Event *ev )
 		}
 	else
 		showPain = false;
-
 
 
 	
@@ -15358,7 +14792,6 @@ void Actor::RemoveAnimDoneEvent( void )
 
 	last_anim_event_name = "";
 	}
-
 
 
 bool Actor::RequestControl
@@ -16209,9 +15642,6 @@ void Actor::UseEvent( Event *ev )
 }
 
 
-
-
-
 void Actor::AddDialogParms( DialogNode_t *dialog_node, Event *ev )
    {
 	const char *token;
@@ -16320,7 +15750,6 @@ void Actor::AddStateFlag( unsigned int flag )
 	Actor *other_act;
 	int current_part;
 	part_t *part;
-
 
 
 	state_flags |= flag;
@@ -16611,8 +16040,6 @@ void Actor::StartTalkBehavior(Sentient *user)
 }
 
 
-
-
 void AI_SenseEnemies	( void )
 	{
 	Actor    *actor;
@@ -16673,7 +16100,6 @@ Player *GetPlayer( int index )
 	}
 
 
-
 qboolean Actor::GetNotifyFlag( int flag )
 	{
 	unsigned int *flags_shadow1;
@@ -16719,9 +16145,6 @@ void Actor::_notifyGroupSpottedEnemy()
 	_notifyGroupOfEnemy();
    }
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
 
 void Actor::PlayDialog( Sentient *user, float volume, float min_dist, const char *dialog_name, const char *state_name, qboolean headDisplay , bool useTalk , bool important )
 {
@@ -16762,22 +16185,6 @@ void Actor::PlayDialog( Sentient *user, float volume, float min_dist, const char
 	if(dialogAnim)
 		dialog_anim = dialogAnim;
 
-	if ( PROBE_On() ) {
-		static int widget_dlg;
-
-		PROBE_Throttle( &widget_dlg, 40, 1 );
-		WIDGET_PROBE(
-			"dlg:play",
-			"actor='%s' raw='%s' loc='%s' len=%.2f anim='%s' loop=%d\n",
-			name.c_str(),
-			real_dialog.c_str(),
-			localizedDialogName,
-			gi.SoundLength( localizedDialogName ),
-			dialog_anim.c_str(),
-			dialog_anim.length() > 0
-				? (int)gi.Alias_CheckLoopAnim( edict->s.modelindex, localizedDialogName )
-				: -1 );
-	}
 
 	if ( dialog_anim.length() > 0 )
 	{
@@ -16959,7 +16366,6 @@ void Actor::RunDamageThread ( void )
 	}
 
 
-
 void Actor::_notifyGroupOfEnemy()
 {
    Actor *act;
@@ -17000,7 +16406,6 @@ void Actor::_notifyGroupOfEnemy()
 }
 
 
-
 qboolean Actor::checkActorFlag( Conditional &condition )
    {  
    str flagName = condition.getParm( 1 );
@@ -17008,7 +16413,6 @@ qboolean Actor::checkActorFlag( Conditional &condition )
    return GetActorFlag( flagName );
   
    }
-
 
 
 qboolean Actor::checkInAIMode( Conditional &condition )
@@ -17346,7 +16750,6 @@ Condition<Actor> Actor::Conditions[] =
 		{ "ACTIVATION_DELAY_DONE",				&Actor::checkActivationDelayTime				},
 		{ "TALKING",							&Actor::checkTalking							},
 		{ "ANY_ENEMIES_NEARBY",					&Actor::checkEnemiesNearby						},
-
 
 
 		{ "PROP_EXISTS",						&Actor::checkPropExists							},

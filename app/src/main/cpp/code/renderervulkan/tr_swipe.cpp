@@ -41,9 +41,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 #define MAX_SWIPE_POINTS 512
 #define MAX_SWIPES       32
@@ -200,43 +197,8 @@ void RB_DrawSwipeSurface(surfaceType_t *pswipe)
     /* The swipe list is the one surface payload the front end refills while the walk
        still holds it, so a record from another slot or another frame is geometry the
        walk never recorded.  Born gated, like every other instrument row. */
-    if (PROBE_On() && vkConfig.smpActive
-        && (swipe->smpframe != RB_FrameSmpFrame() || swipe->framecount != RB_FrameCount())) {
-        static int s_rows;
-
-        if (s_rows < 8 || (s_rows % 256) == 0) {
-            ri.Printf(PRINT_ALL,
-                      "[VK:swipestale] rec slot=%d frame=%d walk slot=%d frame=%d "
-                      "points=%d f=%d\n",
-                      swipe->smpframe, swipe->framecount, RB_FrameSmpFrame(),
-                      RB_FrameCount(), swipe->numswipes, RB_FrameCount());
-        }
-        s_rows++;
-    }
 
     oolife = 1.0 / swipe->life;
-
-    {
-        shader_t *sh = R_GetShaderByHandle(swipe->shader);
-
-        if (PROBE_On() && sh && RB_FxStreakCandidate(sh->name)) {
-            static int s_rows;
-
-            if (s_rows <= PROBE_ROW_CAP && PROBE_Throttle(&s_rows, 8, 256) && swipe->numswipes > 0) {
-                ri.Printf(PRINT_ALL,
-                          "[VK:fxstreak] surf=swipe sh='%s' points=%d slot=%d frame=%d "
-                          "first=(%.1f,%.1f,%.1f) last=(%.1f,%.1f,%.1f) f=%d\n",
-                          sh->name, swipe->numswipes, swipe->smpframe, swipe->framecount,
-                          swipe->swipes[0].points[0][0],
-                          swipe->swipes[0].points[0][1],
-                          swipe->swipes[0].points[0][2],
-                          swipe->swipes[swipe->numswipes - 1].points[1][0],
-                          swipe->swipes[swipe->numswipes - 1].points[1][1],
-                          swipe->swipes[swipe->numswipes - 1].points[1][2],
-                          RB_FrameCount());
-            }
-        }
-    }
 
     RB_CHECKOVERFLOW(swipe->numswipes * 2, swipe->numswipes * 6);
 

@@ -500,26 +500,6 @@ void R_SetupProjection( void ) {
 	   matrix hands the rasteriser at the near and far plane, and the radius the
 	   old OpenGL rows would have clipped.  depth = NDC z, because Vulkan maps
 	   [0,1] straight onto [0,1]; near must read 0 and far must read 1. */
-	{
-		static int s_projRows;
-
-		if ( R_ProbeStatsOn() && ( s_projRows < 4 || ( s_projRows % 2000 ) == 0 ) )
-		{
-			float nzc = tr.viewParms.projectionMatrix[10] * ( -zNear ) + tr.viewParms.projectionMatrix[14];
-			float fzc = tr.viewParms.projectionMatrix[10] * ( -zFar ) + tr.viewParms.projectionMatrix[14];
-			float nzcOld = ( -( zFar + zNear ) / depth ) * ( -zNear )
-						   + ( -2 * zFar * zNear / depth );
-			float bubble;
-
-			bubble = 2.0f * zFar * zNear / ( zFar + zNear );
-			VK_Guard_Row( "VK:proj",
-						  "zNear=%.3f zFar=%.1f depth_near=%.6f depth_far=%.6f "
-						  "gl_rows_depth_near=%.3f clipped_bubble=%.2f",
-						  zNear, zFar, nzc / ( zNear ), fzc / ( zFar ),
-						  nzcOld / ( zNear ), bubble );
-			s_projRows++;
-		}
-	}
 }
 
 void R_SetupFrustum (void) {
@@ -747,19 +727,6 @@ qboolean R_GetPortalOrientations( drawSurf_t *drawSurf, int entityNum,
 
 	/* the screen draws nothing but its sub-view, so a marker the engine never
 	   finds is a viewscreen filled with whatever was drawn before it */
-	if ( R_ProbeStatsOn() ) {
-		static int rows;
-
-		if ( rows < 8 || ( rows % 300 ) == 0 ) {
-			VK_Guard_Row( "VK:portal",
-						  "no-marker surfEnt=%d ents=%d plane=(%.1f %.1f %.1f | %.1f) f=%d",
-						  entityNum, tr.refdef.num_entities,
-						  originalPlane.normal[0], originalPlane.normal[1], originalPlane.normal[2],
-						  originalPlane.dist, RB_FrameCount() );
-		}
-		rows++;
-	}
-
 	return qfalse;
 }
 
@@ -966,23 +933,6 @@ qboolean R_MirrorViewBySurface (drawSurf_t *drawSurf, int entityNum) {
 
 	/* the sub-view paints nothing when neither the surface nor the set behind it is
 	   drawn, so the pre-drawn sky stays on the screen: name the pose that drew */
-	if ( R_ProbeStatsOn() ) {
-		static int rows;
-
-		if ( rows < 8 || ( rows % 300 ) == 0 ) {
-			VK_Guard_Row( "VK:portal",
-						  "sub surfEnt=%d mirror=%d hit=(%.1f %.1f %.1f) cam=(%.1f %.1f %.1f) view=(%.1f %.1f %.1f) plane=(%.1f %.1f %.1f | %.1f) f=%d",
-						  entityNum, newParms.isMirror ? 1 : 0,
-						  surface.origin[0], surface.origin[1], surface.origin[2],
-						  camera.origin[0], camera.origin[1], camera.origin[2],
-						  newParms.ori.origin[0], newParms.ori.origin[1], newParms.ori.origin[2],
-						  newParms.portalPlane.normal[0], newParms.portalPlane.normal[1],
-						  newParms.portalPlane.normal[2], newParms.portalPlane.dist,
-						  RB_FrameCount() );
-		}
-		rows++;
-	}
-
 	R_RenderView (&newParms);
 
 	tr.viewParms = oldParms;
@@ -1043,25 +993,17 @@ static void R_SortField_Note( shader_t *shader )
 
 static void R_SortField_Row( int surfs, int sprites )
 {
-	static int	s_prev, s_rows, s_crossed, s_maxShaders;
+	static int	s_rows, s_crossed, s_maxShaders;
 
-	if ( !R_ProbeStatsOn() || s_sfMaxIndex == s_prev ) {
-		return;
-	}
 	if ( tr.numShaders > s_maxShaders ) {
 		s_maxShaders = tr.numShaders;
 	}
-	s_prev = s_sfMaxIndex;
 	s_rows++;
 	if ( s_sfMaxIndex > QSORT_SHADERNUM_MASK ) {
 		s_crossed++;
 	}
 	if ( s_crossed == 1 || s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
-		VK_Guard_Row( "VK:sortfield",
-					  "maxidx=%d maxtable=%d cap=%d masked=%d surfs=%d spr=%d f=%d",
-					  s_sfMaxIndex, s_maxShaders, QSORT_SHADERNUM_MASK + 1,
-					  s_sfMaxIndex & QSORT_SHADERNUM_MASK, surfs, sprites,
-					  RB_FrameCount() );
+
 	}
 }
 
@@ -1139,10 +1081,6 @@ const char *R_FrontEnd_ViewRow( int recorded, int entities )
 	static char	row[160];
 
 	/* NULL is the caller's own no-row answer, and a quiet boot wants none of it */
-	if ( !R_ProbeStatsOn() ) {
-		return NULL;
-	}
-
 	Com_sprintf( row, sizeof( row ), "view adds=%d rec=%d ents=%d f=%d",
 				 s_feViewAdds, recorded, entities, RB_FrameCount() );
 
@@ -1171,7 +1109,7 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 		R_AddDrawSurfCmd( drawSurfs, numDrawSurfs );
 		feRow = R_FrontEnd_ViewRow( numDrawSurfs, tr.refdef.num_entities );
 		if ( feRow ) {
-			VK_Guard_Row( "VK:fe", "%s", feRow );
+
 		}
 		s_feViewAdds = 0;
 		return;
@@ -1243,7 +1181,7 @@ void R_SortDrawSurfs( drawSurf_t *drawSurfs, int numDrawSurfs, drawSurf_t *sprit
 
 	feRow = R_FrontEnd_ViewRow( numDrawSurfs, tr.refdef.num_entities );
 	if ( feRow ) {
-		VK_Guard_Row( "VK:fe", "%s", feRow );
+
 	}
 	s_feViewAdds = 0;
 }
@@ -1294,21 +1232,6 @@ void R_AddEntitySurfaces (void) {
 
 		/* what the sub-view's entity list actually holds: the viewscreen backdrop is
 		   portal-only, so a missing draw is either absent here or carries the wrong bit */
-		if ( tr.viewParms.isPortal && R_ProbeMarkOn() ) {
-			static int s_subEntRows;
-
-			if ( tr.currentEntityNum < 8 ) {
-				s_subEntRows++;
-				if ( s_subEntRows <= 64 || ( s_subEntRows % 600 ) == 0 ) {
-					VK_Guard_Row( "VK:portalent",
-								  "sub ent=%d n=%d reType=%d model=%d rf=0x%x keep=%d f=%d",
-								  tr.currentEntityNum, tr.refdef.num_entities,
-								  ent->e.reType, ent->e.hModel, ent->e.renderfx,
-								  ( ent->e.renderfx & ( RF_PORTALENTITY | RF_DUALENTITY ) ) ? 1 : 0,
-								  RB_FrameCount() );
-				}
-			}
-		}
 
 		if ( (ent->e.renderfx & RF_FIRST_PERSON) && tr.viewParms.isPortal) {
 			continue;
@@ -1360,8 +1283,6 @@ void R_AddEntitySurfaces (void) {
 
 			tr.currentModel = R_GetModelByHandle( ent->e.hModel );
 			if (!tr.currentModel) {
-				SMP_ShaderDefaultProbe( "entity-nomodel", "-", "R_AddEntitySurfaces/null-model",
-										 ent->e.entityNumber, ent->e.hModel );
 				R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0 );
 			} else {
 				switch ( tr.currentModel->type ) {
@@ -1380,8 +1301,6 @@ void R_AddEntitySurfaces (void) {
 						break;
 					}
 					shader = R_GetShaderByHandle( ent->e.customShader );
-					SMP_ShaderDefaultProbe( "entity-nomodel", tr.currentModel->name, "R_AddEntitySurfaces/MOD_BAD",
-											 ent->e.entityNumber, ent->e.hModel );
 					R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0 );
 					break;
 				default:
@@ -1405,7 +1324,6 @@ static qboolean			s_entViewCounts;
 
 void R_NoteEntitySurfStart( void )
 {
-	r_skelDropWhy = NULL;
 	s_feViewAddsAtEntity = s_feViewAdds;
 	/* a portal or sky sub-view culls by its own frustum */
 	s_entViewCounts = !tr.viewParms.isPortal && !tr.viewParms.isPortalSky;
@@ -1426,10 +1344,6 @@ void R_NoteEntitySurfEnd( const trRefEntity_t *ent )
 		return;
 	}
 
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-
 	if ( n < 0 || n >= MAX_ENTITIES ) {
 		return;
 	}
@@ -1440,11 +1354,7 @@ void R_NoteEntitySurfEnd( const trRefEntity_t *ent )
 
 		rows++;
 		if ( rows <= 32 || ( rows % 600 ) == 0 ) {
-			VK_Guard_Row( "VK:entdrop",
-						  "ent=%d reType=%d model=%d why=%s f=%d",
-						  n, ent->e.reType, ent->e.hModel,
-						  r_skelDropWhy ? r_skelDropWhy : "none",
-						  RB_FrameCount() );
+
 		}
 	}
 }
@@ -1495,26 +1405,6 @@ void R_AddSpriteSurfaces(void)
 		}
 
 		/* the sprite model's shader must still be the one its name asks for */
-		if (R_ProbeMarkOn()) {
-			static	int		s_modelRows;
-			shader_t		*sprShader = tr.currentModel->d.sprite->shader;
-			char			expected[MAX_QPATH];
-
-			if (sprShader && sprShader->name[0]) {
-				COM_StripExtension(tr.currentModel->name, expected, sizeof(expected));
-				if (Q_stricmp(sprShader->name, expected)) {
-					s_modelRows++;
-					if (s_modelRows <= 32 || (s_modelRows % 200) == 0) {
-						VK_Guard_Row("VK:sprmodel",
-									 "why=model model='%s' drawing='%s' f=%d",
-									 tr.currentModel->name,
-									 sprShader->name,
-									 RB_FrameCount());
-					}
-				}
-			}
-		}
-
 		sprite->shader = tr.currentModel->d.sprite->shader;
 		sprite->shaderGen = tr.shaderGen;
 
@@ -1534,19 +1424,19 @@ void R_AddSpriteSurfaces(void)
 }
 
 void R_GenerateDrawSurfs( void ) {
-	BE_ZONE( BE_FAM_FE, BE_FEZ_world, R_AddWorldSurfaces() );
+	R_AddWorldSurfaces();
 	if (!(tr.refdef.rdflags & RDF_NOWORLDMODEL)) {
-		BE_ZONE( BE_FAM_FE, BE_FEZ_poly, R_AddSwipeSurfaces() );
+		R_AddSwipeSurfaces();
 	}
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_poly, R_AddPolygonSurfaces() );
+	R_AddPolygonSurfaces();
 
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_ents, R_AddEntitySurfaces() );
+	R_AddEntitySurfaces();
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_sprite, R_AddSpriteSurfaces() );
+	R_AddSpriteSurfaces();
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_SetupProjection() );
+	R_SetupProjection();
 }
 
 void R_DebugPolygon( int color, int numPoints, float *points ) {
@@ -1853,31 +1743,27 @@ void R_RenderView (viewParms_t *parms) {
 	firstDrawSurf = tr.refdef.numDrawSurfs;
 	firstSpriteSurf = tr.refdef.numSpriteSurfs;
 
-	BE_Bump( BE_FAM_FE, BE_FEC_views, 1 );
-	BE_Bump( BE_FAM_FE, BE_FEC_portals, parms->isPortal ? 1 : 0 );
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_RotateForViewer() );
+	R_RotateForViewer();
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_SetupFrustum() );
+	R_SetupFrustum();
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_view, R_Sky_Reset() );
+	R_Sky_Reset();
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_other, R_DrawDebugStrings() );
+	R_DrawDebugStrings();
 
 	R_GenerateDrawSurfs();
 
-	BE_Bump( BE_FAM_FE, BE_FEC_surfs, tr.refdef.numDrawSurfs - firstDrawSurf );
-	BE_Bump( BE_FAM_FE, BE_FEC_ents, tr.refdef.num_entities );
 
-    BE_ZONE( BE_FAM_FE, BE_FEZ_sort, R_SortDrawSurfs( tr.refdef.drawSurfs + firstDrawSurf,
+    R_SortDrawSurfs( tr.refdef.drawSurfs + firstDrawSurf,
 		tr.refdef.numDrawSurfs - firstDrawSurf, tr.refdef.spriteSurfs + firstSpriteSurf,
-		tr.refdef.numSpriteSurfs - firstSpriteSurf ) );
+		tr.refdef.numSpriteSurfs - firstSpriteSurf );
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_exec, R_IssuePendingRenderCommands() );
+	R_IssuePendingRenderCommands();
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_other, R_DrawDebugLines() );
+	R_DrawDebugLines();
 
-	BE_ZONE( BE_FAM_FE, BE_FEZ_other, R_DebugGraphics() );
+	R_DebugGraphics();
 }
 
 

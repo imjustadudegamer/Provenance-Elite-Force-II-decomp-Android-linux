@@ -26,9 +26,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../uilib/uiwinman.h"     
 #include "../uilib/uipopupmenu.h"  
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 //     is one plain word the ctor zeroes and no retail code reads.  (Retail never
 
@@ -178,7 +175,6 @@ void GameInventory::Timeout(Event *ev)
 {
     if (gameInventory && !gameInventory->IsDying()) {
         delete (GameInventory *)gameInventory.Pointer();
-        UIVK_PROBE("focus", "caller=GameInventory::Timeout State=%d", cls.state);
         UI_FocusMenuIfExists();
     }
 }
@@ -286,18 +282,6 @@ void CL_Draw3DModel(
                                  % numframes);
         }
 
-        {
-            static int menu3dmvk_cl3d;
-            if (PROBE_Throttle(&menu3dmvk_cl3d, 4, 120)) {
-                UIVK_PROBE(
-                    "menu3d",
-                    "cl3d model=%d anim='%s' animnum=%d frames=%d animtime=%.3f frame=%d xf=%.0f yf=%.0f wf=%.0f hf=%.0f fov=%.0fx%.0f idx=%d",
-                    model, anim.c_str(), animnum, numframes, (double)animtime, (int)ent->frame,
-                    (double)x, (double)y, (double)w, (double)h, (double)fov_x, (double)fov_y,
-                    menu3dmvk_cl3d
-                );
-            }
-        }
     }
 
     ent->renderfx |= RF_FULLBRIGHT;
@@ -327,14 +311,6 @@ void CL_Draw3DModel(
     ent->actionWeight = 1.0f;
 
     {
-        static int uiparityuivp3d;
-        if (PROBE_On() && (uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d, 2, 120)) {
-            Com_Printf(
-                "[UIPARITY:uivp3d] cl3d model=%d refdef %d,%d %dx%d | origin %d,%d rect %dx%d surface %dx%d\n",
-                model, inv_refdef.x, inv_refdef.y, inv_refdef.width, inv_refdef.height,
-                uid.originX, uid.originY, uid.vidWidth, uid.vidHeight, uid.surfaceWidth, uid.surfaceHeight
-            );
-        }
     }
 
     re.ClearScene();
@@ -344,13 +320,11 @@ void CL_Draw3DModel(
 
 void UI_NextInventory_f(void)
 {
-    PROBE("inv:cmd", "nextinv -> InventoryBar inventorynextitem");
     Cbuf_AddText("globalwidgetcommand InventoryBar inventorynextitem\n");
 }
 
 void UI_PrevInventory_f(void)
 {
-    PROBE("inv:cmd", "previnv -> InventoryBar inventorypreviousitem");
     Cbuf_AddText("globalwidgetcommand InventoryBar inventorypreviousitem\n");
 }
 
@@ -362,7 +336,6 @@ void UI_WarpInventory_f(void)
         Com_WPrintf("Usage: warpinv <slot_name>");
     }
 
-    PROBE("inv:cmd", "warpinv slot='%s'", Cmd_Argv(1));
 
     sCommand = "globalwidgetcommand InventoryBar inventorywarpitem ";
     sCommand += Cmd_Argv(1);

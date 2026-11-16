@@ -304,16 +304,7 @@ public:
     static float HudScaleCurrent(void);
     static float HudTextScale(void);
 
-    // PAINT TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Prints this
-    void PAINTDumpState(int index, const char *menuName);
-
-    // UITEXT TEMP PROBE helper -- PORT-ONLY, TEMPORARY, NEVER MERGE.  ONE probe for the
-    void UITEXTDumpTextColor(const char *accessor);
-
-    // UIRECT TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read-only view of
-    UIPoint2D UIRECTProbeScreenOrigin(void) const { return m_screenorigin; }
-    UIRect2D  UIRECTProbeClippedFrame(void) const { return m_clippedframe; }
-    bool      UIRECTProbeVirtual(void) const { return m_bVirtual; }
+    // rect accessors accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read-only view of
 
 protected:
     bool         addChild(UIWidget *widget);
@@ -466,7 +457,7 @@ public:
     class UISize2D     getSize(void);
     void               setSize(const UISize2D& newsize);
     class UIRect2D     getFrame(void);
-    // [WIDGET:B1:whitegrid] TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.
+    // [WIDGET:B1:whitegrid] accessors accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.
     const char *WIDGETProbeMaterialName(void) const
     {
         return m_material ? m_material->GetName().c_str() : "(null)";
@@ -591,7 +582,7 @@ public:
     void  NoResize(Event *ev);
     void  setHideDuringLoad(Event *ev);
     void  setDepth(float depth) { m_depth = depth; }
-    // PAINT TEMP PROBE read side of the same accessor -- PORT-ONLY, TEMPORARY, NEVER
+    // paint-order accessors read side of the same accessor -- PORT-ONLY, TEMPORARY, NEVER
     float getDepth(void) const { return m_depth; }
     static int DepthCompare(const void *elem1, const void *elem2);
 

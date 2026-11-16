@@ -955,12 +955,10 @@ void Sys_FreeFileList( char **list )
 
 void Sys_Sleep( int msec )
 {
-	int smpSleepStart;
 
 	if( msec == 0 )
 		return;
 
-	smpSleepStart = Sys_Milliseconds();
 
 	if( stdinIsATTY )
 	{
@@ -993,7 +991,6 @@ void Sys_Sleep( int msec )
 		nanosleep(&req, NULL);
 	}
 
-	SMP_BudgetAdd( SMP_ZONE_SLEEP, Sys_Milliseconds() - smpSleepStart );
 }
 
 /* The frame budget's sub-millisecond sleep: nanosleep already takes microseconds,
@@ -1002,18 +999,15 @@ void Sys_Sleep( int msec )
 void Sys_SleepUsec( int usec )
 {
 	struct timespec req;
-	int smpSleepStart;
 
 	if( usec <= 0 )
 		return;
 
-	smpSleepStart = Sys_Milliseconds();
 
 	req.tv_sec = usec / 1000000;
 	req.tv_nsec = (usec % 1000000) * 1000;
 	nanosleep(&req, NULL);
 
-	SMP_BudgetAdd( SMP_ZONE_SLEEP, Sys_Milliseconds() - smpSleepStart );
 }
 
 void Sys_ErrorDialog( const char *error )

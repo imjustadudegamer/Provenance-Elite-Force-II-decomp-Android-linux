@@ -40,9 +40,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 #define MAX_LOADED_FONTS 255
 
@@ -595,7 +592,7 @@ void R_LoadFontShader(fontheader_sgl_t* font)
         shader_t*  fontshader;
         qboolean   ef2 = qfalse;
         int        e;
-        char       probe[96];
+        char       candidate[96];
         static const char *exts[] = { ".dds", ".tga", ".jpg", ".png", ".tex" };
 
         if (page == 0) {
@@ -605,8 +602,8 @@ void R_LoadFontShader(fontheader_sgl_t* font)
         }
 
         for (e = 0; e < 5; e++) {
-            Com_sprintf(probe, sizeof(probe), "sysimg/fonts/%s%s", pagebase, exts[e]);
-            if (ri.FS_ReadFile(probe, NULL) > 0) {
+            Com_sprintf(candidate, sizeof(candidate), "sysimg/fonts/%s%s", pagebase, exts[e]);
+            if (ri.FS_ReadFile(candidate, NULL) > 0) {
                 ef2 = qtrue;
                 break;
             }
@@ -837,14 +834,6 @@ static void R_FontRunFlush( void ) {
 		/* The list refused the run even after its growth: the run now draws
 		   on THIS thread against the walk's state, which is wrong by
 		   construction, so it names itself every time. */
-		static int	s_rows;
-
-		s_rows++;
-		if ( R_ProbeStatsOn() && ( s_rows <= 8 || ( s_rows % 64 ) == 0 ) ) {
-			VK_Guard_Row( "VK:fontdrop", "runs=%d shader='%s' f=%d",
-						  s_fontRunCount, s_fontRunShader ? s_fontRunShader->name : "?",
-						  RB_FrameCount() );
-		}
 		R_FlushRenderCommands();
 		R_FontRunWrite();
 		s_fontRunCount = 0;
@@ -970,26 +959,6 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
     /* A corner string is the run the overlay-visibility question is about, so it
        names the window and the clip it will be recorded under: a clip that
        cannot show the run's own rect is the run that vanishes. */
-    if ( PROBE_On() && x < 60.0f && y < 32.0f ) {
-        static int s_rows;
-        int        win[4], scn[4];
-
-        RB_2D_WindowState( win, scn );
-
-        s_rows++;
-        if ( s_rows <= 16 || ( s_rows % 256 ) == 0 ) {
-            ri.Printf( PRINT_ALL,
-                       "[VK:2dovl] n=%d font=0x%x at=(%.1f,%.1f) "
-                       "win=(%d,%d,%d,%d) scn=(%d,%d,%d,%d) sv=%d f=%d\n",
-                       s_rows,
-                       (unsigned)font->trhandle,
-                       x, y,
-                       win[0], win[1], win[2], win[3],
-                       scn[0], scn[1], scn[2], scn[3],
-                       RB_2D_WindowValid() ? 1 : 0,
-                       RB_FrameCount() );
-        }
-    }
 
     if (font->trhandle != r_sequencenumber) {
         font->shader = NULL;

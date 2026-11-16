@@ -3714,13 +3714,10 @@ void BotDeathmatchAI(bot_state_t *bs, float thinktime) {
 	for (i = 0; i < MAX_NODESWITCHES; i++) {
 		qboolean limit_done;
 
-		LIMIT_BotNodeBegin(bs);
 		limit_done = bs->ainode(bs) ? qtrue : qfalse;
-		LIMIT_BotNodeEnd();
 		if (limit_done) break;
 	}
 	if (i >= MAX_NODESWITCHES) {
-		LIMIT_BotNodeSat();	 
 	}
 	ui_node = UI_BotAITock( ui_t );
 	UI_BotAIAdd( UI_BAIZ_dmnode, ui_node );

@@ -32,7 +32,6 @@
 #include "player.h"
 #include "debuglines.h"
 #include "gamecmds.h"
-#include "smp_spawnstats.h"
 #include "smp_pathpair.h"
 
 
@@ -1086,7 +1085,6 @@ static qboolean SMP_PathPairSkip(PathNode *a, PathNode *b)
 {
 	if (SMP_PathPairTooFar(&a->origin.x, &b->origin.x)) {
 		if (!((a->nodeflags & AI_LADDER) && (b->nodeflags & AI_LADDER))) {
-			SMP_SpawnCounter(SMP_SPC_skipped, 1);
 			return qtrue;
 		}
 	}
@@ -1095,15 +1093,6 @@ static qboolean SMP_PathPairSkip(PathNode *a, PathNode *b)
 		unsigned key = SMP_PathPairMemoKey(a, b);
 
 		if (SMP_PathPairMemoHit(smp_pairMemo, key)) {
-			if (smp_spawnOn >= 2) {
-				byte mh[NUM_WIDTH_VALUES];
-				if (a->ClearPathTo(b, mh) || a->LadderTo(b, mh)) {
-					SMP_SpawnCounter(SMP_SPC_equivbad, 1);
-				} else {
-					SMP_SpawnCounter(SMP_SPC_equivok, 1);
-				}
-			}
-			SMP_SpawnCounter(SMP_SPC_memohit, 1);
 			return qtrue;
 		}
 	}
@@ -1115,7 +1104,6 @@ static void SMP_PathPairFailed(PathNode *a, PathNode *b)
 {
 	if (SMP_PathPairMemoUsable(a, b)) {
 		SMP_PathPairMemoAdd(smp_pairMemo, SMP_PathPairMemoKey(a, b));
-		SMP_SpawnCounter(SMP_SPC_memomiss, 1);
 	}
 }
 
@@ -1164,7 +1152,6 @@ void PathManager::AddToGrid(PathNode *node, int x, int y)
             }
 
             if (!node->ConnectedTo(node2) && !SMP_PathPairSkip(node, node2)) {
-                SMP_SpawnCounter(SMP_SPC_clear, 1);
                 if (node->ClearPathTo(node2, maxheight) || node->LadderTo(node2, maxheight)) {
                     node->ConnectTo(node2, maxheight);
                 } else {
@@ -1173,7 +1160,6 @@ void PathManager::AddToGrid(PathNode *node, int x, int y)
             }
 
             if (!node2->ConnectedTo(node) && !SMP_PathPairSkip(node2, node)) {
-                SMP_SpawnCounter(SMP_SPC_clear, 1);
                 if (node2->ClearPathTo(node, maxheight) || node2->LadderTo(node, maxheight)) {
                     node2->ConnectTo(node, maxheight);
                 } else {
@@ -1658,7 +1644,6 @@ void PathManager::OptimizeNodes(Event *ev)
 {
     gi.ProcessLoadingScreen("$$OptimizingPathnodeConnections$$");
 
-    SMP_SP_BEGIN( pathopt );
 
     for (int i = 0; i < _pathNodes.NumObjects(); i++) {
         if (_pathNodes[i]) {
@@ -1673,7 +1658,6 @@ void PathManager::OptimizeNodes(Event *ev)
         }
     }
 
-    SMP_SP_END( pathopt );
 
 
     _pathNodesCalculated = true;
@@ -1752,9 +1736,7 @@ void PathManager::SaveNodes(Event *ev)
     gi.Printf("Archiving\n");
 
     {
-        SMP_SP_BEGIN( pathsave );
         ArchiveNodes(name, true);
-        SMP_SP_END( pathsave );
     }
 
     gi.Printf("done.\n");
@@ -1776,7 +1758,6 @@ void PathManager::LoadNodes(Event *ev)
 
     name = ev->GetString(1);
 
-    SMP_SP_BEGIN( pathload );
 
     rebuild = !ArchiveNodes(name, false);
 
@@ -1798,7 +1779,6 @@ void PathManager::LoadNodes(Event *ev)
                    "***********************************\n");
     }
 
-    SMP_SP_END( pathload );
 }
 
 void PathManager::SavePaths(void)
@@ -1903,7 +1883,6 @@ void PathManager::Init(const char *mapname)
 
 void PathManager::FindAllTargets(void)
 {
-    SMP_SP_BEGIN( findtgt );
 
     for (int i = 0; i < _pathNodes.NumObjects(); i++) {
         PathNode *node = _pathNodes[i];
@@ -1923,17 +1902,14 @@ void PathManager::FindAllTargets(void)
         }
     }
 
-    SMP_SP_END( findtgt );
 }
 
 void PathManager::CalcAllPaths(Event *ev)
 {
-    int smp_traces0 = sv_numtraces;
 
     SMP_PathPairMemoClear();
 
     {
-        SMP_SP_BEGIN( pathcalc );
 
         for (int i = 0; i < _pathNodes.NumObjects(); i++) {
             PathNode *node = _pathNodes[i];
@@ -1950,10 +1926,8 @@ void PathManager::CalcAllPaths(Event *ev)
             }
         }
 
-        SMP_SP_END( pathcalc );
     }
 
-    SMP_SpawnCounter(SMP_SPC_traces, sv_numtraces - smp_traces0);
 }
 
 int PathManager::NumberOfSpecialNodes(void) const

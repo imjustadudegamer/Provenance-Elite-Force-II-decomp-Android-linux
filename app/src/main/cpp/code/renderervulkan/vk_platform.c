@@ -78,9 +78,6 @@ static void VK_LogRow( const char *line )
 
 static int VK_TraceCvar( const char *name, int defaultValue )
 {
-#ifdef PROBE_BUILD_SILENT
-	return 0;		/* the shipped build arms no row family */
-#else
 	char fallback[16];
 	cvar_t *cv;
 
@@ -88,7 +85,6 @@ static int VK_TraceCvar( const char *name, int defaultValue )
 	cv = ri.Cvar_Get( name, fallback, 0 );
 
 	return cv ? cv->integer : defaultValue;
-#endif
 }
 
 static void VK_FullPath( char *out, size_t len, const char *path )
@@ -281,10 +277,6 @@ qboolean VK_Surface_Create( void )
 			return qfalse;
 		}
 
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:surface", "created headless=%dx%d", vk_headlessWidth, vk_headlessHeight );
-		}
-
 		return qtrue;
 	}
 
@@ -304,10 +296,6 @@ qboolean VK_Surface_Create( void )
 	}
 
 	SDL_GetWindowSize( SDL_window, &surfaceWidth, &surfaceHeight );
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:surface", "created window=%dx%d", surfaceWidth, surfaceHeight );
-	}
-
 	return qtrue;
 }
 
@@ -337,7 +325,7 @@ static void VK_Platform_ModeSize( int mode, int *width, int *height, float *aspe
 		} else {
 			*width = 640;
 			*height = 480;
-			VK_Guard_Row( "VK:mode", "desktop display mode unavailable, assuming 640x480" );
+
 		}
 
 		*aspect = (float)( *width ) / (float)( *height );
@@ -517,7 +505,7 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 			VK_Instance_SetLayers( &vk_validationLayer, 1 );
 			extensionNames[extensionCount++] = vk_debugExtension;
 		} else if ( validate ) {
-			VK_Guard_Row( "VK:guard", "site=instance detail=\"validation requested but VK_LAYER_KHRONOS_validation is absent\" result=success(0) n=1" );
+
 		}
 	}
 
@@ -558,10 +546,6 @@ qboolean R_SetMode( int mode, glconfig_t *vkConfigOut )
 
 		/* surface= is the window the swapchain is created against: the mode is
 		   right only when the two agree, so the row carries both. */
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:mode", "mode=%d %dx%d fullscreen=%d surface=%dx%d maxTextureSize=%d",
-						  mode, width, height, fullscreen, windowWidth, windowHeight, vkConfig.maxTextureSize );
-		}
 	}
 
 	return qtrue;
@@ -756,10 +740,6 @@ qboolean VK_EnsureBroughtUp( const char *where )
 	/* the entry row is informational, not a guard hit: the guard ledger answers "did a Vulkan call fail" and VK_INCOMPLETE here reads as a failure
 	   result without one.  The real failure is the row below, which stays a hit. */
 	/* informational, and a quiet boot carries no informational rows: the failure below is the loud arm (guard hit + ri.Error) */
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:bringup", "site=%s entry", where );
-	}
-
 	if ( !R_SetMode( mode, &vkConfig ) ) {
 		VK_Guard_Hit( VK_GSITE_DEVICE, "bring-up failed", VK_ERROR_INITIALIZATION_FAILED );
 

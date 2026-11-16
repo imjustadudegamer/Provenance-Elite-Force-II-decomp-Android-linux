@@ -24,9 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "client.h"
 
 
-#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       Com_Printf
-#include "../qcommon/qa_probe.h"
 #include "cl_ui.h"
 
 unsigned	frame_msec;
@@ -103,12 +100,6 @@ int		in_scoreboardShown;
 int		in_missionStatus;		 
 
 void IN_Objectives_ScoreDown( void ) {
-	PROBE(
-		"score:down",
-		"cg_gametype=%d -> %s",
-		cg_gametype->integer,
-		cg_gametype->integer ? "UI_ShowScoreboard_f" : "missionobjectives hud (WRONG SURFACE)"
-	);
 	if ( cg_gametype->integer ) {
 		UI_ShowScoreboard_f();
 		in_scoreboardShown = 1;
@@ -753,18 +744,6 @@ void CL_FinishMove( usercmd_t *cmd ) {
 		cmd->thirdperson = cge->CG_GetThirdPerson();
 	}
 
-	if ( PROBE_On() ) {
-		static int probe_throttle = 0;
-
-		if ( PROBE_Throttle( &probe_throttle, 1, 100 ) ) {
-			PROBE( "look:cmd",
-			       "dyaw=%.4f dpitch=%.4f angles=(%.2f,%.2f) axis=(%d,%d,%d,%d,%d,%d)",
-			       SHORT2ANGLE( cmd->deltaAngles[YAW] ), SHORT2ANGLE( cmd->deltaAngles[PITCH] ),
-			       cl.viewangles[YAW], cl.viewangles[PITCH],
-			       cl.joystickAxis[0], cl.joystickAxis[1], cl.joystickAxis[2],
-			       cl.joystickAxis[3], cl.joystickAxis[4], cl.joystickAxis[5] );
-		}
-	}
 }
 
 

@@ -27,13 +27,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/container.h"
 #include "cg_commands.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
-
-#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define WIDGET_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_widget.h"
 
 class beam_t : public Class
 {
@@ -300,23 +293,6 @@ void RenderSegment(Vector pt1a, Vector pt1b, Vector pt2a, Vector pt2b, byte modu
         }
     }
 
-    {
-        static int n = 0;
-        if (PROBE_Throttle(&n, 32, 2000)) {
-            PROBE(
-                "beam:addpoly",
-                "RenderSegment shader=%d rf=0x%x v0=(%.1f,%.1f,%.1f) v1=(%.1f,%.1f,%.1f)",
-                beamshader,
-                renderfx,
-                points[0].xyz[0],
-                points[0].xyz[1],
-                points[0].xyz[2],
-                points[1].xyz[0],
-                points[1].xyz[1],
-                points[1].xyz[2]
-            );
-        }
-    }
     cgi.R_AddPolyToScene(beamshader, 4, points, renderfx);
 }
 
@@ -833,53 +809,8 @@ void CG_AddBeams(void)
 
         fade = (float)(b->endtime - cg.time) / (float)b->life;
 
-        {
-            static int n = 0;
-            if (PROBE_Throttle(&n, 32, 2000)) {
-                PROBE(
-                    "beam:slot",
-                    "slot=%d ent=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) shader=%d "
-                    "flags=0x%x",
-                    i,
-                    b->entity,
-                    b->start[0],
-                    b->start[1],
-                    b->start[2],
-                    b->end[0],
-                    b->end[1],
-                    b->end[2],
-                    b->beamshader,
-                    b->flags
-                );
-            }
-        }
-
         for (ii = 0; ii < 4; ii++) {
             color[ii] = b->shaderRGBA[ii] * fade;
-        }
-
-        {
-            static int widget_zl = 0;
-
-            if (WIDGET_On() && WIDGET_Throttle(&widget_zl, 8, 64)) {
-                float widget_dx = b->end[0] - b->start[0];
-                float widget_dy = b->end[1] - b->start[1];
-                float widget_dz = b->end[2] - b->start[2];
-
-                if (widget_dx * widget_dx + widget_dy * widget_dy + widget_dz * widget_dz < 0.01f) {
-                    WIDGET_A1_PROBE(
-                        "beam:zerolen",
-                        "slot=%d owner=%d name='%s' shader=%d start=(%.1f,%.1f,%.1f) "
-                        "flags=0x%x subdiv=%d\n",
-                        i,
-                        b->entity,
-                        b->name.c_str(),
-                        b->beamshader,
-                        b->start[0], b->start[1], b->start[2],
-                        b->flags,
-                        b->numSubdivisions);
-                }
-            }
         }
 
         if (b->flags & BEAM_TOGGLE) {
@@ -1028,38 +959,6 @@ void CG_CreateBeam(
         VectorCopy(trace.endpos, end);
     }
 
-    {
-        static int n = 0;
-        if (PROBE_Throttle(&n, 24, 400)) {
-            vec3_t beamdir;
-            float  beamlen;
-
-            VectorSubtract(end, start, beamdir);
-            beamlen = VectorNormalize(beamdir);
-
-            PROBE(
-                "beam:create",
-                "owner=%d start=(%.1f,%.1f,%.1f) end=(%.1f,%.1f,%.1f) len=%.1f shader='%s' "
-                "flags=0x%x create=%d name='%s' dir=(%+.3f,%+.3f,%+.3f) span=%.1f\n",
-                owner,
-                start[0],
-                start[1],
-                start[2],
-                end[0],
-                end[1],
-                end[2],
-                length,
-                beamshadername ? beamshadername : "(null)",
-                flags,
-                create ? 1 : 0,
-                name ? name : "(null)",
-                beamdir[0],
-                beamdir[1],
-                beamdir[2],
-                beamlen
-            );
-        }
-    }
     if (!create) {
         for (i = 0, b = cl_beams; i < MAX_BEAMS; i++, b++) {
             if (b->entity == owner) {

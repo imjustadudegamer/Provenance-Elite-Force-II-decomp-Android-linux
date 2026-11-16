@@ -129,8 +129,7 @@ VkFormat VK_Texture_FormatFor( int internalFormat, qboolean *supported )
 			*supported = qtrue;
 		}
 	} else if ( format != VK_FORMAT_R8G8B8A8_UNORM ) {
-			VK_Guard_Row( "VK:texture", "format=%d unsupported optimal=0x%x fallback=rgba8",
-					  internalFormat, (unsigned int)props.optimalTilingFeatures );
+
 		return VK_FORMAT_R8G8B8A8_UNORM;
 	} else {
 		VK_Guard_Hit( VK_GSITE_ALLOC, "rgba8 unsupported on this device", VK_ERROR_FORMAT_NOT_SUPPORTED );
@@ -311,9 +310,6 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
 
 	/* the lifetime census counts what a registration can retire, so a map change
 	   names its own toll instead of printing the zero this row used to */
-	VK_Life_NoteCreate( VK_LIFE_IMAGE );
-	VK_Life_NoteCreate( VK_LIFE_VIEW );
-
 	/* a new view object may reuse the handle value of a destroyed one, so the
 	   descriptor-set cache has to know a texture lifetime just turned over */
 	VK_Draw_TextureGenBump();
@@ -354,8 +350,7 @@ void VK_Texture_Destroy( int handle )
 	   path publishes what it queues, so this is the failure path, not an exit. */
 	if ( tex->pendingCount > 0 ) {
 		vk_uploadDrops++;
-		VK_Guard_Row( "VK:upload", "staging-drop handle=%d queued=%d bytes=%d at destroy",
-					  handle, tex->pendingCount, (int)tex->stagingUsed );
+
 	}
 
 	/* the texture's death is the one place both lifetimes close, and each
@@ -375,8 +370,6 @@ void VK_Texture_Destroy( int handle )
 
 	if ( tex->inUse ) {
 		vk_numTextures--;
-		VK_Life_NoteDestroy( VK_LIFE_IMAGE );
-		VK_Life_NoteDestroy( VK_LIFE_VIEW );
 		/* the view this handle named is gone; every set written against it is
 		   stale even if the driver hands the same handle value to its successor */
 		VK_Draw_TextureGenBump();
@@ -811,8 +804,7 @@ static qboolean VK_Texture_FlushPub( int handle, qboolean publish )
 	   thread would free a map that thread is still writing through, so it is
 	   refused whole: the queue stays, and the owner's own flush drains it. */
 	if ( tex->stagingOwner != 0 && tex->stagingOwner != VK_Upload_ThreadID() ) {
-		VK_Guard_Row( "VK:upload", "staging-owner handle=%d queued=%d thread=%lu owner=%lu",
-					  handle, count, VK_Upload_ThreadID(), tex->stagingOwner );
+
 		return qfalse;
 	}
 
@@ -821,8 +813,7 @@ static qboolean VK_Texture_FlushPub( int handle, qboolean publish )
 	   copied through a null pointer. */
 	if ( tex->stagingMapped == NULL || tex->staging == VK_NULL_HANDLE || tex->pending == NULL ) {
 		vk_uploadDrops++;
-		VK_Guard_Row( "VK:upload", "staging-drop handle=%d queued=%d map=%p buf=%p",
-					  handle, count, (void *)tex->stagingMapped, (void *)(size_t)tex->staging );
+
 		VK_Texture_StagingFree( tex );
 		tex->pendingCount = 0;
 		return qfalse;
@@ -857,9 +848,7 @@ static qboolean VK_Texture_FlushPub( int handle, qboolean publish )
 			 || tex->pending[i].width < 1 || tex->pending[i].height < 1
 			 || tex->pending[i].offset + (VkDeviceSize)tex->pending[i].bytes > tex->stagingSize ) {
 			vk_uploadDrops++;
-			VK_Guard_Row( "VK:upload", "record-drop handle=%d level=%d w=%d h=%d off=%d bytes=%d epoch=%d",
-						  handle, tex->pending[i].level, tex->pending[i].width, tex->pending[i].height,
-						  (int)tex->pending[i].offset, (int)tex->pending[i].bytes, (int)tex->stagingSize );
+
 			if ( regionList != regions ) {
 				ri.Free( regionList );
 			}
@@ -958,14 +947,6 @@ static qboolean VK_Texture_FlushPub( int handle, qboolean publish )
 
 	vk_uploadSubmits++;
 	vk_uploadMips += count;
-	if ( R_ProbeStatsOn() && ( vk_uploadSubmits & 63 ) == 0 ) {
-		VK_Guard_Row( "VK:upload", "submits=%d mips=%d per=%d.%d bytes=%d fallback=%d drop=%d",
-					  vk_uploadSubmits, vk_uploadMips,
-					  vk_uploadMips / vk_uploadSubmits,
-					  ( vk_uploadMips * 10 / vk_uploadSubmits ) % 10,
-					  VK_Texture_BytesUsed(), vk_uploadFallback, vk_uploadDrops );
-	}
-
 done:
 	if ( fence != VK_NULL_HANDLE && qvk.DestroyFence ) {
 		qvk.DestroyFence( vk.device, fence, NULL );

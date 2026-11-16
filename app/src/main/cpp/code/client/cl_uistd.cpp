@@ -24,9 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cl_ui.h"
 #include "../qcommon/gameplaymanager.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 #include "../qcommon/stringresource.h"
 #include "../corepp/tiki.h" 
 
@@ -76,7 +73,6 @@ int CL_SafePlayerStat(int idx)
     return cl.snap.ps.stats[idx];
 }
 
-static int bossbarRows;
 
 static qboolean CL_UIPaused(void)
 {
@@ -818,10 +814,6 @@ void UIFakkLabel::Draw(void)
             /* The bar's render half: the stat this widget re-read this draw and the
                fill that came out of it.  Flat next to a stepping bossstat row means
                the widget stopped re-reading; stepping means the draw is live. */
-            if (m_stat == STAT_BOSSHEALTH && PROBE_Throttle(&bossbarRows, 8, 60)) {
-                PROBE("bosshud", "stat=%d raw=%d frac=%.3f w=%.1f",
-                      m_stat, (int)CL_SafePlayerStat(m_stat), frac, m_frame.size.width * frac);
-            }
 
             DrawStatbar(frac);
         } else {
@@ -2516,25 +2508,6 @@ UIInventoryBar::UIInventoryBar()
         this, 0.0f, 0.0f, m_itemSize[0], m_itemSize[1], 0, "tahoma-10");
     m_selectedTypeWidget->setForegroundColor(getForegroundColor());
     m_selectedTypeWidget->setBackgroundColor(getBackgroundColor(), WIDGET_STATE_NORMAL, false);
-    {
-        static cvar_t *shadow_inv = NULL;
-        static int     shadow_invRows;
-
-        if (!shadow_inv) {
-            shadow_inv = Cvar_Get("shadow_invStats", "0", 0);
-        }
-        if (PROBE_On() && shadow_inv && shadow_inv->integer && shadow_invRows < 8) {
-            UColor c = getBackgroundColor();
-            Com_Printf("[SHADOW:inv] ctor bar.bg=(%.3f,%.3f,%.3f,%.3f) "
-                       "selWidget.bg=(%.3f,%.3f,%.3f,%.3f) typeWidget.bg=(%.3f,%.3f,%.3f,%.3f)\n",
-                       c.r, c.g, c.b, c.a,
-                       m_selectedWidget->getBackgroundColor().r, m_selectedWidget->getBackgroundColor().g,
-                       m_selectedWidget->getBackgroundColor().b, m_selectedWidget->getBackgroundColor().a,
-                       m_selectedTypeWidget->getBackgroundColor().r, m_selectedTypeWidget->getBackgroundColor().g,
-                       m_selectedTypeWidget->getBackgroundColor().b, m_selectedTypeWidget->getBackgroundColor().a);
-            shadow_invRows++;
-        }
-    }
     inventoryBar = this;
     loadItems();
     hideInventory();
@@ -3153,23 +3126,12 @@ void UIInventoryBar::previousItem(Event *ev)
 void UIInventoryBar::warpToItem(Event *ev)
 {
 
-    PROBE(
-        "inv:bar",
-        "warpToItem: event='%s' enabled=%d view3d=%d isActive=%d types=%d",
-        ev->getName(),
-        m_enabled ? 1 : 0,
-        UI_IsView3DActive() ? 1 : 0,
-        IsActive() ? 1 : 0,
-        m_types.NumObjects()
-    );
 
     if (!m_enabled) {
-        PROBE("inv:bar", "GATE m_enabled==0 -- bar dead, nothing will happen");
         return;
     }
 
     if (!UI_IsView3DActive() && !IsActive()) {
-        PROBE("inv:bar", "GATE view3d+focus -- event dropped, nothing will happen");
         return;
     }
 
@@ -3181,12 +3143,6 @@ void UIInventoryBar::warpToItem(Event *ev)
     int idx = getTypeIndex(name);
 
     if (idx < 1 || idx > m_types.NumObjects()) {
-        PROBE(
-            "inv:bar",
-            "REJECT type '%s' not found (types=%d) -- client inventory mirror empty",
-            name.c_str(),
-            m_types.NumObjects()
-        );
         S_StartLocalSound(m_rejectSound, false);
         return;
     }
@@ -3370,12 +3326,9 @@ void UIDialogTextConsole::PrintDialog(const str& name, const str& text, float li
     }
 }
 
-static int s_smpPrintDialogCalls;
-static int s_smpResetDialogCalls;
 
 void UIDialogTextConsole::PrintDialog(unsigned char level, const str& text, bool useAlpha)
 {
-    s_smpPrintDialogCalls++;
 
     str       line;
     int       lineWidth;
@@ -3445,7 +3398,6 @@ void UIDialogTextConsole::PrintDialog(unsigned char level, const str& text, bool
 
 void UIDialogTextConsole::ResetDialog(Event *ev)
 {
-    s_smpResetDialogCalls++;
     m_currentText = "";
     m_currentName = "";
 }
@@ -3534,67 +3486,10 @@ void UIDialogTextConsole::Draw(void)
             m_firstLine = firstLine;
             m_scrollDelay -= cls.frametime;
 
-#define SMP_DIALOG_MAX 48
-            {
-                static int s_smpDialogRows;
-                static int s_smpDialogLastMs = -100000;
-
-                if (PROBE_On() && s_smpDialogRows < SMP_DIALOG_MAX
-                    && cls.realtime - s_smpDialogLastMs >= 500) {
-                    s_smpDialogLastMs = cls.realtime;
-                    s_smpDialogRows++;
-
-                    int longest = 0;
-                    for (int k = 1; k <= numLines; k++) {
-                        int L = (int)strlen(m_lines.ObjectAt(k).c_str());
-                        if (L > longest) longest = L;
-                    }
-                    Com_Printf("[SMP:dialog] page el=%d hold=%.0f alpha=%.3f lines=%d "
-                               "maxLines=%d maxWidth=%d first=%d last=%d nominal=%d "
-                               "lastFirst=%d delay=%d level=%d useAlpha=%d "
-                               "cwSpace=%d cwA=%d h=%d longest=%d "
-                               "printCalls=%d resetCalls=%d\n",
-                               elapsed, m_holdTime, m_alpha, numLines, m_maxLines,
-                               m_maxLineWidth, firstLine, lastLine, nominalFirst,
-                               m_firstLine, m_scrollDelay, (int)m_displayLevel,
-                               m_useAlpha ? 1 : 0,
-                               m_font->getCharWidth(' ', 0), m_font->getCharWidth('a', 0),
-                               m_font->getHeight(false), longest,
-                               s_smpPrintDialogCalls,
-                               s_smpResetDialogCalls);
-                }
-            }
         } else {
             float y = (m_frame.size.height - 5.0f) - lineHeight;
             int   n = m_lines.NumObjects();
 
-            {
-                static int s_smpDialogFitRows;
-                static int s_smpDialogFitLastMs = -100000;
-
-                if (PROBE_On() && s_smpDialogFitRows < SMP_DIALOG_MAX
-                    && cls.realtime - s_smpDialogFitLastMs >= 500) {
-                    s_smpDialogFitLastMs = cls.realtime;
-                    s_smpDialogFitRows++;
-
-                    int longest = 0;
-                    for (int k = 1; k <= n; k++) {
-                        int L = (int)strlen(m_lines.ObjectAt(k).c_str());
-                        if (L > longest) longest = L;
-                    }
-                    Com_Printf("[SMP:dialog] fits el=%d hold=%.0f alpha=%.3f lines=%d "
-                               "maxLines=%d maxWidth=%d nominal=%d delay=%d level=%d useAlpha=%d "
-                               "cwSpace=%d cwA=%d h=%d longest=%d "
-                               "printCalls=%d resetCalls=%d\n",
-                               elapsed, m_holdTime, m_alpha, n, m_maxLines,
-                               m_maxLineWidth, n - m_maxLines + 1, m_scrollDelay,
-                               (int)m_displayLevel, m_useAlpha ? 1 : 0,
-                               m_font->getCharWidth(' ', 0), m_font->getCharWidth('a', 0),
-                               m_font->getHeight(false), longest,
-                               s_smpPrintDialogCalls,
-                               s_smpResetDialogCalls);
-                }
-            }
 
             while (y > -lineHeight && n >= 1) {
                 m_font->Print(kDialogTextX, y, m_lines.ObjectAt(n).c_str(), -1, UColor(0.0f, 0.0f, 0.0f, 0.0f), 0);
@@ -4327,16 +4222,6 @@ void UIRadarDialog::Draw(void)
     refdef.height = (int)m_screenframe.size.height;
     refdef.time   = cl.serverTime;
 
-    {
-        static int uiparityuivp3d_radar;
-        if (PROBE_On() && (uid.originX || uid.originY) && PROBE_Throttle(&uiparityuivp3d_radar, 2, 120)) {
-            Com_Printf(
-                "[UIPARITY:uivp3d] radar refdef %d,%d %dx%d | origin %d,%d rect %dx%d\n",
-                refdef.x, refdef.y, refdef.width, refdef.height,
-                uid.originX, uid.originY, uid.vidWidth, uid.vidHeight
-            );
-        }
-    }
 
     re.RenderScene(&refdef);
 

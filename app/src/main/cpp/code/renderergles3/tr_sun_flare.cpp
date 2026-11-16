@@ -1336,7 +1336,6 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
        state will draw with; why stays "-" for the arms that take no query */
     unsigned int     index   = (unsigned int)(f - lf_states);
     unsigned int     samples = 0;
-    const char      *why     = "-";
 
     if (f->viewFrameCount != backEnd.viewParms.frameCount || f->clipped) {
         visible = qfalse;
@@ -1351,7 +1350,6 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
            one and never waited on (renderervulkan/tr_sun_flare.cpp:1268-1296) */
         if (R_FlareQueryResult(index, &samples)) {
             visible = (qboolean)(samples != 0);
-            why     = "query";
         } else if (index < LF_QUERY_POOL && lf_querySeen[index]) {
             /* the answer has not arrived yet (the GPU is more than a frame
                behind) but this state has answered before: the frame's own hold
@@ -1364,7 +1362,6 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
             /* the hold lasts until the next test, where the same object is read
                again and re-armed; it is the throttle both fallbacks use */
             f->nextVisTime = backEnd.refdef.time + 50;
-            why            = "hold";
         } else {
             /* no answer has ever come back (first frames, a state whose query
                the previous frame did not arm, or a driver that never resolves
@@ -1374,7 +1371,6 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
             /* the fallback's own throttle, where the Vulkan lane keeps it (its
                R_LensflareTraceVisible); the query path is decided every frame */
             f->nextVisTime = backEnd.refdef.time + 50;
-            why            = "trace";
         }
 
         R_LensflareOcclusionArm(f, index);
@@ -1431,18 +1427,6 @@ static void R_LensflareTestVisibility(lensflareState_t *f)
        coverage answer it was given, the verdict the fade law acted on, and the
        alpha (hence whether it drew).  Gated and throttled like every other row in
        this lane, and silent for the arms that take no query. */
-    if (why[0] != '-' && R_ProbeStatsOn()) {
-        static int s_rows;
-
-        if (s_rows < 8 || (s_rows % 600) == 0) {
-            ri.Printf(PRINT_ALL,
-                      "[GLES3:flarevis] why=%s idx=%u info='%s' samples=%u vis=%d alpha=%.2f "
-                      "draw=%d f=%d\n",
-                      why, index, info ? info->name : "?", samples, visible ? 1 : 0, f->alpha,
-                      (f->alpha > 0.0f) ? 1 : 0, RB_FrameCount());
-        }
-        s_rows++;
-    }
 }
 
 static shader_t *R_LensflareShaderFor(const lensflareState_t *f, shader_t *defaultTo)

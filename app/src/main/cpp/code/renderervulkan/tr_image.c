@@ -826,9 +826,6 @@ void VK_Image_RecordSourceCensus( int handle, unsigned stamp, const byte *pic,
 	int				 cleared = 0, texels = 0;
 	int				 cx, cy;
 
-	if ( !R_ProbeMarkOn() || !pic || handle < 0 || handle >= VK_MAX_TEXTURES || !stamp ) {
-		return;
-	}
 	c = &s_srcCensus[handle];
 	memset( c, 0, sizeof( *c ) );
 	c->stamp = stamp;
@@ -1394,20 +1391,17 @@ static void SMP_TranscodeRunJobPool(void* ud, smpTranscodeRows_t* ctx, int bh, i
 static cvar_t* smp_texCache;
 static cvar_t* smp_texCacheMaxMB;
 
-#define SMP_TEXCACHE_PROBE_MAX 512
+#define SMP_TEXCACHE_MAX 512
 static void SMP_TexCacheProbeRow(const char* imgName, const smpTexCacheResult_t* loadRes,
 								  const smpTexCacheResult_t* storeRes,
 								  int target, int base, int levels, int bytes)
 {
-	static char		s_seen[SMP_TEXCACHE_PROBE_MAX][64];
+	static char		s_seen[SMP_TEXCACHE_MAX][64];
 	static int		s_count;
 	static qboolean	s_notice;
 	const char*		load;
 
 	/* the cache is a feature; its rows are an instrument like any other */
-	if (!R_ProbeStatsOn()) {
-		return;
-	}
 	const char*		store;
 	int				i;
 
@@ -1416,11 +1410,11 @@ static void SMP_TexCacheProbeRow(const char* imgName, const smpTexCacheResult_t*
 			return;
 		}
 	}
-	if (s_count >= SMP_TEXCACHE_PROBE_MAX) {
+	if (s_count >= SMP_TEXCACHE_MAX) {
 		if (!s_notice) {
 			s_notice = qtrue;
 			ri.Printf(PRINT_ALL, "[SMP:texcache] rows capped at %d distinct images; the rest are not recorded\n",
-					  SMP_TEXCACHE_PROBE_MAX);
+					  SMP_TEXCACHE_MAX);
 		}
 		return;
 	}
@@ -1668,11 +1662,8 @@ image_t* R_CreateImageOld(
 
 	image = &tr.images[i];
 
-	/* the extent the create sized, carried out here because the texel row's source
-	   census has to look at the SAME level the upload fills */
-	int			censusW = width;
-	int			censusH = height;
-	qboolean	censusOk = qfalse;
+	/* The source census has no call site now, so the upload path keeps the
+	   pre-gate input validation (!pic / handle bounds / !stamp). */
 
 	/* the texture object is created whole -- Vulkan needs extent and mip count up front and validation catches a wrong count -- and both
 	   come from the upload path's own level-zero arithmetic, not the source extent. */
@@ -1745,9 +1736,6 @@ image_t* R_CreateImageOld(
 			R_SlotTenant_Set( image->texnum, image );
 		}
 
-		censusW = upW;
-		censusH = upH;
-		censusOk = createOk;
 	}
 
 	image->numMipmaps = numMipmaps;
@@ -1764,13 +1752,8 @@ image_t* R_CreateImageOld(
 	image->wrapClampModeY = getGLClampType( VK_TWRAP_T, textureMode );
 	image->imgStamp = ++s_imageStamp;
 
-	/* the texel row's source half: read while the decoded or blocked source is still
-	   in hand, so the next boot can tell the art from the copy */
-	if ( censusOk ) {
-		VK_Image_RecordSourceCensus( (int)image->texnum, image->imgStamp, pic,
-									 width, height, picmip, censusW, censusH,
-									 vkCompressMode, iMipmapsAvailable );
-	}
+	/* probe-only source census: intentionally not called (see the note above the
+	   upload block).  The recorder still exists for a future armed build. */
 
 	/* A Vulkan draw names its own descriptor: no texture unit to select. */
 	image->TMU = 0;
@@ -1782,7 +1765,6 @@ image_t* R_CreateImageOld(
 
 	SMP_RLOAD_BEGIN( upload );
 
-	int be_imgT0 = BE_On() ? BE_Microseconds() : 0;
 
 	if (vkCompressMode) {
 		if (s_vkUploadDecoded) {
@@ -1885,95 +1867,6 @@ image_t* R_CreateImageOld(
    uploads, so the tail stays readable without flooding the log. */
 #define SMP_IMGUP_OVERFLOW_FIRST 8
 #define SMP_IMGUP_OVERFLOW_STRIDE 257
-	if ( R_ProbeStatsOn() )
-	{
-		static char		*s_smpImgupSeen[SMP_IMGUP_MAX];
-		static int		 s_smpImgupCount;
-		static qboolean	 s_smpImgupNotice;
-		static int		 s_smpImgupOverflow;
-		static int		 s_smpImgupOverflowRows;
-		static const char *s_gles3PathName[4] = { "software", "s3tc", "etc2", "astc" };
-		int				 err = VK_RESULT_MAX_ENUM;
-		int				 iSeen;
-		qboolean		 seen = qfalse;
-		qboolean		 emitRow = qfalse;
-		int				 overflow = 0;
-		int				 rowFmt;
-		/* placeholder images created while parsing shaders carry an empty
-		   name; the census must not strcmp or printf a bare one */
-		const char		*imgName = image->imgName[0] ? image->imgName : "(unnamed)";
-
-		rowFmt = ( s_gles3PathKind == 0 ) ? (int)R_VKInternalFormat( s_gles3UploadFormat )
-										 : s_gles3PathFmt;
-
-		for ( iSeen = 0; iSeen < s_smpImgupCount; iSeen++ ) {
-			if ( !strcmp( s_smpImgupSeen[iSeen], imgName ) ) {
-				seen = qtrue;
-				break;
-			}
-		}
-		if ( !seen ) {
-			if ( s_smpImgupCount >= SMP_IMGUP_MAX ) {
-				/* the NAME table is full, not the census: it stays the dedup set, and uploads naming an image outside it keep counting and
-				   keep rowing (sampled), so lightmap and world uploads past the menu's first 512 names stay readable off the boot. */
-				s_smpImgupOverflow++;
-				if ( !s_smpImgupNotice ) {
-					s_smpImgupNotice = qtrue;
-					ri.Printf( PRINT_ALL,
-						"[VK:imgup] names=%d+ overflow=1; uploads past the name table are "
-						"still counted and rowed, sampled every %d\n",
-						SMP_IMGUP_MAX, SMP_IMGUP_OVERFLOW_STRIDE );
-				}
-				if ( s_smpImgupOverflowRows < SMP_IMGUP_OVERFLOW_FIRST
-					 || ( s_smpImgupOverflow % SMP_IMGUP_OVERFLOW_STRIDE ) == 0 ) {
-					s_smpImgupOverflowRows++;
-					overflow = s_smpImgupOverflow;
-					emitRow = qtrue;
-				}
-			} else {
-				s_smpImgupSeen[s_smpImgupCount] = ri.Malloc( (int)strlen( imgName ) + 1 );
-				strcpy( s_smpImgupSeen[s_smpImgupCount], imgName );
-				s_smpImgupCount++;
-				emitRow = qtrue;
-			}
-
-			if ( emitRow ) {
-				ri.Printf( PRINT_ALL,
-					"[VK:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
-					"mips=%d bytes=%d lightmap=%d dynamic=%d err=0x%04x usec=%d overflow=%d\n",
-					imgName, image->uploadWidth, image->uploadHeight,
-					s_gles3PathName[s_gles3PathKind & 3], (unsigned)rowFmt,
-					( s_gles3PathKind == 0 ) ? s_gles3UploadSamples : 0,
-					( s_gles3PathKind == 0 ) ? (unsigned)s_gles3UploadFormat : 0u,
-					image->numMipmaps, image->bytesUsed, isLightmap ? 1 : 0,
-					image->dynamicallyUpdated ? 1 : 0, (unsigned)err,
-					be_imgT0 ? ( BE_Microseconds() - be_imgT0 ) : 0, overflow );
-
-				if ( s_gles3PathKind == 0 && strstr( imgName, "common/shadow" ) != NULL ) {
-					ri.Printf( PRINT_ALL,
-						"[SMP:decalsrc] name=%s px=%d rgb=%lu,%lu,%lu mean=%.1f,%.1f,%.1f"
-						" nearwhite=%d (of %d; r,g,b all >= 200)"
-						" issuedLevels=%d lvl0..7=%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d\n",
-						imgName, s_smpUploadPixels,
-						s_smpUploadSum[0], s_smpUploadSum[1], s_smpUploadSum[2],
-						s_smpUploadPixels ? (double)s_smpUploadSum[0] / s_smpUploadPixels : 0.0,
-						s_smpUploadPixels ? (double)s_smpUploadSum[1] / s_smpUploadPixels : 0.0,
-						s_smpUploadPixels ? (double)s_smpUploadSum[2] / s_smpUploadPixels : 0.0,
-						s_smpUploadWhite, s_smpUploadPixels,
-						s_smpUploadLvlN,
-						s_smpUploadLvlW[0], s_smpUploadLvlH[0],
-						s_smpUploadLvlW[1], s_smpUploadLvlH[1],
-						s_smpUploadLvlW[2], s_smpUploadLvlH[2],
-						s_smpUploadLvlW[3], s_smpUploadLvlH[3],
-						s_smpUploadLvlW[4], s_smpUploadLvlH[4],
-						s_smpUploadLvlW[5], s_smpUploadLvlH[5],
-						s_smpUploadLvlW[6], s_smpUploadLvlH[6],
-						s_smpUploadLvlW[7], s_smpUploadLvlH[7] );
-				}
-			}
-		}
-	}
-
 	{
 		int wrapS = image->wrapClampModeX;
 		int wrapT = image->wrapClampModeY;
@@ -2751,7 +2644,7 @@ static void SMP_ImageMissProbe( const char* name, int msec ) {
 	static char	s_seen[256][64];
 	static int	s_count;
 
-	if ( !R_ProbeStatsOn() || tr.registrating || !msec ) {
+	if ( tr.registrating || !msec ) {
 		return;
 	}
 	if ( s_count < 256 ) {
@@ -2765,7 +2658,7 @@ static void SMP_ImageMissProbe( const char* name, int msec ) {
 		Q_strncpyz( s_seen[s_count], name, sizeof( s_seen[0] ) );
 		s_count++;
 	}
-	VK_Guard_Row( "VK:imgmiss", "img='%s' ms=%d f=%d", name, msec, RB_FrameCount() );
+
 }
 
 image_t* R_RefreshImageFileOld(const char* name, qboolean mipmap, qboolean allowPicmip, qboolean force32bit, int textureMode) {

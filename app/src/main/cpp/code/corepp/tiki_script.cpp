@@ -54,6 +54,7 @@ TikiScript::TikiScript()
     nummacros = 0;
     mark_pos  = 0;
     path[0]   = 0;
+    animpath[0] = 0;
     texturepath[0] = 0;
 }
 

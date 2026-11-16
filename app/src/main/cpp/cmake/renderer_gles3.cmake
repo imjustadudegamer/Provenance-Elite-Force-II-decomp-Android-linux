@@ -62,10 +62,8 @@ set(RENDERER_GLES3_SOURCES
     # tr_program.c is the GLSL ES 3.0 program/state layer tr_shade.c drives;
     # without it the merged module links with every GLES3_* symbol undefined.
     ${SOURCE_DIR}/renderergles3/tr_program.c
-    # the disk-persisted program cache.  tr_program.c drives
-    # it; the file itself is GL- and engine-free above its adapter, so the
-    # progcache_probe below links THIS source with a fake driver and a
-    # host filesystem and certifies the code that ships.
+    # the disk-persisted program cache.  tr_program.c drives it; the file
+    # itself is GL- and engine-free above its adapter.
     ${SOURCE_DIR}/renderergles3/tr_program_cache.c
     ${SOURCE_DIR}/renderergles3/tr_shadows.c
     ${SOURCE_DIR}/renderergles3/tr_sky_portal.cpp
@@ -163,83 +161,3 @@ if(USE_RENDERER_DLOPEN)
 	endif()
 endif()
 
-# ---------------------------------------------------------------------------
-# THE FIRST-LIGHT PROBE (Linux desktop only).
-#
-# A real executable that opens a headless EGL GLES 3.0 context, runs the SAME
-# loader (qgl_gles3.c) and the SAME first-light core (gles3_firstlight.c) as
-# the renderer, and prints the [GLES3:firstlight] rows from actual pixel
-# readback.  It exists so the gate proves first light with pixels instead of
-# trusting that the marker string is in the .so.
-# ---------------------------------------------------------------------------
-if(NOT ANDROID AND NOT EMSCRIPTEN)
-    add_executable(gles3_firstlight
-        ${SOURCE_DIR}/renderergles3/gles3_firstlight_probe.c
-        ${SOURCE_DIR}/renderergles3/gles3_firstlight.c
-        ${SOURCE_DIR}/renderergles3/qgl_gles3.c)
-    target_include_directories(gles3_firstlight PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(gles3_firstlight PRIVATE
-                               EF2_GLES3=1 GLES3_FIRSTLIGHT_STANDALONE=1)
-    target_compile_options(gles3_firstlight PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(gles3_firstlight PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
-    set_output_dirs(gles3_firstlight)
-
-    # smp-hwtex: the transcode probe links the SAME tr_hwtex.c the renderer
-    # ships (it has no engine or GL entry-point dependencies of its own), so
-    # the bytes it certifies are the bytes the device would get.
-    add_executable(smp_hwtex_probe
-        ${SOURCE_DIR}/renderergles3/smp_hwtex_probe.c
-        ${SOURCE_DIR}/renderergles3/tr_hwtex.c)
-    target_include_directories(smp_hwtex_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(smp_hwtex_probe PRIVATE EF2_GLES3=1)
-    target_compile_options(smp_hwtex_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(smp_hwtex_probe PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
-    set_output_dirs(smp_hwtex_probe)
-
-    # smp-texcache: the cache probe links the SAME tr_texcache.c and the SAME
-    # tr_hwtex.c chain builder the renderer ships -- tr_texcache.c is compiled
-    # with SMP_TEXCACHE_STANDALONE so it drops only the ri adapter, and the
-    # probe supplies a host-filesystem IO table.  So the cache logic it
-    # certifies (key, header, validation, fallback, eviction) is the
-    # logic that ships, and the bytes it round-trips are the bytes the renderer
-    # uploads.
-    add_executable(smp_texcache_probe
-        ${SOURCE_DIR}/renderergles3/smp_texcache_probe.c
-        ${SOURCE_DIR}/renderergles3/tr_texcache.c
-        ${SOURCE_DIR}/renderergles3/tr_hwtex.c)
-    target_include_directories(smp_texcache_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(smp_texcache_probe PRIVATE EF2_GLES3=1 SMP_TEXCACHE_STANDALONE=1)
-    target_compile_options(smp_texcache_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(smp_texcache_probe PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
-    set_output_dirs(smp_texcache_probe)
-
-    # progcache-progcache: the probe links the SAME tr_program_cache.c the renderer
-    # ships (compiled with PROGCACHE_STANDALONE, which drops only the
-    # engine adapter) and drives it through the two vtables with a fake driver
-    # and a host filesystem.  So the format, the fingerprint, the key
-    # derivation, the restore verification and the fallback it certifies are the
-    # ones that ship.
-    add_executable(progcache_probe
-        ${SOURCE_DIR}/renderergles3/progcache_probe.c
-        ${SOURCE_DIR}/renderergles3/tr_program_cache.c)
-    target_include_directories(progcache_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(progcache_probe PRIVATE EF2_GLES3=1 PROGCACHE_STANDALONE=1)
-    target_compile_options(progcache_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(progcache_probe PRIVATE m)
-    set_output_dirs(progcache_probe)
-
-    # progcache-progcache (real driver): the SAME tr_program_cache.c against a real
-    # headless EGL GLES 3.0 context, so the one claim only a driver can settle
-    # -- retrievable hint -> delete the shaders -> glGetProgramBinary ->
-    # glProgramBinary into a fresh program -> an IDENTICAL interface -- is
-    # tested here and not only against the fake driver.  It exits 77 when the
-    # host has no ES3 context, which callers treat as SKIP.
-    add_executable(progcache_gl_probe
-        ${SOURCE_DIR}/renderergles3/progcache_gl_probe.c
-        ${SOURCE_DIR}/renderergles3/tr_program_cache.c)
-    target_include_directories(progcache_gl_probe PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions(progcache_gl_probe PRIVATE EF2_GLES3=1 PROGCACHE_STANDALONE=1)
-    target_compile_options(progcache_gl_probe PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(progcache_gl_probe PRIVATE ${RENDERER_GLES3_LIBRARIES} m)
-    set_output_dirs(progcache_gl_probe)
-endif()

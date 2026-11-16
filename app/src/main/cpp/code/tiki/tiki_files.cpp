@@ -32,9 +32,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../tiki/tiki_skel.h"
 #include "../corepp/mem_tempalloc.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 qboolean tiki_loading;
 
@@ -512,8 +509,6 @@ dtiki_t *TIKI_LoadTikiModel(dtikianim_t *tikianim, const char *name, size_t *def
             }
 
             if (tiki->a && tiki->a->num_anims > 0) {
-                int notresident = 0;
-
                 /* retail TIKI_FillTIKIStructureSkel @0x000F84E0 allocates the slot
                    array, writes -1 and registers nowhere: every registration lives in
                    TIKI_SetupTikiAnim @0x000F4400 on first use and
@@ -525,20 +520,6 @@ dtiki_t *TIKI_LoadTikiModel(dtikianim_t *tikianim, const char *name, size_t *def
                 tiki->boneMappings = (int *)TIKI_Alloc(tiki->a->num_anims * sizeof(int));
                 memset(tiki->boneMappings, -1, tiki->a->num_anims * sizeof(int));
 
-                for (j = 0; j < tiki->a->num_anims; j++) {
-                    if (!SkeletorCacheEntryLoaded(tiki->a->m_aliases[j])) {
-                        notresident++;
-                    }
-                }
-
-                PROBE_CENSUS_EMIT(
-                    "[TIKI:",
-                    "map",
-                    "build tiki=%s anims=%d filled=0 identity=0 failed=0 nohdr=%d\n",
-                    tiki->name,
-                    tiki->a->num_anims,
-                    notresident
-                );
             }
         }
 
@@ -920,8 +901,6 @@ skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
     skelAnimDataGameHeader_t *finishedHeader;
     char                     *buffer;
     char                      npath[256];
-    int                       t0;
-    int                       r0;
 
     Skel_ExtractFileExtension(path, extension);
 
@@ -929,21 +908,16 @@ skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
         Com_DPrintf("Skeletor CacheAnimSkel: %s: File extension unknown.  Attempting to open as skc file\n", path);
     }
 
-    t0 = TIKI_SkelRollStart();
 
     Q_strncpyz(npath, "newanim/", sizeof(npath));
     Q_strcat(npath, sizeof(npath), path);
 
-    r0 = Com_Milliseconds();
     iBuffLength = TIKI_ReadFileEx(npath, (void **)&buffer, qtrue);
-    TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0, npath);
     if (iBuffLength > 0) {
         finishedHeader = skeletor_c::LoadProcessedAnim(npath, buffer, iBuffLength, path);
         TIKI_FreeFile(buffer);
     } else {
-        r0 = Com_Milliseconds();
         iBuffLength = TIKI_ReadFileEx(path, (void **)&pHeader, qtrue);
-        TIKI_SkelRollRead(iBuffLength > 0 ? iBuffLength : 0, Com_Milliseconds() - r0, path);
         if (iBuffLength <= 0) {
             Com_DPrintf("Skeletor CacheAnimSkel: Could not open binary file %s\n", path);
             return NULL;
@@ -993,7 +967,6 @@ skelAnimDataGameHeader_t *SkeletorCacheFileCallback(const char *path)
         TIKI_FreeFile(pHeader);
     }
 
-    TIKI_SkelRollEnd(t0);
 
     Com_sprintf(tempName, sizeof(tempName), "g%s", path);
     UI_LoadResource(tempName);
@@ -1529,7 +1502,6 @@ dtikianim_t *TIKI_InitTiki(dloaddef_t *ld, size_t defsize)
         memcpy(panim->m_aliases, temp_aliases, panim->num_anims * sizeof(short));
         panim->tanMesh = (short *)TIKI_Alloc(panim->num_anims * sizeof(short));
         memcpy(panim->tanMesh, temp_tanmesh, panim->num_anims * sizeof(short));
-
 
 
         panim->modelData     = ptr;

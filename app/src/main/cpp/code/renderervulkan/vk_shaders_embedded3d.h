@@ -21,7 +21,7 @@ root, for more details.
  * edit: the sources of truth are the .vert/.frag files and the reference
  * renderer they were derived from.
  */
-//vk-spirv-fingerprint 8caf11e978f3f4575f340dade280b964c1cf0483ffddb91856fc3750442ccd8a
+//vk-spirv-fingerprint 58a3cc5e6fc11a93a14cbada9c426dc2b5c40aa7184470c0bd389c624a53b5f0
 #ifndef VK_SHADERS_EMBEDDED_3D_H
 #define VK_SHADERS_EMBEDDED_3D_H
 

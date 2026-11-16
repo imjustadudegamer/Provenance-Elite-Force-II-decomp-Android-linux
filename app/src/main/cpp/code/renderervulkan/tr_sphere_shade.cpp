@@ -366,7 +366,7 @@ static void R_Sphere_TrackLight(const spherel_t *thislight, float fBrightness, i
     static int s_rows;
     int        i;
 
-    if (!R_ProbeMarkOn() || !thislight) {
+    if (!thislight) {
         return;
     }
 
@@ -379,23 +379,7 @@ static void R_Sphere_TrackLight(const spherel_t *thislight, float fBrightness, i
         && (s_track[i].v != iVerdict || fabs(fBrightness - s_track[i].br) > 0.01f)
         && (s_rows < 24 || (s_rows % 600) == 0)) {
         s_rows++;
-        VK_Guard_Row(
-            "DOCC:slight",
-            "f=%d ent=%d li=%d src=%d typ=%d tr=%d v=%d->%d br=%.3f->%.3f grp=%d gi=%d "
-            "org=(%.1f,%.1f,%.1f) col=(%.3f,%.3f,%.3f) fo=(%.1f,%.1f) wo=(%.2f,%.2f,%.2f) "
-            "nl=%d sky=%d",
-            RB_FrameCount(), backEnd.currentEntity->e.entityNumber, i, iSrc,
-            thislight->type, thislight->needs_trace, s_track[i].v, iVerdict,
-            s_track[i].br, fBrightness, thislight->group_num,
-            (thislight->group_num != -1 && tr.world)
-                ? backEnd.refdef.lightGroupIntensity[thislight->group_num & 0xFF] : -1,
-            thislight->origin[0], thislight->origin[1], thislight->origin[2],
-            thislight->color[0], thislight->color[1], thislight->color[2],
-            thislight->falloff_start_dist, thislight->falloff_end_dist,
-            backEnd.currentSphere->worldOrigin[0], backEnd.currentSphere->worldOrigin[1],
-            backEnd.currentSphere->worldOrigin[2],
-            backEnd.currentSphere->numLights, g_sunSkyHit
-        );
+
     }
 
     s_track[i].frame = RB_FrameCount();
@@ -899,80 +883,6 @@ void R_Sphere_SetupEntity()
     }
 
     /* an entity that has not moved whose resolved ambient changed names itself with the light set that produced it */
-    if (R_ProbeMarkOn()) {
-        static struct {
-            int   frame;
-            int   dl;
-            float origin[3];
-            float ambient[3];
-            float dlor[3];
-            float dlcol[3];
-        } s_prev[MAX_SPHERE_FLASH_TRACK];
-        int          iSlot = backEnd.currentEntity->e.entityNumber % MAX_SPHERE_FLASH_TRACK;
-        unsigned int iLeaf, iLeafKey = 0, iLeafFilled = 0;
-
-        for (iLeaf = 0; iLeaf < 4; iLeaf++) {
-            iLeafKey = (iLeafKey * 33u)
-                       + (unsigned int)(uintptr_t)backEnd.currentSphere->leaves[iLeaf];
-            iLeafFilled += backEnd.currentSphere->leaves[iLeaf] != 0;
-        }
-
-        if (s_prev[iSlot].frame && s_prev[iSlot].frame != RB_FrameCount()) {
-            float fMove = fabs(backEnd.currentEntity->e.origin[0] - s_prev[iSlot].origin[0])
-                          + fabs(backEnd.currentEntity->e.origin[1] - s_prev[iSlot].origin[1])
-                          + fabs(backEnd.currentEntity->e.origin[2] - s_prev[iSlot].origin[2]);
-            float fDelta = fabs(vDrawn[0] - s_prev[iSlot].ambient[0])
-                           + fabs(vDrawn[1] - s_prev[iSlot].ambient[1])
-                           + fabs(vDrawn[2] - s_prev[iSlot].ambient[2]);
-
-            if (fMove < 4.0f && fDelta > 8.0f) {
-                int iCur = backEnd.refdef.num_dlights - 1;
-
-                VK_Guard_Row(
-                    "DOCC:sphere",
-                    "f=%d ent=%d move=%.2f ambient=(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f) "
-                    "d=%.1f nlights=%d sun=%d leaves=%08x/%u dl=%d->%d ex=%d ob=%.3f fb=%d exl=%d "
-                    "ws=(%.0f,%.0f,%.0f) dlorg=(%.0f,%.0f,%.0f)->(%.0f,%.0f,%.0f) dlcol=(%.2f,%.2f,%.2f) "
-                    "rf=%x nf=%d slot=%d w=%d pf=%d exd=%d",
-                    RB_FrameCount(), backEnd.currentEntity->e.entityNumber, fMove,
-                    s_prev[iSlot].ambient[0], s_prev[iSlot].ambient[1], s_prev[iSlot].ambient[2],
-                    vDrawn[0], vDrawn[1],
-                    vDrawn[2], fDelta,
-                    backEnd.currentSphere->numLights, tr.numSLights, iLeafKey, iLeafFilled,
-                    s_prev[iSlot].dl, backEnd.refdef.num_dlights, backEnd.bExactDLights,
-                    tr.overbrightMult, (backEnd.refdef.rdflags & RDF_FULLBRIGHT) ? 1 : 0,
-                    s_exclusiveDropped,
-                    ambientlight[0], ambientlight[1], ambientlight[2],
-                    s_prev[iSlot].dlor[0], s_prev[iSlot].dlor[1], s_prev[iSlot].dlor[2],
-                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].origin[0] : 0.0f,
-                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].origin[1] : 0.0f,
-                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].origin[2] : 0.0f,
-                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[0] : 0.0f,
-                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[1] : 0.0f,
-                    ( iCur >= 0 ) ? backEnd.refdef.dlights[iCur].color[2] : 0.0f,
-                    backEnd.currentEntity->e.renderfx,
-                    backEnd.currentEntity->e.nf ? 1 : 0,
-                    tr.smpFrame, s_sphereWroteAmbient,
-                    r_fullbright->integer,
-                    backEnd.numExactDLights
-                );
-            }
-        }
-
-        s_prev[iSlot].frame = RB_FrameCount();
-        s_prev[iSlot].dl    = backEnd.refdef.num_dlights;
-        if ( backEnd.refdef.num_dlights > 0 ) {
-            dlight_t *pDl = &backEnd.refdef.dlights[backEnd.refdef.num_dlights - 1];
-
-            VectorCopy(pDl->origin, s_prev[iSlot].dlor);
-            VectorCopy(pDl->color, s_prev[iSlot].dlcol);
-        } else {
-            VectorClear(s_prev[iSlot].dlor);
-            VectorClear(s_prev[iSlot].dlcol);
-        }
-        VectorCopy(backEnd.currentEntity->e.origin, s_prev[iSlot].origin);
-        VectorCopy(vDrawn, s_prev[iSlot].ambient);
-    }
 }
 
 void RB_Static_SetupModel()
@@ -1133,7 +1043,6 @@ void R_Sphere_InitLights()
     backEnd.numExactDLights     = 0;
 
     R_InitLightGroups();
-    R_LightConfigRow();
 
     while (ents) {
         ret = COM_Parse((char **)&ents);

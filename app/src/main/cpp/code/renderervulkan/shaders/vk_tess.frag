@@ -25,9 +25,6 @@ layout( push_constant ) uniform Push
 void main()
 {
 	vec4 texel = texture( uTexture, vTexCoord );
-#ifdef EF2_PROBE_NOTEX
-	texel = vec4( 1.0, 1.0, 1.0, 1.0 );
-#endif
 	vec4 colour = texel * vColor;
 
 	if ( pc.alphaTest.x == 1.0 ) {

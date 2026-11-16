@@ -44,9 +44,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/vector.h"
 #include "../tiki/tiki_skan.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 #define LL(x) x = LittleLong(x)
 
@@ -55,37 +52,6 @@ static int entityNumIndexes[MAX_ENTITIES];
 static int staticModelNumIndexes[4095];
 
 /* A registration rebuilds tr.shaders[] from zero, so a tiki not re-registered in this sequence draws whatever index now holds its slot -- the foreign-art class; anomaly-only */
-static qboolean R_TikiShaderIdentity( const dtikisurface_t *dsurf, int iShaderNum, const shader_t *sh, const dtiki_t *tiki )
-{
-	const char *want, *got;
-	static int  s_rows;
-
-	if ( !PROBE_On() || !sh || !sh->name[0] ) {
-		return qtrue;
-	}
-	want = dsurf->shader[iShaderNum];
-	if ( !want[0] ) {
-		return qtrue;
-	}
-	got = sh->name;
-	while ( *want && *got && tolower( *want ) == tolower( *got ) ) {
-		want++;
-		got++;
-	}
-	if ( !*got && ( !*want || *want == '.' ) ) {
-		return qtrue;
-	}
-	s_rows++;
-	if ( s_rows <= 24 || ( s_rows % 256 ) == 0 ) {
-		VK_Guard_Row( "VK:handle",
-					  "FOREIGN tiki='%s' surf=%d skin=%d wanted='%s' got='%s' idx=%d f=%d",
-					  tiki->name,
-					  iShaderNum, (int)dsurf->numskins,
-					  dsurf->shader[iShaderNum], sh->name,
-					  dsurf->hShader[iShaderNum], RB_FrameCount() );
-	}
-	return qfalse;
-}
 
 
 static int R_CullSkelModel(
@@ -243,7 +209,6 @@ void R_FreeUnusedModels(void)
 }
 
 
-
 void R_RegisterShaders(model_t *mod)
 {
     R_TikiRefreshShaders(mod->d.tiki);
@@ -271,18 +236,18 @@ void R_TikiRefreshShaders(dtiki_t *tiki)
         assert(psurface->numskins <= MAX_TIKI_SHADER);
         for (j = 0; j < psurface->numskins; j++) {
             if (psurface->shader[j][0]) {
+                /* retail R_CacheModel @0x279B0 passes -1, mip=!(flags&0x100),
+                   picmip=!(flags&0x200), wrapx=1, wrapy=0.  A default result is
+                   not cached as success: the next draw retries the resolve. */
                 sh = R_FindShader(
                     psurface->shader[j],
                     LIGHTMAP_NONE,
                     !(psurface->flags & TIKI_SURF_NOMIPMAPS),
-                    r_picmip->integer,
+                    !(psurface->flags & TIKI_SURF_NOPICMIP),
                     qtrue,
-                    qtrue
+                    qfalse
                 );
                 psurface->hShader[j] = sh->index;
-                if ( sh == tr.defaultShader ) {
-                    SMP_ShaderDefaultProbe( "tiki-surface", psurface->shader[j], tiki->name, i, j );
-                }
             } else {
                 psurface->hShader[j] = 0;
             }
@@ -401,14 +366,6 @@ static qhandle_t R_RegisterModelInternal(const char *name, qboolean use)
                 fresh = R_FindShader(shadername, -1, qfalse, qfalse, qfalse, qfalse);
                 if (fresh && fresh != tr.defaultShader && fresh != prev) {
                     spr->shader = fresh;
-                    if (R_ProbeMarkOn()) {
-                        VK_Guard_Row("VK:sprrefresh",
-                                     "model='%s' old='%s' new='%s' f=%d",
-                                     mod->name,
-                                     prev ? prev->name : "<null>",
-                                     fresh->name,
-                                     RB_FrameCount());
-                    }
                 }
                 mod->spriteShaderGen = tr.shaderGen;
             }
@@ -1043,214 +1000,17 @@ static void R_ShowTikiLodDebugNumbers(trRefEntity_t *ent, dtiki_t *tiki)
     R_DrawDebugNumber(org, number, scale, 1.0f, 1.0f, 0.0f, precision);
 }
 
-static void R_SkelCullWhere(
-    const refEntity_t *e, const skelFrame_t *nf, const skelFrame_t *of, float fScale,
-    const vec3_t worldOrg, const vec3_t localOrg
-);
-
 /* The drop sites here are silent in the reference: PRINT_DEVELOPER never reaches
    a device log, so every gate answers through one of these two rows instead. */
-const char *r_skelDropWhy;
-
-static void R_SkelDrop(const char *why, dtiki_t *tiki, trRefEntity_t *ent)
-{
-    static int rows;
-
-    r_skelDropWhy = why;
-
-    /* fade0 happens on every weapon switch: master gate */
-    if (!PROBE_On()) {
-        return;
-    }
-
-    if (rows < 8 || (rows % 600) == 0) {
-        ri.Printf(PRINT_ALL, "[VK:skeldrop] ent=%d why=%s model='%s' anim=%d frame=%d oldanim=%d oldframe=%d f=%d\n",
-                  ent->e.entityNumber, why, tiki->a->name ? tiki->a->name : "?",
-                  ent->e.anim, (int)ent->e.frame,
-                  ent->e.oldanim, (int)ent->e.oldframe, RB_FrameCount());
-    }
-    rows++;
-}
 
 /* The four side planes, exactly as R_CullPointAndRadius tests them, on any point
    set.  Returns the worst (most negative) plane distance. */
-static float R_SkelCullPlaneMin(const vec3_t pt, float radius, qboolean *outp)
-{
-    float worst = 0.0f;
-    int   i;
-
-    for (i = 0; i < tr.viewParms.fog.extrafrustums + 4; i++) {
-        float d = DotProduct(pt, tr.viewParms.frustum[i].normal) - tr.viewParms.frustum[i].dist;
-
-        if (i == 0 || d < worst) {
-            worst = d;
-        }
-        if (d < -radius && outp) {
-            *outp = qtrue;
-        }
-    }
-
-    return worst;
-}
 
 /* The 8-corner box test, R_CullLocalBoxOffset without its counters. */
-static int R_SkelCullBoxVerdict(const vec3_t bounds[2])
-{
-    vec3_t   transformed[8];
-    int      i, j;
-    int      anyBack = 0;
-
-    if (r_nocull->integer) {
-        return CULL_CLIP;
-    }
-
-    for (i = 0; i < 8; i++) {
-        vec3_t v;
-
-        v[0] = bounds[i & 1][0];
-        v[1] = bounds[(i >> 1) & 1][1];
-        v[2] = bounds[(i >> 2) & 1][2];
-
-        VectorCopy(tr.ori.origin, transformed[i]);
-        VectorMA(transformed[i], v[0], tr.ori.axis[0], transformed[i]);
-        VectorMA(transformed[i], v[1], tr.ori.axis[1], transformed[i]);
-        VectorMA(transformed[i], v[2], tr.ori.axis[2], transformed[i]);
-    }
-
-    for (i = 0; i < tr.viewParms.fog.extrafrustums + 4; i++) {
-        cplane_t *frust = &tr.viewParms.frustum[i];
-        int front = 0, back = 0;
-
-        for (j = 0; j < 8; j++) {
-            /* R_CullLocalBoxOffset compares the raw dot against frust->dist */
-            float d = DotProduct(transformed[j], frust->normal);
-
-            if (d > frust->dist) {
-                front = 1;
-                if (back) {
-                    break;
-                }
-            } else {
-                back = 1;
-            }
-        }
-
-        if (!front) {
-            return CULL_OUT;
-        }
-        anyBack |= back;
-    }
-
-    return anyBack ? CULL_CLIP : CULL_IN;
-}
 
 /* a `cull' drop is only a defect if the entity was inside the view, so this names where it actually was in the same three axes the cull and
    the cgame shadow gate test ("4000 units behind the eye" = correct; "12 units in front and 30 wide" = a model the operator could see
    vanishing).  It also replays the two tests R_CullSkelModel ran, on the entity-axis sphere point R_LocalPointToWorld(localOrg). */
-static void R_SkelCullWhere(
-    const refEntity_t *e, const skelFrame_t *nf, const skelFrame_t *of, float fScale,
-    const vec3_t worldOrg, const vec3_t localOrg
-)
-{
-    vec3_t    delta, spherePt, bounds[2], boxdelta;
-    float     fwd, side, up, radius, dsphere;
-    int       i, boxv;
-    qboolean  sout = qfalse;
-
-    if (!R_ProbeStatsOn()) {
-        return;
-    }
-
-    radius = nf->radius * fScale;
-
-    R_LocalPointToWorld(localOrg, spherePt);
-    dsphere = R_SkelCullPlaneMin(spherePt, radius, &sout);
-
-    for (i = 0; i < 3; i++) {
-        float a, b;
-
-        a = nf->bounds[0][i] * fScale + localOrg[i];
-        b = (of && of != nf) ? of->bounds[0][i] * fScale + localOrg[i] : a;
-        bounds[0][i] = (b < a) ? b : a;
-
-        a = nf->bounds[1][i] * fScale + localOrg[i];
-        b = (of && of != nf) ? of->bounds[1][i] * fScale + localOrg[i] : a;
-        bounds[1][i] = (a < b) ? a : b;
-    }
-
-    if (tr.currentEntity && (tr.currentEntity->e.renderfx & RF_FRAMELERP)) {
-        boxdelta[0] = e->origin[0] - e->attachOrigin[0];
-        boxdelta[1] = e->origin[1] - e->attachOrigin[1];
-        boxdelta[2] = e->origin[2] - e->attachOrigin[2];
-    } else {
-        VectorClear(boxdelta);
-    }
-    for (i = 0; i < 3; i++) {
-        if (boxdelta[i] <= 0.0f) {
-            bounds[0][i] += boxdelta[i];
-        } else {
-            bounds[1][i] += boxdelta[i];
-        }
-    }
-    boxv = R_SkelCullBoxVerdict(bounds);
-
-    VectorSubtract(worldOrg, tr.refdef.vieworg, delta);
-    fwd  = DotProduct(delta, tr.refdef.viewaxis[0]);
-    side = DotProduct(delta, tr.refdef.viewaxis[1]);
-    up   = DotProduct(delta, tr.refdef.viewaxis[2]);
-
-    {
-        static int rows;
-
-        if (!PROBE_On() || !PROBE_Throttle(&rows, 16, 600)) {
-            return;
-        }
-
-        ri.Printf(
-            PRINT_ALL,
-            "[VK:skelcull] ent=%d model='%s' org=(%.1f,%.1f,%.1f) radius=%.1f dist=%.1f "
-            "fwd=%.1f side=%.1f up=%.1f behind=%d"
-            " plane=%.1f sphere=%s box=%s nna=%d xb=%d ofr=%.1f\n",
-            e->entityNumber,
-            e->tiki && e->tiki->a->name ? e->tiki->a->name : "?",
-            worldOrg[0], worldOrg[1], worldOrg[2], radius,
-            sqrtf(delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]),
-            fwd, side, up, (fwd < 0.0f) ? 1 : 0,
-            dsphere,
-            sout ? "out" : ((dsphere <= radius) ? "clip" : "in"),
-            (boxv == CULL_IN) ? "in" : ((boxv == CULL_CLIP) ? "clip" : "out"),
-            e->nonNormalizedAxes ? 1 : 0,
-            (of && of != nf) ? 1 : 0,
-            (of && of != nf) ? of->radius * fScale : 0.0f
-        );
-    }
-}
-
-static void R_SkelDropFrame(const char *why, dtiki_t *tiki, trRefEntity_t *ent){
-    int numFrames   = ri.TIKI_Anim_NumFrames(tiki, ent->e.anim);
-    int numTan      = 0;
-    int numSkan     = 0;
-    skelAnimHeaderRec_t *hdr = ri.TIKI_Skan_FindByAnim(tiki, ent->e.anim);
-
-    r_skelDropWhy = why;
-
-    if (hdr) {
-        numSkan = hdr->numFrames;
-    }
-    ri.TIKI_Anim_TanFrames(tiki, ent->e.anim, &numTan);
-
-    {
-        static int rows;
-
-        if (PROBE_On() && (rows < 8 || (rows % 600) == 0)) {
-            ri.Printf(PRINT_ALL,
-                      "[VK:skeldrop] ent=%d why=%s model='%s' anim=%d frame=%d skanframes=%d tanframes=%d animframes=%d f=%d\n",
-                      ent->e.entityNumber, why, tiki->a->name ? tiki->a->name : "?",
-                      ent->e.anim, (int)ent->e.frame, numSkan, numTan, numFrames, RB_FrameCount());
-        }
-        rows++;
-    }
-}
 
 void R_AddSkelSurfaces(trRefEntity_t *ent)
 {
@@ -1279,16 +1039,29 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
     int lodMaxStep;
     const int boneArena = tr.smpFrame;
 
-    tiki = ent->e.tiki;
+    /* retail R_AddSkelSurfaces @0x21B20 resolves the tiki through the model
+       table this registration re-registered, not the entity's own copy: a tiki
+       replaced at reload must not leave the skel arm reading the previous
+       generation's surface hShader[].  A tiki actually drawn here is live, so
+       its model row is stamped and cannot be retired as a stale slot. */
+    tiki = (tr.currentModel && tr.currentModel->type == MOD_TIKI) ? tr.currentModel->d.tiki : NULL;
+    if (!tiki) {
+        tiki = ent->e.tiki;
+    }
+    if (!tiki) {
+        return;
+    }
+    if (tr.currentModel && tr.currentModel->type == MOD_TIKI) {
+        /* a draw inside the registration window (the load-screen models) makes
+           this row live, so the retire pass cannot treat it as unseen */
+        tr.currentModel->r_sequence = r_sequencenumber;
+    }
 
-
-    /* the same stamp the tiki arm checks: a surface read here is a read of the
-       slot this generation handed out, not the one before it */
+    /* a surface read here is a read of the slot this generation handed out */
     R_TikiRefreshShaders(tiki);
 
     if (!ent->e.legsLive && !ent->e.torsoLive) {
         ri.Printf(PRINT_DEVELOPER, "R_AddSkelSurfaces: model '%s' with no torso or leg anim set\n", tiki->a->name);
-        R_SkelDrop("nolive", tiki, ent);
         return;
     }
 
@@ -1317,15 +1090,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
         if (TIKI_Skel_Bones_Cursor[boneArena] + skel->numBones > MAX_SKELBONES) {
 /* the reference renderer's tr_model.cpp carries this note in full */
-            static int skelbail_rows;
-            if (PROBE_On() && PROBE_Throttle(&skelbail_rows, 4, 240)) {
-                ri.Printf(
-                    PRINT_ALL,
-                    "[VK:skelbail] arena=%d cursor=%d bones=%d model='%s' f=%d\n",
-                    boneArena, TIKI_Skel_Bones_Cursor[boneArena], skel->numBones,
-                    tiki->a->name ? tiki->a->name : "?", RB_FrameCount()
-                );
-            }
             ri.Printf(
                 PRINT_DEVELOPER, "R_AddSkelSurfaces: too many skeleton models visible on '%s'\n", tiki->a->name
             );
@@ -1335,12 +1099,10 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
     // wrote; 1.0 means "not faded" and 0.0 means fully faded out, so retail stops dead for a
     if (ent->e.fade == 0.0f) {
-        R_SkelDrop("fade0", tiki, ent);
         return;
     }
 
     if (poseCount == 0) {
-        R_SkelDrop("nopose", tiki, ent);
         return;
     }
 
@@ -1355,15 +1117,12 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
         skelFrame_t      *of;
 
         if (!R_ValidateSkelAnimAndFrame(tiki, &ent->e.anim, &ent->e.frame, &nfHdr, &nf)) {
-            R_SkelDropFrame("legs-frame", tiki, ent);
             return;
         }
 
         R_ValidateSkelAnimAndFrame(tiki, &ent->e.oldanim, &ent->e.oldframe, &ofHdr, &of);
 
         if (R_CullSkelModel(tiki, &ent->e, nf, of, tiki_scale, tiki_localorigin) == CULL_OUT) {
-            R_SkelDrop("cull", tiki, ent);
-            R_SkelCullWhere(&ent->e, nf, of, tiki_scale, tiki_entityorigin, tiki_localorigin);
             return;
         }
 
@@ -1393,8 +1152,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
                 /* the legs arm names its drop; this arm dropped a model with no
                    row at all, so a torso-only entity culled while visible was
                    invisible in the census */
-                R_SkelDrop("cull-torso", tiki, ent);
-                R_SkelCullWhere(&ent->e, tf, tof, tiki_scale, tiki_entityorigin, tiki_localorigin);
                 return;
             }
             ent->e.of = tof;
@@ -1419,7 +1176,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
         fogNum = R_CalcFogNum(fogOrigin, fogRadius);
     }
 
-    ri.TIKI_Skan_SetProbeSubject(ent->e.entityNumber, ent->e.origin);
 
     boneCount = ri.TIKI_SkelBonesFromRecords(
         tiki,
@@ -1453,7 +1209,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
 
     // no second solver -- when a live channel's record does not resolve, retail
     if (boneCount <= 0) {
-        R_SkelDrop("bones", tiki, ent);
         return;
     }
 
@@ -1538,7 +1293,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
                     iShaderNum = 0;
                 }
                 shader = tr.shaders[dsurf->hShader[iShaderNum]];
-                R_TikiShaderIdentity(dsurf, iShaderNum, shader, tiki);
             } else {
                 shader = R_GetShaderByHandle(ent->e.customShader);
             }
@@ -1549,7 +1303,8 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
             }
 
             if (!personalModel && r_shadows->integer == 2 && fogNum == 0
-                && !(ent->e.renderfx & RF_FIRST_PERSON) && (ent->e.renderfx & RF_SHADOW)
+                /* retail @0x21B20 / @0x26950 tests renderfx & 4 (RF_DEPTHHACK), not RF_FIRST_PERSON */
+                && !(ent->e.renderfx & RF_DEPTHHACK) && (ent->e.renderfx & RF_SHADOW)
                 && (ent->e.renderfx & RF_SHADOW_PRECISE) && shader->sort == (float)SS_OPAQUE) {
                 R_AddDrawSurf((surfaceType_t *)drawnSurface, tr.shadowShader, 0, 0);
             }
@@ -1579,7 +1334,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
     for (mesh = 0; mesh < tiki->numMeshes; mesh++) {
         skelHeaderGame_t *sm = ri.TIKI_GetSkel(tiki->mesh[mesh]);
         skelSurfaceGame_t *s;
-        static int s_lodRows;
 
         if (!sm) {
             continue;
@@ -1591,25 +1345,6 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
             /* the thinning witness: a surface that draws fewer verts than it owns names
                the threshold and the collapse step that cut it, so a partially drawn
                actor is a row rather than a guess */
-            if (PROBE_On() && s->pCollapse && s->numVerts > 0) {
-                int cutoff = GetLodCutoff(s, ent->lodpercentage[0]);
-
-                if (cutoff < s->numVerts) {
-                    s_lodRows++;
-                    if (s_lodRows <= 12 || (s_lodRows % 800) == 0) {
-                        ri.Printf(
-                            PRINT_ALL,
-                            "[VK:lod] f=%d model='%s' ent=%d surf='%s' verts=%d cutoff=%d "
-                            "step=%d numModelVerts=%d lodpct=%.4f\n",
-                            RB_FrameCount(), tiki->a ? tiki->a->name : "?",
-                            ent->e.entityNumber, s->name,
-                            s->numVerts, cutoff,
-                            (int)((unsigned)s->pCollapse[s->numVerts - 1] >> 16),
-                            s->numModelVerts, ent->lodpercentage[0]
-                        );
-                    }
-                }
-            }
         }
     }
 
@@ -2184,29 +1919,6 @@ void RB_SkelMesh(skelSurfaceGame_t *sf)
 
     /* what the mesh path actually wrote, for the screen-class surfaces: the
        tiki-lib census recomputes, this one reads the submitted verts */
-    if (PROBE_On() && sf->numVerts <= 8 && (int)render_count == sf->numVerts) {
-        static int s_attachRows;
-        if (PROBE_Throttle(&s_attachRows, 24, 600)) {
-            const float *pv = &tess.xyz[baseVertex][0];
-            ri.Printf(PRINT_ALL,
-                      "[VK:meshattach] model='%s' surf='%s' verts=%d bone0=%d lod=%d scale=%.4f org=(%.2f,%.2f,%.2f) "
-                      "v0=(%.3f,%.3f,%.3f) v1=(%.3f,%.3f,%.3f) v2=(%.3f,%.3f,%.3f) v3=(%.3f,%.3f,%.3f) f=%d\n",
-                      skelmodel ? skelmodel->name : "?",
-                      sf->name,
-                      sf->numVerts,
-                      sf->pVerts ? ((skelWeight_t *)((byte *)sf->pVerts + sizeof(skeletorVertex_t)))->boneIndex : -1,
-                      lod_cutoff,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.scale : 0.0f,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[0] : 0.0f,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[1] : 0.0f,
-                      backEnd.currentEntity ? backEnd.currentEntity->e.origin[2] : 0.0f,
-                      pv[0], pv[1], pv[2],
-                      pv[4], pv[5], pv[6],
-                      pv[8], pv[9], pv[10],
-                      pv[12], pv[13], pv[14],
-                      RB_FrameCount());
-        }
-    }
 
 
 #if 0
@@ -2641,7 +2353,6 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
                                     iShaderNum = 0;
                                 }
                                 shader = tr.shaders[dsurf->hShader[iShaderNum]];
-                                R_TikiShaderIdentity(dsurf, iShaderNum, shader, tiki);
                             } else {
                                 shader = R_GetShaderByHandle(ent->e.customShader);
                             }
@@ -2651,7 +2362,7 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
                             }
 
                             if (!personalModel && r_shadows->integer == 2 && fogNum == 0
-                                && !(ent->e.renderfx & RF_FIRST_PERSON) && (ent->e.renderfx & RF_SHADOW)
+                                && !(ent->e.renderfx & RF_DEPTHHACK) && (ent->e.renderfx & RF_SHADOW)
                                 && (ent->e.renderfx & RF_SHADOW_PRECISE) && shader->sort == (float)SS_OPAQUE) {
                                 R_AddDrawSurf((surfaceType_t *)surface, tr.shadowShader, 0, 0);
                             }
@@ -2928,7 +2639,6 @@ static int R_CullSkelModel(dtiki_t *tiki, refEntity_t *e, skelFrame_t *nf, skelF
     }
 
     cull = R_CullLocalBox(bounds);
-
 
 
     switch (cull) {

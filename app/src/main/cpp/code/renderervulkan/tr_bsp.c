@@ -904,7 +904,6 @@ static shader_t *ShaderForShaderNum( int shaderNum, int lightmapNum ) {
     shader = R_FindShader( dsh->shader, lightmapNum, qtrue, qtrue, qtrue, qtrue);
 
     if ( shader->defaultShader ) {
-        SMP_ShaderDefaultProbe( "bsp-surface", dsh->shader, s_worldData.name, shaderNum, lightmapNum );
         return tr.defaultShader;
     }
 

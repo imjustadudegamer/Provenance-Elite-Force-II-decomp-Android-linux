@@ -19,9 +19,6 @@ root, for more details.
 #include "snd_mixer.h"
 #include "snd_openal_new.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            Com_Printf(__VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 #define SNDMIX_PI 3.14159265358979f
 
@@ -94,10 +91,7 @@ static float    s_fDetector   = 0.0f;
 static float    s_fFadeVolume = 1.0f;
 static int      s_iLastMs     = -1;
 
-static int   s_iDialogDrops;
-static int   s_iDialogSteals;
 static int   s_iPendingVoices;
-static int   s_iSummaryMs;
 static int   s_iBusCount[SNDBUS_COUNT];
 static float s_fBusSquare[SNDBUS_COUNT];
 
@@ -595,53 +589,12 @@ void SndMix_FrameAdvance(int iNowMs, float fFadeVolume, qboolean *pbLevelsChange
         *pbMusicVolumeChanged = qtrue;
     }
 
-    s_iSummaryMs += iDeltaMs;
-    if (s_iSummaryMs >= 1000) {
-        s_iSummaryMs = 0;
-        SndMix_SummaryRow();
-    }
 }
 
-void SndMix_NoteDialogDrop(void)
-{
-    s_iDialogDrops++;
-}
 
-void SndMix_NoteDialogSteal(void)
-{
-    s_iDialogSteals++;
-}
 
 /* ------------------------------------------------------------- instruments */
 
-void SndMix_SummaryRow(void)
-{
-    static int s_iRows;
-
-    if (!PROBE_On() || !qa_sndmix->integer) {
-        return;
-    }
-
-    if (s_iRows < PROBE_ROW_CAP) {
-        s_iRows++;
-        PROBE_PRINT(
-            "[SND:mix] bus(dlg=%d mov=%d mus=%d amb=%d sfx=%d ui=%d)"
-            " det=%.3f thr=%.3f duck=%.1f%% rmsdB(dlg=%.1f sfx=%.1f mus=%.1f)"
-            " drops=%d steal=%d pend=%d anchor=%s limiter=%s\n",
-            s_iBusCount[SNDBUS_DIALOG], s_iBusCount[SNDBUS_MOVIE], s_iBusCount[SNDBUS_MUSIC],
-            s_iBusCount[SNDBUS_AMBIENT], s_iBusCount[SNDBUS_SFX], s_iBusCount[SNDBUS_UI],
-            s_fDetector, s_duckThreshold->value, s_fDuckAmount * 100.0f,
-            10.0f * log10f(s_fBusSquare[SNDBUS_DIALOG] + 1e-9f),
-            10.0f * log10f(s_fBusSquare[SNDBUS_SFX] + 1e-9f),
-            10.0f * log10f(s_fBusSquare[SNDBUS_MUSIC] + 1e-9f),
-            s_iDialogDrops, s_iDialogSteals, s_iPendingVoices,
-            s_loudnessAnchor->integer ? "on" : "off",
-            s_limiter->integer ? "on" : "off");
-    } else if (s_iRows == PROBE_ROW_CAP) {
-        s_iRows++;
-        PROBE_PRINT("[SND:mix] capped at %d rows; `qa_sndmix 0' silences\n", PROBE_ROW_CAP);
-    }
-}
 
 /* -------------------------------------------------------------------- init */
 
@@ -672,8 +625,6 @@ void SndMix_Init(void)
     memset(s_numCensus, 0, sizeof(s_numCensus));
     s_bCensusDirty = qfalse;
     s_iMusicDucking = 0;
-    s_iDialogDrops = 0;
-    s_iDialogSteals = 0;
     s_iPendingVoices = 0;
 
     Alias_CombatVolume();

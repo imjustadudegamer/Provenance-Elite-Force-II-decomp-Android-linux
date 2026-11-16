@@ -202,10 +202,6 @@ qboolean VK_PipelineCache_Open( void )
 	   a fixed line can re-arm this from evidence. */
 	pcacheGated = ( vk.driverID == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA );
 
-	if ( pcacheGated && home && home[0] && loadCvar->integer && R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:pcache", "status=driver-gated driverid=%u driverversion=0x%08x",
-					  (unsigned int)vk.driverID, (unsigned int)vk.deviceProps.driverVersion );
-	}
 
 	if ( home && home[0] && loadCvar->integer && !pcacheGated ) {
 		snprintf( path, sizeof( path ), "%s/%s", home, VK_PCACHE_FILE );
@@ -219,8 +215,7 @@ qboolean VK_PipelineCache_Open( void )
 	   the load for this install, so the next boot compiles cold and the save
 	   below writes a blob this device will not be asked to parse again. */
 	if ( VK_PCache_MarkerPresent( VK_PCACHE_LOAD_MARKER ) ) {
-		VK_Guard_Row( "VK:pcache", "status=load-crashed marker=%s blob-removed=%d",
-					  VK_PCACHE_LOAD_MARKER, home && home[0] ? 1 : 0 );
+
 		VK_PCache_MarkerClear( VK_PCACHE_LOAD_MARKER );
 		if ( home && home[0] ) {
 			VK_PCache_MarkerWrite( VK_PCACHE_DEAD_MARKER );
@@ -229,9 +224,6 @@ qboolean VK_PipelineCache_Open( void )
 		path[0] = '\0';
 		fh = NULL;
 	} else if ( VK_PCache_MarkerPresent( VK_PCACHE_DEAD_MARKER ) ) {
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:pcache", "status=load-retired marker=%s", VK_PCACHE_DEAD_MARKER );
-		}
 		path[0] = '\0';
 		fh = NULL;
 	}
@@ -281,15 +273,9 @@ qboolean VK_PipelineCache_Open( void )
 
 	if ( vk.pipelineCacheForeign ) {
 		/* an on-disk cache the device cannot use is a failed load: it stays loud */
-		VK_Guard_Row( "VK:pcache", "status=foreign path=%s size=%u device=%04x:%04x",
-					  path, header.dataSize, header.vendorID, header.deviceID );
+
 	} else if ( vk.pipelineCacheLoaded ) {
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:pcache", "status=loaded path=%s bytes=%u", path,
-						  (unsigned int)vk.pipelineCacheBytes );
-		}
-	} else if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:pcache", "status=cold path=%s", path );
+		return qtrue;
 	}
 
 	return qtrue;
@@ -379,9 +365,6 @@ void VK_PipelineCache_Save( void )
 
 	free( blob );
 
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:pcache", "status=saved path=%s bytes=%u", path, (unsigned int)bytes );
-	}
 }
 
 void VK_PipelineCache_Close( void )

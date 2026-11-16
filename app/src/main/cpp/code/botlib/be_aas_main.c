@@ -119,7 +119,6 @@ int AAS_StartFrame(float time)
 		LibVarSet("saveroutingcache", "0");
 	} 
 	aasworld.numframes++;
-	LIMIT_RouteFrame();
 	return BLERR_NOERROR;
 } 
 float AAS_Time(void)

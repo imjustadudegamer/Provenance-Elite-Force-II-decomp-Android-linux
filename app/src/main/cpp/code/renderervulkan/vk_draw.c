@@ -114,13 +114,11 @@ void VK_Draw_BindPipeline( VkCommandBuffer cmd, VkPipeline pipeline )
 	int slot = VK_Draw_BindSlot();
 	int frame = RB_FrameCount();
 
-	VK_WalkStat_Req( VK_ELIDE_PIPE );
 	/* The command buffer is part of the key: a frame slot maps to one buffer for
 	   the walk, but the bring-up paths record into their own, and state does not
 	   carry between buffers. */
 	if ( s_boundPipelineFrame[slot] == frame && s_boundPipeCmd[slot] == cmd
 		 && s_boundPipeline[slot] == pipeline ) {
-		VK_WalkStat_Count( VK_ELIDE_PIPE );
 		return;
 	}
 	qvk.CmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
@@ -137,12 +135,10 @@ void VK_Draw_BindSet( VkCommandBuffer cmd, VkPipelineLayout layout, VkDescriptor
 	int slot = VK_Draw_BindSlot();
 	int frame = RB_FrameCount();
 
-	VK_WalkStat_Req( VK_ELIDE_SET );
 	if ( s_boundSetFrame[slot] == frame && s_boundSetCmd[slot] == cmd
 		 && s_boundSetLayout[slot] == layout
 		 && s_boundSet[slot] == set && s_boundSetOffset[slot] == dynamicOffset
 		 && s_boundSetDynCount[slot] == dynamicCount ) {
-		VK_WalkStat_Count( VK_ELIDE_SET );
 		return;
 	}
 	if ( dynamicCount > 1 ) {
@@ -672,11 +668,6 @@ qboolean VK_Draw_Init( void )
 		vk_sets[i].set = VK_NULL_HANDLE;
 	}
 
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:draw", "ready pipelines=%d sets=%d vertex-bytes=%d",
-					  VK_PIPELINE_SLOTS, VK_SET_SLOTS, VK_TESS_VERTEX_BYTES );
-	}
-
 	return qtrue;
 }
 
@@ -771,7 +762,6 @@ VkPipeline VK_Draw_Pipeline( const vkPipelineKey_t *key )
 
 	vk_pipelines[i].key = *key;
 	vk_pipelines[i].used = qtrue;
-	VK_Life_NoteCreate( VK_LIFE_PIPELINE );
 	if ( i == vk_numPipelines ) {
 		vk_numPipelines = i + 1;
 	}
@@ -841,14 +831,6 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 			   that used to own the handle, so it is rewritten, never reused */
 			if ( vk_sets[at].gen != s_setGen ) {
 				s_setStaleRows++;
-				if ( R_ProbeMarkOn() && ( s_setStaleRows <= 8 || ( s_setStaleRows % 256 ) == 0 ) ) {
-					VK_Guard_Row( "VK:setgen",
-								  "set=%d view=0x%llx sampler=0x%llx gen=%u now=%u n=%d f=%d",
-								  at, (unsigned long long)(uintptr_t)view,
-								  (unsigned long long)(uintptr_t)sampler,
-								  vk_sets[at].gen, s_setGen, s_setStaleRows,
-								  RB_FrameCount() );
-				}
 				VK_Draw_WriteSet( at, view, sampler );
 			}
 			set = vk_sets[at].set;
@@ -882,7 +864,6 @@ qboolean VK_Draw_BindTexture( VkCommandBuffer cmd, VkImageView view, VkSampler s
 		}
 
 		vk_sets[i].used = qtrue;
-		VK_Life_NoteCreate( VK_LIFE_SET );
 		VK_Draw_WriteSet( i, view, sampler );
 
 		if ( i == vk_numSets ) {
@@ -1000,16 +981,6 @@ void VK_Draw_Set2D( VkCommandBuffer cmd, int x, int y, int w, int h,
 	/* the UI is a 2D window and nothing else: a menu that never sets one is not
 	   drawing at all, and a menu that sets one and still shows no art is a walk
 	   problem -- this row is the difference */
-	if ( R_ProbeMarkOn() ) {
-		static int	s_winRows;
-
-		s_winRows++;
-		if ( s_winRows <= 12 || ( s_winRows % 600 ) == 0 ) {
-			VK_Guard_Row( "VK:2dwin", "m11=%.4f m15=%.4f win=%.0f,%.0f f=%d",
-						  m[11], m[15], vk_current.ortho[0], vk_current.ortho[5],
-						  RB_FrameCount() );
-		}
-	}
 	}
 
 	/* The reference's RB_2D_SetWindow takes the 2D depth gate here, after the
@@ -1364,7 +1335,6 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 	offsets[0] = vertexOffset;
 	offsets[1] = 0;
 
-	VK_WalkStat_Req( VK_ELIDE_INDEX );	/* one request per call, two binds may elide */
 
 	buffers[0] = VK_VertexRing_Buffer();
 	buffers[1] = VK_VertexRing_IndexBuffer();
@@ -1383,7 +1353,6 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 			s_vertexBoundFrame[bslot]  = frame;
 			s_vertexBoundOffset[bslot] = vertexOffset;
 		} else if ( buffers[0] != VK_NULL_HANDLE ) {
-			VK_WalkStat_Count( VK_ELIDE_INDEX );
 		}
 	}
 
@@ -1398,7 +1367,6 @@ void VK_Draw_BindRingOffset( VkCommandBuffer cmd, VkDeviceSize vertexOffset )
 		s_indexBound[slot] = buffers[1];
 		s_indexBoundFrame[slot] = frame;
 	} else if ( buffers[1] != VK_NULL_HANDLE ) {
-		VK_WalkStat_Count( VK_ELIDE_INDEX );
 	}
 }
 

@@ -69,16 +69,13 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VK_DebugCallback(
 	VkDebugUtilsMessageTypeFlagsEXT types,
 	const VkDebugUtilsMessengerCallbackDataEXT *data, void *userData )
 {
-	const char *kind = "other";
 	uint32_t	id = data ? (uint32_t)data->messageIdNumber : 0u;
 	int			i;
 
 	(void)userData;
 
 	if ( types & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT ) {
-		kind = "validation";
 	} else if ( types & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT ) {
-		kind = "performance";
 	}
 
 	s_validTotal++;
@@ -92,8 +89,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VK_DebugCallback(
 	if ( i < s_validIds ) {
 		s_validHits[i]++;
 		if ( s_validHits[i] < 4 || ( s_validHits[i] % 4096 ) == 0 ) {
-			VK_Guard_Row( "VK:valid", "kind=%s severity=%d code=%d hits=%d total=%d repeat=1",
-						  kind, (int)severity, (int)id, s_validHits[i], s_validTotal );
+
 		}
 		return VK_FALSE;
 	}
@@ -103,10 +99,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VK_DebugCallback(
 
 		if ( !s_idCapRow ) {
 			s_idCapRow = qtrue;
-			VK_Guard_Row( "VK:valid",
-						  "kind=%s severity=%d code=%d distinct=%d+ (id table full) total=%d -- "
-						  "further ids are counted, not named",
-						  kind, (int)severity, (int)id, VK_VALID_ID_MAX, s_validTotal );
+
 		}
 		return VK_FALSE;
 	}
@@ -116,14 +109,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VK_DebugCallback(
 	s_validIds++;
 
 	/* the first occurrence of a distinct message is the diagnosis: print it whole */
-	VK_Guard_Row( "VK:valid",
-				  "kind=%s severity=%d code=%d distinct=%d total=%d \"%s\"",
-				  kind,
-				  (int)severity,
-				  (int)id,
-				  s_validIds,
-				  s_validTotal,
-				  data->pMessage ? data->pMessage : "" );
+
 
 	return VK_FALSE;
 }
@@ -199,7 +185,7 @@ void VK_Debug_Init( void )
 	if ( VK_Guard_Result( VK_GSITE_INSTANCE,
 						  qvk.CreateDebugUtilsMessengerEXT( vk.instance, &createInfo, NULL, &vk_debugMessenger ),
 						  "vkCreateDebugUtilsMessengerEXT" ) ) {
-		VK_Guard_Row( "VK:valid", "messenger=armed layers=%u", vk_numRequestedLayers );
+
 	}
 }
 
@@ -236,19 +222,8 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 
 	if ( qvk.EnumerateInstanceVersion ) {
 		qvk.EnumerateInstanceVersion( &vk.instanceApiVersion );
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:loader", "lib=%s runtime=%u.%u.%u",
-						  VK_Procs_LoaderName(),
-						  VK_API_VERSION_MAJOR( vk.instanceApiVersion ),
-						  VK_API_VERSION_MINOR( vk.instanceApiVersion ),
-						  VK_API_VERSION_PATCH( vk.instanceApiVersion ) );
-		}
 	} else {
 		vk.instanceApiVersion = VK_API_VERSION_1_0;
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:loader", "lib=%s runtime=1.0.0 enumerate-version-absent",
-						  VK_Procs_LoaderName() );
-		}
 	}
 
 	/* The loader's own report is the ceiling for the request.  A loader that
@@ -308,10 +283,6 @@ qboolean VK_Instance_Create( const char *const *surfaceExtensions, int numSurfac
 		char loaderName[32];
 		VK_ApiName( vk.instanceApiVersion, apiName, sizeof( apiName ) );
 		VK_ApiName( loaderApiVersion, loaderName, sizeof( loaderName ) );
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:instance", "api=%s loader=%s extensions=%u layers=%u", apiName, loaderName,
-						  numExtensions, vk_numRequestedLayers );
-		}
 	}
 
 	VK_Debug_Init();
@@ -490,19 +461,6 @@ static void VK_LogDevice( const vkPhysDevice_t *dev, int score, int chosen )
 		snprintf( driverInfo, sizeof( driverInfo ), "driver=0x%x", dev->props.driverVersion );
 	}
 
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:device",
-					  "%s name=\"%s\" type=%d api=%s %s mdi=%d di=%d bindless=%d score=%d",
-					  chosen ? "chosen" : "cand",
-					  dev->props.deviceName,
-					  (int)dev->props.deviceType,
-					  apiName,
-					  driverInfo,
-					  dev->hasMultiDrawIndirect ? 1 : 0,
-					  dev->hasDescriptorIndexing ? 1 : 0,
-					  dev->supportsBindless ? 1 : 0,
-					  score );
-	}
 }
 
 static void VK_QueryFamilies( vkPhysDevice_t *dev )
@@ -624,10 +582,6 @@ int VK_Device_Select( void )
 
 	if ( !vk.multiDrawIndirect ) {
 		/* capability note, not a fault: master gate */
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:guard",
-						  "site=quirk detail=\"multiDrawIndirect absent (Mali class) - not required, not enabled\" result=success(0) n=1" );
-		}
 	}
 
 	free( handles );
@@ -697,8 +651,7 @@ qboolean VK_Device_Create( void )
 	result = qvk.CreateDevice( vk.physicalDevice, &createInfo, NULL, &vk.device );
 
 	if ( result != VK_SUCCESS && vk.descriptorIndexing ) {
-		VK_Guard_Row( "VK:guard", "site=device detail=\"descriptor-indexing chain refused, retrying without\" result=%s(%d) n=1",
-					  VK_Guard_ResultName( result ), (int)result );
+
 
 		features2.pNext = NULL;
 		if ( vk.descriptorIndexingExt ) {
@@ -725,15 +678,6 @@ qboolean VK_Device_Create( void )
 	{
 		char apiName[32];
 		VK_ApiName( vk.deviceApiVersion, apiName, sizeof( apiName ) );
-		if ( R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:device", "created name=\"%s\" api=%s graphics=%u present=%u queues=%u bindless=%d",
-						  vk.deviceProps.deviceName,
-						  apiName,
-						  vk.graphicsFamily,
-						  vk.presentFamily,
-						  numQueues,
-						  vk.bindless ? 1 : 0 );
-		}
 	}
 
 	return qtrue;

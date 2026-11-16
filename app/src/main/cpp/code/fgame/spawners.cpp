@@ -29,17 +29,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_phys.h"
 #include "g_spawn.h"
 #include "entity.h"
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
-
-
-
-
-
-
-
-
 
 
 Event EV_Spawn_ModelName
@@ -70,32 +59,12 @@ Event EV_SpawnChain_Use3rdPersonCamera
 );
 
 
-
-
 Event EV_SpawnOutOfSight_CheckFOV (	"checkFOV",
 	EV_DEFAULT,
 	"B",
 	"boolean",
 	"Use checkFOV to indicate that it's OK to spawn as long as the spawner is not in the player's FOV."
 );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 Event EV_Spawn_SpawnTargetName (    "spawntargetname",
@@ -424,19 +393,6 @@ void Spawn::DoSpawn(Event *ev)
     Entity   *spawn;
     SpawnArgs args;
 
-    {
-        static int uivk_dfx_n;
-        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 64, 64)) {
-            PROBE("DFX:spawn", "ent=%d targetname='%s' nmodels=%d first='%s' spawntargetname='%s' displayeffect='%s'\n",
-                       entnum,
-                       targetname.c_str(),
-                       _modelNames.NumObjects(),
-                       _modelNames.NumObjects() > 0 ? _modelNames.ObjectAt(1).c_str() : "",
-                       _spawnTargetName.c_str(),
-                       _effectType.c_str());
-        }
-    }
-
     if (_modelNames.NumObjects() == 0) {
         warning("Spawn", "No models set");
     }
@@ -535,7 +491,6 @@ void Spawn::setCheckForSpace(Event *ev)
 {
     _checkForSpace = true;
 }
-
 
 
 Event EV_RandomSpawn_MaxTime (    "max_time",
@@ -679,7 +634,6 @@ void SpawnOutOfSight::DoSpawn(Event *ev)
 
     Spawn::DoSpawn(ev);
 }
-
 
 
 CLASS_DECLARATION(Spawn, SpawnChain, "func_spawnchain") {

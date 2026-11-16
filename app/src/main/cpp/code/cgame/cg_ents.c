@@ -25,13 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cg_local.h"
 #include "cg_radar.h"
 
-#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define WIDGET_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_widget.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
@@ -304,53 +298,7 @@ void CG_Sprite(centity_t *cent)
         if (!parent) {
             cgi.Com_WDPrintf("CG_Sprite: Could not find parent entity\n");
 
-            {
-                static int widget_orphan;
-
-                if (WIDGET_On() && WIDGET_Throttle(&widget_orphan, 4, 32)) {
-                    WIDGET_A1_PROBE(
-                        "tag:orphan",
-                        "child=%d etype=%d modelindex=%d parent=%d tagnum=%d use_angles=%d cg.time=%d\n",
-                        cent->currentState.number,
-                        cent->currentState.eType,
-                        cent->currentState.modelindex,
-                        s1->parent,
-                        s1->tag_num & 0x3FF,
-                        s1->attach_use_angles,
-                        cg.time);
-                }
-            }
             return;
-        }
-
-        {
-            static int widget_att;
-
-            if (WIDGET_On() && WIDGET_Throttle(&widget_att, 4, 64)) {
-                orientation_t widget_or;
-                int           widget_lerp = r_lerpmodels->integer;
-
-                if (widget_lerp) {
-                    cgi.TIKI_Tag_LerpOrientation(&widget_or, cgi.R_Model_GetHandle(parent->hModel), parent,
-                                                 s1->tag_num & 0x3FF);
-                } else {
-                    VectorClear(widget_or.origin);
-                }
-
-                WIDGET_A1_PROBE(
-                    "tag:attach",
-                    "child=%d parent=%d tagnum=%d lerp=%d or=(%.1f,%.1f,%.1f) "
-                    "porg=(%.1f,%.1f,%.1f) corg=(%.1f,%.1f,%.1f) plegslive=%d ptorsolive=%d\n",
-                    cent->currentState.number,
-                    s1->parent,
-                    s1->tag_num & 0x3FF,
-                    widget_lerp,
-                    widget_or.origin[0], widget_or.origin[1], widget_or.origin[2],
-                    parent->origin[0], parent->origin[1], parent->origin[2],
-                    cent->lerpOrigin[0], cent->lerpOrigin[1], cent->lerpOrigin[2],
-                    parent->legsLive,
-                    parent->torsoLive);
-            }
         }
 
         CG_AttachEntity(&ent, parent, cgi.R_Model_GetHandle(parent->hModel),
@@ -382,7 +330,6 @@ void CG_Sprite(centity_t *cent)
     }
 }
 
-static qboolean CG_DecalProbeOn( void );
 
 void CG_General(centity_t *cent)
 {
@@ -471,23 +418,6 @@ void CG_General(centity_t *cent)
 
     /* the first refEntity the cgame hands the scene for a portal-only draw: if the
        viewscreen backdrop is missing from the sub-view this row says it never got here */
-    if ( ( ent.renderfx & RF_PORTALENTITY ) && CG_DecalProbeOn() ) {
-        static int portal_rows;
-
-        portal_rows++;
-        if ( portal_rows <= 16 || ( portal_rows % 240 ) == 0 ) {
-            UIVK_PROBE(
-                "DOCC:portal",
-                "ent=%d rf=0x%x hide=%d model=%d h=0x%x org=(%.1f,%.1f,%.1f)\n",
-                s1->number,
-                ent.renderfx,
-                ( ent.renderfx & RF_DONTDRAW ) ? 1 : 0,
-                s1->modelindex,
-                ent.hModel,
-                ent.origin[0], ent.origin[1], ent.origin[2]
-            );
-        }
-    }
 
     ent.tiki         = CG_TikiFromHandle(cgi.R_Model_GetHandle(cgs.model_draw[s1->modelindex]));
     ent.actionWeight = 1.0;
@@ -619,30 +549,6 @@ void CG_Beam(centity_t *cent)
     );
 }
 
-/* qa_probe is desktop-only: the renderer's device property arms here too. */
-static qboolean CG_DecalProbeOn( void )
-{
-    static int cached = -1;
-
-    if ( PROBE_ReleaseSilent() ) {
-        return qfalse;
-    }
-
-    if ( cached < 0 ) {
-        cached = PROBE_On() ? 1 : 0;
-#ifdef __ANDROID__
-        if ( !cached ) {
-            char val[PROP_VALUE_MAX];
-
-            if ( __system_property_get( "log.tag.ProvenanceEF2", val ) > 0
-                 && val[0] != '\0' && Q_stricmp( val, "0" ) && Q_stricmp( val, "false" ) ) {
-                cached = 1;
-            }
-        }
-#endif
-    }
-    return cached ? qtrue : qfalse;
-}
 
 void CG_Decal(centity_t *cent)
 
@@ -656,25 +562,6 @@ void CG_Decal(centity_t *cent)
     shader = cgi.R_RegisterShader(CG_ConfigString(CS_IMAGES + s1->tag_num));
     ByteToDir(s1->surfaces[0], dir);
 
-    if ( CG_DecalProbeOn() ) {
-        static int decal_rows;
-
-        decal_rows++;
-        if ( decal_rows <= 64 || ( decal_rows % 240 ) == 0 ) {
-            UIVK_PROBE(
-                "DOCC:decal",
-                "ent=%d org=(%.1f,%.1f,%.1f) dirbyte=%d dir=(%.3f,%.3f,%.3f) scale=%f (0x%08x) roll=%.1f shader='%s'\n",
-                cent->currentState.number,
-                s1->origin[0], s1->origin[1], s1->origin[2],
-                s1->surfaces[0],
-                dir[0], dir[1], dir[2],
-                s1->scale,
-                *(unsigned int *)&s1->scale,
-                s1->angles[2],
-                CG_ConfigString(CS_IMAGES + s1->tag_num)
-            );
-        }
-    }
     CG_ImpactMark(
         shader,
         s1->origin,
@@ -832,7 +719,6 @@ void CG_CalcEntityLerpPositions(centity_t *cent)
         static int widget_k1_apostype[ENTITYNUM_MAX_NORMAL];
         static int widget_k1_nets[ENTITYNUM_MAX_NORMAL];
         static int widget_k1_angs[ENTITYNUM_MAX_NORMAL];
-        static int widget_k1_ctr[8];
         int        slot = cent->currentState.number;
         int        nets, angs;
 
@@ -850,55 +736,6 @@ void CG_CalcEntityLerpPositions(centity_t *cent)
                 widget_k1_nets[slot]  = nets;
                 widget_k1_angs[slot]  = angs;
 
-                if (WIDGET_On() && WIDGET_Throttle(&widget_k1_ctr[cent->currentState.number & 7], 40, 128)) {
-                    WIDGET_K1_PROBE(
-                        "lerp",
-                        "ent=%d etype=%d interp=%d pos{t=%d tm=%d dur=%d base=(%.1f,%.1f,%.1f) d=(%.1f,%.1f,%.1f)}"
-                        " apos{t=%d tm=%d dur=%d base=(%.1f,%.1f,%.1f) d=(%.1f,%.1f,%.1f)}"
-                        " angles=(%.1f,%.1f,%.1f) netang=(%.1f,%.1f,%.1f)"
-                        " org=(%.1f,%.1f,%.1f) netorg=(%.1f,%.1f,%.1f)"
-                        " -> lerped org=(%.1f,%.1f,%.1f) ang=(%.1f,%.1f,%.1f)\n",
-                        cent->currentState.number,
-                        cent->currentState.eType,
-                        cent->interpolate ? 1 : 0,
-                        cent->currentState.pos.trType,
-                        cent->currentState.pos.trTime,
-                        cent->currentState.pos.trDuration,
-                        cent->currentState.pos.trBase[0],
-                        cent->currentState.pos.trBase[1],
-                        cent->currentState.pos.trBase[2],
-                        cent->currentState.pos.trDelta[0],
-                        cent->currentState.pos.trDelta[1],
-                        cent->currentState.pos.trDelta[2],
-                        cent->currentState.apos.trType,
-                        cent->currentState.apos.trTime,
-                        cent->currentState.apos.trDuration,
-                        cent->currentState.apos.trBase[0],
-                        cent->currentState.apos.trBase[1],
-                        cent->currentState.apos.trBase[2],
-                        cent->currentState.apos.trDelta[0],
-                        cent->currentState.apos.trDelta[1],
-                        cent->currentState.apos.trDelta[2],
-                        cent->currentState.angles[0],
-                        cent->currentState.angles[1],
-                        cent->currentState.angles[2],
-                        cent->currentState.netangles[0],
-                        cent->currentState.netangles[1],
-                        cent->currentState.netangles[2],
-                        cent->currentState.origin[0],
-                        cent->currentState.origin[1],
-                        cent->currentState.origin[2],
-                        cent->currentState.netorigin[0],
-                        cent->currentState.netorigin[1],
-                        cent->currentState.netorigin[2],
-                        cent->lerpOrigin[0],
-                        cent->lerpOrigin[1],
-                        cent->lerpOrigin[2],
-                        cent->lerpAngles[0],
-                        cent->lerpAngles[1],
-                        cent->lerpAngles[2]
-                    );
-                }
             }
         }
     }

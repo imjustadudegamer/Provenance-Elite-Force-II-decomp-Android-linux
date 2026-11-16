@@ -102,7 +102,7 @@ public:
     virtual qboolean  KeyEvent(int key, unsigned int time) override;
     void              CreateMenus(void);
     void              sortWidgetContainers(void);
-    // PAINT TEMP PROBE accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  The paint-order
+    // paint-order accessors accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  The paint-order
     int               GetChildCount(void);
     UIWidget         *GetChild(int index);
     UIReggedMaterial *RegisterShader(const str& name);
@@ -137,10 +137,8 @@ public:
 
     /* UIWidget::KeyEvent stops only at this window manager, so a parent chain that
        loops is a dispatch that never returns.  One row per layout load. */
-    void              CensusParentChains(void);
 
 private:
-    void              CensusParentChain(UIWidget *w, int depth, int *nodes, int *bad);
 };
 
 extern Event W_MouseExited;

@@ -127,19 +127,6 @@ static void VK_Shadow_NoteVolume( int quads )
 	s_frameQuads += quads;
 }
 
-void VK_Shadow_FrameCounters( int *volumes, int *quads, int *overlayVerts )
-{
-	if ( volumes ) {
-		*volumes = s_frameVolumes;
-	}
-	if ( quads ) {
-		*quads = s_frameQuads;
-	}
-	if ( overlayVerts ) {
-		*overlayVerts = s_frameOverlayVerts;
-	}
-}
-
 /* the per-view split as text: "v101=2/2500,v103=1/1200" pairs a plane's texels
    with the view whose walk could have put them there */
 const char *VK_Shadow_ViewCensusText( void )
@@ -276,7 +263,6 @@ void R_RenderShadowEdges( void ) {
 			}
 
 			if ( hit[ 1 ] == 0 ) {
-				BE_Bump( BE_FAM_DS, BE_DSC_edges, 1 );
 				if ( !s_edgeQuads ) {
 					vec3_t	d1, d2, n;
 					float	area;
@@ -311,8 +297,6 @@ void R_RenderShadowEdges( void ) {
 void RB_ShadowTessEnd( void ) {
 	int		i;
 	int		numTris;
-	int		shadowBuildT0;
-	int		numFacingTris = 0;
 	int		runsBefore = 0, vertsBefore = 0;
 	qboolean	armTest = qfalse;
 	int			armFunc = 0, armRef = 0, armFail = 0, armZFail = 0, armPass = 0, armCull = 0;
@@ -363,7 +347,6 @@ void RB_ShadowTessEnd( void ) {
 	Com_Memset( numEdgeDefs, 0, 4 * tess.numVertexes );
 
 	numTris = tess.numIndexes / 3;
-	shadowBuildT0 = BE_On() ? BE_Microseconds() : 0;
 	for ( i = 0 ; i < numTris ; i++ ) {
 		int		i1, i2, i3;
 		vec3_t	d1, d2, normal;
@@ -385,7 +368,6 @@ void RB_ShadowTessEnd( void ) {
 		d = DotProduct( normal, lightDir );
 		if ( d > 0 ) {
 			facing[ i ] = 1;
-			numFacingTris++;
 		} else {
 			facing[ i ] = 0;
 		}
@@ -404,25 +386,6 @@ void RB_ShadowTessEnd( void ) {
 	   under it wraps the caster's model space around the eye and arms the whole viewport.  No shadow draw surf is registered for such a
 	   slot, so this pair is the draw surf and the entity disagreeing, and it refuses the volume rather than painting the frame. */
 	if ( !backEnd.currentEntity || backEnd.currentEntity->e.reType != RT_MODEL || VK_Shadow_OriIsView() ) {
-#ifndef PROBE_BUILD_SILENT
-		if ( R_ProbeMarkOn() ) {
-			static int	s_rows;
-
-			s_rows++;
-			if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
-				VK_Guard_Row( "VK:shadow",
-							  "site=refuse reType=%d slot=%d nent=%d ent=%d vw=%.1f,%.1f,%.1f f=%d",
-							  backEnd.currentEntity ? (int)backEnd.currentEntity->e.reType : -1,
-							  VK_Shadow_EntitySlot(),
-							  backEnd.refdef.num_entities,
-							  backEnd.currentEntity ? (int)backEnd.currentEntity->e.entityNumber : -1,
-							  backEnd.viewParms.world.modelMatrix[12],
-							  backEnd.viewParms.world.modelMatrix[13],
-							  backEnd.viewParms.world.modelMatrix[14],
-							  RB_FrameCount() );
-			}
-		}
-#endif
 		return;
 	}
 
@@ -432,27 +395,6 @@ void RB_ShadowTessEnd( void ) {
 	VK_State( VKS_SRCBLEND_ONE | VKS_DSTBLEND_ZERO );
 	RB_ImmColor3f( 0.2f, 0.2f, 0.2f );
 
-#ifndef PROBE_BUILD_SILENT
-	if ( r_shadowVolume && r_shadowVolume->integer ) {
-		/* the picture the numbers cannot give: the volume with colour writes on, no cull and no stencil test, so a wrong extrusion,
-		   a wrong matrix or a degenerate quad shows as the shape it is instead of as a count in a row */
-		VK_StencilState( qfalse, VK_ALWAYS, 0, 255 );
-		vkColorMask( VK_TRUE, VK_TRUE, VK_TRUE, VK_TRUE );
-		RB_ImmColor3f( 0.0f, 1.0f, 1.0f );
-		vkDisable( VK_CULL_FACE );
-		vkState.faceCulling = -1;
-
-		s_edgeQuads = 0;
-		R_RenderShadowEdges();
-
-		VK_Shadow_NoteVolume( s_edgeQuads );
-
-		vkEnable( VK_CULL_FACE );
-		vkState.faceCulling = -1;
-		RB_ImmColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
-		return;
-	}
-#endif
 
 	vkColorMask( VK_FALSE, VK_FALSE, VK_FALSE, VK_FALSE );
 
@@ -499,86 +441,6 @@ void RB_ShadowTessEnd( void ) {
 
 	VK_Shadow_NoteVolume( s_edgeQuads );
 
-	if ( R_ProbeMarkOn() ) {
-		static int	s_rows;
-
-		s_rows++;
-		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
-			/* the arm this call left on the volumes, read back rather than restated:
-			   the stencil fields and both passes' built pipeline keys are the only
-			   witnesses of "counted the face retail keeps" */
-			vkPipelineKey_t	kInc, kDec;
-			char		incText[160], decText[160];
-			float		rN, rF;
-			int			commitRuns, commitVerts;
-			const float	*pushM = RB_ImmPushedMatrix();
-			const float	*v0 = tess.xyz[0];
-			const float	*ori = backEnd.ori.modelMatrix;
-			const float	*eorg = backEnd.currentEntity ? backEnd.currentEntity->e.origin : vec3_origin;
-			const float	*vorg = backEnd.viewParms.ori.origin;
-			float	stageM[16];
-			float	wpush, wstage;
-			float	eye;
-
-			/* w of the volume's first vertex through the matrix the run pushed and
-			   through the one the caster's own surfaces were tessellated with: two
-			   numbers that have to agree, or the volume sits in another space */
-			VK_Mat4Mul( stageM, RB_GetProjectionMatrix(), RB_GetModelViewMatrix() );
-			wpush  = pushM[3] * v0[0] + pushM[7] * v0[1] + pushM[11] * v0[2] + pushM[15];
-			wstage = stageM[3] * v0[0] + stageM[7] * v0[1] + stageM[11] * v0[2] + stageM[15];
-			eye = Distance( eorg, vorg );
-
-			VK_Draw_DepthRangeLast( &rN, &rF );
-			/* VK_Imm_KeyGet(0) is the run opened last, i.e. the DECR pass */
-			incText[0] = decText[0] = 0;
-			if ( VK_Imm_KeyGet( 1, &kInc ) ) {
-				VK_Draw_KeyText( &kInc, incText, sizeof( incText ) );
-			}
-			if ( VK_Imm_KeyGet( 0, &kDec ) ) {
-				VK_Draw_KeyText( &kDec, decText, sizeof( decText ) );
-			}
-			{
-				int	runsAfter = 0, vertsAfter = 0;
-
-				VK_Imm_ShadowCommits( &runsAfter, &vertsAfter );
-				commitRuns  = runsAfter - runsBefore;
-				commitVerts = vertsAfter - vertsBefore;
-			}
-
-			/* pv/sky/vc/vp name the view this volume belongs to, and eye its caster's
-			   distance from the camera: a plane armed over the whole viewport is a
-			   caster at the eye only if this row's eye says so */
-			VK_Guard_Row( "VK:shadow",
-						  "site=tess ent=%d lightdir=%.3f,%.3f,%.3f verts=%d idx=%d facing=%d edges=%d "
-						  "quarter=%.3f stencil=%d func=%d ref=%d mask=%u ops=%d,%d,%d cull=%d "
-						  "range=%.3f..%.3f commit=%d,%d inc[%s] dec[%s] "
-						  "mv=%.1f,%.1f,%.1f wpush=%.1f wstage=%.1f "
-						  "pv=%d sky=%d vc=%d vp=%d,%d,%d,%d vorg=%.1f,%.1f,%.1f eorg=%.1f,%.1f,%.1f eye=%.1f "
-						  "reType=%d slot=%d nent=%d f=%d",
-						  ( backEnd.currentEntity && backEnd.currentEntity->e.entityNumber >= 0 )
-							? backEnd.currentEntity->e.entityNumber : -1,
-						  lightDir[0], lightDir[1], lightDir[2],
-						  tess.numVertexes, tess.numIndexes, numFacingTris, s_edgeQuads,
-						  s_firstQuadArea, armTest ? 1 : 0,
-						  armFunc, armRef, (unsigned)armMask,
-						  armFail, armZFail, armPass, armCull,
-						  rN, rF, commitRuns, commitVerts, incText, decText,
-						  ori[12], ori[13], ori[14], wpush, wstage,
-						  backEnd.viewParms.isPortal ? 1 : 0,
-						  backEnd.viewParms.isPortalSky ? 1 : 0,
-						  tr.viewCount,
-						  backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
-						  backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight,
-						  vorg[0], vorg[1], vorg[2],
-						  eorg[0], eorg[1], eorg[2], eye,
-						  (int)backEnd.currentEntity->e.reType, VK_Shadow_EntitySlot(),
-						  backEnd.refdef.num_entities, RB_FrameCount() );
-		}
-	}
-
-	if ( BE_On() ) {
-		BE_Sub( BE_FAM_DS, BE_DSZ_sub_shadow, BE_Microseconds() - shadowBuildT0 );
-	}
 }
 
 void RB_ShadowFinish( void ) {
@@ -594,11 +456,6 @@ void RB_ShadowFinish( void ) {
 	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
 		return;
 	}
-#ifndef PROBE_BUILD_SILENT
-	if ( r_shadowVolume && r_shadowVolume->integer ) {
-		return;	/* the visualisation run is the picture; this overlay would multiply it down */
-	}
-#endif
 	VK_StencilState( qtrue, VK_NOTEQUAL, 0, 255 );
 
 	RB_ClipPlane_Disable();
@@ -633,51 +490,6 @@ void RB_ShadowFinish( void ) {
 	   the volume: the vertices it committed, the topology it took and the state
 	   its key carries are what tell "never drawn" from "drawn over an empty
 	   stencil" on a boot where nothing visibly darkened */
-	if ( R_ProbeMarkOn() ) {
-		static int	s_rows;
-
-		s_rows++;
-		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
-			qboolean	stTest;
-			int			stFunc, stRef, stFail, stZFail, stPass, stCull;
-			unsigned	stMask, stColor;
-			const float	*m = RB_ImmPushedMatrix();
-			float		clip[4];
-			int			r, c, inside;
-			float		ndc[3];
-
-			VK_Shade_ShadowState( &stTest, &stFunc, &stRef, &stMask, &stFail,
-								  &stZFail, &stPass, &stCull, &stColor );
-
-			/* the quad's centre through the matrix the run pushed: a run whose own centre lands outside the clip volume paints
-			   nothing, which reads exactly like an empty stencil plane */
-			{
-				const float	centre[4] = { 0.0f, 0.0f, -10.0f, 1.0f };
-
-				for ( r = 0; r < 4; r++ ) {
-					clip[r] = 0.0f;
-					for ( c = 0; c < 4; c++ ) {
-						clip[r] += m[c * 4 + r] * centre[c];
-					}
-				}
-			}
-			for ( r = 0; r < 3; r++ ) {
-				ndc[r] = ( clip[3] != 0.0f ) ? clip[r] / clip[3] : 0.0f;
-			}
-			inside = ( clip[3] > 0.0f && ndc[0] >= -1.0f && ndc[0] <= 1.0f
-					   && ndc[1] >= -1.0f && ndc[1] <= 1.0f
-					   && ndc[2] >= 0.0f && ndc[2] <= 1.0f ) ? 1 : 0;
-
-			VK_Guard_Row( "VK:shadow",
-						  "site=finish verts=%d topo=%d stencil=%d func=%d ref=%d "
-						  "ops=%d,%d,%d cull=%d cmask=0x%x clip=%.3f,%.3f,%.3f in=%d f=%d",
-						  ringAfter - ringBefore, VK_IMM_TRIANGLE_FAN,
-						  stTest ? 1 : 0, stFunc, stRef, stFail, stZFail, stPass,
-						  stCull, stColor, ndc[0], ndc[1], ndc[2], inside,
-						  RB_FrameCount() );
-		}
-	}
-
 	RB_ImmColor4f( 1, 1, 1, 1 );
 	VK_StencilState( qfalse, VK_ALWAYS, 0, 255 );
 	/* the overlay drew cull-free; the next state block owns the face again */

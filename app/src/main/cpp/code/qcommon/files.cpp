@@ -33,9 +33,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 extern "C" void Sys_AndroidLog( int priority, const char *msg );
 #endif
 
-#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       Com_Printf
-#include "qa_probe.h"
 
 #ifndef _WIN32
 #   include <sys/types.h>
@@ -1452,9 +1449,7 @@ long FS_ReadFileEx( const char *qpath, void **buffer, qboolean quiet ) {
 	}
 
 	{
-		SMP_LOAD_BEGIN( fs );
 		len = FS_FOpenFileRead( qpath, &h, qfalse, quiet );
-		SMP_LOAD_END( fs );
 	}
 	if ( h == 0 ) {
 		if ( buffer ) {
@@ -1486,12 +1481,10 @@ long FS_ReadFileEx( const char *qpath, void **buffer, qboolean quiet ) {
 	*buffer = buf;
 
 	{
-		SMP_LOAD_BEGIN( fs );
 		FS_Read (buf, len, h);
 
 		buf[len] = 0;
 		FS_FCloseFile( h );
-		SMP_LOAD_END( fs );
 	}
 
 	if ( isConfig && com_journal && com_journal->integer == 1 ) {
@@ -2908,17 +2901,13 @@ static void FS_Startup(const char* gameName)
 
 	{
 		searchpath_t	*uivk_sp;
-		int				uivk_i = 0;
 
 		for ( uivk_sp = fs_searchpaths; uivk_sp; uivk_sp = uivk_sp->next ) {
 			if ( uivk_sp->pack ) {
-				UIVK_PROBE( "pakmount", "slot=%d pak=%s files=%d", uivk_i,
-							uivk_sp->pack->pakBasename, uivk_sp->pack->numfiles );
+
 			} else if ( uivk_sp->dir ) {
-				UIVK_PROBE( "pakmount", "slot=%d dir=%s/%s", uivk_i,
-							uivk_sp->dir->path, uivk_sp->dir->gamedir );
+
 			}
-			uivk_i++;
 		}
 	}
 
@@ -3150,13 +3139,11 @@ void FS_InitFilesystem( void ) {
 void FS_Restart( int checksumFeed ) {
 
 
-	SMP_LOAD_BEGIN( fs );
 	FS_Shutdown(qfalse);
 
 	fs_checksumFeed = checksumFeed;
 
 	FS_Startup(BASEGAME);
-	SMP_LOAD_END( fs );
 }
 
 

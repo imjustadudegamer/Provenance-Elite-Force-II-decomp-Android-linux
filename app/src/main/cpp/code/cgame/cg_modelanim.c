@@ -25,14 +25,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cg_local.h"
 #include "../tiki/tiki_shared.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) cgi.Cvar_Get(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       cgi.Printf
-#include "../qcommon/qa_probe.h"
-#define WIDGET_PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define WIDGET_PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_widget.h"
-
-
 
 void CG_InterpolateAnimParms(centity_t *cent, refEntity_t *model)
 {
@@ -141,15 +133,6 @@ static void CG_SetModelAnimation(
         VectorNormalize(state->frame_delta);
 
         if (state->frame_distance < 0.1f) {
-            CHAN_PROBE(
-                "anim:nodelta",
-                "ent=%d anim=%d '%s' numframes=%d frame_distance=%.4f -> time-driven clamp\n",
-                entnum,
-                animnum,
-                cgi.Anim_NameForNum(tiki, animnum),
-                numframes,
-                state->frame_distance
-            );
             cgi.DPrintf(
                 "Animation %s has no delta information, canceling delta.\n", cgi.Anim_NameForNum(tiki, animnum)
             );
@@ -165,26 +148,6 @@ static void CG_SetModelAnimation(
     state->base.starttime     = time;
     state->next_evaluate_time = (int)((float)time + state->time_per_frame);
 
-    {
-        static int chan_set;
-        if (PROBE_Throttle(&chan_set, 200, 100)) {
-            CHAN_PROBE(
-                "anim:set",
-                "ent=%d anim=%d(%d) '%s' numframes=%d rate=%.2f tpf=%.2f driven=%d "
-                "frame_distance=%.4f bNoDeltaDrive=%d\n",
-                entnum,
-                anim,
-                animnum,
-                cgi.Anim_NameForNum(tiki, animnum),
-                numframes,
-                animationRate,
-                state->time_per_frame,
-                state->driven,
-                state->frame_distance,
-                bNoDeltaDrive
-            );
-        }
-    }
 }
 
 static void CG_RunModelAnimation(
@@ -293,33 +256,6 @@ static void CG_RunModelAnimation(
 
         /* the too-fast report needed a clock to read: tpf is the anim's declared per-frame time, cgt the client clock, dt the real milliseconds since
            this state last emitted.  Keyed on the entity alone it aliased every channel and anim switch; `driven' names the movement-driven channel. */
-        if (PROBE_On()) {
-            static const void *s_clockState = NULL;
-            static int  s_clockAnim = -1;
-            static int  s_lastTime;
-            static int  s_rows;
-            static int  s_lastFrame;
-
-            if (s_clockState != (const void *)state || s_clockAnim != (state->base.anim & ANIM_MASK)) {
-                s_clockState = (const void *)state;
-                s_clockAnim  = state->base.anim & ANIM_MASK;
-                s_lastTime   = cg.time;
-                s_lastFrame  = state->base.frame;
-                s_rows       = 0;
-            } else if (++s_rows % 120 == 0) {
-                Com_Printf(
-                    "[ANIM:clock] ent=%d anim=%d frame=%d oldframe=%d tpf=%.2f cgt=%d "
-                    "dt=%d advanced=%d expect=%.2f driven=%d state=%p\n",
-                    s->number, state->base.anim & ANIM_MASK, state->base.frame,
-                    state->base.oldframe, state->time_per_frame, cg.time,
-                    cg.time - s_lastTime, state->base.frame - s_lastFrame,
-                    (float)(cg.time - s_lastTime) / state->time_per_frame,
-                    state->driven ? 1 : 0, (const void *)state);
-                s_lastTime  = cg.time;
-                s_lastFrame = state->base.frame;
-            }
-        }
-
         // 0x34854. Recomputed every frame, not only on advance. Clamped below at 0 and
         state->base.framelerp =
             1.0f
@@ -602,37 +538,11 @@ static qboolean CG_EF2ModelAnim(centity_t *cent, refEntity_t *model)
     {
         static int chan_lastanim[256];
         static int chan_lasttorso[256];
-        static int chan_chan[8];
         int        slot = s1->number & 255;
 
         if ((s1->anim != chan_lastanim[slot]) || (s1->torso_anim != chan_lasttorso[slot])) {
             chan_lastanim[slot]  = s1->anim;
             chan_lasttorso[slot] = s1->torso_anim;
-            if (PROBE_Throttle(&chan_chan[s1->number & 7], 60, 25)) {
-                CHAN_PROBE(
-                    "anim:chan",
-                    "ent=%d anim=%d(%d) torso=%d(%d) blendL=%d blendT=%d legsLive=%d torsoLive=%d "
-                    "frame=%d oldframe=%d lerp=%.2f cblerp=%.2f tA=%d tF=%d tLerp=%.2f tCb=%.2f tiki=%d\n",
-                    s1->number,
-                    s1->anim,
-                    s1->anim & ANIM_MASK,
-                    s1->torso_anim,
-                    s1->torso_anim & ANIM_MASK,
-                    (s1->anim & ANIM_BLEND) ? 1 : 0,
-                    (s1->torso_anim & ANIM_BLEND) ? 1 : 0,
-                    model->legsLive,
-                    model->torsoLive,
-                    model->frame,
-                    model->oldframe,
-                    model->framelerp,
-                    model->crossblend_lerp,
-                    model->torso_anim,
-                    model->torso_frame,
-                    model->torso_framelerp,
-                    model->torso_crossblend_lerp,
-                    tiki
-                );
-            }
         }
     }
 
@@ -973,56 +883,10 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
         if (!parent) {
             cgi.Com_WDPrintf("CG_ModelAnim: Could not find parent entity\n");
 
-            {
-                static int widget_orphanm;
-
-                if (WIDGET_On() && WIDGET_Throttle(&widget_orphanm, 4, 32)) {
-                    WIDGET_A1_PROBE(
-                        "tag:orphan",
-                        "MODEL child=%d etype=%d modelindex=%d parent=%d tagnum=%d cg.time=%d\n",
-                        s1->number,
-                        s1->eType,
-                        s1->modelindex,
-                        s1->parent,
-                        s1->tag_num & TAG_MASK,
-                        cg.time);
-                }
-            }
             return;
         }
 
         tiki = cgi.R_Model_GetHandle(parent->hModel);
-        {
-            static int widget_modelatt;
-
-            if (WIDGET_On() && WIDGET_Throttle(&widget_modelatt, 8, 600)) {
-                orientation_t widget_or;
-
-                cgi.TIKI_Tag_LerpOrientation(&widget_or, tiki, parent, s1->tag_num & TAG_MASK);
-                WIDGET_A1_PROBE(
-                    "tag:modelattach",
-                    "child=%d parent=%d tagnum=%d or=(%.2f,%.2f,%.2f) porg=(%.1f,%.1f,%.1f) "
-                    "useang=%d off=(%.1f,%.1f,%.1f) ang=(%.1f,%.1f,%.1f) model=%d cg.time=%d\n",
-                    s1->number,
-                    s1->parent,
-                    s1->tag_num & TAG_MASK,
-                    widget_or.origin[0],
-                    widget_or.origin[1],
-                    widget_or.origin[2],
-                    parent->origin[0],
-                    parent->origin[1],
-                    parent->origin[2],
-                    s1->attach_use_angles,
-                    s1->attach_offset[0],
-                    s1->attach_offset[1],
-                    s1->attach_offset[2],
-                    s1->attach_angles_offset[0],
-                    s1->attach_angles_offset[1],
-                    s1->attach_angles_offset[2],
-                    modelindex,
-                    cg.time);
-            }
-        }
         CG_AttachEntity(&model, parent, tiki, s1->tag_num & TAG_MASK, s1->attach_use_angles, s1->attach_offset, s1->attach_angles_offset);
 
         if ((s1->renderfx & RF_WEAPONMODEL) && (parent->renderfx & RF_THIRD_PERSON)

@@ -17,7 +17,7 @@ Elite Force II SDK agreement.  See LICENSING.md.
 
 #define SMP_PAIRMEMO_BITS 17
 #define SMP_PAIRMEMO_SIZE ( 1 << SMP_PAIRMEMO_BITS )
-#define SMP_PAIRMEMO_PROBE 8
+#define SMP_PAIRMEMO_SPAN 8
 #define SMP_PAIRMEMO_MAXNODE 4095
 
 static inline unsigned SMP_PathPairKey( unsigned a, unsigned b ) {
@@ -47,7 +47,7 @@ static inline int SMP_PathPairMemoHit( const unsigned *keys, unsigned key ) {
 	unsigned	i, n;
 
 	i = SMP_PathPairSlot( key );
-	for ( n = 0; n < SMP_PAIRMEMO_PROBE; n++ ) {
+	for ( n = 0; n < SMP_PAIRMEMO_SIZE; n++ ) {
 		if ( keys[i] == key ) {
 			return 1;
 		}
@@ -64,7 +64,7 @@ static inline void SMP_PathPairMemoAdd( unsigned *keys, unsigned key ) {
 	unsigned	i, n;
 
 	i = SMP_PathPairSlot( key );
-	for ( n = 0; n < SMP_PAIRMEMO_PROBE; n++ ) {
+	for ( n = 0; n < SMP_PAIRMEMO_SIZE; n++ ) {
 		if ( ( keys[i] == 0u ) || ( keys[i] == key ) ) {
 			keys[i] = key;
 			return;

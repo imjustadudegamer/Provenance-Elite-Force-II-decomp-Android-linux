@@ -25,10 +25,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../qcommon/stringresource.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
-#define PROBE_PRINT                       Com_Printf
-#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)
-#include "../qcommon/qa_probe.h"
 
 Event EV_Bind_NewItem
 (
@@ -346,14 +342,6 @@ qboolean UIBindButton::KeyEvent(int key, unsigned int time)
             keyname = uWinMan.GetKeyStringForCommand(m_bindcommand, m_bindindex, m_alternate, NULL, NULL);
             setTitle(keyname);
 
-            if (PROBE_On()) {
-                UIVK_PROBE("settings",
-                           "op=rebind cmd='%s' key=%d alt=%d -> '%s'",
-                           m_bindcommand.c_str(),
-                           key,
-                           m_alternate ? 1 : 0,
-                           keyname.c_str());
-            }
         }
 
         m_getkey = false;

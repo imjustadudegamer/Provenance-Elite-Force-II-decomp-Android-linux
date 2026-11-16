@@ -25,9 +25,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cg_local.h"
 #include "../tiki/tiki_shared.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
 
 void CG_AdjustFrom640(float *x, float *y, float *w, float *h)
 {
@@ -400,11 +397,6 @@ void CG_DrawCrosshair()
 
     if (cg_ident.identDisplay && cgs.gametype == 0) {
         if (cg_ident.identStamp != cg_ident.frame) {
-            PROBE_EMIT_N("[CG:", "target", PROBE_ROW_CAP,
-                         "staleident f=%d ent=%d colour=%.0f,%.0f,%.0f no EF_DISPLAY_INFO entity"
-                         " this frame\n",
-                         cg_ident.frame, cg_ident.entnum, cg_ident.color[0] * 255.0f,
-                         cg_ident.color[1] * 255.0f, cg_ident.color[2] * 255.0f);
         }
         xhairColor[0] = cg_ident.color[0];
         xhairColor[1] = cg_ident.color[1];
@@ -458,8 +450,7 @@ void CG_DrawCrosshair()
 static void CG_ResetTargetIdentifier(void)
 {
     if (cg_ident.entnum >= 0) {
-        PROBE_CENSUS_EMIT("[CG:", "target", "clear f=%d ent=%d desc=%d\n",
-                          cg_ident.frame, cg_ident.entnum, cg_ident.descLevel);
+
     }
     cg_ident.entnum    = -1;
     cg_ident.draw      = 0;
@@ -710,13 +701,6 @@ void CG_UpdateTargetIdentifier(const centity_t *cent)
 
     if (cent->currentState.eFlags & EF_DISPLAY_INFO) {
         if (!cg_ident.identDisplay || cg_ident.entnum != cent->currentState.number) {
-            char        itypeBuf[64];
-            const char *itype = CG_EntityInteractiveTypeName(cent, itypeBuf, sizeof(itypeBuf));
-
-            PROBE_CENSUS_EMIT("[CG:", "target",
-                              "acquire f=%d ent=%d etype=%d desc=0x%x itype='%s'\n",
-                              cg_ident.frame, cent->currentState.number,
-                              cent->currentState.eType, cent->currentState.eFlags & 0x1E00, itype);
         }
         CG_CreateDisplayInfo(cent);
         cg_ident.identDisplay = 1;
@@ -798,11 +782,6 @@ void CG_DrawTargetIdentifier(void)
     }
 
     if (cg_ident.drawStamp != cg_ident.frame) {
-        PROBE_EMIT_N("[CG:", "target", PROBE_ROW_CAP,
-                     "stalebracket f=%d ent=%d box=(%.0f,%.0f)-(%.0f,%.0f) no ident update this"
-                     " frame\n",
-                     cg_ident.frame, cg_ident.entnum, cg_ident.xMin, cg_ident.yMin, cg_ident.xMax,
-                     cg_ident.yMax);
     }
 
     cent = &cg_entities[cg_ident.entnum];

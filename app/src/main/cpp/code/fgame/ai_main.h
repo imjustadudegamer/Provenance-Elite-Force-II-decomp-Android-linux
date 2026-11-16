@@ -78,25 +78,8 @@ void UI_BotAIFrame(int totalUsec);
 int  UI_BotAITick(void);
 int  UI_BotAITock(int t0);
 
-#define LIMIT_BNODE_MAX		12	
 
-#define LIMIT_BN_intermission	0
-#define LIMIT_BN_observer	1
-#define LIMIT_BN_respawn		2
-#define LIMIT_BN_stand		3
-#define LIMIT_BN_activate	4
-#define LIMIT_BN_seeknbg		5
-#define LIMIT_BN_seekltg		6
-#define LIMIT_BN_battlefight	7
-#define LIMIT_BN_battlechase	8
-#define LIMIT_BN_battleretreat	9
-#define LIMIT_BN_battlenbg	10
-#define LIMIT_BN_unknown		11	
 
-void LIMIT_BotNodeBegin(struct bot_state_s *bs);
-void LIMIT_BotNodeEnd(void);
-void LIMIT_BotNodeSat(void);
-void LIMIT_BotFrame(void);
 
 #define BFL_STRAFERIGHT				1	
 #define BFL_ATTACKED				2	

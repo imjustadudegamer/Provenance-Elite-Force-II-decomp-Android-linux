@@ -289,6 +289,40 @@ packet for as long as the game runs. A remote connect asks
 client disconnects, returns to the main menu and opens the engine's own ok
 dialog rather than sitting in a retransmit loop. Single player is unaffected.
 
+A refused socket is not permanent: `net_restart` closes whatever was open, clears
+the latch, re-reads `net_ip`/`net_port` and retries once, printing either
+`net_restart: socket open on port N` or the refusal with its errno. That is the
+recovery path when the network came up after the app (Wi-Fi associating late),
+and it is the first thing to try before restarting the game.
+
+`net_broadcasts` prints the local address table and the subnet broadcast each
+interface derives from it -- the read-only diagnostic for "why does the LAN list
+not find anything", and the same math runs on the desktop build.
+
+## LAN play
+
+Hosting and joining on a local network needs no master server and no port
+forward. The engine's own page is `docs/LAN_MULTIPLAYER.md`; the platform facts
+are these:
+
+- The scan sends `getinfo xxx` to the limited broadcast (`255.255.255.255`) and to
+  the subnet-directed broadcast of every local IPv4 interface, over ports
+  `12203`-`12212` (the range `net_port` can bind), three rounds about 250 ms
+  apart. An AP that drops the limited broadcast still delivers the
+  subnet-directed one, which is why both are sent.
+- The server's answer is **unicast** back to the asking address, so Wi-Fi
+  broadcast/multicast filtering -- the usual reason LAN discovery fails on
+  Android -- does not apply to the reply. No `MulticastLock` is needed and none
+  is held.
+- `connect <ip>` with no port probes all ten ports of the range on a LAN address,
+  so a host that lost 12203 to another socket is still reachable.
+- APs with client isolation (guest, hotel, and some default-configured home
+  networks) drop device-to-device traffic entirely. That is not fixable from the
+  app; use a network where two devices can ping each other.
+
+The same code ships in the Linux AppImage: identical files, identical ports, no
+platform conditional in the discovery path.
+
 ## Logging and measurement
 
 Every engine instrument answers to one master switch, `qa_probe`, registered at

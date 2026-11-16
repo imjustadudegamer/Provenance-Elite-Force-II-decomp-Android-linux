@@ -2204,22 +2204,8 @@ void CThread::RemoveClass( Event * ev )
 }
 
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
-
 void CThread::doesEntityExist( Event *ev )
 {
-	if ( PROBE_On() ) {
-		static int widget_exists;
-
-		PROBE_Throttle( &widget_exists, 60, 1 );
-		WIDGET_PROBE(
-			"dlg:exists",
-			"arg='%s' found=%d\n",
-			ev->GetString( 1 ),
-			ev->IsEntityAt( 1 ) ? 1 : 0 );
-	}
 
 	if ( ev->IsEntityAt( 1 ) )
 		ev->ReturnFloat( 1.0f );
@@ -3265,7 +3251,6 @@ void CThread::TargetOfEvent( Event *ev )
 }
 
 
-
 void CThread::FloorEvent( Event *ev )
 {
 	assert( ev );
@@ -3425,15 +3410,10 @@ void CThread::connectPathnodes( Event *ev )
 }
 
 
-
 void CThread::RestoreSoundtrackEvent( Event *ev )
 {
 	RestoreSoundtrack();
 }
-
-
-
-
 
 
 void Interpreter::Archive( Archiver &arc )
@@ -3469,7 +3449,6 @@ void Interpreter::Archive( Archiver &arc )
 	arc.ArchiveInteger( &threadNum );
 	arc.ArchiveString( &threadName );
 }
-
 
 
 const char *Interpreter::Filename( void )

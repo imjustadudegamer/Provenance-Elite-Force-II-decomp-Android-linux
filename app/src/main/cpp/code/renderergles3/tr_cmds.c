@@ -199,18 +199,6 @@ void RB_RenderThread( void ) {
 		rb_activeFrame = NULL;
 		rb_lastExecuted = frame;
 
-		{
-			static int smp_mcore_render_rows = 0;
-
-			if ( R_ProbeStatsOn() && ( smp_mcore_render_rows < 8 || ( smp_mcore_render_rows % 600 ) == 0 ) ) {
-				ri.Printf( PRINT_ALL,
-						   "[SMP:smphandoff] side=render back=%d front=%d arena=%d owner=%d\n",
-						   frame->smpFrame, tr.smpFrame, frame->boneArena,
-						   GLimp_HandshakeViolations() );
-			}
-			smp_mcore_render_rows++;
-		}
-
 		data = GLimp_RendererSleep();
 	}
 }

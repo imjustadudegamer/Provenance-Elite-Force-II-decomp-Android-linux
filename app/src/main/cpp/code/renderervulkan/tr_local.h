@@ -1449,7 +1449,6 @@ extern cvar_t	*r_dynamiclight;
 void RE_SetDynamicLights( const byte *defaultIntensities, const byte *intensities );
 void R_DetachLightGroups( void );
 void R_InitLightGroups( void );
-void R_LightConfigRow( void );
 void RE_SetWindDirection( vec3_t direction );
 void RE_SetWindIntensity( float intensity );
 void RE_SetTimeScale( float timeScale );
@@ -1522,7 +1521,6 @@ extern	cvar_t	*r_shadows;
 extern	cvar_t	*r_surfOwn;
 extern	cvar_t	*r_texgen3d;						
 /* instrument, not a setting: the volume with colour writes on, no cull and no stencil test */
-extern	cvar_t	*r_shadowVolume;
 extern	cvar_t	*r_flares;						
 extern	cvar_t	*r_flaresMaxDist;				
 
@@ -1714,9 +1712,8 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 void Set2DInitialShaderTime(float startTime);
 
 void RE_Scissor(int x, int y, int width, int height);
-qboolean R_ProbeStatsOn( void );
+
 void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport );
-void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);
 
 /* one body per 2D entry point: immediate, or the same body under the render thread */
@@ -1926,10 +1923,8 @@ extern qboolean vk_frameOpen;
 void RB_BeginDrawingView( void );
 void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
 void RB_RenderSpriteSurfList( drawSurf_t *drawSurfs, int numDrawSurfs );
-void RB_NoteIndexDesync( const char *walk, shader_t *shader, int carriedIndex );
 shader_t *RB_ResolveStaleShader( const char *walk, int gen, int index );
 /* why the last R_AddSkelSurfaces produced nothing, or NULL when it drew */
-extern const char *r_skelDropWhy;
 void R_NoteEntitySurfStart( void );
 void R_NoteEntitySurfEnd( const trRefEntity_t *ent );
 void RB_SetupFog( void );
@@ -1982,7 +1977,6 @@ void R_CalcSurfLighting( msurface_t *surf );
 void R_ClearDynamicLightmaps( void );
 void R_UploadDynamicLightmaps( void );
 void R_TransformDlights( int count, dlight_t *dl, orientationr_t *ori );
-void RB_DLightFeedCensus( void );
 void RB_Light_Sphere(unsigned char* colors);
 void RB_Light_Sphere_ExactDLights(unsigned char* colors);
 void RB_Light_FullbrightSphere(unsigned char* colors);
@@ -1999,7 +1993,6 @@ void RB_ShadowTessEnd( void );
 void RB_ShadowFinish( void );
 /* the frame's volumes, their silhouette quads and the overlay vertices it
    committed: the census the stencil readback row is read against */
-void VK_Shadow_FrameCounters( int *volumes, int *quads, int *overlayVerts );
 /* the same census split by the view whose walk tessellated each volume ("v<id>=<volumes>/<quads>") */
 const char *VK_Shadow_ViewCensusText( void );
 int VK_Shadow_LastView( void );
@@ -2516,7 +2509,7 @@ int			RE_GetRegistrationSequence( void );
 qhandle_t	RE_ReplaceShader( const char *name, const char *text );	 
 void RE_BeginFrame( stereoFrame_t stereoFrame );
 void RE_EndFrame( int *frontEndMsec, int *backEndMsec );
-void VK_PerfFpsRow( void );
+
 void RE_SaveJPG(char* filename, int quality, int image_width, int image_height,
     unsigned char* image_buffer, int padding);
 size_t RE_SaveJPGToBuffer(byte* buffer, size_t bufSize, int quality,
@@ -2553,8 +2546,8 @@ int		SMP_RLoadNow( void );
 void	SMP_RLoadAdd( int zone, int msec, int depth );
 
 static inline int SMP_RLoadArmed( void ) {
-	/* master gate (qa_probe.h); the GLES3 renderer already carried this AND */
-	return ( smp_rloadStats && smp_rloadStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
+	/* its own cvar */
+	return ( smp_rloadStats && smp_rloadStats->integer ) ? 1 : 0;
 }
 
 #define SMP_RLOAD_BEGIN(z) \
@@ -2569,128 +2562,7 @@ static inline int SMP_RLoadArmed( void ) {
 		} \
 	} while ( 0 )
 
-typedef enum {
-	BE_FAM_BE = 0,
-	BE_FAM_DS,
-	BE_FAM_PROG,
-	BE_FAM_FE,
-	BE_FAM_COUNT
-} be_family_t;
 
-typedef enum {
-	BE_BEZ_surfs = 0, BE_BEZ_sprites, BE_BEZ_sprwalk, BE_BEZ_pic, BE_BEZ_buf,
-	BE_BEZ_swap, BE_BEZ_color, BE_BEZ_other,
-	BE_BE_ZONES
-} be_be_zone_t;
-
-typedef enum {
-	BE_BEC_lists = 0, BE_BEC_cmds, BE_BEC_surfs, BE_BEC_draws,
-	BE_BEC_empty, BE_BEC_sprN, BE_BEC_sprBatch, BE_BEC_sprDraw,
-	BE_BE_COUNTERS
-} be_be_counter_t;
-
-typedef enum {
-	BE_DSZ_walk = 0, BE_DSZ_end, BE_DSZ_flare, BE_DSZ_shadow,
-	BE_DSZ_other,
-	BE_DS_ZONES
-} be_ds_zone_t;
-
-typedef enum {
-	BE_DSZ_sub_stage = 0, BE_DSZ_sub_vbo, BE_DSZ_sub_unif,
-	BE_DSZ_sub_shadow,
-	BE_DSZ_sub_pack, BE_DSZ_sub_upload, BE_DSZ_sub_draw,
-	BE_DS_SUBS
-} be_ds_sub_t;
-
-typedef enum {
-	BE_DSC_surfs = 0, BE_DSC_batches, BE_DSC_verts, BE_DSC_stages,
-	BE_DSC_draws, BE_DSC_unifs, BE_DSC_unifskip, BE_DSC_binds, BE_DSC_edges,
-	BE_DS_COUNTERS
-} be_ds_counter_t;
-
-typedef enum {
-	BE_PZ_compile = 0, BE_PZ_link, BE_PZ_other,
-	BE_PROG_ZONES
-} be_prog_zone_t;
-
-typedef enum {
-	BE_PC_made = 0,
-	BE_PROG_COUNTERS
-} be_prog_counter_t;
-
-/* the reference renderer's note, carried in full in its own tree */
-typedef enum {
-	BE_FEZ_view = 0, BE_FEZ_world, BE_FEZ_ents, BE_FEZ_poly, BE_FEZ_sprite,
-	BE_FEZ_sort, BE_FEZ_exec, BE_FEZ_other,
-	BE_FE_ZONES
-} be_fe_zone_t;
-
-typedef enum {
-	BE_FEC_surfs = 0, BE_FEC_ents, BE_FEC_views, BE_FEC_portals,
-	BE_FE_COUNTERS
-} be_fe_counter_t;
-
-/* One [BE:send] window, printed with the [BE:ds] and [BE:be] rows. */
-typedef struct {
-	int		batches, runs, sum, first, mid, max, gapMax, verts, big, bigVerts;
-	/* World surfaces in the window, the accumulator [BE:be] prints as `surfN'. */
-	int		surfs;
-	/* the batches the store could not hold and the ring drew instead */
-	int		fall;
-	/* writes/local/statics/multi/seq: the reference renderer's arena arms */
-	int		writes, local, statics, multi, seq;
-	int		locVisits, locVtx, locIdx, locHash, locFirstAt;
-	unsigned locFirst, locWas, locNow;
-	/* Gate rejections, one reason a batch; `recs' is records seen. */
-	int		gateWorld, gateDlight, gateIter, gateSig, gateRec, recs;
-	/* the 2D share of batches/sum */
-	int		d2Batches, d2Sum;
-} beSendRow_t;
-
-qboolean	RB_VboSendTake( beSendRow_t *out );
-
-/* 1 the frame store, 0 the ring, printed with the send row */
-int			RB_VboArenaMode( void );
-
-int		BE_Microseconds( void );
-int		BE_Armed( void );
-
-void	BE_RootBegin( int family );
-void	BE_RootEnd( int family );
-
-void	BE_Zone( int family, int zone, int usec );
-void	BE_Sub( int family, int sub, int usec );
-void	BE_Bump( int family, int counter, int n );
-
-void	BE_Name( int family, const char *name, int usec );
-
-int		BE_RootUsec( int family );
-
-static inline int BE_On( void ) {
-	return BE_Armed();
-}
-
-#define BE_ZONE(fam, z, stmt) \
-	do { \
-		if ( BE_On() ) { \
-			int be_t0 = BE_Microseconds(); \
-			stmt; \
-			BE_Zone( (fam), (z), BE_Microseconds() - be_t0 ); \
-		} else { \
-			stmt; \
-		} \
-	} while ( 0 )
-
-#define BE_SUB(fam, s, stmt) \
-	do { \
-		if ( BE_On() ) { \
-			int be_t0 = BE_Microseconds(); \
-			stmt; \
-			BE_Sub( (fam), (s), BE_Microseconds() - be_t0 ); \
-		} else { \
-			stmt; \
-		} \
-	} while ( 0 )
 
 /* the texture-env combine tokens, the reference renderer's own ordinals under this module's name */
 #define	VK_TENV_ADD		0x0104
@@ -2738,7 +2610,7 @@ extern cvar_t	*r_customwidth;
 extern cvar_t	*r_customheight;
 extern cvar_t	*r_customaspect;
 void R_RegisterCvars( void );
-qboolean BE_On( void );
+
 void R_FreeImage( image_t *image );
 void R_BuildGammaTables( void );
 void R_CreateBuiltinImages( void );
@@ -2793,7 +2665,6 @@ void		VK_BindMultitexture( image_t *image, int tmu );
 void		VK_TexEnv( int env );
 void		VK_DepthState( qboolean test, qboolean write );
 void		VK_DepthStateReset( void );
-void		VK_Shade_DlightWitness( const dlight_t *dl, int light, int numIndexes );
 void		ProjectDlightTexture( void );
 void		RB_StageIteratorSky( void );
 void		RB_StageIteratorVertexLitTextureUnfogged( void );
@@ -2829,19 +2700,11 @@ int			VK_Shade_WarmRegistration( int budgetMsec );
 void		VK_Shade_WarmFrameStep( int budgetMsec );
 int			VK_Shade_WarmTakeNewPipelines( void );
 void		VK_Shade_WarmNoteBuild( const char *shader, unsigned stateBits, long long usec );
-void		VK_2DOrder_Note( const char *shader );
-void		VK_Shade_NoteDraw( int shade );
-void		VK_Shade_NoteSurfCmds( int surfs );
-void		VK_Shade_NoteBatchSurf( void );
-void		VK_Shade_NoteStage( const struct shader_s *shader );
 void		VK_Shade_NoteFlat( const struct shader_s *shader );
 int			VK_WorldFlatMode( void );
 /* one row per animated shader per second: the shader clock's inputs */
-void		VK_Shade_NoteShaderTime( const char *kind );
-	void		VK_Shade_ReadbackFrame( unsigned imageIndex );
 /* a UI 3D widget's screen rect, so the presented frame can be asked what ended
    up inside it: CONTROLS draws two RenderModels and one of them is covered */
-void		VK_Shade_Note3DRect( int x, int y, int w, int h );
 int		VK_Shade_FrameBatches( void );
 void		VK_Shade_NotePerm( int miss );
 
@@ -2905,7 +2768,7 @@ void	vkLineWidth( float width );
 void	vkDepthRangef( float n, float f );
 void	vkDepthRange( float n, float f );
 void	VK_Draw_DepthRangeLast( float *n, float *f );
-qboolean R_ProbeMarkOn( void );
+
 void	vkPolygonOffset( float factor, float units );
 qboolean VK_Shade_PolygonOffset( void );
 void	VK_Shade_SetStencil( qboolean test, int func, int ref, unsigned int mask );

@@ -173,7 +173,6 @@ const vkIndex_t *RB_VboStaticIndexBlock( int idxFirst );
 
 /* Items the arena has baked, arena bytes in use, and the refusals that made a
    surface stream instead: one row a second on the boundary that ends it. */
-void RB_VboStaticRow( void );
 
 #include "tr_vbo_imm.h"
 

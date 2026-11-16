@@ -33,11 +33,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/stringresource.h" 
 #include "cl_systeminfo.h"
 #include "../qcommon/q_jobs.h" 
-#include "../uilib/limit_uiprobe.h" 
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 extern "C" {
 	#include "../sys/sys_loadlib.h"
@@ -142,6 +138,12 @@ char				cl_reconnectArgs[MAX_OSPATH];
 // Retail off_22BC14 (@0x0022BC14) -- "the list needs a refresh" latch, set by
 static int s_serverListNeedsRefresh;
 
+// `connect <ip>' named no port: the host bound the first free port of
+// PORT_SERVER..PORT_SERVER+NUM_SERVER_PORTS-1, so the first getchallenge fans out
+// over the whole range.  Set by CL_Connect_f for a LAN IPv4 address only, read
+// once by CL_CheckForResend.
+static qboolean s_probeServerPorts;
+
 refexport_t	re;
 #ifdef USE_RENDERER_DLOPEN
 static void	*rendererLib = NULL;
@@ -171,6 +173,7 @@ int serverStatusCount;
 
 extern void SV_BotFrame( int time );
 void CL_CheckForResend( void );
+static void CL_LocalServersFrame( void );
 void CL_ServerStatus_f(void);
 void CL_ServerStatusResponse( netadr_t from, msg_t *msg );
 
@@ -577,7 +580,6 @@ void CL_MapLoading( qboolean flush, const char *pszMapName, const char *pszCinem
 		return;
 	}
 
-	SMP_LOAD_BEGIN( clmap );
 
 	if ( cls.state < CA_CONNECTED || Q_stricmp( cls.servername, "localhost" ) ) {
 		Cvar_Set( "nextmap", "" );
@@ -613,7 +615,6 @@ void CL_MapLoading( qboolean flush, const char *pszMapName, const char *pszCinem
 		StartLoadingScreen();
 	}
 
-	SMP_LOAD_END( clmap );
 }
 
 void CL_MapLoadingClientOnly( const char *pszMapName ) {
@@ -874,6 +875,7 @@ void CL_Reconnect_f( void ) {
 
 void CL_Connect_f(void) {
 	char	server[256];
+	int		parsed;
 
 	if ( Cmd_Argc() != 2 ) {
 		Com_Printf( "usage: connect [server]\n" );
@@ -902,13 +904,17 @@ void CL_Connect_f(void) {
 
 	Q_strncpyz( cls.servername, server, sizeof( cls.servername ) );
 
-	if ( NET_StringToAdr( cls.servername, &clc.serverAddress ) ) {
+	parsed = NET_StringToAdr( cls.servername, &clc.serverAddress );
+
+	if ( parsed ) {
 		if ( !clc.serverAddress.port ) {
 			clc.serverAddress.port = BigShort( PORT_SERVER );
 		}
 
 		Com_Printf( "%s resolved to port %i\n", cls.servername,
 			BigShort( clc.serverAddress.port ) );
+
+		s_probeServerPorts = qfalse;
 
 		if ( clc.serverAddress.type == NA_LOOPBACK ) {
 			cls.state = CA_CHALLENGING;
@@ -928,6 +934,20 @@ void CL_Connect_f(void) {
 				Cbuf_ExecuteText( EXEC_NOW, "globalwidgetcommand OkDialogTitle title "
 					"\"Network unavailable -- this install has no network permission\"\n" );
 				return;
+			}
+
+			/* NET_StringToAdr returns 2 when the string carried no port, and the
+			   host may sit on any port of the bind range.  Only a LAN IPv4
+			   address is probed: a loopback connect is already exact, and an
+			   internet address must not be sprayed with ten challenges.  The
+			   test runs after NET_RemoteAvailable() opened the socket, because
+			   that open rebuilds the local-address table Sys_IsLANAddress reads
+			   (a phone whose Wi-Fi associated after boot). */
+			if ( parsed == 2 && Sys_IsLANAddress( clc.serverAddress ) ) {
+				s_probeServerPorts = qtrue;
+				Com_Printf( "Probing ports %i-%i on %s\n", PORT_SERVER,
+					PORT_SERVER + NUM_SERVER_PORTS - 1,
+					NET_AdrToString( clc.serverAddress ) );
 			}
 			cls.state = CA_CONNECTING;
 		}
@@ -1183,6 +1203,19 @@ void CL_CheckForResend( void ) {
 			CL_RequestAuthorization();
 		}
 		CL_NET_OutOfBandPrint(clc.serverAddress, "getchallenge");
+
+		/* The user named no port and the host is on the LAN: ask every other
+		   port of the bind range on the first send only.  A challengeResponse
+		   from any of them re-points clc.serverAddress at the port that
+		   answered (CL_ConnectionlessPacket), so the handshake continues there. */
+		if ( clc.connectPacketCount == 1 && s_probeServerPorts ) {
+			netadr_t probe = clc.serverAddress;
+
+			for ( i = 1; i < NUM_SERVER_PORTS; i++ ) {
+				probe.port = BigShort( ( short )( PORT_SERVER + i ) );
+				CL_NET_OutOfBandPrint( probe, "getchallenge" );
+			}
+		}
 		break;
 	case CA_AUTHORIZING:
 		gcd_compute_response(cl_cdkey, Cmd_Argv(1), cls.gcdResponse, CDResponseMethod_REAUTH);
@@ -1390,7 +1423,17 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	if ( !Q_stricmp(c, "challengeResponse") ) {
 		if ( cls.state != CA_CONNECTING ) {
 			Com_Printf( "Unwanted challenge response received.  Ignored.\n" );
+		} else if ( !NET_CompareBaseAdr( from, clc.serverAddress ) ) {
+			/* A probe round (or a stray on the broadcast) answered from another
+			   host: it must not hijack the connect.  NET_CompareBaseAdr is true
+			   for NA_LOOPBACK, so `connect localhost' is unaffected. */
+			Com_Printf( "challengeResponse from a different address.  Ignored.\n" );
 		} else {
+			if ( from.port != clc.serverAddress.port ) {
+				Com_Printf( "%s answered on port %i\n", NET_AdrToString( from ),
+					BigShort( from.port ) );
+			}
+
 			clc.challenge = atoi(Cmd_Argv(1));
 			cls.state = CA_CHALLENGING;
 			clc.connectPacketCount = 0;
@@ -1641,19 +1684,8 @@ void CL_Frame ( int msec ) {
 
 	CL_CheckForResend();
 
-	{
-		static int s_loadstallParkMs = -100000;
+	CL_LocalServersFrame();
 
-		if ( cls.state >= CA_CONNECTED && cls.state != CA_ACTIVE
-		     && cls.realtime >= s_loadstallParkMs + 1000 ) {
-			s_loadstallParkMs = cls.realtime;
-			LOADSTALL_PROBE( "park",
-			            "t=%d cls=%d clSid=%d svSid=%d msgSeq=%d cmdSeq=%d lastPkt=%d txSeq=%d paused=%d\n",
-			            cls.realtime, cls.state, cl.serverId, sv.serverId,
-			            clc.serverMessageSequence, clc.serverCommandSequence, clc.lastPacketTime,
-			            clc.netchan.outgoingSequence, paused->integer );
-		}
-	}
 
 	CL_SetCGameTime();
 
@@ -1668,13 +1700,7 @@ void CL_Frame ( int msec ) {
 
 	SCR_UpdateScreen();
 
-	{
-		int smpAudioStart = Sys_Milliseconds();
-
-		S_Update();
-
-		SMP_BudgetAdd( SMP_ZONE_AUDIO, Sys_Milliseconds() - smpAudioStart );
-	}
+	S_Update();
 
 	ProcessCinematic();
 
@@ -1741,7 +1767,6 @@ void CL_StartHunkUsers( qboolean rendererOnly ) {
 		return;
 	}
 
-	SMP_LOAD_BEGIN( hunkusr );
 
 	if ( !cls.rendererRegistered ) {
 		cls.rendererRegistered = qtrue;
@@ -1759,7 +1784,6 @@ void CL_StartHunkUsers( qboolean rendererOnly ) {
 		CL_InitializeUI();
 	}
 
-	SMP_LOAD_END( hunkusr );
 }
 
 void *CL_RefMalloc(int size) {
@@ -1819,7 +1843,7 @@ int CL_ScaledMilliseconds(void) {
 
 extern "C"
 void CL_RefNoteBlockedMsec( int msec ) {
-	SMP_BudgetAdd( SMP_ZONE_SWAP, msec );
+	(void)msec;
 }
 
 /* The renderer's file writes come from the walk thread, and the filesystem is
@@ -2072,7 +2096,6 @@ void CL_InitRef( void ) {
     ri.TIKI_Anim_FrameTime = TIKI_Frame_Time;
     ri.TIKI_Anim_TanFrames = TIKI_Anim_TanFrames;
     ri.TIKI_Skan_FindByAnim = TIKI_Skan_FindByAnim;
-    ri.TIKI_Skan_SetProbeSubject = TIKI_Skan_SetProbeSubject;
     ri.TIKI_SkelBonesFromRecords = TIKI_SkelBonesFromRecords;
     ri.TIKI_SetPoseChannelsInternal = TIKI_SetPoseChannelsInternal;
 
@@ -2621,7 +2644,6 @@ static void CL_SetServerInfoByAddress(netadr_t from, const char *info, int ping)
 void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 	int				i;
 	char			*infoString;
-	char			info[MAX_INFO_STRING];
 
 	infoString = MSG_ReadString( msg );
 
@@ -2654,8 +2676,11 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 	cls.numlocalservers = i + 1;
 	cls.localServers[i].adr = from;
 
-	Q_strncpyz( info, MSG_ReadString( msg ), MAX_INFO_STRING );
-	Com_Printf( "%s: %s", NET_AdrToLogString( from ), info );
+	/* One read, used for both the row and the print.  The second MSG_ReadString
+	   here read past the info string (SVC_Info sends it once), so the printed row
+	   was empty and the new entry had no hostname until a ping pass ran. */
+	CL_SetServerInfoByAddress( from, infoString, -1 );
+	Com_Printf( "%s: %s", NET_AdrToLogString( from ), infoString );
 }
 
 serverStatus_t *CL_GetServerStatus( netadr_t from ) {
@@ -3025,11 +3050,8 @@ qboolean CL_UpdateServerPings( void ) {
 
 void CL_ServerRefresh( void ) {
 	qboolean emptyList;
-	int	limit_z;
 
-	limit_z = LIMIT_Leg();
 	if ( !s_serverListNeedsRefresh ) {
-		LIMIT_LegEnd( LIMIT_FAM_UIT, LIMIT_UITZ_srvnone, limit_z );
 		return;
 	}
 
@@ -3041,24 +3063,17 @@ void CL_ServerRefresh( void ) {
 	}
 
 	if ( ( float )cls.realtime - ( float )s_lastPingUpdateTime >= s_browserRefreshInterval || !emptyList ) {
-		int			limit_zp;
 		qboolean	pinged;
 
-		LIMIT_Count( LIMIT_FAM_UIT, LIMIT_UTC_srvrun, 1 );
 
-		limit_zp = LIMIT_Leg();
 		pinged  = CL_UpdateServerPings();
 		if ( !pinged && !emptyList ) {
 			s_serverListNeedsRefresh = 0;
 		}
 		s_lastPingUpdateTime = cls.realtime;
-		LIMIT_LegEnd( LIMIT_FAM_UIT, LIMIT_UITZ_srvping, limit_zp );
 
-		LIMIT_Count( LIMIT_FAM_UIT, LIMIT_UTC_srvn, CL_GetServerCount() );
 
-		limit_zp = LIMIT_Leg();
 		UI_UpdateServerList();
-		LIMIT_LegEnd( LIMIT_FAM_UIT, LIMIT_UITZ_srvlist, limit_zp );
 	}
 }
 
@@ -3118,34 +3133,109 @@ void CL_SetPingSource_f( void ) {
 	Cvar_SetValue( "cl_updatesource", value );
 }
 
-void CL_LocalServers_f( void ) {
-	const char *message;
-	int         i, j;
-	netadr_t    to;
+/* A LAN scan is three rounds spread over half a second, not one burst: a Wi-Fi
+   driver that is still waking its radio drops the first broadcast, and one
+   retry is what a wired LAN needs but not what a phone does.  The state is
+   static because CL_Frame drives it, and the window closes on its own -- no
+   timer and no image outlives it. */
+#define CL_LAN_SCAN_ROUNDS		3
+#define CL_LAN_SCAN_INTERVAL	250
+#define CL_LAN_SCAN_WINDOW		3000
+#define CL_MAX_LAN_BROADCASTS	8
 
-	Com_Printf( "Scanning for servers on the local network...\n" );
+static netadr_t	s_lanScanAdrs[CL_MAX_LAN_BROADCASTS + 1];
+static int		s_lanScanNumAdrs;
+static int		s_lanScanRounds;
+static int		s_lanScanNextTime;
+static int		s_lanScanEndTime;
 
-	// port-only: nothing in retail reads this cvar (it is not in the retail CL
-	CL_ClearServers();
-	s_serverListNeedsRefresh = 1;
-	cls.numlocalservers = 0;
-	cl_updatesource->value = s_browserSourceLocal;
+static void CL_LocalServersSendRound( void ) {
+	static const char *message = "\377\377\377\377getinfo xxx";
+	netadr_t to;
+	int      i, j;
 
-	Com_Memset( &to, 0, sizeof( to ) );
+	for ( i = 0; i < s_lanScanNumAdrs; i++ ) {
+		to = s_lanScanAdrs[i];
 
-	message = "\377\377\377\377getinfo xxx";
-
-	for ( i = 0; i < 2; i++ ) {
 		for ( j = 0; j < NUM_SERVER_PORTS; j++ ) {
 			to.port = BigShort( ( short )( PORT_SERVER + j ) );
-
-			to.type = NA_BROADCAST;
-			NET_SendPacket( NS_CLIENT, strlen( message ), message, to );
-
-			to.type = NA_BROADCAST_IPX;
 			NET_SendPacket( NS_CLIENT, strlen( message ), message, to );
 		}
 	}
+
+	Com_DPrintf( "localservers: round %i/%i, %i address(es) x %i ports\n",
+		s_lanScanRounds + 1, CL_LAN_SCAN_ROUNDS, s_lanScanNumAdrs, NUM_SERVER_PORTS );
+}
+
+static void CL_LocalServersFrame( void ) {
+	if ( !s_lanScanNumAdrs ) {
+		return;
+	}
+
+	/* A source switch while the scan is in flight ends it: the fill pass below
+	   is local-only, and pinging local rows under the Internet tab would be
+	   traffic the player did not ask for. */
+	if ( cl_updatesource->integer != ( int ) s_browserSourceLocal ) {
+		s_lanScanNumAdrs = 0;
+		return;
+	}
+
+	if ( cls.realtime >= s_lanScanEndTime ) {
+		Com_DPrintf( "localservers: scan window closed, %i server(s)\n", cls.numlocalservers );
+		s_lanScanNumAdrs = 0;
+		return;
+	}
+
+	if ( s_lanScanRounds < CL_LAN_SCAN_ROUNDS && cls.realtime >= s_lanScanNextTime ) {
+		CL_LocalServersSendRound();
+		s_lanScanRounds++;
+		s_lanScanNextTime = cls.realtime + CL_LAN_SCAN_INTERVAL;
+	}
+
+	/* The fill pass, driven from here so hostname/map/clients/ping arrive even
+	   when the retail UI never reaches its LAN_UpdateVisiblePings import. */
+	CL_UpdateVisiblePings_f( AS_LOCAL );
+	CL_UpdateServerPings();
+}
+
+void CL_LocalServers_f( void ) {
+	netadr_t adrs[CL_MAX_LAN_BROADCASTS];
+	int      n, i;
+
+	Com_Printf( "Scanning for servers on the local network...\n" );
+
+	/* The source first, then the clear: CL_ClearServers() wipes whichever array
+	   cl_updatesource points at, so clearing before the switch wiped the previous
+	   source's rows and left the local ones alone.  Cvar_SetValue, not a direct
+	   ->value store: the readers (CL_ClearServers, CL_GetServerCount) switch on
+	   ->integer, and a bare float field never updated it -- the switch did not
+	   happen at all. */
+	Cvar_SetValue( "cl_updatesource", s_browserSourceLocal );
+	CL_ClearServers();
+	cls.numlocalservers = 0;
+	s_serverListNeedsRefresh = 1;
+
+	Com_Memset( s_lanScanAdrs, 0, sizeof( s_lanScanAdrs ) );
+	s_lanScanNumAdrs = 0;
+
+	/* Limited broadcast first: every station the AP floods to, and all a wired
+	   LAN needs.  Then one subnet-directed broadcast per local interface, which
+	   is the address an AP that drops 255.255.255.255 still delivers. */
+	s_lanScanAdrs[s_lanScanNumAdrs].type = NA_BROADCAST;
+	s_lanScanNumAdrs++;
+
+	n = NET_GetBroadcastAdrs( adrs, CL_MAX_LAN_BROADCASTS );
+	for ( i = 0; i < n; i++ ) {
+		s_lanScanAdrs[s_lanScanNumAdrs] = adrs[i];
+		s_lanScanNumAdrs++;
+	}
+
+	s_lanScanRounds    = 0;
+	s_lanScanNextTime  = cls.realtime;
+	s_lanScanEndTime   = cls.realtime + CL_LAN_SCAN_WINDOW;
+
+	Com_DPrintf( "localservers: %i broadcast address(es), ports %i-%i\n",
+		s_lanScanNumAdrs, PORT_SERVER, PORT_SERVER + NUM_SERVER_PORTS - 1 );
 }
 
 void CL_GlobalServers_f( void ) {
@@ -3162,18 +3252,21 @@ void CL_GlobalServers_f( void ) {
 
 	Com_Printf( "Requesting servers from the master...\n" );
 
-	CL_ClearServers();
-	s_serverListNeedsRefresh = 1;
-
 	master = atoi( Cmd_Argv( 1 ) );
 	cls.masterNum = master;
 	cls.numglobalservers = -1;
+
+	/* Same ordering rule as the LAN scan: switch the source (through the setter,
+	   so ->integer moves with ->value) before CL_ClearServers() picks the array.
+	   The UI always asks master 0, but both masters feed the global list. */
+	Cvar_SetValue( "cl_updatesource", s_browserSourceGlobal );
+	CL_ClearServers();
+	s_serverListNeedsRefresh = 1;
 
 	if ( master == 1 ) {
 		NET_StringToAdr( "master.quake3world.com", &to );
 	} else {
 		NET_StringToAdr( "ef2master.activision.com", &to );
-		cl_updatesource->value = s_browserSourceGlobal;
 	}
 
 	to.type = NA_IP;

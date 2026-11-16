@@ -40,28 +40,6 @@ root, for more details.
 static void ( *vk_guardLogger )( const char *line ) = NULL;
 static int ( *vk_guardTrace )( const char *cvarName, int defaultValue ) = NULL;
 
-static const char *vk_guardSiteNames[VK_GSITE_COUNT] = {
-	"loader",
-	"instance",
-	"device",
-	"surface",
-	"swapchain-create",
-	"swapchain-recreate",
-	"swapchain-lost",
-	"swapchain-out-of-date",
-	"swapchain-suboptimal",
-	"acquire",
-	"present",
-	"submit",
-	"fence",
-	"semaphore",
-	"alloc",
-	"descriptor",
-	"sync",
-	"device-lost",
-	"quirk",
-	"sentinel"
-};
 
 static unsigned int vk_guardSiteHits[VK_GSITE_COUNT];
 
@@ -163,13 +141,7 @@ void VK_Guard_Hit( vkGuardSite_t site, const char *detail, VkResult result )
 
 	/* A row with nothing after detail= cannot be triaged, so an unnamed one
 	   says so instead of printing an empty field. */
-	VK_Guard_Row( "VK:guard",
-				 "site=%s detail=\"%s\" result=%s(%d) n=%u",
-				 vk_guardSiteNames[site],
-				 ( detail && detail[0] ) ? detail : "(no detail given)",
-				 VK_Guard_ResultName( result ),
-				 (int)result,
-				 n );
+
 }
 
 qboolean VK_Guard_Result( vkGuardSite_t site, VkResult result, const char *what )
@@ -215,11 +187,7 @@ void VK_Sentinel_Arm( void )
 
 	if ( vk_sentinelWrite( VK_SENTINEL_FILE, marker, (int)sizeof( marker ) - 1 ) ) {
 		/* a written marker is the boot's own bookkeeping, not a fault: the failed
-		   write below is the loud arm, and qa_probe rides the guard's own trace
-		   provider so this module stays decoupled from the renderer */
-		if ( VK_TraceOn( "qa_probe", 0 ) ) {
-			VK_Guard_Row( "VK:sentinel", "phase=arm path=%s", VK_SENTINEL_FILE );
-		}
+		   write below is the loud arm */
 	} else {
 		VK_Guard_Hit( VK_GSITE_SENTINEL, "arm write failed", VK_ERROR_INITIALIZATION_FAILED );
 	}
@@ -234,10 +202,5 @@ void VK_Sentinel_Clear( void )
 	if ( vk_sentinelRemove( VK_SENTINEL_FILE ) ) {
 		/* clearing the marker this boot armed is bookkeeping; a stale marker from
 		   a crashed boot was already named at bring-up (vk_firstlight.c) */
-		if ( VK_TraceOn( "qa_probe", 0 ) ) {
-			VK_Guard_Row( "VK:sentinel", "phase=clear path=%s", VK_SENTINEL_FILE );
-		}
-	} else if ( VK_TraceOn( "qa_probe", 0 ) ) {
-		VK_Guard_Row( "VK:sentinel", "phase=clear-absent path=%s", VK_SENTINEL_FILE );
 	}
 }

@@ -112,19 +112,6 @@ typedef struct {
 	VkExtent2D currentExtent;
 } vkSwapchainPlan_t;
 
-/* the device side of the frame: be= contains the frame-fence wait, but the wait is the device draining one pass that holds the clear, the world, the
-   sprites and the 2D batch.  The walk writes a GPU timestamp whenever the work class changes, so the row attributes the pass; the terminal mark is end-of-pass. */
-enum {
-	VK_GPU_CLEAR = 0,  /* pass open: the colour/depth clear and pass setup */
-	VK_GPU_WORLD,      /* RC_DRAW_SURFS: world/static surface geometry */
-	VK_GPU_SPRITE,     /* RC_SPRITE_SURFS: sprite surfaces */
-	VK_GPU_UI,         /* the RC_2D_* cases: the whole 2D batch, flushed by pass end */
-	VK_GPU_BUCKETS
-};
-/* A transition per class change, bounded by the classes plus interleavings; the
-   cap is a runaway guard, not a budget -- a frame that hits it stops marking and
-   the row's marks= counter names it. */
-#define VK_GPU_MAX_MARKS 32
 /* the flare states the occlusion pool must cover; tr_sun_flare.cpp static-asserts it */
 #define VK_FLARE_QUERIES 128
 
@@ -150,6 +137,9 @@ typedef struct {
 	VkColorSpaceKHR swapchainColorSpace;
 	VkExtent2D swapchainExtent;
 	uint32_t swapchainImageCount;
+	/* the rung the live swapchain was created on, so the frame-stats row can
+	   name the pacing the display is actually applying */
+	VkPresentModeKHR presentMode;
 	/* The surface's own minimum, and how many images this process is holding
 	   between acquire and present.  Together they are VUID-07783's forward
 	   progress test, so the acquire timeout can be chosen from the spec's own
@@ -189,13 +179,7 @@ typedef struct {
 	VkDeviceMemory depthMemory;
 	VkImageView depthView;
 	/* The stencil readback's staging set, armed at target init: the image's
-	   usage and the pass's stencil store op are both creation-time, so qa_probe
-	   has to be on before the target exists for the copy to be legal. */
-	qboolean stencilReadback;
-	VkBuffer stencilBuffer;
-	VkDeviceMemory stencilMemory;
-	void *stencilMapped;
-	VkDeviceSize stencilBytes;
+	   usage and the pass's stencil store op are both creation-time. */
 	VkFramebuffer *framebuffers;
 	uint32_t framebufferCount;
 	VkBuffer vertexBuffer;
@@ -236,19 +220,10 @@ typedef struct {
 	qboolean colorLoadDeferred;
 	qboolean colorClearOwed;
 	float deferredClearColor[4];
-	/* GPU-side pass attribution.  One timestamp query per mark per slot; the
-	   pool is reset by the slot's own command buffer, and results are read only
-	   after that slot's fence has signalled, so no host wait is added. */
-	VkQueryPool gpuQueryPool;
-	qboolean gpuPerfReady;
 	/* retail's occlusion-query arm: one query per flare state, two slots deep,
 	   so a slot's reset never touches another slot's in-flight queries */
 	VkQueryPool flareQueryPool;
 	int flareSlot;
-	float gpuTimestampPeriod;
-	int gpuMarkCount[VK_FRAMES_IN_FLIGHT];
-	unsigned char gpuMarkBucket[VK_FRAMES_IN_FLIGHT][VK_GPU_MAX_MARKS];
-	qboolean gpuFrameOpen;
 } vkContext_t;
 
 extern vkContext_t vk;
@@ -306,8 +281,6 @@ VkRenderPass VK_Target_MakePass( VkFormat colourFormat, VkImageLayout finalLayou
 
 /* The stencil plane's readback, one throttled row per armed frame: the copy is
    recorded after the pass closes and counted once the frame's fence signals. */
-void VK_Target_StencilCopy( VkCommandBuffer cmd );
-void VK_Target_StencilReadback( int slot );
 
 qboolean VK_Frame_Init( void );
 void VK_Frame_Shutdown( void );
@@ -363,11 +336,7 @@ enum {
 	VK_LIFE_KINDS
 };
 
-extern int vk_lifeGen;
 
-void VK_Life_NoteCreate( int kind );
-void VK_Life_NoteDestroy( int kind );
-void VK_Life_Census( const char *site );
 int RB_FrameBoneArena( void );
 
 extern volatile qboolean	vkRenderThreadActive;
@@ -386,90 +355,9 @@ int RB_WalkMsec( void );
 long long RB_WalkUsec64( void );
 /* the frame-scoped twin, drained by RE_EndFrame for [SMP:frame]'s renderBack= */
 long long RB_WalkFrameUsec64( void );
-
-/* The walk's cost split, printed by the r_perfFps row that owns the gate.  Every
-   opcode the walk executes lands in one of these, so `rest` is the accounting
-   error and not a bucket: a residual that is large is the instrument's own
-   defect, not a cost. */
-enum {
-	VK_WP_GEN = 0, VK_WP_PACK, VK_WP_BIND, VK_WP_REC, VK_WP_FENCE,
-	VK_WP_ACQ,   /* vkAcquireNextImageKHR: the device returning a presented image */
-	VK_WP_OPEN,  /* pass open, framebuffer open, command buffer record begin */
-	VK_WP_UI,    /* the RC_2D_* cases: the whole 2D command path */
-	VK_WP_SHADE, /* per-surface shader/entity bookkeeping, minus the binds it flushes */
-	VK_WP_OUT,   /* record end, queue submit, queue present */
-	VK_WP_PIX,   /* the presented-frame readback: device copy plus the host census */
-	VK_WP_PHASES
-};
 long long BE_Microseconds64( void );
-qboolean VK_WalkStatOn( void );
-void VK_WalkStat_Add( int phase, long long usec );
-/* The nested buckets a caller's window contains, so an outer wrap can subtract
-   them and no phase is counted twice. */
-long long VK_WalkStat_Nested( void );
-/* The nested amount a window added, robust to a drain landing inside it: the
-   counters are cumulative since the last drain and the front end drains them, so
-   `Nested() - n0` goes negative on a mid-window drain and the window's own
-   subtraction then ADDS the whole stale count instead of removing a part of it. */
-long long VK_WalkStat_NestedSince( long long n0 );
-void VK_WalkStat_Frame( int verts, int surfs );
-/* Batching elisions the frame made, so a change that removes driver calls says
-   how many it removed instead of only how the wall time moved.  VK_WP_HITS is
-   the number of the frame's own counters the row prints. */
-enum { VK_ELIDE_INDEX = 0, VK_ELIDE_UBO, VK_ELIDE_PIPE, VK_ELIDE_SET, VK_ELIDE_HITS };
-void VK_WalkStat_Count( int what );
-void VK_WalkStat_Req( int what );
-void VK_WalkStat_TakeElisions( long long *out, long long *reqOut );
-void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfsOut,
-					   long long *framesOut );
-/* -1 is "not timed", so a real reading of 0 is still a reading, and the reading has to be 64-bit: BE_Microseconds truncates to int and goes
-   negative after 2^31 us of uptime (35.8 minutes), where a sentinel compared against a negative clock discards every reading.  The differences stay int-sized. */
-#define VK_WALK_T0()        ( VK_WalkStatOn() ? BE_Microseconds64() : -1LL )
-#define VK_WALK_ADD(t0, ph) do { if ( (t0) >= 0 ) { VK_WalkStat_Add( (ph), BE_Microseconds64() - (t0) ); } } while ( 0 )
+int BE_Microseconds( void );
 
-/* A present-seam child: same shape as VK_WALK_ADD, its own drain. */
-#define VK_WALK_ADD_SUB(t0, which) do { if ( (t0) >= 0 ) { VK_WalkStat_PresentAdd( (which), BE_Microseconds64() - (t0) ); } } while ( 0 )
-
-/* An outer wrap that contains an inner bucket charges only what the inner
-   buckets did not: GEN and UI reach the stage iterator, whose bind/record/pack
-   are charged at their own sites.  A leaf wrap keeps the plain form. */
-#define VK_WALK_NEST0() ( VK_WalkStatOn() ? VK_WalkStat_Nested() : 0LL )
-#define VK_WALK_ADD_NET(t0, n0, ph) do { if ( (t0) >= 0 ) { \
-	long long vk_net = VK_WalkStat_NestedSince( n0 ); \
-	long long vk_usec = BE_Microseconds64() - (t0) - vk_net; \
-	VK_WalkStat_Add( (ph), vk_usec > 0 ? vk_usec : 0 ); } } while ( 0 )
-
-/* The shade window's parts; the residual is OTHER, so they sum to it. */
-enum {
-	VK_WS_DECOMPOSE = 0, VK_WS_SURFACE, VK_WS_ROTATE, VK_WS_MODELVIEW,
-	VK_WS_STATICDLIGHTS, VK_WS_SPHERE, VK_WS_OTHER, VK_WS_PARTS
-};
-void VK_WalkStat_ShadeAdd( int part, long long usec );
-void VK_WalkStat_TakeShade( long long *usecOut );
-
-/* The srf window's sub-parts; OTHER is the residual, so they sum to srf=. */
-enum {
-	VK_WSS_ENDPRE = 0, VK_WSS_STAGE, VK_WSS_BATCHE, VK_WSS_BEGIN,
-	VK_WSS_OTHER, VK_WSS_PARTS
-};
-void VK_SrfPart_Arm( void );
-void VK_SrfPart_Disarm( void );
-void VK_SrfPart_Open( void );
-void VK_SrfPart_Close( int part );
-void VK_WalkStat_TakeSrf( long long *usecOut );
-long long VK_WalkStat_TakeSrfTotal( void );
-
-/* OUT's children, charged at the record-end/submit/present seams; they sum to
-   out= and stay out of rest='s subtraction. */
-enum { VK_WSUB_RECEND = 0, VK_WSUB_SUBMIT, VK_WSUB_PRESENT, VK_WSUB_SLOTS };
-void VK_WalkStat_PresentAdd( int which, long long usec );
-void VK_WalkStat_TakePresent( long long *usecOut );
-
-void VK_PerfGpu_FrameBegin( int slot );
-void VK_PerfGpu_Mark( int slot, int bucket );
-void VK_PerfGpu_FrameEnd( int slot );
-void VK_PerfGpu_Collect( int slot );
-void VK_PerfGpu_Take( long long *usecOut, long long *marksOut, long long *hitCapOut );
 
 qboolean VK_Flare_QueryArm( unsigned int index );
 void VK_Flare_QueryEnd( unsigned int index );
@@ -498,6 +386,9 @@ VkResult VK_Fence_ResetResult( VkFence fence );
 VkResult VK_Queue_Submit( VkQueue queue, uint32_t submitCount,
 						  const VkSubmitInfo *submits, VkFence fence );
 VkResult VK_Queue_Present( VkQueue queue, const VkPresentInfoKHR *present );
+
+/* the live swapchain's present mode, for the frame-stats row */
+const char *VK_Swapchain_PresentModeName( void );
 VkResult VK_Queue_WaitIdle( VkQueue queue );
 /* One pool per producer, one lock per pool: the pool is the unit of host
    synchronization (Vulkan 1.4 s6.2), so the lock is looked up from the pool
@@ -523,10 +414,6 @@ void VK_Upload_Quiesce( void );
 /* The calling thread's id, in the pool-ownership sense: 0 is no owner. */
 unsigned long VK_Upload_ThreadID( void );
 
-/* The master instrument gate (qa_probe, default 0): every row this backend emits
-   beyond the startup banner answers to it.  Declared here because the pool
-   ownership rows live in vk_renderthread.c, which does not pull tr_local.h. */
-qboolean R_ProbeStatsOn( void );
 
 /* The vertex-input builder declares only what the stage consumes: the locations
    its SPIR-V reads, and the trim of the description array to match. */

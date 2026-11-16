@@ -24,12 +24,6 @@
 
 #include "g_local.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
-#define WIDGET_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define WIDGET_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_widget.h"
 
 #define PUSH_OBJECT_DISTANCE 16.0f
 #include "mp_manager.hpp"
@@ -380,16 +374,12 @@ Event EV_Player_DeadBody (    "deadbody",
     "Spawn a dead body");
 
 
-
-
 extern Event EV_CameraManager_Fov;
 
 extern Event EV_CameraManager_Speed;
 
 
-
 qboolean TryPush(int entnum, vec3_t move_origin, vec3_t move_end);
-
 
 
 Event EV_Player_Immobilize (    "immobilize",
@@ -1482,7 +1472,6 @@ Player::Player()
     p_heuristics = new PlayerHeuristics;
 #endif
 
-    G_EntTrash_Pointer("spawn", this, p_heuristics);
 
     if (!LoadingSavegame) {
         SetTargetName("player");
@@ -1497,20 +1486,6 @@ Player::~Player()
 {
     Sentient *player;
 
-    if (UIVK_EntTrashOn()) {
-        gi.Printf(
-            "[UIVK:enttrash] ~Player ent=%d class='%s' p_heuristics=%p"
-            " low32=0x%08x high32=0x%08x frame=%d ltime=%.3f\n",
-            entnum,
-            getClassname() ? getClassname() : "?",
-            (void *)p_heuristics,
-            (unsigned)((uintptr_t)p_heuristics & 0xFFFFFFFFu),
-            (unsigned)(((uintptr_t)p_heuristics >> 32) & 0xFFFFFFFFu),
-            level.framenum,
-            level.time);
-    }
-
-    G_EntTrash_Pointer("~Player", this, p_heuristics);
 
     if ( p_heuristics )
     {
@@ -1961,8 +1936,6 @@ void Player::ChooseSpawnPoint(void)
 }
 
 
-
-
 // "Could not pick up ..." line in the game -- twelve retail call sites feed it and it is
 void Player::setItemText(int itemIcon, const str& itemText)
 {
@@ -1986,9 +1959,6 @@ void Player::clearItemText(Event *ev)
 {
     clearItemText();
 }
-
-
-
 
 
 // The HUD is NOT pushed here.  Retail's CG_DrawActiveFrame (@0x00044FE0) reads
@@ -2055,7 +2025,6 @@ void Player::SetObjectiveShow(Event *ev)
         }
     }
 }
-
 
 
 void Player::SetObjectiveComplete(Event *ev)
@@ -2244,11 +2213,10 @@ void Player::Dead(Event *ev)
     }
 
     if (multiplayerManager.inMultiplayer()) {
-        TIKIANIM_PROBE("dead:mp", "ent=%d -> playerDead (DeadBody+hideModel), STAT_DEATHS=%d",
-                   entnum, client->ps.stats[STAT_DEATHS]);
+
         multiplayerManager.playerDead(this);
     } else {
-        TIKIANIM_PROBE("dead:sp", "ent=%d -> G_MissionFailed (SINGLE-PLAYER arm taken)", entnum);
+
         int i            = (rand() % 10) + 1;
         str playerKilled = "PlayerKilled";
         playerKilled += i;
@@ -2290,16 +2258,10 @@ void Player::Killed(Event *ev)
     animate->ClearLegsAnim();
 
 
-
     deadflag = DEAD_DYING;
 
     respawn_time = level.time + 1.0f;
 
-    TIKIANIM_PROBE("die", "ent=%d mp=%d attackerIsPlayer=%d attackerEnt=%d mod=%d respawn_time=%.2f deadflag=DYING",
-               entnum, multiplayerManager.inMultiplayer() ? 1 : 0,
-               (attacker && attacker->isSubclassOf(Player)) ? 1 : 0,
-               attacker ? attacker->entnum : -1,
-               meansofdeath, (float)respawn_time);
 
     health   = 0;
 
@@ -2307,7 +2269,6 @@ void Player::Killed(Event *ev)
         _targetedEntity->edict->s.eFlags &= ~EF_DISPLAY_INFO;
         _targetedEntity = NULL;
     }
-
 
 
     if (g_gametype->integer != GT_SINGLE_PLAYER) {
@@ -2768,7 +2729,6 @@ qboolean TryPush(int entnum, vec3_t move_origin, vec3_t move_end)
 
 void Player::SetMoveInfo( pmove_t *pmove, const usercmd_t *ucmd )
 {
-	static int lastEasyJump = -1;
 	Vector move;
 	
 	memset( pmove, 0, sizeof( pmove_t ) );
@@ -2788,11 +2748,6 @@ void Player::SetMoveInfo( pmove_t *pmove, const usercmd_t *ucmd )
 	   work (qcommon/cm_load.c owns cm_mapHasTerrain) */
 	pmove->noTerrainSurfaces = G_MapHasTerrainSurfaces() ? qfalse : qtrue;
 
-	if ( PROBE_On() && lastEasyJump != pmove->easyJump )
-	{
-		PROBE( "easyjump", "srv state easy=%d was=%d\n", (int)pmove->easyJump, lastEasyJump );
-		lastEasyJump = pmove->easyJump;
-	}
 
 	pmove->tracemask      = edict->clipmask;
 pmove->trace          = gi.trace;
@@ -3416,22 +3371,6 @@ void Player::ClientMove(usercmd_t *ucmd)
     SetMoveInfo(&pmove, ucmd);
     Pmove(&pmove);
     GetMoveInfo(&pmove);
-    if (pmove.jumpResult == 1) {
-        /* ent-training1's crate lesson: the grey case2 pair tops 108 over the z-172 floor
-           and the walkway 112 more, so with STEPSIZE 33 the two rises need 75 and 79 */
-        float v0   = (float)client->ps.jumpvelocity
-                     + (pmove.easyJump ? (float)client->ps.crouchjumpvelocity : 0.0f);
-        float apex = v0 * v0 / (2.0f * (float)client->ps.gravity);
-        float hop  = apex - (108.0f - 33.0f);
-        float gate = apex - (112.0f - 33.0f);
-
-        PROBE("jump", "srv takeoff easy=%d duck=%d up=%d vz=%d v0=%d apex=%.2f hop=%+.2f gate=%+.2f\n",
-              (int)pmove.easyJump, (client->ps.pm_flags & PMF_DUCKED) ? 1 : 0, (int)ucmd->upmove,
-              (int)client->ps.velocity[2], (int)v0, apex, hop, gate);
-    } else if (pmove.jumpResult == 2) {
-        PROBE("jump", "srv eaten easy=%d duck=1 up=%d vz=%d\n", (int)pmove.easyJump, (int)ucmd->upmove,
-              (int)client->ps.velocity[2]);
-    }
     ProcessPmoveEvents(pmove.pmoveEvent);
 
     if ((getMoveType() == MOVETYPE_NOCLIP) || !(client->ps.pm_flags & PMF_NO_PREDICTION)) {
@@ -3559,9 +3498,7 @@ void Player::CheckForTargetedEntity(void)
 void Player::SetTargetedEntity(Entity *entity)
 {
     if (_targetedEntity) {
-        PROBE_CENSUS_EMIT("[G:", "target",
-                          "drop ent=%d classname='%s'\n", _targetedEntity->entnum,
-                          _targetedEntity->getClassname());
+
         _targetedEntity->edict->s.eFlags &=
             ~(EF_DISPLAY_INFO | EF_DISPLAY_DESC1 | EF_DISPLAY_DESC2 | EF_DISPLAY_DESC3);
     }
@@ -3569,9 +3506,7 @@ void Player::SetTargetedEntity(Entity *entity)
     _targetedEntity = entity;
 
     if (_targetedEntity) {
-        PROBE_CENSUS_EMIT("[G:", "target",
-                          "acquire ent=%d classname='%s' health=%.0f\n", _targetedEntity->entnum,
-                          _targetedEntity->getClassname(), _targetedEntity->health);
+
         _targetedEntity->edict->s.eFlags |= EF_DISPLAY_INFO;
     }
 }
@@ -3663,24 +3598,8 @@ void Player::ClientThink(Event *ev)
     viewheight = client->ps.pm_defaultviewheight;
 
     if (level.intermissiontime) {
-        static int missionend_start, missionend_cross;
-
         client->ps.pm_flags |= PMF_FROZEN;
 
-        if (PROBE_Throttle(&missionend_start, 1, 1 << 30)) {
-            WIDGET_PROBE("missionend",
-                         "think first time=%.3f intermission=%.3f advance=%.3f dt=%.3f exit=%d\n",
-                         level.time, level.intermissiontime, level.intermission_advancetime,
-                         level.time - level.intermissiontime, level.exitintermission ? 1 : 0);
-        }
-        if ((level.intermission_advancetime != 0.0f)
-            && ((level.time - level.intermissiontime) > level.intermission_advancetime)
-            && PROBE_Throttle(&missionend_cross, 1, 1 << 30)) {
-            WIDGET_PROBE("missionend",
-                         "think crossed time=%.3f intermission=%.3f advance=%.3f dt=%.3f\n",
-                         level.time, level.intermissiontime, level.intermission_advancetime,
-                         level.time - level.intermissiontime);
-        }
 
         if (g_endintermission->integer > 0) {
             g_endintermission->integer = 0;
@@ -3773,13 +3692,11 @@ void Player::ClientThink(Event *ev)
     old_v_angle = v_angle;
 
     if (deadflag == DEAD_DEAD && (level.time > respawn_time)) {
-        TIKIANIM_PROBE("respawn:gate", "ent=%d DEAD_DEAD t=%.2f respawn_time=%.2f buttons=0x%x frozen=%d",
-                   entnum, (float)level.time, (float)respawn_time, new_buttons,
-                   level.playerfrozen ? 1 : 0);
+
         if ((new_buttons & BUTTON_ATTACKRIGHT) || (new_buttons & BUTTON_ATTACKLEFT)
             || (multiplayerManager.inMultiplayer() && multiplayerManager.checkFlag(MP_FLAG_FORCE_RESPAWN))) {
             if (multiplayerManager.inMultiplayer()) {
-                TIKIANIM_PROBE("respawn:fire", "ent=%d -> multiplayerManager.respawnPlayer(forced=false)", entnum);
+
                 multiplayerManager.respawnPlayer(this, false);
             } else {
                 G_RestartLevelWithDelay(1.0f);
@@ -4261,25 +4178,6 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
                 SetAnim(torsoAnim.c_str(), torso);
             }
 
-            static int uirows_botanim;
-            if (PROBE_On() && PROBE_Throttle(&uirows_botanim, 24, 400)) {
-                Weapon *uirows_w = GetActiveWeapon(WEAPON_DUAL);
-                UIROWS_PROBE(
-                    "bot:anim",
-                    "ent=%d model='%s' state='%s' move=%d movecontrol=%d wname='%s' "
-                    "legsAnim='%s' has=%d torsoAnim='%s' has=%d\n",
-                    entnum,
-                    model.c_str(),
-                    currentState_Torso ? currentState_Torso->getName() : "(null)",
-                    move,
-                    movecontrol,
-                    uirows_w ? uirows_w->item_name.c_str() : "(none)",
-                    legsAnim.c_str(),
-                    animate->HasAnim(legsAnim) ? 1 : 0,
-                    torsoAnim.c_str(),
-                    animate->HasAnim(torsoAnim) ? 1 : 0);
-            }
-
             if (movecontrol != move) {
                 movecontrol = move;
                 if ((move < (sizeof(MoveStartFuncs) / sizeof(MoveStartFuncs[0]))) && (MoveStartFuncs[move])) {
@@ -4353,26 +4251,6 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
                     }
                 }
 
-                {
-                    static int widget_legs;
-
-                    if (WIDGET_On() && WIDGET_Throttle(&widget_legs, 12, 48)) {
-                        WIDGET_A1_PROBE(
-                            "legs:loop",
-                            "ent=%d move=%d movecontrol=%d state='%s' anim='%s' has=%d "
-                            "clear=%d curlegs='%s' ucmdfwd=%d ucmdright=%d\n",
-                            entnum,
-                            movecontrol,
-                            movecontrol,
-                            currentState_Legs ? currentState_Legs->getName() : "(null)",
-                            legsAnim.c_str(),
-                            animate->HasAnim(legsAnim) ? 1 : 0,
-                            (legsAnim == "") ? 1 : 0,
-                            animate->AnimName(legs) ? animate->AnimName(legs) : "?",
-                            last_ucmd.forwardmove,
-                            last_ucmd.rightmove);
-                    }
-                }
             }
         } while (laststate_Legs != currentState_Legs);
     } else {
@@ -4435,7 +4313,6 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
 }
 
 
-
 void Player::AnimateWeapon(Event *ev)
 {
     Weapon      *weapon = NULL;
@@ -4457,7 +4334,6 @@ void Player::AnimateWeapon(Event *ev)
 
     weapon->playAnim(ev->GetString(1), animatingFlag);
 }
-
 
 
 void Player::GiveWeaponCheat(Event *ev)
@@ -4920,7 +4796,6 @@ void Player::CalcBlend(void)
 }
 
 
-
 void Player::DamageFeedback(void)
 {
     if (_lastDamagedTimeFront + 0.25f >= level.time) {
@@ -5002,7 +4877,6 @@ void Player::DamageFeedback(void)
     } else if (damage_alpha > 0.6f) {
         damage_alpha = 0.6f;
     }
-
 
 
     damage_blood = 0;
@@ -5455,30 +5329,6 @@ void Player::PlayerAngles(void)
 
     setAngles(angles);
 
-    {
-        static int widget_sv[MAX_GENTITIES];
-
-        if (WIDGET_On() && entnum < MAX_GENTITIES && WIDGET_Throttle(&widget_sv[entnum], 6, 20)) {
-            vec3_t widget_velYawVec;
-
-            VectorCopy(velocity, widget_velYawVec);
-
-            WIDGET_A1_PROBE(
-                "bot:svangles",
-                "ent=%d isbot=%d sv=(%.1f,%.1f) body=%.1f v_angle=(%.1f,%.1f) "
-                "ps=(%.1f,%.1f) speed=%.0f velyaw=%.1f ucmdyaw=%.1f movecontrol=%d\n",
-                entnum,
-                isSubclassOf(Actor) ? 1 : 0,
-                edict->s.viewangles[1], edict->s.viewangles[0],
-                edict->s.angles[1],
-                v_angle.x, v_angle.y,
-                client->ps.viewangles[0], client->ps.viewangles[1],
-                VectorLength(velocity),
-                (VectorLengthSquared(velocity) > 1.0f) ? vectoyaw(widget_velYawVec) : 0.0f,
-                last_ucmd.angles[YAW] != 0 ? AngleMod(SHORT2ANGLE(last_ucmd.angles[YAW]) + SHORT2ANGLE(client->ps.delta_angles[YAW])) : -999.0f,
-                movecontrol);
-        }
-    }
 }
 
 void Player::SwingAngles(float destination, float swingTolerance, float clampTolerance, float speed, float *angle, qboolean *swinging)
@@ -6104,19 +5954,7 @@ void Player::UpdateStats( void )
 
 	/* The boss bar's game half: what the cvar holds and what stat it produced.  A
 	   frozen bar with this row stepping down convicts the renderer; a frozen bar
-	   with this row flat convicts the game.  1 Hz, site-capped, qa_probe only. */
-	if ( PROBE_On() )
-	{
-		static int bossstat_lastsec = -1;
-
-		if ( level.inttime / 1000 != bossstat_lastsec )
-		{
-			bossstat_lastsec = level.inttime / 1000;
-			PROBE( "bossstat", "t=%d cvar='%s' value=%.5f stat=%d name='%s'",
-				   level.inttime, bosshealth->string, bosshealth->value,
-				   client->ps.stats[ STAT_BOSSHEALTH ], bossname->string );
-		}
-	}
+*/
 
 	if ( _itemText.length() > 0  )
 	{
@@ -6190,20 +6028,6 @@ void Player::UpdateStats( void )
 		if ( item )
 		{
 			client->ps.inventory_name_index[i-1] = item->getIndex();
-			{
-				static int probe_n = 0;
-				if (PROBE_Throttle(&probe_n, 24, 200)) {
-					str probe_name = item->getName();
-					PROBE(
-						"inv:mirror-sv",
-						"client=%d slot=%d item='%s' csindex=%d",
-						client->ps.clientNum,
-						i - 1,
-						probe_name.c_str(),
-						item->getIndex()
-					);
-				}
-			}
 			if( item->isSubclassOf(Weapon) )
 			{
 				weapon = (Weapon*) item;
@@ -7176,21 +7000,10 @@ Vector Player::getWeaponViewShake(void)
 }
 
 
-
 void Player::Score(Event *ev)
 {
     multiplayerManager.score(this);
 }
-
-
-
-
-
-
-
-
-
-
 
 
 void Player::WarpToPoint(Entity *spawnpoint)
@@ -7207,7 +7020,6 @@ void Player::WarpToPoint(Entity *spawnpoint)
         velocity    = vec_zero;
     }
 }
-
 
 
 void Player::GibEvent(Event *ev)
@@ -7387,14 +7199,6 @@ void Player::DeadBody(Event *ev)
 }
 
 
-
-
-
-
-
-
-
-
 void Player::SetMouthAngle(Event *ev)
 {
     int    tag_num;
@@ -7424,37 +7228,10 @@ void Player::SetMouthAngle(Event *ev)
 }
 
 
-
-
-
 void Player::FireWeapon(Event *ev)
 {
     Sentient::FireWeapon(ev);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void Player::SetStateFile(Event *ev)
@@ -7463,9 +7240,6 @@ void Player::SetStateFile(Event *ev)
     gi.cvar_set("g_statefile", stateFileName);
     LoadStateTable();
 }
-
-
-
 
 
 void Player::setBackpackAttachOffset(Event *ev)
@@ -8179,7 +7953,6 @@ Condition<Player> Player::Conditions[] =
 };
 
 
-
 void Player::ActivateDualWeapons( Event *ev )
 {
 	int i;
@@ -8478,8 +8251,6 @@ void Player::DeactivateShield( Event *ev )
 {
 	shield_active = false;
 }
-
-
 
 
 void Player::DeactivateWeapon( Event *ev )
@@ -9415,16 +9186,6 @@ void Player::ShakeCamera( void )
 
 	if ( earthquakeMagnitude > 0.0f )
 	{
-		{
-			static int uivk_dfx_n;
-			if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 48, 48)) {
-				PROBE("DFX:shake", "ent=%d mag=%.3f ps_dmgang=(%.2f,%.2f,%.2f)\n",
-						   entnum, earthquakeMagnitude,
-						   client->ps.damage_angles[0], client->ps.damage_angles[1],
-						   client->ps.damage_angles[2]);
-			}
-		}
-
 		client->ps.damage_angles[ PITCH ] += G_CRandom() * earthquakeMagnitude * EARTHQUAKE_SCREENSHAKE_PITCH;
 		client->ps.damage_angles[ YAW ]   += G_CRandom() * earthquakeMagnitude * EARTHQUAKE_SCREENSHAKE_YAW;
 		client->ps.damage_angles[ ROLL ]  += G_CRandom() * earthquakeMagnitude * EARTHQUAKE_SCREENSHAKE_ROLL;
@@ -9468,8 +9229,6 @@ void Player::ShakeCamera( void )
 		client->ps.damage_angles[ ROLL ]  = 0.0f;
 	}
 }
-
-
 
 
 void Player::ShowCoolItem( Event *ev )
@@ -9939,8 +9698,6 @@ void Player::applyWeaponSpeedModifiers( int *moveSpeed )
 	}
 
 }
-
-
 
 
 void Player::clearAllHuds( void )

@@ -23,19 +23,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_local.h"
 
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
 
 /* retail reads cg_pmove.cmd.forwardmove from CG_OffsetFirstPersonView's bob gate */
 pmove_t cg_pmove;
 
 /* the server owns this one; the client prediction must agree with it */
 static cvar_t *cg_easyJump;
-static int     cg_easyJumpLast = -1;
 
 /* qcommon/cm_load.c's per-map terrain row: 0 means no surface in this map can
-   report SURF_TERRAIN, which is what lets PM_GroundTrace skip its probe */
+   report SURF_TERRAIN, which is what lets PM_GroundTrace skip its terrain test */
 static cvar_t *cg_mapHasTerrain;
 
 static int        cg_numSolidEntities;
@@ -45,47 +41,6 @@ static int        cg_numTriggerEntities;
 /* the temp box must carry CONTENTS_BODY: the trace mask never asks for less */
 #define CG_CLIP_BOX_CONTENTS CONTENTS_BODY
 
-static qboolean CG_SegmentCrossesBox(
-    const vec3_t start, const vec3_t end, const vec3_t mins, const vec3_t maxs
-)
-{
-    vec3_t dir;
-    float  tmin = 0.0f;
-    float  tmax = 1.0f;
-    int    i;
-
-    for (i = 0; i < 3; i++) {
-        dir[i] = end[i] - start[i];
-
-        if (dir[i] > -1e-8f && dir[i] < 1e-8f) {
-            if (start[i] < mins[i] || start[i] > maxs[i]) {
-                return qfalse;
-            }
-        } else {
-            float inv = 1.0f / dir[i];
-            float t1 = (mins[i] - start[i]) * inv;
-            float t2 = (maxs[i] - start[i]) * inv;
-
-            if (t1 > t2) {
-                float t = t1;
-                t1 = t2;
-                t2 = t;
-            }
-
-            if (t1 > tmin) {
-                tmin = t1;
-            }
-            if (t2 < tmax) {
-                tmax = t2;
-            }
-            if (tmin > tmax) {
-                return qfalse;
-            }
-        }
-    }
-
-    return qtrue;
-}
 
 void CG_BuildSolidList(void)
 {
@@ -194,26 +149,6 @@ void CG_ClipMoveToEntities(
                invisible to the trace and the impact or beam lands behind it.
                With CG_CLIP_BOX_CONTENTS == CONTENTS_BODY the second test is
                never true, so the row stays silent on a correct build. */
-            if (PROBE_On() && (mask & CONTENTS_BODY) && !(boxContents & CONTENTS_BODY)
-                && CG_SegmentCrossesBox(start, end, bmins, bmaxs)) {
-                static int clip_xmask_n;
-
-                if (PROBE_Throttle(&clip_xmask_n, 4, 200)) {
-                    PROBE(
-                        "clip:xmask",
-                        "ent=%d etype=%d solid=0x%x box=(%.0f,%.0f,%.0f)-(%.0f,%.0f,%.0f) "
-                        "boxcontents=0x%x mask=0x%x crossedbox=1 -> entity pass blind for this "
-                        "mask, the shot art lands behind the actor\n",
-                        ent->number,
-                        ent->eType,
-                        ent->solid,
-                        bmins[0], bmins[1], bmins[2],
-                        bmaxs[0], bmaxs[1], bmaxs[2],
-                        boxContents,
-                        mask
-                    );
-                }
-            }
         }
 
         VectorCopy(cent->lerpOrigin, origin);
@@ -491,12 +426,6 @@ void CG_PredictPlayerState(void)
     }
     cg_pmove.noTerrainSurfaces = (cg_mapHasTerrain && !cg_mapHasTerrain->integer) ? qtrue : qfalse;
 
-    if (PROBE_On() && cg_easyJumpLast != cg_pmove.easyJump) {
-        PROBE("easyjump", "cgame state easy=%d was=%d\n", (int)cg_pmove.easyJump, cg_easyJumpLast);
-        cg_easyJumpLast = cg_pmove.easyJump;
-    }
-
-
 
     oldPlayerState = cg.predicted_player_state;
 
@@ -582,23 +511,6 @@ void CG_PredictPlayerState(void)
 
 
         Pmove(&cg_pmove);
-
-        if (cg_pmove.jumpResult == 1) {
-            /* same row as the server side: both sides must agree on v0 and apex */
-            float v0   = (float)cg.predicted_player_state.jumpvelocity
-                         + (cg_pmove.easyJump ? (float)cg.predicted_player_state.crouchjumpvelocity : 0.0f);
-            float apex = v0 * v0 / (2.0f * (float)cg.predicted_player_state.gravity);
-            float hop  = apex - (108.0f - 33.0f);
-            float gate = apex - (112.0f - 33.0f);
-
-            PROBE("jump", "cgame takeoff easy=%d duck=%d up=%d vz=%d v0=%d apex=%.2f hop=%+.2f gate=%+.2f\n",
-                  (int)cg_pmove.easyJump, (cg.predicted_player_state.pm_flags & PMF_DUCKED) ? 1 : 0,
-                  (int)cg_pmove.cmd.upmove, (int)cg.predicted_player_state.velocity[2], (int)v0, apex,
-                  hop, gate);
-        } else if (cg_pmove.jumpResult == 2) {
-            PROBE("jump", "cgame eaten easy=%d duck=1 up=%d vz=%d\n", (int)cg_pmove.easyJump,
-                  (int)cg_pmove.cmd.upmove, (int)cg.predicted_player_state.velocity[2]);
-        }
 
         moved = qtrue;
 

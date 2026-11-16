@@ -2623,26 +2623,6 @@ static void CollapseMultitexture(int *stagecounter) {
 		/* The merge row: a shader retail draws as two passes and this port as one
 		   collapsed here.  It names the bits the guard compared, so the guard is
 		   readable off the boot instead of inferred. */
-		{
-			static int s_merges;
-
-			s_merges++;
-			if ( R_ProbeStatsOn() && s_merges <= 32 ) {
-				ri.Printf( PRINT_ALL,
-						   "[VK:merge] n=%d shader='%s' a=0x%x b=0x%x hi=0x%x env=%d "
-						   "t0='%s' t1='%s' passes=%d->%d\n",
-						   s_merges,
-						   shader.name,
-						   abits, bbits, (unsigned)( abits & ~0x1FF ),
-						   collapse[iUseCollapse].multitextureEnv,
-						   ( stage->bundle[0].image[0] && stage->bundle[0].image[0]->imgName[0] )
-							   ? stage->bundle[0].image[0]->imgName : "?",
-						   ( stage->bundle[1].image[0] && stage->bundle[1].image[0]->imgName[0] )
-							   ? stage->bundle[1].image[0]->imgName : "?",
-						   *stagecounter + 1, *stagecounter );
-			}
-		}
-
 		if (stagenum + 2 < MAX_SHADER_STAGES) {
 			memmove(&unfoggedStages[stagenum + 1], &unfoggedStages[stagenum + 2], sizeof(unfoggedStages[0]) * (MAX_SHADER_STAGES - 2 - stagenum));
 		}
@@ -2715,18 +2695,6 @@ static void SortNewShader( void ) {
 	tr.sortedShaders[i+1] = newShader;
 
 	/* the trigger this repair exists for: a registration while surfaces build */
-	if ( tr.refdef.numDrawSurfs && R_ProbeMarkOn() ) {
-		static int	s_rows;
-
-		s_rows++;
-		if ( s_rows <= 24 || ( s_rows % 600 ) == 0 ) {
-			VK_Guard_Row( "VK:newshader",
-						  "'%s' sortedIndex=%d moved=%d surfs=%d f=%d",
-						  newShader->name, newShader->sortedIndex,
-						  ( tr.numShaders - 2 ) - newShader->sortedIndex,
-						  tr.refdef.numDrawSurfs, RB_FrameCount() );
-		}
-	}
 
 	R_UpdateDrawSurfs_NewShader( newShader->sortedIndex );
 }
@@ -2780,10 +2748,6 @@ static shader_t *GeneratePermanentShader( void ) {
 	tr.numShaders++;
 
 	/* the census that says whether a level's index can wrap the sort word's 11-bit shader field */
-	if ( tr.numShaders == 2048 && R_ProbeMarkOn() ) {
-		VK_Guard_Row( "VK:newshader", "'%s' filled the retail shader table (%d) f=%d",
-					  newShader->name, tr.numShaders, RB_FrameCount() );
-	}
 
 	newShader->numUnfoggedPasses = R_AllocStageList( newShader->unfoggedStages, unfoggedStages, newShader->numUnfoggedPasses );
 	newShader->numFogPasses = R_AllocStageList( newShader->fogStages, fogStages, newShader->numFogPasses );
@@ -3002,7 +2966,6 @@ static shader_t *FinishShader( void ) {
 
     if (shader.defaultShader)
     {
-        SMP_ShaderDefaultProbe( "finish-default", shader.name, "FinishShader/defaultShader", 0, 0 );
         currentShader->shader = tr.defaultShader;
         currentShader = NULL;
         return tr.defaultShader;
@@ -3260,7 +3223,6 @@ shader_t *R_FindShaderByName( const char *name ) {
 		}
 	}
 
-	SMP_ShaderDefaultProbe( "byname-miss", strippedName, "R_FindShaderByName", 0, 0 );
 	return tr.defaultShader;
 }
 
@@ -3275,7 +3237,6 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 	shader_noFog = qfalse;		/* retail R_RealFindShader clears tr.nofog per shader */
 
 	if ( name[0] == 0 ) {
-		SMP_ShaderDefaultProbe( "empty-name", name, "R_RealFindShader", lightmapIndex, variant );
 		return tr.defaultShader;
 	}
 
@@ -3298,8 +3259,6 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 			if (sh == tr.defaultShader ||
 				(sh->lightmapIndex == lightmapIndex && sh->forcedAlphaKey == variant)) {
 				if ( sh == tr.defaultShader ) {
-					SMP_ShaderDefaultProbe( "chain-default", strippedName, "R_RealFindShader/chain",
-											 lightmapIndex, variant );
 				}
 				return sh;
 			}
@@ -3342,7 +3301,6 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 		}
 
 		if ( !ParseShader( &shaderText, picmip ) ) {
-			SMP_ShaderDefaultProbe( "parse-failed", name, "R_RealFindShader/text", lightmapIndex, variant );
 			shader.defaultShader = qtrue;
 		}
 
@@ -3396,7 +3354,6 @@ static shader_t* R_RealFindShader(const char* name, int lightmapIndex, qboolean 
 
 	if ( !image ) {
 		ri.Printf( PRINT_WARNING, "Couldn't find image for shader %s\n", name );
-		SMP_ShaderDefaultProbe( "image-missing", name, "R_RealFindShader/tga", lightmapIndex, variant );
 		shader.defaultShader = qtrue;
 		return FinishShader();
 	}
@@ -3474,7 +3431,7 @@ static void SMP_FadeParseProbe( const char* name, int msec ) {
 	static char	s_seen[128][64];
 	static int	s_count;
 
-	if ( !R_ProbeStatsOn() || tr.registrating ) {
+	if ( tr.registrating ) {
 		return;
 	}
 	if ( s_count < 128 ) {
@@ -3488,7 +3445,7 @@ static void SMP_FadeParseProbe( const char* name, int msec ) {
 		Q_strncpyz( s_seen[s_count], name, sizeof( s_seen[0] ) );
 		s_count++;
 	}
-	VK_Guard_Row( "VK:fadeparse", "shader='%s' ms=%d f=%d", name, msec, RB_FrameCount() );
+
 }
 
 shader_t* R_FindShaderForceAlphaLM(const char* name, int lightmapIndex) {
@@ -3795,55 +3752,6 @@ typedef struct {
 	char	source[80];
 } smpShdefKey_t;
 
-void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b ) {
-	static smpShdefKey_t	s_keys[SMP_SHDEF_KEYS];
-	static int				s_used;
-	static int				s_rows;
-	static cvar_t			*s_cvar;
-	int						i;
-
-	if ( !s_cvar ) {
-		s_cvar = ri.Cvar_Get( "smp_shaderProbe", "1", 0 );
-	}
-	if ( !s_cvar || !s_cvar->integer || !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	if ( !requested ) requested = "-";
-	if ( !source ) source = "-";
-
-	for ( i = 0; i < s_used; i++ ) {
-		if ( !Q_stricmp( s_keys[i].kind, kind ) && !Q_stricmp( s_keys[i].requested, requested ) &&
-			 !Q_stricmp( s_keys[i].source, source ) ) {
-			return;
-		}
-	}
-	if ( s_used >= SMP_SHDEF_KEYS ) {
-		if ( s_rows >= 0 ) {
-			s_rows = -1;
-			ri.Printf( PRINT_ALL, "[SMP:shdef] key table full (%d); further names untracked\n",
-					   SMP_SHDEF_KEYS );
-		}
-		return;
-	}
-	Q_strncpyz( s_keys[s_used].kind, kind, sizeof( s_keys[s_used].kind ) );
-	Q_strncpyz( s_keys[s_used].requested, requested, sizeof( s_keys[s_used].requested ) );
-	Q_strncpyz( s_keys[s_used].source, source, sizeof( s_keys[s_used].source ) );
-	s_used++;
-
-	if ( s_rows < 0 ) {
-		return;
-	}
-	if ( s_rows >= SMP_SHDEF_ROW_CAP ) {
-		s_rows = -1;
-		ri.Printf( PRINT_ALL, "[SMP:shdef] capped at %d rows; no further lines\n", SMP_SHDEF_ROW_CAP );
-		return;
-	}
-	s_rows++;
-	ri.Printf( PRINT_ALL, "[SMP:shdef] kind=%s req='%s' src=%s a=%d b=%d\n",
-			   kind, requested, source, a, b );
-}
-
 static void CreateInternalShaders( void ) {
 	tr.numShaders = 0;
 
@@ -3922,9 +3830,6 @@ void R_SetupShaders(void)
 	int hash;
 
     /* load banner: master gate */
-    if (R_ProbeStatsOn()) {
-        ri.Printf(0, "Setting up Shaders\n");
-    }
     currentShader = NULL;
 
     /* Every shader_t died with the arena; the table must not carry one. */

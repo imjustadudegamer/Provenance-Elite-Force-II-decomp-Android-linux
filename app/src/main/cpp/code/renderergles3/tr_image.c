@@ -1029,62 +1029,7 @@ static void SMP_TranscodeRunJobPool(void* ud, smpTranscodeRows_t* ctx, int bh, i
 static cvar_t* smp_texCache;
 static cvar_t* smp_texCacheMaxMB;
 
-#define SMP_TEXCACHE_PROBE_MAX 512
-static void SMP_TexCacheProbeRow(const char* imgName, const smpTexCacheResult_t* loadRes,
-								  const smpTexCacheResult_t* storeRes,
-								  int target, int base, int levels, int bytes)
-{
-	static char		s_seen[SMP_TEXCACHE_PROBE_MAX][64];
-	static int		s_count;
-	static qboolean	s_notice;
-	const char*		load;
-
-	/* the cache is a feature; its rows are an instrument like any other */
-	if (!R_ProbeStatsOn()) {
-		return;
-	}
-	const char*		store;
-	int				i;
-
-	for (i = 0; i < s_count; i++) {
-		if (!strcmp(s_seen[i], imgName)) {
-			return;
-		}
-	}
-	if (s_count >= SMP_TEXCACHE_PROBE_MAX) {
-		if (!s_notice) {
-			s_notice = qtrue;
-			ri.Printf(PRINT_ALL, "[SMP:texcache] rows capped at %d distinct images; the rest are not recorded\n",
-					  SMP_TEXCACHE_PROBE_MAX);
-		}
-		return;
-	}
-	Q_strncpyz(s_seen[s_count], imgName, sizeof(s_seen[0]));
-	s_count++;
-
-	load = (loadRes && loadRes->stat == SMP_TEXCACHE_STAT_HIT) ? "hit"
-		 : (loadRes && loadRes->stat == SMP_TEXCACHE_STAT_CORRUPT) ? "corrupt"
-		 : (loadRes && loadRes->stat == SMP_TEXCACHE_STAT_MISS) ? "miss"
-															      : "disabled";
-	if (!storeRes) {
-		store = "n/a";
-	} else if (storeRes->stat == SMP_TEXCACHE_STAT_STORED) {
-		store = "ok";
-	} else if (storeRes->stat == SMP_TEXCACHE_STAT_SKIP) {
-		store = "skip";
-	} else if (storeRes->stat == SMP_TEXCACHE_STAT_WRITE_FAIL) {
-		store = "fail";
-	} else {
-		store = "off";
-	}
-
-	ri.Printf(PRINT_ALL,
-			  "[SMP:texcache] path=%s name=%s target=%s base=%d levels=%d bytes=%d load=%s store=%s evicted=%d\n",
-			  loadRes ? loadRes->path : "-", imgName,
-			  (target == SMP_TEXC_ASTC_4x4) ? "astc" : "etc2",
-			  base, levels, bytes, load, store,
-			  (loadRes ? loadRes->evicted : 0) + (storeRes ? storeRes->evicted : 0));
-}
+#define SMP_TEXCACHE_MAX 512
 
 static void UploadTranscoded(
 	const char* name,
@@ -1212,8 +1157,6 @@ static void UploadTranscoded(
 	ri.Free(blocksBuf);
 	blocksBuf = NULL;
 
-	SMP_TexCacheProbeRow(name, &loadRes, fromCache ? NULL : &storeRes,
-						  target, base, levels, *bytesUsed);
 
 	if (numMipmaps) {
 		if (textureFilterAnisotropic) {
@@ -1331,7 +1274,6 @@ image_t* R_CreateImageOld(
 
 	SMP_RLOAD_BEGIN( upload );
 
-	int be_imgT0 = BE_On() ? BE_Microseconds() : 0;
 
 	if (glCompressMode) {
 		if (glConfig.textureCompression != TC_NONE) {
@@ -1407,74 +1349,6 @@ image_t* R_CreateImageOld(
 	SMP_RLOAD_END( upload );
 
 #define SMP_IMGUP_MAX 512
-	if ( R_ProbeStatsOn() )
-	{
-		static char		*s_smpImgupSeen[SMP_IMGUP_MAX];
-		static int		 s_smpImgupCount;
-		static qboolean	 s_smpImgupNotice;
-		static const char *s_gles3PathName[4] = { "software", "s3tc", "etc2", "astc" };
-		GLenum			 err = qglGetError();
-		int				 iSeen;
-		qboolean		 seen = qfalse;
-		int				 rowFmt;
-
-		rowFmt = ( s_gles3PathKind == 0 ) ? (int)R_ES3InternalFormat( s_gles3UploadFormat )
-										 : s_gles3PathFmt;
-
-		for ( iSeen = 0; iSeen < s_smpImgupCount; iSeen++ ) {
-			if ( !strcmp( s_smpImgupSeen[iSeen], image->imgName ) ) {
-				seen = qtrue;
-				break;
-			}
-		}
-		if ( !seen ) {
-			if ( s_smpImgupCount >= SMP_IMGUP_MAX ) {
-				if ( !s_smpImgupNotice ) {
-					s_smpImgupNotice = qtrue;
-					ri.Printf( PRINT_ALL,
-						"[GLES3:imgup] NAME BUDGET reached (%d distinct images recorded); "
-						"further uploads are NOT recorded from here on\n", SMP_IMGUP_MAX );
-				}
-			} else {
-				s_smpImgupSeen[s_smpImgupCount] = ri.Malloc( (int)strlen( image->imgName ) + 1 );
-				strcpy( s_smpImgupSeen[s_smpImgupCount], image->imgName );
-				s_smpImgupCount++;
-
-				ri.Printf( PRINT_ALL,
-					"[GLES3:imgup] name=%s w=%d h=%d path=%s fmt=0x%04x samples=%d literal=0x%04x "
-					"mips=%d bytes=%d lightmap=%d dynamic=%d err=0x%04x usec=%d\n",
-					image->imgName, image->uploadWidth, image->uploadHeight,
-					s_gles3PathName[s_gles3PathKind & 3], (unsigned)rowFmt,
-					( s_gles3PathKind == 0 ) ? s_gles3UploadSamples : 0,
-					( s_gles3PathKind == 0 ) ? (unsigned)s_gles3UploadFormat : 0u,
-					image->numMipmaps, image->bytesUsed, isLightmap ? 1 : 0,
-					image->dynamicallyUpdated ? 1 : 0, (unsigned)err,
-					be_imgT0 ? ( BE_Microseconds() - be_imgT0 ) : 0 );
-
-				if ( s_gles3PathKind == 0 && strstr( image->imgName, "common/shadow" ) != NULL ) {
-					ri.Printf( PRINT_ALL,
-						"[SMP:decalsrc] name=%s px=%d rgb=%lu,%lu,%lu mean=%.1f,%.1f,%.1f"
-						" nearwhite=%d (of %d; r,g,b all >= 200)"
-						" issuedLevels=%d lvl0..7=%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d,%dx%d\n",
-						image->imgName, s_smpUploadPixels,
-						s_smpUploadSum[0], s_smpUploadSum[1], s_smpUploadSum[2],
-						s_smpUploadPixels ? (double)s_smpUploadSum[0] / s_smpUploadPixels : 0.0,
-						s_smpUploadPixels ? (double)s_smpUploadSum[1] / s_smpUploadPixels : 0.0,
-						s_smpUploadPixels ? (double)s_smpUploadSum[2] / s_smpUploadPixels : 0.0,
-						s_smpUploadWhite, s_smpUploadPixels,
-						s_smpUploadLvlN,
-						s_smpUploadLvlW[0], s_smpUploadLvlH[0],
-						s_smpUploadLvlW[1], s_smpUploadLvlH[1],
-						s_smpUploadLvlW[2], s_smpUploadLvlH[2],
-						s_smpUploadLvlW[3], s_smpUploadLvlH[3],
-						s_smpUploadLvlW[4], s_smpUploadLvlH[4],
-						s_smpUploadLvlW[5], s_smpUploadLvlH[5],
-						s_smpUploadLvlW[6], s_smpUploadLvlH[6],
-						s_smpUploadLvlW[7], s_smpUploadLvlH[7] );
-				}
-			}
-		}
-	}
 
 	{
 		GLenum wrapS = (GLenum)image->wrapClampModeX;
@@ -2678,28 +2552,16 @@ int R_CountTextureMemory(void) {
 }
 
 void R_FreeUnusedImages(void) {
-    int i, freed = 0, lmfreed = 0;
+    int i;
 
     for (i = 0; i < tr.numImages; i++) {
         image_t* image = &tr.images[i];
 
         if (image->imgName[0] && image->r_sequence != r_sequencenumber && image->r_sequence != -1) {
-            if (R_ProbeStatsOn() && !strncmp(image->imgName, "*lightmap", 9)) {
-                ri.Printf(PRINT_ALL,
-                          "[GLES3:event] ev=freelmap name=%s tx=%d seq=%d now=%d frame=%d\n",
-                          image->imgName, image->texnum, image->r_sequence,
-                          r_sequencenumber, tr.frameCount);
-                lmfreed++;
-            }
             R_FreeImage(image);
-            freed++;
         }
     }
 
-    if (R_ProbeStatsOn()) {
-        ri.Printf(PRINT_ALL, "[GLES3:event] ev=purge frame=%d freed=%d lmfreed=%d images=%d\n",
-                  tr.frameCount, freed, lmfreed, tr.numImages);
-    }
 }
 
 

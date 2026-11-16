@@ -18,9 +18,6 @@ root, for more details.
 #include "tr_local.h"
 #include "tr_vbo.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 cvar_t* r_ignore;
 cvar_t* r_jobs;
@@ -85,7 +82,6 @@ cvar_t	*r_shadows;
 cvar_t	*r_measureOverdraw;
 cvar_t	*r_surfOwn;
 cvar_t	*r_texgen3d;
-cvar_t	*r_shadowVolume;
 cvar_t	*r_showcluster;
 cvar_t	*r_showlod;
 cvar_t	*r_shownormals;
@@ -156,19 +152,6 @@ cvar_t *r_gamma;
 cvar_t *r_detailtextures;
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* global/game.cfg execs before the renderer loads and its `setd' rewrites both the value
    and the reset string, so it owns a cvar the config has no value for.  These rows take
    the code's own default there; a value from config.cfg clears the marker and wins. */
@@ -179,9 +162,6 @@ static cvar_t *R_RegisterLightCvar( const char *name, const char *value )
 	if ( cv->defaultRecorded ) {
 		ri.Cvar_Set( name, value );
 		cv->defaultRecorded = qfalse;    /* once a boot: my own session value owns the rest of it */
-		if ( PROBE_On() ) {
-			PROBE_EMIT( "[UIVK:", "dlight", "site=register %s='%s'\n", name, value );
-		}
 	}
 
 	return cv;
@@ -223,7 +203,11 @@ void R_RegisterCvars( void )
 	r_flaresMaxDist = ri.Cvar_Get( "r_flaresMaxDist", "768", CVAR_ARCHIVE  );
 	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT  );
 	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", 0  );
-	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "1" );
+	/* retail ships `setd r_dynamiclight 0` in global/game.cfg:22, so its
+	   default frame carries no projected dlight pool.  The port opened it on,
+	   which is why a green grenade / blue ammo canister showed a coloured pool
+	   retail never draws.  The setting still turns it on; the default is retail. */
+	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "0" );
 	r_facePlaneCull = ri.Cvar_Get( "r_facePlaneCull", "1", CVAR_ARCHIVE  );
 	r_showlod = ri.Cvar_Get( "r_showlod", "0", CVAR_TEMP | CVAR_CHEAT );
 	r_debugSort = ri.Cvar_Get( "r_debugSort", "0", CVAR_CHEAT  );
@@ -266,11 +250,6 @@ void R_RegisterCvars( void )
 	/* 1: a 3D stage set written in an older texture generation is repaired before
 	   it is bound.  0 is the pre-repair behaviour, kept for the same comparison. */
 	r_texgen3d = ri.Cvar_Get( "r_texgen3d", "1", CVAR_CHEAT );
-#ifndef PROBE_BUILD_SILENT
-	/* instrument, not a setting: it draws the volume instead of counting it, and
-	   the shipped build carries no arm for it */
-	r_shadowVolume = ri.Cvar_Get( "r_shadowVolume", "0", CVAR_CHEAT );
-#endif
 	r_terrain_global = ri.Cvar_Get( "r_terrain_global", "0", CVAR_CHEAT );
 	r_terrain_global_min = ri.Cvar_Get( "r_terrain_global_min", va("%f", -65536.0f), CVAR_CHEAT );
 
@@ -438,9 +417,7 @@ void R_Init( void )
 	s_vkSafeMode = ri.Cvar_Get( "r_vkSafeMode", "0", 0 );
 	if ( s_vkSafeMode->integer || VK_SafeModeMarkerPresent() ) {
 		vkConfig.textureCompression = TC_NONE;
-		VK_Guard_Row( "VK:guard",
-					  "site=safe-mode detail=\"decode-only texture path\" cause=%s",
-					  s_vkSafeMode->integer ? "explicit" : "prior-crash" );
+
 	} else {
 		vkConfig.textureCompression = TC_S3TC;
 	}
@@ -541,78 +518,22 @@ void R_Init( void )
 	R_InitCommandBuffers();
 
 	/* a quiet boot logs nothing that is not a fault, and this banner is not one */
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:init", "renderer=vulkan api=14 milestone=M3 frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
-	}
-
 	(void)err;
 }
 
 /* The registration generation every object created from here on belongs to.
    Retail's own counter, read back at each census so a lifetime that crosses a
    map change is visible as a generation that did not move. */
-int vk_lifeGen;
 
 /* Objects made and unmade since bring-up, per kind.  A kind whose live count at
    the start of a registration is not zero is state the previous map left. */
-static int s_lifeMade[VK_LIFE_KINDS];
-static int s_lifeGone[VK_LIFE_KINDS];
-static const char *const s_lifeName[VK_LIFE_KINDS] = {
-	"image", "pass", "framebuffer", "view", "pipeline", "set", "buffer"
-};
-
-void VK_Life_NoteCreate( int kind )
-{
-	if ( kind >= 0 && kind < VK_LIFE_KINDS ) {
-		s_lifeMade[kind]++;
-	}
-}
-
-void VK_Life_NoteDestroy( int kind )
-{
-	if ( kind >= 0 && kind < VK_LIFE_KINDS ) {
-		s_lifeGone[kind]++;
-	}
-}
 
 /* The lifetime census: one row per class of object the renderer owns, printed
    at both ends of a registration.  A handle that survives a map change shows
    up as a non-zero live count at the START of the next registration, which is
    exactly the state the class of bug names.  Behind the master gate. */
-void VK_Life_Census( const char *site )
-{
-	int i;
-
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	VK_Guard_Row( "VK:life",
-				  "site=%s gen=%d f=%d world=%d worldMapLoaded=%d viewCluster=%d "
-				  "images=%d numModels=%d swImages=%d fb=%d "
-				  "pass=%d offscreenPass=%d depth=0x%x stencil=%d shadowlive=%d "
-				  "clear=%.3f,%.3f,%.3f",
-				  site, r_sequencenumber, RB_FrameCount(),
-				  tr.world ? 1 : 0, tr.worldMapLoaded ? 1 : 0, tr.viewCluster,
-				  tr.numImages, tr.numModels,
-				  (int)vk.swapchainImageCount, (int)vk.framebufferCount,
-				  vk.renderPass != VK_NULL_HANDLE, vk.offscreenPass != VK_NULL_HANDLE,
-				  (unsigned)vk.depthFormat, (int)vkConfig.stencilBits,
-				  /* 126 = D32_SFLOAT, no stencil: shadows stand down */
-				  ( vkConfig.stencilBits >= 4 ) ? 1 : 0,
-				  vk.clearColor[0], vk.clearColor[1], vk.clearColor[2] );
-
-	for ( i = 0; i < VK_LIFE_KINDS; i++ ) {
-		VK_Guard_Row( "VK:life", "kind=%s gen=%d made=%d gone=%d live=%d",
-					  s_lifeName[i], r_sequencenumber,
-					  s_lifeMade[i], s_lifeGone[i], s_lifeMade[i] - s_lifeGone[i] );
-	}
-}
-
 void RE_Shutdown( qboolean destroyWindow )
 {
-	VK_Life_Census( "shutdown" );
-
 	R_Unregister();
 
 	R_ShutdownCommandBuffers();
@@ -620,9 +541,6 @@ void RE_Shutdown( qboolean destroyWindow )
 	VKimp_Shutdown();
 
 	/* a clean exit is not a fault row; a crash never reaches this line at all */
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:init", "shutdown destroyWindow=%d", destroyWindow ? 1 : 0 );
-	}
 }
 
 void RE_BeginRegistration( glconfig_t *glconfig )
@@ -666,7 +584,6 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 	Com_sprintf( value, sizeof( value ), "%d", r_sequencenumber );
 	ri.Cvar_Set( "r_renderergeneration", value );
 
-	vk_lifeGen = r_sequencenumber;
 
 	/* what a registration DESTROYS, which this backend used to leave standing: retail's R_BeginRegistration @0x00028D50 resets tr.viewCluster to
 	   -1 and the GLES3 twin additionally clears the scene, the non-tiki models, the hunk and the world, so tr.world, tr.worldMapLoaded, the
@@ -702,8 +619,6 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 	vkState.fFogColor[2] = 0.0f;
 	vkState.fFogColor[3] = 1.0f;
 
-	VK_Life_Census( "begin-registration" );
-
 	VK_Shade_WarmReset();
 
 	tr.registrating = qtrue;
@@ -735,13 +650,6 @@ void RE_BeginRegistration( glconfig_t *glconfig )
 }
 
 
-
-
-
-
-
-
-
 static void RE_EndRegistration( void )
 {
 	/* build the pipelines the load's shaders will ask for while the walk is
@@ -749,7 +657,11 @@ static void RE_EndRegistration( void )
 	if ( vk.smpActive && !VKimp_IsRenderThread() ) {
 		VKimp_FrontEndWaitIdle();
 	}
-	VK_Shade_WarmRegistration( 0 );
+	/* finish the whole set while the load owns the screen; the old single
+	   1.5 s slice left the rest to a 2 ms step inside gameplay, and one
+	   driver build that overran that step was a visible hitch */
+	while ( !VK_Shade_WarmRegistration( 0 ) ) {
+	}
 	if ( VK_Shade_WarmTakeNewPipelines() ) {
 		VK_PipelineCache_Save();
 	}
@@ -766,18 +678,10 @@ int RE_GetRegistrationSequence( void )
 }
 
 
-
-
-
-
-
-
-
 /* the client's copy of the light-group set; tr.refdef carries it from here */
 static byte  s_lightGroupIntensity[MAX_LIGHTING_GROUPS];
 static byte  s_lightGroupDefaultIntensity[MAX_LIGHTING_GROUPS];
 static int   s_lightGroupFrame[MAX_LIGHTING_GROUPS];
-static byte  s_detachedIntensity[MAX_LIGHTING_GROUPS];
 static qboolean s_lightGroupValid;
 
 /* client thread only; the walk reads the frame-carried copy */
@@ -818,18 +722,6 @@ void R_DetachLightGroups( void )
 			sizeof( s_lightGroupDefaultIntensity ) );
 	memcpy( tr.refdef.lightGroupFrame, s_lightGroupFrame, sizeof( s_lightGroupFrame ) );
 
-	if ( R_ProbeMarkOn() && memcmp( tr.refdef.lightGroupIntensity, s_detachedIntensity,
-							   sizeof( s_detachedIntensity ) ) != 0 ) {
-		static int rows;
-
-		memcpy( s_detachedIntensity, tr.refdef.lightGroupIntensity, sizeof( s_detachedIntensity ) );
-		if ( PROBE_Throttle( &rows, 4, 300 ) ) {
-			VK_Guard_Row( "VK:lgroup", "light groups changed gen=%d f=%d g0=%d g1=%d g2=%d g3=%d",
-						  r_sequencenumber, tr.frameCount,
-						  tr.refdef.lightGroupIntensity[0], tr.refdef.lightGroupIntensity[1],
-						  tr.refdef.lightGroupIntensity[2], tr.refdef.lightGroupIntensity[3] );
-		}
-	}
 }
 
 /* every group starts at full, matching the load-time init the world groups had */
@@ -844,26 +736,6 @@ void R_InitLightGroups( void )
 /* the lighting switches the world's vertex light actually rides, once per map: an
    install's own config.cfg can outrun the compiled default and this is the row that
    says which of the two feeds a black world came from */
-void R_LightConfigRow( void )
-{
-	if ( !PROBE_On() ) {
-		return;
-	}
-
-	PROBE_CENSUS_EMIT( "[", "LIGHT:cfg",
-					  "map='%s' dlm=%d dlight=%d vlight=%d lmap=%d groups=%d g0=%d g1=%d g2=%d "
-					  "ndl=%d slights=%d blsurfs=%d blverts=%d identityLight=%.4f",
-					  tr.world ? tr.world->name : "-",
-					  r_dynamiclightmaps->integer, r_dynamiclight->integer,
-					  r_vertexLight->integer, r_lightmap->integer,
-					  tr.world ? tr.world->numLightingVertSurfs : -1,
-					  tr.refdef.lightGroupIntensity[0], tr.refdef.lightGroupIntensity[1],
-					  tr.refdef.lightGroupIntensity[2],
-					  tr.refdef.num_dlights, tr.numSLights,
-					  tr.world ? tr.world->numBaseLightingSurfs : -1,
-					  tr.world && tr.world->baseLightingVerts ? 1 : 0,
-					  tr.identityLight );
-}
 
 static vec3_t s_windDirection;
 
@@ -881,33 +753,9 @@ void RE_SetTimeScale( float timeScale )
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void R_SavePerformanceCounters( void )
 {
 }
-
-
-
-
-
-
-
-
-
 
 
 void RE_BeginFrame( stereoFrame_t stereoFrame )
@@ -938,209 +786,8 @@ void RE_BeginFrame( stereoFrame_t stereoFrame )
 }
 
 
-
 /* the rate on screen, and which side is spending it: the reported decline (343 to 230 to 115 fps across one session) was only
-   readable by diffing probe rows.  One row a second names front end against back end; r_perfFps 0 stops it. */
-static cvar_t *s_perfFps;
-
-void VK_PerfFpsRow( void )
-{
-	static int		 frames;
-	static long long	 feUsec;
-	static int		 t0;
-	static int		 baseFps = -1;
-	cvar_t			*cv;
-	int			 now;
-	int			 winFps;
-	long long		 fe;
-	long long		 be;
-	long long		 phase[VK_WP_PHASES];
-	long long		 shadePart[VK_WS_PARTS];
-	long long		 srfPart[VK_WSS_PARTS];
-	long long		 srfTotal, srfNamed, srfOther;
-	long long		 present[VK_WSUB_SLOTS];
-	long long		 elide[VK_ELIDE_HITS];
-	long long		 req[VK_ELIDE_HITS];
-	long long		 gpu[VK_GPU_BUCKETS];
-	long long		 gpuMarks = 0, gpuCap = 0;
-	long long		 verts = 0, surfs = 0, wframes = 0, walkUsec;
-
-	cv = s_perfFps;
-	if ( !cv ) {
-		cv = s_perfFps = ri.Cvar_Get( "r_perfFps", "1", 0 );
-	}
-	/* the timing is the cost, so the master probe gate owns the row too */
-	if ( !cv || !cv->integer || !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	frames++;
-	feUsec += tr.frontEndMsec * 1000;
-
-	now = ri.Milliseconds();
-	if ( !t0 ) {
-		t0 = now;
-		return;
-	}
-
-	if ( now - t0 < 1000 ) {
-		return;
-	}
-
-	/* The walk owns its own time and drains it here, so be= is real under both
-	   r_smp values instead of always 0.  The walk total and its buckets are
-	   written by the walk thread, so they drain together at one instant: reading
-	   them a printf apart let a frame land in one and not the other, which is
-	   the accountant's own error. */
-	walkUsec = RB_WalkUsec64();
-	VK_WalkStat_Take( phase, &verts, &surfs, &wframes );
-	VK_WalkStat_TakeShade( shadePart );
-	VK_WalkStat_TakeSrf( srfPart );
-	srfTotal = VK_WalkStat_TakeSrfTotal();
-	srfNamed = srfPart[VK_WSS_ENDPRE] + srfPart[VK_WSS_STAGE]
-			 + srfPart[VK_WSS_BATCHE] + srfPart[VK_WSS_BEGIN];
-	srfOther = srfTotal - srfNamed;
-	if ( srfOther < 0 ) {
-		srfOther = 0;
-	}
-	VK_WalkStat_TakePresent( present );
-	VK_WalkStat_TakeElisions( elide, req );
-	VK_PerfGpu_Take( gpu, &gpuMarks, &gpuCap );
-
-	/* The first window is the baseline: every later row carries the drift off
-	   it, so the decline is one number instead of a series to eyeball. */
-	fe = feUsec / 1000;
-	be = walkUsec / 1000;
-	winFps = ( int )( ( double )frames * 1000.0 / ( double )( now - t0 ) );
-	if ( baseFps < 0 ) {
-		baseFps = winFps;
-	}
-
-	ri.Printf( PRINT_ALL,
-			   "[PERF:fps] t=%ds fps=%d drift=%+d%% base=%d fe=%lldms be=%lldms park=%dms frames=%d smp=%d val=%d probe=%d\n",
-			   ( int )( ( now - t0 ) / 1000 ), winFps,
-			   baseFps ? ( ( winFps - baseFps ) * 100 / baseFps ) : 0, baseFps,
-			   fe, be, VKimp_ParkMsec(), frames, vk.smpActive ? 1 : 0,
-			   VK_Platform_Validation(), R_ProbeStatsOn() ? 1 : 0 );
-
-	/* be= is the whole walk and contains the blocking frame-fence wait the device owns, so this row splits it per frame and every opcode the
-	   walk executes lands in one bucket: `rest=` is the accounting error, and ac=/out= name the device waits separately from the CPU. */
-	{
-		long long	gpuTotal;
-		long long	sum = 0, dev = 0, shadeSum = 0;
-		double		nf, perSurf, shadeMs;
-		int			i;
-
-		for ( i = 0; i < VK_WP_PHASES; i++ ) {
-			sum += phase[i];
-		}
-		for ( i = 0; i < VK_WS_PARTS; i++ ) {
-			shadeSum += shadePart[i];
-		}
-		dev = phase[VK_WP_FENCE] + phase[VK_WP_ACQ];
-		gpuTotal = gpu[VK_GPU_CLEAR] + gpu[VK_GPU_WORLD] + gpu[VK_GPU_SPRITE] + gpu[VK_GPU_UI];
-		nf = wframes ? (double)wframes : 1.0;
-		perSurf = surfs ? (double)surfs : 1.0;
-		shadeMs = (double)phase[VK_WP_SHADE] / nf / 1000.0;
-		ri.Printf( PRINT_ALL,
-				   "[PERF:walk] win=%dms frames=%lld verts/frame=%.0f surf/frame=%.1f "
-				   "gen=%.2fms pack=%.2fms bind=%.2fms rec=%.2fms shade=%.2fms fence=%.2fms acq=%.2fms "
-				   "open=%.2fms ui=%.2fms out=%.2fms recend=%.2fms submit=%.2fms present=%.2fms pix=%.2fms rest=%.2fms "
-				   "cpu=%.2fms dev=%.2fms walk=%.2fms elide_idx=%.1f/f elide_ubo=%.1f/f "
-				   "elide_pipe=%.1f/f elide_set=%.1f/f "
-				   "req_idx=%.1f/f req_ubo=%.1f/f req_pipe=%.1f/f req_set=%.1f/f "
-				   "gpu_clear=%.2fms gpu_world=%.2fms gpu_sprite=%.2fms gpu_ui=%.2fms "
-				   "gpu=%.2fms gmarks=%.1f/f gcap=%lld\n",
-				   now - t0, wframes, (double)verts / nf, (double)surfs / nf,
-				   (double)phase[VK_WP_GEN] / nf / 1000.0,
-				   (double)phase[VK_WP_PACK] / nf / 1000.0,
-				   (double)phase[VK_WP_BIND] / nf / 1000.0,
-				   (double)phase[VK_WP_REC] / nf / 1000.0,
-				   (double)phase[VK_WP_SHADE] / nf / 1000.0,
-				   (double)phase[VK_WP_FENCE] / nf / 1000.0,
-				   (double)phase[VK_WP_ACQ] / nf / 1000.0,
-				   (double)phase[VK_WP_OPEN] / nf / 1000.0,
-				   (double)phase[VK_WP_UI] / nf / 1000.0,
-				   (double)phase[VK_WP_OUT] / nf / 1000.0,
-				   (double)present[VK_WSUB_RECEND] / nf / 1000.0,
-				   (double)present[VK_WSUB_SUBMIT] / nf / 1000.0,
-				   (double)present[VK_WSUB_PRESENT] / nf / 1000.0,
-				   (double)phase[VK_WP_PIX] / nf / 1000.0,
-				   ( (double)walkUsec - (double)sum ) / nf / 1000.0,
-				   ( (double)sum - (double)dev ) / nf / 1000.0,
-				   (double)dev / nf / 1000.0,
-				   (double)walkUsec / nf / 1000.0,
-				   (double)elide[VK_ELIDE_INDEX] / nf,
-				   (double)elide[VK_ELIDE_UBO] / nf,
-				   (double)elide[VK_ELIDE_PIPE] / nf,
-				   (double)elide[VK_ELIDE_SET] / nf,
-				   (double)req[VK_ELIDE_INDEX] / nf,
-				   (double)req[VK_ELIDE_UBO] / nf,
-				   (double)req[VK_ELIDE_PIPE] / nf,
-				   (double)req[VK_ELIDE_SET] / nf,
-				   (double)gpu[VK_GPU_CLEAR] / nf / 1000.0,
-				   (double)gpu[VK_GPU_WORLD] / nf / 1000.0,
-				   (double)gpu[VK_GPU_SPRITE] / nf / 1000.0,
-				   (double)gpu[VK_GPU_UI] / nf / 1000.0,
-				   (double)gpuTotal / nf / 1000.0,
-				   (double)gpuMarks / nf, gpuCap );
-
-		/* The shade window's split.  OTHER is the remainder, so the parts sum
-		   to shade= and the us/sf column names the carrier, as gen= does. */
-		ri.Printf( PRINT_ALL,
-				   "[PERF:shade] win=%dms frames=%lld surf/f=%.1f shade=%.2fms(%.1fus/sf) "
-				   "dec=%.1f srf=%.1f rot=%.1f mv=%.1f sdl=%.1f sph=%.1f oth=%.1f (us/sf) "
-				   "parts=%.2fms\n",
-				   now - t0, wframes, (double)surfs / nf, shadeMs,
-				   (double)phase[VK_WP_SHADE] / perSurf,
-				   (double)shadePart[VK_WS_DECOMPOSE] / perSurf,
-				   (double)shadePart[VK_WS_SURFACE] / perSurf,
-				   (double)shadePart[VK_WS_ROTATE] / perSurf,
-				   (double)shadePart[VK_WS_MODELVIEW] / perSurf,
-				   (double)shadePart[VK_WS_STATICDLIGHTS] / perSurf,
-				   (double)shadePart[VK_WS_SPHERE] / perSurf,
-				   (double)shadePart[VK_WS_OTHER] / perSurf,
-				   (double)shadeSum / nf / 1000.0 );
-
-		/* The srf window's own split.  srf= above is the whole pair, tot= is the
-		   same window measured at its own seam, and the four named sub-parts
-		   plus oth= sum to it. */
-		ri.Printf( PRINT_ALL,
-				   "[PERF:srf] win=%dms frames=%lld surf/f=%.1f tot=%.2f endpre=%.2f "
-				   "stage=%.2f batche=%.2f begin=%.2f oth=%.2f (us/sf)\n",
-				   now - t0, wframes, (double)surfs / nf,
-				   (double)srfTotal / perSurf,
-				   (double)srfPart[VK_WSS_ENDPRE] / perSurf,
-				   (double)srfPart[VK_WSS_STAGE] / perSurf,
-				   (double)srfPart[VK_WSS_BATCHE] / perSurf,
-				   (double)srfPart[VK_WSS_BEGIN] / perSurf,
-				   (double)srfOther / perSurf );
-
-		/* the pool the walk's parallel ranges actually ran on: this module compiles q_jobs.c for itself (cmake/renderer_common.cmake), so its
-		   pool is not the client's and this row is the only place the name, worker count and refused-range count are readable here.  refused>0 names lost vertex work. */
-		{
-			static long long	batchesPrev;
-			jobpoolStats_t		st;
-			long long			batchesWin;
-
-			JobPool_GetStats( &st );
-			batchesWin = st.batches - batchesPrev;
-			batchesPrev = st.batches;
-			ri.Printf( PRINT_ALL,
-					   "[PERF:jobs] win=%dms pool=%s workers=%d batches=%lld win=%lld "
-					   "batch/frame=%.1f parallel=%lld inline=%lld calls=%d refused=%d r_smp=%d\n",
-					   now - t0, JobPool_Name(), st.workers,
-					   ( long long )st.batches, batchesWin,
-					   wframes > 0 ? ( double )batchesWin / ( double )wframes : 0.0,
-					   st.parallelElements, st.inlineElements,
-					   st.inlineCalls, st.droppedRanges, vk.smpActive ? 1 : 0 );
-		}
-	}
-
-	frames = 0;
-	feUsec = 0;
-	t0     = now;
-}
+   readable by diffing perf rows.  One row a second names front end against back end; r_perfFps 0 stops it. */
 
 void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 {
@@ -1187,40 +834,16 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec )
 		*backEndMsec = ( int )( RB_WalkFrameUsec64() / 1000 );
 	}
 
-	VK_PerfFpsRow();
 
 	tr.frontEndMsec = 0;
 	backEnd.backEndMsec = 0;
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 static void RE_SetRenderTime( int t )
 {
 	backEnd.refdefFloatTime = ( float )t / 1000.0f;
 }
-
-
 
 
 static const char *RE_GetGraphicsInfo( void )
@@ -1236,51 +859,10 @@ static void RE_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directed
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const char *RE_GetModelName( qhandle_t hModel )
 {
 	return "";
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void RE_TakeVideoFrame( int h, int w, byte *captureBuffer, byte *encodeBuffer, qboolean motionJpeg )

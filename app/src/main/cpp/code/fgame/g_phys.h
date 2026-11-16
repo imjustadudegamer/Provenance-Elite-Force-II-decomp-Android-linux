@@ -74,12 +74,8 @@ void     G_Impact(Entity *e1, const trace_t *trace);
 qboolean G_PushMove(Entity *pusher, const Vector &move, const Vector &amove);
 void     G_CheckWater(Entity *ent);
 
-void UIVK_KB_Arm(int entnum);
 Entity  *G_TestEntityPosition(Entity *ent, Vector vOrg);
 
-void G_EntTrash_Pointer(const char *where, Entity *player, void *pheur);
-void G_EntTrash_KilledEntry(Entity *victim, Entity *attacker, float damage);
-void G_EntTrash_Tick(void);
 
 class Angle
 {

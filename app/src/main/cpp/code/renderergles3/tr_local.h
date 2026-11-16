@@ -1652,9 +1652,6 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 void Set2DInitialShaderTime(float startTime);
 
 void RE_Scissor(int x, int y, int width, int height);
-qboolean R_ProbeStatsOn( void );
-void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport );
-void SMP_ShaderDefaultProbe( const char *kind, const char *requested, const char *source, int a, int b );
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask);
 
 /* The 2D command bodies.  One body per entry point, run directly when the back
@@ -1751,6 +1748,7 @@ void	R_SkinList_f( void );
 int		R_SumOfTextureMemory( int type, int usedOnly, int estimated );
 void	R_TotalTextureMemInfo_f( void );
 const void *RB_TakeScreenshotCmd( const void *data );
+void R_FlushScreenshot( void );
 void	R_ScreenShot_f( void );
 
 void	R_InitImages( void );
@@ -2465,9 +2463,8 @@ int		SMP_RLoadNow( void );
 void	SMP_RLoadAdd( int zone, int msec, int depth );
 
 static inline int SMP_RLoadArmed( void ) {
-	/* every probe family answers to the master gate (qa_probe.h); this one was
-	   the only exception and printed [SMP:rload] rows with qa_probe still 0 */
-	return ( smp_rloadStats && smp_rloadStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
+	/* armed by its own cvar */
+	return ( smp_rloadStats && smp_rloadStats->integer ) ? 1 : 0;
 }
 
 #define SMP_RLOAD_BEGIN(z) \

@@ -66,14 +66,11 @@ void SndMix_RegisterPCM(
     sfx_t *pSfx, const byte *pPcm, int samples, int rate, int width, int channels, int bus);
 
 /* Dialog preemption bookkeeping: the counter must read 0 under the mixer. */
-void SndMix_NoteDialogDrop(void);
-void SndMix_NoteDialogSteal(void);
 
 /* MUSIC_UpdateDucking: the snapshot's `ps.allowMusicDucking' gates the music
    bus depth (it is true unless a script turns it off). */
 void SndMix_SetMusicDucking(int iDucking);
 
-void SndMix_SummaryRow(void);
 
 #ifdef __cplusplus
 }

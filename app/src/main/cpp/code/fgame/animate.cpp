@@ -29,12 +29,6 @@
 #include "g_utils.h"
 #include "../corepp/tiki.h"
 
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
-#define WIDGET_PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define WIDGET_PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_widget.h"
 
 static int widget_pin_anim_at[MAX_GENTITIES];
 static int widget_pin_clear_since[MAX_GENTITIES];
@@ -74,7 +68,6 @@ Event EV_Torso_StopAnimating (    "torso_stopanimating",
     NULL,
     NULL,
     "stop the torso from animating.  Animation will end at the end of current cycle.");
-
 
 
 Event EV_Anim (    "anim",
@@ -214,8 +207,6 @@ void Animate::Archive(Archiver& arc)
 }
 
 
-
-
 void Animate::NewAnim(int animnum, int slot, float weight, int ef2Channel)
 {
     tiki_cmd_t cmds;
@@ -244,8 +235,6 @@ void Animate::NewAnim(int animnum, int slot, float weight, int ef2Channel)
     }
 
     if (channel == EF2ANIM_LEGS) {
-        int widget_pin_was = (self->edict->s.frame & FRAME_EXPLICIT) ? 1 : 0;
-
         if (self->entnum >= 0 && self->entnum < MAX_GENTITIES) {
             widget_pin_clear_since[self->entnum] = 1;
         }
@@ -258,24 +247,6 @@ void Animate::NewAnim(int animnum, int slot, float weight, int ef2Channel)
         frametime = &legs_frametime;
         numframes = &legs_numframes;
 
-        {
-            static int widget_clr;
-
-            if (WIDGET_On() && WIDGET_Throttle(&widget_clr, 4, 8)) {
-                WIDGET_A1_PROBE(
-                    "anim:clear",
-                    "ent=%d etype=%d ch=LEGS newidx=%d pinwas=%d es.frame=0x%x "
-                    "es.anim=%d svtime=%d model='%s'\n",
-                    self->entnum,
-                    self->edict->s.eType,
-                    animnum,
-                    widget_pin_was,
-                    self->edict->s.frame,
-                    self->edict->s.anim,
-                    level.inttime,
-                    self->model.c_str());
-            }
-        }
     } else if (channel == EF2ANIM_TORSO) {
         anim      = &self->edict->s.torso_anim;
         self->edict->s.torso_frame &= ~FRAME_EXPLICIT;
@@ -335,20 +306,8 @@ void Animate::NewAnim(int animnum, int slot, float weight, int ef2Channel)
 
     qboolean hascommands = (gi.Anim_HasCommands(self->edict->s.modelindex, animnum) != 0);
 
-    {
-        static int bot_has;
-        if (PROBE_Throttle(&bot_has, 8, 500)) {
-            BOT_PROBE("sanim:hascmds", "ent=%d modelindex=%d anim=%d hascommands=%d\n",
-                       self->entnum, self->edict->s.modelindex, animnum, hascommands ? 1 : 0);
-        }
-    }
 
     if (self->edict->s.eFlags & EF_DONT_PROCESS_COMMANDS) {
-        static int bot_dp;
-        if (PROBE_Throttle(&bot_dp, 4, 500)) {
-            BOT_PROBE("sanim:dontprocess", "ent=%d anim=%d commands CLEARED by EF_DONT_PROCESS_COMMANDS\n",
-                       self->entnum, animnum);
-        }
         hascommands = qfalse;
     }
 
@@ -358,25 +317,9 @@ void Animate::NewAnim(int animnum, int slot, float weight, int ef2Channel)
         if (gi.Frame_Commands(self->edict->s.modelindex, animnum, TIKI_FRAME_ENTRY, &cmds)) {
             int ii, j;
 
-            {
-                static int bot_entry;
-                if (PROBE_Throttle(&bot_entry, 8, 500)) {
-                    BOT_PROBE("sanim:entry", "ent=%d anim=%d ENTRY cmds=%d\n",
-                               self->entnum, animnum, cmds.num_cmds);
-                }
-            }
 
             for (ii = 0; ii < cmds.num_cmds; ii++) {
                 const tiki_singlecmd_t& single_cmd = cmds.cmds[ii];
-
-                {
-                    static int bot_scmd;
-                    if (PROBE_Throttle(&bot_scmd, 24, 400)) {
-                        BOT_PROBE("sanim:cmd", "ent=%d anim=%d cmd='%s' nargs=%d\n",
-                                   self->entnum, animnum, single_cmd.args[0], single_cmd.num_args);
-                    }
-                }
-
 
                 Event *ev = new Event(single_cmd.args[0]);
 
@@ -651,8 +594,6 @@ void Animate::SetFrame(int framenum, bodypart_t part, int anim)
     CancelFlaggedEvents(flags);
     self->CancelFlaggedEvents(flags);
 
-    int widget_prevpin = (*frame & FRAME_EXPLICIT) ? 1 : 0;
-
     *frame = framenum | FRAME_EXPLICIT;
 
     if (anim >= 0) {
@@ -660,35 +601,6 @@ void Animate::SetFrame(int framenum, bodypart_t part, int anim)
     }
 
     {
-        static int widget_pin[MAX_GENTITIES];
-        int        widget_pin_anim_at_v     = -1;
-        int        widget_pin_clear_since_v = 0;
-
-        if (self->entnum >= 0 && self->entnum < MAX_GENTITIES) {
-            widget_pin_anim_at_v     = widget_pin_anim_at[self->entnum];
-            widget_pin_clear_since_v = widget_pin_clear_since[self->entnum];
-        }
-
-        if (WIDGET_On() && self->entnum >= 0 && self->entnum < MAX_GENTITIES
-            && WIDGET_Throttle(&widget_pin[self->entnum], 4, 8)) {
-            WIDGET_A1_PROBE(
-                "anim:pin",
-                "ent=%d etype=%d part=%d animidx=%d pin=1 frame=%d prevpin=%d prevanim=%d "
-                "clearsince=%d es.anim=%d es.frame=0x%x svtime=%d model='%s'\n",
-                self->entnum,
-                self->edict->s.eType,
-                part,
-                anim,
-                framenum,
-                widget_prevpin,
-                widget_pin_anim_at_v,
-                widget_pin_clear_since_v,
-                self->edict->s.anim,
-                self->edict->s.frame,
-                level.inttime,
-                self->model.c_str());
-        }
-
         if (self->entnum >= 0 && self->entnum < MAX_GENTITIES) {
             widget_pin_anim_at[self->entnum]     = anim;
             widget_pin_clear_since[self->entnum] = 0;
@@ -897,29 +809,10 @@ int Animate::CurrentAnim(int slot)
 }
 
 
-
 const char *Animate::AnimName(int slot)
 {
     return gi.Anim_NameForNum(self->edict->s.modelindex, CurrentAnim(slot));
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 int Animate::CurrentFrame(int part) const
@@ -968,7 +861,6 @@ int Animate::CurrentFrame(int part) const
 }
 
 
-
 void Animate::AddEffectAnim( const char *animname )
 {
 	int num = gi.Anim_Random( self->edict->s.modelindex, animname );
@@ -1001,39 +893,6 @@ void Animate::FrameDeltaEvent( Event *ev )
 {
 	frame_delta = ev->GetVector( 1 );
 
-	if (getenv("EF2_DEADWEDGE") && gi.cvar("qa_probe", "0", 0)->integer) {
-		static int uivk_nd_count[MAX_GENTITIES];
-		int       uivk_nd_e = self->edict - g_entities;
-
-		if (uivk_nd_e >= 0 && uivk_nd_e < MAX_GENTITIES && uivk_nd_count[uivk_nd_e] < 8) {
-			int uivk_nd_bad = 0;
-
-			for (int uivk_nd_i = 0; uivk_nd_i < 3; uivk_nd_i++) {
-				if (!(frame_delta[uivk_nd_i] == frame_delta[uivk_nd_i])) {
-					uivk_nd_bad |= 1;
-				}
-				if (!(self->edict->s.scale == self->edict->s.scale)) {
-					uivk_nd_bad |= 2;
-				}
-			}
-
-			if (uivk_nd_bad) {
-				uivk_nd_count[uivk_nd_e]++;
-				gi.Printf("[UIVK:nandelta] ent=%d bad=%d anim=%d frame=%d "
-				          "delta=(%.6g,%.6g,%.6g) scale=%.6g td=(%.6g,%.6g,%.6g) "
-				          "org=(%.1f,%.1f,%.1f) mv=%d\n",
-				          uivk_nd_e,
-				          uivk_nd_bad,
-				          self->CurrentAnim(legs),
-				          self->CurrentFrame(legs),
-				          frame_delta[0], frame_delta[1], frame_delta[2],
-				          self->edict->s.scale,
-				          self->total_delta[0], self->total_delta[1], self->total_delta[2],
-				          self->origin[0], self->origin[1], self->origin[2],
-				          (int)self->movetype);
-			}
-		}
-	}
 
 	self->total_delta += frame_delta * self->edict->s.scale ;
 }
@@ -1083,27 +942,6 @@ void Animate::SetAnimationRate( const float animationRate )
 
 void Animate::StopAnimatingAtEnd( bodypart_t part )
 {
-    {
-        static int widget_stop[ MAX_GENTITIES ];
-
-        if ( WIDGET_On() && self && self->entnum >= 0 && self->entnum < MAX_GENTITIES
-             && WIDGET_Throttle( &widget_stop[ self->entnum ], 4, 8 ) )
-        {
-            WIDGET_A1_PROBE(
-                "anim:stopcaller",
-                "ent=%d etype=%d part=%d curanim=%d curframe=%d numframes=%d svtime=%d "
-                "model='%s'\n",
-                self->entnum,
-                self->edict->s.eType,
-                part,
-                CurrentAnim( part ),
-                CurrentFrame( part ),
-                ( part == torso ) ? torso_numframes : legs_numframes,
-                level.inttime,
-                self->model.c_str() );
-        }
-    }
-
 	int anim;
 	
 	if ( part == all )
@@ -1154,8 +992,6 @@ void Animate::Torso_StopAnimating( Event *ev )
 	CancelFlaggedEvents( EVENT_TORSO_ANIM );
 	self->CancelFlaggedEvents( EVENT_TORSO_ANIM );
 }
-
-
 
 
 str Animate::GetName()

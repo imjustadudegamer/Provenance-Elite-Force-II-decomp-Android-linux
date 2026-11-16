@@ -23,10 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_local.h"
 #include "tr_vbo.h"
 #include "gles3_g1_api.h"
+#include "../renderercommon/tr_frame_stats.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 backEndData_t	*backEndData;			
 backEndData_t	*backEndDataBuf[SMP_FRAMES];	
@@ -148,7 +146,6 @@ qboolean RB_FrameDepthPlaneClear( void ) {
 }
 
 
-
 static float	s_flipMatrix[16] = {
 	0, 0, -1, 0,
 	-1, 0, 0, 0,
@@ -156,203 +153,11 @@ static float	s_flipMatrix[16] = {
 	0, 0, 0, 1
 };
 
-/* Whether a pixel readback would run at all.  A caller that has to query live GL
-   state to build the probe's rect asks this first: a synchronous state query
-   costs the frame more than the row it feeds, and a silent build runs none. */
-qboolean GLES3_PixelProbeWanted( void ) {
-	static cvar_t	*cvar;
-
-	if ( !cvar ) {
-		cvar = PROBE_GET( "pix_probe", "1", 0 );
-	}
-	return ( cvar->integer && PROBE_On() ) ? qtrue : qfalse;
-}
-
-/* ---- [GLES3:pix] what the framebuffer actually holds ----------------------
- * A submitted draw that produces no pixels is invisible from the command list.
- * Two readbacks name the screen -- one when the 3D view hands back to 2D, one
- * at swap; mean RGB tells the panel art from the clear colour. */
-void GLES3_PixelProbe( const char *src, int x, int y, int w, int h ) {
-	static cvar_t		*cvar;
-	static struct {
-		const char	*name;
-		int			rows;
-	}					 seen[6];
-	static int			 seenN;
-	byte				*buf;
-	int				 i, n, r, g, b, a, opaque, slot;
-
-	if ( !cvar ) {
-		cvar = PROBE_GET( "pix_probe", "1", 0 );
-	}
-	if ( !cvar->integer || !PROBE_On() || w < 1 || h < 1 ) {
-		return;
-	}
-
-	for ( slot = 0; slot < seenN; slot++ ) {
-		if ( !strcmp( seen[slot].name, src ) ) {
-			break;
-		}
-	}
-	if ( slot == seenN && seenN < (int)( sizeof( seen ) / sizeof( seen[0] ) ) ) {
-		seen[seenN].name = src;
-		seen[seenN].rows = 0;
-		seenN++;
-	}
-	if ( slot == seenN ) {
-		return;
-	}
-
-	seen[slot].rows++;
-	if ( seen[slot].rows > 4 && ( seen[slot].rows % 120 ) != 0 ) {
-		return;
-	}
-
-	n = w * h;
-	buf = ri.Hunk_AllocateTempMemory( n * 4 );
-	qglReadPixels( x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf );
-	r = g = b = a = opaque = 0;
-	for ( i = 0; i < n; i++ ) {
-		r += buf[i * 4 + 0];
-		g += buf[i * 4 + 1];
-		b += buf[i * 4 + 2];
-		a += buf[i * 4 + 3];
-		if ( buf[i * 4 + 3] == 255 ) {
-			opaque++;
-		}
-	}
-	ri.Hunk_FreeTempMemory( buf );
-
-	ri.Printf( PRINT_ALL,
-			   "[GLES3:pix] src=%s rect=%d,%d %dx%d mean=%d,%d,%d a=%d opaque=%d/%d f=%d\n",
-			   src, x, y, w, h, r / n, g / n, b / n, a / n, opaque, n, RB_FrameCount() );
-}
-
 void GL_SetFogColor(const vec4_t fColor) {
 	glState.fFogColor[0] = fColor[0];
 	glState.fFogColor[1] = fColor[1];
 	glState.fFogColor[2] = fColor[2];
 	glState.fFogColor[3] = fColor[3];
-}
-
-/* ---- [GLES3:texaudit] what the device holds for a bind -------------------
- * An incomplete texture fetches black; an immutable store an upload tried to
- * re-specify keeps the old contents.  Once per image, then every 256th bind. */
-#define TEXAUDIT_HASH	2048
-#define TEXAUDIT_MAX	512
-#define TEXAUDIT_RECHECK	256
-
-typedef struct {
-	unsigned	texnum;
-	int			rows;
-} texaudit_t;
-
-static texaudit_t	*s_texaudit;
-static int			*s_texauditHash;
-static int			 s_texauditCount;
-static qboolean		 s_texauditCapped;
-
-static void GLES3_TexAudit( image_t *image ) {
-	texaudit_t	*e;
-	GLuint		errBefore;
-	GLint		minF = -1, magF = -1, immut = -1;
-	GLint		wrapS = -1, wrapT = -1, mipLevels = -1;
-	int			recheck, verdict = 0;
-	unsigned	hash;
-	int			slot, idx;
-
-	if ( !R_ProbeStatsOn() || !image || !image->texnum ) {
-		return;
-	}
-
-	if ( !s_texaudit ) {
-		s_texaudit     = (texaudit_t *)ri.Malloc( sizeof( texaudit_t ) * TEXAUDIT_MAX );
-		s_texauditHash = (int *)ri.Malloc( sizeof( int ) * TEXAUDIT_HASH );
-		Com_Memset( s_texauditHash, 0, sizeof( int ) * TEXAUDIT_HASH );
-	}
-
-	hash = (unsigned)( image->texnum * 2654435761u );
-	slot = (int)( hash & ( TEXAUDIT_HASH - 1 ) );
-	for ( ;; ) {
-		idx = s_texauditHash[slot];
-		if ( !idx ) {
-			break;
-		}
-		idx--;
-		if ( s_texaudit[idx].texnum == (unsigned)image->texnum ) {
-			e = &s_texaudit[idx];
-			goto found;
-		}
-		slot = ( slot + 1 ) & ( TEXAUDIT_HASH - 1 );
-	}
-
-	if ( s_texauditCount >= TEXAUDIT_MAX ) {
-		if ( !s_texauditCapped ) {
-			s_texauditCapped = qtrue;
-			ri.Printf( PRINT_ALL,
-					   "[GLES3:texaudit] capped at %d images; re-checks continue, new images are not recorded\n",
-					   TEXAUDIT_MAX );
-		}
-		return;
-	}
-	idx = s_texauditCount++;
-	s_texaudit[idx].texnum = image->texnum;
-	s_texaudit[idx].rows   = 0;
-	s_texauditHash[slot]   = idx + 1;
-	e = &s_texaudit[idx];
-
-found:
-	e->rows++;
-	recheck = ( e->rows > 4 ) && ( ( e->rows % TEXAUDIT_RECHECK ) != 0 );
-	if ( recheck ) {
-		return;
-	}
-
-	errBefore = qglGetError();
-	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF );
-	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF );
-	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &wrapS );
-	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, &wrapT );
-	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_FORMAT, &immut );
-	qglGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_LEVELS, &mipLevels );
-	if ( qglGetError() != GL_NO_ERROR || errBefore != GL_NO_ERROR ) {
-		verdict |= 0x40;
-	}
-
-	/* v01 no size; 04 mip filter over one level, incomplete, fetches black;
-	 * 08 the ES default filter left standing; 10 recorded wrap against the
-	 * object's; 20 immutable a re-upload would refuse; 40 a read errored. */
-	if ( image->uploadWidth <= 0 || image->uploadHeight <= 0 ) {
-		verdict |= 0x01;
-	}
-	if ( minF >= 0x2700 && minF <= 0x2703 && image->numMipmaps <= 0 ) {
-		verdict |= 0x04;
-	}
-	if ( minF == 0x2702 ) {
-		verdict |= 0x08;
-	}
-	if ( ( image->wrapClampModeX == GL_REPEAT ) != ( wrapS == GL_REPEAT )
-		 || ( image->wrapClampModeY == GL_REPEAT ) != ( wrapT == GL_REPEAT ) ) {
-		verdict |= 0x10;
-	}
-	if ( immut == 1 && image->dynamicallyUpdated ) {
-		verdict |= 0x20;
-	}
-
-	if ( !verdict && e->rows > 1 ) {
-		return;		/* clean, and already reported */
-	}
-
-	ri.Printf( PRINT_ALL,
-			   "[GLES3:texaudit] %s tex=%u declared=%dx%d"
-			   " mips=%d minF=0x%04x magF=0x%04x wrap=%d,%d immut=%d lvls=%d"
-			   " dyn=%d flags=0x%x v=%02x n=%d f=%d\n",
-			   image->imgName, (unsigned)image->texnum,
-			   image->uploadWidth, image->uploadHeight,
-			   image->numMipmaps, (unsigned)minF, (unsigned)magF,
-			   wrapS, wrapT, immut, mipLevels,
-			   image->dynamicallyUpdated ? 1 : 0, (unsigned)image->flags,
-			   verdict, e->rows, RB_FrameCount() );
 }
 
 /* The wrap is object state and the flip writes it to whatever is bound, so a
@@ -404,8 +209,12 @@ void GL_Bind( image_t *image ) {
 	int texnum;
 
 	if ( !image ) {
-		ri.Error(ERR_DROP, "GL_Bind: NULL image\n");
-		texnum = tr.defaultImage->texnum;
+		/* last-resort fallback: a null bind must not abort the render walk */
+		image = tr.defaultImage ? tr.defaultImage : tr.whiteImage;
+		if ( !image ) {
+			return;
+		}
+		texnum = image->texnum;
 	} else {
 		texnum = image->texnum;
 		image->UseCount++;
@@ -421,70 +230,11 @@ void GL_Bind( image_t *image ) {
 		}
 		glState.currenttextures[glState.currenttmu] = texnum;
 		qglBindTexture (GL_TEXTURE_2D, texnum);
-		GLES3_TexAudit( image );
 		if ( glState.currenttmu < 2 ) {
 			s_wrapImage[glState.currenttmu] = image;
 		}
 		GLES3_RestoreWrap( image );
 
-#define SMP_BIND_MAX   2048
-#define SMP_BIND_HASH  8192			
-		if ( R_ProbeStatsOn() ) {
-			typedef struct {
-				int				tmu;
-				unsigned		texnum;
-				const char		*name;
-				unsigned		count;
-			} smpBind_t;
-			static smpBind_t	*s_smpBind;
-			static int			*s_smpBindHash;
-			static int			 s_smpBindCount;
-			static qboolean		 s_smpBindNotice;
-			unsigned			 h;
-			int					 slot;
-			int					 idx;
-
-			if ( !s_smpBind ) {
-				s_smpBind = (smpBind_t *)ri.Malloc( sizeof( smpBind_t ) * SMP_BIND_MAX );
-				s_smpBindHash = (int *)ri.Malloc( sizeof( int ) * SMP_BIND_HASH );
-				Com_Memset( s_smpBindHash, 0, sizeof( int ) * SMP_BIND_HASH );
-			}
-
-			h = (unsigned)( glState.currenttmu * 2654435761u ) ^ ( texnum * 2246822519u );
-			slot = (int)( h & ( SMP_BIND_HASH - 1 ) );
-			for ( ;; ) {
-				idx = s_smpBindHash[slot];
-				if ( !idx ) {
-					break;
-				}
-				idx--;
-				if ( s_smpBind[idx].tmu == glState.currenttmu
-					 && s_smpBind[idx].texnum == (unsigned)texnum ) {
-					s_smpBind[idx].count++;
-					goto smp_bind_done;
-				}
-				slot = ( slot + 1 ) & ( SMP_BIND_HASH - 1 );
-			}
-
-			if ( s_smpBindCount >= SMP_BIND_MAX ) {
-				if ( !s_smpBindNotice ) {
-					s_smpBindNotice = qtrue;
-					ri.Printf( PRINT_ALL,
-						"[GLES3:bind] PAIR BUDGET reached (%d distinct (tmu,tex) pairs recorded); "
-						"further distinct pairs are NOT recorded from here on\n", SMP_BIND_MAX );
-				}
-			} else {
-				idx = s_smpBindCount++;
-				s_smpBind[idx].tmu = glState.currenttmu;
-				s_smpBind[idx].texnum = (unsigned)texnum;
-				s_smpBind[idx].name = image ? image->imgName : "*null-image";
-				s_smpBind[idx].count = 1;
-				s_smpBindHash[slot] = idx + 1;
-				ri.Printf( PRINT_ALL, "[GLES3:bind] tmu=%d tex=%d name=%s\n",
-						   glState.currenttmu, texnum, s_smpBind[idx].name );
-			}
-smp_bind_done:;
-		}
 	}
 }
 
@@ -709,8 +459,6 @@ void RB_FrameClearIfFirst( void ) {
 		s_frameColorDrawn = qtrue;
 	}
 }
-
-
 
 
 static qboolean	s_stenTest = qfalse;	/* the stencil gate, same discipline */
@@ -1019,7 +767,6 @@ void GL_State( unsigned long stateBits )
 }
 
 
-
 static void RB_Hyperspace( void ) {
 	float		c;
 
@@ -1039,143 +786,6 @@ static void RB_Hyperspace( void ) {
 }
 
 
-
-#define SMP_VP_ROW_CAP		240
-#define SMP_VP_TUPLE_SLOTS	192
-#define SMP_VP_QUERY_BUDGET	8
-#define SMP_VP_HEARTBEAT	300
-
-typedef struct {
-	const char	*src;
-	int			ix, iy, iw, ih;		
-	int			clearBits;			
-	unsigned	visits;
-	qboolean	queried;			
-	qboolean	lastDisagree;		
-	int			dx, dy, dw, dh;		
-	int			dvx, dvy, dvw, dvh;	
-	int			dtest;				
-} smpVpTuple_t;
-
-void SMP_VpProbe( const char *src, const char *why, int x, int y, int w, int h, int clearBits, qboolean setsViewport ) {
-	static smpVpTuple_t	s_tuples[SMP_VP_TUPLE_SLOTS];
-	static int				s_rows;
-	static int				s_suppressed;
-	static int				s_lastFrame = -1;
-	static int				s_queriesThisFrame;
-	static int				s_fullAnnounced;
-	static cvar_t			*s_cvar;
-	smpVpTuple_t			*t = NULL;
-	int						i, slot = -1;
-	int						sc[4] = { 0, 0, 0, 0 };
-	int						vp[4] = { 0, 0, 0, 0 };
-	int						dtest = 0;
-	qboolean				heartbeat, needQuery, disagree;
-
-	if ( !s_cvar ) {
-		s_cvar = ri.Cvar_Get( "smp_vpProbe", "1", 0 );
-	}
-	if ( !s_cvar || !s_cvar->integer || !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	if ( RB_FrameCount() != s_lastFrame ) {
-		s_lastFrame = RB_FrameCount();
-		s_queriesThisFrame = 0;
-	}
-	heartbeat = ( s_lastFrame % SMP_VP_HEARTBEAT ) == 0;
-
-	for ( i = 0; i < SMP_VP_TUPLE_SLOTS; i++ ) {
-		if ( !s_tuples[i].src ) {
-			continue;
-		}
-		if ( s_tuples[i].src == src && s_tuples[i].ix == x && s_tuples[i].iy == y &&
-			 s_tuples[i].iw == w && s_tuples[i].ih == h && s_tuples[i].clearBits == clearBits ) {
-			slot = i;
-			break;
-		}
-	}
-	if ( slot < 0 ) {
-		for ( i = 0; i < SMP_VP_TUPLE_SLOTS; i++ ) {
-			if ( !s_tuples[i].src ) {
-				slot = i;
-				break;
-			}
-		}
-	}
-	if ( slot < 0 ) {
-		if ( !s_fullAnnounced ) {
-			s_fullAnnounced = 1;
-			ri.Printf( PRINT_ALL, "[SMP:vp] tuple table full (%d keys); further rects untracked\n",
-					   SMP_VP_TUPLE_SLOTS );
-		}
-		return;
-	}
-	t = &s_tuples[slot];
-	if ( !t->src ) {
-		t->src = src;
-		t->ix = x; t->iy = y; t->iw = w; t->ih = h;
-		t->clearBits = clearBits;
-	}
-	t->visits++;
-
-	needQuery = ( !t->queried ) || heartbeat || t->lastDisagree;
-	if ( !needQuery ) {
-		return;
-	}
-	if ( !heartbeat && s_queriesThisFrame >= SMP_VP_QUERY_BUDGET ) {
-		s_suppressed++;
-		return;
-	}
-
-	if ( !qglGetIntegerv ) {
-		return;
-	}
-
-	s_queriesThisFrame++;
-	qglGetIntegerv( GL_SCISSOR_BOX, sc );
-	qglGetIntegerv( GL_VIEWPORT, vp );
-	dtest = qglIsEnabled ? ( qglIsEnabled( GL_SCISSOR_TEST ) ? 1 : 0 ) : -1;
-
-	disagree = ( sc[0] != x || sc[1] != y || sc[2] != w || sc[3] != h || dtest != 1 );
-	if ( setsViewport && ( vp[0] != x || vp[1] != y || vp[2] != w || vp[3] != h ) ) {
-		disagree = qtrue;
-	}
-
-	if ( t->queried && !disagree && !heartbeat ) {
-		t->lastDisagree = disagree;
-		return;
-	}
-	t->queried = qtrue;
-	t->lastDisagree = disagree;
-	t->dx = sc[0]; t->dy = sc[1]; t->dw = sc[2]; t->dh = sc[3];
-	t->dvx = vp[0]; t->dvy = vp[1]; t->dvw = vp[2]; t->dvh = vp[3];
-	t->dtest = dtest;
-
-	if ( s_rows >= SMP_VP_ROW_CAP ) {
-		if ( s_rows == SMP_VP_ROW_CAP ) {
-			s_rows++;
-			ri.Printf( PRINT_ALL, "[SMP:vp] capped at %d rows (%d queries rate-limited); no further lines\n",
-					   SMP_VP_ROW_CAP, s_suppressed );
-		}
-		return;
-	}
-	s_rows++;
-	ri.Printf( PRINT_ALL,
-		"[SMP:vp] src=%s why=%s f=%d int=%d,%d,%dx%d drvSc=%d,%d,%dx%d drvVp=%d,%d,%dx%d scTest=%d %s clear=0x%x"
-		" refdef=%d,%d,%dx%d vid=%dx%d in2D=%d portal=%d owm=%d far=%.1f sky=%d prt=%d fastsky=%d\n",
-		src, why, RB_FrameCount(), x, y, w, h,
-		sc[0], sc[1], sc[2], sc[3], vp[0], vp[1], vp[2], vp[3], dtest,
-		disagree ? "MISMATCH" : "match", clearBits,
-		tr.refdef.x, tr.refdef.y, tr.refdef.width, tr.refdef.height,
-		glConfig.vidWidth, glConfig.vidHeight, backEnd.in2D ? 1 : 0,
-		backEnd.viewParms.isPortal ? 1 : 0,
-		( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) ? 1 : 0,
-		backEnd.viewParms.farplane_distance,
-		tr.skyRendered ? 1 : 0, tr.portalRendered ? 1 : 0,
-		r_fastsky ? r_fastsky->integer : -1 );
-}
-
 static void SetViewportAndScissor( void ) {
 	RB_LoadProjectionMatrix( backEnd.viewParms.projectionMatrix );
 
@@ -1184,9 +794,6 @@ static void SetViewportAndScissor( void ) {
 	qglScissor( backEnd.viewParms.viewportX, backEnd.viewParms.viewportY, 
 		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight );
 
-	SMP_VpProbe( "view", "SetViewportAndScissor/viewParms",
-		backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
-		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, qtrue );
 }
 
 void RB_BeginDrawingView (void) {
@@ -1289,9 +896,6 @@ void RB_BeginDrawingView (void) {
 
 	GLES3_DepthFuncApply( GL_LEQUAL );	/* pinned per view for the A/B cvar */
 
-	SMP_VpProbe( "clear", "RB_BeginDrawingView/qglClear",
-		backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
-		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, clearBits, qtrue );
 
 	if ( ( backEnd.refdef.rdflags & RDF_HYPERSPACE ) )
 	{
@@ -1338,17 +942,6 @@ void RB_BeginDrawingView (void) {
 		RB_ClipPlane_Disable();
 	}
 
-	{
-		static int s_gles3ViewLogged;
-		if ( R_ProbeStatsOn() && s_gles3ViewLogged < 200 ) {
-			vec4_t		cp;
-			qboolean	clipOn = RB_ClipPlane_Get( cp );
-			ri.Printf( PRINT_ALL, "[GLES3:view] portal=%d clip=%d in2D=%d fovX=%.1f\n",
-				backEnd.viewParms.isPortal ? 1 : 0, clipOn ? 1 : 0,
-				backEnd.in2D ? 1 : 0, backEnd.viewParms.fovX );
-			s_gles3ViewLogged++;
-		}
-	}
 }
 
 /* a sort word or a sprite whose table generation has passed: the index is the
@@ -1367,7 +960,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	int				entityNum, oldEntityNum;
 	int				dlightMap, oldDlightMap;
 	int				fogNum, oldFogNum;
-	qboolean		depthRange, oldDepthRange;
+	qboolean		depthRange;
 	qboolean		bStaticModel, oldbStaticModel;
 	int				i;
 	drawSurf_t		*drawSurf;
@@ -1383,7 +976,6 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	oldEntityNum = -1;
 	backEnd.currentEntity = &tr.worldEntity;
 	oldShader = NULL;
-	oldDepthRange = qfalse;
 	oldFogNum = -1;
 	oldDlightMap = 0;
 	oldSort = -1;
@@ -1493,7 +1085,6 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			/* re-issued every transition, like Vulkan's: the gate lives inside the
 			   applier against the context's own last value, not a per-call local */
 			GLES3_DepthRangeApply( 0.0f, depthRange ? 0.3f : 1.0f );
-			oldDepthRange = depthRange;
 
 			oldEntityNum = entityNum;
 			oldbStaticModel = bStaticModel;
@@ -1521,97 +1112,6 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 		if (*drawSurf->surface == SF_SPRITE) {
 			backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
-		}
-
-		if (PROBE_On() && *drawSurf->surface == SF_POLY) {
-			static int  s_iFrameCounter = 0;
-			static int  s_iThisFrame = 0;
-			static int  s_iLastFrame = 0;
-			static int  s_iProbeRows = 0;	
-			int         iFunc;
-			unsigned    uiSt0 = ( shader->unfoggedStages[0] ) ? shader->unfoggedStages[0]->stateBits : 0u;
-			GLboolean   bTest, bMask;
-			GLfloat     fRange[2];
-			int         iIsNewFrame;
-
-			iIsNewFrame = (RB_FrameCount() != s_iLastFrame);	
-			if (iIsNewFrame) {
-				s_iLastFrame = RB_FrameCount();
-				s_iThisFrame = 0;
-			}
-			s_iFrameCounter++;
-
-			if (s_iProbeRows <= PROBE_ROW_CAP &&
-			    s_iThisFrame < 4 && (s_iFrameCounter % 30) == 1) {
-				s_iThisFrame++;
-				s_iProbeRows++;
-
-				qglGetBooleanv( GL_DEPTH_TEST, &bTest );
-				qglGetIntegerv( GL_DEPTH_FUNC, &iFunc );
-				qglGetBooleanv( GL_DEPTH_WRITEMASK, &bMask );
-				qglGetFloatv( GL_DEPTH_RANGE, fRange );
-
-				UIVK_PROBE(
-					"DOCC:poly",
-					"n=%d sh='%s' sort=%u ent=%d st0=0x%08x dtx=%d eq=%d poff=%d depthtest=%s func=%s mask=%d depthrange=%s(old=%s) drange=%.3f..%.3f proj15=%.0f\n",
-					i,
-					shader->name,
-					drawSurf->sort,
-					entityNum,
-					uiSt0,
-					( uiSt0 & GLS_DEPTHTEST_DISABLE ) ? 1 : 0,
-					( uiSt0 & GLS_DEPTHFUNC_EQUAL ) ? 1 : 0,
-					shader->polygonOffset ? 1 : 0,
-					bTest ? "on" : "OFF",
-					iFunc == GL_EQUAL ? "EQUAL" : (iFunc == GL_LEQUAL ? "LEQUAL" : (iFunc == GL_ALWAYS ? "ALWAYS" : "other")),
-					bMask ? 1 : 0,
-					depthRange ? "0..0.3" : "0..1",
-					oldDepthRange ? "0..0.3" : "0..1",
-					fRange[0], fRange[1],
-					backEnd.viewParms.projectionMatrix[15]
-				);
-
-				/* the neighbours decide the occlusion question: a decal that
-				   precedes the wall it sits on is the whole see-through symptom */
-				{
-					char		szBefore[192];
-					char		szAfter[96];
-					shader_t	*pNb;
-					int			iNb, iEnt;
-					int			iFog, iDl;
-					int			iLen;
-
-					szBefore[0] = 0;
-					iLen = 0;
-					for ( iNb = i - 6; iNb < i; iNb++ ) {
-						if ( iNb < 0 || iNb >= numDrawSurfs ) {
-							continue;
-						}
-						R_DecomposeSort( drawSurfs[iNb].sort, &iEnt, &pNb, &iFog, &iDl );
-						iLen += Com_sprintf( szBefore + iLen, sizeof( szBefore ) - iLen, "%s%s|",
-											 iNb == i ? ">" : "", pNb->name );
-						if ( iLen >= (int)sizeof( szBefore ) - 48 ) {
-							break;
-						}
-					}
-
-					szAfter[0] = 0;
-					iLen = 0;
-					for ( iNb = i + 1; iNb <= i + 3 && iNb < numDrawSurfs; iNb++ ) {
-						R_DecomposeSort( drawSurfs[iNb].sort, &iEnt, &pNb, &iFog, &iDl );
-						iLen += Com_sprintf( szAfter + iLen, sizeof( szAfter ) - iLen, "|%s", pNb->name );
-						if ( iLen >= (int)sizeof( szAfter ) - 24 ) {
-							break;
-						}
-					}
-
-					UIVK_PROBE(
-						"DOCC:order",
-						"n=%d '%s' before=%s after=%s\n",
-						i, shader->name, szBefore, szAfter
-					);
-				}
-			}
 		}
 
 		rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
@@ -1642,7 +1142,6 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	shader_t	*shader;
 	shader_t	*oldShader;
-	qboolean	depthRange;
 	int			i;
 	int			shadowSprT0;
 	drawSurf_t	*drawSurf;
@@ -1656,7 +1155,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 	backEnd.ori = backEnd.viewParms.world;
 
 	oldShader = NULL;
-    depthRange = qfalse;
 
 	/* retail's sprite walk carries no range of its own -- RB_RenderSpriteSurfList
 	   never calls glDepthRange, so an inherited renderfx bit must not shrink it
@@ -1678,7 +1176,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
 		shader = ( spr->shaderGen == tr.shaderGen ) ? spr->shader
 												    : tr.sortedShaders[spr->shaderNum];
 		if ( !shader ) continue;
-		depthRange = (spr->renderfx & RF_DEPTHHACK) != 0;
 
         if ((shader != oldShader || (shader->noMerge & 1)) && !shader->entityMergable)
         {
@@ -1697,38 +1194,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
            that names it: which orientation arm its spritegen selected, which sort
            bucket it landed in, and the depth state the stage actually runs under.
            Without it the sprite route is the one mark path with no witness at all. */
-        if (PROBE_On() && shader->unfoggedStages[0]) {
-            static int s_rows;
-            unsigned    uiSt0 = shader->unfoggedStages[0]->stateBits;
-            GLboolean   bTest, bMask;
-            GLfloat     fRange[2];
-            GLint       iFunc, iSrc, iDst;
-
-            if (s_rows <= PROBE_ROW_CAP && PROBE_Throttle(&s_rows, 8, 256)) {
-                qglGetBooleanv(GL_DEPTH_TEST, &bTest);
-                qglGetIntegerv(GL_DEPTH_FUNC, &iFunc);
-                qglGetBooleanv(GL_DEPTH_WRITEMASK, &bMask);
-                qglGetFloatv(GL_DEPTH_RANGE, fRange);
-                qglGetIntegerv(GL_BLEND_SRC_RGB, &iSrc);
-                qglGetIntegerv(GL_BLEND_DST_RGB, &iDst);
-
-                ri.Printf(PRINT_ALL,
-                    "[UIVK:DOCC:sprite] n=%d sh='%s' sort=%d arm=%d st0=0x%08x"
-                    " blend=%d/%d depthtest=%s func=%s mask=%d drange=%.3f..%.3f"
-                    " dhack=%d scale=%.4f f=%d\n",
-                    i, shader->name, (int)shader->sort,
-                    (int)shader->sprite.type, uiSt0,
-                    (int)iSrc, (int)iDst,
-                    bTest ? "on" : "OFF",
-                    iFunc == GL_EQUAL ? "EQUAL" : (iFunc == GL_LEQUAL ? "LEQUAL"
-                                                   : (iFunc == GL_ALWAYS ? "ALWAYS" : "other")),
-                    bMask ? 1 : 0,
-                    fRange[0], fRange[1],
-                    depthRange ? 1 : 0,
-                    spr->scale, RB_FrameCount());
-            }
-        }
-
         backEnd.shaderStartTime = ((refSprite_t*)drawSurf->surface)->shaderTime;
 
         rb_surfaceTable[*drawSurf->surface](drawSurf->surface);
@@ -1747,7 +1212,6 @@ void RB_RenderSpriteSurfList(drawSurf_t* drawSurfs, int numDrawSurfs) {
     RB_LoadModelViewMatrix( backEnd.viewParms.world.modelMatrix);
 	GLES3_DepthRangeReset();
 }
-
 
 
 void	RB_SetGL2D (void) {
@@ -1828,22 +1292,6 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, int componen
 		}
 	}
 
-	{
-		static int s_gles3CineLogged;
-		if ( R_ProbeStatsOn() && s_gles3CineLogged < 200 ) {
-			const byte *d = (const byte *)data;
-			ri.Printf( PRINT_ALL,
-				"[GLES3:cine] stretch x=%d y=%d w=%d h=%d cols=%d rows=%d comp=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x identityLight=%.3f\n",
-				x, y, w, h, cols, rows, components,
-				tr.scratchImage ? tr.scratchImage->texnum : 0u,
-				tr.scratchImage ? tr.scratchImage->width : 0,
-				tr.scratchImage ? tr.scratchImage->height : 0,
-				dirty ? 1 : 0,
-				d ? d[0] : 0, d ? d[1] : 0, d ? d[2] : 0, d ? d[3] : 0,
-				tr.identityLight );
-			s_gles3CineLogged++;
-		}
-	}
 
 	if ( r_speeds->integer ) {
 		end = ri.Milliseconds();
@@ -1941,18 +1389,6 @@ void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int
 		}
 	}
 
-	{
-		static int s_gles3UpCineLogged;
-		if ( R_ProbeStatsOn() && s_gles3UpCineLogged < 100 ) {
-			const byte *d = (const byte *)data;
-			ri.Printf( PRINT_ALL,
-				"[GLES3:cine] upload w=%d h=%d cols=%d rows=%d client=%d scratch=%u(%dx%d) dirty=%d px0=%02x%02x%02x%02x\n",
-				w, h, cols, rows, client,
-				scratch->texnum, scratch->width, scratch->height,
-				dirty ? 1 : 0, d ? d[0] : 0, d ? d[1] : 0, d ? d[2] : 0, d ? d[3] : 0 );
-			s_gles3UpCineLogged++;
-		}
-	}
 }
 
 const void	*RB_SetColor( const void *data ) {
@@ -2461,12 +1897,18 @@ const void	*RB_SwapBuffers( const void *data ) {
 		qglFinish();
 	}
 
-	GLES3_PixelProbe( "swap", glConfig.vidWidth / 2 - 8, glConfig.vidHeight / 2 - 8, 16, 16 );
-	GLES3_PixelProbe( "swap-q", glConfig.vidWidth / 4 - 8, glConfig.vidHeight / 4 - 8, 16, 16 );
-	GLES3_ModelPixelAtSwap();
 	GLimp_LogComment( "***************** RB_SwapBuffers *****************\n\n\n" );
 
+	R_FlushScreenshot();
+
 	GLimp_EndFrame();
+
+	/* One sample per presented frame, taken after the swap: the interval is the
+	   pacing the display got, not the recorder's own cadence.  The walk owns
+	   this call on both r_smp values. */
+	R_FrameStats_Present( "gles3", "SDL_GL_SwapWindow",
+						  ( r_swapInterval == NULL || r_swapInterval->integer != 0 ) ? 1 : 0,
+						  tr.frontEndMsec, RB_FrameBackEndMsec() );
 
 	backEnd.in2D = qfalse;
 
@@ -2833,156 +2275,10 @@ void BE_Name( int family, const char *name, int usec ) {
 	f->top[slot].usec = usec;
 }
 
-/* ---- [GLES3:glerr] naming the call that left the error flag set ---------- The flag is sticky,
-   so a probe names the first call that looked, not the one that set it. */
-enum {
-	RB_GLES3_ERR_IDLE = 0,
-	RB_GLES3_ERR_SEEN,
-	RB_GLES3_ERR_TRACING,
-	RB_GLES3_ERR_DONE
-};
-
-static int		s_glerrArm;
-static int		s_glerrLists;
-static int		s_glerrFound;
-static int		s_glerrRows;
-
-static const char *RB_GlErrName( GLenum e ) {
-	switch ( e ) {
-	case GL_INVALID_ENUM:		return "INVALID_ENUM";
-	case GL_INVALID_VALUE:		return "INVALID_VALUE";
-	case GL_INVALID_OPERATION:	return "INVALID_OPERATION";
-	case GL_OUT_OF_MEMORY:		return "OUT_OF_MEMORY";
-	case GL_INVALID_FRAMEBUFFER_OPERATION: return "INVALID_FRAMEBUFFER_OP";
-	default:					return "unknown";
-	}
-}
-
-static const char *RB_GlErrCmdName( int id ) {
-	switch ( id ) {
-	case RC_END_OF_LIST:		return "END_OF_LIST";
-	case RC_SET_COLOR:			return "SET_COLOR";
-	case RC_STRETCH_PIC:		return "STRETCH_PIC";
-	case RC_DRAW_SURFS:			return "DRAW_SURFS";
-	case RC_SPRITE_SURFS:		return "SPRITE_SURFS";
-	case RC_DRAW_BUFFER:		return "DRAW_BUFFER";
-	case RC_SWAP_BUFFERS:		return "SWAP_BUFFERS";
-	case RC_SCREENSHOT:			return "SCREENSHOT";
-	case RC_VIDEOFRAME:			return "VIDEOFRAME";
-	case RC_COLORMASK:			return "COLORMASK";
-	case RC_CLEARDEPTH:			return "CLEARDEPTH";
-	case RC_2D_COLOR:			return "2D_COLOR";
-	case RC_2D_STRETCH_PIC:		return "2D_STRETCH_PIC";
-	case RC_2D_STRETCH_PIC2:	return "2D_STRETCH_PIC2";
-	case RC_2D_TILE_PIC:		return "2D_TILE_PIC";
-	case RC_2D_TILE_PIC_OFFSET:	return "2D_TILE_PIC_OFFSET";
-	case RC_2D_TRIANGLE_PIC:	return "2D_TRIANGLE_PIC";
-	case RC_2D_BOX:				return "2D_BOX";
-	case RC_2D_LINE_LOOP:		return "2D_LINE_LOOP";
-	case RC_2D_SET_WINDOW:		return "2D_SET_WINDOW";
-	case RC_2D_SCISSOR:			return "2D_SCISSOR";
-	case RC_2D_ORIGIN:			return "2D_ORIGIN";
-	case RC_2D_FONT_STRING:		return "2D_FONT_STRING";
-	case RC_2D_SHADER_TIME:		return "2D_SHADER_TIME";
-	case RC_2D_FLUSH:			return "2D_FLUSH";
-	default:					return "UNKNOWN_CMD";
-	}
-}
-
-/* The read is a driver round trip; this many rows and the instrument stops. */
-#define RB_GLES3_ERR_ROWS			64
-
-static void RB_GlErrSample( const char *where, int cmdId ) {
-
-	GLuint		e;
-
-	if ( !R_ProbeStatsOn() || s_glerrArm != RB_GLES3_ERR_TRACING || s_glerrFound
-		 || s_glerrRows >= RB_GLES3_ERR_ROWS ) {
-		return;
-	}
-
-	e = qglGetError();
-	if ( e == GL_NO_ERROR ) {
-		return;
-	}
-
-	s_glerrFound = 1;
-	s_glerrRows++;
-	ri.Printf( PRINT_ALL,
-			   "[GLES3:glerr] at=%s cmd=0x%x err=%d(0x%x) %s in2D=%d"
-			   " prog=%u tex0=%u tmu=%d lists=%d f=%d\n",
-			   where, cmdId, (int)e, (unsigned)e, RB_GlErrName( e ),
-			   backEnd.in2D, glState.currentProgram,
-			   (unsigned)glState.currenttextures[0], glState.currenttmu,
-			   s_glerrLists, RB_FrameCount() );
-}
-
-/* The list-end read arms the per-command trace on a dirty list. */
-#define RB_GLES3_ERR_TRACE_LISTS	4
-
-static void RB_GlErrQuiet( void ) {
-	ri.Printf( PRINT_ALL,
-			   "[GLES3:glerr] quiet after %d rows; the flag is still being set every"
-			   " frame, the read is the cost now\n", s_glerrRows );
-}
-
-/* A call inside a command leaves the flag with no sample after it; the 2D flush names its halves. */
-void GLES3_GlErrAt( const char *what ) {
-	RB_GlErrSample( what, 0 );
-}
-
-static void RB_GlErrListEnd( int cmdId, int beCmds ) {
-	GLuint	e;
-
-	if ( !R_ProbeStatsOn() || s_glerrArm == RB_GLES3_ERR_DONE ) {
-		return;
-	}
-
-	if ( s_glerrArm == RB_GLES3_ERR_TRACING ) {
-		s_glerrLists++;
-		if ( s_glerrLists > RB_GLES3_ERR_TRACE_LISTS ) {
-			s_glerrArm = RB_GLES3_ERR_IDLE;
-		}
-		return;
-	}
-
-	if ( s_glerrRows >= RB_GLES3_ERR_ROWS ) {
-		s_glerrArm = RB_GLES3_ERR_DONE;
-		RB_GlErrQuiet();
-		return;
-	}
-
-	e = qglGetError();
-	if ( e == GL_NO_ERROR ) {
-		return;
-	}
-
-	s_glerrArm    = RB_GLES3_ERR_TRACING;
-	s_glerrLists  = 1;
-	s_glerrFound  = 0;
-	s_glerrRows++;
-	ri.Printf( PRINT_ALL,
-			   "[GLES3:glerr] seen err=%d(0x%x) %s cmds=%d in2D=%d prog=%u"
-			   " tex0=%u tmu=%d f=%d\n",
-			   (int)e, (unsigned)e, RB_GlErrName( e ), beCmds, backEnd.in2D,
-			   glState.currentProgram, (unsigned)glState.currenttextures[0],
-			   glState.currenttmu, RB_FrameCount() );
-}
 
 void RB_ExecuteRenderCommands( const void *data ) {
 	int		t1, t2;
 	int		beCmds = 0;
-
-	{
-		static int smp_smpframe_rows = 0;
-
-		if ( R_ProbeStatsOn() && ( smp_smpframe_rows < 8 || ( smp_smpframe_rows % 600 ) == 0 ) ) {
-			ri.Printf( PRINT_ALL,
-					   "[SMP:smpframe] back=%d front=%d arena=%d frameCount=%d\n",
-					   RB_FrameSmpFrame(), tr.smpFrame, RB_FrameBoneArena(), RB_FrameCount() );
-		}
-		smp_smpframe_rows++;
-	}
 
 	t1 = ri.Milliseconds ();
 
@@ -3089,10 +2385,8 @@ void RB_ExecuteRenderCommands( const void *data ) {
 				BE_Bump( BE_FAM_BE, BE_BEC_empty, 1 );
 			}
 			BE_RootEnd( BE_FAM_BE );
-			RB_GlErrListEnd( cmdId, beCmds );
 			return;
 		}
-		RB_GlErrSample( RB_GlErrCmdName( cmdId ), cmdId );
 
 		/* The allocator pads every command to pointer size, so the walk has to
 		   advance by the same amount: a struct whose size is not a multiple of it

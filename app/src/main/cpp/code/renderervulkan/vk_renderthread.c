@@ -88,18 +88,11 @@ static int SDLCALL VKimp_RenderThreadWrapper( void *arg )
 	vkRenderThreadActive = qtrue;
 	vk_renderThreadId = SDL_ThreadID();
 
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:smp", "born" );
-	}
-
 	vk_renderThreadFunction();
 
 	/* The walk function returning is a thread exit, and the front end is parked
 	   on the handoff it was about to make.  Naming it and dropping active is
 	   what lets that park release instead of running forever. */
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:smp", "exiting active-was=%d", vkRenderThreadActive ? 1 : 0 );
-	}
 	vkRenderThreadActive = qfalse;
 
 	SDL_LockMutex( vk_smpMutex );
@@ -129,10 +122,6 @@ qboolean VKimp_SpawnRenderThread( void ( *function )( void ) )
 	if ( vk_renderThread == NULL ) {
 		VK_Guard_Hit( VK_GSITE_SYNC, "SDL_CreateThread", VK_ERROR_INITIALIZATION_FAILED );
 		return qfalse;
-	}
-
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:smp", "spawned frames-in-flight=%d", VK_FRAMES_IN_FLIGHT );
 	}
 
 	return qtrue;
@@ -415,10 +404,6 @@ static SDL_mutex *VK_Pool_LockOf( VkCommandPool pool )
 	slot = VK_Pool_Find( pool );
 	if ( slot ) {
 		if ( slot->owner != 0 && slot->owner != (unsigned long)SDL_ThreadID() ) {
-			if ( R_ProbeStatsOn() ) {
-				VK_Guard_Row( "VK:pool", "cross-thread pool use thr=%lu owner=%lu",
-							  (unsigned long)SDL_ThreadID(), slot->owner );
-			}
 		}
 		lock = slot->lock;
 	}
@@ -472,10 +457,6 @@ VkCommandPool VK_Upload_Pool( void )
 	if ( !VK_Pool_Register( created, me ) ) {
 		qvk.DestroyCommandPool( vk.device, created, NULL );
 		return VK_NULL_HANDLE;
-	}
-
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:pool", "one-shot pool thr=%lu total=%d", me, VK_Pool_Count() );
 	}
 
 	return created;
@@ -576,7 +557,7 @@ static SDL_mutex *VK_Queue_Mutex( void )
 		   before it creates a pool or touches a queue.  If an ordering change
 		   ever gets here, name it: SDL_LockMutex(NULL) is a silent no-op, so
 		   without the row the section would simply not exist. */
-		VK_Guard_Row( "VK:sync", "queue mutex missing; VK_Sync_Init was not reached" );
+
 	}
 
 	return vk_queueMutex;

@@ -18,6 +18,7 @@ root, for more details.
 #include "tr_local.h"
 #include "tr_hwtex.h"
 #include "gles3_firstlight.h"
+#include "../renderercommon/tr_frame_stats.h"
 
 #ifdef USE_INTERNAL_SDL_HEADERS
 #	include "SDL.h"
@@ -66,10 +67,7 @@ static void *GLES3_ResolveProc(const char *name);
    strings, and destroys it; the renderer never runs on it. */
 static void GLES3_LogOfferedVersion(void)
 {
-	typedef const unsigned char *(*gles3GetString_t)(unsigned int);
-	gles3GetString_t getString;
 	SDL_GLContext	 probe;
-	const char		*version, *renderer;
 
 	SDL_GL_ResetAttributes();
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -82,15 +80,6 @@ static void GLES3_LogOfferedVersion(void)
 		return;
 	}
 
-	getString = (gles3GetString_t)GLES3_ResolveProc("glGetString");
-	version   = getString ? (const char *)getString(0x1F02 /* GL_VERSION */) : NULL;
-	renderer  = getString ? (const char *)getString(0x1F01 /* GL_RENDERER */) : NULL;
-	if (R_ProbeStatsOn()) {
-		ri.Printf(PRINT_ALL,
-				  "[GLES3:gles3] context requested=%d.%d offered=\"%s\" renderer=\"%s\"\n",
-				  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
-				  version ? version : "(null)", renderer ? renderer : "(null)");
-	}
 	SDL_GL_DeleteContext(probe);
 }
 
@@ -127,9 +116,6 @@ static void GLES3_LogToEngine(const char *line)
 
 	for (i = 0; i < sizeof(eventRows) / sizeof(eventRows[0]); i++) {
 		if (strncmp(line, eventRows[i], strlen(eventRows[i])) == 0) {
-			if (!R_ProbeStatsOn()) {
-				return;
-			}
 			break;
 		}
 	}
@@ -197,12 +183,6 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		SDL_GL_SetAttribute(SDL_GL_STEREO, 0);
 	}
 
-	if (R_ProbeStatsOn()) {
-		ri.Printf(PRINT_ALL,
-				  "[GLES3:gles3] context attempt %s requested=%d.%d (%dx%d depth=%d stencil=%d)\n",
-				  what, GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
-				  width, height, depthBits, stencilBits);
-	}
 
 	SDL_window = SDL_CreateWindow(CLIENT_WINDOW_TITLE, x, y, width, height, flags);
 	if (!SDL_window) {
@@ -227,19 +207,6 @@ static qboolean GLES3_TryContext(int width, int height, qboolean fullscreen,
 		int missingCore = QGL_GLES3_LoadProcs(&staged);
 
 		QGL_GLES3_LogDeviceInfo();
-		if (R_ProbeStatsOn()) {
-			const char *grantedRenderer =
-				qglGetString ? (const char *)qglGetString(GL_RENDERER) : NULL;
-
-			ri.Printf(PRINT_ALL,
-					  "[GLES3:gles3] context requested=%d.%d granted=%d.%d renderer=\"%s\"\n",
-					  GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR,
-					  qglesMajorVersion, qglesMinorVersion,
-					  grantedRenderer ? grantedRenderer : "(null)");
-			ri.Printf(PRINT_ALL, "[GLES3:gles3] procs=%d core=%d core32=%d core_missing=%d staged_desktop_traps=%d\n",
-					  QGL_GLES3_TotalProcs(), QGL_GLES3_CoreProcs(), QGL_GLES3_Core32Procs(),
-					  missingCore, staged);
-		}
 		if (missingCore > 0) {
 			/* names the abort below */
 			ri.Printf(PRINT_ALL, "[GLES3:glmissing] core_list=%s\n",
@@ -420,7 +387,7 @@ static qboolean GLES3_StartDriverAndSetMode(int mode, qboolean fullscreen, qbool
 
 static void GLES3_InitExtensions(void)
 {
-	qboolean s3tc, etc1, etc2, astc, astcSliced3d, aniso, envAdd, envCombine;
+	qboolean s3tc, etc2, astc, astcSliced3d, aniso, envAdd, envCombine;
 	int      coreEtc2;
 
 	if (!r_allowExtensions->integer) {
@@ -431,7 +398,6 @@ static void GLES3_InitExtensions(void)
 	ri.Printf(PRINT_ALL, "Initializing GLES extensions\n");
 
 	s3tc = QGL_GLES3_HasExtension("GL_EXT_texture_compression_s3tc") ? qtrue : qfalse;
-	etc1 = QGL_GLES3_HasExtension("GL_OES_compressed_ETC1_RGB8_texture") ? qtrue : qfalse;
 	astc = QGL_GLES3_HasExtension("GL_KHR_texture_compression_astc_ldr") ? qtrue : qfalse;
 	astcSliced3d = QGL_GLES3_HasExtension("GL_KHR_texture_compression_astc_sliced_3d") ? qtrue : qfalse;
 
@@ -464,19 +430,6 @@ static void GLES3_InitExtensions(void)
 		QGL_GLES3_HasExtension("GL_ARB_ES3_compatibility") ? 1 : 0,
 		astc ? 1 : 0, r_ext_compress_textures->value ? 1 : 0);
 
-	if (R_ProbeStatsOn()) {
-	ri.Printf(PRINT_ALL,
-			  "[GLES3:gltex] s3tc=%d etc1=%d etc2=%d etc2_core=%d astc_ldr=%d astc_sliced_3d=%d "
-			  "-> compressed_path=%s transcode=%s software_decode=%s\n",
-			  s3tc ? 1 : 0, etc1 ? 1 : 0, etc2 ? 1 : 0, coreEtc2 ? 1 : 0,
-			  astc ? 1 : 0, astcSliced3d ? 1 : 0,
-			  (glConfig.textureCompression != TC_NONE) ? "glCompressedTexImage2D" : "none",
-			  (smp_texTranscode == SMP_TEXC_ASTC_4x4) ? "glCompressedTexImage2D/ASTC_4x4"
-			  : (smp_texTranscode == SMP_TEXC_ETC2_RGBA8) ? "glCompressedTexImage2D/ETC2_RGBA8"
-															: "none",
-			  (glConfig.textureCompression == TC_NONE &&
-			   smp_texTranscode == SMP_TEXC_NONE) ? "yes" : "no");
-	}
 
 	glConfig.textureEnvAddAvailable = (envAdd && r_ext_texture_env_add->integer) ? qtrue : qfalse;
 	glConfig.textureEnvCombineAvailable = envCombine ? qtrue : qfalse;
@@ -508,20 +461,10 @@ static void GLES3_InitExtensions(void)
 		}
 	}
 
-	if (R_ProbeStatsOn()) {
-		ri.Printf(PRINT_ALL, "[GLES3:glcaps] env_add=%d env_combine=%d cube_map=1\n",
-				  glConfig.textureEnvAddAvailable ? 1 : 0,
-				  glConfig.textureEnvCombineAvailable ? 1 : 0);
-	}
 }
 
 void GLimp_Init(qboolean fixedFunction)
 {
-	if (fixedFunction && R_ProbeStatsOn()) {
-		ri.Printf(PRINT_ALL, "[GLES3:gles3] GLimp_Init(fixedFunction=1) -- GLES 3.0 "
-							 "has no fixed-function pipeline; GLSL ES 3.0 programs "
-							 "replace it (G2)\n");
-	}
 
 	r_allowSoftwareGL = ri.Cvar_Get("r_allowSoftwareGL", "0", CVAR_LATCH);
 	r_sdlDriver = ri.Cvar_Get("r_sdlDriver", "", CVAR_ROM);
@@ -576,6 +519,9 @@ void GLimp_Init(qboolean fixedFunction)
 			 GLES3_CONTEXT_MAJOR, GLES3_CONTEXT_MINOR);
 
 success:
+	/* a context that has just come up is not a frame: the first present starts
+	   a fresh interval instead of counting the boot's gap */
+	R_FrameStats_Reset();
 	GLES3_InitExtensions();
 	ri.Cvar_Get("r_availableModes", "", CVAR_ROM);
 	ri.IN_Init(SDL_window);
@@ -601,8 +547,6 @@ void GLimp_LogComment(char *comment)
 	(void)comment;
 }
 
-#define SMP_CTX_PROBE_CAP 8
-
 static void GLES3_ContextAttest(void)
 {
 	static int lastMinimized = -1;
@@ -614,7 +558,7 @@ static void GLES3_ContextAttest(void)
 	minimized = ri.Cvar_VariableIntegerValue("com_minimized");
 
 	if (lastMinimized < 0 || (lastMinimized && !minimized)) {
-		if (R_ProbeStatsOn() && rows < SMP_CTX_PROBE_CAP + 1) {
+		if (rows < 9) {
 			qglGetIntegerv(GL_CURRENT_PROGRAM, &prog);
 			err = qglGetError();
 			rows++;
@@ -714,7 +658,7 @@ static int	smp_rloadRegBrackets;
 
 int SMP_RLoadNow( void ) {
 	if ( !smp_rloadStats ) {
-		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "1", 0 );
+		smp_rloadStats = ri.Cvar_Get( "smp_loadStats", "0", 0 );
 	}
 	return (int)SDL_GetTicks();
 }
@@ -812,9 +756,9 @@ static Uint64	s_bePerUs = 1;
 
 int BE_Armed( void ) {
 	if ( !s_beStats ) {
-		s_beStats = ri.Cvar_Get( "be_stats", "1", 0 );
+		s_beStats = ri.Cvar_Get( "be_stats", "0", 0 );
 	}
-	return ( s_beStats && s_beStats->integer && R_ProbeStatsOn() ) ? 1 : 0;
+	return ( s_beStats && s_beStats->integer ) ? 1 : 0;
 }
 
 int BE_Microseconds( void ) {

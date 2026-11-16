@@ -52,10 +52,6 @@ static float	s_debugColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 
 /* vk_shade.c's world stage-set census: its only caller is the batch boundary
    in this file, so the pair is declared here rather than in a shared header. */
-void VK_Shade_BatchBegin( const shader_t *shader );
-void VK_Shade_BatchEnd( void );
-void VK_Shade_NoteSubmitted( int stages );
-void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean substituted );
 
 static void vkWireColor3f( float r, float g, float b ) {
 	s_debugColor[0] = r; s_debugColor[1] = g; s_debugColor[2] = b; s_debugColor[3] = 1.0f;
@@ -183,7 +179,6 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	/* the srf window's BEGIN sub-part runs to the end of the body; the three
 	   early exits below close it themselves so nothing spills into the next
 	   charge, and whatever they skip lands in the window's OTHER */
-	VK_SrfPart_Open();
 
 /* the reference renderer's tr_shade.c carries this note in full */
 	RB_2D_Flush();
@@ -218,7 +213,6 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	tess.fogNum = fogNum;					 
 	/* the census window opens with the batch, so a stage this batch never
 	   submits cannot be counted from a previous one */
-	VK_Shade_BatchBegin( state );
 
 	if ( fogNum == 9999
 		&& state->usesGlobalFogIterator		 
@@ -226,7 +220,6 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 		tess.xstages = state->unfoggedStages;							 
 		tess.numPasses = state->numUnfoggedPasses;						 
 		tess.currentStageIteratorFunc = RB_GLFogStageIteratorFunc;
-		VK_SrfPart_Close( VK_WSS_BEGIN );
 		return;
 	}
 	if ( fogNum == 0 ) {
@@ -237,7 +230,6 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 									 : ( state->optimalStageIteratorFunc
 										 ? state->optimalStageIteratorFunc
 										 : RB_StageIteratorGeneric );
-		VK_SrfPart_Close( VK_WSS_BEGIN );
 		return;
 	}
 	if ( fogNum == 9999 ) {					 
@@ -249,7 +241,6 @@ void RB_BeginSurface( shader_t *shader, int fogNum ) {
 	}
 	tess.currentStageIteratorFunc = ( state->isSky && state->optimalStageIteratorFunc )
 		? state->optimalStageIteratorFunc : RB_StageIteratorGeneric;
-	VK_SrfPart_Close( VK_WSS_BEGIN );
 }
 
 void RB_GLFogStageIteratorFunc( void ) {
@@ -295,8 +286,13 @@ void ProjectDlightTexture( void ) {
 
 		dl = &backEnd.refdef.dlights[l];
 		VectorCopy( dl->transformed, origin );
-		radius = dl->radius * 1.75f;
-		scale = 1.75f / radius;
+		/* retail ProjectDlightTexture @0x34F60 uses the raw radius with the
+		   literal 0.75 as the texcoord scale and 4/3 as the falloff factor:
+		   the packed Q3 1.75 belongs to neither EF2 value.  The old 1.75 extent
+		   plus the 2.0 core made a non-additive teal dlight (the Attrexian
+		   canister) a stretched pool instead of a local glow. */
+		radius = dl->radius;
+		scale = 0.75f / radius;
 
 		floatColor[0] = dl->color[0] * 255.0f;
 		floatColor[1] = dl->color[1] * 255.0f;
@@ -363,13 +359,9 @@ void ProjectDlightTexture( void ) {
 				modulate = 0.0f;
 			}
 			else {
-				dist[2] = Q_fabs(dist[2]);
-				if (dist[2] < radius * 0.5f) {
-					modulate = 1.0f;
-				}
-				else {
-					modulate = 2.0f * (radius - dist[2]) * scale;
-				}
+				/* retail: v44 = (0.75/radius) * (4/3) * (radius - |vertdist|),
+				   the plane distance, with no saturated half-radius core */
+				modulate = ( 4.0f / 3.0f ) * scale * ( radius - Q_fabs( vertdist ) );
 			}
 			clipBits[i] = clip;
 
@@ -416,7 +408,6 @@ void ProjectDlightTexture( void ) {
 			else {
 				VK_ApplyStateBits( VKS_SRCBLEND_DST_COLOR | VKS_DSTBLEND_ONE | VKS_DEPTHFUNC_EQUAL );
 			}
-			VK_Shade_DlightWitness( dl, l, numIndexes );
 			/* the term's texcoords and colours are the walk's own, so the arena
 			   arm never holds them; retail draws it over the triangles every frame */
 			RB_VBO_DrawTessStream( &tess, hitIndexes, numIndexes,
@@ -554,27 +545,6 @@ static void ComputeColors( shaderStage_t *pStage )
 
 				/* the generic lightingDiffuse arm is what a two-stage head/skin reads,
 				   so name its colour and the sphere record beside the vertex-lit row */
-				if ( R_ProbeMarkOn() && tess.numVertexes > 0 ) {
-					static int s_ldiffRows;
-
-					s_ldiffRows++;
-					if ( s_ldiffRows <= 8 || ( s_ldiffRows % 300 ) == 0 ) {
-						VK_Guard_Row( "DOCC:ldiff",
-									  "f=%d shader='%s' ent=%d n=%d c0=%d,%d,%d,%d tessfn=%d nlights=%d "
-									  "amb=(%.1f,%.1f,%.1f) rf=0x%x",
-									  RB_FrameCount(), tess.shader->name,
-									  backEnd.currentEntity ? backEnd.currentEntity->e.entityNumber : -1,
-									  tess.numVertexes,
-									  tess.svars.colors[0][0], tess.svars.colors[0][1],
-									  tess.svars.colors[0][2], tess.svars.colors[0][3],
-									  ( backEnd.currentSphere && backEnd.currentSphere->TessFunction ) ? 1 : 0,
-									  backEnd.currentSphere ? backEnd.currentSphere->numLights : -1,
-									  backEnd.currentSphere ? backEnd.currentSphere->ambient[0] : 0.0f,
-									  backEnd.currentSphere ? backEnd.currentSphere->ambient[1] : 0.0f,
-									  backEnd.currentSphere ? backEnd.currentSphere->ambient[2] : 0.0f,
-									  backEnd.currentEntity ? backEnd.currentEntity->e.renderfx : 0 );
-					}
-				}
 				break;
 			}
 
@@ -1284,24 +1254,6 @@ qboolean VK_Stage2DResolveTexCoords( shaderStage_t *pStage )
 		tess.texCoords[i][0][1] = tess.svars.texcoords[0][i][1];
 	}
 
-	if ( R_ProbeMarkOn() ) {
-		static int s_rows;
-
-		s_rows++;
-		if ( s_rows <= 24 || ( s_rows % 256 ) == 0 ) {
-			VK_Guard_Row( "UIVK:trimod",
-						  "tcmod shader='%s' mods=%d scroll=%.3f,%.3f time=%.3f st0=(%.3f,%.3f) stN=(%.3f,%.3f)",
-						  tess.shader ? tess.shader->name : "?",
-						  pStage->bundle[0].numTexMods,
-						  (double)pStage->bundle[0].texMods[0].scroll[0],
-						  (double)pStage->bundle[0].texMods[0].scroll[1],
-						  (double)tess.shaderTime,
-						  (double)tess.texCoords[0][0][0], (double)tess.texCoords[0][0][1],
-						  (double)tess.texCoords[tess.numVertexes - 1][0][0],
-						  (double)tess.texCoords[tess.numVertexes - 1][0][1] );
-		}
-	}
-
 	return qtrue;
 }
 
@@ -1356,7 +1308,6 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 			VK_ApplyStateBits(stateBits);
 		}
 
-		VK_Shade_NoteStage( tess.shader );
 		VK_DrawStage( input, pStage, tess.shader, stateBits, forceAlpha, qtrue );
 		if (r_lightmap->integer && (pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap || pStage->bundle[0].vertexLightmap))
 		{
@@ -1376,12 +1327,6 @@ void RB_StageIteratorGeneric( void )
 	if ((input->shader->flags & BUNDLE_ANIMATE_ONCE) != 0) {
 		input->shaderTime = backEnd.refdef.floatTime - backEnd.shaderStartTime;
 	}
-
-	/* the clock's inputs, one row per animated shader per second: the kind
-	   names which producer wrote the shaderStartTime this stage subtracted */
-	VK_Shade_NoteShaderTime( backEnd.currentEntity
-							 ? ( backEnd.currentEntity->e.reType == RT_SPRITE ? "sprite" : "entity" )
-							 : ( backEnd.currentStaticModel ? "static-model" : "world" ) );
 
 	RB_DeformTessGeometry();
 
@@ -1456,29 +1401,6 @@ void RB_StageIteratorVertexLitTextureUnfogged( void )
 	/* the single-stage lightingDiffuse body is the arm that can go dark while the
 	   two-stage head stays lit; name the colour it computed and the sphere record
 	   behind it, so the leave-scene uniform stops being a guess */
-	if ( R_ProbeMarkOn() && input->numVertexes > 0 ) {
-		static int s_vlitRows;
-
-		s_vlitRows++;
-		if ( s_vlitRows <= 8 || ( s_vlitRows % 300 ) == 0 ) {
-			VK_Guard_Row( "DOCC:vlit",
-						  "f=%d shader='%s' ent=%d n=%d c0=%d,%d,%d,%d tessfn=%d nlights=%d "
-						  "amb=(%.1f,%.1f,%.1f) rf=0x%x rdflags=0x%x",
-						  RB_FrameCount(), shader->name,
-						  backEnd.currentEntity ? backEnd.currentEntity->e.entityNumber : -1,
-						  input->numVertexes,
-						  tess.svars.colors[0][0], tess.svars.colors[0][1],
-						  tess.svars.colors[0][2], tess.svars.colors[0][3],
-						  ( backEnd.currentSphere && backEnd.currentSphere->TessFunction ) ? 1 : 0,
-						  backEnd.currentSphere ? backEnd.currentSphere->numLights : -1,
-						  backEnd.currentSphere ? backEnd.currentSphere->ambient[0] : 0.0f,
-						  backEnd.currentSphere ? backEnd.currentSphere->ambient[1] : 0.0f,
-						  backEnd.currentSphere ? backEnd.currentSphere->ambient[2] : 0.0f,
-						  backEnd.currentEntity ? backEnd.currentEntity->e.renderfx : 0,
-						  backEnd.refdef.rdflags );
-		}
-	}
-
 	if ( r_logFile->integer )
 	{
 		VKimp_LogComment( (char *)va("--- RB_StageIteratorVertexLitTexturedUnfogged( %s ) ---\n", tess.shader->name) );
@@ -1515,7 +1437,6 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 
 	{
 		vkProgram_t	*lmprog;
-		qboolean	sub0 = qfalse, sub1 = qfalse;
 
 		VK_ApplyStateBits( VKS_DEPTHMASK_TRUE );
 
@@ -1537,7 +1458,6 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 		{
 			VK_SelectTexture( 0 );
 			VK_Bind( tr.whiteImage );
-			sub0 = qtrue;
 		}
 		else
 		{
@@ -1549,30 +1469,11 @@ void RB_StageIteratorLightmappedMultitextureUnfogged( void ) {
 		{
 			VK_SelectTexture( 1 );
 			VK_Bind( tr.whiteImage );
-			sub1 = qtrue;
 		}
 		else
 		{
 			VK_BindAnimatedImage( &tess.xstages[0]->bundle[1], 1 );
 		}
-
-		{
-			unsigned	u0 = (unsigned)vkState.currenttextures[0];
-			unsigned	u1 = (unsigned)vkState.currenttextures[1];
-			unsigned	w0 = tess.xstages[0]->bundle[0].image[0]
-						   ? (unsigned)tess.xstages[0]->bundle[0].image[0]->texnum : 0u;
-			unsigned	w1 = tess.xstages[0]->bundle[1].image[0]
-						   ? (unsigned)tess.xstages[0]->bundle[1].image[0]->texnum : 0u;
-
-			VK_Shade_NoteSubmitted( 1 );
-			VK_StageBindCensus( tess.shader, tess.xstages[0], 0, qfalse, w0, w1, u0, u1 );
-		}
-
-		/* this iterator binds both units itself, so it owes the census the same
-		   bind witness VK_DrawStage gives the generic walk: without it the
-		   world's commonest iterator reported no bound image at all. */
-		VK_Shade_BindWitness( tess.xstages[0], 0, sub0 );
-		VK_Shade_BindWitness( tess.xstages[0], 1, sub1 );
 
 		/* single-stage iterator: there is no later stage to share a slice with */
 		RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
@@ -1618,18 +1519,13 @@ void RB_EndSurface( void ) {
 	/* the gauntlets above all return early, so opening here cannot leave a
 	   sub-part open across an exit; everything before this point is the srf
 	   window's OTHER */
-	VK_SrfPart_Open();
 
 	backEnd.pc.c_shaders++;
 	backEnd.pc.c_vertexes += tess.numVertexes;
 	backEnd.pc.c_indexes += tess.numIndexes;
 	backEnd.pc.c_totalIndexes += tess.numIndexes * tess.numPasses;
 
-	BE_Bump( BE_FAM_DS, BE_DSC_batches, 1 );
-	BE_Bump( BE_FAM_DS, BE_DSC_verts, tess.numVertexes );
 
-	BE_Bump( BE_FAM_DS, BE_DSC_stages, 1 );
-	VK_Shade_NoteDraw( qtrue );
 	if ( !tess.currentStageIteratorFunc ) {
 		/* A shader without an iterator takes the generic walk, as the reference
 		   does; a silent NULL here is the boot-blocking death. */
@@ -1640,14 +1536,9 @@ void RB_EndSurface( void ) {
 		nulliter_rows++;
 		tess.currentStageIteratorFunc = RB_StageIteratorGeneric;
 	}
-	VK_SrfPart_Close( VK_WSS_ENDPRE );
-	VK_SrfPart_Open();
-	BE_SUB( BE_FAM_DS, BE_DSZ_sub_stage, tess.currentStageIteratorFunc() );
-	VK_SrfPart_Close( VK_WSS_STAGE );
+	tess.currentStageIteratorFunc();
 	/* the batch is submitted: the expected stage set against the drawn one, and
 	   the residency of every image either side names */
-	VK_SrfPart_Open();
-	VK_Shade_BatchEnd();
 
 	if (!(backEnd.refdef.rdflags & RDF_NOWORLDMODEL) && !backEnd.in2D)
 	{
@@ -1659,7 +1550,6 @@ void RB_EndSurface( void ) {
 		}
 	}
 
-	VK_SrfPart_Close( VK_WSS_BATCHE );
 
 	tess.numIndexes = 0;
 

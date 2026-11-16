@@ -31,10 +31,6 @@
 #include "powerups.h"
 #include "../corepp/tiki.h" 
 
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
-
 
 extern int gametype;
 
@@ -373,21 +369,12 @@ void MultiplayerManager::addBots( void )
 
 	if ( !dedicated->integer && ( !g_entities[ 0 ].inuse || !g_entities[ 0 ].client || !g_entities[ 0 ].entity ) )
 	{
-		PROBE(
-			"npc:addbots-gate",
-			"waiting: dedicated=%d inuse=%d client=%d entity=%p",
-			dedicated->integer,
-			g_entities[ 0 ].inuse,
-			g_entities[ 0 ].client ? 1 : 0,
-			g_entities[ 0 ].entity
-		);
 		return;
 	}
 
 
 	mp_botcommands = gi.cvar( "mp_botcommands", "", 0 );
 
-	PROBE("npc:addbots", "mp_botcommands='%s' len=%d", mp_botcommands->string, (int)strlen(mp_botcommands->string));
 
 	if ( strlen( mp_botcommands->string ) > 0 )
 	{
@@ -402,15 +389,6 @@ void MultiplayerManager::initMultiplayerGame( void )
 {
 	cvar_t *mp_modifier_Destruction;
 	int i;
-
-	PROBE(
-		"npc:initmp",
-		"mp_gametype=%d mp_botcommands-present=%d warmUpTime=%g minPlayers=%d",
-		mp_gametype->integer,
-		gi.cvar("mp_botcommands", "", 0) ? (int)strlen(gi.cvar("mp_botcommands", "", 0)->string) : -1,
-		gi.cvar("mp_warmUpTime", "10", 0)->value,
-		gi.cvar("mp_minPlayers", "0", 0)->integer
-	);
 
 
 	gi.cvar_set( "mp_modifier_diffusion", "0" );
@@ -489,7 +467,6 @@ void MultiplayerManager::initMultiplayerGame( void )
 	_awardSystem->init( maxclients->integer );
 
 
-
 	Event *event = new Event( "addAvailableViewMode" );
 	event->AddString( "BogusMode" );
 	world->ProcessEvent( event );
@@ -522,7 +499,6 @@ void MultiplayerManager::initItems( void )
 
 
 	_awardSystem->initItems();
-
 
 
 	for ( i = 0; i < MAX_GENTITIES; i++ )
@@ -1026,8 +1002,6 @@ void MultiplayerManager::playerDead( Player *player )
 	if ( !player )
 		return;
 
-	TIKIANIM_PROBE("playerdead", "ent=%d -> mode->playerDead", player->entnum);
-
 
 	_multiplayerGame->playerDead( player );
 }
@@ -1179,8 +1153,7 @@ void MultiplayerManager::respawnPlayer( Player *player, bool forced )
 
 	if ( getRespawnTime() > 0.0f && !forced )
 	{
-		TIKIANIM_PROBE("respawn:deferred", "ent=%d mp_respawnTime=%.2f -> _waitingForRespawn=true, respawn at %.2f",
-		           player->entnum, getRespawnTime(), (float)(getTime() + getRespawnTime()));
+
 		if ( !_playerData[ player->entnum ]._waitingForRespawn )
 		{
 			_playerData[ player->entnum ]._waitingForRespawn = true;
@@ -1189,8 +1162,7 @@ void MultiplayerManager::respawnPlayer( Player *player, bool forced )
 	}
 	else
 	{
-		TIKIANIM_PROBE("respawn:immediate", "ent=%d forced=%d mp_respawnTime=%.2f -> mode->respawnPlayer",
-		           player->entnum, forced ? 1 : 0, getRespawnTime());
+
 		_playerData[ player->entnum ]._waitingForRespawn = false;
 		_multiplayerGame->respawnPlayer( player );
 	}
@@ -2094,7 +2066,6 @@ void MultiplayerManager::tell( Player *player, const str &text, int entnum )
 		return;
 
 
-
 	if ( isPlayerSpectator( player ) && !isPlayerSpectator( otherPlayer ) )
 		return;
 
@@ -2522,7 +2493,6 @@ void MultiplayerManager::makePlayerSpectator( Player *player, SpectatorTypes spe
 		player->flags &= ~FL_STUNNED;
 
 
-
 		player->hideModel();
 
 
@@ -2687,7 +2657,6 @@ void MultiplayerManager::playerEnterArena( int entnum, float health )
 	player->enableInventory();
 
 
-
 	player->health = health;
 
 	player->client->ps.pm_time = 100;
@@ -2808,7 +2777,6 @@ void MultiplayerManager::HUDPrintTeamClients( Player *player, const str &string 
 	for( i = 0; i < maxclients->integer; i++ )
 	{
 		ent = g_entities + i;
-
 
 
 		if ( !ent->inuse || !ent->client || !ent->entity )
@@ -3070,7 +3038,6 @@ void MultiplayerManager::restartMatch( void )
 	
 
 	_multiplayerGame->restartMatch();
-
 
 
 	_inMatch = true;

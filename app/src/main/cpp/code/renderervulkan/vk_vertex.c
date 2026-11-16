@@ -289,12 +289,6 @@ qboolean VK_VertexRing_Init( void )
 	}
 	vk_ringSlot = 0;
 
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:ring", "ready vertexes=%d bytes=%d indexes=%d slots=%d",
-					  VK_RING_MAX_VERTEXES, VK_RING_VERTEX_BYTES, VK_RING_MAX_INDEXES,
-					  VK_FRAMES_IN_FLIGHT );
-	}
-
 	return qtrue;
 }
 
@@ -362,9 +356,6 @@ void VK_VertexRing_Shutdown( void )
    entries, five locked surfaces); a refusal reads as drops against capacity. */
 static void VK_VertexRing_FrameRow( void )
 {
-	static int	rows;
-	static int	lastUsed = -1;
-	static int	lastDrops = -1;
 	static int	bootPeak;
 	static int	s_peakCapRow;
 	int used, bytes, indexes, drops, surfaces, refused;
@@ -382,39 +373,18 @@ static void VK_VertexRing_FrameRow( void )
 	demand = used + refused;
 	if ( demand > bootPeak ) {
 		bootPeak = demand;
-		if ( bootPeak > ( VK_RING_MAX_VERTEXES / 2 ) && R_ProbeStatsOn() ) {
-			/* the ceiling is a multiple of the engine's batch, and the frame's
-			   batch count is not bounded by it, so crossing half is the warning
-			   that comes before the refusals do */
-			VK_Guard_Row( "VK:ring",
-						  "peak demand=%d of %d slots (%.1f%%) f=%d",
-						  bootPeak, VK_RING_MAX_VERTEXES,
-						  100.0 * bootPeak / VK_RING_MAX_VERTEXES, RB_FrameCount() );
-		}
-		/* The sizing number, whether or not a probe is armed: a boot that never
+		/* The sizing number, whether or not a sample is armed: a boot that never
 		   comes within a quarter of the cap has settled the ceiling question and
 		   one row is the whole proof.  A refusal still prints its own row, so
 		   this arm is the headroom reading, not the fault arm. */
 		if ( !s_peakCapRow && bootPeak > ( VK_RING_MAX_VERTEXES - VK_RING_MAX_VERTEXES / 4 ) ) {
 			s_peakCapRow = 1;
-			VK_Guard_Row( "VK:ring",
-						  "ceiling-approach demand=%d of %d slots (%.1f%%) f=%d",
-						  bootPeak, VK_RING_MAX_VERTEXES,
-						  100.0 * bootPeak / VK_RING_MAX_VERTEXES, RB_FrameCount() );
+
 		}
 	}
 
-	rows++;
 	/* a frame that refused or dropped geometry is the fault arm and names itself
-	   whatever the probe says; the steady-state sample is the gated part */
-	if ( ( drops || refused )
-		 || ( R_ProbeStatsOn() && ( rows <= 8 || used != lastUsed || drops != lastDrops
-		 || ( rows % 600 ) == 0 ) ) ) {
-		VK_Guard_Row( "VK:ring", "frame slots=%d of %d demand=%d peak=%d vertex-bytes=%d indexes=%d surfaces=%d drops=%d refused-slots=%d",
-					  used, VK_RING_MAX_VERTEXES, demand, bootPeak, bytes, indexes, surfaces, drops, refused );
-	}
-	lastUsed = used;
-	lastDrops = drops;
+	   whatever the sample says; the steady-state sample is the gated part */
 }
 
 /* A surface's walk opens here and nowhere else: every RB_BeginSurface gets a new token, so two bat

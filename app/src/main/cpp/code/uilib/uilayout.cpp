@@ -24,10 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "ui_local.h"
 #include "../script/scriptexception.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
-#define PROBE_PRINT                       Com_Printf
-#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "0")) != 0)
-#include "../qcommon/qa_probe.h"
 
 Event EV_Layout_Menu
 (
@@ -122,20 +118,6 @@ void UILayout::ProcessCommands(void)
                 className = "UI";
                 className += newname;
                 widgetClass = getClass(className);
-                {
-                    /* the controls screen's RenderModel never reaches Draw, so naming every class the layout resolves, and whether it resolved, is what
-                       splits a parse drop (never asked for) from a paint drop (resolved but never drew).  The window is the whole layout, not the first screen. */
-                    static int s_clsRows;
-                    s_clsRows++;
-                    if (s_clsRows <= 4096 || (s_clsRows % 200) == 0) {
-                        UIVK_CENSUS_PROBE(
-                            "menucls",
-                            "load=%d n=%d class='%s' resolved=%d order=%d",
-                            s_clsRows, m_currentcontainer ? m_currentcontainer->m_children.NumObjects() : -1,
-                            className.c_str(), widgetClass ? 1 : 0,
-                            m_currentwidget ? m_currentwidget->getOrderNum() : -1);
-                    }
-                }
                 if (!widgetClass) {
                     throw ScriptException("LOAD_BAD_WIDGET");
                 }
@@ -183,19 +165,6 @@ void UILayout::ProcessCommands(void)
                 /* the tricorder minigame is plain Widget/Label/Button in the URC, so naming
                    what each tri_mod_ resource resolved to splits a class miss from a
                    behaviour miss */
-                if (widget->getName() && !strncmp(widget->getName(), "tri_mod_", 8)) {
-                    static int s_cls;
-
-                    if (PROBE_Throttle(&s_cls, 32, 128)) {
-                        UIVK_PROBE(
-                            "trimod",
-                            "class widget='%s' class='%s' enabled=%d show=%d",
-                            widget->getName(),
-                            widget->getClassname() ? widget->getClassname() : "?",
-                            widget->isEnabled() ? 1 : 0,
-                            widget->getShow() ? 1 : 0);
-                    }
-                }
             } else {
                 if (ValidEvent(token)) {
                     ev = new Event(token);
@@ -248,8 +217,6 @@ void UILayout::Load(const char *filename)
         m_script->LoadFile(filename);
 
         ProcessCommands();
-
-        uWinMan.CensusParentChains();
 
         delete m_script;
         m_script = NULL;

@@ -58,7 +58,7 @@ set(RENDERER_VULKAN_SOURCES
     ${SOURCE_DIR}/renderervulkan/tr_ghost.cpp
     ${SOURCE_DIR}/renderervulkan/vk_shade.c
     ${SOURCE_DIR}/renderervulkan/vk_vbo.c
-    ${SOURCE_DIR}/renderervulkan/vk_probeplumb.c
+    ${SOURCE_DIR}/renderervulkan/vk_backend_module.c
     ${SOURCE_DIR}/renderervulkan/tr_util.cpp
     # the Vulkan substrate
     ${SOURCE_DIR}/renderervulkan/vk_procs.c

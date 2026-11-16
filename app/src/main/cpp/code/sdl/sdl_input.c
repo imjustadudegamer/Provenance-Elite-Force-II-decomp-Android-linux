@@ -36,9 +36,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../client/cl_cin.h"
 #include "../sys/sys_local.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) Cvar_Get(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       Com_Printf
-#include "../qcommon/qa_probe.h"
 
 extern qboolean UI_BindActive_C( void );
 extern qboolean UI_MenuActive_C( void );
@@ -62,16 +59,6 @@ static volatile int in_androidBackgrounded;
 static int          in_androidApplied = 0;       
 static qboolean     in_androidPauseOwned = qfalse; 
 
-#define SMP_LIFECYCLE_PROBE_CAP 24
-static int smp_lifecycle_probe = 0;
-static cvar_t *smp_lifecycleStats;
-
-static qboolean SMP_LifecycleProbeOn( void ) {
-	if ( !smp_lifecycleStats ) {
-		smp_lifecycleStats = Cvar_Get( "smp_lifecycleStats", "0", 0 );
-	}
-	return ( smp_lifecycleStats && smp_lifecycleStats->integer ) ? qtrue : qfalse;
-}
 
 static int SDLCALL IN_AndroidLifecycleFilter( void *userdata, SDL_Event *e )
 {
@@ -195,8 +182,6 @@ static void IN_GamepadInstallMapping( int device_index )
 		if ( SDL_GameControllerAddMapping( full ) < 0 )
 			Com_DPrintf( "pad mapping install failed: %s\n", SDL_GetError() );
 
-		PROBE( "input:pad", "mapping installed for device %d (%s)", device_index,
-			SDL_strstr( full, ",start:" ) ? "start mapped" : "start already mapped" );
 	}
 	else if ( completed < 0 )
 	{
@@ -600,10 +585,6 @@ static void IN_InitJoystick( void )
 	SDL_JoystickEventState(SDL_QUERY);
 	SDL_GameControllerEventState(SDL_QUERY);
 
-	PROBE( "input:pad", "opened joystick %d '%s' gamepad=%d buttons=%d axes=%d analog=%d",
-		in_joystickNo->integer, SDL_JoystickNameForIndex( in_joystickNo->integer ),
-		gamepad ? 1 : 0, SDL_JoystickNumButtons( stick ), SDL_JoystickNumAxes( stick ),
-		in_joystickUseAnalog->integer ? 1 : 0 );
 }
 
 static void IN_ShutdownJoystick( void )
@@ -822,8 +803,6 @@ static void IN_GamepadMove( void )
 
 			Com_QueueEvent(in_eventTime, SE_KEY, key, pressed, 0, NULL);
 			stick_state.buttons[i] = pressed;
-			PROBE("input:pad", "button %d -> key %d (%s) %s",
-				(int)sdlButton, key, Key_KeynumToString( key ), pressed ? "down" : "up");
 		}
 	}
 
@@ -1233,8 +1212,6 @@ static void IN_TouchSetMove( int newState )
 {
 	static const int stickKeys[4] = { K_PAD0_LEFTSTICK_UP, K_PAD0_LEFTSTICK_DOWN,
 	                                  K_PAD0_LEFTSTICK_LEFT, K_PAD0_LEFTSTICK_RIGHT };
-	static const char *dirs[4] = { "UP(+forward)", "DOWN(+back)",
-	                               "LEFT(+moveleft)", "RIGHT(+moveright)" };
 	int i;
 	for ( i = 0; i < 4; i++ )
 	{
@@ -1242,13 +1219,10 @@ static void IN_TouchSetMove( int newState )
 		if ( ( newState & bit ) && !( tc_moveState & bit ) )
 		{
 			Com_QueueEvent( in_eventTime, SE_KEY, stickKeys[i], qtrue, 0, NULL );
-			PROBE( "input:touch", "stick %s down (dir=%d) -> key %d (%s)",
-				dirs[i], newState, stickKeys[i], Key_KeynumToString( stickKeys[i] ) );
 		}
 		else if ( !( newState & bit ) && ( tc_moveState & bit ) )
 		{
 			Com_QueueEvent( in_eventTime, SE_KEY, stickKeys[i], qfalse, 0, NULL );
-			PROBE( "input:touch", "stick %s up (dir=%d)", dirs[i], newState );
 		}
 	}
 	tc_moveState = newState;
@@ -1288,8 +1262,6 @@ static void IN_TouchReleaseStale( SDL_TouchID touchId )
 
 		if ( tc_moveId != (SDL_FingerID)-1 && !live )
 		{
-			PROBE( "input:touch", "stale stick finger %lld released (no FINGERUP)",
-				(long long)tc_moveId );
 			IN_TouchSetMove( 0 );
 			tc_moveId = (SDL_FingerID)-1;
 			touchControl.moveActive = qfalse;
@@ -1300,8 +1272,6 @@ static void IN_TouchReleaseStale( SDL_TouchID touchId )
 			if ( ids[i] == tc_lookId ) { live = 1; break; }
 		if ( tc_lookId != (SDL_FingerID)-1 && !live )
 		{
-			PROBE( "input:touch", "stale look finger %lld released (no FINGERUP)",
-				(long long)tc_lookId );
 			tc_lookId = (SDL_FingerID)-1;
 		}
 
@@ -1315,8 +1285,6 @@ static void IN_TouchReleaseStale( SDL_TouchID touchId )
 				if ( ids[k] == tc_actionFinger[i] ) { still = 1; break; }
 			if ( still )
 				continue;
-			PROBE( "input:touch", "stale pill finger %lld released (no FINGERUP)",
-				(long long)tc_actionFinger[i] );
 			if ( !tcActionButtons[i].tap )
 				Com_QueueEvent( in_eventTime, SE_KEY, tcActionButtons[i].key, qfalse, 0, NULL );
 			tc_actionFinger[i] = (SDL_FingerID)-1;
@@ -1351,34 +1319,11 @@ static void IN_TouchReset( void )
 	touchControl.actionPressed = 0;
 }
 
-#define SMP_HOLDFIX_PROBE_CAP 8
-static int smp_holdfix_probe = 0;
-static cvar_t *smp_holdfixStats;
 
-static qboolean SMP_HoldfixProbeOn( void ) {
-	if ( !smp_holdfixStats ) {
-		smp_holdfixStats = Cvar_Get( "smp_holdfixStats", "0", 0 );
-	}
-	return ( smp_holdfixStats && smp_holdfixStats->integer ) ? qtrue : qfalse;
-}
-
-#define SMP_TAPCLICK_PROBE_CAP 8
-static int smp_tapclick_probe = 0;
-static cvar_t *smp_tapclickStats;
-
-static qboolean SMP_TapclickProbeOn( void ) {
-	if ( !smp_tapclickStats ) {
-		smp_tapclickStats = Cvar_Get( "smp_tapclickStats", "0", 0 );
-	}
-	return ( smp_tapclickStats && smp_tapclickStats->integer ) ? qtrue : qfalse;
-}
 
 static void IN_TouchReleaseGone( void )
 {
-	int i, heldBefore = 0, heldAfter = 0;
-
-	for ( i = 0; i < TC_NUM_ACTION; i++ )
-		if ( tc_actionFinger[i] != (SDL_FingerID)-1 ) heldBefore++;
+	int i;
 
 	if ( tc_touchId == (SDL_TouchID)-1 )
 	{
@@ -1387,18 +1332,8 @@ static void IN_TouchReleaseGone( void )
 	else
 	{
 		IN_TouchReleaseStale( tc_touchId );
-		for ( i = 0; i < TC_NUM_ACTION; i++ )
-			if ( tc_actionFinger[i] != (SDL_FingerID)-1 ) heldAfter++;
 	}
 
-	if ( SMP_HoldfixProbeOn() && ( heldBefore || tc_crouchToggled ) && smp_holdfix_probe < SMP_HOLDFIX_PROBE_CAP )
-	{
-		smp_holdfix_probe++;
-		Com_Printf( "[SMP:holdfix] %d overlay-off held_before=%d held_after=%d crouch=%d "
-					"menus=%d\n",
-					smp_holdfix_probe, heldBefore, heldAfter, tc_crouchToggled ? 1 : 0,
-					UI_MenuActive_C() ? 1 : 0 );
-	}
 
 	if ( tc_crouchToggled )
 	{
@@ -1441,10 +1376,7 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 	// stays false, so cls.state is NEVER set to CA_CINEMATIC (cl_cin.cpp:1715,
 	if ( cinematicRunning( ) || cls.state == CA_CINEMATIC ) {
 		if ( phase == 0 ) {
-			UIVK_PROBE( "cine:skip",
-				"tap movie: cin=%d state=%d statcin=%d -> inject ESC (StopCinematic)",
-				cinematicRunning( ) ? 1 : 0, cls.state,
-				( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0 );
+
 			Com_QueueEvent( in_eventTime, SE_KEY, K_ESCAPE, qtrue,  0, NULL );
 			Com_QueueEvent( in_eventTime, SE_KEY, K_ESCAPE, qfalse, 0, NULL );
 		}
@@ -1452,9 +1384,7 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 	}
 	if ( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) {
 		if ( phase == 0 ) {
-			UIVK_PROBE( "cine:skip",
-				"tap cutscene: cin=%d state=%d statcin=1 -> skipcinematic",
-				cinematicRunning( ) ? 1 : 0, cls.state );
+
 			Cbuf_AddText( "skipcinematic\n" );
 		}
 		return;
@@ -1462,14 +1392,6 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 
 	if ( !IN_TouchControlsActive( ) )
 	{
-		static int uivk_touchgate;
-		if ( phase == 0 && PROBE_Throttle( &uivk_touchgate, 4, 16 ) )
-			UIVK_PROBE( "cine:swallow",
-				"tap at overlay gate: cin=%d state=%d statcin=%d catcher=0x%x menus=%d",
-				cinematicRunning( ) ? 1 : 0, cls.state,
-				( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0,
-				Key_GetCatcher( ), UI_MenuActive_C( ) ? 1 : 0 );
-
 		IN_TouchReleaseGone( );
 		return;
 	}
@@ -1504,8 +1426,6 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 				touchControl.actionPressed |= ( 1 << bi );
 				touchControl.actionFingerHeld = qtrue;   
 				Com_QueueEvent( in_eventTime, SE_KEY, ab->key, qtrue, 0, NULL );
-				PROBE( "input:touch", "pill '%s' -> key %d (%s)",
-					ab->label, ab->key, Key_KeynumToString( ab->key ) );
 				if ( ab->tap )   
 					Com_QueueEvent( in_eventTime, SE_KEY, ab->key, qfalse, 0, NULL );
 				return;
@@ -1520,8 +1440,6 @@ static void IN_TouchFinger( SDL_TouchFingerEvent *f, int phase )
 			touchControl.padCx = f->x; touchControl.padCy = f->y;
 			touchControl.thumbX = f->x; touchControl.thumbY = f->y;
 			IN_TouchSetMove( 0 );
-			PROBE( "input:touch", "stick acquired at %.3f,%.3f (finger %lld)",
-				f->x, f->y, (long long)f->fingerId );
 		}
 		else if ( tc_lookId == (SDL_FingerID)-1 )
 		{
@@ -1647,8 +1565,6 @@ static void IN_ProcessEvents( void )
 				if( ( key = IN_TranslateSDLToQ3Key( &e.key.keysym, qtrue ) ) )
 					Com_QueueEvent( in_eventTime, SE_KEY, key, qtrue, 0, NULL );
 
-				PROBE( "input:key", "sym=0x%x scancode=0x%x -> key %d catcher=0x%x",
-					e.key.keysym.sym, e.key.keysym.scancode, key, Key_GetCatcher( ) );
 
 				if( key == K_BACKSPACE )
 					Com_QueueEvent( in_eventTime, SE_CHAR, CTRL('h'), 0, 0, NULL );
@@ -1768,29 +1684,12 @@ static void IN_ProcessEvents( void )
 							tc_skipClickSuppress--;
 							break;
 						}
-						if ( in_guimouse && e.type == SDL_MOUSEBUTTONDOWN
-						     && ( cinematicRunning( ) || cls.state == CA_CINEMATIC
-						          || ( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) )
-						     && SMP_TapclickProbeOn()
-						     && smp_tapclick_probe < SMP_TAPCLICK_PROBE_CAP ) {
-							smp_tapclick_probe++;
-							Com_Printf( "[SMP:tapclick] %d delivered to the UI (cutscene up, "
-										"ui owns the pointer) cin=%d state=%d statcin=%d catcher=0x%x\n",
-										smp_tapclick_probe, cinematicRunning( ) ? 1 : 0, cls.state,
-										( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0,
-										Key_GetCatcher( ) );
-						}
 						if ( Key_GetCatcher( ) == 0 && !in_guimouse )
 							break;
 						if ( e.type == SDL_MOUSEBUTTONDOWN && !in_guimouse
 						     && ( cinematicRunning( ) || cls.state == CA_CINEMATIC
 						          || ( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ) ) {
 							tc_skipClickSuppress++;
-							PROBE( "tap:swallow",
-								"tap click consumed with the cinematic skip: cin=%d state=%d statcin=%d catcher=0x%x",
-								cinematicRunning( ) ? 1 : 0, cls.state,
-								( cl.snap.ps.stats[STAT_CINEMATIC] & 1 ) ? 1 : 0,
-								Key_GetCatcher( ) );
 							break;
 						}
 					}
@@ -1836,9 +1735,6 @@ static void IN_ProcessEvents( void )
 			case SDL_JOYBUTTONDOWN:
 			case SDL_JOYBUTTONUP:
 				/* A raw button no mapping named: the pause keys' most likely grave. */
-				PROBE( "input:pad", "raw button %d %s (gamepad=%d catcher=0x%x)",
-					e.jbutton.button, ( e.type == SDL_JOYBUTTONDOWN ) ? "down" : "up",
-					gamepad ? 1 : 0, Key_GetCatcher( ) );
 				break;
 #endif
 
@@ -1907,9 +1803,6 @@ void Sys_SendKeyEvents( void )
 #ifdef __ANDROID__
 	if ( in_androidApplied != in_androidBackgrounded )
 	{
-		const char *action = "none";
-		int ownedAfter;
-
 		in_androidApplied = in_androidBackgrounded;
 		Cvar_SetValue( "com_minimized", in_androidApplied );
 
@@ -1919,17 +1812,12 @@ void Sys_SendKeyEvents( void )
 			{
 				Com_Pause_f();
 				in_androidPauseOwned = ( paused->integer != 0 ) ? qtrue : qfalse;
-				if ( in_androidPauseOwned )
-				{
-					action = "pause";
-				}
 			}
 			else
 			{
 				in_androidPauseOwned = qfalse;
 			}
 
-			ownedAfter = in_androidPauseOwned ? 1 : 0;
 		}
 		else
 		{
@@ -1937,26 +1825,12 @@ void Sys_SendKeyEvents( void )
 			{
 				Com_UnPause_f();
 				in_androidPauseOwned = qfalse;
-				action = "unpause";
 			}
 
-			PROBE( "input:touch", "foreground: released held touch state" );
 			IN_TouchReset();
 
-			ownedAfter = in_androidPauseOwned ? 1 : 0;
 		}
 
-		if ( SMP_LifecycleProbeOn() && smp_lifecycle_probe < SMP_LIFECYCLE_PROBE_CAP )
-		{
-			smp_lifecycle_probe++;
-			Com_Printf( "[SMP:lifecycle] %d edge=%s applied=%d com_minimized=%d state=%d "
-						"svrun=%d paused=%d action=%s owned_after=%d\n",
-						smp_lifecycle_probe,
-						in_androidApplied ? "background" : "foreground",
-						in_androidApplied,
-						Cvar_VariableIntegerValue( "com_minimized" ), cls.state,
-						com_sv_running->integer, paused->integer, action, ownedAfter );
-		}
 	}
 
 	if ( !IN_TouchControlsActive() )

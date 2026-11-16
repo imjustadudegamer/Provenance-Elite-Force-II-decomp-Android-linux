@@ -30,9 +30,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tiki_files.h"
 #include "tiki_skan.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 static void *context;
 
@@ -113,15 +110,7 @@ static void TIKI_SetupTikiAnim(dtiki_t *pmdl, int alias_index)
                 }
 
                 if (mapped < 0 && verdict != TIKI_MAPV_IDENTITY) {
-                    PROBE_CENSUS_EMIT(
-                        "[TIKI:",
-                        "map",
-                        "setup tiki=%s anim=%d name='%s' handle=-1 calc=%s\n",
-                        pmdl->name ? pmdl->name : "?",
-                        i,
-                        panimdef->alias ? panimdef->alias : "?",
-                        TIKI_Skan_MapVerdictName(verdict)
-                    );
+
                 }
             } else {
                 /* this anim's data is resident (we returned early otherwise) and it
@@ -129,17 +118,6 @@ static void TIKI_SetupTikiAnim(dtiki_t *pmdl, int alias_index)
                    re-probing on every fetch.  Only tablefull stays retried -- that one
                    clears as tikis free their entries. */
                 pmdl->boneMappings[i] = TIKI_BONEMAP_NOHEADER;
-                if (PROBE_On()) {
-                    PROBE_CENSUS_EMIT(
-                        "[TIKI:",
-                        "map",
-                        "setup tiki=%s anim=%d name='%s' handle=-3 calc=%s\n",
-                        pmdl->name ? pmdl->name : "?",
-                        i,
-                        panimdef->alias ? panimdef->alias : "?",
-                        skel ? "ident" : "nohdr"
-                    );
-                }
             }
         }
     }

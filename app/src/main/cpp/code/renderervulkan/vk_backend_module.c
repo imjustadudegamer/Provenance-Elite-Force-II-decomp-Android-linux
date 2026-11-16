@@ -32,7 +32,7 @@ root, for more details.
 */
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * vk_probeplumb.c -- the back end's probe plumbing and reserved seats.
+ * vk_backend_module.c -- the back end's reserved seats and module globals.
  *
  * The shader compiler hands every shader an `optimalStageIteratorFunc`, so the
  * data model names the 3D iterators before they draw anything.  These bodies
@@ -90,28 +90,6 @@ qboolean smp_hasAstcLdr = qfalse;
 qboolean smp_hasAstcSliced3d = qfalse;
 qboolean smp_hasEtc2Core = qfalse;
 
-qboolean R_ProbeStatsOn( void )
-{
-#ifdef PROBE_BUILD_SILENT
-	return qfalse;		/* the shipped build arms no row family */
-#else
-	static cvar_t *probe;
-
-	if ( !probe ) {
-		probe = ri.Cvar_Get( "qa_probe", "0", 0 );
-	}
-
-	return ( probe && probe->integer ) ? qtrue : qfalse;
-#endif
-}
-
-/* One gate for every row family: qa_probe, which the Android boot sets from the
-   log property before the renderer runs. */
-qboolean R_ProbeMarkOn( void )
-{
-	return R_ProbeStatsOn();
-}
-
 /* the renderer's own clock: `ri.Milliseconds() * 1000' quantised every usec= row it feeds to a millisecond, so a cost under one read as zero
    (a stage bind is far below that).  CLOCK_MONOTONIC is the real microsecond source; the 2^32 us range wraps in ~71 minutes and every caller reads a difference. */
 int BE_Microseconds( void )
@@ -138,11 +116,6 @@ long long BE_Microseconds64( void )
 	}
 
 	return (long long)ts.tv_sec * 1000000LL + (long long)ts.tv_nsec / 1000LL;
-}
-
-int BE_Armed( void )
-{
-	return R_ProbeStatsOn() ? 1 : 0;
 }
 
 

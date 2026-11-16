@@ -32,9 +32,6 @@
 
 #include "mp_manager.hpp"
 
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
 
 #define	MAX_ARENAS			1024
 #define	MAX_ARENAS_TEXT		8192
@@ -74,7 +71,6 @@ float Cvar_VariableValue( const char *var_name ) {
 	gi.Cvar_VariableStringBuffer(var_name, buf, sizeof(buf));
 	return atof(buf);
 }
-
 
 
 int G_ParseInfos( const char *buf, int max, char *infos[] ) {
@@ -605,19 +601,8 @@ void SV_AddBot_f( void ) {
 	char			team[MAX_TOKEN_CHARS];
 	char			specialty[MAX_TOKEN_CHARS];
 
-	PROBE(
-		"npc:addbot-entry",
-		"argc=%d a1='%s' a2='%s' a3='%s' a4='%s' bot_enable=%d",
-		gi.argc(),
-		gi.argv(1),
-		gi.argv(2),
-		gi.argv(3),
-		gi.argv(4),
-		gi.Cvar_VariableIntegerValue("bot_enable")
-	);
 
 	if ( !gi.Cvar_VariableIntegerValue( "bot_enable" ) ) {
-		PROBE("npc:addbot-blocked", "bot_enable=0 -- bot refused");
 		return;
 	}
 
@@ -775,7 +760,6 @@ void G_LoadBots( void ) {
 	}
 	gi.Printf( va( "%i bots parsed\n", g_numBots ) );
 }
-
 
 
 char *G_GetBotInfoByNumber( int num ) {

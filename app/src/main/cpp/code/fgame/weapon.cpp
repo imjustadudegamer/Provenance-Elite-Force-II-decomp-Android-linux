@@ -1864,17 +1864,6 @@ void Weapon::Shoot( Event *ev )
 			projectileModelName = projectileModel[mode];
 		}
 
-		if (gi.cvar("qa_probe", "0", 0)->integer) {
-			gi.Printf("[UIVK:shootpj] own=%d proj='%s' pos=(%.1f,%.1f,%.1f) dir=(%.3f,%.3f,%.3f)\n",
-				  owner_shadow4 ? owner_shadow4->entnum : -1,
-				  projectileModelName.c_str(),
-				  pos.x,
-				  pos.y,
-				  pos.z,
-				  forward.x,
-				  forward.y,
-				  forward.z);
-		}
 
 		ProjectileAttack( pos,
 			forward,

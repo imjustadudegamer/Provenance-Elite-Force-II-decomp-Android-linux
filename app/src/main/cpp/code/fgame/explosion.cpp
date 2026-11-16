@@ -31,11 +31,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "weaputils.h"
 #include "earthquake.h"
 #include "../qcommon/gameplaymanager.h"
-#define PROBE_GET(name, def, flags) gi.cvar(name, def, flags)
-#define PROBE_PRINT                 gi.Printf
-#include "../qcommon/qa_probe.h"
-
-
 
 
 Event EV_Exploder_SetDmg
@@ -55,10 +50,6 @@ Event EV_ExplodeObject_SetSeverity (	"severity",
 );
 
 extern Event EV_Door_SetDmg;
-
-
-
-
 
 
 #define MULTI_USE     (1 << 0)
@@ -531,15 +522,6 @@ void ExplodeObject::MakeExplosion(Event *ev)
     Event  *event;
 
     other = ev->GetEntity(1);
-
-    {
-        static int uivk_dfx_n;
-        if (PROBE_On() && PROBE_Throttle(&uivk_dfx_n, 32, 32)) {
-            PROBE("DFX:explodeobject", "ent=%d targetname='%s' model='%s' explmodel='%s' debris=%d noexpl=%d\n",
-                       entnum, targetname.c_str(), model.c_str(), explosionmodel.c_str(),
-                       debrismodels.NumObjects(), (spawnflags & NO_EXPLOSIONS) ? 1 : 0);
-        }
-    }
 
     if (!other) {
         other = world;

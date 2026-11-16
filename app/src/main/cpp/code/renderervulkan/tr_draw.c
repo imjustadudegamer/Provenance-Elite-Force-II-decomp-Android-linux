@@ -40,9 +40,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
-#define PROBE_GET(name, def, flags) ri.Cvar_Get(name, def, flags)
-#define PROBE_PRINT(...)            ri.Printf(PRINT_ALL, __VA_ARGS__)
-#include "../qcommon/qa_probe.h"
 
 vec4_t r_colorWhite = { 1.0, 1.0, 1.0, 1.0 };
 
@@ -127,7 +124,7 @@ static qboolean D2_On( void ) {
 	if ( !s_d2Cvar ) {
 		s_d2Cvar = ri.Cvar_Get( "d2_stallStats", "1", 0 );
 	}
-	return ( PROBE_On() && s_d2Cvar && s_d2Cvar->integer ) ? qtrue : qfalse;
+	return ( s_d2Cvar && s_d2Cvar->integer ) ? qtrue : qfalse;
 }
 
 static int D2_T0( void ) {
@@ -297,34 +294,11 @@ static qboolean RB_2D_SpanQuad( void ) {
 		   nothing a reopen would name either: the batch keeps the fallback */
 		s_2dSpanCount = 0;
 		s_2dSpanUnnamed = qtrue;
-		{
-			static int	s_rows;
-
-			if ( R_ProbeStatsOn() && s_rows < 16 ) {
-				VK_Guard_Row( "VK:2dspan", "unnamed batch shader='%s' reason=no-2d-state "
-										   "states=0 verts=%d idx=%d f=%d",
-							  tess.shader ? tess.shader->name : "?",
-							  tess.numVertexes, tess.numIndexes, RB_FrameCount() );
-				s_rows++;
-			}
-		}
 		return qtrue;
 	}
 	if ( s_2dSpanCount >= RB_2D_SPAN_MAX ) {
 		/* every span so far still carries the state its own quads were authored under, so closing the batch here draws them correctly; the old
 		   fallback marked the whole batch unnamed, which drew it under some other widget's clip. */
-		{
-			static int	s_rows;
-
-			if ( R_ProbeStatsOn() && s_rows < 16 ) {
-				VK_Guard_Row( "VK:2dspan", "span-table-full shader='%s' states=%d "
-										   "verts=%d idx=%d f=%d",
-							  tess.shader ? tess.shader->name : "?",
-							  s_2dSpanCount, tess.numVertexes, tess.numIndexes,
-							  RB_FrameCount() );
-				s_rows++;
-			}
-		}
 		return qfalse;
 	}
 	if ( s_2dSpanCount > 0
@@ -472,16 +446,6 @@ static void RB_2D_Batch( shader_t *shader ) {
 	   while the walk believes it is not in 2D takes the 3D iterator at
 	   RB_BeginSurface and its vertices are not placed.  Silence under --diag is
 	   the pass condition. */
-	if ( R_ProbeStatsOn() && !backEnd.in2D ) {
-		static int	s_rows;
-
-		s_rows++;
-		if ( s_rows <= 8 || ( s_rows % 256 ) == 0 ) {
-			VK_Guard_Row( "VK:2drace", "batch shader='%s' in2d=0 f=%d",
-						  shader ? shader->name : "?", RB_FrameCount() );
-		}
-	}
-
 	RB_2D_Flush();
 	RB_BeginSurface( shader, 0 );
 	s_2dBatchOpen   = qtrue;

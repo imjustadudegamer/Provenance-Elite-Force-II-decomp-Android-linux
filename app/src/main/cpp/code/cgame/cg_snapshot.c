@@ -23,9 +23,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 
 #include "cg_local.h"
-#define PROBE_GET(name, def, flags) cgi.Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 cgi.Printf
-#include "../qcommon/qa_probe.h"
 
 static void CG_ResetEntity(centity_t *cent)
 {
@@ -103,9 +100,6 @@ void CG_SetInitialSnapshot(snapshot_t *snap)
 
     cg.snap = snap;
 
-    WIDGETM1_PROBE( "init", "snapFlags=%d snapTime=%d cmdSeq=%d cgTime=%d latestNum=%d processed=%d",
-        snap->snapFlags, snap->serverTime, snap->serverCommandSequence, cg.time,
-        cg.latestSnapshotNum, cgs.processedSnapshotNum );
 
     CG_BuildSolidList();
 

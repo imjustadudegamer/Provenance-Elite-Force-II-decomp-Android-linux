@@ -24,9 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "g_local.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) gi.cvar(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       gi.Printf
-#include "../qcommon/qa_probe.h"
 
 #include "scriptvariable.h"
 #include "g_spawn.h"
@@ -130,7 +127,6 @@ void G_ExitWithError(const char *error)
 }
 
 
-
 int  BotAISetup(int restart);
 int  BotAILoadMap(int restart);
 int  BotAIStartFrame(int time);
@@ -141,8 +137,6 @@ void SV_AddBot_f(void);
 
 extern "C" void G_CleanupGame( qboolean restart );
 
-long long g_restoreSplitUs[GRS_COUNT];
-long long g_restoreSplitN[GRS_COUNT];
 
 static qboolean s_modelCacheDone[MAX_MODELS];
 
@@ -166,8 +160,6 @@ extern "C" void G_InitGame( int startTime, int randomSeed )
 	gi.DPrintf ("==== InitGame ====\n");
 
 	G_ModelCacheReset();
-	memset( g_restoreSplitUs, 0, sizeof( g_restoreSplitUs ) );
-	memset( g_restoreSplitN, 0, sizeof( g_restoreSplitN ) );
 
 	SV_Error = gi.Error;
 	gi.Error = G_Error;
@@ -182,8 +174,7 @@ extern "C" void G_InitGame( int startTime, int randomSeed )
 
 		gameVars.ClearList();
 		level.intermission_advancetime = (float)g_intermissiontime->integer;
-		WIDGET_PROBE("missionend", "initgame g_intermissiontime=%d advance=%.3f\n",
-		             g_intermissiontime->integer, level.intermission_advancetime);
+
 		level.fixedframetime           = ( 1.0f / sv_fps->value );
 		level.startTime                = startTime;
 
@@ -274,7 +265,6 @@ void G_DeAllocGameData(void)
         game.clients = NULL;
     }
 }
-
 
 
 extern "C" void G_SpawnEntities(const char *mapname, const char *entities, int levelTime)
@@ -418,7 +408,6 @@ extern "C" void G_RunFrame(int levelTime, int frameTime)
 
         level.update(levelTime, frameTime);
 
-        G_EntTrash_Tick();
 
         if (g_showmem->integer) {
             DisplayMemoryUsage();
@@ -491,188 +480,6 @@ extern "C" void G_RunFrame(int levelTime, int frameTime)
                                   1.0f,
                                   0.0f,
                                   0.0f);
-            }
-        }
-
-        if (PROBE_On()) {
-            static const int r1_marks[11]  = { 500,   2000,   8000,   20000,  40000,
-                                               60000, 90000,  120000, 180000, 300000,
-                                               600000 };
-            static int       r1_sweeps = 0;
-            static int       r1_last   = -1;
-
-            if (r1_sweeps < 11 && level.inttime >= r1_marks[r1_sweeps] && r1_last != r1_sweeps) {
-                r1_last = r1_sweeps;
-                r1_sweeps++;
-
-                int nact = 0, nthink = 0, nai = 0, nsmap = 0, nmmap = 0, nenemy = 0;
-                int nsleep = 0, nlist_none = 0;
-
-                WIDGET_PROBE("R1:ai", "SWEEP %d inttime=%d map=%s nents=%d -- BEGIN\n",
-                           r1_sweeps, level.inttime, level.mapname.c_str(),
-                           globals.num_entities);
-
-                for (int r1_i = 0; r1_i < globals.num_entities; r1_i++) {
-                    gentity_t *r1_ed = &g_entities[r1_i];
-                    if (!r1_ed->inuse || !r1_ed->entity) {
-                        continue;
-                    }
-                    if (!r1_ed->entity->isSubclassOf(Actor)) {
-                        continue;
-                    }
-                    Actor *r1_a = (Actor *)r1_ed->entity;
-                    nact++;
-
-                    bool think_on  = (r1_a->flags & FL_THINK) ? true : false;
-                    bool immobile  = (r1_a->flags & FL_IMMOBILE) ? true : false;
-                    bool notarget  = (r1_a->flags & FL_NOTARGET) ? true : false;
-                    bool started   = r1_a->GetActorFlag(ACTOR_FLAG_STARTED) ? true : false;
-                    bool in_sleep  = false;
-                    bool in_active = false;
-
-                    for (int r1_j = 1; r1_j <= SleepList.NumObjects(); r1_j++) {
-                        if (SleepList.ObjectAt(r1_j) == r1_a) {
-                            in_sleep = true;
-                            break;
-                        }
-                    }
-                    if (!in_sleep) {
-                        for (int r1_j = 1; r1_j <= ActiveList.NumObjects(); r1_j++) {
-                            if (ActiveList.ObjectAt(r1_j) == r1_a) {
-                                in_active = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (in_sleep) {
-                        nsleep++;
-                    } else if (!in_active) {
-                        nlist_none++;
-                    }
-
-                    Entity *r1_enemy = r1_a->enemyManager ? r1_a->enemyManager->GetCurrentEnemy()
-                                                          : NULL;
-                    if (think_on) {
-                        nthink++;
-                    }
-                    if (r1_a->mode == ACTOR_MODE_AI) {
-                        nai++;
-                    }
-                    if (r1_a->statemap) {
-                        nsmap++;
-                    }
-                    if (r1_a->masterstatemap) {
-                        nmmap++;
-                    }
-                    if (r1_enemy) {
-                        nenemy++;
-                    }
-
-                    const char *r1_st = r1_a->currentState ? r1_a->currentState->getName()
-                                                          : "";
-                    const char *r1_mst = r1_a->currentMasterState
-                                             ? r1_a->currentMasterState->getName()
-                                             : "";
-
-                    const char *r1_pkg   = "";
-                    const char *r1_bhv   = "-";
-                    const char *r1_anim  = "-";
-                    const char *r1_slash = NULL;
-
-                    if (r1_a->statemap_name.length()) {
-                        r1_pkg = r1_a->statemap_name.c_str();
-                        r1_slash = strrchr(r1_pkg, '/');
-                        if (r1_slash) {
-                            r1_pkg = r1_slash + 1;
-                        }
-                    }
-                    if (r1_a->behavior) {
-                        r1_bhv = r1_a->behavior->getClassname();
-                    }
-                    if (r1_a->animname.length()) {
-                        r1_anim = r1_a->animname.c_str();
-                    }
-
-                    float r1_edist = -1.0f;
-                    if (r1_enemy) {
-                        r1_edist = (r1_enemy->centroid - r1_a->centroid).length();
-                    }
-
-                    Entity *r1_hwt = r1_a->headWatcher ? r1_a->headWatcher->GetWatchTarget() : NULL;
-
-                    WIDGET_PROBE("R1:ai",
-                               "e=%d t=%d type=%d mode=%d think=%d immob=%d notgt=%d "
-                               "started=%d strat=%d sm=%d msm=%d st='%s' mst='%s' enm=%d "
-                               "pkg='%s' bhv='%s' anim='%s' edist=%.1f "
-                               "hwt=%d hwd=%.0f hwx=%d "
-                               "list=%c "
-                               "tend=%.2f/%.2f/%.2f hp=%.0f org=(%.0f,%.0f,%.0f) "
-                               "wedge=ge=%d mv=%d mt=%d td=(%.2f,%.2f,%.2f) vel=(%.1f,%.1f,%.1f) "
-                               "hull=(%.0f,%.0f,%.0f)-(%.0f,%.0f,%.0f) m='%s'\n",
-                               r1_i,
-                               level.inttime,
-                               (int)r1_a->actortype,
-                               (int)r1_a->mode,
-                               think_on ? 1 : 0,
-                               immobile ? 1 : 0,
-                               notarget ? 1 : 0,
-                               started ? 1 : 0,
-                               r1_a->thinkStrategy ? 1 : 0,
-                               r1_a->statemap ? 1 : 0,
-                               r1_a->masterstatemap ? 1 : 0,
-                               r1_st,
-                               r1_mst,
-                               r1_enemy ? r1_enemy->entnum : -1,
-                               r1_pkg,
-                               r1_bhv,
-                               r1_anim,
-                               r1_edist,
-                               r1_hwt ? r1_hwt->entnum : -1,
-                               r1_a->headWatcher ? r1_a->headWatcher->GetWatchMaxDistance() : -1.0f,
-                               r1_a->headWatcher ? (int)r1_a->headWatcher->GetWatchExplicit() : -1,
-                               in_sleep ? 'S' : (in_active ? 'A' : '-'),
-                               r1_a->personality ? r1_a->personality->GetTendency("hibernate") : -1.0f,
-                               r1_a->personality ? r1_a->personality->GetTendency("work") : -1.0f,
-                               r1_a->personality ? r1_a->personality->GetTendency("patrol") : -1.0f,
-                               r1_a->health,
-                               r1_a->origin.x,
-                               r1_a->origin.y,
-                               r1_a->origin.z,
-                               r1_a->groundentity ? r1_a->groundentity->entity
-                                                        ? r1_a->groundentity->entity->entnum
-                                                        : -2
-                                                  : -1,
-                               (int)r1_a->movetype,
-                               r1_a->movementSubsystem ? (int)r1_a->movementSubsystem->getMovementType() : -1,
-                               r1_a->total_delta.x,
-                               r1_a->total_delta.y,
-                               r1_a->total_delta.z,
-                               r1_a->velocity.x,
-                               r1_a->velocity.y,
-                               r1_a->velocity.z,
-                               r1_a->mins.x,
-                               r1_a->mins.y,
-                               r1_a->mins.z,
-                               r1_a->maxs.x,
-                               r1_a->maxs.y,
-                               r1_a->maxs.z,
-                               r1_a->model.c_str());
-                }
-
-                WIDGET_PROBE("R1:ai",
-                           "SWEEP %d SUMMARY actors=%d think_on=%d mode_AI=%d statemap=%d "
-                           "masterstatemap=%d with_enemy=%d on_SleepList=%d on_NO_list=%d "
-                           "SleepList_total=%d\n",
-                           r1_sweeps,
-                           nact,
-                           nthink,
-                           nai,
-                           nsmap,
-                           nmmap,
-                           nenemy,
-                           nsleep,
-                           nlist_none,
-                           SleepList.NumObjects());
             }
         }
 
@@ -789,13 +596,6 @@ qboolean G_LevelArchiveValid(const char *filename)
         return qfalse;
     }
 }
-
-
-
-
-
-
-
 
 
 void G_ArchivePersistantData(Archiver& arc, qboolean sublevelTransition)
@@ -921,7 +721,6 @@ str getAliasParmString(AliasListNode_t *aliasNode)
 
     return parms;
 }
-
 
 
 void ArchiveAliases(Archiver& arc)
@@ -1090,52 +889,6 @@ qboolean LevelArchiveValid(Archiver& arc)
     return qtrue;
 }
 
-/* Load-time attribution for the solo savegame path.  SV_SpawnServer's spawn
- * probe brackets ge->ReadLevel inside SPAWN_WIN_RESTORE; these marks split what
- * is inside that window, so a run names the stage instead of leaving the whole
- * restore in one window.  Inert unless the probes are on. */
-#define GARCH_STAGE_COUNT 10
-enum {
-    GARCH_L_LEVEL = 0,
-    GARCH_L_SCRIPTLIB,
-    GARCH_L_PATH,
-    GARCH_L_WORLD,
-    GARCH_L_ENTS,
-    GARCH_L_PROGRAM,
-    GARCH_L_ALIASES,
-    GARCH_L_ROSTER,
-    GARCH_L_CLOSE,
-    GARCH_L_PRECACHE
-};
-
-static int s_garchStage[GARCH_STAGE_COUNT];
-static int s_garchMark;
-
-static void GARCH_Stage( int stage ) {
-    int now;
-
-    if ( !PROBE_On() ) {
-        return;
-    }
-    now = gi.Milliseconds();
-    if ( s_garchMark ) {
-        s_garchStage[ stage ] += now - s_garchMark;
-    }
-    s_garchMark = now;
-}
-
-static void GARCH_StageReset( void ) {
-    int i;
-
-    if ( !PROBE_On() ) {
-        return;
-    }
-    s_garchMark = gi.Milliseconds();
-    for ( i = 0; i < GARCH_STAGE_COUNT; i++ ) {
-        s_garchStage[ i ] = 0;
-    }
-}
-
 qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loading)
 {
     try {
@@ -1148,7 +901,6 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
             LoadingSavegame = true;
             LoadingServer = true;
 
-            GARCH_StageReset();
 
             level.CleanUp(false);
 
@@ -1180,16 +932,14 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
         arc.ArchiveObject(&level);
 
         if (arc.Loading()) {
-            WIDGET_PROBE("archive", "stage: level done, inttime=%d\n", level.inttime);
+
         }
-        GARCH_Stage(GARCH_L_LEVEL);
         if (arc.Loading()) {
             thePathManager.Init(level.mapname.c_str());
         }
 
         arc.ArchiveObject(&ScriptLib);
-        WIDGET_PROBE("archive", "stage: ScriptLib done\n");
-        GARCH_Stage(GARCH_L_SCRIPTLIB);
+
 
         arc.ArchiveObject(&gravPathManager);
 
@@ -1206,7 +956,6 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
         }
         arc.ArchiveObject(&levelVars);
 
-        GARCH_Stage(GARCH_L_PATH);
 
         if (arc.Saving()) {
             num = 0;
@@ -1237,83 +986,48 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
 
             arc.ReadObject();
 
-            GARCH_Stage(GARCH_L_WORLD);
-
-            if (PROBE_On()) {
-                memset(g_restoreSplitUs, 0, sizeof(g_restoreSplitUs));
-                memset(g_restoreSplitN, 0, sizeof(g_restoreSplitN));
-            }
 
             for (i = 0; i < num; i++) {
                 arc.ReadObject();
             }
 
-            GARCH_Stage(GARCH_L_ENTS);
 
-            WIDGET_PROBE("archive", "stage: entity run done (%d entities)\n", num);
-            WIDGET_PROBE("archive",
-                "ent split us: robj head=%lld class=%lld new=%lld arch=%lld add=%lld"
-                " | edict=%lld model=%lld archtype=%lld vars=%lld rest=%lld"
-                " | procinit=%lld/%lld statemap=%lld/%lld nobj=%lld nent=%lld"
-                " | model legs: setmodel=%lld/%lld numsurf=%lld/%lld\n",
-                g_restoreSplitUs[GRS_HEAD], g_restoreSplitUs[GRS_CLASS], g_restoreSplitUs[GRS_NEW],
-                g_restoreSplitUs[GRS_ARCH], g_restoreSplitUs[GRS_ADD],
-                g_restoreSplitUs[GRS_EDICT], g_restoreSplitUs[GRS_MODEL],
-                g_restoreSplitUs[GRS_ARCHTYPE], g_restoreSplitUs[GRS_VARS],
-                g_restoreSplitUs[GRS_REST],
-                g_restoreSplitUs[GRS_PROCINIT], g_restoreSplitN[GRS_PROCINIT],
-                g_restoreSplitUs[GRS_STATEMAP], g_restoreSplitN[GRS_STATEMAP],
-                g_restoreSplitN[GRS_ARCH], g_restoreSplitN[GRS_EDICT],
-                g_restoreSplitUs[GRS_SETMODEL], g_restoreSplitN[GRS_SETMODEL],
-                g_restoreSplitUs[GRS_NUMSURF], g_restoreSplitN[GRS_NUMSURF]);
         }
 
         // BELOW the retail tail.  That is not cosmetic: it extends the stretch of the
         if (arc.Loading()) {
-            WIDGET_PROBE("archive", "tail: program.FreeData()\n");
+
             program.FreeData();
-            WIDGET_PROBE("archive", "tail: program.FreeData() done\n");
+
         }
 
-        WIDGET_PROBE("archive", "tail: ArchiveObject(Program)\n");
+
         arc.ArchiveObject(&program);
-        WIDGET_PROBE("archive", "tail: ArchiveObject(Program) done\n");
-        GARCH_Stage(GARCH_L_PROGRAM);
 
-        WIDGET_PROBE("archive", "tail: ArchiveAliases\n");
+
         ArchiveAliases(arc);
-        WIDGET_PROBE("archive", "tail: ArchiveAliases done\n");
-        GARCH_Stage(GARCH_L_ALIASES);
 
-        WIDGET_PROBE("archive", "tail: TeammateRoster\n");
+
         TeammateRoster::getInstance()->Archive(arc);
-        WIDGET_PROBE("archive", "tail: TeammateRoster done\n");
 
-        WIDGET_PROBE("archive", "tail: GameplayManager at arc pos=%lu\n",
-                   (unsigned long)arc.Pos());
+
         GameplayManager *gpmArchive = GameplayManager::getTheGameplayManager();
         if (gpmArchive) {
             gpmArchive->Archive(arc);
-            WIDGET_PROBE("archive", "tail: GameplayManager done at arc pos=%lu\n",
-                       (unsigned long)arc.Pos());
+
         } else {
-            WIDGET_PROBE("archive",
-                       "tail: GameplayManager SINGLETON IS NULL -- create() has not run\n");
+
         }
 
-        GARCH_Stage(GARCH_L_ROSTER);
 
         arc.Close();
 
-        WIDGET_PROBE("archive", "stage: arc.Close() done (fixups resolved)\n");
-        GARCH_Stage(GARCH_L_CLOSE);
 
         if (arc.Loading()) {
             LoadingSavegame = false;
 
             level.Precache();
-            WIDGET_PROBE("archive", "stage: level.Precache() done\n");
-            GARCH_Stage(GARCH_L_PRECACHE);
+
         } else {
             gi.centerprintf(&g_entities[0], CENTERPRINT_IMPORTANCE_NORMAL,
                             "@textures/menu/gamesaved");
@@ -1329,15 +1043,8 @@ qboolean G_ArchiveLevel(const char *filename, qboolean autosave, qboolean loadin
                     player->Loaded();
                 }
             }
-            WIDGET_PROBE("archive", "stage: player->Loaded() done, G_ArchiveLevel complete\n");
-            WIDGET_PROBE("archive",
-                       "load stages level=%d scriptlib=%d paths=%d world=%d ents=%d program=%d"
-                       " aliases=%d roster=%d close=%d precache=%d nent=%d\n",
-                       s_garchStage[GARCH_L_LEVEL], s_garchStage[GARCH_L_SCRIPTLIB],
-                       s_garchStage[GARCH_L_PATH], s_garchStage[GARCH_L_WORLD],
-                       s_garchStage[GARCH_L_ENTS], s_garchStage[GARCH_L_PROGRAM],
-                       s_garchStage[GARCH_L_ALIASES], s_garchStage[GARCH_L_ROSTER],
-                       s_garchStage[GARCH_L_CLOSE], s_garchStage[GARCH_L_PRECACHE], num);
+
+
         }
 
         return qtrue;
@@ -1510,7 +1217,6 @@ void G_MoveClientToIntermission(Entity *ent)
 void G_SentInitialMessages(void) {}
 
 
-
 void G_BeginIntermission2(void)
 {
     gentity_t *client;
@@ -1572,13 +1278,6 @@ void G_BeginIntermission(const char *map_name)
 
     level.nextmap = map_name;
 
-    WIDGET_PROBE("missionend",
-                 "begin map='%s' time=%.3f intermissiontime=%.3f advance=%.3f nextmap='%s' "
-                 "failed=%d show=%d sublevels=%d\n",
-                 map_name, level.time, level.intermissiontime, level.intermission_advancetime,
-                 level.nextmap.c_str(), level.mission_failed ? 1 : 0,
-                 level._showIntermission ? 1 : 0,
-                 gi.areSublevels(level.mapname.c_str(), map_name) ? 1 : 0);
 
     if (gi.areSublevels(level.mapname.c_str(), map_name) || !level._showIntermission) {
         level.intermissiontime = level.time;
@@ -1625,8 +1324,7 @@ void G_ExitLevel(void)
     gentity_t         *ent;
 
     if (level.mission_failed) {
-        WIDGET_PROBE("missionend", "exit bailed: mission_failed mapname='%s'\n",
-                     level.mapname.c_str());
+
         return;
     }
 
@@ -1652,8 +1350,6 @@ void G_ExitLevel(void)
         gi.SendConsoleCommand(command);
     }
 
-    WIDGET_PROBE("missionend", "exit mapname='%s' nextmap='%s' cmd='%s'\n",
-                 level.mapname.c_str(), level.nextmap.c_str(), command);
 
     for (j = 0; j < game.maxclients; j++) {
         ent = &g_entities[j];
@@ -1682,13 +1378,6 @@ void G_CheckIntermissionExit(void)
 
     G_ExitLevel();
 }
-
-
-
-
-
-
-
 
 
 void G_AddEntityToExtraList( int entityNum )

@@ -552,16 +552,6 @@ void R_UploadDynamicLightmaps( void ) {
 	/* one gated fault-class row: the pages this frame rewrote in a texture the
 	 * walk samples, and whether the walk was parked for them (smp=0 says the
 	 * session ran single-threaded, where there is no walk to park) */
-	if ( R_ProbeStatsOn() ) {
-		static int s_rows;
-
-		s_rows++;
-		if ( s_rows <= 8 || ( s_rows % 600 ) == 0 ) {
-			ri.Printf( PRINT_ALL, "[GLES3:lmup] pages=%d of=%d smp=%d f=%d\n",
-					   pages, tr.numBaseLightmaps, glConfig.smpActive ? 1 : 0,
-					   RB_FrameCount() );
-		}
-	}
 
 	for ( i = 0; i < tr.numBaseLightmaps; i++ ) {
 		if ( !tr.world->baseLightmapFrame[i] ) {

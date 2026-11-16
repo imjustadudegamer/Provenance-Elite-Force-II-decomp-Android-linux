@@ -32,21 +32,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tiki_skel.h"
 #include "tiki_tag.h"
 
-#define PROBE_GET(name, def, flags) Cvar_Get(name, def, flags)
-#define PROBE_PRINT                 Com_Printf
-#include "../qcommon/qa_probe.h"
 
 #include <math.h>
 
-static qboolean CHAN_TagProbeOn(void)
-{
-	static cvar_t *chan_qa;
-
-	if (!chan_qa) {
-		chan_qa = Cvar_Get("qa_probe", "0", 0);
-	}
-	return (chan_qa && chan_qa->integer) ? qtrue : qfalse;
-}
 
 static int TIKI_Tag_BoneChannelOfTag(const dtiki_t *tiki, int tagnum)
 {
@@ -1149,66 +1137,6 @@ void TIKI_Tag_LerpOrientationSkel(orientation_t *out, const refEntity_t *ent, dt
     out->origin[2] = origin[2] * (ent->scale * tiki->load_scale);
     memcpy(out->axis, mat.val, sizeof(out->axis));
 
-    if (developer->integer || CHAN_TagProbeOn()) {
-        float       qlen = sqrt(accQuat[0] * accQuat[0] + accQuat[1] * accQuat[1] + accQuat[2] * accQuat[2]
-                          + accQuat[3] * accQuat[3]);
-        const char *qsrc = TIKI_Skan_QuatWriter(accQuat);
-
-        /* negated range, not the positive pair: a NaN length must fire */
-        if (!(qlen >= 0.99f && qlen <= 1.01f)) {
-            CHAN_PROBE(
-                "head",
-                "why=tagunit tiki=%s tag=%d ent=%d qlen=%.4f quat=(%.3f,%.3f,%.3f,%.3f) "
-                "ctl1=(%.3f,%.3f,%.3f,%.3f) src=%s anim=%d frame=%d\n",
-                tiki->name,
-                tagnum,
-                ent->entityNumber,
-                qlen,
-                accQuat[0],
-                accQuat[1],
-                accQuat[2],
-                accQuat[3],
-                ent->bone_quat[1][0],
-                ent->bone_quat[1][1],
-                ent->bone_quat[1][2],
-                ent->bone_quat[1][3],
-                qsrc,
-                ent->anim,
-                ent->frame
-            );
-        }
-        static int lerpskel_tag;
-        if (++lerpskel_tag % 240 == 1) {
-            Com_Printf(
-                "[LERPSKEL:tag:lerpskel] tiki=%s tag=%d ent=%d skel=1 modeL=%d modeT=%d "
-                "lerp=%.3f crosslerp=%.3f legs=%d torso=%d anim=%d frame=%d oldanim=%d oldframe=%d "
-                "off=(%.2f,%.2f,%.2f) axis0=(%.3f,%.3f,%.3f) len=%.4f zero=%d\n",
-                tiki->name,
-                tagnum,
-                ent->entityNumber,
-                ent->legsLive ? legsCh.mode : -1,
-                ent->torsoLive ? torsoCh.mode : -1,
-                ent->framelerp,
-                ent->crossblend_lerp,
-                ent->legsLive,
-                ent->torsoLive,
-                ent->anim,
-                ent->frame,
-                ent->oldanim,
-                ent->oldframe,
-                out->origin[0],
-                out->origin[1],
-                out->origin[2],
-                out->axis[0][0],
-                out->axis[0][1],
-                out->axis[0][2],
-                qlen,
-                (VectorCompare(out->origin, vec3_origin)
-                 && out->axis[0][0] == 1.0f && out->axis[1][1] == 1.0f && out->axis[2][2] == 1.0f)
-                    ? 1
-                    : 0);
-        }
-    }
 }
 
 static void TIKI_Tag_LerpOrientationVertex(
@@ -1290,20 +1218,6 @@ void TIKI_Tag_LerpOrientation(orientation_t *out, int handle, const refEntity_t 
             return;
         }
 
-        {
-            static int lerpskel_fall;
-            if ((developer->integer || CHAN_TagProbeOn()) && ++lerpskel_fall % 240 == 1) {
-                Com_Printf(
-                    "[LERPSKEL:tag:lerpfall] tiki=%s anim=%d tagnum=%d ent=%d -> %s; posing from the "
-                    "skeleton (UIRECT: no retail arm left to take -- port-only miss)\n",
-                    tiki->name,
-                    anim,
-                    tagnum,
-                    ent->entityNumber,
-                    nativeHdr ? "anim is not 'SKAN' and carries no .tan tag table"
-                              : "no retained native image (port-only: image rejected or table full)");
-            }
-        }
     }
 
     *out = TIKI_OrientationInternal(tiki, ent->entityNumber, tagnum, ent->scale);

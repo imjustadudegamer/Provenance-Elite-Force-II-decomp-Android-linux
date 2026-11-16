@@ -24,12 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "ui_local.h"
 #include "uiwidgets_ef2.h"
 
-#define PROBE_GET(name, def, flags) ((cvar_t *)0)
-#define PROBE_PRINT                 Com_Printf
-#define PROBE_ON_OVERRIDE                 (atoi(CvarGetForUI("qa_probe", "0")) != 0)  
-#include "../qcommon/qa_probe.h"
 
-#include "../qcommon/qa_ui.h"
 
 /* A held navigation key's own repeat: the pad sends one press per tap and the
    UI never sees an operating-system repeat, so the delay before the first
@@ -249,84 +244,7 @@ void UIWindowManager::setBackgroundWidget(UIWidget *widget)
     }
 }
 
-typedef enum {
-    RAWPTR_WALK_FOUND = 0,
-    RAWPTR_WALK_NOT_FOUND,
-    RAWPTR_WALK_TRUNCATED
-} rawptrWalk_t;
 
-static rawptrWalk_t RAWPTR_InTree(UIWidget *root, UIWidget *want, int depth, int *budget)
-{
-    int i;
-
-    if (!root || !want || !budget || *budget <= 0 || depth > 64) {
-        return RAWPTR_WALK_TRUNCATED;     
-    }
-    if (root == want) {
-        return RAWPTR_WALK_FOUND;
-    }
-
-    for (i = 1; i <= root->getChildren().NumObjects(); i++) {
-        rawptrWalk_t r;
-
-        if (--(*budget) <= 0) {
-            return RAWPTR_WALK_TRUNCATED;
-        }
-        r = RAWPTR_InTree(root->getChildren().ObjectAt(i), want, depth + 1, budget);
-        if (r == RAWPTR_WALK_FOUND) {
-            return RAWPTR_WALK_FOUND;
-        }
-        if (r == RAWPTR_WALK_TRUNCATED) {
-            return RAWPTR_WALK_TRUNCATED; 
-        }
-    }
-    return RAWPTR_WALK_NOT_FOUND;
-}
-
-static void RAWPTR_CheckRawWidgetPointers(UIWidget **p, const char *name)
-{
-    static int    s_rows;
-    static int    s_truncRows;
-    static cvar_t *s_cvar;
-    int           budget;
-    rawptrWalk_t    r;
-
-    if (!p || !*p) {
-        return;
-    }
-    if (!s_cvar) {
-        s_cvar = Cvar_Get("rawptr_focusStats", "0", 0);
-    }
-    if (!PROBE_On() || (s_cvar && !s_cvar->integer)) {
-        return;
-    }
-
-    budget = 4096;
-    r = RAWPTR_InTree(&uWinMan, *p, 0, &budget);
-
-    if (r == RAWPTR_WALK_TRUNCATED) {
-        if (s_truncRows < 8) {
-            Com_Printf("[RAWPTR:focus] WALK-TRUNCATED %s=%p budget|depth -> not cleared\n",
-                       name, (void *)*p);
-        } else if (s_truncRows == 8) {
-            Com_Printf("[RAWPTR:focus] capped at 8 truncation rows; further truncations are silent "
-                       "(nothing is ever cleared on a truncated walk)\n");
-        }
-        s_truncRows++;
-        return;
-    }
-
-    if (r == RAWPTR_WALK_NOT_FOUND) {
-        if (s_rows < 8) {
-            Com_Printf("[RAWPTR:focus] STALE %s=%p is not in the widget tree -> cleared\n",
-                       name, (void *)*p);
-        } else if (s_rows == 8) {
-            Com_Printf("[RAWPTR:focus] capped at 8 rows; further stale pointers are cleared silently\n");
-        }
-        s_rows++;
-        *p = NULL;
-    }
-}
 
 void UIWindowManager::UpdateViews(void)
 {
@@ -334,36 +252,25 @@ void UIWindowManager::UpdateViews(void)
     int n;
     int x, y;
 
-    RAWPTR_CheckRawWidgetPointers(&m_activeControl, "m_activeControl");
-    RAWPTR_CheckRawWidgetPointers(&m_backgroundwidget, "m_backgroundwidget");
-    RAWPTR_CheckRawWidgetPointers(&m_bindactive, "m_bindactive");
 
-    UI_ROOT_BEGIN(UI_FAM_DISP);
 
-    UI_ZONE_BEGIN(UI_DZ_walkup);
 
     update();
 
-    UI_ZONE_END(UI_FAM_DISP, UI_DZ_walkup);
-    UI_ZONE_BEGIN(UI_DZ_disp);
 
     if (m_backgroundwidget) {
         m_backgroundwidget->Display(m_frame, 1.0);
 
         n = m_children.NumObjects();
-        UI_COUNT(UI_FAM_DISP, UI_DC_children, n);
         for (i = 1; i <= n; i++) {
             if (m_children.ObjectAt(i) != m_backgroundwidget) {
                 m_children.ObjectAt(i)->Display(m_frame, 1.0);
             }
         }
     } else {
-        UI_COUNT(UI_FAM_DISP, UI_DC_children, m_children.NumObjects());
         Display(m_frame, 1.0);
     }
 
-    UI_ZONE_END(UI_FAM_DISP, UI_DZ_disp);
-    UI_ZONE_BEGIN(UI_DZ_cursor);
 
     /* `uiHasMouse' is the UI's desire for a pointer, and touch sets it too, so
        it cannot decide whether a pointer exists.  `IN_HasRealMouse' is the
@@ -399,13 +306,11 @@ void UIWindowManager::UpdateViews(void)
 
         m_font->setColor(UWhite);
 
-        UI_ZONE_BEGIN(UI_DZ_printstr);
         if (UI_GetCvarInt("ui_drawcoords", 0)) {
             x = uid.mouseX + 10;
             y = uid.mouseY - 10;
             m_font->Print(x, y, va("%d:%d", uid.mouseX, uid.mouseY), -1, UColor(0.0f, 0.0f, 0.0f, 0.0f), 0);
         }
-        UI_ZONE_END(UI_FAM_DISP, UI_DZ_printstr);
     }
 
     /* The pad has no pointer, and a HUD stop may draw nothing for hover at all -- the
@@ -478,9 +383,7 @@ void UIWindowManager::UpdateViews(void)
         }
     }
 
-    UI_ZONE_END(UI_FAM_DISP, UI_DZ_cursor);
 
-    UI_ROOT_END(UI_FAM_DISP);
 }
 
 void UIWindowManager::ChangeResolution(void)
@@ -559,39 +462,6 @@ void UIWindowManager::ServiceEvents(void)
         if (buttons & 1) {
             uii.UI_WantsKeyboard();
 
-            static int uivk_press;
-            if (PROBE_Throttle(&uivk_press, 8, 64)) {
-                UIWidget *uivkv    = view;
-                UIWidget *uivktop  = uivkv;
-                int       uivkidx  = 0;
-                int       uivktotal = GetChildCount();
-
-                while (uivktop && uivktop->getParent() != NULL && uivktop->getParent() != this) {
-                    uivktop = uivktop->getParent();
-                }
-
-                for (int uivki = 1; uivki <= uivktotal; uivki++) {
-                    if (GetChild(uivki) == uivktop) {
-                        uivkidx = uivki;
-                        break;
-                    }
-                }
-
-                Menu *uivkmenu = menuManager.CurrentMenu();
-
-                UIVK_PROBE("press",
-                           "widget='%s' class='%s' manager=%d top='%s' walkIndex=%d of=%d menu='%s' gamefocus=%d activeControl='%s' guimouse=%d\n",
-                           (uivkv && uivkv->getName()) ? uivkv->getName() : "(null)",
-                           (uivkv && uivkv->getClassname()) ? uivkv->getClassname() : "(null)",
-                           (uivkv == this) ? 1 : 0,
-                           (uivktop && uivktop->getName()) ? uivktop->getName() : "(null)",
-                           uivkidx,
-                           uivktotal,
-                           (uivkmenu && uivkmenu->m_name.length()) ? uivkmenu->m_name.c_str() : "(none)",
-                           (uivkmenu && uivkmenu->allowGameFocus()) ? 1 : 0,
-                           (m_activeControl && m_activeControl->getName()) ? m_activeControl->getName() : "(null)",
-                           uid.uiHasMouse ? 1 : 0);
-            }
 
             ActivateControl(view);
             ViewEvent(view, W_LeftMouseDown, pos, buttons);
@@ -978,56 +848,7 @@ void UIWindowManager::ClearPadFocus(void)
 
 /* UIWidget::KeyEvent stops only at this window manager, so a widget whose parent chain does
    not come back here in exactly its own depth of steps is a dispatch that never returns. */
-void UIWindowManager::CensusParentChains(void)
-{
-    int nodes = 0;
-    int bad   = 0;
 
-    if (!PROBE_On()) {
-        return;
-    }
-
-    CensusParentChain(this, 0, &nodes, &bad);
-
-    UIVK_CENSUS_PROBE("parentchain", "nodes=%d bad=%d", nodes, bad);
-}
-
-void UIWindowManager::CensusParentChain(UIWidget *w, int depth, int *nodes, int *bad)
-{
-    int      i;
-    UIWidget *p;
-
-    (*nodes)++;
-
-    for (i = 1; i <= w->m_children.NumObjects(); i++) {
-        UIWidget *child = w->m_children.ObjectAt(i);
-
-        if (child) {
-            CensusParentChain(child, depth + 1, nodes, bad);
-        }
-    }
-
-    if (depth == 0) {
-        return;
-    }
-
-    p = w->m_parent;
-
-    for (i = 1; i < depth && p; i++) {
-        p = p->m_parent;
-    }
-
-    if (p != &uWinMan) {
-        (*bad)++;
-
-        UIVK_CENSUS_PROBE(
-            "parentchain",
-            "widget='%s' depth=%d ended='%s'",
-            w->getName() ? w->getName() : "(null)",
-            depth,
-            p ? (p->getName() ? p->getName() : "(null)") : "(null)");
-    }
-}
 
 /* The pad's activation key runs the mouse's own click path at the widget's centre: the container
    focus has already put it in the mouse-over state, so a synthesized press and release reaches
@@ -1105,22 +926,6 @@ bool UIWindowManager::ActivateFocusedWidget(void)
 
     pos = focused->getGlobalPoint(UIPoint2D(focused->getSize().width * 0.5f, focused->getSize().height * 0.5f));
 
-    {
-        static int s_actRows;
-        UIRect2D   f = focused->getFrame();
-
-        s_actRows++;
-        if (s_actRows <= 16 || (s_actRows % 200) == 0) {
-            UIVK_PROBE(
-                "padact",
-                "widget='%s' class='%s' frame=%.0f,%.0f %.0fx%.0f enabled=%d show=%d",
-                focused->getName() ? focused->getName() : "(null)",
-                focused->getClassname() ? focused->getClassname() : "?",
-                (double)f.pos.x, (double)f.pos.y, (double)f.size.width, (double)f.size.height,
-                focused->isEnabled() ? 1 : 0,
-                focused->getShow() ? 1 : 0);
-        }
-    }
 
     ViewEvent(focused, down, pos, 1);
     ViewEvent(focused, up, pos, 0);
@@ -1165,19 +970,6 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 
         if (owner && owner->KeyEvent(nav, time)) {
             /* Fires only when the key went to a row the pad is not on. */
-            if (focused && owner != focused) {
-                static int s_stealRows;
-
-                s_stealRows++;
-                if (s_stealRows <= 8 || (s_stealRows % 240) == 0) {
-                    UIVK_PROBE("padnav:steal",
-                               "key=%d focused='%s' took='%s' menu='%s'",
-                               key,
-                               focused->getName() ? focused->getName() : "(null)",
-                               owner->getName() ? owner->getName() : "(null)",
-                               menuManager.CurrentMenu() ? menuManager.CurrentMenu()->m_name.c_str() : "(none)");
-                }
-            }
 
             if (!focused) {
                 MovePadFocusTo(owner);
@@ -1214,8 +1006,6 @@ qboolean UIWindowManager::KeyEvent(int key, unsigned int time)
 void UIWindowManager::sortWidgetContainers(void)
 {
     // this sort uses never answers 0 on a tie (widgetContainerCompare @0x000B4450: fcmpu /
-    static int gltrace_sortPass;
-    PROBE("sortpass", "pass=%d children=%d", ++gltrace_sortPass, m_children.NumObjects());
 
     {
         int n = m_children.NumObjects();
@@ -1235,7 +1025,7 @@ void UIWindowManager::sortWidgetContainers(void)
     }
 }
 
-// PAINT TEMP PROBE -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read side of the sorted
+// paint-order accessors -- PORT-ONLY, TEMPORARY, NEVER MERGE.  Read side of the sorted
 int UIWindowManager::GetChildCount(void)
 {
     return m_children.NumObjects();

@@ -23,13 +23,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_local.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) cgi.Cvar_Get(probe_n, probe_d, probe_f)
-#define PROBE_PRINT                       cgi.Printf
-#include "../qcommon/qa_probe.h"
-
-#include "be_cgprobe.h"
-
-
 void CG_AndroidDisplayRect( int surfaceW, int surfaceH, int *outX, int *outY, int *outW, int *outH )
 {
     if ( outX ) *outX = 0;
@@ -587,7 +580,6 @@ static int CG_CalcViewValues(void)
     VectorCopy(ps->viewangles, cg.refdefViewAngles);
 
 
-
     if (cg_errorDecay->value > 0) {
         int   t;
         float f;
@@ -791,24 +783,16 @@ void CG_UpdateClient(int serverTime)
 void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoPlayback)
 {
     (void)serverTime;
-
-    int be_cgFrame = BE_CgFrameOpen();
-
     cg.demoPlayback = demoPlayback;
 
     {
-        int be_z = BE_CG_T0();
-
         cgi.S_ClearLoopingSounds();
 
         cgi.R_ClearScene();
-
-        BE_CG_ZONE_END(BE_CGZ_clear, be_z);
     }
 
     if (!cg.snap || (cg.snap->snapFlags & SNAPFLAG_NOT_ACTIVE)) {
         CG_DrawActive(stereoView);
-        BE_CgFrameEnd(be_cgFrame);
         return;
     }
 
@@ -831,32 +815,18 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     }
 
     {
-        int be_z = BE_CG_T0();
-
         CG_PredictPlayerState();
-
-        BE_CG_ZONE_END(BE_CGZ_predict, be_z);
     }
 
     {
-        int be_z = BE_CG_T0();
-
         CG_CalcViewValues();
-
-        BE_CG_ZONE_END(BE_CGZ_calcview, be_z);
     }
 
     {
-        int be_z = BE_CG_T0();
-
         if (!cg.hyperspace) {
             CG_AddPacketEntities(); 
             CG_AddMarks();
         }
-
-        BE_CG_COUNT(BE_CGC_snapents, cg.snap->numEntities);
-
-        BE_CG_ZONE_END(BE_CGZ_ents, be_z);
     }
 
     cg.refdef.time = cg.time;
@@ -872,11 +842,7 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     }
 
     {
-        int be_z = BE_CG_T0();
-
         cgi.S_Respatialize(cg.snap->ps.clientNum, cg.SoundOrg, cg.SoundAxis);
-
-        BE_CG_ZONE_END(BE_CGZ_audio, be_z);
     }
 
     if (stereoView != STEREO_RIGHT) {
@@ -890,8 +856,6 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     }
 
     {
-        int be_z = BE_CG_T0();
-
         CG_UpdateTestEmitter();
 
         if (!cg_hidetempmodels->integer) {
@@ -903,13 +867,9 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
         CG_Weather();
 
         CG_UpdateSwipes();
-
-        BE_CG_ZONE_END(BE_CGZ_fx, be_z);
     }
 
     {
-        int be_z = BE_CG_T0();
-
     {
         unsigned int viewMode = cg.snap->ps.viewMode;
         int          i;
@@ -930,11 +890,8 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
             const char *hudName = NULL;
 
             if (cgi.GetViewModeHud(viewMode, &hudName)) {
-                PROBE("vm:add", "viewMode=%u '%s' -> ui_addhud", viewMode, hudName);
                 cgi.Cmd_Execute(EXEC_NOW, va("ui_addhud %s\n", hudName));
             } else {
-                PROBE("vm:add", "viewMode=%u GetViewModeHud=FALSE (table n=%d)",
-                           viewMode, cgi.GetNumViewModes());
             }
         }
 
@@ -942,8 +899,6 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
             const char *hudName = NULL;
 
             if (cgi.GetViewModeHud(cg.cachedViewMode, &hudName)) {
-                PROBE("vm:rem", "viewMode=%u cached=%d '%s' -> ui_removehud",
-                           viewMode, cg.cachedViewMode, hudName);
                 cgi.Cmd_Execute(EXEC_NOW, va("ui_removehud %s\n", hudName));
             }
         }
@@ -971,21 +926,13 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     }
 
     CG_AddTargetName();
-
-        BE_CG_ZONE_END(BE_CGZ_viewmode, be_z);
     }
 
     {
-        int be_z = BE_CG_T0();
-
     CG_DrawActive(stereoView);
 
     if (cg_stats->integer) {
         cgi.Printf("cg.clientFrame:%i\n", cg.clientFrame);
     }
-
-        BE_CG_ZONE_END(BE_CGZ_draw, be_z);
     }
-
-    BE_CgFrameEnd(be_cgFrame);
 }

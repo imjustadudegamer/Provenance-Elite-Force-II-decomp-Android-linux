@@ -112,11 +112,6 @@ static qboolean RB_CommandListGrow( vkCommandList_t *list, int demand )
 
 	/* a grow is the expected capacity event, not a failure; the refused grow has
 	   its own PRINT_WARNING at the caller */
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:cmdbuf", "slot=%d old=%d new=%d demand=%d f=%d",
-					  RB_FrameSmpFrame(), oldBytes, newBytes, demand, RB_FrameCount() );
-	}
-
 	return qtrue;
 }
 static rbFrame_t		rb_frames[SMP_FRAMES];
@@ -171,230 +166,6 @@ long long RB_WalkFrameUsec64( void )
 	rb_walkFrameUsec = 0;
 
 	return usec;
-}
-
-/* the walk's own cost attribution: be= is the whole walk and contains a blocking frame-fence wait the device owns (8.9 ms of a ~20 ms
-   frame on the full-resolution boot), so these phases split surface generation, vertex pack, bind, record and fence wait.  Gated with
-   the r_perfFps row; the counters are written on the walk thread and drained by the front end. */
-static long long	s_walkPhaseUsec[VK_WP_PHASES];
-static long long	s_walkShadeUsec[VK_WS_PARTS];
-static long long	s_srfT0 = -1;
-static long long	s_walkVerts;
-static long long	s_walkSurfs;
-static long long	s_walkFrames;
-static long long	s_walkElisions[VK_ELIDE_HITS];
-static long long	s_walkRequests[VK_ELIDE_HITS];
-
-qboolean VK_WalkStatOn( void )
-{
-	static cvar_t *cv;
-
-	if ( !cv ) {
-		cv = ri.Cvar_Get( "r_perfFps", "1", 0 );
-	}
-
-	/* r_perfFps is the family switch; qa_probe is the master gate and the
-	   timing itself is the cost, so a probe-off boot pays neither. */
-	return ( cv && cv->integer && R_ProbeStatsOn() ) ? qtrue : qfalse;
-}
-
-void VK_WalkStat_Add( int phase, long long usec )
-{
-	if ( phase >= 0 && phase < VK_WP_PHASES ) {
-		s_walkPhaseUsec[phase] += usec;
-	}
-}
-
-/* One named part of the shade window, charged and drained with the window. */
-void VK_WalkStat_ShadeAdd( int part, long long usec )
-{
-	if ( part >= 0 && part < VK_WS_PARTS ) {
-		s_walkShadeUsec[part] += usec;
-	}
-}
-
-void VK_WalkStat_TakeShade( long long *usecOut )
-{
-	int i;
-
-	for ( i = 0; i < VK_WS_PARTS; i++ ) {
-		usecOut[i] = s_walkShadeUsec[i];
-		s_walkShadeUsec[i] = 0;
-	}
-}
-
-/* the srf window's split: srf= names the RB_EndSurface/RB_BeginSurface pair the shader-change branch issues and is the largest shade
-   part at about 3us per stage draw.  The charge sites live inside the two functions, so the window arms around the pair; each part is
-   charged net of the binds and records it flushes, so the parts sum to srf= instead of double-counting bind= and rec=. */
-static long long	s_walkSrfUsec[VK_WSS_PARTS];
-static long long	s_walkSrfTotal;
-static long long	s_srfArmT0;
-static long long	s_srfArmNested;
-static long long	s_srfPartNested;
-static int			s_srfArmed;
-
-void VK_SrfPart_Arm( void )
-{
-	if ( VK_WalkStatOn() ) {
-		s_srfArmed = 1;
-		s_srfArmT0 = BE_Microseconds64();
-		s_srfArmNested = VK_WalkStat_Nested();
-	}
-}
-
-void VK_SrfPart_Disarm( void )
-{
-	/* the whole window, net of what its own flushes charged elsewhere; OTHER is
-	   the difference between this and the named sub-parts, so the split sums to
-	   srf= however much the two functions skip */
-	if ( s_srfArmed && s_srfArmT0 >= 0 ) {
-		long long usec = BE_Microseconds64() - s_srfArmT0
-						 - VK_WalkStat_NestedSince( s_srfArmNested );
-
-		s_walkSrfTotal += usec > 0 ? usec : 0;
-	}
-	s_srfArmed = 0;
-	s_srfArmT0 = -1;
-}
-
-void VK_SrfPart_Open( void )
-{
-	if ( s_srfArmed ) {
-		s_srfT0 = BE_Microseconds64();
-		s_srfPartNested = VK_WalkStat_Nested();
-	}
-}
-
-void VK_SrfPart_Close( int part )
-{
-	long long usec;
-
-	if ( !s_srfArmed || s_srfT0 < 0 ) {
-		return;
-	}
-
-	/* netted like the window total: a part charged raw read 2x the window it sits in */
-	usec = BE_Microseconds64() - s_srfT0 - VK_WalkStat_NestedSince( s_srfPartNested );
-	s_srfT0 = -1;
-
-	if ( usec < 0 ) {
-		usec = 0;
-	}
-	if ( part >= 0 && part < VK_WSS_PARTS ) {
-		s_walkSrfUsec[part] += usec;
-	}
-}
-
-void VK_WalkStat_TakeSrf( long long *usecOut )
-{
-	int i;
-
-	for ( i = 0; i < VK_WSS_PARTS; i++ ) {
-		usecOut[i] = s_walkSrfUsec[i];
-		s_walkSrfUsec[i] = 0;
-	}
-	usecOut[VK_WSS_OTHER] = 0;
-}
-
-long long VK_WalkStat_TakeSrfTotal( void )
-{
-	long long t = s_walkSrfTotal;
-
-	s_walkSrfTotal = 0;
-	return t;
-}
-
-/* The present seam's children, drained with the phase row that prints them. */
-static long long	s_walkPresentUsec[VK_WSUB_SLOTS];
-
-void VK_WalkStat_PresentAdd( int which, long long usec )
-{
-	if ( which >= 0 && which < VK_WSUB_SLOTS ) {
-		s_walkPresentUsec[which] += usec;
-	}
-}
-
-void VK_WalkStat_TakePresent( long long *usecOut )
-{
-	int i;
-
-	for ( i = 0; i < VK_WSUB_SLOTS; i++ ) {
-		usecOut[i] = s_walkPresentUsec[i];
-		s_walkPresentUsec[i] = 0;
-	}
-}
-
-/* The binds a surface loop's own window contains.  The per-surface bookkeeping
-   flushes the previous batch inside its window, so an outer wrap that simply
-   added its elapsed time would charge those binds twice. */
-long long VK_WalkStat_Nested( void )
-{
-	return s_walkPhaseUsec[VK_WP_BIND] + s_walkPhaseUsec[VK_WP_REC] + s_walkPhaseUsec[VK_WP_PACK];
-}
-
-/* the same reading as a window's own contribution: the counters are cumulative since the last drain, so `Nested() - n0` goes negative
-   when a drain lands between the window's open and close, which turns the subtraction into an addition of a stale count.  After a drain the counter IS the window's contribution. */
-long long VK_WalkStat_NestedSince( long long n0 )
-{
-	long long n = VK_WalkStat_Nested();
-
-	return ( n < n0 ) ? n : ( n - n0 );
-}
-
-void VK_WalkStat_Frame( int verts, int surfs )
-{
-	s_walkVerts += verts;
-	s_walkSurfs += surfs;
-	s_walkFrames++;
-}
-
-void VK_WalkStat_Take( long long *usecOut, long long *vertsOut, long long *surfsOut,
-					   long long *framesOut )
-{
-	int i;
-
-	for ( i = 0; i < VK_WP_PHASES; i++ ) {
-		usecOut[i] = s_walkPhaseUsec[i];
-		s_walkPhaseUsec[i] = 0;
-	}
-	*vertsOut = s_walkVerts;
-	*surfsOut = s_walkSurfs;
-	*framesOut = s_walkFrames;
-	s_walkVerts = 0;
-	s_walkSurfs = 0;
-	s_walkFrames = 0;
-}
-
-void VK_WalkStat_Count( int what )
-{
-	if ( what >= 0 && what < VK_ELIDE_HITS ) {
-		s_walkElisions[what]++;
-	}
-}
-
-/* The request beside the hit: an elision column without its denominator names a
-   count, not a rate, so a cache that stopped firing reads as one that is full. */
-void VK_WalkStat_Req( int what )
-{
-	if ( what >= 0 && what < VK_ELIDE_HITS ) {
-		s_walkRequests[what]++;
-	}
-}
-
-void VK_WalkStat_TakeElisions( long long *out, long long *reqOut )
-{
-	int i;
-
-	for ( i = 0; i < VK_ELIDE_HITS; i++ ) {
-		out[i] = s_walkElisions[i];
-		s_walkElisions[i] = 0;
-	}
-	if ( reqOut ) {
-		for ( i = 0; i < VK_ELIDE_HITS; i++ ) {
-			reqOut[i] = s_walkRequests[i];
-			s_walkRequests[i] = 0;
-		}
-	}
 }
 
 static vkCommandList_t *RB_CommandList( void )
@@ -459,21 +230,10 @@ qboolean vk_frameOpen = qfalse;
 void R_FlushRenderCommands( void )
 {
 	vkCommandList_t *list = RB_CommandList();
-	static int droppedRows;
 
 	if ( !tr.registered || vk_frameOpen || !R_PendingRenderCommands() ) {
 		return;
 	}
-
-	if ( droppedRows < 8 ) {
-		/* The opcode head names the recorder that drew outside the window, so the
-		   boot log identifies the leaker without a backtrace. */
-		int op0 = list->used >= (int)sizeof( int ) ? *( const int * )list->cmds : -1;
-		int op1 = list->used >= 16 ? *( const int * )( list->cmds + 8 ) : -1;
-		VK_Guard_Row( "VK:frame", "drop-fragment slot=%d bytes=%d f=%d op=%d,%d",
-					  RB_FrameSmpFrame(), list->used, RB_FrameCount(), op0, op1 );
-	}
-	droppedRows++;
 
 	list->used = 0;
 }
@@ -482,76 +242,6 @@ void R_IssuePendingRenderCommands( void )
 {
 	R_SyncRenderThread();
 	R_FlushRenderCommands();
-}
-
-/* ---- the frame's paint order, as the walk meets it ----------------------- */
-
-/* the readback says what colour a rect holds; only the recorded order says whether the fill came before or after the 3D batch it hid, so
-   every 2D box and every surface batch's own rect is noted here in walk order.  Gated like the other rows, emitted when the sequence changes. */
-#define VK_ORDER_MAX	28
-
-static char		s_orderLine[1024];
-static int		s_orderLen;
-static int		s_orderCount;
-static int		s_orderMore;
-static unsigned	s_orderHash;
-static unsigned	s_orderLast;
-static int		s_orderFrames;
-static int		s_orderHave;
-
-static void VK_Order_Note( const char *text )
-{
-	int len = (int)strlen( text );
-
-	if ( s_orderCount >= VK_ORDER_MAX || s_orderLen + len + 2 >= (int)sizeof( s_orderLine ) ) {
-		s_orderMore++;
-		return;
-	}
-	if ( s_orderCount ) {
-		s_orderLine[s_orderLen++] = '|';
-	}
-	memcpy( s_orderLine + s_orderLen, text, len + 1 );
-	s_orderLen += len;
-	s_orderCount++;
-}
-
-/* Emitted at the present, the one point where the frame's sequence is whole. */
-static void VK_Order_Frame( void )
-{
-	char	full[1152];
-
-	if ( !s_orderCount ) {
-		return;
-	}
-
-	if ( s_orderMore ) {
-		Com_sprintf( full, sizeof( full ), "%s|+%d", s_orderLine, s_orderMore );
-	} else {
-		Q_strncpyz( full, s_orderLine, sizeof( full ) );
-	}
-
-	s_orderHash = 0;
-	{
-		const char *p = full;
-
-		while ( *p ) {
-			s_orderHash = ( s_orderHash ^ (unsigned char)*p++ ) * 16777619u;
-		}
-	}
-
-	s_orderFrames++;
-	/* the transcript is an instrument: a quiet boot resets it and prints none */
-	if ( R_ProbeStatsOn()
-		 && ( !s_orderHave || s_orderHash != s_orderLast || ( s_orderFrames % 600 ) == 0 ) ) {
-		VK_Guard_Row( "VK:order", "%s", full );
-		s_orderLast = s_orderHash;
-		s_orderHave = qtrue;
-	}
-
-	s_orderLine[0] = 0;
-	s_orderLen = 0;
-	s_orderCount = 0;
-	s_orderMore = 0;
 }
 
 void R_SyncRenderThread( void )
@@ -610,9 +300,16 @@ void RB_ExecuteRenderCommands( const void *data )
 	int slot = rb_activeFrame ? rb_activeFrame->smpFrame : 0;
 	qboolean passOpen = qfalse;
 	qboolean inFrame = qfalse;
-	int gpuLastCat = -1;
 
-	/* a registration whose warm budget ran out finishes here, a slice a frame */
+	/* A registration whose warm budget ran out finishes here, a slice a frame.
+	   This is also the ONLY drain of the mid-pass park table VK_Shade_Pipeline
+	   fills: a pipeline first asked for inside an open pass (the appended fog
+	   stages above all, and any effect permutation registered after the load's
+	   warm walk) is parked there instead of being built, and its draw is refused
+	   until the table drains.  With this call removed the drain never ran and
+	   those draws were refused on every frame -- fog and blended effects gone on
+	   Vulkan while the pre-warmed opaque world still drew.  It must run before
+	   RC_VK_BEGIN opens the next pass (HEAD tr_cmds.c:616). */
 	VK_Shade_WarmFrameStep( 2 );
 
 	while ( 1 ) {
@@ -627,8 +324,7 @@ void RB_ExecuteRenderCommands( const void *data )
 			if ( op == RC_END_OF_LIST ) {
 				return;
 			}
-			VK_Guard_Row( "VK:frame", "walk-refuse head-op=%d slot=%d f=%d",
-						  op, slot, RB_FrameCount() );
+
 			goto abandoned;
 		}
 		if ( op == RC_VK_BEGIN ) {
@@ -638,22 +334,9 @@ void RB_ExecuteRenderCommands( const void *data )
 		/* the 2D batch is recorded when it flushes, not where its commands sit: the front end paints a widget's background and then asks for
 		   that widget's 3D model, so the CONTROLS stardome landed under its own full-screen fill.  Flushing here restores the recorded order. */
 		if ( op == RC_DRAW_SURFS || op == RC_SPRITE_SURFS ) {
-			const drawSurfsCommand_t *ocmd = ( const drawSurfsCommand_t * )cmds;
-			long long flushT0 = VK_WALK_T0();
-			long long flushNest0 = VK_WALK_NEST0();
 
 			RB_2D_Flush();
-			VK_WALK_ADD_NET( flushT0, flushNest0, VK_WP_UI );
 
-			{
-				char	note[80];
-
-				Com_sprintf( note, sizeof( note ), "%s(%d,%d %dx%d n=%d)",
-							 op == RC_DRAW_SURFS ? "surf" : "spr",
-							 ocmd->refdef.x, ocmd->refdef.y, ocmd->refdef.width, ocmd->refdef.height,
-							 ocmd->numDrawSurfs );
-				VK_Order_Note( note );
-			}
 		}
 
 		/* One GPU timestamp per class change, written before the case runs: the
@@ -661,30 +344,12 @@ void RB_ExecuteRenderCommands( const void *data )
 		   a mark after the case would charge the draws to the previous class.
 		   The frame's single pass is split into clear, world, sprites and the 2D
 		   batch; the terminal mark before pass end closes the last one. */
-		{
-			int gpuCat = -1;
-
-			if ( op == RC_DRAW_SURFS ) {
-				gpuCat = VK_GPU_WORLD;
-			} else if ( op == RC_SPRITE_SURFS ) {
-				gpuCat = VK_GPU_SPRITE;
-			} else if ( op >= RC_2D_COLOR && op <= RC_2D_STRETCH_RAW ) {
-				gpuCat = VK_GPU_UI;
-			}
-
-			if ( gpuCat >= 0 && gpuCat != gpuLastCat ) {
-				VK_PerfGpu_Mark( slot, gpuCat );
-				gpuLastCat = gpuCat;
-			}
-		}
 
 		/* The 2D family is the UI cost; the surface cases time their own ring
 		   phases.  The case body is wrapped so whatever a 2D case does that no
 		   inner phase claims is still charged to UI, and the walk's per-case
 		   overhead is measured rather than dropped. */
 		{
-		long long walkT0 = VK_WALK_T0();
-		long long caseNest0 = VK_WALK_NEST0();
 
 		switch ( op ) {
 		case RC_VK_BEGIN:
@@ -697,28 +362,21 @@ void RB_ExecuteRenderCommands( const void *data )
 				goto abandoned;
 			}
 			{
-				long long acqT0 = VK_WALK_T0();
-				long long openT0;
 
 				if ( !VK_Frame_Acquire( slot ) ) {
-					VK_WALK_ADD( acqT0, VK_WP_ACQ );
 					/* Begin succeeded, so the slot owns a reset fence and a
 					   recording buffer the abandon label below will not close:
 					   Retire only runs for a pass that opened.  Hand it back. */
 					VK_Frame_Abandon( slot );
 					goto abandoned;
 				}
-				VK_WALK_ADD( acqT0, VK_WP_ACQ );
 
-				openT0 = VK_WALK_T0();
 				RB_FrameOpen( slot );
 				if ( !VK_Frame_RecordBegin( slot ) ) {
-					VK_WALK_ADD( openT0, VK_WP_OPEN );
 					/* same prepared slot, and the pass still never opened */
 					VK_Frame_Abandon( slot );
 					goto abandoned;
 				}
-				VK_WALK_ADD( openT0, VK_WP_OPEN );
 			}
 			passOpen = qtrue;
 			break;
@@ -836,19 +494,6 @@ void RB_ExecuteRenderCommands( const void *data )
 		{
 			box2DCommand_t *cmd = ( box2DCommand_t * )cmds;
 
-			{
-				char	note[96];
-
-				/* The colour as well as the alpha: an opaque full-screen imm box is
-				   a flash or the menu's own background, and which one it is is the
-				   colour.  backEnd.color2D is the colour in force here, which is
-				   the one the box is drawn with (RB_ImmColor4f bakes it). */
-				Com_sprintf( note, sizeof( note ), "box(%.0f,%.0f %.0fx%.0f a%d rgb=%d,%d,%d)",
-							 (double)cmd->x, (double)cmd->y, (double)cmd->w, (double)cmd->h,
-							 (int)backEnd.color2D[3],
-							 (int)backEnd.color2D[0], (int)backEnd.color2D[1], (int)backEnd.color2D[2] );
-				VK_Order_Note( note );
-			}
 
 			RB_2D_Box( cmd->x, cmd->y, cmd->w, cmd->h, cmd->blend ? qtrue : qfalse );
 			cmds += PAD( sizeof( *cmd ), sizeof( void * ) );
@@ -895,63 +540,38 @@ void RB_ExecuteRenderCommands( const void *data )
 		case RC_VK_PRESENT:
 			cmds += PAD( sizeof( int ), sizeof( void * ) );
 			{
-				long long uiT0 = VK_WALK_T0();
-				long long uiNest0 = VK_WALK_NEST0();
-				long long outT0;
 
 				RB_2D_Flush();
-				VK_WALK_ADD_NET( uiT0, uiNest0, VK_WP_UI );
 
-				VK_Order_Frame();
 
-				outT0 = VK_WALK_T0();
 				{
-					long long seamT0 = VK_WALK_T0();
 
 					VK_Frame_RecordEnd( slot );
-					VK_WALK_ADD_SUB( seamT0, VK_WSUB_RECEND );
 				}
 				passOpen = qfalse;
 				{
-					long long seamT0 = VK_WALK_T0();
 
 					if ( !VK_Frame_Submit( slot ) ) {
-						VK_WALK_ADD_SUB( seamT0, VK_WSUB_SUBMIT );
-						VK_WALK_ADD( outT0, VK_WP_OUT );
 						goto abandoned;
 					}
-					VK_WALK_ADD_SUB( seamT0, VK_WSUB_SUBMIT );
 				}
 				{
-					long long seamT0 = VK_WALK_T0();
 
 					/* the thumbnail is read while this frame is still ours: past
 					   the present the image belongs to the presentation engine,
 					   and a read there answers with whatever it left behind */
 					if ( R_Screenshot_Pending() ) {
-						long long shotT0 = VK_WALK_T0();
 
 						R_Screenshot_Flush( vk.acquiredImage );
-						VK_WALK_ADD( shotT0, VK_WP_PIX );
 					}
 
 					if ( !VK_Frame_Present( slot ) ) {
-						VK_WALK_ADD_SUB( seamT0, VK_WSUB_PRESENT );
-						VK_WALK_ADD( outT0, VK_WP_OUT );
 						goto abandoned;
 					}
-					VK_WALK_ADD_SUB( seamT0, VK_WSUB_PRESENT );
 				}
-				VK_WALK_ADD( outT0, VK_WP_OUT );
 
 				/* the presented image is the composited result: sampling it here is
 				   what separates "the dome drew" from "the dome is on screen" */
-				{
-					long long pixT0 = VK_WALK_T0();
-
-					VK_Shade_ReadbackFrame( vk.acquiredImage );
-					VK_WALK_ADD( pixT0, VK_WP_PIX );
-				}
 			}
 			/* Anything after the present belongs to the next pass, not this one. */
 			inFrame = qfalse;
@@ -970,9 +590,6 @@ void RB_ExecuteRenderCommands( const void *data )
 			goto abandoned;
 		}
 
-		if ( op >= RC_2D_COLOR && op <= RC_2D_STRETCH_RAW ) {
-			VK_WALK_ADD_NET( walkT0, caseNest0, VK_WP_UI );
-		}
 		}
 	}
 
@@ -999,15 +616,10 @@ void RB_RenderThread( void )
 		/* The walk thread's own milestones.  A boot that stops with the front end
 		   parked on the handoff and no rows here says the thread never walked;
 		   these say how far it got before it stopped. */
-		if ( R_ProbeStatsOn()
-			 && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:smp", "walk-start f=%d slot=%d", rb_frameCount + 1, frame->smpFrame );
-		}
-
 		rb_activeFrame = frame;
 		/* the handoff claimed the slot (vk_renderthread.c RendererSleep);
 		   re-writing it here cost two mutex ops a frame */
-		walkStart = VK_WALK_T0();
+		walkStart = BE_Microseconds64();
 		if ( frame->list ) {
 			RB_ExecuteRenderCommands( frame->list->cmds );
 			frame->list->used = 0;
@@ -1021,16 +633,10 @@ void RB_RenderThread( void )
 			int used, bytes, indexes, drops, surfs;
 
 			VK_VertexRing_FrameDemand( &used, &bytes, &indexes, &drops, &surfs );
-			VK_WalkStat_Frame( used, surfs );
 		}
 		frame->backEndMsec = 0;
 		rb_activeFrame = NULL;
 		VKimp_WalkEnd( frame->smpFrame );
-
-		if ( R_ProbeStatsOn()
-			 && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:smp", "walk-done f=%d slot=%d", rb_frameCount, frame->smpFrame );
-		}
 
 		rb_issueRows++;
 
@@ -1069,10 +675,10 @@ void R_IssueRenderCommands( void )
 			   names the fallback once. */
 			if ( !rb_inlineFallback ) {
 				rb_inlineFallback = qtrue;
-				VK_Guard_Row( "VK:smp", "walk-thread-gone frames=%d walking-inline", rb_frameCount );
+
 			}
 			rb_activeFrame = frame;
-			walkStart = VK_WALK_T0();
+			walkStart = BE_Microseconds64();
 			if ( list ) {
 				RB_ExecuteRenderCommands( list->cmds );
 				list->used = 0;
@@ -1091,7 +697,7 @@ void R_IssueRenderCommands( void )
 	}
 
 	rb_activeFrame = frame;
-	walkStart = VK_WALK_T0();
+	walkStart = BE_Microseconds64();
 	if ( list ) {
 		RB_ExecuteRenderCommands( list->cmds );
 		list->used = 0;
@@ -1100,12 +706,6 @@ void R_IssueRenderCommands( void )
 		RB_WalkUsecAdd( BE_Microseconds64() - walkStart );
 	}
 	rb_activeFrame = NULL;
-
-	if ( R_ProbeStatsOn()
-		 && ( rb_issueRows < 8 || ( rb_issueRows % 600 ) == 0 ) ) {
-		VK_Guard_Row( "VK:smp", "side=inline slot=%d frames=%d", frame->smpFrame, rb_frameCount );
-		rb_issueRows++;
-	}
 
 	vk.frameSlot = ( vk.frameSlot + 1 ) % SMP_FRAMES;
 }
@@ -1140,14 +740,11 @@ void R_InitCommandBuffers( void )
 
 	if ( vk.smpActive && !vkRenderThreadActive ) {
 		if ( !VKimp_SpawnRenderThread( RB_RenderThread ) ) {
-			VK_Guard_Row( "VK:guard", "site=sync detail=\"render thread refused, running serial\" result=success(0) n=1" );
+
 			vk.smpActive = qfalse;
 		}
 	}
 
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:smp", "active=%d frames-in-flight=%d", vk.smpActive ? 1 : 0, VK_FRAMES_IN_FLIGHT );
-	}
 }
 
 void R_ShutdownCommandBuffers( void )

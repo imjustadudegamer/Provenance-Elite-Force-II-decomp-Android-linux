@@ -117,6 +117,10 @@ static SOCKET	socks_socket = INVALID_SOCKET;
 static int		ipSocketLastError;
 static qboolean	ipSocketRefused;
 
+/* NET_Init runs again when `dedicated' toggles (Com_Frame re-enters it), and a
+   second Cmd_AddCommand would print "already defined" for both rows. */
+static qboolean	netCommandsRegistered;
+
 static qboolean NET_EnsureIPSocket( void );
 
 #ifndef IF_NAMESIZE
@@ -689,6 +693,9 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 	if( bind( newsocket, (void *)&address, sizeof(address) ) == SOCKET_ERROR ) {
 		Com_Printf( "WARNING: NET_IPSocket: bind: %s\n", NET_ErrorString() );
 		*err = socketError;
+		// the refusal report ("errno N") reads this: a bind failure is the
+		// common refusal (port taken, address not ours), not just socket()
+		ipSocketLastError = socketError;
 		closesocket( newsocket );
 		return INVALID_SOCKET;
 	}
@@ -892,7 +899,9 @@ static void NET_GetLocalAddress(void)
 	{
 		for(search = ifap; search; search = search->ifa_next)
 		{
-			if(ifap->ifa_flags & IFF_UP)
+			// search->ifa_flags, not ifap's: the first entry is always `lo', and
+			// reading its flags for every interface added down interfaces too.
+			if(search->ifa_flags & IFF_UP)
 				NET_AddLocalAddress(search->ifa_name, search->ifa_addr, search->ifa_netmask);
 		}
 	
@@ -941,6 +950,129 @@ static void NET_GetLocalAddress( void ) {
 }
 #endif
 
+/*
+NET_GetBroadcastAdrs: the subnet-directed broadcasts a LAN scan should target.
+
+The limited broadcast (255.255.255.255) reaches every station the switch floods
+to, but a Wi-Fi AP is free to drop it, and it is the address the subnet-directed
+form survives without -- each station on the subnet, and the router does not
+forward it.  Derive one per local IPv4 interface from the mask the table stored,
+taken bytewise in the address's own (network) order: (addr & mask) | ~mask.
+
+Loopback stays in localIP[] because Sys_IsLANAddress needs it for same-host
+traffic, but a broadcast to 127.0.0.0/8 is dead traffic, so only this helper
+skips it.  A /32 or a 0.0.0.0 mask has no subnet and is skipped for the same
+reason: the "broadcast" would be the host itself, or 255.255.255.255 again.
+*/
+int NET_GetBroadcastAdrs( netadr_t *adrs, int maxadrs ) {
+	byte		*addr, *mask, bcast[4];
+	qboolean	skip;
+	int			count, i, j, k;
+
+	if( !adrs || maxadrs <= 0 )
+		return 0;
+
+	/* Re-read the interfaces here, not only at boot: a phone can associate with
+	   Wi-Fi after the app started, and a scan on the old table would send the
+	   limited broadcast alone (the socket's own lazy open rebuilds the table,
+	   but that happens on the first send, after this list is built). */
+	NET_GetLocalAddress();
+
+	count = 0;
+
+	for( i = 0; i < numIP && count < maxadrs; i++ )
+	{
+		if( localIP[i].type != NA_IP || localIP[i].family != AF_INET )
+			continue;
+
+		addr = (byte *) &((struct sockaddr_in *) &localIP[i].addr)->sin_addr.s_addr;
+		mask = (byte *) &((struct sockaddr_in *) &localIP[i].netmask)->sin_addr.s_addr;
+
+		if( !( addr[0] | addr[1] | addr[2] | addr[3] ) )
+			continue;	// 0.0.0.0 is `bind any', not an interface
+
+		if( addr[0] == 127 )
+			continue;	// loopback
+
+		if( ( mask[0] & mask[1] & mask[2] & mask[3] ) == 0xFF )
+			continue;	// /32: broadcast == host
+
+		if( !( mask[0] | mask[1] | mask[2] | mask[3] ) )
+			continue;	// 0.0.0.0 mask: no subnet to derive
+
+		skip = qfalse;
+
+		for( j = 0; j < 4; j++ )
+			bcast[j] = (byte) ( ( addr[j] & mask[j] ) | ~mask[j] );
+
+		if( bcast[0] == 0xFF && bcast[1] == 0xFF && bcast[2] == 0xFF && bcast[3] == 0xFF )
+			skip = qtrue;	// the limited broadcast, already sent by the caller
+
+		for( k = 0; k < count && !skip; k++ )
+		{
+			if( !memcmp( adrs[k].ip, bcast, sizeof( bcast ) ) )
+				skip = qtrue;	// two interfaces on one subnet
+		}
+
+		if( skip )
+			continue;
+
+		Com_Memset( &adrs[count], 0, sizeof( adrs[count] ) );
+		adrs[count].type = NA_IP;
+		memcpy( adrs[count].ip, bcast, sizeof( bcast ) );
+		count++;
+	}
+
+	return count;
+}
+
+/*
+net_broadcasts: what a LAN scan would target, printed from the table the socket
+builds.  Read-only, and the same math runs on both platforms -- on a device it is
+the runtime answer to "is the subnet broadcast right here?", which a log cannot
+otherwise show.
+*/
+static void NET_Broadcasts_f( void ) {
+	netadr_t	adrs[MAX_IPS];
+	byte		addr[4], mask[4];
+	int			i, n;
+
+	/* the table is built at boot; an interface that came up afterwards (Wi-Fi
+	   associating after the app started) is the usual reason a scan finds nothing */
+	NET_GetLocalAddress();
+
+	Com_Printf( "net_broadcasts: %i local address(es)\n", numIP );
+
+	for( i = 0; i < numIP; i++ )
+	{
+		if( localIP[i].type != NA_IP || localIP[i].family != AF_INET )
+			continue;
+
+		memcpy( addr, &((struct sockaddr_in *) &localIP[i].addr)->sin_addr.s_addr, sizeof( addr ) );
+		memcpy( mask, &((struct sockaddr_in *) &localIP[i].netmask)->sin_addr.s_addr, sizeof( mask ) );
+
+		Com_Printf( "  %-16s %i.%i.%i.%i mask %i.%i.%i.%i\n", localIP[i].ifname,
+			addr[0], addr[1], addr[2], addr[3], mask[0], mask[1], mask[2], mask[3] );
+	}
+
+	n = NET_GetBroadcastAdrs( adrs, MAX_IPS );
+
+	if( n <= 0 )
+	{
+		Com_Printf( "net_broadcasts: no subnet broadcast; limited 255.255.255.255 only\n" );
+		return;
+	}
+
+	Com_Printf( "net_broadcasts: %i subnet broadcast(s) on ports %i-%i\n",
+		n, PORT_SERVER, PORT_SERVER + NUM_SERVER_PORTS - 1 );
+
+	for( i = 0; i < n; i++ )
+	{
+		/* NET_AdrToString hands back a shared static buffer: one row per call */
+		Com_Printf( "  %s\n", NET_AdrToString( adrs[i] ) );
+	}
+}
+
 void NET_OpenIP( void ) {
 	int		i;
 	int		err;
@@ -951,7 +1083,9 @@ void NET_OpenIP( void ) {
 	NET_GetLocalAddress();
 
 
-	for( i = 0 ; i < 10 ; i++ ) {
+	/* NUM_SERVER_PORTS, not a literal: the LAN scan and the direct-connect probe
+	   walk exactly the range the bind can land in, so the two cannot drift. */
+	for( i = 0 ; i < NUM_SERVER_PORTS ; i++ ) {
 		ip_socket = NET_IPSocket( net_ip->string, port + i, &err );
 		if (ip_socket != INVALID_SOCKET) {
 			Cvar_SetValue( "net_port", port + i );
@@ -1123,6 +1257,13 @@ void NET_Init( void ) {
 	Com_Printf( "Winsock Initialized\n" );
 #endif
 
+	/* This runs from Sys_InitEx after Com_Init, so the command system is up. */
+	if ( !netCommandsRegistered ) {
+		netCommandsRegistered = qtrue;
+		Cmd_AddCommand( "net_restart", NET_Restart_f );
+		Cmd_AddCommand( "net_broadcasts", NET_Broadcasts_f );
+	}
+
 	NET_Config( qtrue );
 
 }
@@ -1142,17 +1283,51 @@ void NET_Shutdown( void ) {
 }
 
 
-void NET_Event(fd_set *fdr)
+// The socket's one reader.  NET_GetPacket wants an fd_set, so hand it one that
+// says "check the socket": it is non-blocking (FIONBIO in NET_IPSocket), and an
+// empty socket answers EAGAIN without a word, so no select() is needed here and
+// there is no second readiness test to drift from NET_GetPacket's own.
+qboolean Sys_GetPacket( netadr_t *net_from, msg_t *net_message )
+{
+	fd_set fdr;
+
+	if( ip_socket == INVALID_SOCKET )
+		return qfalse;
+
+	FD_ZERO( &fdr );
+	FD_SET( ip_socket, &fdr );
+
+	return NET_GetPacket( net_from, net_message, &fdr );
+}
+
+
+// Drain the UDP socket into the game.  Without this call nothing ever reads
+// ip_socket: Com_EventLoop pumps only the in-memory loopback queues, and a
+// DEDICATED build does not even call Com_EventLoop.  One pump per frame from
+// Com_Frame covers both lanes -- a listen server and a joining client share it.
+void NET_Event( void )
 {
 	byte bufData[MAX_MSGLEN + 1];
 	netadr_t from = {0};
 	msg_t netmsg;
-	
+
+	/* A server has to be listening before anyone can ask it anything, and it
+	   sends nothing first, so the lazy open on the send path would never
+	   happen.  Only a multiplayer gametype opens it here: a campaign server has
+	   no getinfo/getstatus answer by design (server/sv_main.c), and keeping its
+	   path socket-free is what leaves an install without the network permission
+	   unaffected in single player. */
+	if( ip_socket == INVALID_SOCKET && com_sv_running && com_sv_running->integer
+	    && Cvar_VariableValue( "g_gametype" ) != GT_SINGLE_PLAYER
+	    && Cvar_VariableValue( "g_gametype" ) != GT_BOT_SINGLE_PLAYER ) {
+		NET_EnsureIPSocket();
+	}
+
 	while(1)
 	{
 		MSG_Init(&netmsg, bufData, sizeof(bufData));
 
-		if(NET_GetPacket(&from, &netmsg, fdr))
+		if(Sys_GetPacket(&from, &netmsg))
 		{
 			if(com_sv_running->integer)
 				Com_RunAndTimeServerPacket(&from, &netmsg);
@@ -1164,12 +1339,44 @@ void NET_Event(fd_set *fdr)
 	}
 }
 
+/* The remainder of the server frame SV_Frame's dedicated branch cannot fill
+   (retail 0x001E1194).  It has to be a real wait: the dedicated loop has no
+   frame budget of its own (Com_Frame gives it minUsec 0), so returning at once
+   leaves the process spinning on one core until the next Sys_Milliseconds tick.
+   A packet that arrives during the wait is serviced by NET_Event on the frame
+   that wakes, at most one server frame later -- retail's own latency. */
 void NET_Sleep(int msec)
 {
-	(void)msec;
+	Sys_Sleep( msec );
 }
 
+/* net_restart: close whatever socket is open and open it again.
+
+   The case it exists for is a refused socket.  The refusal is latched on purpose
+   (ipSocketRefused: one warning row, not one per packet for the whole session),
+   and NET_Config(qtrue) early-outs when nothing changed, so neither path can
+   retry.  Clearing the latch is the retry; re-reading the cvars is what lets a
+   `set net_port` before the command choose the port the next attempt binds. */
 void NET_Restart_f(void)
 {
-	NET_Config(qtrue);
+	if ( ip_socket != INVALID_SOCKET ) {
+		closesocket( ip_socket );
+		ip_socket = INVALID_SOCKET;
+	}
+
+	if ( socks_socket != INVALID_SOCKET ) {
+		closesocket( socks_socket );
+		socks_socket = INVALID_SOCKET;
+	}
+
+	ipSocketRefused = qfalse;
+	ipSocketLastError = 0;
+
+	NET_GetCvars();
+
+	if ( NET_EnsureIPSocket() ) {
+		Com_Printf( "net_restart: socket open on port %i\n", net_port->integer );
+	} else {
+		Com_Printf( "net_restart: no UDP socket (errno %i)\n", ipSocketLastError );
+	}
 }

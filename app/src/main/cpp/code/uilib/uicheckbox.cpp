@@ -23,10 +23,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "ui_local.h"
 
-#define PROBE_GET(probe_n, probe_d, probe_f) ((cvar_t *)0)
-#define PROBE_PRINT                       Com_Printf
-#define PROBE_ON_OVERRIDE                       (atoi(CvarGetForUI("qa_probe", "0")) != 0)
-#include "../qcommon/qa_probe.h"
 
 Event EV_UICheckBox_SetCheckedCommand
 (
@@ -208,8 +204,6 @@ void UICheckBox::Released(Event *ev)
 
 void UICheckBox::UpdateCvar(const char *from)
 {
-    int written = -1;
-
     if (m_cvarname.length()) {
         if (m_cvarbit >= 0) {
             int value = UI_GetCvarInt(m_cvarname.c_str(), 0);
@@ -228,15 +222,10 @@ void UICheckBox::UpdateCvar(const char *from)
                 m_checked = 0;
             }
             UI_SetCvarInt(m_cvarname, m_checked);
-            written = m_checked;
         }
     }
 
     /* the dlight hunt: one row per write, whoever asked for it */
-    if (PROBE_On() && !strcmp(m_cvarname.c_str(), "r_dynamiclight")) {
-        PROBE_EMIT("[UIVK:", "dlight", "site=%s wid='%s' write=%d state=%d",
-                   from, getName(), written, m_widgetState);
-    }
 
     if (m_command.length()) 
     {
@@ -306,16 +295,6 @@ void UICheckBox::UpdateData(void)
             m_checked = UI_GetCvarInt(m_cvarname.c_str(), 0);
         }
 
-        if (PROBE_On() && !strcmp(m_cvarname.c_str(), "r_dynamiclight")) {
-            static int s_last = -1;
-            static int s_rows;
-
-            if (m_checked != s_last || PROBE_Throttle(&s_rows, 1, 600)) {
-                PROBE_EMIT("[UIVK:", "dlight", "site=drawread cvar=%d state=%d",
-                           m_checked, m_widgetState);
-                s_last = m_checked;
-            }
-        }
     }
 }
 

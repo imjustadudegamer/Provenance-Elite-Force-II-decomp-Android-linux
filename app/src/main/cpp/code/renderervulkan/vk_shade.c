@@ -710,22 +710,15 @@ qboolean VK_Shade_Init( void )
 			{ VKP_FAMILY_SHADOW,	VK_SHADER_FAM_SHADOW },
 			{ VKP_FAMILY_WIRE,	VK_SHADER_FAM_WIRE },
 		};
-		int resolved = 0;
 		int total = ( int )( sizeof( familyKeys ) / sizeof( familyKeys[0] ) );
 
 		for ( i = 0; i < total; i++ ) {
 			VkShaderModule v, f;
 
-			if ( VK_Program_Modules( familyKeys[i].family, familyKeys[i].bit, &v, &f ) ) {
-				resolved++;
-			}
+			VK_Program_Modules( familyKeys[i].family, familyKeys[i].bit, &v, &f );
 		}
 		/* the summary rides the probe; a family that did not resolve is the
 		   defect the census exists for and names itself whatever the probe says */
-		if ( resolved < total || R_ProbeStatsOn() ) {
-			VK_Guard_Row( "VK:shade", "modules=%d permutations=%d families=%d resolved=%d",
-						  VK_SHADER_MODULE_COUNT, VK_SHADER_MODULE_COUNT / 2, total, resolved );
-		}
 	}
 	return qtrue;
 }
@@ -1153,6 +1146,18 @@ void VK_SetFogColor( const vec4_t fColor )
 	rgba[2] = (byte)( fColor[2] * 255.0f );
 	rgba[3] = 255;
 	backEnd.viewParms.fogColorInt = ( rgba[0] ) | ( rgba[1] << 8 ) | ( rgba[2] << 16 ) | ( 255 << 24 );
+
+	/* The GLES3 twin's GL_SetFogColor publishes the same colour into glState.fFogColor;
+	   this is the record RB_BeginDrawingView clears a world view's colour plane with.
+	   Vulkan kept only the packed int above, so vkState.fFogColor stayed at its zero
+	   initializer and a farplane-fog mission cleared the sky/horizon to BLACK instead
+	   of the level script's fog colour -- the fog "gone" on Drull while the GLES3 twin
+	   still draws it.  Keep both records written here, where the one view's colour is
+	   published. */
+	vkState.fFogColor[0] = fColor[0];
+	vkState.fFogColor[1] = fColor[1];
+	vkState.fFogColor[2] = fColor[2];
+	vkState.fFogColor[3] = fColor[3];
 }
 
 void VK_State( unsigned long stateBits )
@@ -1276,55 +1281,24 @@ void VK_DepthGate3DOpen( void )
 /* ---- the blocking driver waits ------------------------------------------- */
 
 /* each wait names itself in and out with its thread and the caller's business, so the last row before a stop is the wait that never returned. */
-static void VK_Sync_Row( const char *site, const char *why, qboolean leaving, long usec )
-{
-	VK_Guard_Row( "VK:sync", "site=%s why=%s phase=%s thr=%s id=%lu f=%d usec=%ld",
-				  site, why, leaving ? "leave" : "enter",
-				  VKimp_IsRenderThread() ? "render" : "main",
-				  VKimp_ThreadID(), RB_FrameCount(), usec );
-}
 
 VkResult VK_Sync_WaitForFences( VkFence fence, VkBool32 waitAll, const char *site, const char *why )
 {
-	VkResult result;
-	int		 t0;
-	qboolean row = R_ProbeStatsOn();
-	/* the walk's own frame fence: the device owns this wait, and the walk's
-	   cost row has to be able to subtract it from its CPU time */
-	qboolean walkFence = ( !strcmp( site, "frame-fence" ) && !strcmp( why, "frame" )
-						   && VKimp_IsRenderThread() && VK_WalkStatOn() );
+	VkResult result = qvk.WaitForFences( vk.device, 1, &fence, waitAll, UINT64_MAX );
 
-	if ( !row && !walkFence ) {
-		return qvk.WaitForFences( vk.device, 1, &fence, waitAll, UINT64_MAX );
-	}
-
-	if ( row ) {
-		VK_Sync_Row( site, why, qfalse, 0 );
-	}
-	t0 = BE_Microseconds();
-	result = qvk.WaitForFences( vk.device, 1, &fence, waitAll, UINT64_MAX );
-	if ( walkFence ) {
-		VK_WalkStat_Add( VK_WP_FENCE, (long long)( BE_Microseconds() - t0 ) );
-	}
-	if ( row ) {
-		VK_Sync_Row( site, why, qtrue, BE_Microseconds() - t0 );
+	if ( result != VK_SUCCESS ) {
+		VK_Guard_Hit( VK_GSITE_FENCE, why ? why : site, result );
 	}
 	return result;
 }
 
 VkResult VK_Sync_DeviceWaitIdle( const char *site, const char *why )
 {
-	VkResult result;
-	int		 t0;
+	VkResult result = qvk.DeviceWaitIdle( vk.device );
 
-	if ( !R_ProbeStatsOn() ) {
-		return qvk.DeviceWaitIdle( vk.device );
+	if ( result != VK_SUCCESS ) {
+		VK_Guard_Hit( VK_GSITE_DEVICE, why ? why : site, result );
 	}
-
-	VK_Sync_Row( site, why, qfalse, 0 );
-	t0 = BE_Microseconds();
-	result = qvk.DeviceWaitIdle( vk.device );
-	VK_Sync_Row( site, why, qtrue, BE_Microseconds() - t0 );
 	return result;
 }
 
@@ -1336,140 +1310,17 @@ void VK_SelectTexture( int tmu )
 }
 
 /* the drawn colour of a stage's texture, read back off the device once per image at first bind: what the sampler holds is the one
-   thing no offline reading answers.  Readback is a submit and a fence, so it rides qa_probe (r_texelProbe 0 disarms); every image gets a row. */
+   thing no offline reading answers. */
 /* the whole texture table, not half of it: MAX_DRAWIMAGES is 8192 and a row that
    stopped at 4096 silently answered for no image past the halfway mark */
-#define VK_TEXEL_PROBE_MAX VK_MAX_TEXTURES
-static int s_texelProbedStamp[VK_TEXEL_PROBE_MAX];	/* the image stamp this slot last answered for */
-
-static void VK_Shade_TexelProbe( image_t *image )
-{
-	static cvar_t *cv;
-	unsigned char  px[4];
-	unsigned char  blk[16];
-	int            handle;
-	int            blocked = 0;
-	const char     *name;
-
-	if ( !cv ) {
-		cv = ri.Cvar_Get( "r_texelProbe", "1", 0 );
-	}
-	if ( !cv || !cv->integer || !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	handle = (int)image->texnum;
-	if ( handle < 0 || handle >= VK_TEXEL_PROBE_MAX ) {
-		return;
-	}
-	/* a slot outlives the image in it, so the dedup key is the image's own creation
-	   stamp: keyed on the handle, every image that landed in a used slot read as
-	   already probed and the art loaded after a recycle had no row at all. */
-	if ( image->imgStamp && s_texelProbedStamp[handle] == image->imgStamp ) {
-		return;
-	}
-	s_texelProbedStamp[handle] = image->imgStamp;
-
-	name = image->imgName[0] ? image->imgName : "(unnamed)";
-	if ( !VK_Texture_ReadBlock( handle, image->uploadWidth / 2, image->uploadHeight / 2,
-								px, blk, &blocked ) ) {
-		VK_Guard_Row( "VK:texel", "name=%s w=%d h=%d read=fail", name,
-					  image->uploadWidth, image->uploadHeight );
-		return;
-	}
-
-	if ( blocked ) {
-		/* The block is the sampler's own bytes for the texel the row names, so
-		   decode it with the backend's own decoder and report that texel's RGBA.
-		   The raw first four bytes of a BC2/BC3 block are its alpha plane, which
-		   is why this row could not answer a colour question about the art it
-		   was built for. */
-		int           flavour = ( image->internalFormat == VK_TF_DXT1 ) ? SMP_DXT1
-				          : ( image->internalFormat == VK_TF_DXT5 ) ? SMP_DXT5 : SMP_DXT3;
-		unsigned char rgba[64];
-		int           inBlkX = ( image->uploadWidth / 2 ) & 3;
-		int           inBlkY = ( image->uploadHeight / 2 ) & 3;
-
-		SMP_DXTDecodeBlock( flavour, blk, rgba );
-		px[0] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 0];
-		px[1] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 1];
-		px[2] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 2];
-		px[3] = rgba[( inBlkY * 4 + inBlkX ) * 4 + 3];
-	}
-
-	/* Both arms report the RGBA the sampler serves for the image's centre texel:
-	   the blocked one decodes the block this read copied.  The slot and the stamp
-	   ride along so a row can be matched to the image that answered for it. */
-	{
-		/* The device block on its own is one hole in an atlas, so the row names the
-		   two things that tell a dark image from a wrong copy: the source's own
-		   bytes at the same point, and what the whole level holds. */
-		vkSrcCensus_t	cen;
-		int				blkMatch = -1;
-		int				srcTexel[4] = { 0, 0, 0, 0 };
-		int				artMean[4] = { 0, 0, 0, 0 };
-		int				artClear = -1, artTexels = 0;
-
-		if ( VK_Image_SourceCensus( handle, image->imgStamp, &cen ) ) {
-			const unsigned char	*dev = blocked ? blk : px;
-			int					 devLen = blocked ? 16 : 4;
-
-			blkMatch = ( cen.blockLen <= devLen
-						 && !memcmp( cen.block, dev, (size_t)cen.blockLen ) ) ? 1 : 0;
-			srcTexel[0] = cen.texel[0]; srcTexel[1] = cen.texel[1];
-			srcTexel[2] = cen.texel[2]; srcTexel[3] = cen.texel[3];
-			artMean[0] = cen.mean[0]; artMean[1] = cen.mean[1];
-			artMean[2] = cen.mean[2]; artMean[3] = cen.mean[3];
-			artClear = cen.clear;
-			artTexels = cen.texels;
-		}
-
-		VK_Guard_Row( "VK:texel",
-					  "name=%s handle=%d stamp=%d w=%d h=%d upto=%dx%d srcmips=%d levels=%d layout=%s "
-					  "fmt=0x%x wrap=%d,%d mipfilter=%d texel_mid=%u,%u,%u,%u "
-					  "blkmatch=%d src_texel=%d,%d,%d,%d art_mean=%d,%d,%d,%d art_clear=%d art_texels=%d",
-					  name, handle, image->imgStamp, image->width, image->height,
-					  image->uploadWidth, image->uploadHeight,
-					  image->numMipmaps, VK_Texture_MipLevels( handle ),
-					  VK_Texture_LayoutName( handle ),
-					  (unsigned)image->internalFormat,
-					  (int)image->wrapClampModeX, (int)image->wrapClampModeY,
-					  ( image->numMipmaps > 1 ) ? 1 : 0,
-					  (unsigned)px[0], (unsigned)px[1], (unsigned)px[2], (unsigned)px[3],
-					  blkMatch, srcTexel[0], srcTexel[1], srcTexel[2], srcTexel[3],
-					  artMean[0], artMean[1], artMean[2], artMean[3], artClear, artTexels );
-	}
-}
+#define VK_TEXEL_MAX VK_MAX_TEXTURES
 
 /* the walk a bind rides in: the row's only cheap way to name its caller's family */
-static const char *VK_Shade_IterName( void )
-{
-	if ( tess.currentStageIteratorFunc == RB_StageIterator2D ) {
-		return "2d";
-	}
-	if ( tess.currentStageIteratorFunc == RB_StageIteratorSky ) {
-		return "sky";
-	}
-	if ( tess.currentStageIteratorFunc == RB_GLFogStageIteratorFunc ) {
-		return "glfog";
-	}
-	if ( tess.currentStageIteratorFunc == RB_StageIteratorVertexLitTextureUnfogged ) {
-		return "vlt";
-	}
-	if ( tess.currentStageIteratorFunc == RB_StageIteratorLightmappedMultitextureUnfogged ) {
-		return "lmmt";
-	}
-	if ( tess.currentStageIteratorFunc == RB_StageIteratorGeneric ) {
-		return "generic";
-	}
-	return "other";
-}
 
 static void VK_Shade_BindImage( image_t *image, int tmu )
 {
 	VkImageView view = VK_NULL_HANDLE;
 	VkSampler sampler = VK_NULL_HANDLE;
-	image_t *tenant;
 
 	if ( !image || image->texnum < 0 ) {
 		s_shade.texView[tmu] = VK_NULL_HANDLE;
@@ -1484,23 +1335,6 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 	   looks like it never loaded.  Gated like every other row: the diag boot is
 	   what arms it. */
 	if ( image->texnum == 0 ) {
-		static int s_zeroRows;
-
-		if ( R_ProbeMarkOn() && ( s_zeroRows < 32 || ( s_zeroRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:bind",
-						  "handle=0 image='%s' tmu=%d shader='%s' "
-						  "ent=%d iter=%s stage0='%s' f=%d",
-						  image->imgName[0] ? image->imgName : "(unnamed)", tmu,
-						  ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?",
-						  ( backEnd.currentEntity )
-						  ? backEnd.currentEntity->e.entityNumber : -1,
-						  VK_Shade_IterName(),
-						  ( tess.xstages && tess.xstages[0] && tess.xstages[0]->bundle[0].image[0]
-							&& tess.xstages[0]->bundle[0].image[0]->imgName[0] )
-						  ? tess.xstages[0]->bundle[0].image[0]->imgName : "?",
-						  RB_FrameCount() );
-		}
-		s_zeroRows++;
 		s_shade.texView[tmu] = VK_NULL_HANDLE;
 		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
 		s_shade.texImage[tmu] = image;
@@ -1518,23 +1352,6 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 		s_shade.texBound[tmu] = 0;
 		return;
 	}
-	/* the slot this draw samples answers to another image_t: the recycle arm */
-	tenant = VK_Image_SlotTenant( (int)image->texnum );
-	if ( tenant && tenant != image ) {
-		static int s_tenantRows;
-
-		if ( R_ProbeMarkOn() && ( s_tenantRows < 32 || ( s_tenantRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:bind",
-						  "tenant handle=%d asked='%s' slot='%s' tmu=%d shader='%s' f=%d",
-						  (int)image->texnum,
-						  image->imgName[0] ? image->imgName : "(unnamed)",
-						  tenant->imgName[0] ? tenant->imgName : "(unnamed)",
-						  tmu,
-						  ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?",
-						  RB_FrameCount() );
-		}
-		s_tenantRows++;
-	}
 	/* wrapClampModeX/Y hold the legacy wrap enum: REPEAT is 10497, not 0 */
 	VK_Texture_Sampler( ( image->wrapClampModeX != VK_TWRAP_REPEAT
 						  || image->wrapClampModeY != VK_TWRAP_REPEAT ), qfalse, qtrue, &sampler );
@@ -1544,7 +1361,6 @@ static void VK_Shade_BindImage( image_t *image, int tmu )
 	s_shade.texImage[tmu] = image;
 	s_shade.texBound[tmu] = 1;
 
-	VK_Shade_TexelProbe( image );
 }
 
 /* the latch names slots a registration recycles, and the walk is parked here */
@@ -1572,11 +1388,6 @@ void VK_Shade_RegistrationReset( void )
 
 /* a latched unit may still write into a descriptor: a level load destroys world images out from under the latch, so it is re-validated
    against the slot's own view before vkUpdateDescriptorSets (a NULL view or a reused view disarms); reads no image_t field. */
-/* the open world batch's own census: armed per batch, reset by BatchBegin */
-static qboolean			s_batchCensus;
-/* the open batch's disarmed-unit count: the world census owns the reset */
-static int				s_batchUnitDisarmed;
-
 static VkImageView VK_Shade_LiveView( int tmu )
 {
 	VkImageView live;
@@ -1586,24 +1397,6 @@ static VkImageView VK_Shade_LiveView( int tmu )
 	}
 	live = VK_Texture_View( s_shade.texNum[tmu] );
 	if ( live == VK_NULL_HANDLE || live != s_shade.texView[tmu] ) {
-		/* the unit falls back to the white image: name the draw that loses it */
-		static int s_disarmRows;
-
-		if ( R_ProbeMarkOn() && s_disarmRows < 16 ) {
-			VK_Guard_Row( "VK:shade",
-						  "unit disarmed tmu=%d handle=%d reason=%s prog=0x%x shader='%s' "
-						  "bound='%s' frame=%d",
-						  tmu, s_shade.texNum[tmu],
-						  live == VK_NULL_HANDLE ? "slot-destroyed" : "slot-reused",
-						  s_shade.prog ? (unsigned)s_shade.prog->defines : 0u,
-						  ( tess.shader && tess.shader->name[0] ) ? tess.shader->name : "?",
-						  ( s_shade.texImage[tmu] && s_shade.texImage[tmu]->imgName[0] )
-							? s_shade.texImage[tmu]->imgName : "(unnamed)",
-						  RB_FrameCount() );
-			s_disarmRows++;
-		}
-		/* the census still reads this unit's image as its own, so the white fallback it took reads clean */
-		s_batchUnitDisarmed += s_batchCensus ? 1 : 0;
 		s_shade.texBound[tmu] = 0;
 		s_shade.texView[tmu] = VK_NULL_HANDLE;
 		s_shade.texSampler[tmu] = VK_NULL_HANDLE;
@@ -1751,34 +1544,9 @@ void VK_SetUniform4fvN( vkProgram_t *p, vkUniform_t u, const float *v, int n )
    World batches only, so entities and the UI stay reference. */
 /* the gate's four inputs, sampled at the last stage draw that asked: a boot
    whose worldflat row is silent has to name which input refused it */
-static int s_worldFlatSeen;   /* a stage draw asked at all */
-static int s_worldFlatCvar;   /* the cvar pointer is non-NULL */
-static int s_worldFlatValue;  /* ->integer, -1 without the cvar */
-static int s_worldFlatIn2D;
-static int s_worldFlatEntity; /* 'w', 'e', 's' or '?' */
-/* Calls by entity class, boot-cumulative: the row's four fields are the LAST
-   caller's state, which on a frame with no world geometry says nothing. */
-static int s_worldFlatCalls[4];
-/* Batches opened by entity class, this frame: what the walk handed the draws. */
-static int s_worldFlatBatches[4];
-
-static int VK_WorldFlatClass( void )
-{
-	return backEnd.currentEntity == &tr.worldEntity ? 0
-		 : ( backEnd.currentEntity ? 1
-		   : ( backEnd.currentStaticModel ? 2 : 3 ) );
-}
-
 int VK_WorldFlatMode( void )
 {
 	int mode;
-
-	s_worldFlatSeen  = 1;
-	s_worldFlatCvar  = ( r_worldFlat != NULL );
-	s_worldFlatValue = r_worldFlat ? r_worldFlat->integer : -1;
-	s_worldFlatIn2D  = backEnd.in2D ? 1 : 0;
-	s_worldFlatEntity = "wes?"[VK_WorldFlatClass()];
-	s_worldFlatCalls[VK_WorldFlatClass()]++;
 
 	if ( !r_worldFlat || r_worldFlat->integer <= 0 || backEnd.in2D
 		 || backEnd.currentEntity != &tr.worldEntity ) {
@@ -1839,42 +1607,6 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 	VK_SetUniform4fv( p, VK_U_BASECOLOR, baseColor );
 
 	/* a const colour cannot change between binds, so a move names a wrong feed; the vent's purple flash reads here */
-	if ( R_ProbeMarkOn() && !backEnd.in2D && pStage->rgbGen == CGEN_CONSTANT ) {
-		static struct { const shader_t *sh; const shaderStage_t *st; vec4_t col; } seen[256];
-		static int seenRows;
-		int si, slot = -1;
-		const int cap = 200;	/* PROBE_ROW_CAP; this backend has no qa_probe include */
-
-		for ( si = 0; si < 256; si++ ) {
-			if ( !seen[si].sh ) {
-				if ( slot < 0 ) slot = si;
-				break;
-			}
-			if ( seen[si].sh == shader && seen[si].st == pStage ) {
-				slot = si;
-				break;
-			}
-		}
-		if ( slot >= 0 ) {
-			if ( seen[slot].sh
-				 && ( fabs( baseColor[0] - seen[slot].col[0] ) > 0.02f
-				   || fabs( baseColor[1] - seen[slot].col[1] ) > 0.02f
-				   || fabs( baseColor[2] - seen[slot].col[2] ) > 0.02f )
-				 && seenRows < cap ) {
-				seenRows++;
-				VK_Guard_Row( "DOCC:const",
-							  "'%s' was=%d,%d,%d now=%d,%d,%d f=%d",
-							  shader->name,
-							  (int)( seen[slot].col[0] * 255 ), (int)( seen[slot].col[1] * 255 ),
-							  (int)( seen[slot].col[2] * 255 ),
-							  (int)( baseColor[0] * 255 ), (int)( baseColor[1] * 255 ),
-							  (int)( baseColor[2] * 255 ), RB_FrameCount() );
-			}
-			seen[slot].sh = shader;
-			seen[slot].st = pStage;
-			Vector4Copy( baseColor, seen[slot].col );
-		}
-	}
 
 	/* the 2D quad carries Draw_SetColor per vertex; in 3D u_BaseColor carries the global colour */
 	if ( backEnd.in2D && !cpuColor )
@@ -2068,9 +1800,6 @@ void VK_SetupStageUniforms( vkProgram_t *p, const shaderStage_t *pStage, const s
 	/* published by every stage draw so a non-world draw can never inherit a
 	   world draw's mode through a shared ring slice */
 	flat = VK_WorldFlatMode();
-	if ( flat ) {
-		VK_Shade_NoteFlat( shader );
-	}
 	VK_SetUniform1i( p, VK_U_FLATMODE, flat );
 
 	VK_SetUniform1i( p, VK_U_ACFF, cpuColor ? 0 : (int)pStage->acff );
@@ -2121,39 +1850,7 @@ void VK_SetupFogUniforms( vkProgram_t *p, int fogNum, qboolean fogDensityArm )
 		VK_SetUniform1f( p, VK_U_FOGOOLEN, backEnd.viewParms.fog.oolen );
 		VK_SetUniform1i( p, VK_U_FOGDENSITYARM, fogDensityArm ? 1 : 0 );
 
-		{
-			/* the global fog pass names its own arming: the farplane the frame came in
-			   with, the flag the promotion read, and the colour bytes actually uploaded.
-			   A black blend over a lit surface is this row's job to explain. */
-			static int s_fogRows;
-			const byte *c = ( const byte * )&colorInt;
-			int			black;
-
-			black = ( c[0] == 0 && c[1] == 0 && c[2] == 0 );
-			if ( R_ProbeStatsOn() ) {
-				s_fogRows++;
-				if ( black || s_fogRows <= 12 || ( s_fogRows % 400 ) == 0 ) {
-					VK_Guard_Row( "VK:fog",
-								  "f=%d fpdist=%.1f fpc=%.3f,%.3f,%.3f en=%d xl=%d fogNum=%d "
-								  "col=%d,%d,%d,%d uplo=%.3f,%.3f,%.3f,%.3f idl=%.3f dens=%d oolen=%.5f%s",
-								  RB_FrameCount(),
-								  backEnd.viewParms.farplane_distance,
-								  backEnd.viewParms.farplane_color[0],
-								  backEnd.viewParms.farplane_color[1],
-								  backEnd.viewParms.farplane_color[2],
-								  backEnd.viewParms.fog.enabled,
-								  ( vkState.externalSetState & VKS_FOG ) ? 1 : 0,
-								  fogNum,
-								  c[0], c[1], c[2], c[3],
-								  byteColor[0] / 255.0f, byteColor[1] / 255.0f,
-								  byteColor[2] / 255.0f, byteColor[3] / 255.0f,
-								  tr.identityLight,
-								  fogDensityArm ? 1 : 0,
-								  backEnd.viewParms.fog.oolen,
-								  black ? " BLACK" : "" );
-				}
-			}
-		}
+		return;
 		return;
 	}
 
@@ -2319,17 +2016,6 @@ void VK_BeginShadow( void )
 
 /* ---- the tessellation stream --------------------------------------------- */
 /* vkStreamVertex_t and VK_STREAM_STRIDE are published by tr_vbo.h: the static arena holds exactly the bytes VK_Stream_Pack writes here */
-/* the census that names a draw whose own vertices cover half the frame; defined below the shade state it reports, called from both tess arms */
-static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
-								   const vkIndex_t *indexes, int numIndexes );
-
-/* When the draw reads its vertexes from the static arena instead of the tess
-   arrays, the census must read them there too.  Non-NULL only for the duration
-   of one static draw call; the arrays below name the batch's items. */
-static const float			*s_fpStageFloats;
-static const vkStaticItemView_t	*s_fpItems;
-static int					s_fpItemCount;
-
 /* The batch-relative vertex index the draw reads at footprint position i.  Off
    the arena arm the caller's array is already batch-relative; on it, the block
    holds arena-relative values, so each maps back through the item that owns its
@@ -2338,27 +2024,6 @@ static int					s_fpItemCount;
    every shipped boot says no run ever reached MIN_IBO_RUN), so one block stepped
    by position decoded another item's indexes and priced a correct batch as
    carrying out-of-range vertices. */
-static int VK_Shade_FootprintIndex( int i )
-{
-	int	k, pos = 0;
-
-	if ( !s_fpItems ) {
-		return i;
-	}
-	for ( k = 0; k < s_fpItemCount; k++ ) {
-		if ( i < pos + s_fpItems[k].numIdx ) {
-			const vkIndex_t	*block = RB_VboStaticIndexBlock( s_fpItems[k].idxFirst );
-
-			if ( !block ) {
-				return -1;
-			}
-			return s_fpItems[k].vertStart
-				   + ( block[i - pos] - s_fpItems[k].first );
-		}
-		pos += s_fpItems[k].numIdx;
-	}
-	return -1;
-}
 
 static void VK_Stream_Pack( vkStreamVertex_t *out, const shaderCommands_t *input, int v,
 							const float *tc0, const float *tc1, int tcStrideFloats,
@@ -2399,16 +2064,6 @@ static void VK_Stream_Pack( vkStreamVertex_t *out, const shaderCommands_t *input
 	}
 }
 
-void RB_VBO_DecalAttribProbe( int *enabled, int *size, int *stride, int *type,
-							  int *normalized, const void **pointer )
-{
-	if ( enabled ) { *enabled = 0; }
-	if ( size ) { *size = 0; }
-	if ( stride ) { *stride = 0; }
-	if ( type ) { *type = 0; }
-	if ( normalized ) { *normalized = 0; }
-	if ( pointer ) { *pointer = NULL; }
-}
 
 /* ---- the static arena's draw arm ----------------------------------------- */
 /* a batch whose every surface is already arena-resident draws its index blocks directly instead of re-packing the tess stream; the
@@ -2459,9 +2114,6 @@ static qboolean RB_VBO_StaticDrawBatch( const shaderCommands_t *input,
 
 	/* the census of the bytes this draw is about to read: a region that is not
 	   the surface's own names itself here, before the pixels are argued about */
-	if ( R_ProbeStatsOn() ) {
-		RB_VboStaticAuditBatch( -1 );
-	}
 
 	/* THE ARENA IS A PACK CACHE, NOT A SECOND DRAW PATH.  Whatever the two paths
 	   could disagree about -- which buffer is bound, what firstIndex means, how
@@ -2596,7 +2248,6 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 	int					base = 0, indexBase = 0;
 	int					tessSlots;
 	VkCommandBuffer		cmd;
-	long long			walkT0;
 
 	cmd = VK_Shade_CommandBuffer();
 
@@ -2611,23 +2262,16 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 		 && VK_VertexRing_StreamMatch( input->numVertexes, numIndexes,
 									   texcoord0, texcoord1, tcStrideFloats,
 									   colors, normals, &base, &indexBase ) ) {
-		walkT0 = VK_WALK_T0();
 		if ( !VK_Shade_Bind( cmd, input->shader ) ) {
-			VK_WALK_ADD( walkT0, VK_WP_BIND );
 			VK_VertexRing_Flushed();
 			return;
 		}
-		VK_WALK_ADD( walkT0, VK_WP_BIND );
-		VK_Shade_FootprintRow( input, stage, indexes, numIndexes );
-		walkT0 = VK_WALK_T0();
 		VK_Draw_BindRingOffset( cmd, base );
 		VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, 0 );
-		VK_WALK_ADD( walkT0, VK_WP_REC );
 		VK_VertexRing_Flushed();
 		return;
 	}
 
-	walkT0 = VK_WALK_T0();
 	/* Both halves are reserved before a byte is packed: a surface whose index
 	   half does not fit is skipped whole, and reserving the vertex half first
 	   left its packed bytes stranded in the ring on that path.  tessSlots is the
@@ -2638,7 +2282,6 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 	if ( indexes ) {
 		idx = VK_VertexRing_ReserveIndexes( numIndexes, &indexBase );
 		if ( !idx ) {
-			VK_WALK_ADD( walkT0, VK_WP_PACK );
 			VK_Guard_Hit( VK_GSITE_ALLOC, "tess index ring exhausted", VK_INCOMPLETE );
 			return;
 		}
@@ -2647,7 +2290,6 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 		if ( indexes ) {
 			VK_VertexRing_RollBack( 0, numIndexes );
 		}
-		VK_WALK_ADD( walkT0, VK_WP_PACK );
 		VK_Guard_Hit( VK_GSITE_ALLOC, "tess ring exhausted", VK_INCOMPLETE );
 		return;
 	}
@@ -2671,7 +2313,6 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 	if ( indexes ) {
 		memcpy( idx, indexes, numIndexes * sizeof( vkIndex_t ) );
 	}
-	VK_WALK_ADD( walkT0, VK_WP_PACK );
 
 	/* A recorded surface's packed bytes are exactly the arena's, so the bake
 	   copies them out of the ring it just filled and the next frame draws from
@@ -2692,9 +2333,6 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 		   compared with the surfaces the batch claims, so a pack that is not the
 		   surface's own is named on the frame it is drawn, not argued about on
 		   the frame the arena serves it from */
-		if ( R_ProbeStatsOn() ) {
-			RB_VboStaticAuditBatch( base );
-		}
 	}
 
 	if ( stage && colors == NULL
@@ -2707,20 +2345,14 @@ void RB_VBO_DrawTessStream( const shaderCommands_t *input,
 	}
 
 	cmd = VK_Shade_CommandBuffer();
-	walkT0 = VK_WALK_T0();
 	if ( !VK_Shade_Bind( cmd, input->shader ) ) {
 			/* nothing is bound: recording the draw anyway faults the driver, and VK_Shade_Bind's rows name the reason */
-		VK_WALK_ADD( walkT0, VK_WP_BIND );
 		VK_VertexRing_Flushed();
 		return;
 	}
-	VK_WALK_ADD( walkT0, VK_WP_BIND );
 
-	VK_Shade_FootprintRow( input, stage, indexes, numIndexes );
-	walkT0 = VK_WALK_T0();
 	VK_Draw_BindRingOffset( cmd, base );
 	VK_Draw_DrawIndexed( cmd, numIndexes, indexBase, 0 );
-	VK_WALK_ADD( walkT0, VK_WP_REC );
 	VK_VertexRing_Flushed();
 }
 
@@ -2796,11 +2428,19 @@ static int						vk_numShadeSets;
 
 /* The uniform ring: a Vulkan uniform buffer is read at submit time, so each draw takes the next slice and binds it by dynamic offset. */
 #define VK_SHADE_UBO_SLICES			4096
+/* A heavy frame (the Drull effect set) can ask for more stages than any fixed
+   ring holds.  Exhaustion used to drop every draw after the first refused one
+   for the rest of the frame -- the whole 3D view for as long as the effect ran.
+   The ring now grows from the previous frame's demand, so one busy frame costs
+   that frame's tail and the next frame is sized for the load. */
+#define VK_SHADE_UBO_SLICES_MAX		16384
 #define VK_SHADE_UBO_ALIGN_MAX		256
 /* every draw writes the uniforms its own permutation reads; the floor keeps the block's head alive */
 #define VK_UBO_HIGHWATER_FLOOR		256
 static int						vk_shadeUboSliceBytes = VK_UBO_SIZE_PAD;
 static int						vk_shadeUboNext[VK_FRAMES_IN_FLIGHT];
+static int						vk_shadeUboSlices[VK_FRAMES_IN_FLIGHT];
+static int						vk_shadeUboDemand[VK_FRAMES_IN_FLIGHT];
 static VkDeviceSize				vk_shadeUboLast[VK_FRAMES_IN_FLIGHT];
 static qboolean					vk_shadeUboLastValid[VK_FRAMES_IN_FLIGHT];
 /* The block as it was last published to this slot's ring: only the bytes
@@ -2944,13 +2584,10 @@ qboolean VK_Shade_Descriptors_Init( void )
 			return qfalse;
 		}
 		vk_shadeUboNext[i] = 0;
+		vk_shadeUboSlices[i] = VK_SHADE_UBO_SLICES;
+		vk_shadeUboDemand[i] = 0;
 	}
 
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:shade", "descriptors ready sets=%d ubo=%d slices=%d stride=%d ubocache=%d",
-					  VK_SHADE_SETS, VK_UBO_SIZE_PAD, VK_SHADE_UBO_SLICES, vk_shadeUboSliceBytes,
-					  uboSawCached ? 1 : 0 );
-	}
 	return qtrue;
 }
 
@@ -3020,6 +2657,124 @@ VkCommandBuffer VK_Shade_CommandBuffer( void )
 	return vk.commandBuffers[slot];
 }
 
+/* the one buffer binding a cached set carries; a ring grow moves it to the new
+   buffer, so every set the grown slot owns has to be rewritten before it binds */
+static void VK_Shade_UboRewrites( int slot )
+{
+	VkDescriptorBufferInfo		buffer;
+	VkWriteDescriptorSet		write;
+	int							at;
+
+	memset( &buffer, 0, sizeof( buffer ) );
+	buffer.buffer = vk_shadeUbo[slot];
+	buffer.offset = 0;
+	buffer.range  = VK_UBO_SIZE_PAD;
+
+	memset( &write, 0, sizeof( write ) );
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	write.dstBinding = 0;
+	write.descriptorCount = 1;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	write.pBufferInfo = &buffer;
+
+	for ( at = 0; at < vk_numShadeSets; at++ ) {
+		if ( !vk_shadeSetKeys[at].written || vk_shadeSetKeys[at].slot != slot ) {
+			continue;
+		}
+		write.dstSet = vk_shadeSets[at];
+		qvk.UpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
+	}
+}
+
+/* one ring per frame in flight, sized by the last frame that filled it.  The
+   slot's own commands have completed before its frame opens, so the old buffer
+   is retired only after every reader of it is done. */
+static qboolean VK_Shade_UboGrow( int slot )
+{
+	VkBufferCreateInfo		bufferInfo;
+	VkMemoryRequirements	reqs;
+	VkMemoryAllocateInfo	allocInfo;
+	VkBuffer				buffer = VK_NULL_HANDLE;
+	VkDeviceMemory			memory = VK_NULL_HANDLE;
+	void					*mapped = NULL;
+	VkResult				result;
+	int						memType;
+	int						slices;
+
+	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT || !vk_shadeUboMapped[slot] ) {
+		return qfalse;
+	}
+	slices = vk_shadeUboSlices[slot] * 2;
+	if ( slices > VK_SHADE_UBO_SLICES_MAX ) {
+		slices = VK_SHADE_UBO_SLICES_MAX;
+	}
+	if ( slices <= vk_shadeUboSlices[slot] ) {
+		return qfalse;
+	}
+
+	if ( qvk.DeviceWaitIdle ) {
+		qvk.DeviceWaitIdle( vk.device );
+	}
+
+	memset( &bufferInfo, 0, sizeof( bufferInfo ) );
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = ( VkDeviceSize )vk_shadeUboSliceBytes * slices;
+	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	result = qvk.CreateBuffer( vk.device, &bufferInfo, NULL, &buffer );
+	if ( result != VK_SUCCESS ) {
+		return qfalse;
+	}
+	qvk.GetBufferMemoryRequirements( vk.device, buffer, &reqs );
+
+	memType = VK_Memory_FindType( reqs.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+			| VK_MEMORY_PROPERTY_HOST_CACHED_BIT );
+	if ( memType < 0 ) {
+		memType = VK_Memory_FindType( reqs.memoryTypeBits,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+	}
+	if ( memType < 0 ) {
+		qvk.DestroyBuffer( vk.device, buffer, NULL );
+		return qfalse;
+	}
+
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = reqs.size;
+	allocInfo.memoryTypeIndex = ( uint32_t )memType;
+	result = qvk.AllocateMemory( vk.device, &allocInfo, NULL, &memory );
+	if ( result != VK_SUCCESS ) {
+		qvk.DestroyBuffer( vk.device, buffer, NULL );
+		return qfalse;
+	}
+	result = qvk.BindBufferMemory( vk.device, buffer, memory, 0 );
+	if ( result != VK_SUCCESS ) {
+		qvk.FreeMemory( vk.device, memory, NULL );
+		qvk.DestroyBuffer( vk.device, buffer, NULL );
+		return qfalse;
+	}
+	result = qvk.MapMemory( vk.device, memory, 0, bufferInfo.size, 0, &mapped );
+	if ( result != VK_SUCCESS ) {
+		qvk.FreeMemory( vk.device, memory, NULL );
+		qvk.DestroyBuffer( vk.device, buffer, NULL );
+		return qfalse;
+	}
+
+	/* the new ring is complete; only now retire the old one */
+	qvk.UnmapMemory( vk.device, vk_shadeUboMemory[slot] );
+	qvk.FreeMemory( vk.device, vk_shadeUboMemory[slot], NULL );
+	qvk.DestroyBuffer( vk.device, vk_shadeUbo[slot], NULL );
+
+	vk_shadeUbo[slot]       = buffer;
+	vk_shadeUboMemory[slot] = memory;
+	vk_shadeUboMapped[slot] = ( unsigned char * )mapped;
+	vk_shadeUboSlices[slot] = slices;
+	VK_Shade_UboRewrites( slot );
+
+	return qtrue;
+}
+
 /* copy the staging block into the next ring slice; -1 when the ring is out.  A draw whose staging block is byte-identical to the
    previous draw's slice shares it, which is also what lets the bind omit a repeated set: the test is the bytes, not the dirty flag. */
 static VkDeviceSize VK_Shade_WriteUBO( void )
@@ -3028,7 +2783,6 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 	int			slice;
 	VkDeviceSize offset = 0;
 
-	VK_WalkStat_Req( VK_ELIDE_UBO );
 	if ( slot < 0 || slot >= VK_FRAMES_IN_FLIGHT || !vk_shadeUboMapped[slot] ) {
 		return ( VkDeviceSize )-1;
 	}
@@ -3042,12 +2796,11 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 	if ( vk_shadeUboLastValid[slot]
 		 && ( !s_uboDirty
 			  || memcmp( s_ubo, vk_shadeUboShadow[slot], (size_t)VK_UBO_SIZE_PAD ) == 0 ) ) {
-		VK_WalkStat_Count( VK_ELIDE_UBO );
 		return vk_shadeUboLast[slot];
 	}
 
 	slice = vk_shadeUboNext[slot];
-	if ( slice >= VK_SHADE_UBO_SLICES ) {
+	if ( slice >= vk_shadeUboSlices[slot] ) {
 		static int s_rows;
 
 		if ( s_rows < 8 || ( s_rows % 600 ) == 0 ) {
@@ -3057,6 +2810,9 @@ static VkDeviceSize VK_Shade_WriteUBO( void )
 		return ( VkDeviceSize )-1;
 	}
 	vk_shadeUboNext[slot] = slice + 1;
+	if ( vk_shadeUboNext[slot] > vk_shadeUboDemand[slot] ) {
+		vk_shadeUboDemand[slot] = vk_shadeUboNext[slot];
+	}
 
 	offset = ( VkDeviceSize )slice * vk_shadeUboSliceBytes;
 	memcpy( vk_shadeUboMapped[slot] + offset, s_ubo, VK_UBO_SIZE_PAD );
@@ -3123,7 +2879,11 @@ static VkBlendFactor VK_Shade_DstBlendFactor( unsigned nibble )
 	}
 }
 
-void VK_Shade_PermRow( const char *shader, int family, unsigned defines );
+static void VK_Shade_BuildNote( const char *shader, unsigned stateBits, int family,
+								unsigned defines, long long usec );
+
+
+static qboolean	s_shadeDeferred;
 
 static void VK_Shade_BuildNote( const char *shader, unsigned stateBits, int family,
 								unsigned defines, long long usec );
@@ -3131,7 +2891,6 @@ static qboolean VK_Shade_WarmOn( void );
 static qboolean VK_Shade_DeferRegister( const char *shader, unsigned stateBits, int family,
 										unsigned defines, cullType_t cull, qboolean polygonOffset,
 										int topology );
-static qboolean	s_shadeDeferred;
 
 VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family,
 							  unsigned defines, cullType_t cull,
@@ -3193,7 +2952,6 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 			 && vk_shadePipelines[at].cull == cull
 			 && vk_shadePipelines[at].polygonOffset == polygonOffset
 			 && vk_shadePipelines[at].topology == topology ) {
-			VK_Shade_NotePerm( 0 );
 			return vk_shadePipelines[at].pipeline;
 		}
 	}
@@ -3202,11 +2960,8 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 		/* the mask names the permutation the offline build has to add, and the
 		   shader names where the content asked for it: a next gap is one boot
 		   from diagnosed instead of one census from inferred */
-		VK_Shade_NotePerm( 1 );
-		VK_Shade_PermRow( shader, family, defines );
 		return VK_NULL_HANDLE;
 	}
-	VK_Shade_NotePerm( 0 );
 	if ( vk_numShadePipelines >= VK_SHADE_PIPELINES ) {
 		VK_Guard_Hit( VK_GSITE_DESCRIPTOR, "shade pipeline table full", VK_INCOMPLETE );
 		return VK_NULL_HANDLE;
@@ -3363,7 +3118,6 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 	slot->polygonOffset = polygonOffset;
 	slot->topology = topology;
 	slot->used = qtrue;
-	VK_Life_NoteCreate( VK_LIFE_PIPELINE );
 	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
 		int *at = &vk_shadePipelineHash[( phash + probe ) & VK_SHADE_HASH_MASK];
 
@@ -3373,10 +3127,6 @@ VkPipeline VK_Shade_Pipeline( const char *shader, unsigned stateBits, int family
 		}
 	}
 	vk_numShadePipelines++;
-	if ( R_ProbeStatsOn() && ( vk_numShadePipelines & 15 ) == 1 ) {
-		VK_Guard_Row( "VK:shade", "pipelines=%d of %d sets=%d of %d",
-					  vk_numShadePipelines, VK_SHADE_PIPELINES, vk_numShadeSets, VK_SHADE_SETS );
-	}
 	return slot->pipeline;
 }
 
@@ -3515,30 +3265,7 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 
 			if ( ( !r_texgen3d || r_texgen3d->integer )
 				 && vk_shadeSetKeys[at].gen != VK_Draw_TextureGen() ) {
-#ifndef PROBE_BUILD_SILENT
-				unsigned	was = vk_shadeSetKeys[at].gen;
-#endif
-
 				rebound = VK_Shade_RewriteImages( at );
-
-#ifndef PROBE_BUILD_SILENT
-				if ( R_ProbeMarkOn() ) {
-					static int s_setGen3dRows;
-
-					s_setGen3dRows++;
-					if ( s_setGen3dRows <= 8 || ( s_setGen3dRows % 256 ) == 0 ) {
-						VK_Guard_Row( "VK:setgen",
-									  "cache=3d set=%d view0=0x%llx view1=0x%llx wave=0x%llx "
-									  "gen=%u now=%u rewritten=%d n=%d f=%d",
-									  at,
-									  (unsigned long long)(uintptr_t)key.view[0],
-									  (unsigned long long)(uintptr_t)key.view[1],
-									  (unsigned long long)(uintptr_t)key.view[2],
-									  was, VK_Draw_TextureGen(),
-									  rebound ? 1 : 0, s_setGen3dRows, RB_FrameCount() );
-					}
-				}
-#endif
 			}
 			s_lastSet = vk_shadeSets[at];
 			s_lastSetView[0] = key.view[0];
@@ -3622,26 +3349,12 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
 	vk_shadeSetKeys[found] = key;
 	vk_shadeSetKeys[found].written = qtrue;
 	vk_shadeSetKeys[found].gen = VK_Draw_TextureGen();
-	VK_Life_NoteCreate( VK_LIFE_SET );
 	for ( probe = 0; probe < VK_SHADE_HASH_SIZE; probe++ ) {
 		int *at = &vk_shadeSetHash[( shash + probe ) & VK_SHADE_HASH_MASK];
 
 		if ( !*at ) {
 			*at = found + 1;
 			break;
-		}
-	}
-	{
-		/* The working set, measured rather than guessed: a set is created once
-		   per distinct (frame slot, three views, three samplers) key and lives
-		   for the boot, so this count is the number the table has to hold.  It
-		   is what sized VK_SHADE_SETS and it is what a bigger world answers. */
-		static int s_rows;
-
-		s_rows++;
-		if ( R_ProbeStatsOn()
-			 && ( s_rows < 4 || ( vk_numShadeSets & 255 ) == 0 || vk_numShadeSets == VK_SHADE_SETS ) ) {
-			VK_Guard_Row( "VK:shade", "sets=%d of %d", vk_numShadeSets, VK_SHADE_SETS );
 		}
 	}
 	s_lastSet = set;
@@ -3661,277 +3374,15 @@ static VkDescriptorSet VK_Shade_Set( VkImageView v0, VkImageView v1, VkImageView
    This row reads the texel back from the exact view the set was written with, at
    the coordinate the batch's first vertex names, and prints it beside the image's
    centre texel and the colour stream: one armed boot names the answer. */
-#ifndef PROBE_BUILD_SILENT
-#define VK_BLKDRAW_ROWS_PER_FRAME 16
-#define VK_BLKDRAW_ROWS_TOTAL     1024
-/* The world's own budget: the total above was spent by the menu's 3D previews
-   inside the first 300 frames of every armed boot, so not one in-game world draw
-   ever had a draw-time texel witness -- the single row that says whether the
-   sampled texel is the image's own art or a hole.  World rows keep a separate
-   budget (behind the same per-frame cap) so the menu cannot starve them. */
-#define VK_BLKDRAW_WORLD_TOTAL    8192
-
-static void VK_Shade_BlkDrawRow( const shader_t *shader, const shaderStage_t *pStage,
-								 const shaderCommands_t *input, int stageIndex,
-								 const unsigned char *colors, const float *tc0, int tcStride )
-{
-	static int s_frame = -1;
-	static int s_frameRows;
-	static int s_totalRows;
-	static int s_worldRows;
-	qboolean		isWorld = ( backEnd.currentEntity == &tr.worldEntity ) ? qtrue : qfalse;
-	unsigned char	px[4], mid[4], blk[16];
-	unsigned char	px1[4], mid1[4], blk1[16];
-	int				blocked = 0, blocked1 = 0;
-	int				h0 = -1, h1 = -1;
-	int				tx = 0, ty = 0, w = 0, h = 0;
-	int				tx1 = 0, ty1 = 0, w1 = 0, h1v = 0;
-	int				ok0 = 0, ok1 = 0;
-	float			u = 0.0f, v = 0.0f;
-	const char		*tenant0 = "-", *tenant1 = "-";
-	const char		*verdict = "ok";
-	image_t			*t0, *t1;
-
-	if ( !R_ProbeMarkOn() || backEnd.in2D ) {
-		return;
-	}
-	if ( s_frame != RB_FrameCount() ) {
-		s_frame = RB_FrameCount();
-		s_frameRows = 0;
-	}
-	if ( s_frameRows >= VK_BLKDRAW_ROWS_PER_FRAME ) {
-		return;
-	}
-	if ( isWorld ) {
-		if ( s_worldRows >= VK_BLKDRAW_WORLD_TOTAL ) {
-			return;
-		}
-	} else if ( s_totalRows >= VK_BLKDRAW_ROWS_TOTAL ) {
-		return;
-	}
-	s_frameRows++;
-	if ( isWorld ) {
-		s_worldRows++;
-	} else {
-		s_totalRows++;
-	}
-
-	t0 = VK_Image_SlotTenant( s_shade.texNum[0] );
-	t1 = VK_Image_SlotTenant( s_shade.texNum[1] );
-
-	memset( px, 0, sizeof( px ) );
-	memset( mid, 0, sizeof( mid ) );
-	memset( px1, 0, sizeof( px1 ) );
-	memset( mid1, 0, sizeof( mid1 ) );
-	memset( blk, 0, sizeof( blk ) );
-	memset( blk1, 0, sizeof( blk1 ) );
-
-	if ( tc0 ) {
-		u = tc0[0];
-		v = tc0[tcStride > 1 ? 1 : 0];
-	}
-
-	/* unit 0 */
-	if ( s_lastSetView[0] != VK_NULL_HANDLE ) {
-		h0 = VK_Texture_HandleForView( s_lastSetView[0] );
-		if ( h0 >= 0 ) {
-			t0 = VK_Image_SlotTenant( h0 );
-			w = t0 ? t0->uploadWidth : 0;
-			h = t0 ? t0->uploadHeight : 0;
-			if ( w < 1 ) w = 1;
-			if ( h < 1 ) h = 1;
-			/* the coordinate folded the way the sampler folds it: this row names
-			   the texel a repeat sampler reads, which is what made the batch black */
-			tx = (int)( u * (float)w );
-			ty = (int)( v * (float)h );
-			tx %= w; if ( tx < 0 ) tx += w;
-			ty %= h; if ( ty < 0 ) ty += h;
-			ok0 = VK_Texture_ReadBlockView( s_lastSetView[0], tx, ty, px, blk, &blocked );
-			if ( !VK_Texture_ReadBlockView( s_lastSetView[0], w / 2, h / 2, mid, blk, &blocked ) ) {
-				memset( mid, 0, sizeof( mid ) );
-			}
-		}
-	}
-	/* unit 1: only an image the set could have written */
-	if ( s_lastSetView[1] != VK_NULL_HANDLE ) {
-		h1 = VK_Texture_HandleForView( s_lastSetView[1] );
-		if ( h1 >= 0 ) {
-			t1 = VK_Image_SlotTenant( h1 );
-			w1 = t1 ? t1->uploadWidth : 0;
-			h1v = t1 ? t1->uploadHeight : 0;
-			if ( w1 < 1 ) w1 = 1;
-			if ( h1v < 1 ) h1v = 1;
-			tx1 = (int)( u * (float)w1 );
-			ty1 = (int)( v * (float)h1v );
-			tx1 %= w1; if ( tx1 < 0 ) tx1 += w1;
-			ty1 %= h1v; if ( ty1 < 0 ) ty1 += h1v;
-			ok1 = VK_Texture_ReadBlockView( s_lastSetView[1], tx1, ty1, px1, blk1, &blocked1 );
-			if ( !VK_Texture_ReadBlockView( s_lastSetView[1], w1 / 2, h1v / 2, mid1, blk1, &blocked1 ) ) {
-				memset( mid1, 0, sizeof( mid1 ) );
-			}
-		}
-	}
-
-	tenant0 = ( t0 && t0->imgName[0] ) ? t0->imgName : ( t0 ? "(unnamed)" : "-" );
-	tenant1 = ( t1 && t1->imgName[0] ) ? t1->imgName : ( t1 ? "(unnamed)" : "-" );
-
-	/* the three verdicts, cheapest first: a view no slot owns, a sample that is
-	   black where the image is not, or a colour stream the shader multiplies by */
-	if ( s_lastSetView[0] != VK_NULL_HANDLE && h0 < 0 ) {
-		verdict = "view-not-tenant";
-	} else if ( s_lastSetView[1] != VK_NULL_HANDLE && h1 < 0 ) {
-		verdict = "view1-not-tenant";
-	} else if ( !ok0 ) {
-		verdict = "readback-failed";
-	} else if ( px[0] == 0 && px[1] == 0 && px[2] == 0
-				&& ( mid[0] || mid[1] || mid[2] ) ) {
-		verdict = "sample-at-tc-black";
-	} else if ( colors && colors[0] == 0 && colors[1] == 0 && colors[2] == 0 ) {
-		verdict = "colour-black";
-	} else if ( px[0] == 0 && px[1] == 0 && px[2] == 0 && mid[0] == 0 && mid[1] == 0 && mid[2] == 0 ) {
-		verdict = "art-black";
-	}
-
-	VK_Guard_Row( "VK:blkdraw",
-				  "f=%d shader='%s' stage=%d prog=0x%x sb=0x%x set=%d setindex=%d setgen=%u "
-				  "rebound=%d tmu0=handle=%d stamp=%d tenant='%s' view=0x%llx "
-				  "tc=(%.3f,%.3f)->texel(%d,%d) px=%d,%d,%d,%d mid=%d,%d,%d,%d "
-				  "tmu1=handle=%d tenant='%s' view=0x%llx read=%d px1=%d,%d,%d,%d mid1=%d,%d,%d,%d "
-				  "vcol=%d,%d,%d n=%d verdict=%s",
-				  RB_FrameCount(),
-				  ( shader && shader->name[0] ) ? shader->name : "?",
-				  stageIndex,
-				  s_shade.prog ? (unsigned)s_shade.prog->defines : 0u,
-				  s_shade.stateBits,
-				  ( s_lastSetIndex >= 0 ) ? s_lastSetIndex : -1,
-				  s_lastSetIndex,
-				  ( s_lastSetIndex >= 0 ) ? vk_shadeSetKeys[s_lastSetIndex].gen : 0u,
-				  s_lastSetRewrote ? 1 : 0,
-				  s_shade.texNum[0], t0 ? t0->imgStamp : -1, tenant0,
-				  (unsigned long long)(uintptr_t)s_lastSetView[0],
-				  u, v, tx, ty,
-				  (int)px[0], (int)px[1], (int)px[2], (int)px[3],
-				  (int)mid[0], (int)mid[1], (int)mid[2], (int)mid[3],
-				  s_shade.texNum[1], tenant1,
-				  (unsigned long long)(uintptr_t)s_lastSetView[1], ok1,
-				  (int)px1[0], (int)px1[1], (int)px1[2], (int)px1[3],
-				  (int)mid1[0], (int)mid1[1], (int)mid1[2], (int)mid1[3],
-				  colors ? (int)colors[0] : -1, colors ? (int)colors[1] : -1,
-				  colors ? (int)colors[2] : -1,
-				  input ? input->numVertexes : 0,
-				  verdict );
-	(void)pStage;
-}
-#else
-#define VK_Shade_BlkDrawRow( shader, pStage, input, stageIndex, colors, tc0, tcStride ) \
-	do { (void)( shader ); (void)( pStage ); (void)( input ); (void)( stageIndex ); \
-	     (void)( colors ); (void)( tc0 ); (void)( tcStride ); } while ( 0 )
-#endif
 
 /* The frame's draw census: retail's trace answers "is the 3D draw list alive" with a count per frame. */
-static int s_frameShadeDraws;   /* surface batches the walk completed */
 static int s_frameShadeDrops;   /* binds VK_Shade_Bind refused */
-static int s_frameImmDraws;     /* 2D batches */
-static int s_frameSurfCmds;     /* RC_DRAW_SURFS commands the walk performed */
-static int s_frameDrawSurfs;    /* draw surfs those commands carried */
-static int s_framePermReq;      /* permutation lookups */
-static int s_framePermMiss;     /* lookups with no SPIR-V for the key */
-static int s_framePermMissRows; /* [VK:perm] rows this frame */
 
 /* the shader clock, one row per animated shader per second: tess.shaderTime is what the stage's tcMod/gen advances on, floatTime is
    refdef.time*0.001 and start is the shaderStartTime the ANIMATE_ONCE arm subtracts.  ~1.0 per refdef second is right, ~1000 is a unit
    mix: the model and tempmodel paths write seconds while the sprite path writes a negated millisecond value. */
-void VK_Shade_NoteShaderTime( const char *kind )
-{
-	static const void	*s_seenShader[24];
-	static int			s_seenSecond[24];
-	static int			s_seenCount;
-	static int			s_rows;
-	const shader_t		*sh = tess.shader;
-	const shaderStage_t	*st;
-	int					second;
-	int					i;
-
-	if ( !sh ) {
-		return;
-	}
-
-	/* a quiet boot pays neither the dedup scan nor the row; past the cap the scan
-	   has no reader left anyway */
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	second = (int)( backEnd.refdef.time / 1000 );
-
-	/* Past the row cap the census prints nothing and the dedup scan below has no
-	   reader left, so the surface walk was paying a 24-entry search per surface
-	   for the rest of the boot.  The cap test leads instead; the first 600 rows
-	   are unchanged. */
-	if ( s_rows > 600 ) {
-		return;
-	}
-
-	for ( i = 0; i < s_seenCount; i++ ) {
-		if ( s_seenShader[i] == (const void *)sh && s_seenSecond[i] == second ) {
-			return;
-		}
-	}
-
-	if ( s_seenCount < (int)( sizeof( s_seenShader ) / sizeof( s_seenShader[0] ) ) ) {
-		s_seenShader[s_seenCount] = sh;
-		s_seenSecond[s_seenCount] = second;
-		s_seenCount++;
-	} else {
-		i                                = s_rows % (int)( sizeof( s_seenShader ) / sizeof( s_seenShader[0] ) );
-		s_seenShader[i]                  = sh;
-		s_seenSecond[i]                  = second;
-	}
-
-	st = tess.xstages[0];
-
-	s_rows++;
-	if ( s_rows > 600 ) {
-		return;
-	}
-
-	VK_Guard_Row( "VK:shadertime",
-				  "shader='%s' kind=%s animate_once=%d floatTime=%.3f start=%.3f "
-				  "tessShaderTime=%.3f passes=%d tcMod0=%d tcMod1=%d rgbGen=%d alphaGen=%d refdefTime=%d",
-				  sh->name,
-				  kind,
-				  ( sh->flags & BUNDLE_ANIMATE_ONCE ) ? 1 : 0,
-				  (double)backEnd.refdef.floatTime,
-				  (double)backEnd.shaderStartTime,
-				  (double)tess.shaderTime,
-				  sh->numUnfoggedPasses,
-				  st ? st->bundle[0].numTexMods : 0,
-				  st ? st->bundle[1].numTexMods : 0,
-				  st ? (int)st->rgbGen : -1,
-				  st ? (int)st->alphaGen : -1,
-				  backEnd.refdef.time );
-}
-
-void VK_Shade_NoteDraw( int shade )
-{
-	if ( shade ) {
-		s_frameShadeDraws++;
-	} else {
-		s_frameImmDraws++;
-	}
-}
 
 /* the frame the census is mid-way through: the harness reads it beside the readback */
-int VK_Shade_FrameBatches( void )
-{
-	return s_frameShadeDraws;
-}
-
-void VK_Shade_NoteSurfCmds( int surfs )
-{
-	s_frameSurfCmds++;
-	s_frameDrawSurfs += surfs;
-}
 
 /* The frame's stage census, per shader: retail's traced menu frame draws the
    dome as five surfaces of 3, 3, 3, 2 and 2 stages, thirteen draws */
@@ -3945,188 +3396,13 @@ typedef struct {
 	int         stages;
 } vkStageCensus_t;
 
-static vkStageCensus_t s_frameStages[VK_STAGE_CENSUS_MAX];
-static int             s_frameStageCount;
-static int             s_frameStageDropped;
-
-void VK_Shade_NoteStage( const shader_t *shader )
-{
-	int i;
-
-	for ( i = 0; i < s_frameStageCount; i++ ) {
-		if ( s_frameStages[i].name == shader->name ) {
-			s_frameStages[i].stages++;
-			return;
-		}
-	}
-	if ( s_frameStageCount < ( int )( sizeof( s_frameStages ) / sizeof( s_frameStages[0] ) ) ) {
-		s_frameStages[s_frameStageCount].name   = shader->name;
-		s_frameStages[s_frameStageCount].stages = 1;
-		s_frameStageCount++;
-	} else {
-		/* a census that silently stops taking names reads as a complete census:
-		   the frame that drew 64 distinct shaders rowed 22 and said nothing */
-		s_frameStageDropped++;
-	}
-}
-
-static int         s_worldFlatStages;
-static const char *s_worldFlatNames[VK_STAGE_CENSUS_MAX];
-static int         s_worldFlatCount;
-
-void VK_Shade_NoteFlat( const shader_t *shader )
-{
-	int i;
-
-	s_worldFlatStages++;
-	for ( i = 0; i < s_worldFlatCount; i++ ) {
-		if ( s_worldFlatNames[i] == shader->name ) {
-			return;
-		}
-	}
-	if ( s_worldFlatCount < VK_STAGE_CENSUS_MAX ) {
-		s_worldFlatNames[s_worldFlatCount++] = shader->name;
-	}
-}
-
-/* one row per flat frame: the mode, the stage count and the shaders it covered,
-   so a flat boot names what it touched instead of a blind colour swap */
-static void VK_Shade_FlatWorldRow( void )
-{
-	static char last[VK_STAGE_ROW_BYTES];
-	static int  refusalRows;
-	char        now[VK_STAGE_ROW_BYTES];
-	int         i, written;
-
-	/* a frame that opened world batches and flatted none names why: the gate
-	   inputs at the last stage draw that asked, the batches the walk opened by
-	   class and the calls the gate saw by class */
-	if ( R_ProbeStatsOn() && !s_worldFlatStages && s_worldFlatSeen
-		 && s_worldFlatBatches[0] > 0 && refusalRows < 4 ) {
-		refusalRows++;
-		VK_Guard_Row( "VK:worldflat",
-					  "refused cvar=%d value=%d in2d=%d lastentity=%c stages=0 "
-					  "batches=w:%d e:%d s:%d q:%d calls=w:%d e:%d s:%d q:%d",
-					  s_worldFlatCvar, s_worldFlatValue, s_worldFlatIn2D,
-					  s_worldFlatEntity,
-					  s_worldFlatBatches[0], s_worldFlatBatches[1],
-					  s_worldFlatBatches[2], s_worldFlatBatches[3],
-					  s_worldFlatCalls[0], s_worldFlatCalls[1],
-					  s_worldFlatCalls[2], s_worldFlatCalls[3] );
-	}
-
-	if ( !R_ProbeStatsOn() || !s_worldFlatStages ) {
-		return;
-	}
-
-	Q_strncpyz( now, va( "frame=%d mode=%d stages=%d names=", RB_FrameCount(),
-						 r_worldFlat ? r_worldFlat->integer : 0, s_worldFlatStages ),
-				sizeof( now ) );
-	written = (int)strlen( now );
-	for ( i = 0; i < s_worldFlatCount && written < (int)sizeof( now ) - 2; i++ ) {
-		int len = Com_sprintf( now + written, sizeof( now ) - written, "%s%s",
-							   i ? " " : "", s_worldFlatNames[i] ? s_worldFlatNames[i] : "?" );
-		if ( len < 0 ) {
-			break;
-		}
-		written += len;
-	}
-
-	if ( Q_stricmp( now, last ) ) {
-		VK_Guard_Row( "VK:worldflat", "%s", now );
-		Q_strncpyz( last, now, sizeof( last ) );
-	}
-}
-
-/* One row per shader the frame drew stages for, only while the set holds still.
-   An in-game frame draws far more than eight distinct shaders once the HUD and a
-   menu join the world, and a census that holds eight names the world and drops
-   the 2D draws a binding question is about.  The tail is counted, not printed. */
-static void VK_Shade_StageRows( void )
-{
-	static char last[VK_STAGE_ROW_BYTES];
-	char        now[VK_STAGE_ROW_BYTES];
-	int         i, written, omitted = 0;
-
-	if ( !s_frameStageCount || !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	/* the counts lead, so a row that has to stop short still names what it
-	   omitted; the buffer used to fill under Q_strcat and stop mid-entry with no
-	   marker at all */
-	Q_strncpyz( now, va( "frame shaders=%d dropped=%d names=",
-						 s_frameStageCount, s_frameStageDropped ),
-				sizeof( now ) );
-	written = (int)strlen( now );
-
-	for ( i = 0; i < s_frameStageCount; i++ ) {
-		char entry[VK_STAGE_ROW_BYTES / 4];
-		int  len;
-
-		Com_sprintf( entry, sizeof( entry ), "%s%s=%d", i ? " " : "",
-					 s_frameStages[i].name ? s_frameStages[i].name : "?",
-					 s_frameStages[i].stages );
-		len = (int)strlen( entry );
-		if ( written + len + 1 > (int)sizeof( now ) ) {
-			omitted = s_frameStageCount - i;
-			break;
-		}
-		memcpy( now + written, entry, (size_t)len + 1 );
-		written += len;
-	}
-
-	if ( omitted ) {
-		Q_strcat( now, sizeof( now ), va( " +%d more", omitted ) );
-	}
-
-	{
-		static int rows;
-
-		rows++;
-		if ( rows <= 3 || Q_stricmp( now, last ) ) {
-			VK_Guard_Row( "VK:stages", "%s", now );
-			Q_strncpyz( last, now, sizeof( last ) );
-		}
-	}
-}
-
-void VK_Shade_NotePerm( int miss )
-{
-	s_framePermReq++;
-	if ( miss ) {
-		s_framePermMiss++;
-	}
-}
-
 /* The census the boot answers: which permutation keys were requested and
    whether each resolved -- a miss is visible only if a row carries it, and the
    row names the surface that asked, so the offline census that has to gain the
    mask is read off the boot rather than inferred from the family byte. */
-void VK_Shade_PermRow( const char *shader, int family, unsigned defines )
-{
-	if ( s_framePermMissRows < 256 || ( s_framePermMissRows % 1000 ) == 0 ) {
-		VK_Guard_Row( "VK:perm", "shader='%s' key family=%d defines=0x%06x status=miss batches=%d",
-					  shader ? shader : "(null)", family, defines, s_frameShadeDraws );
-	}
-	s_framePermMissRows++;
-}
 
 /* a refused bind loses the batch's geometry -- pixels vanish without a hole in the frame -- and the refusals row only prints on a
    batch-count change, so this names the refusing table at the refusal, rate limited. */
-static void VK_Shade_DropRow( const char *why )
-{
-	static int	s_rows;
-
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-	s_rows++;
-	if ( s_rows <= 64 || ( s_rows % 600 ) == 0 ) {
-		ri.Printf( PRINT_ALL, "[VK:drop] why=%s frame=%d drops=%d n=%d\n",
-				   why ? why : "-", RB_FrameCount(), s_frameShadeDrops, s_rows );
-	}
-}
 
 /* The bind carries a stage's program and textures and answers whether a pipeline is bound. */
 qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
@@ -4148,7 +3424,6 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 
 	if ( !s_shade.prog ) {
 		s_frameShadeDrops++;
-		VK_Shade_DropRow( "no-program" );
 		return qfalse;
 	}
 	family = VK_Family_Of( s_shade.prog->defines );
@@ -4157,7 +3432,6 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 								  s_shade.cull, s_shade.polygonOffset, s_shade.topology );
 	if ( pipeline == VK_NULL_HANDLE ) {
 		s_frameShadeDrops++;
-		VK_Shade_DropRow( s_shadeDeferred ? "pipeline-deferred" : "pipeline-table" );
 		return qfalse;
 	}
 	if ( s_shade.texBound[0] ) {
@@ -4178,29 +3452,6 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	   sample, which is the surface that looks like its texture never loaded.
 	   Names the shader and, per unit, the image the walk asked for and the
 	   texture it held; the diag gate is what arms it. */
-	if ( R_ProbeStatsOn() && ( s_shade.prog->defines & VKP_LIGHTMAP ) ) {
-		static int s_worldBindRows;
-
-		if ( ( !s_shade.texBound[0] || v0 == VK_NULL_HANDLE
-			   || !s_shade.texBound[1] || v1 == VK_NULL_HANDLE )
-			 && ( s_worldBindRows < 32 || ( s_worldBindRows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:worldbind",
-						  "unbound shader='%s' b0='%s' tex0=%u bnd0=%d b1='%s' tex1=%u bnd1=%d "
-						  "arena=%d iter=%s f=%d",
-						  ( shader && shader->name[0] ) ? shader->name : "?",
-						  ( s_shade.texImage[0] && s_shade.texImage[0]->imgName[0] )
-						  ? s_shade.texImage[0]->imgName : "",
-						  ( s_shade.texImage[0] ) ? (unsigned)s_shade.texImage[0]->texnum : 0u,
-						  s_shade.texBound[0] ? 1 : 0,
-						  ( s_shade.texImage[1] && s_shade.texImage[1]->imgName[0] )
-						  ? s_shade.texImage[1]->imgName : "",
-						  ( s_shade.texImage[1] ) ? (unsigned)s_shade.texImage[1]->texnum : 0u,
-						  s_shade.texBound[1] ? 1 : 0,
-						  RB_VboStaticArenaBatch() ? 1 : 0,
-						  VK_Shade_IterName(), RB_FrameCount() );
-		}
-		s_worldBindRows++;
-	}
 	/* created with the first draw that reads it; the shaders fetch single texels, so the sampler is nearest */
 	VK_CreateWaveTable();
 	if ( s_waveTableHandle >= 0 ) {
@@ -4213,7 +3464,6 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 	set = VK_Shade_Set( v0, v1, wave, waveSampler );
 	if ( set == VK_NULL_HANDLE ) {
 		s_frameShadeDrops++;
-		VK_Shade_DropRow( "descriptor-set-table" );
 		return qfalse;
 	}
 	{
@@ -4221,7 +3471,6 @@ qboolean VK_Shade_Bind( VkCommandBuffer cmd, const shader_t *shader )
 
 		if ( slice == ( VkDeviceSize )-1 ) {
 			s_frameShadeDrops++;
-			VK_Shade_DropRow( "uniform-ring" );
 			return qfalse;
 		}
 		uboOffset = ( uint32_t )slice;
@@ -4297,15 +3546,6 @@ void vkColorMask( qboolean r, qboolean g, qboolean b, qboolean a )
 
 	/* The mask is a pipeline-key field, so a mask left off blacks out every
 	   later key that reads it; the row names the transition and who set it. */
-	if ( R_ProbeMarkOn() ) {
-		static int	s_rows;
-
-		s_rows++;
-		if ( s_rows <= 16 || ( s_rows % 600 ) == 0 ) {
-			VK_Guard_Row( "VK:cmask", "r=%d g=%d b=%d a=%d gen=%u f=%d",
-						  r, g, b, a, s_shadowStateGen, RB_FrameCount() );
-		}
-	}
 }
 
 void vkLineWidth( float width )
@@ -4397,72 +3637,6 @@ void VK_BindProgram( vkProgram_t *p )
 /* Clip one triangle to the volume the rasteriser actually clips against and
    return the survivors as NDC pairs.  Vulkan's z runs 0..w, not -w..w, and the
    w>=eps plane keeps the divide finite.  Returns the survivor count. */
-static int VK_Shade_ClipTri( const float pj[16], const float *const v[3], float ndc[16][2] )
-{
-	/* a,b,c,d with inside = a*x+b*y+c*z+d*w - bias >= 0 */
-	static const float planes[7][4] = {
-		{ -1, 0, 0, 1 }, { 1, 0, 0, 1 },
-		{ 0, -1, 0, 1 }, { 0, 1, 0, 1 },
-		{ 0, 0, -1, 1 }, { 0, 0, 1, 0 },
-		{ 0, 0, 0, 1 }
-	};
-	static const float bias[7] = { 0, 0, 0, 0, 0, 0, 1e-4f };
-	float poly[16][4];
-	float out[16][4];
-	int   n = 3, p, i, j;
-
-	for ( i = 0; i < 3; i++ ) {
-		const float *xyz = v[i];
-
-		poly[i][0] = pj[0] * xyz[0] + pj[4] * xyz[1] + pj[8]  * xyz[2] + pj[12];
-		poly[i][1] = pj[1] * xyz[0] + pj[5] * xyz[1] + pj[9]  * xyz[2] + pj[13];
-		poly[i][2] = pj[2] * xyz[0] + pj[6] * xyz[1] + pj[10] * xyz[2] + pj[14];
-		poly[i][3] = pj[3] * xyz[0] + pj[7] * xyz[1] + pj[11] * xyz[2] + pj[15];
-	}
-
-	for ( p = 0; p < 7 && n; p++ ) {
-		int m = 0;
-
-		for ( i = 0; i < n; i++ ) {
-			const float *a = poly[i];
-			const float *b = poly[( i + 1 ) % n];
-			float		 da = 0.0f, db = 0.0f, t;
-
-			for ( j = 0; j < 4; j++ ) {
-				da += planes[p][j] * a[j];
-				db += planes[p][j] * b[j];
-			}
-			da -= bias[p];
-			db -= bias[p];
-
-			if ( da >= 0.0f ) {
-				out[m][0] = a[0]; out[m][1] = a[1];
-				out[m][2] = a[2]; out[m][3] = a[3];
-				m++;
-			}
-			if ( ( da >= 0.0f ) != ( db >= 0.0f ) ) {
-				t = da / ( da - db );
-				for ( j = 0; j < 4; j++ ) {
-					out[m][j] = a[j] + t * ( b[j] - a[j] );
-				}
-				m++;
-			}
-		}
-
-		n = m;
-		if ( n > 14 ) {
-			n = 14;
-		}
-		memcpy( poly, out, (size_t)n * sizeof( poly[0] ) );
-	}
-
-	for ( i = 0; i < n; i++ ) {
-		ndc[i][0] = poly[i][0] / poly[i][3];
-		ndc[i][1] = poly[i][1] / poly[i][3];
-	}
-
-	return n;
-}
 
 /* a draw whose clipped footprint covers a frame is the wedge shape the raw vertex box never sees (corners outside the volume still
    cross the frame), so the triangles are clipped first and the survivor's screen area is measured; the row also carries the smallest
@@ -4475,290 +3649,9 @@ typedef struct {
 
 #define VK_FOOTPRINT_KEYS 64
 
-static vkFootprintKey_t	s_footprint[VK_FOOTPRINT_KEYS];
 
 /* The position of batch-local vertex vi: the tess arrays for a streamed batch,
    the static arena's staging copy for an arena batch whose generator never ran. */
-static const float *VK_Shade_FootprintPos( const shaderCommands_t *input, int vi )
-{
-	int		i;
-
-	if ( !s_fpItems ) {
-		return input->xyz[vi];
-	}
-
-	for ( i = 0; i < s_fpItemCount; i++ ) {
-		if ( vi >= s_fpItems[i].vertStart && vi < s_fpItems[i].vertStart + s_fpItems[i].numVerts ) {
-			return s_fpStageFloats
-				   + (size_t)( s_fpItems[i].first + vi - s_fpItems[i].vertStart )
-					 * ( VK_STREAM_STRIDE / (int)sizeof( float ) );
-		}
-	}
-
-	return NULL;
-}
-
-static void VK_Shade_FootprintRow( const shaderCommands_t *input, const void *stage,
-								   const vkIndex_t *indexes, int numIndexes )
-{
-	const float	*mv, *pj;
-	float		m[16];
-	float		cminx, cminy, cmaxx, cmaxy, clipArea;
-	float		bx0, by0, bx1, by1;
-	float		*sibMin = NULL, sibling = 0.0f;
-	qboolean	rawInside;
-	int			i, v, tris, big, oob, oobMax, maxTri, key = -1;
-	static int	s_rows;
-	static int	s_frame = -1;
-	static int	s_lastToken;
-
-	/* its own gate, default OFF: the row names a draw whose own vertices cover half the frame, a question the wedge already answered,
-	   and the census walks every triangle of every batch every frame for a row that reads zero.  `r_footprintProbe 1' arms it. */
-	{
-		static cvar_t	*s_fpCvar;
-
-		if ( !s_fpCvar ) {
-			s_fpCvar = ri.Cvar_Get( "r_footprintProbe", "0", 0 );
-		}
-		if ( !s_fpCvar || !s_fpCvar->integer ) {
-			return;
-		}
-	}
-
-	if ( !R_ProbeStatsOn() || !input || !indexes || numIndexes < 3 || !input->numVertexes ) {
-		return;
-	}
-
-	if ( s_frame != RB_FrameCount() ) {
-		s_frame = RB_FrameCount();
-		s_lastToken = 0;
-		memset( s_footprint, 0, sizeof( s_footprint ) );
-	}
-
-	/* one census a batch: the stage walk reaches this for every stage of a batch and they all carry the same triangles, so the
-	   per-triangle clip ran three to five times over the same geometry.  The batch token is the RB_BeginSurface identity the ring slice shares. */
-	if ( s_lastToken && s_lastToken == VK_VertexRing_SliceToken() ) {
-		return;
-	}
-	s_lastToken = VK_VertexRing_SliceToken();
-	for ( i = 0; i < VK_FOOTPRINT_KEYS; i++ ) {
-		if ( s_footprint[i].shader == input->shader ) {
-			key = i;
-			break;
-		}
-		if ( s_footprint[i].shader == NULL ) {
-			s_footprint[i].shader = input->shader;
-			s_footprint[i].frame = s_frame;
-			s_footprint[i].minArea = 1e30f;
-			key = i;
-			break;
-		}
-	}
-	if ( key >= 0 ) {
-		if ( s_footprint[key].frame != s_frame ) {
-			s_footprint[key].frame = s_frame;
-			s_footprint[key].minArea = 1e30f;
-		}
-		sibMin = &s_footprint[key].minArea;
-		sibling = *sibMin;
-	}
-
-	if ( backEnd.in2D && VK_Draw_CurrentOrtho() ) {
-		/* the 2D window's own ortho is the push constant the draw carries */
-		mv = NULL;
-		pj = VK_Draw_CurrentOrtho();
-	} else {
-		mv = RB_GetModelViewMatrix();
-		pj = RB_GetProjectionMatrix();
-	}
-	if ( !pj ) {
-		return;
-	}
-	if ( mv ) {
-		VK_Matrix_Multiply( m, pj, mv );
-		pj = m;
-	}
-
-	/* the census is the walk's dearest probe: it clipped every triangle of every batch once a frame (19,433 in the 800x600 window,
-	   2.7 ms of that row's 3.55 ms shade window) for a row that has read zero since the wedge closed.  Both print conditions -- an
-	   out-of-range index, or a batch whose raw corners are all inside the volume -- are decided without clipping, so the clip loop runs only for a batch that can still print. */
-	{
-		float	px0 = 2.0f, py0 = 2.0f, px1 = -2.0f, py1 = -2.0f;
-		int		poob = 0;
-
-		for ( i = 0; i + 2 < numIndexes; i += 3 ) {
-			for ( v = 0; v < 3; v++ ) {
-				int			vi = s_fpItems ? VK_Shade_FootprintIndex( i + v )
-											   : indexes[i + v];
-				const float	*p;
-				float		cw, nx, ny;
-
-				if ( vi < 0 || vi >= input->numVertexes ) {
-					poob = 1;
-					continue;
-				}
-				p = VK_Shade_FootprintPos( input, vi );
-				if ( !p ) {
-					poob = 1;
-					continue;
-				}
-				cw = pj[3] * p[0] + pj[7] * p[1] + pj[11] * p[2] + pj[15];
-				if ( cw < 1e-6f && cw > -1e-6f ) {
-					continue;
-				}
-				nx = ( pj[0] * p[0] + pj[4] * p[1] + pj[8]  * p[2] + pj[12] ) / cw;
-				ny = ( pj[1] * p[0] + pj[5] * p[1] + pj[9]  * p[2] + pj[13] ) / cw;
-				if ( nx < px0 ) px0 = nx;
-				if ( ny < py0 ) py0 = ny;
-				if ( nx > px1 ) px1 = nx;
-				if ( ny > py1 ) py1 = ny;
-			}
-		}
-
-		/* no row can print: the predicate below needs oob or rawInside, and the
-		   clip would only price a footprint nothing reports */
-		if ( !poob && !( px0 >= -1.0f && py0 >= -1.0f && px1 <= 1.0f && py1 <= 1.0f ) ) {
-			return;
-		}
-	}
-
-	cminx = cminy = 2.0f;
-	cmaxx = cmaxy = -2.0f;
-	bx0 = by0 = 2.0f;
-	bx1 = by1 = -2.0f;
-	big = 0;
-	oob = 0;
-	oobMax = -1;
-	maxTri = -1;
-	clipArea = 0.0f;
-	tris = numIndexes / 3;
-
-	for ( i = 0; i + 2 < numIndexes; i += 3 ) {
-		const float	*vert[3];
-		float		 ndc[16][2];
-		int			 n, k, inside = 0;
-
-		for ( v = 0; v < 3; v++ ) {
-			int vi = s_fpItems ? VK_Shade_FootprintIndex( i + v )
-							   : indexes[i + v];
-
-			if ( vi < 0 || vi >= input->numVertexes ) {
-				/* an index past the vertices this surface wrote is the
-				   uninitialised-region class on its own: the rasteriser reads
-				   whatever the ring slice held before it, and that is one
-				   primitive with arbitrary corners.  Name it whatever the box
-				   looks like. */
-				oob++;
-				if ( vi > oobMax ) {
-					oobMax = vi;
-				}
-				inside = -1;
-				continue;
-			}
-			vert[v] = VK_Shade_FootprintPos( input, vi );
-			if ( !vert[v] ) {
-				oob++;
-				if ( vi > oobMax ) {
-					oobMax = vi;
-				}
-				inside = -1;
-				continue;
-			}
-		}
-		if ( inside == -1 ) {
-			continue;
-		}
-
-		n = VK_Shade_ClipTri( pj, vert, ndc );
-
-		/* the raw box is the corners as projected, before the clip, and it keeps
-		   its own accumulator: a draw whose corners already sit on the unit cube
-		   is pre-projected vertex data, and only the unclipped corners can say
-		   so.  The clipped box is the polygon's own, and the two never mix. */
-		for ( v = 0; v < 3; v++ ) {
-			const float *xyz = vert[v];
-			float		 cw = pj[3] * xyz[0] + pj[7] * xyz[1] + pj[11] * xyz[2] + pj[15];
-			float		 nx, ny;
-
-			if ( cw < 1e-6f && cw > -1e-6f ) {
-				continue;
-			}
-			nx = ( pj[0] * xyz[0] + pj[4] * xyz[1] + pj[8]  * xyz[2] + pj[12] ) / cw;
-			ny = ( pj[1] * xyz[0] + pj[5] * xyz[1] + pj[9]  * xyz[2] + pj[13] ) / cw;
-			if ( nx < bx0 ) bx0 = nx;
-			if ( ny < by0 ) by0 = ny;
-			if ( nx > bx1 ) bx1 = nx;
-			if ( ny > by1 ) by1 = ny;
-		}
-
-		if ( n >= 3 ) {
-			/* NDC spans 2x2, so the frame is 4 units of area */
-			float cx0 = 2.0f, cy0 = 2.0f, cx1 = -2.0f, cy1 = -2.0f;
-			float area;
-
-			for ( k = 0; k < n; k++ ) {
-				if ( ndc[k][0] < cx0 ) cx0 = ndc[k][0];
-				if ( ndc[k][1] < cy0 ) cy0 = ndc[k][1];
-				if ( ndc[k][0] > cx1 ) cx1 = ndc[k][0];
-				if ( ndc[k][1] > cy1 ) cy1 = ndc[k][1];
-			}
-			area = ( cx1 - cx0 ) * ( cy1 - cy0 );
-
-			if ( area > clipArea ) {
-				clipArea = area;
-				maxTri = i / 3;
-			}
-			if ( cx0 < cminx ) cminx = cx0;
-			if ( cy0 < cminy ) cminy = cy0;
-			if ( cx1 > cmaxx ) cmaxx = cx1;
-			if ( cy1 > cmaxy ) cmaxy = cy1;
-			/* one primitive covering an eighth of the frame is no wall slice */
-			if ( area >= 0.5f ) {
-				big++;
-			}
-		}
-	}
-
-	/* the sibling floor is the smallest box this shader drew this frame, over
-	   the batches the census ran on, taken after the walk so a lone draw
-	   reports its own area as its own floor */
-	if ( sibMin && clipArea < *sibMin ) {
-		*sibMin = clipArea;
-		sibling = clipArea;
-	}
-
-	/* a wall the camera stands beside fills the frame after the clip, so area alone names ordinary geometry: a close wall covers about
-	   1.2 of the 4 units a frame holds, and half a frame is past that but well under a sheet across the frame. */
-	rawInside = ( bx0 >= -1.0f && by0 >= -1.0f && bx1 <= 1.0f && by1 <= 1.0f );
-
-	/* an index past the vertices, or a primitive already inside the volume whose
-	   clipped area covers half the frame */
-	if ( !oob && !( rawInside && clipArea >= 2.0f ) ) {
-		return;
-	}
-
-	s_rows++;
-	if ( s_rows > 64 && ( s_rows % 600 ) != 0 ) {
-		return;
-	}
-
-	VK_Guard_Row( "VK:bigdraw",
-				  "n=%d shader='%s' in2d=%d tris=%d verts=%d idx=%d clip=(%.3f,%.3f)-(%.3f,%.3f) "
-				  "raw=(%.3f,%.3f)-(%.3f,%.3f) area=%.3f sib=%.3f tri=%d bigtris=%d oobidx=%d oobmax=%d "
-				  "dw=%d sb=0x%x prog=0x%06x stage=%d ent=%d rt=%d model='%s'",
-				  s_rows, input->shader ? input->shader->name : "(null)",
-				  backEnd.in2D ? 1 : 0, tris, input->numVertexes, numIndexes,
-				  cminx, cminy, cmaxx, cmaxy, bx0, by0, bx1, by1,
-				  clipArea, sibling, maxTri, big, oob, oobMax,
-				  s_shade.depthWrite ? 1 : 0,
-				  (unsigned)s_shade.stateBits,
-				  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
-				  stage ? 1 : 0,
-				  backEnd.currentEntityNum,
-				  backEnd.currentEntity ? backEnd.currentEntity->e.reType : -1,
-				  ( backEnd.currentEntity && backEnd.currentEntity->e.hModel )
-					  ? RE_GetModelName( backEnd.currentEntity->e.hModel ) : "(none)" );
-}
 
 /* the portal clip plane, uploaded with the view uniforms */
 void VK_UploadClipPlane( vkProgram_t *p )
@@ -4778,10 +3671,6 @@ void VK_RefreshClipPlane( void )
 	VK_UploadClipPlane( s_shade.prog );
 }
 
-void VK_PixelProbe( const char *src, int x, int y, int w, int h )
-{
-	(void)src; (void)x; (void)y; (void)w; (void)h;
-}
 
 void VK_GlErrAt( const char *what )
 {
@@ -4833,10 +3722,6 @@ void VK_CreateWaveTable( void )
 	}
 
 	s_waveTableHandle = handle;
-	if ( R_ProbeStatsOn() ) {
-		VK_Guard_Row( "VK:wave", "status=created handle=%d w=%d h=5 bytes=%d",
-					  handle, (int)FUNCTABLE_SIZE, (int)sizeof( lut ) );
-	}
 }
 
 void VK_DestroyWaveTable( void )
@@ -4872,105 +3757,31 @@ vkProgram_t *VK_StageProgram( const shaderStage_t *pStage, const shader_t *shade
 /* ---- the world stage-set census ------------------------------------------ */
 
 /* the loss this backend hunts is silent by construction -- a stage never submitted, or submitted with a foreign texture, still draws -- so the census records the
-   EXPECTED set beside the SUBMITTED one and the difference is a row.  Gate: qa_probe (R_ProbeStatsOn). */
+   EXPECTED set beside the SUBMITTED one and the difference is a row. */
 
 /* WORLD_SET_CENSUS_BEGIN */
 
 /* a bundle's image set is image[0] plus the animMap chain: only animMap advances numImageAnimations, so a single-image bundle carries 0, and a membership test
    bounded by it called the stage's own image foreign on every world and menu stage.  One name can also resolve to two image_t (picmip or wrap); the art is still the stage's own. */
-static qboolean VK_StageImageOwned( const textureBundle_t *bundle, const image_t *image )
-{
-	int k, n;
-
-	if ( !bundle || !image || !bundle->image[0] ) {
-		return qfalse;
-	}
-
-	n = bundle->numImageAnimations;
-	if ( n < 1 ) {
-		n = 1;			/* image[0] is always a member of the set */
-	}
-	if ( n > MAX_IMAGE_ANIMATIONS ) {
-		n = MAX_IMAGE_ANIMATIONS;
-	}
-
-	for ( k = 0; k < n; k++ ) {
-		const image_t	*cand = bundle->image[k];
-
-		if ( !cand ) {
-			continue;
-		}
-		if ( cand == image ) {
-			return qtrue;
-		}
-		if ( cand->imgName[0] && image->imgName[0]
-			 && !strcmp( cand->imgName, image->imgName ) ) {
-			return qtrue;
-		}
-	}
-
-	return qfalse;
-}
 
 /* Whether the stage expects anything on a unit at all: VK_DrawStage binds a
    unit only when its bundle holds an image, and VK_TexEnvForStage selects the
    second-sampler arm under the same condition.  A unit the stage never binds
    must not be judged -- s_shade.texImage[] still holds the previous stage's
    image, which is what the `unit=1 wanted=''` rows named. */
-static qboolean VK_WorldsetUnitExpected( const textureBundle_t *bundle )
-{
-	return ( bundle && bundle->image[0] ) ? qtrue : qfalse;
-}
 
 /* the census's sampling cadence, in frames: a batch that disagrees always emits, an agreeing one emits while the table fills and then
    once every VK_WORLDSET_SAMPLE_FRAMES frames.  The batch-counted cadence this replaced fired once per 600 batches and bounded nothing. */
 #define VK_WORLDSET_SAMPLE_FRAMES	120
 #define VK_WORLDSET_FIRST_ROWS		24
 
-static qboolean VK_WorldsetSampleDue( int rows, int frame, int lastSampleFrame )
-{
-	if ( rows <= VK_WORLDSET_FIRST_ROWS ) {
-		return qtrue;
-	}
-	if ( lastSampleFrame == frame ) {
-		return qfalse;		/* at most one agreeing row per frame */
-	}
-	return ( frame % VK_WORLDSET_SAMPLE_FRAMES ) == 0 ? qtrue : qfalse;
-}
-
 /* WORLD_SET_CENSUS_END */
-
-static int				s_batchStagesDrawn;
-static const shader_t	*s_batchShader;
-static int				s_batchBindMiss;
-static int				s_batchEntity;		/* 'w' world, 'e' entity, 's' static model */
-static int				s_batchSurfs;		/* draw surfs this batch covered */
-/* the bind evidence: per submitted pass, the image each witnessed unit really
-   holds, capped so a row stays a row */
-static char				s_batchBinds[200];
-static int				s_batchBindsLen;
-/* the light term this batch actually carried: -1 no isLightmap stage, 1 a real
-   lightmap array, 0 the white substitution the LIGHTMAP_BY_VERTEX / fade variants
-   build in (tr_shader.c 0x3D598) -- the whole "fully lit, no shadow" class */
-static int				s_batchLmBound;
-static int				s_batchDlightIdx;	/* dlight indexes ProjectDlightTexture submitted */
-static int				s_batchDlightBits;	/* the mask the batch's surfaces carried */
 
 /* The entity the batch belongs to, as far as it is knowable when the batch
    opens.  backEnd.currentEntity is updated by the draw-surf walk AFTER
    RB_BeginSurface opens the batch (tr_backend.c:1495 against :1517), so a
    batch that begins on an entity change carries the previous surface's
    entity: the class is recorded and the census is not gated on it. */
-static int VK_Shade_BatchEntityClass( void )
-{
-	if ( backEnd.currentEntity == &tr.worldEntity ) {
-		return 'w';
-	}
-	if ( backEnd.currentEntity ) {
-		return 'e';
-	}
-	return backEnd.currentStaticModel ? 's' : '?';
-}
 
 /* the geometry the arena arm actually submitted for this batch */
 void RB_VboStaticLastRun( int *modeOut, int *numIdxOut );
@@ -4978,467 +3789,36 @@ void RB_VboStaticLastRun( int *modeOut, int *numIdxOut );
 /* One draw surf charged to the batch now open: an indexed draw can cover many
    same-shader surfs, so the draw count alone does not say whether the walk's
    surfaces reached the stream. */
-void VK_Shade_NoteBatchSurf( void )
-{
-	s_batchSurfs++;
-}
-
-void VK_Shade_BatchBegin( const shader_t *shader )
-{
-	s_batchStagesDrawn  = 0;
-	s_batchBindMiss     = 0;
-	s_batchUnitDisarmed = 0;
-	s_batchBindsLen     = 0;
-	s_batchBinds[0]    = 0;
-	s_batchSurfs       = 0;
-	s_batchDlightIdx   = backEnd.pc.c_dlightIndexes;
-	s_batchDlightBits  = 0;
-	s_batchShader      = shader;
-	s_batchEntity      = VK_Shade_BatchEntityClass();
-	switch ( s_batchEntity ) {
-	case 'w': s_worldFlatBatches[0]++; break;
-	case 'e': s_worldFlatBatches[1]++; break;
-	case 's': s_worldFlatBatches[2]++; break;
-	default:  s_worldFlatBatches[3]++; break;
-	}
-	/* every 3D batch is censused, whichever entity last passed through: gating on `backEnd.currentEntity == &tr.worldEntity' here read
-	   the PREVIOUS surface's entity, so every batch opening on an entity->world transition was dropped and entity, static-model and sky
-	   batches never reached the census.  The row names the class instead. */
-	s_batchCensus      = ( R_ProbeMarkOn() && !backEnd.in2D && shader
-						   && shader != tr.shadowShader ) ? qtrue : qfalse;
-}
 
 /* the two fast iterators draw their one pass themselves instead of through VK_DrawStage, so the census must be told the pass was
    submitted; an iterator that calls both for one pass counts two, which is what the 296 `expected=1 drawn=2' rows named. */
-void VK_Shade_NoteSubmitted( int stages )
-{
-	if ( s_batchCensus ) {
-		s_batchStagesDrawn += stages;
-	}
-}
 
 /* The engine's own images a stage may legitimately bind in place of the one it
    resolved: the white substitutions RDF_FULLBRIGHT and r_lightmap ask for, a
    video map's scratch, and the lightmap arrays a BSP's shaders point into. */
-static qboolean VK_StageBindKnown( const image_t *image )
-{
-	int i;
-
-	if ( !image ) {
-		return qfalse;
-	}
-	if ( image == tr.whiteImage || image == tr.defaultImage || image == tr.scratchImage
-		 || image == tr.identityLightImage || image == tr.fogImage ) {
-		return qtrue;
-	}
-	for ( i = 0; i < MAX_LIGHTMAPS; i++ ) {
-		if ( image == tr.lightmaps[i] || image == tr.baseLightmaps[i] ) {
-			return qtrue;
-		}
-	}
-	return qfalse;
-}
 
 /* One unit's bind, named if it is not the one the stage asked for.  A unit the
    stage does not bind is not witnessed: VK_DrawStage binds unit 1 only when
    bundle[1] holds an image, and VK_TexEnvForStage selects the second-sampler
    arm under the same condition, so a stale s_shade.texImage[1] left by an
    earlier bind is not a substitution and must not be named as one. */
-void VK_Shade_BindWitness( const shaderStage_t *pStage, int unit, qboolean substituted )
-{
-	const textureBundle_t	*bundle;
-	image_t					*bound;
-	int						now, frame;
-
-	if ( !s_batchCensus || !pStage ) {
-		return;
-	}
-
-	bundle = &pStage->bundle[unit];
-	if ( !VK_WorldsetUnitExpected( bundle ) ) {
-		return;			/* nothing is expected on this unit */
-	}
-
-	bound = s_shade.texImage[unit];
-
-	/* the row's other half: what this unit actually drew with, substituted or
-	   not, so an agreeing batch carries the bound image per unit too */
-	if ( s_batchBindsLen < (int)sizeof( s_batchBinds ) - 40 ) {
-		int	n = snprintf( s_batchBinds + s_batchBindsLen,
-							 sizeof( s_batchBinds ) - (size_t)s_batchBindsLen,
-							 "%su%d:%s", s_batchBindsLen ? "," : "", unit,
-							 bound ? ( bound->imgName[0] ? bound->imgName : "(unnamed)" )
-								   : "(none)" );
-		if ( n > 0 ) {
-			s_batchBindsLen += n;
-		}
-	}
-
-	if ( substituted ) {
-		return;			/* the fullbright / r_lightmap white arm, by design */
-	}
-	if ( !bound ) {
-		s_batchBindMiss++;
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=no-image shader='%s' ent=%c lmidx=%d unit=%d expected='%s'",
-					  s_batchShader ? s_batchShader->name : "?", s_batchEntity,
-					  s_batchShader ? (int)s_batchShader->lightmapIndex : -1,
-					  unit, bundle->image[0]->imgName );
-		return;
-	}
-
-	/* A bind the engine resolves to one of its own images is never a miss, and
-	   that test has to come before the handle test: `*default` is the first
-	   texture created, so its handle IS 0, and a test that reads 0 as absent
-	   reported 420 batches a frame as sampling nothing when they were sampling
-	   the engine's own missing-texture image.  What convicts is a null view. */
-	if ( VK_StageBindKnown( bound ) ) {
-		return;
-	}
-
-	if ( VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE ) {
-		s_batchBindMiss++;
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=no-view shader='%s' ent=%c lmidx=%d unit=%d img='%s' tex=%d",
-					  s_batchShader ? s_batchShader->name : "?", s_batchEntity,
-					  s_batchShader ? (int)s_batchShader->lightmapIndex : -1,
-					  unit, bound->imgName, (int)bound->texnum );
-		return;
-	}
-
-	/* a recycled OBJECT owns its slot legally, so name and tenant agree; an anim bundle hands frame N's image to the bind, so the fold over every frame the parse resolved is what says the art moved -- frame 0's stamp alone named 58k rows of build 0.4.0 recycles that never happened */
-	now = R_Bundle_StampFold( bundle, bound, &frame );
-	if ( now != bundle->imgAnimStamp ) {
-		s_batchBindMiss++;
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=stale-image shader='%s' ent=%c lmidx=%d unit=%d f=%d "
-					  "parsed=%d now=%d fr=%d img='%s' tex=%d",
-					  s_batchShader ? s_batchShader->name : "?", s_batchEntity,
-					  s_batchShader ? (int)s_batchShader->lightmapIndex : -1,
-					  unit, RB_FrameCount(),
-					  bundle->imgAnimStamp, now, frame,
-					  ( bound->imgName[0] ) ? bound->imgName : "(unnamed)",
-					  (int)bound->texnum );
-		return;
-	}
-
-	if ( !VK_StageImageOwned( bundle, bound ) ) {
-		s_batchBindMiss++;
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=foreign-image shader='%s' ent=%c lmidx=%d unit=%d wanted='%s' bound='%s' tex=%d",
-					  s_batchShader ? s_batchShader->name : "?", s_batchEntity,
-					  s_batchShader ? (int)s_batchShader->lightmapIndex : -1,
-					  unit,
-					  ( bundle->image[0] && bundle->image[0]->imgName[0] )
-						  ? bundle->image[0]->imgName : "",
-					  bound->imgName, (int)bound->texnum );
-	}
-}
 
 /* the dlight term's bind witness: the one pass that binds outside VK_DrawStage, so the worldset census never names what it sampled.
    Retail rebinds its dlight texture before every dlight draw (ProjectDlightTexture @0x34F60), so what convicts is a latch holding
    non-dlight art, a slot another image_t took, or a view the slot no longer owns. */
-void VK_Shade_DlightWitness( const dlight_t *dl, int light, int numIndexes )
-{
-	static int			s_rows;
-	static int			s_sampleFrame = -1;
-	static int			s_anomRows;
-	const image_t		*asked = s_shade.texImage[0];
-	const image_t		*bound;
-	const image_t		*tenant;
-	int					frame;
-
-	if ( !R_ProbeMarkOn() || !dl ) {
-		return;
-	}
-
-	frame = RB_FrameCount();
-
-	/* texImage survives a disarmed bind, so the descriptor's art is read only
-	   while the unit is still armed; the disarmed case is its own anomaly */
-	bound = s_shade.texBound[0] ? s_shade.texImage[0] : NULL;
-	tenant = ( bound && bound->texnum < VK_MAX_TEXTURES )
-			 ? VK_Image_SlotTenant( (int)bound->texnum ) : NULL;
-
-	if ( !bound || bound != tr.dlightImage
-		 || ( tenant && tenant != tr.dlightImage )
-		 || VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE ) {
-		static const char	*why[] = { "disarmed", "foreign", "tenant", "no-view" };
-		int					w = !bound ? 0
-							   : bound != tr.dlightImage ? 1
-							   : ( tenant && tenant != tr.dlightImage ) ? 2 : 3;
-
-		s_anomRows++;
-		if ( s_anomRows <= 8 || ( s_anomRows % 600 ) == 0 ) {
-			VK_Guard_Row( "VK:dlight",
-						  "why=%s f=%d l=%d asked='%s' bound='%s' tex=%d "
-						  "tenant='%s' dcol=%.3f,%.3f,%.3f rad=%.1f type=%d n=%d idx=%d",
-						  why[w], frame, light,
-						  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
-						  ( bound && bound->imgName[0] ) ? bound->imgName : "(none)",
-						  bound ? (int)bound->texnum : -1,
-						  ( tenant && tenant->imgName[0] ) ? tenant->imgName : "-",
-						  dl->color[0], dl->color[1], dl->color[2],
-						  dl->radius, (int)dl->type, backEnd.refdef.num_dlights,
-						  numIndexes );
-		}
-		return;
-	}
-
-	if ( frame == s_sampleFrame ) {
-		return;
-	}
-	s_sampleFrame = frame;
-	s_rows++;
-	if ( s_rows <= 8 || ( s_rows % 30 ) == 0 ) {
-		VK_Guard_Row( "VK:dlight",
-					  "f=%d img='%s' stamp=%d tex=%d tenant='%s' upto=%dx%d "
-					  "l=%d n=%d idx=%d dcol=%.3f,%.3f,%.3f rad=%.1f type=%d "
-					  "prog=0x%x state=0x%x",
-					  frame,
-					  ( bound->imgName[0] ) ? bound->imgName : "(unnamed)",
-					  bound->imgStamp, (int)bound->texnum,
-					  ( tenant && tenant->imgName[0] ) ? tenant->imgName : "-",
-					  bound->uploadWidth, bound->uploadHeight,
-					  light, backEnd.refdef.num_dlights, numIndexes,
-					  dl->color[0], dl->color[1], dl->color[2],
-					  dl->radius, (int)dl->type,
-					  s_shade.prog ? (unsigned)s_shade.prog->defines : 0u,
-					  s_shade.stateBits );
-	}
-}
 
 /* The expected pass list: what the iterator in force would take, by its own
    rules.  The detail names each stage, so a census that disagrees names which
    stage it lost rather than only how many. */
-static int VK_Shade_ExpectedStages( char *detail, int detailBytes )
-{
-	int stage, n = 0, written = 0;
-
-	s_batchLmBound = -1;
-
-	if ( detail && detailBytes > 0 ) {
-		detail[0] = 0;
-	}
-
-	/* RB_StageIteratorSky returns before any stage when r_fastsky is on; the
-	   outerbox it would otherwise draw sits outside the stage walk too. */
-	if ( tess.currentStageIteratorFunc == RB_StageIteratorSky && r_fastsky->integer ) {
-		return 0;
-	}
-
-	for ( stage = 0; stage < MAX_SHADER_STAGES; stage++ ) {
-		const shaderStage_t	*pStage = tess.xstages[stage];
-
-		if ( !pStage ) {
-			break;
-		}
-		if ( pStage->alphaGen == AGEN_SKYALPHA && backEnd.refdef.sky_alpha < 0.01 ) {
-			continue;
-		}
-		if ( pStage->alphaGen == AGEN_ONE_MINUS_SKYALPHA && backEnd.refdef.sky_alpha > 0.99 ) {
-			continue;
-		}
-		n++;
-
-		if ( detail && written < detailBytes ) {
-			char	entry[208];
-			int		len;
-
-			Com_sprintf( entry, sizeof( entry ),
-						 "%s%d:%d/%d:0x%x:tc%d,%d:'%s','%s'%s",
-						 written ? " " : "", n - 1,
-						 (int)pStage->rgbGen, (int)pStage->alphaGen,
-						 (unsigned)pStage->stateBits,
-						 (int)pStage->bundle[0].tcGen, (int)pStage->bundle[1].tcGen,
-						 ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
-							 ? pStage->bundle[0].image[0]->imgName : "",
-						 ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
-							 ? pStage->bundle[1].image[0]->imgName : "",
-						 ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap )
-							 ? ":lm" : "" );
-			len = (int)strlen( entry );
-			if ( written + len + 1 > detailBytes ) {
-				break;
-			}
-			memcpy( detail + written, entry, (size_t)len + 1 );
-			written += len;
-		}
-
-			if ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) {
-			const image_t	*lm = pStage->bundle[0].isLightmap ? pStage->bundle[0].image[0]
-												   : pStage->bundle[1].image[0];
-
-			if ( s_batchLmBound == -1 ) {
-				s_batchLmBound = VK_StageBindKnown( lm ) ? 1 : 0;
-			} else if ( !VK_StageBindKnown( lm ) ) {
-				s_batchLmBound = 0;
-			}
-		}
-
-		if ( r_lightmap->integer
-			 && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap
-				  || pStage->bundle[0].vertexLightmap ) ) {
-			break;
-		}
-	}
-
-	return n;
-}
 
 /* The batch is closed: expected against drawn, plus the residency of every
    image either set names.  A disagreement always emits; an agreeing batch
    rides a bounded frame cadence. */
-void VK_Shade_BatchEnd( void )
-{
-	static int	s_rows;
-	static int	s_sampleFrame;
-	char		detail[1024];
-	int			expected, srcMode = 0, srcIdx = 0, frame;
-
-	if ( !s_batchCensus || !s_batchShader ) {
-		return;
-	}
-
-	expected = VK_Shade_ExpectedStages( detail, (int)sizeof( detail ) );
-	RB_VboStaticLastRun( &srcMode, &srcIdx );
-	frame = RB_FrameCount();
-	s_batchDlightBits = tess.dlightBits;
-	s_batchDlightIdx  = backEnd.pc.c_dlightIndexes - s_batchDlightIdx;
-
-	s_rows++;
-	if ( s_batchUnitDisarmed ) {
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=unit-disarmed shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
-					  "disarmed=%d bindmiss=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
-					  "src=%d srcidx=%d binds=[%s] stages=%s",
-					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
-					  expected, s_batchStagesDrawn, s_batchUnitDisarmed, s_batchBindMiss,
-					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
-					  tess.entityFade, srcMode, srcIdx,
-					  s_batchBindsLen ? s_batchBinds : "none", detail );
-	} else if ( s_batchStagesDrawn != expected ) {
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=stage-count shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
-					  "bindmiss=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
-					  "src=%d srcidx=%d binds=[%s] stages=%s",
-					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
-					  expected, s_batchStagesDrawn, s_batchBindMiss,
-					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
-					  tess.entityFade, srcMode, srcIdx,
-					  s_batchBindsLen ? s_batchBinds : "none", detail );
-	} else if ( s_batchBindMiss ) {
-		VK_Guard_Row( "VK:worldset",
-					  "MISS why=bind-image shader='%s' ent=%c lmidx=%d surfs=%d expected=%d drawn=%d "
-					  "bindmiss=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
-					  "src=%d srcidx=%d binds=[%s] stages=%s",
-					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
-					  expected, s_batchStagesDrawn, s_batchBindMiss,
-					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
-					  tess.entityFade, srcMode, srcIdx,
-					  s_batchBindsLen ? s_batchBinds : "none", detail );
-	} else if ( VK_WorldsetSampleDue( s_rows, frame, s_sampleFrame ) ) {
-		s_sampleFrame = frame;
-		VK_Guard_Row( "VK:worldset",
-					  "shader='%s' ent=%c lmidx=%d surfs=%d rlm=%d lmf=%d dlb=%d dli=%d fad=%.3f "
-					  "expected=%d drawn=%d bindmiss=0 "
-					  "src=%d srcidx=%d binds=[%s] stages=%s",
-					  s_batchShader->name, s_batchEntity, (int)s_batchShader->lightmapIndex, s_batchSurfs,
-					  r_lightmap->integer, s_batchLmBound, s_batchDlightBits, s_batchDlightIdx,
-					  tess.entityFade,
-					  expected, s_batchStagesDrawn, srcMode, srcIdx,
-					  s_batchBindsLen ? s_batchBinds : "none", detail );
-	}
-}
 
 /* The colour stream the pack reads, bounded per channel; mark-gated.  The same
    row names the batch's own feed: srccolor is the base-lighting work buffer the
    group feed binds, dv is the file's own bytes, feed is the handler the batch is
    in -- an arena batch drew the arena's copy, not this array. */
-static void VK_Shade_ColorStreamRow( const shaderCommands_t *input,
-									 const unsigned char *colors, const shader_t *shader,
-									 const shaderStage_t *pStage )
-{
-	static const char *const feedName[] = { "none", "grid", "tris", "arena", "face",
-	                                       "bad", "bad", "bad" };
-	static int s_rows;
-	int rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0, aMin = 255, aMax = 0;
-	int sc[3] = { -1, -1, -1 }, dv[4] = { -1, -1, -1, -1 };
-	int feedKind = 0;
-	const void *feed;
-	int v;
-
-	/* The row walks every vertex of the draw to bound the colour stream, and it
-	   was doing that on every draw whether the gate was armed or not: the scan
-	   is the payload, so it belongs behind the same gate as the row. */
-	if ( !R_ProbeMarkOn() ) {
-		return;
-	}
-
-	if ( !colors || input->numVertexes <= 0 ) {
-		return;
-	}
-	for ( v = 0; v < input->numVertexes; v++ ) {
-		const unsigned char *c = colors + v * 4;
-
-		if ( c[0] < rMin ) rMin = c[0];
-		if ( c[0] > rMax ) rMax = c[0];
-		if ( c[1] < gMin ) gMin = c[1];
-		if ( c[1] > gMax ) gMax = c[1];
-		if ( c[2] < bMin ) bMin = c[2];
-		if ( c[2] > bMax ) bMax = c[2];
-		if ( c[3] < aMin ) aMin = c[3];
-		if ( c[3] > aMax ) aMax = c[3];
-	}
-	s_rows++;
-	if ( !R_ProbeMarkOn() ) {
-		return;
-	}
-	/* a zeroed green with both neighbours saturated is the magenta shape */
-	if ( ( gMin == 0 && gMax == 0 && rMax >= 224 && bMax >= 224 )
-		 || ( rMin == rMax && gMin == gMax && bMin == bMax && aMin == aMax
-			  && !( rMin == 255 && gMin == 255 && bMin == 255 && aMin == 255 ) ) ) {
-		if ( s_rows <= 24 || ( s_rows % 400 ) == 0 ) {
-			feed = RB_FeedSurf( &feedKind );
-			if ( feed ) {
-				int type = *(const int *)feed;
-
-				if ( type == SF_TRIANGLES ) {
-					const srfTriangles_t *srf = (const srfTriangles_t *)feed;
-
-					if ( srf->color ) {
-						sc[0] = srf->color[0]; sc[1] = srf->color[1]; sc[2] = srf->color[2];
-					}
-					dv[0] = srf->verts[0].color[0]; dv[1] = srf->verts[0].color[1];
-					dv[2] = srf->verts[0].color[2]; dv[3] = srf->verts[0].color[3];
-				} else if ( type == SF_GRID ) {
-					const srfGridMesh_t *cv = (const srfGridMesh_t *)feed;
-
-					dv[0] = cv->verts[0].color[0]; dv[1] = cv->verts[0].color[1];
-					dv[2] = cv->verts[0].color[2]; dv[3] = cv->verts[0].color[3];
-				} else if ( type == SF_FACE ) {
-					/* the loaded copy: ParseFace colour-shifted the file bytes into points[i][7] */
-					const srfSurfaceFace_t *face = (const srfSurfaceFace_t *)feed;
-					const byte *p0 = (const byte *)&face->points[0][7];
-
-					if ( face->color ) {
-						sc[0] = face->color[0]; sc[1] = face->color[1]; sc[2] = face->color[2];
-					}
-					dv[0] = p0[0]; dv[1] = p0[1]; dv[2] = p0[2]; dv[3] = p0[3];
-				}
-			}
-			VK_Guard_Row( "DOCC:color",
-						  "shader='%s' rg=%d ag=%d n=%d rgba=%d..%d,%d..%d,%d..%d,%d..%d "
-						  "feed=%s lmidx=%d srccolor=%d,%d,%d dv=%d,%d,%d,%d f=%d",
-						  shader ? shader->name : "?", (int)pStage->rgbGen,
-						  (int)pStage->alphaGen, input->numVertexes,
-						  rMin, rMax, gMin, gMax, bMin, bMax, aMin, aMax,
-						  feedName[ feedKind & 7 ], (int)shader->lightmapIndex, sc[0], sc[1], sc[2],
-						  dv[0], dv[1], dv[2], dv[3],
-						  RB_FrameCount() );
-		}
-	}
-}
 
 /* A sprite walk batch is one draw for many sprites, so a gen-entity stage cannot
    read a per-sprite record; retail's walk installs tr.worldEntity there, which is
@@ -5474,344 +3854,27 @@ static int VK_Shade_SpriteFeedAlpha( int gen )
 }
 
 /* the entity colour a gen-entity stage is fed under the WORLD entity: one row per shader, budgeted, master gate only */
-static void VK_Shade_EntityColorRow( const shader_t *shader, const shaderStage_t *pStage )
-{
-	static const shader_t	*s_seen[16];
-	static int				s_seenCount;
-	static int				s_rows;
-	int						i;
-
-	if ( !R_ProbeMarkOn() || !shader || !pStage ) {
-		return;
-	}
-	if ( pStage->rgbGen != CGEN_ENTITY && pStage->alphaGen != AGEN_ENTITY ) {
-		return;
-	}
-	if ( backEnd.currentEntity != &tr.worldEntity ) {
-		return;
-	}
-	/* the sprite feed no longer reads the world entity, so a row here means a
-	   gen-entity stage is wearing it for real */
-	if ( r_spriteListOpen ) {
-		return;
-	}
-
-	for ( i = 0; i < s_seenCount; i++ ) {
-		if ( s_seen[i] == shader ) {
-			return;
-		}
-	}
-	if ( s_seenCount < (int)( sizeof( s_seen ) / sizeof( s_seen[0] ) ) ) {
-		s_seen[s_seenCount++] = shader;
-	} else {
-		return;
-	}
-
-	s_rows++;
-	if ( s_rows > 16 ) {
-		return;
-	}
-	VK_Guard_Row( "DOCC:entcol",
-				  "shader='%s' rg=%d ag=%d ent=%d,%d,%d,%d iter=%s f=%d",
-				  shader->name, (int)pStage->rgbGen, (int)pStage->alphaGen,
-				  (unsigned)backEnd.currentEntity->e.shaderRGBA[0],
-				  (unsigned)backEnd.currentEntity->e.shaderRGBA[1],
-				  (unsigned)backEnd.currentEntity->e.shaderRGBA[2],
-				  (unsigned)backEnd.currentEntity->e.shaderRGBA[3],
-				  VK_Shade_IterName(), RB_FrameCount() );
-}
 
 /* Which walk reached the world entity with a gen-entity stage: retail only ever
    draws such a stage there through the sprite list, so the route is the verdict.
    One row per shader, same caps as the row above, master gate only. */
-static void VK_Shade_FeedRow( const shaderCommands_t *input,
-							  const shader_t *shader, const shaderStage_t *pStage )
-{
-	static const shader_t	*s_seen[16];
-	static int				s_seenCount;
-	int						i;
-
-	if ( !R_ProbeMarkOn() || !input || !shader || !pStage ) {
-		return;
-	}
-	if ( pStage->rgbGen != CGEN_ENTITY && pStage->alphaGen != AGEN_ENTITY ) {
-		return;
-	}
-	if ( backEnd.currentEntity != &tr.worldEntity ) {
-		return;
-	}
-
-	for ( i = 0; i < s_seenCount; i++ ) {
-		if ( s_seen[i] == shader ) {
-			return;
-		}
-	}
-	if ( s_seenCount < (int)( sizeof( s_seen ) / sizeof( s_seen[0] ) ) ) {
-		s_seen[s_seenCount++] = shader;
-	} else {
-		return;
-	}
-
-	VK_Guard_Row( "DOCC:fed",
-				  "shader='%s' walk=%s feed=%s n=%d vc=%d nspr=%d svis=%d f=%d",
-				  shader->name,
-				  r_spriteListOpen ? "sprite" : "draw",
-				  ( r_spriteListOpen
-					&& ( pStage->rgbGen == CGEN_ENTITY
-						 || pStage->rgbGen == CGEN_ONE_MINUS_ENTITY ) ) ? "vertex" : "entity",
-				  input->numVertexes,
-				  input->vertexColorValid ? 1 : 0,
-				  r_spriteWalkSurfs,
-				  ( backEnd.currentStaticModel != NULL ) ? 1 : 0,
-				  RB_FrameCount() );
-}
 
 /* the sprite walk's bind witness: worldset covers world batches and VK:stagebind samples on a cadence, so the sprite list was the one
    draw path that never named its art, which is the light cones flashing between two beamflare shafts.  A sprite's colour is per-vertex,
    so the row reports the whole batch's rgba range and fires on first sight, any bind anomaly, or a range move. */
-static void VK_Shade_SpriteBindWitness( const shaderCommands_t *input,
-										const shader_t *shader,
-										const shaderStage_t *pStage )
-{
-	typedef struct {
-		const shader_t	*sh;
-		int				lo[4], hi[4];
-		int				rows;
-	} spriteWatch_t;
-
-	static spriteWatch_t	s_seen[32];
-	static int				s_seenCount;
-	static int				s_anomRows;
-	const textureBundle_t	*bundle;
-	const image_t			*asked, *bound, *tenant;
-	int						lo[4], hi[4];
-	int						v, i, slot, fold, animFrame, frame;
-
-	if ( !R_ProbeMarkOn() || !input || !shader || !pStage || !r_spriteListOpen ) {
-		return;
-	}
-	if ( input->numVertexes <= 0 ) {
-		return;
-	}
-
-	bundle = &pStage->bundle[0];
-	asked  = bundle->image[0];
-	bound  = s_shade.texBound[0] ? s_shade.texImage[0] : NULL;
-	tenant = ( bound && bound->texnum < VK_MAX_TEXTURES )
-			 ? VK_Image_SlotTenant( (int)bound->texnum ) : NULL;
-	frame  = RB_FrameCount();
-
-	/* every sprite in the batch, not the one the budget happened to name */
-	for ( i = 0; i < 4; i++ ) {
-		lo[i] = 255;
-		hi[i] = 0;
-	}
-	if ( input->vertexColorValid ) {
-		for ( v = 0; v < input->numVertexes; v++ ) {
-			const unsigned char *c = &input->vertexColors[v][0];
-
-			for ( i = 0; i < 4; i++ ) {
-				if ( c[i] < lo[i] ) lo[i] = c[i];
-				if ( c[i] > hi[i] ) hi[i] = c[i];
-			}
-		}
-	} else {
-		for ( i = 0; i < 4; i++ ) {
-			lo[i] = hi[i] = -1;
-		}
-	}
-
-	slot = -1;
-	for ( i = 0; i < s_seenCount; i++ ) {
-		if ( s_seen[i].sh == shader ) {
-			slot = i;
-			break;
-		}
-	}
-	if ( slot < 0 ) {
-		if ( s_seenCount >= (int)( sizeof( s_seen ) / sizeof( s_seen[0] ) ) ) {
-			return;
-		}
-		slot = s_seenCount++;
-		s_seen[slot].sh   = shader;
-		s_seen[slot].rows = 0;
-		for ( i = 0; i < 4; i++ ) {
-			s_seen[slot].lo[i] = lo[i];
-			s_seen[slot].hi[i] = hi[i];
-		}
-		VK_Guard_Row( "VK:spritebind",
-					  "shader='%s' art='%s' tex=%d tenant='%s' n=%d "
-					  "rgba=%d..%d,%d..%d,%d..%d,%d..%d f=%d",
-					  shader->name,
-					  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
-					  asked ? (int)asked->texnum : -1,
-					  ( tenant && tenant->imgName[0] ) ? tenant->imgName
-						: ( tenant ? "(unnamed)" : "-" ),
-					  input->numVertexes,
-					  lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], lo[3], hi[3],
-					  frame );
-		return;
-	}
-
-	/* swapped = the bound image is no frame of this stage's bundle (animmaps
-	   legitimately bind frame N, so image[0] is not the test) */
-	fold = R_Bundle_StampFold( bundle, bound, &animFrame );
-	if ( !asked || !bound
-		 || animFrame < 0
-		 || ( tenant && tenant != bound )
-		 || VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE
-		 || fold != bundle->imgAnimStamp ) {
-		static const char	*why[] = { "no-art", "disarmed", "swapped",
-									   "tenant", "no-view", "stale" };
-		int					w = !asked ? 0 : !bound ? 1 : animFrame < 0 ? 2
-						   : ( tenant && tenant != bound ) ? 3
-						   : VK_Texture_View( (int)bound->texnum ) == VK_NULL_HANDLE ? 4 : 5;
-
-		s_anomRows++;
-		if ( s_anomRows <= 64 || ( s_anomRows % 200 ) == 0 ) {
-			VK_Guard_Row( "VK:spritebind",
-						  "why=%s shader='%s' want='%s' got='%s' tex=%d "
-						  "stamp=%d/%d fr=%d tenant='%s' n=%d f=%d",
-						  why[w], shader->name,
-						  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
-						  ( bound && bound->imgName[0] ) ? bound->imgName : "(none)",
-						  bound ? (int)bound->texnum : -1,
-						  bundle->imgAnimStamp, fold, animFrame,
-						  ( tenant && tenant->imgName[0] ) ? tenant->imgName
-							: ( tenant ? "(unnamed)" : "-" ),
-						  input->numVertexes, frame );
-		}
-		return;
-	}
-
-	/* the colour moved: that is the flash, whatever it flashed to */
-	{
-		qboolean moved = qfalse;
-
-		for ( i = 0; i < 4; i++ ) {
-			if ( lo[i] != s_seen[slot].lo[i] || hi[i] != s_seen[slot].hi[i] ) {
-				moved = qtrue;
-			}
-		}
-		if ( !moved || s_seen[slot].rows > 96 ) {
-			return;
-		}
-	}
-
-	s_seen[slot].rows++;
-	for ( i = 0; i < 4; i++ ) {
-		if ( lo[i] < s_seen[slot].lo[i] ) s_seen[slot].lo[i] = lo[i];
-		if ( hi[i] > s_seen[slot].hi[i] ) s_seen[slot].hi[i] = hi[i];
-	}
-
-	s_anomRows++;
-	if ( s_anomRows > 400 ) {
-		return;
-	}
-	VK_Guard_Row( "VK:spritebind",
-				  "shift shader='%s' art='%s' tex=%d stamp=%d/%d fr=%d "
-				  "tenant='%s' n=%d rgba=%d..%d,%d..%d,%d..%d,%d..%d f=%d",
-				  shader->name,
-				  ( asked && asked->imgName[0] ) ? asked->imgName : "(none)",
-				  asked ? (int)asked->texnum : -1,
-				  bundle->imgAnimStamp, fold, animFrame,
-				  ( tenant && tenant->imgName[0] ) ? tenant->imgName
-					: ( tenant ? "(unnamed)" : "-" ),
-				  input->numVertexes,
-				  lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], lo[3], hi[3],
-				  frame );
-}
 
 /* ---- the square over a billboard: what the sprite's own draw carries -------- */
 
 /* shader.c drops a blended sprite's fog pass (numFog/numGlobalFogPasses--), so what is left is the fixed-fog arm, and this pair decides it: the arm replaces rgb with
    the fog colour and keeps the stage's alpha, so ONE/ONE or DST_COLOR/ONE fills the quad's rectangle and SRC_ALPHA does not. */
-#ifndef PROBE_BUILD_SILENT
-#define VK_SPRFOG_ROWS 128
-static void VK_Shade_SpriteFogRow( const shader_t *shader, const shaderStage_t *pStage,
-								   unsigned stateBits, const shaderCommands_t *input )
-{
-	static const shader_t		*s_sh[VK_SPRFOG_ROWS];
-	static const shaderStage_t	*s_st[VK_SPRFOG_ROWS];
-	unsigned	srcNibble, dstNibble;
-	int			i, slot;
-
-	if ( !R_ProbeMarkOn() || !r_spriteListOpen || !shader || !pStage || !input ) {
-		return;
-	}
-
-	for ( slot = -1, i = 0; i < VK_SPRFOG_ROWS; i++ ) {
-		if ( s_sh[i] == shader && s_st[i] == pStage ) {
-			return;
-		}
-		if ( !s_sh[i] && slot < 0 ) {
-			slot = i;
-		}
-	}
-	if ( slot < 0 ) {
-		return;
-	}
-	s_sh[slot] = shader;
-	s_st[slot] = pStage;
-
-	srcNibble = stateBits & VKS_SRCBLEND_BITS;
-	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
-
-	VK_Guard_Row( "VK:sprfog",
-				  "shader='%s' f=%d fogNum=%d list=%d fogpass=%d fixfog=%d "
-				  "src=%u dst=%u blendEn=%d col=%d n=%d rgba=%u,%u,%u,%u",
-				  shader->name, RB_FrameCount(), tess.fogNum,
-				  ( tess.xstages == shader->globalFogStages ) ? 2
-					: ( tess.xstages == shader->fogStages ) ? 1 : 0,
-				  pStage->fogDensityArm ? 1 : 0,
-				  ( vkState.externalSetState & VKS_FOG ) ? 2 : 0,
-				  (unsigned)VK_Shade_SrcBlendFactor( srcNibble ),
-				  (unsigned)VK_Shade_DstBlendFactor( dstNibble ),
-				  ( srcNibble || dstNibble ) ? 1 : 0,
-				  input->vertexColorValid ? 2 : 0,
-				  input->numVertexes,
-				  (unsigned)input->vertexColors[0][0],
-				  (unsigned)input->vertexColors[0][1],
-				  (unsigned)input->vertexColors[0][2],
-				  (unsigned)input->vertexColors[0][3] );
-}
-#else
-#define VK_Shade_SpriteFogRow( shader, pStage, stateBits, input ) \
-	do { (void)( shader ); (void)( pStage ); (void)( stateBits ); (void)( input ); } while ( 0 )
-#endif
 
 /* The vulkan twin of the GLES3 decal-family selector.  Same four names, because
    both renderers walk the same shipped shader corpus. */
-static qboolean R_ProbeDecalShader( const char *name )
-{
-	static const char *const decalNames[] = {
-		"markShadow", "greensplat", "blastmark", "phaserburn"
-	};
-	int	i;
-
-	if ( !name ) {
-		return qfalse;
-	}
-	for ( i = 0; i < (int)( sizeof( decalNames ) / sizeof( decalNames[0] ) ); i++ ) {
-		if ( !Q_stricmp( name, decalNames[i] ) ) {
-			return qtrue;
-		}
-	}
-	return qfalse;
-}
 
 void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 					  const shader_t *shader, unsigned stateBits, float forceAlpha,
 					  qboolean hudColorClobber )
 {
-	qboolean	sub0, sub1;
-
-	if ( s_batchCensus ) {
-		s_batchStagesDrawn++;
-		s_batchShader = shader ? shader : s_batchShader;
-	}
-	sub0 = qfalse;
-	sub1 = qfalse;
 	vkProgram_t	*prog;
 	const float		*tc0, *tc1;
 	const unsigned char *colors;
@@ -5823,42 +3886,12 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	VK_BindProgram( prog );
 
 	VK_SetupStageUniforms( prog, pStage, shader );
-	VK_Shade_EntityColorRow( shader, pStage );
-	VK_Shade_FeedRow( input, shader, pStage );
 	VK_SetupFogUniforms( prog, tess.fogNum, pStage->fogDensityArm );
 	VK_SetUniform1f( prog, VK_U_FORCEALPHA, forceAlpha );
 
 	/* The vulkan twin of the GLES3 [SMP:decal] row: the acff selector that was
 	   just published (cpuColor collapses it to 0, which is what u_Acff holds),
 	   the gens the shader asked for, and the fog volume the fog stage samples. */
-	if ( R_ProbeStatsOn() && R_ProbeDecalShader( shader ? shader->name : NULL ) ) {
-		static int		s_vkDecalCount;
-		static qboolean	s_vkDecalNotice;
-		const int		SMP_DECAL_MAX = 16;
-
-		if ( s_vkDecalCount < SMP_DECAL_MAX ) {
-			s_vkDecalCount++;
-			ri.Printf(
-				PRINT_ALL,
-				"[VK:decal] sh=%s prog=%s def=0x%06x state=0x%08x rgb=%d alpha=%d"
-				" u_Acff=%d u_FogNum=%d fogArm=%d cpuColor=%d"
-				" img0=%s tcGen=%d blend=%d/%d\n",
-				shader->name, prog->name, prog->defines, stateBits,
-				(int)pStage->rgbGen, (int)pStage->alphaGen,
-				cpuColor ? 0 : (int)pStage->acff, tess.fogNum,
-				pStage->fogDensityArm ? 1 : 0, cpuColor ? 1 : 0,
-				( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
-				  ? pStage->bundle[0].image[0]->imgName : "-",
-				(int)pStage->bundle[0].tcGen,
-				(unsigned)VK_Shade_SrcBlendFactor( ( stateBits >> 4 ) & 0xF ),
-				(unsigned)VK_Shade_DstBlendFactor( ( stateBits >> 8 ) & 0xF )
-			);
-		} else if ( !s_vkDecalNotice ) {
-			s_vkDecalNotice = qtrue;
-			ri.Printf( PRINT_ALL, "[VK:decal] capped at %d rows; no further lines\n",
-					   SMP_DECAL_MAX );
-		}
-	}
 
 	if ( r_spriteListOpen
 		 && ( pStage->rgbGen == CGEN_ENTITY || pStage->rgbGen == CGEN_ONE_MINUS_ENTITY
@@ -5885,13 +3918,11 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 	{
 		VK_SelectTexture( 0 );
 		VK_Bind( tr.whiteImage );
-		sub0 = qtrue;
 	}
 	else if ( ( backEnd.refdef.rdflags & RDF_FULLBRIGHT ) && !backEnd.in2D && pStage->bundle[0].isLightmap )
 	{
 		VK_SelectTexture( 0 );
 		VK_Bind( tr.whiteImage );
-		sub0 = qtrue;
 	}
 	else
 	{
@@ -5904,7 +3935,6 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 		{
 			VK_SelectTexture( 1 );
 			VK_Bind( tr.whiteImage );
-			sub1 = qtrue;
 		}
 		else
 		{
@@ -5918,11 +3948,8 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 		   is the same effect -- otherwise the pass samples the last two-texture draw */
 		VK_SelectTexture( 1 );
 		VK_Bind( tr.whiteImage );
-		sub1 = qtrue;
 	}
 
-	VK_Shade_BindWitness( pStage, 0, sub0 );
-	VK_Shade_BindWitness( pStage, 1, sub1 );
 
 	if ( cpuTexCoords )
 	{
@@ -5947,16 +3974,10 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 						: NULL;
 
 	(void)stateBits;
-	VK_StageBindCensus( shader, pStage, -1, backEnd.in2D ? qtrue : qfalse, 0, 0, 0, 0 );
-	VK_PassCensus( shader, pStage, stateBits, input, colors, backEnd.in2D ? qtrue : qfalse );
-	VK_Shade_ColorStreamRow( input, colors, shader, pStage );
 
-	VK_Shade_SpriteBindWitness( input, shader, pStage );
-	VK_Shade_SpriteFogRow( shader, pStage, stateBits, input );
 
 	/* the draw-time witness: everything above names what the stage asked for, this
 	   row names what the set the draw binds actually samples */
-	VK_Shade_BlkDrawRow( shader, pStage, input, -1, colors, tc0, tcStride );
 
 	RB_VBO_DrawTessArrays( input, input->indexes, input->numIndexes,
 						   tc0, tc1, tcStride, colors, input->normal[0], pStage );
@@ -5966,115 +3987,6 @@ void VK_DrawStage( const shaderCommands_t *input, const shaderStage_t *pStage,
 
 /* the world path's answer to VK:2ddraw: one row per stage pass naming the shader, the stage and the image each bundle resolves to, so a
    world surface sampling a slot another texture took names itself the way a menu tile does. */
-void VK_StageBindCensus( const shader_t *shader, const shaderStage_t *pStage, int stageIndex,
-							qboolean in2D, unsigned tex0, unsigned tex1,
-							unsigned cur0, unsigned cur1 )
-{
-	static int s_rows;
-	const char *n0, *n1;
-	unsigned    t0, t1;
-
-	(void)tex0; (void)tex1; (void)cur0; (void)cur1;
-
-	if ( !shader || !pStage ) {
-		return;
-	}
-
-	n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
-		 ? pStage->bundle[0].image[0]->imgName : "";
-	t0 = pStage->bundle[0].image[0] ? (unsigned)pStage->bundle[0].image[0]->texnum : 0u;
-	n1 = ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
-		 ? pStage->bundle[1].image[0]->imgName : "";
-	t1 = pStage->bundle[1].image[0] ? (unsigned)pStage->bundle[1].image[0]->texnum : 0u;
-
-	/* the COLOR-family dst factors are the two ordinals retail's own GL_State settles, and they are rare enough that the sampled cadence
-	   can miss them for a whole boot.  These rows never sample: every pass whose dst nibble is 3 or 4 names itself with the fragment's own
-	   inputs, bounded by the shipped shader text, so it cannot flood. */
-	if ( R_ProbeStatsOn() ) {
-		int dstNib = ( (unsigned)pStage->stateBits & VKS_DSTBLEND_BITS ) >> 4;
-
-		if ( dstNib == ( VKS_DSTBLEND_SRC_COLOR >> 4 )
-			 || dstNib == ( VKS_DSTBLEND_ONE_MINUS_SRC_COLOR >> 4 ) ) {
-			const image_t	*im = pStage->bundle[0].image[0];
-
-			VK_Guard_Row( "VK:coldst",
-						  "shader='%s' stage=%d d=%d sb=0x%x b0='%s' tex0=%u fmt=0x%x "
-						  "upto=%dx%d b1='%s' tex1=%u rg=%d ag=%d const=%u,%u,%u,%u",
-						  shader->name, stageIndex, in2D ? 1 : 0,
-						  (unsigned)pStage->stateBits, n0, t0,
-						  im ? (unsigned)im->internalFormat : 0u,
-						  im ? im->uploadWidth : 0, im ? im->uploadHeight : 0,
-						  n1, t1,
-						  (int)pStage->rgbGen, (int)pStage->alphaGen,
-						  (unsigned)pStage->colorConst[0], (unsigned)pStage->colorConst[1],
-						  (unsigned)pStage->colorConst[2], (unsigned)pStage->colorConst[3] );
-		}
-	}
-
-	/* what the two units actually hold: a stage whose unit holds an image the stage never resolved to is the silent substitution class
-	   and always emits, an agreeing pair rides the cadence above.  The scan is the draw path's dearest per-stage work (512 lightmap slots
-	   walked, name strcmps) and answers nothing when the master probe is off. */
-	s_rows++;
-	if ( R_ProbeStatsOn() )
-	{
-		const image_t	*b0 = s_shade.texImage[0];
-		const image_t	*b1 = s_shade.texImage[1];
-		qboolean		 disagree;
-
-		disagree =
-			( pStage->bundle[0].image[0]
-			  && !VK_StageImageOwned( &pStage->bundle[0], b0 )
-			  && !VK_StageBindKnown( b0 ) )
-			|| ( pStage->bundle[1].image[0]
-				 && !VK_StageImageOwned( &pStage->bundle[1], b1 )
-				 && !VK_StageBindKnown( b1 ) )
-			/* a stage whose second bundle is empty must not find a live foreign
-			   image on the unit: the bind is retail's own state, the descriptor
-			   write is not.  Only a program that declares u_Tex1 can read it --
-			   the shade layout declares binding 1 for every program, so for the
-			   rest the disarmed unit is the white image and this test is noise. */
-			|| ( !pStage->bundle[1].image[0]
-				 && s_shade.prog
-				 && ( s_shade.prog->defines & VKP_LIGHTMAP )
-				 && s_shade.texBound[1]
-				 && b1
-				 && !VK_StageBindKnown( b1 ) );
-
-		if ( disagree || s_rows <= 48 || ( s_rows % 257 ) == 0 ) {
-			VK_Guard_Row( "VK:stagebound",
-						  "%sshader='%s' want0='%s' tex0=%u got0='%s' gottex0=%d "
-						  "want1='%s' tex1=%u got1='%s' gottex1=%d",
-						  disagree ? "MISS " : "",
-						  shader->name, n0, t0,
-						  ( b0 && b0->imgName[0] ) ? b0->imgName : "",
-						  b0 ? (int)b0->texnum : -1,
-						  n1, t1,
-						  ( b1 && b1->imgName[0] ) ? b1->imgName : "",
-						  b1 ? (int)b1->texnum : -1 );
-		}
-	}
-
-	/* the bind row is pure telemetry: without this gate the cadence test above
-	   reads s_rows==0 forever in a quiet boot and the row prints on EVERY bind
-	   (an earlier pass kept the scan gated but left the print unconditional) */
-	if ( R_ProbeStatsOn() && ( s_rows <= 48 || ( s_rows % 257 ) == 0 ) ) {
-		VK_Guard_Row( "VK:stagebind",
-					  "n=%d d=%d shader='%s' stage=%d prog=0x%06x sb=0x%x mt=%d "
-					  "b0='%s' tex0=%u b1='%s' tex1=%u rg=%d ag=%d const=%u,%u,%u,%u",
-					  s_rows, in2D ? 1 : 0,
-					  shader->name,
-					  stageIndex,
-					  ( s_shade.prog && s_shade.prog->linked ) ? (unsigned)s_shade.prog->defines : 0u,
-					  (unsigned)pStage->stateBits,
-					  (unsigned)pStage->multitextureEnv,
-					  n0, t0, n1, t1,
-					  (int)pStage->rgbGen, (int)pStage->alphaGen,
-					  (unsigned)pStage->colorConst[0], (unsigned)pStage->colorConst[1],
-					  (unsigned)pStage->colorConst[2], (unsigned)pStage->colorConst[3] );
-	}
-
-
-}
 
 /* ---- what a model batch's own pixels actually came out as ---------------- */
 
@@ -6096,174 +4008,11 @@ typedef struct {
 	unsigned	colour;			/* the first vertex colour the pack handed the stage */
 } vkSrfPix_t;
 
-static vkSrfPix_t	s_srfPix[VK_SRFPIX_MAX];
-static int			s_srfPixCount;
-static int			s_srfPixFrame = -1;
-
-static void VK_Shade_SrfPixNote( const shader_t *shader, const shaderCommands_t *input,
-								 qboolean in2D )
-{
-	float		joint[16];
-	const float	*mv, *pj;
-	int			i, ent, v;
-
-	if ( !R_ProbeMarkOn() || in2D || !shader || !input || input->numVertexes <= 0 ) {
-		return;
-	}
-	/* the world is one batch per surface and its owner is the whole map; an actor
-	   is one entity and its box is the question */
-	if ( !backEnd.currentEntity ) {
-		return;
-	}
-	ent = backEnd.currentEntity->e.entityNumber;
-	if ( ent <= 0 || ent >= MAX_GENTITIES ) {
-		return;
-	}
-	if ( s_srfPixFrame != RB_FrameCount() ) {
-		s_srfPixFrame = RB_FrameCount();
-		s_srfPixCount = 0;
-	}
-	/* one record per entity and shader: a second stage of the same shader would
-	   only rewrite the box with the same vertices */
-	for ( i = 0; i < s_srfPixCount; i++ ) {
-		if ( s_srfPix[i].ent == ent && s_srfPix[i].shader == shader->name ) {
-			return;
-		}
-	}
-	if ( s_srfPixCount >= VK_SRFPIX_MAX ) {
-		return;
-	}
-
-	mv = RB_GetModelViewMatrix();
-	pj = RB_GetProjectionMatrix();
-	if ( !pj ) {
-		return;
-	}
-	if ( mv ) {
-		VK_Matrix_Multiply( joint, pj, mv );
-		pj = joint;
-	}
-
-	{
-		vkSrfPix_t	*r = &s_srfPix[s_srfPixCount];
-		float		x0 = 2.0f, y0 = 2.0f, x1 = -2.0f, y1 = -2.0f;
-
-		for ( v = 0; v < input->numVertexes; v++ ) {
-			const float	*p = input->xyz[v];
-			float		 cw, nx, ny;
-
-			if ( !p ) {
-				continue;
-			}
-			cw = pj[3] * p[0] + pj[7] * p[1] + pj[11] * p[2] + pj[15];
-			if ( cw <= 1e-6f ) {
-				/* a batch whose vertices are all here drew nothing, and that is a
-				   different report from a batch that drew somewhere dark */
-				r->behind++;
-				continue;
-			}
-			nx = ( pj[0] * p[0] + pj[4] * p[1] + pj[8]  * p[2] + pj[12] ) / cw;
-			ny = ( pj[1] * p[0] + pj[5] * p[1] + pj[9]  * p[2] + pj[13] ) / cw;
-			if ( nx < x0 ) x0 = nx;
-			if ( ny < y0 ) y0 = ny;
-			if ( nx > x1 ) x1 = nx;
-			if ( ny > y1 ) y1 = ny;
-		}
-		/* clip the box to the frame: a batch that runs off the screen still has a
-		   readable centre, and one wholly outside has none */
-		if ( x0 < -1.0f ) x0 = -1.0f;
-		if ( y0 < -1.0f ) y0 = -1.0f;
-		if ( x1 >  1.0f ) x1 =  1.0f;
-		if ( y1 >  1.0f ) y1 =  1.0f;
-		if ( x1 <= x0 || y1 <= y0 ) {
-			return;
-		}
-		r->frame    = s_srfPixFrame;
-		r->ent      = ent;
-		r->shader   = shader->name;
-		r->box[0]   = x0;
-		r->box[1]   = y0;
-		r->box[2]   = x1;
-		r->box[3]   = y1;
-		r->verts    = input->numVertexes;
-		r->colour   = input->svars.colors[0][0] | ( input->svars.colors[0][1] << 8 )
-					| ( input->svars.colors[0][2] << 16 );
-		s_srfPixCount++;
-	}
-}
 
 /* one row per DISTINCT pass signature: shader, stage, stateBits, the blend factors the builder resolves, the colour array the pack got
    and whether the surface wrote one; first occurrence only, so a boot prints a bounded set.  Blend factors are the VkBlendFactor enums
    (0=ZERO 1=ONE 2=SRC_COLOR 3=ONE_MINUS_SRC_COLOR 4=DST_COLOR 5=ONE_MINUS_DST_COLOR 6=SRC_ALPHA 7=ONE_MINUS_SRC_ALPHA 8=DST_ALPHA
    9=ONE_MINUS_DST_ALPHA 10=SRC_ALPHA_SATURATE); col: 0=white(NULL) 1=svars 2=vertex array. */
-void VK_PassCensus( const shader_t *shader, const shaderStage_t *pStage, unsigned stateBits,
-					const shaderCommands_t *input, const unsigned char *colors,
-					qboolean in2D )
-{
-	typedef struct {
-		const shader_t		*sh;
-		const shaderStage_t	*st;
-		unsigned			sb;
-		int					src;
-	} passKey_t;
-	static passKey_t	s_seen[4096];
-	static int			s_seenRows;
-	unsigned			srcNibble, dstNibble, srcF, dstF, blendEn;
-	int					colSrc;
-	const char			*n0, *n1;
-	int					i, slot;
-
-	if ( !shader || !pStage || !input || !R_ProbeStatsOn() ) {
-		return;
-	}
-
-	VK_Shade_SrfPixNote( shader, input, in2D );
-
-	colSrc = colors == (const unsigned char *)input->svars.colors ? 1
-		   : colors == (const unsigned char *)input->vertexColors ? 2
-		   : 0;
-	for ( slot = -1, i = 0; i < 4096; i++ ) {
-		int			b = ( ( ( ( ( uintptr_t )shader >> 4 ) + ( ( uintptr_t )pStage >> 4 ) * 31
-							   + stateBits * 7 + colSrc ) & 4095 ) + i ) & 4095;
-		passKey_t	*k = &s_seen[b];
-		if ( !k->sh ) {
-			if ( slot < 0 ) {
-				slot = b;
-			}
-			break;
-		}
-		if ( k->sh == shader && k->st == pStage && k->sb == stateBits && k->src == colSrc ) {
-			return;
-		}
-	}
-	if ( slot < 0 || s_seenRows >= 4096 ) {
-		return;
-	}
-	s_seen[slot].sh = shader;
-	s_seen[slot].st = pStage;
-	s_seen[slot].sb = stateBits;
-	s_seen[slot].src = colSrc;
-	s_seenRows++;
-
-	srcNibble = stateBits & VKS_SRCBLEND_BITS;
-	dstNibble = ( stateBits & VKS_DSTBLEND_BITS ) >> 4;
-	blendEn = ( srcNibble || dstNibble );
-	srcF = ( unsigned )VK_Shade_SrcBlendFactor( srcNibble );
-	dstF = ( unsigned )VK_Shade_DstBlendFactor( dstNibble );
-	n0 = ( pStage->bundle[0].image[0] && pStage->bundle[0].image[0]->imgName[0] )
-		 ? pStage->bundle[0].image[0]->imgName : "";
-	n1 = ( pStage->bundle[1].image[0] && pStage->bundle[1].image[0]->imgName[0] )
-		 ? pStage->bundle[1].image[0]->imgName : "";
-
-	VK_Guard_Row( "VK:pass",
-				  "shader='%s' stage=%d sb=0x%x d=%d blendEn=%u src=%u dst=%u dwrite=%d "
-				  "rg=%d ag=%d vc=%d col=%d b0='%s' b1='%s'",
-				  shader->name, -1, stateBits, in2D ? 1 : 0,
-				  blendEn, srcF, dstF,
-				  ( stateBits & VKS_DEPTHMASK_TRUE ) ? 1 : 0,
-				  ( int )pStage->rgbGen, ( int )pStage->alphaGen,
-				  input->vertexColorValid ? 1 : 0, colSrc, n0, n1 );
-}
 
 void VK_DrawCensusKey( const void *key, qboolean in2D )
 {
@@ -6312,135 +4061,8 @@ int VK_ModelSwapFrame( void )
 	return s_swapValid ? s_swapFrame : -1;
 }
 
-static void VK_Shade_FreeSwapPixels( void )
-{
-	if ( s_swapPixels ) {
-		ri.Free( s_swapPixels );
-		s_swapPixels = NULL;
-	}
-	s_swapW = s_swapH = s_swapValid = 0;
-	s_swapFrame = -1;
-}
-
 /* the box's own pixels out of the presented copy: clear is the 3D clear colour
    (0,0,0,0), so a batch whose box is mostly clear never reached the screen */
-static void VK_Shade_SrfPixRows( int frame )
-{
-	int i;
-
-	if ( !R_ProbeMarkOn() || !s_swapPixels || !s_swapValid || s_swapW < 2 || s_swapH < 2 ) {
-		return;
-	}
-	for ( i = 0; i < s_srfPixCount; i++ ) {
-		const vkSrfPix_t	*r = &s_srfPix[i];
-		int					 x0, y0, x1, y1, sx, sy, step, n = 0, clear = 0, opaque = 0;
-		int					 lmin = 255, lmax = 0;
-		long long			 sum[3] = { 0, 0, 0 };
-		/* The box also holds the room behind the actor, so a box mean is mostly
-		   wall.  The luma histogram names the background's own band and the mean
-		   outside it is the actor: that is the one number the report needs. */
-		int					 hist[16];
-		int					 modal = 0, bg = 0, fg = 0;
-		long long			 fsum[3] = { 0, 0, 0 };
-
-		if ( r->frame != s_swapFrame ) {
-			continue;
-		}
-		x0 = (int)( ( r->box[0] + 1.0f ) * 0.5f * ( s_swapW - 1 ) );
-		y0 = (int)( ( r->box[1] + 1.0f ) * 0.5f * ( s_swapH - 1 ) );
-		x1 = (int)( ( r->box[2] + 1.0f ) * 0.5f * ( s_swapW - 1 ) );
-		y1 = (int)( ( r->box[3] + 1.0f ) * 0.5f * ( s_swapH - 1 ) );
-		if ( x0 < 0 ) x0 = 0;
-		if ( y0 < 0 ) y0 = 0;
-		if ( x1 > s_swapW - 1 ) x1 = s_swapW - 1;
-		if ( y1 > s_swapH - 1 ) y1 = s_swapH - 1;
-		if ( x1 <= x0 || y1 <= y0 ) {
-			continue;
-		}
-		/* the box is proportional to the actor, so a fixed sample budget keeps one
-		   near the camera the same cost as one across the room */
-		memset( hist, 0, sizeof( hist ) );
-		step = 1;
-		while ( ( ( x1 - x0 ) / step ) * ( ( y1 - y0 ) / step ) > 4096 ) {
-			step <<= 1;
-		}
-		for ( sy = y0; sy <= y1; sy += step ) {
-			for ( sx = x0; sx <= x1; sx += step ) {
-				const unsigned char *p = s_swapPixels + ( (size_t)sy * s_swapW + sx ) * 4;
-				unsigned char		 c[4];
-				int					 l;
-
-				/* the presented copy is B,G,R,A in memory, as VK:frameflat reads it */
-				c[0] = p[2]; c[1] = p[1]; c[2] = p[0]; c[3] = p[3];
-				if ( c[3] == 0 && c[0] < 2 && c[1] < 2 && c[2] < 2 ) {
-					clear++;
-					continue;
-				}
-				if ( c[3] == 255 ) {
-					opaque++;
-				}
-				sum[0] += c[0];
-				sum[1] += c[1];
-				sum[2] += c[2];
-				l = ( c[0] + c[1] + c[2] ) / 3;
-				if ( l < lmin ) lmin = l;
-				if ( l > lmax ) lmax = l;
-				hist[l >> 4]++;
-				n++;
-			}
-		}
-		for ( sy = 1; sy < 16; sy++ ) {
-			if ( hist[sy] > hist[modal] ) {
-				modal = sy;
-			}
-		}
-		if ( n ) {
-			for ( sy = y0; sy <= y1; sy += step ) {
-				for ( sx = x0; sx <= x1; sx += step ) {
-					const unsigned char *p = s_swapPixels + ( (size_t)sy * s_swapW + sx ) * 4;
-					unsigned char		 c[4];
-					int					 l;
-
-					c[0] = p[2]; c[1] = p[1]; c[2] = p[0]; c[3] = p[3];
-					if ( c[3] == 0 && c[0] < 2 && c[1] < 2 && c[2] < 2 ) {
-						continue;
-					}
-					l = ( c[0] + c[1] + c[2] ) / 3;
-					if ( ( l >> 4 ) == modal ) {
-						bg++;
-						continue;
-					}
-					fsum[0] += c[0];
-					fsum[1] += c[1];
-					fsum[2] += c[2];
-					fg++;
-				}
-			}
-		}
-		if ( !n && !clear ) {
-			continue;
-		}
-		VK_Guard_Row( "VK:srfpix",
-					  "f=%d ent=%d shader='%s' box=(%d,%d)-(%d,%d) px=%d clear=%d%% opaque=%d%% "
-					  "bg=%d%% mean=%d,%d,%d fg=%d%% fgmean=%d,%d,%d luma=%d..%d "
-					  "behind=%d/%d vcol=%d,%d,%d",
-					  RB_FrameCount(), r->ent, r->shader, x0, y0, x1, y1, n,
-					  ( ( n + clear ) ? ( clear * 100 ) / ( n + clear ) : 0 ),
-					  ( n ? ( opaque * 100 ) / n : 0 ),
-					  ( n ? ( bg * 100 ) / n : 0 ),
-					  ( n ? (int)( sum[0] / n ) : 0 ),
-					  ( n ? (int)( sum[1] / n ) : 0 ),
-					  ( n ? (int)( sum[2] / n ) : 0 ),
-					  ( n ? ( fg * 100 ) / n : 0 ),
-					  ( fg ? (int)( fsum[0] / fg ) : 0 ),
-					  ( fg ? (int)( fsum[1] / fg ) : 0 ),
-					  ( fg ? (int)( fsum[2] / fg ) : 0 ),
-					  ( n ? lmin : 0 ), ( n ? lmax : 0 ),
-					  r->behind, r->verts,
-					  (int)( r->colour & 0xff ), (int)( ( r->colour >> 8 ) & 0xff ),
-					  (int)( ( r->colour >> 16 ) & 0xff ) );
-	}
-}
 
 /* ---- the presented frame's own map --------------------------------------- */
 
@@ -6464,29 +4086,13 @@ typedef struct {
 /* a rendered frame carries far more than VK_FLAT_BUCKETS distinct colours, so the table fills within the first few thousand samples and
    a probe run to capacity would cost sampled-pixels x 4096 (47 ms per 800x600 readback).  The probe is therefore bounded, and insert and
    lookup use the SAME bound, so every key that was inserted stays findable and a miss costs the bound. */
-#define VK_FLAT_PROBE	32
+#define VK_FLAT_CAP	32
 
 /* The census is an instrument, so its price must not scale with the resolution
    it is measuring: the scan is given a fixed sample budget and the step is
    derived from the frame. */
 #define VK_PIX_BUDGET	32768
 
-static int VK_Shade_CensusStep( int w, int h )
-{
-	int step = 1;
-
-	while ( step < 64 && ( w / step ) * ( h / step ) > VK_PIX_BUDGET ) {
-		step++;
-	}
-	return step;
-}
-
-static vkFlatRun_t	s_flat[VK_FLAT_BUCKETS];
-
-static void VK_Shade_FlatReset( void )
-{
-	memset( s_flat, 0, sizeof( s_flat ) );
-}
 
 /* the frame's hue census, over the same host copy the flat boxes read: which primitive channel dominates each pixel and where those
    pixels are -- the radar cone is a green texel under rgbGen const white, so a red-clustered box names the same defect with no coordinate
@@ -6497,382 +4103,20 @@ typedef struct {
 	unsigned long long	sum[3];
 } vkHueRun_t;
 
-static vkHueRun_t	s_hue[3];
-
-static void VK_Shade_HueReset( void )
-{
-	int i;
-
-	memset( s_hue, 0, sizeof( s_hue ) );
-	for ( i = 0; i < 3; i++ ) {
-		s_hue[i].minx = s_hue[i].miny = 0x7fffffff;
-		s_hue[i].maxx = s_hue[i].maxy = -1;
-	}
-}
-
-static void VK_Shade_HueAdd( const unsigned char *p, int x, int y )
-{
-	int			 r = p[2], g = p[1], b = p[0];
-	int			 hi, lo, which;
-	vkHueRun_t	*run;
-
-	hi = r > g ? r : g;
-	hi = hi > b ? hi : b;
-	lo = r < g ? r : g;
-	lo = lo < b ? lo : b;
-
-	/* a grey or a dim pixel is not a hue: 40 of separation and 64 of level keeps
-	   the UI's greys, the black bars and the dark world out of the counts */
-	if ( hi - lo < 40 || hi < 64 ) {
-		return;
-	}
-	which = ( hi == r ) ? 0 : ( hi == g ) ? 1 : 2;
-	run = &s_hue[which];
-	run->n++;
-	run->sum[0] += (unsigned)p[2];
-	run->sum[1] += (unsigned)p[1];
-	run->sum[2] += (unsigned)p[0];
-	if ( x < run->minx ) run->minx = x;
-	if ( y < run->miny ) run->miny = y;
-	if ( x > run->maxx ) run->maxx = x;
-	if ( y > run->maxy ) run->maxy = y;
-}
-
-static void VK_Shade_HueRow( int frame )
-{
-	static const char *name[3] = { "red", "green", "blue" };
-	int i;
-
-	for ( i = 0; i < 3; i++ ) {
-		vkHueRun_t *r = &s_hue[i];
-
-		if ( !r->n ) {
-			continue;
-		}
-		VK_Guard_Row( "VK:hue",
-					  "frame=%d %s n=%llu box=(%d,%d)-(%d,%d) mean=%u,%u,%u",
-					  frame, name[i], r->n, r->minx, r->miny, r->maxx, r->maxy,
-					  (unsigned)( r->sum[0] / r->n ), (unsigned)( r->sum[1] / r->n ),
-					  (unsigned)( r->sum[2] / r->n ) );
-	}
-}
-
-static void VK_Shade_FlatAdd( const unsigned char *p, int x, int y ){
-	/* the swapchain is BGRA in memory; the row names r,g,b,a, so the key packs
-	   the four bytes the same way the row prints them */
-	unsigned	key = ( (unsigned)p[2] << 24 ) | ( (unsigned)p[1] << 16 )
-					  | ( (unsigned)p[0] << 8 ) | (unsigned)p[3];
-	unsigned	h = ( key * 2654435761u ) & ( VK_FLAT_BUCKETS - 1 );
-	int			i;
-
-	for ( i = 0; i < VK_FLAT_PROBE; i++ ) {
-		vkFlatRun_t *r = &s_flat[( h + i ) & ( VK_FLAT_BUCKETS - 1 )];
-
-		if ( r->count == 0 ) {
-			r->rgba = key;
-			r->count = 1;
-			r->minx = r->maxx = x;
-			r->miny = r->maxy = y;
-			return;
-		}
-		if ( r->rgba == key ) {
-			r->count++;
-			if ( x < r->minx ) r->minx = x;
-			if ( y < r->miny ) r->miny = y;
-			if ( x > r->maxx ) r->maxx = x;
-			if ( y > r->maxy ) r->maxy = y;
-			return;
-		}
-	}
-}
-
-static void VK_Shade_FlatRows( int frame )
-{
-	vkFlatRun_t	*top[4] = { NULL, NULL, NULL, NULL };
-	int			n = 0;
-	int			i, k;
-
-	for ( i = 0; i < VK_FLAT_BUCKETS; i++ ) {
-		int at = -1;
-
-		if ( s_flat[i].count < 64 ) {
-			continue;
-		}
-		/* the slot this count belongs in, in a list kept descending by count */
-		for ( k = 0; k < n; k++ ) {
-			if ( s_flat[i].count > top[k]->count ) {
-				at = k;
-				break;
-			}
-		}
-		if ( at < 0 ) {
-			if ( n >= 4 ) {
-				continue;
-			}
-			at = n;
-		}
-		if ( n < 4 ) {
-			for ( k = n; k > at; k-- ) {
-				top[k] = top[k - 1];
-			}
-			n++;
-		} else {
-			for ( k = 3; k > at; k-- ) {
-				top[k] = top[k - 1];
-			}
-		}
-		top[at] = &s_flat[i];
-	}
-
-	for ( i = 0; i < 4 && top[i]; i++ ) {
-		vkFlatRun_t *r = top[i];
-
-		VK_Guard_Row( "VK:frameflat",
-					  "frame=%d rank=%d rgba=%u,%u,%u,%u count=%d box=(%d,%d)-(%d,%d) of %dx%d",
-					  frame, i + 1,
-					  ( r->rgba >> 24 ) & 0xff, ( r->rgba >> 16 ) & 0xff,
-					  ( r->rgba >> 8 ) & 0xff, ( r->rgba >> 0 ) & 0xff,
-					  r->count, r->minx, r->miny, r->maxx, r->maxy, s_swapW, s_swapH );
-	}
-}
 
 /* One row per grid line: alpha in the high nibble of each cell and luminance in
    the low, so a translucent overlay and the scene behind it read off the same
    line.  Emitted only when the grid changes and only every few sampled frames,
    so a moving camera costs five lines a second and a still screen costs one. */
-static void VK_Shade_GridRows( int frame )
-{
-	static unsigned	s_lastHash;
-	static qboolean	s_haveHash;
-	static int		s_ticks;
-	int				cx, cy, gx, gy;
-	unsigned		hash;
-	char			line[VK_GRID_COLS * 2 + 1];
-
-	cx = s_swapW / VK_GRID_COLS;
-	cy = s_swapH / VK_GRID_ROWS;
-	if ( cx < 1 || cy < 1 ) {
-		return;
-	}
-
-	s_ticks++;
-	if ( s_haveHash && ( s_ticks % 5 ) != 0 ) {
-		return;
-	}
-
-	hash = 2166136261u;
-	for ( gy = 0; gy < VK_GRID_ROWS; gy++ ) {
-		for ( gx = 0; gx < VK_GRID_COLS; gx++ ) {
-			unsigned	a = 0, l = 0;
-			int			sx, sy, n = 0;
-			int			x0 = gx * cx, y0 = gy * cy;
-			int			x1 = x0 + cx, y1 = y0 + cy;
-			int			sxs = ( cx + 7 ) / 8, sys = ( cy + 7 ) / 8;
-
-			if ( sxs < 1 ) sxs = 1;
-			if ( sys < 1 ) sys = 1;
-			for ( sy = y0; sy < y1 && sy < s_swapH; sy += sys ) {
-				for ( sx = x0; sx < x1 && sx < s_swapW; sx += sxs ) {
-					const unsigned char *p = s_swapPixels
-						+ ( (size_t)sy * s_swapW + sx ) * 4;
-
-					a += p[3];
-					l += ( p[0] + p[1] + p[2] ) / 3;
-					n++;
-				}
-			}
-			if ( !n ) {
-				n = 1;
-			}
-			a = ( a / n ) >> 4;
-			l = ( l / n ) >> 4;
-			hash = ( hash ^ ( ( a << 4 ) | l ) ) * 16777619u;
-		}
-	}
-
-	if ( s_haveHash && hash == s_lastHash ) {
-		return;
-	}
-	s_lastHash = hash;
-	s_haveHash = qtrue;
-
-	VK_Guard_Row( "VK:framegrid", "frame=%d grid=%dx%d hash=0x%08x",
-				  frame, VK_GRID_COLS, VK_GRID_ROWS, hash );
-	for ( gy = 0; gy < VK_GRID_ROWS; gy++ ) {
-		for ( gx = 0; gx < VK_GRID_COLS; gx++ ) {
-			unsigned	a = 0, l = 0;
-			int			sx, sy, n = 0;
-			int			x0 = gx * cx, y0 = gy * cy;
-			int			x1 = x0 + cx, y1 = y0 + cy;
-			int			sxs = ( cx + 7 ) / 8, sys = ( cy + 7 ) / 8;
-
-			if ( sxs < 1 ) sxs = 1;
-			if ( sys < 1 ) sys = 1;
-			for ( sy = y0; sy < y1 && sy < s_swapH; sy += sys ) {
-				for ( sx = x0; sx < x1 && sx < s_swapW; sx += sxs ) {
-					const unsigned char *p = s_swapPixels
-						+ ( (size_t)sy * s_swapW + sx ) * 4;
-
-					a += p[3];
-					l += ( p[0] + p[1] + p[2] ) / 3;
-					n++;
-				}
-			}
-			if ( !n ) {
-				n = 1;
-			}
-			snprintf( &line[gx * 2], 3, "%x%x", (int)( ( a / n ) >> 4 ), (int)( ( l / n ) >> 4 ) );
-		}
-		line[VK_GRID_COLS * 2] = 0;
-		VK_Guard_Row( "VK:framegrid", "frame=%d row=%02d %s", frame, gy, line );
-	}
-}
 
 /* Called from the present seam.  Reads the presented image back once and
    samples a fixed grid, so one boot says whether the dome's stage draws are in
    the composited frame or only ever in a target the 2D pass then covers. */
-#define VK_3DRECT_MAX 4
-static struct { int x, y, w, h; } s_ui3D[VK_3DRECT_MAX];
-static int s_ui3DCount;
-
 /* The UI names each 3D widget rect it is about to render.  The nine fixed
    samples cannot answer the CONTROLS question -- the frame is dominated by the
    0.35,0.67,1.00 wash of the full-screen RenderModel, and whether the stardome
    ever reaches the framebuffer is exactly "what colour is inside the stardome's
    own rect at present".  Deduped, so a per-frame caller keeps a stable list. */
-void VK_Shade_Note3DRect( int x, int y, int w, int h )
-{
-	int i;
-
-	if ( w <= 0 || h <= 0 ) {
-		return;
-	}
-	for ( i = 0; i < s_ui3DCount; i++ ) {
-		if ( s_ui3D[i].x == x && s_ui3D[i].y == y
-			 && s_ui3D[i].w == w && s_ui3D[i].h == h ) {
-			return;
-		}
-	}
-	if ( s_ui3DCount < VK_3DRECT_MAX ) {
-		s_ui3D[s_ui3DCount].x = x;
-		s_ui3D[s_ui3DCount].y = y;
-		s_ui3D[s_ui3DCount].w = w;
-		s_ui3D[s_ui3DCount].h = h;
-		s_ui3DCount++;
-	} else {
-		s_ui3D[i % VK_3DRECT_MAX].x = x;
-		s_ui3D[i % VK_3DRECT_MAX].y = y;
-		s_ui3D[i % VK_3DRECT_MAX].w = w;
-		s_ui3D[i % VK_3DRECT_MAX].h = h;
-	}
-}
-
-void VK_Shade_ReadbackFrame( uint32_t imageIndex )
-{
-	static int	s_frames;
-	byte		px[4];
-	int			i;
-	int			x, y;
-	/* A three-by-three grid: five points named the ship and the corners and
-	   nothing between them, and the dome's own colour lives between them. */
-	struct { float fx, fy; const char *tag; } spot[9] = {
-		{ 0.5f,  0.5f,  "centre" },
-		{ 0.25f, 0.25f, "q1" },
-		{ 0.75f, 0.25f, "q2" },
-		{ 0.25f, 0.75f, "q3" },
-		{ 0.75f, 0.75f, "q4" },
-		{ 0.5f,  0.25f, "n" },
-		{ 0.5f,  0.75f, "s" },
-		{ 0.25f, 0.5f,  "w" },
-		{ 0.75f, 0.5f,  "e" },
-	};
-
-	s_frames++;
-	{
-		/* A whole-frame histogram is only worth a submit every so often, but the
-		   2D readback's verdict names a frame, so its copy is taken every frame
-		   it is armed; only the derived rows keep the cadence. */
-		qboolean	need2d = RB_2DCover_ReadbackArmed();
-
-		if ( !R_ProbeStatsOn() || ( !need2d && ( s_frames % 60 ) != 0 ) ) {
-			return;
-		}
-		if ( vk.swapchain == VK_NULL_HANDLE || !vk.swapchainExtent.width || !vk.swapchainExtent.height ) {
-			return;
-		}
-
-		if ( (int)vk.swapchainExtent.width != s_swapW || (int)vk.swapchainExtent.height != s_swapH ) {
-			VK_Shade_FreeSwapPixels();
-			s_swapW = (int)vk.swapchainExtent.width;
-			s_swapH = (int)vk.swapchainExtent.height;
-			s_swapPixels = ri.Malloc( (size_t)s_swapW * (size_t)s_swapH * 4 );
-		}
-
-		if ( !VK_Swapchain_ReadPixels( imageIndex, s_swapPixels, (size_t)s_swapW * (size_t)s_swapH * 4 ) ) {
-			s_swapValid = 0;
-			VK_Guard_Row( "VK:readback", "frame=%d w=%d h=%d status=failed", s_frames, s_swapW, s_swapH );
-			return;
-		}
-		s_swapValid = 1;
-		s_swapFrame = RB_2DCover_ReadbackFrame();
-	}
-
-	if ( ( s_frames % 60 ) != 0 ) {
-		return;			/* the coarse censuses keep their own cadence */
-	}
-
-	{
-		/* the presented frame's own map: the coarse grid and the flat boxes.
-		   The step comes from the fixed sample budget, so this pass costs the
-		   same at 800x600 and at 1920x1200 instead of scaling with the pixels
-		   whose defect it is measuring. */
-		int step = VK_Shade_CensusStep( s_swapW, s_swapH );
-		int fx, fy;
-
-		VK_Shade_FlatReset();
-		VK_Shade_HueReset();
-		for ( fy = 0; fy < s_swapH; fy += step ) {
-			for ( fx = 0; fx < s_swapW; fx += step ) {
-				const unsigned char *p = s_swapPixels + ( (size_t)fy * s_swapW + fx ) * 4;
-
-				VK_Shade_FlatAdd( p, fx, fy );
-				VK_Shade_HueAdd( p, fx, fy );
-			}
-		}
-		VK_Shade_FlatRows( s_frames );
-		VK_Shade_HueRow( s_frames );
-		VK_Shade_GridRows( s_frames );
-		/* the actor boxes ride the same cadence as its siblings, one step wider:
-		   an actor is on screen for hundreds of frames and the box only has to be
-		   read once per cutscene to be placed */
-		if ( ( s_frames % 300 ) == 0 ) {
-			VK_Shade_SrfPixRows( s_frames );
-		}
-	}
-
-	for ( i = 0; i < 9; i++ ) {
-		x = (int)( spot[i].fx * ( s_swapW - 1 ) );
-		y = (int)( spot[i].fy * ( s_swapH - 1 ) );
-		if ( VK_ModelPixelAtSwap( x, y, px ) ) {
-			VK_Guard_Row( "VK:readback", "frame=%d w=%d h=%d at=%s x=%d y=%d rgba=%d,%d,%d,%d clear=%.3f,%.3f,%.3f",
-						  s_frames, s_swapW, s_swapH, spot[i].tag, x, y,
-						  px[0], px[1], px[2], px[3],
-						  vk.clearColor[0], vk.clearColor[1], vk.clearColor[2] );
-		}
-	}
-
-	/* what landed inside each UI 3D widget's own rect: the wash and the model
-	   are told apart by the colour at the model's own centre */
-	for ( i = 0; i < s_ui3DCount; i++ ) {
-		x = s_ui3D[i].x + s_ui3D[i].w / 2;
-		y = s_ui3D[i].y + s_ui3D[i].h / 2;
-		if ( VK_ModelPixelAtSwap( x, y, px ) ) {
-			VK_Guard_Row( "VK:readback", "frame=%d at=ui3d%d rect=%d,%d %dx%d x=%d y=%d rgba=%d,%d,%d,%d",
-						  s_frames, i, s_ui3D[i].x, s_ui3D[i].y, s_ui3D[i].w, s_ui3D[i].h,
-						  x, y, px[0], px[1], px[2], px[3] );
-		}
-	}
-}
 
 void VK_SetGhostImage( const char *name, image_t *image )
 {
@@ -6886,129 +4130,22 @@ void VK_SetGhostImage( const char *name, image_t *image )
 /* a widget's depth is the position it draws at, so the ordered shader names are the z-order answer, which the rate-limited VK:2ddraw row
    cannot carry (past the fortieth draw the sampling throws the sequence away).  NewFrame emits the frame's names in order, deduped down the run. */
 #define VK_2DORDER_MAX	64
-static char		s_2dOrder[VK_2DORDER_MAX][64];
-static int		s_2dOrderCount;
-static unsigned	s_2dOrderHash;
-static qboolean	s_2dOrderHave;
-
-void VK_2DOrder_Note( const char *shader )
-{
-	unsigned h;
-	int		 i;
-
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-	if ( !shader || !shader[0] ) {
-		return;
-	}
-	i = s_2dOrderCount - 1;
-	if ( i >= 0 && !strcmp( s_2dOrder[i], shader ) ) {
-		return;
-	}
-
-	h = s_2dOrderHash;
-	for ( i = 0; shader[i]; i++ ) {
-		h = ( h ^ (unsigned char)shader[i] ) * 16777619u;
-	}
-	s_2dOrderHash = h;
-
-	if ( s_2dOrderCount < VK_2DORDER_MAX ) {
-		Q_strncpyz( s_2dOrder[s_2dOrderCount], shader, sizeof( s_2dOrder[0] ) );
-		s_2dOrderCount++;
-	}
-}
-
-static void VK_2DOrder_FrameRow( void )
-{
-	static unsigned	s_lastHash;
-	static int		s_frames;
-	char			line[VK_2DORDER_MAX * 32];
-	int				i, written;
-
-	s_frames++;
-	if ( !R_ProbeStatsOn() || !s_2dOrderCount ) {
-		s_2dOrderCount = 0;
-		s_2dOrderHash = 0;
-		return;
-	}
-	if ( !s_2dOrderHave || s_2dOrderHash != s_lastHash || ( s_frames % 900 ) == 0 ) {
-		line[0] = 0;
-		written = 0;
-		for ( i = 0; i < s_2dOrderCount; i++ ) {
-			int len = Com_sprintf( line + written, sizeof( line ) - written, "%s%s",
-								   i ? "|" : "", s_2dOrder[i] );
-
-			if ( len < 0 || (size_t)len >= sizeof( line ) - written ) {
-				break;
-			}
-			written += len;
-		}
-		VK_Guard_Row( "VK:2dorder", "frame=%d draws=%d %s", s_frames, s_2dOrderCount, line );
-		s_lastHash = s_2dOrderHash;
-		s_2dOrderHave = qtrue;
-	}
-	s_2dOrderCount = 0;
-	s_2dOrderHash = 0;
-}
-
 void VK_Shade_NewFrame( void )
 {
 	int slot;
-
-	VK_2DOrder_FrameRow();
-
-	/* the frame before this one is complete: its census is the number the retail trace carries */
-	if ( s_frameShadeDraws || s_frameShadeDrops ) {
-		static int rows;
-		static int lastBatches = -1;
-		static int lastRecorded = -1;
-		static int lastRecordedIdx = -1;
-		int recorded = 0, recordedIdx = 0;
-
-		VK_Shade_StageRows();
-		VK_Shade_FlatWorldRow();
-
-		VK_Draw_RecordedDraws( &recorded, &recordedIdx );
-
-		/* a count that moves between frames is the vanish signature, so a transition is always named: a recorded count that drops while the
-		   batch count holds still is draws vanishing between the walk and the stream.  A refusal keeps its own loud row. */
-		if ( R_ProbeStatsOn()
-			 && ( rows < 8 || s_frameShadeDraws != lastBatches || recorded != lastRecorded
-			 || recordedIdx != lastRecordedIdx || ( rows % 600 ) == 0 ) ) {
-			VK_Guard_Row( "VK:draw3d", "frame batches=%d refusals=%d imm=%d surf-cmds=%d draw-surfs=%d perm-req=%d perm-miss=%d recorded=%d recorded-idx=%d sets=%d/%d",
-			  s_frameShadeDraws, s_frameShadeDrops, s_frameImmDraws,
-			  s_frameSurfCmds, s_frameDrawSurfs, s_framePermReq, s_framePermMiss,
-			  recorded, recordedIdx, vk_numShadeSets, VK_SHADE_SETS );
-		}
-		lastBatches     = s_frameShadeDraws;
-		lastRecorded    = recorded;
-		lastRecordedIdx = recordedIdx;
-		rows++;
-	}
-	s_frameShadeDraws    = 0;
-	s_frameShadeDrops    = 0;
-	s_frameImmDraws      = 0;
-	s_frameSurfCmds      = 0;
-	s_frameDrawSurfs     = 0;
-	s_framePermReq       = 0;
-	s_framePermMiss      = 0;
-	s_framePermMissRows  = 0;
-	s_frameStageCount    = 0;
-	s_frameStageDropped  = 0;
-	s_worldFlatStages    = 0;
-	s_worldFlatCount     = 0;
-	s_worldFlatBatches[0] = 0;
-	s_worldFlatBatches[1] = 0;
-	s_worldFlatBatches[2] = 0;
-	s_worldFlatBatches[3] = 0;
-	VK_Draw_ResetRecordedDraws();
 
 	/* the front end wrote this frame's uniforms; the first draw uploads them into a fresh ring */
 	s_uboDirty = qtrue;
 
 	slot = RB_FrameSmpFrame();
 	if ( slot >= 0 && slot < VK_FRAMES_IN_FLIGHT ) {
+		/* size this frame's ring from the last frame that filled it: one heavy
+		   frame costs its own tail, and the next frame no longer refuses every
+		   draw behind the first exhausted slice */
+		if ( vk_shadeUboDemand[slot] * 4 >= vk_shadeUboSlices[slot] * 3 ) {
+			VK_Shade_UboGrow( slot );
+		}
+		vk_shadeUboDemand[slot] = 0;
 		vk_shadeUboNext[slot] = 0;
 		vk_shadeUboLastValid[slot] = qfalse;
 	}
@@ -7030,9 +4167,6 @@ static int		s_warmArmFrame = -1;
 static qboolean	s_warmInPass;
 static int		s_warmBuilt;
 static int		s_warmSkipped;
-static int		s_warmLateBuilds;
-static int		s_warmLateRows;
-static long long s_warmLateUsec;
 static int		s_warmNewPipelines;
 
 /* A key the walk missed while a pass was recording.  Only the walk thread
@@ -7122,31 +4256,7 @@ static void VK_Shade_DeferDrain( int budgetMsec )
 
 static void VK_Shade_BuildNote( const char *shader, unsigned stateBits, int family,
 								unsigned defines, long long usec )
-{
-	s_warmNewPipelines++;
-	if ( s_warmInPass || usec < VK_WARM_LATE_MIN_USEC ) {
-		return;
-	}
-	if ( s_warmArmFrame < 0
-		 || RB_FrameCount() <= s_warmArmFrame + VK_WARM_GRACE_FRAMES ) {
-		return;
-	}
-
-	s_warmLateBuilds++;
-	s_warmLateUsec += usec;
-	if ( !R_ProbeStatsOn() ) {
-		return;
-	}
-	s_warmLateRows++;
-	if ( s_warmLateRows > 32 && ( s_warmLateRows % 200 ) != 0 ) {
-		return;
-	}
-	VK_Guard_Row( "VK:warmmiss",
-				  "shader='%s' st=0x%lx fam=%d defines=0x%06x usec=%lld n=%d totms=%d f=%d",
-				  shader ? shader : "(null)", (unsigned long)stateBits, family,
-				  defines & ~VKP_FAMILY_MASK, usec, s_warmLateBuilds,
-				  ( int )( s_warmLateUsec / 1000LL ), RB_FrameCount() );
-}
+{ s_warmNewPipelines++; }
 
 static qboolean VK_Shade_WarmKey( const char *name, unsigned stateBits, unsigned defines,
 								  cullType_t cull, qboolean polygonOffset, int topology )
@@ -7202,6 +4312,30 @@ static void VK_Shade_WarmShader2D( const shader_t *shader )
 	}
 }
 
+/* one stage list's pipeline words: the draw path and the warm pass have to ask
+   for the same key, so this is the unfogged loop's body for any list */
+static void VK_Shade_WarmStageList( const shader_t *shader, shaderStage_t *const *stages, int count )
+{
+	int s;
+
+	for ( s = 0; s < count && s < MAX_SHADER_STAGES; s++ ) {
+		const shaderStage_t	*pStage = stages[s];
+		unsigned			defines;
+
+		if ( !pStage || !pStage->active ) {
+			continue;
+		}
+
+		defines = VK_StageDefines_Full( pStage, shader, 0, 0, 0, 0 )
+				  | VK_TexEnvForStage( pStage, shader );
+
+		VK_Shade_WarmKey( shader->name, pStage->stateBits, defines, shader->cullType,
+						  shader->polygonOffset, VK_IMM_TRIANGLES );
+		VK_Shade_WarmKey( shader->name, VK_Shade_WarmFadeBits( pStage->stateBits ), defines,
+						  shader->cullType, shader->polygonOffset, VK_IMM_TRIANGLES );
+	}
+}
+
 static void VK_Shade_WarmShader( const shader_t *shader )
 {
 	int s;
@@ -7242,6 +4376,15 @@ static void VK_Shade_WarmShader( const shader_t *shader )
 		VK_Shade_WarmKey( shader->name, VK_Shade_WarmFadeBits( pStage->stateBits ), defines,
 						  shader->cullType, shader->polygonOffset, VK_IMM_TRIANGLES );
 	}
+
+	/* RB_StageIteratorGeneric swaps in these lists when the surface has a fog
+	   number (tr_shade.c:236-240).  They were never warmed, so the first fogged
+	   surface of a map -- the Drull 3 effect/fog entry -- parked its pipeline
+	   mid-pass and the next walk's drain compiled it synchronously: the 523 ms
+	   frame.  Warming the same keys at registration moves that build into the
+	   load. */
+	VK_Shade_WarmStageList( shader, shader->fogStages, shader->numFogPasses );
+	VK_Shade_WarmStageList( shader, shader->globalFogStages, shader->numGlobalFogPasses );
 }
 
 void VK_Shade_WarmReset( void )
@@ -7297,13 +4440,6 @@ int VK_Shade_WarmRegistration( int budgetMsec )
 	}
 
 	s_warmInPass = qfalse;
-	if ( !R_ProbeStatsOn() ) {
-		return 0;
-	}
-	VK_Guard_Row( "VK:warm", "status=done built=%d skipped=%d ms=%d shaders=%d pipes=%d",
-				  s_warmBuilt, s_warmSkipped,
-				  ( int )( ( BE_Microseconds64() - t0 ) / 1000LL ), tr.numShaders - 1,
-				  vk_numShadePipelines );
 	return 1;
 }
 

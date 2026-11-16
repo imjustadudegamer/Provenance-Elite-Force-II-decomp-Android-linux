@@ -54,14 +54,7 @@ const char *VK_HomePath( void )
 
 static void VK_FirstLightRow( const char *status, const char *detail )
 {
-	VK_Guard_Row( "VK:firstlight",
-				  "status=%s device=\"%s\" bindless=%d mdi=%d frames-in-flight=%d %s",
-				  status,
-				  vk.deviceProps.deviceName[0] ? vk.deviceProps.deviceName : "none",
-				  vk.bindless ? 1 : 0,
-				  vk.multiDrawIndirect ? 1 : 0,
-				  VK_FRAMES_IN_FLIGHT,
-				  detail ? detail : "" );
+
 }
 
 qboolean VK_BringUp( int windowWidth, int windowHeight,
@@ -73,7 +66,7 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 	vk_firstLightState = 0;
 
 	if ( priorCrash ) {
-		VK_Guard_Row( "VK:guard", "site=sentinel detail=\"prior bring-up crash marker present\" result=success(0) n=1" );
+
 	}
 
 	VK_Sentinel_Arm();
@@ -208,10 +201,6 @@ qboolean VK_BringUp( int windowWidth, int windowHeight,
 
 	/* the "fail" arms above are the fault channel and stay loud; a pass row is
 	   the boot succeeding, which a quiet boot does not log */
-	if ( R_ProbeStatsOn() ) {
-		VK_FirstLightRow( "pass", "" );
-	}
-
 	return qtrue;
 }
 
