@@ -203,11 +203,7 @@ void R_RegisterCvars( void )
 	r_flaresMaxDist = ri.Cvar_Get( "r_flaresMaxDist", "768", CVAR_ARCHIVE  );
 	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT  );
 	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", 0  );
-	/* retail ships `setd r_dynamiclight 0` in global/game.cfg:22, so its
-	   default frame carries no projected dlight pool.  The port opened it on,
-	   which is why a green grenade / blue ammo canister showed a coloured pool
-	   retail never draws.  The setting still turns it on; the default is retail. */
-	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "0" );
+	r_dynamiclight = R_RegisterLightCvar( "r_dynamiclight", "1" );
 	r_facePlaneCull = ri.Cvar_Get( "r_facePlaneCull", "1", CVAR_ARCHIVE  );
 	r_showlod = ri.Cvar_Get( "r_showlod", "0", CVAR_TEMP | CVAR_CHEAT );
 	r_debugSort = ri.Cvar_Get( "r_debugSort", "0", CVAR_CHEAT  );

@@ -243,7 +243,12 @@ qboolean VK_Texture_Create( int width, int height, int mipLevels, VkFormat forma
 
 	*handleOut = -1;
 
-	for ( i = 0; i < VK_MAX_TEXTURES; i++ ) {
+	/* handle 0 is the engine-wide "no texture" sentinel: image->texnum == 0
+	   means "creation failed", VK_Shade_BindImage refuses it, and R_FreeImage
+	   skips the destroy.  A valid Vulkan texture must never take 0, or a
+	   built-in image (*default, *dlight) binds as the white fallback and the
+	   next registration leaks the slot because R_FreeImage never frees it. */
+	for ( i = 1; i < VK_MAX_TEXTURES; i++ ) {
 		if ( !vk_textures[i].inUse ) {
 			break;
 		}
