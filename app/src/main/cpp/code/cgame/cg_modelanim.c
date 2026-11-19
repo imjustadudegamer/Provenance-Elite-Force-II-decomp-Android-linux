@@ -756,12 +756,19 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
 
     // CG_CalcViewModelMovement, does not exist in retail (no such symbol in
     modelindex = s1->modelindex;
-    if ((s1->renderfx & RF_WEAPONMODEL) && s1->parent == cg.snap->ps.clientNum
-        && !cg_3rd_person->integer && cg.snap->ps.pm_type != PM_SECRET_MOVE_MODE
-        && cg.snap->ps.pm_type != PM_3RD_PERSON) {
-        s1->renderfx |= RF_DEPTHHACK;
-        modelindex = s1->viewmodelindex;
-    } else if (s1->clientNum >= 0 && cgs.model_draw[modelindex] < 0) {
+    /* retail @0x34F54: the RF_WEAPONMODEL branch and the tiki fallback are
+       exclusive.  The fallback's cgs.model_tiki[] test is retail's (the array
+       sits at off_640D4+0xF5AC and is -1-filled by CG_PrepRefresh); it is
+       reached only by a NON-weapon entity, so a weapon entity always keeps
+       s.modelindex and never substitutes s.viewmodelindex. */
+    if (s1->renderfx & RF_WEAPONMODEL) {
+        if (s1->parent == cg.snap->ps.clientNum && !cg_3rd_person->integer
+            && cg.snap->ps.pm_type != PM_SECRET_MOVE_MODE
+            && cg.snap->ps.pm_type != PM_3RD_PERSON) {
+            s1->renderfx |= RF_DEPTHHACK;
+            modelindex = s1->viewmodelindex;
+        }
+    } else if (s1->clientNum >= 0 && cgs.model_tiki[modelindex] < 0) {
         modelindex = s1->viewmodelindex;
     }
 
@@ -853,20 +860,30 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
     tiki         = cgi.R_Model_GetHandle(model.hModel);
     model.tiki   = CG_TikiFromHandle(tiki);
 
+    /* retail @0x34F00 has no "no tiki" bail: it runs the anim block, the parent
+       attach, CalcModelAlpha and the submit unconditionally, and R_Add*Surfaces
+       resolves the model from hModel (falling back to the refEntity's tiki, which
+       this cgame fills in below).  The port bailed here, so a child whose handle
+       no longer named a tiki was dropped whole -- and only the local first-person
+       weapon hid it, because its modelindex comes from s.viewmodelindex while
+       every remote weapon keeps s.modelindex. */
+    if (model.hModel && !model.tiki) {
+        /* The renderer's slot no longer resolves, but this cgame's registration
+           record for the modelindex still names the tiki, and the renderer uses
+           the refEntity's tiki when the model has none. */
+        model.tiki = CG_TikiFromHandle(cgs.model_tiki[modelindex]);
+    }
+
     if (!model.tiki) {
-        if (model.hModel) {
-            model.skinNum = s1->skinNum;
-            model.renderfx |= s1->renderfx;
-
-            for (i = 0; i < 3; i++) {
-                model.shaderRGBA[i] = cent->color[i] * 255;
-            }
-            model.shaderRGBA[3] = s1->alpha * 255;
-
-            model.fade = 1.0f; 
-            cgi.R_AddRefEntityToScene(&model);
-        }
-        return;
+        /* Retail's anim block with no tiki still writes a pose channel and the
+           default anim/frame; without it both renderers drop the entity at the
+           "no torso or leg anim set" pre-test. */
+        model.anim      = 0;
+        model.oldanim   = 0;
+        model.frame     = 0;
+        model.oldframe  = 0;
+        model.framelerp = 0.0f;
+        model.legsLive  = qtrue;
     }
 
     model.skinNum = s1->skinNum;
@@ -874,7 +891,11 @@ void CG_ModelAnim(centity_t *cent, qboolean bDoShaderTime)
 
     CG_InterpolateAnimParms(cent, &model);
 
-    CG_EF2ModelAnim(cent, &model);
+    /* The animation driver re-derives its tiki from hModel; run it only when that
+       lookup actually named one, or a recovered tiki would be driven with -1. */
+    if (model.tiki && tiki >= 0) {
+        CG_EF2ModelAnim(cent, &model);
+    }
 
     if (cent->currentState.parent != ENTITYNUM_NONE) {
         refEntity_t *parent;

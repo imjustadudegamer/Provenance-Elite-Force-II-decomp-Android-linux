@@ -198,7 +198,22 @@ void SV_GetUserinfo( int index, char *buffer, int bufferSize ) {
 
 void SV_CreateBaseline( void ) {
 	gentity_t		*ent;
-	int				entnum;	
+	int				entnum;
+	entityState_t	nullstate;
+
+	/* retail SV_SpawnServer initialises EVERY slot's baseline to the null entity
+	   state with baseline.number = -1 and only then copies the map entities in.
+	   A zeroed baseline is not that state: its parent 0, alpha 0 and scale 0 all
+	   equal the zero and MSG_WriteDeltaEntity then never writes them, while the
+	   client's own nullstate baseline (cl.entityBaselines[] from
+	   CL_ParseGamestate) holds parent ENTITYNUM_NONE.  A child of entity 0 is the
+	   visible case: parent 0 is lost and the client keeps 1023. */
+	MSG_GetNullEntityState( &nullstate );
+
+	for ( entnum = 0; entnum < MAX_GENTITIES; entnum++ ) {
+		sv.svEntities[entnum].baseline = nullstate;
+		sv.svEntities[entnum].baseline.number = -1;
+	}
 
 	for ( entnum = 1; entnum < sv.num_entities ; entnum++ ) {
 		ent = SV_GentityNum(entnum);

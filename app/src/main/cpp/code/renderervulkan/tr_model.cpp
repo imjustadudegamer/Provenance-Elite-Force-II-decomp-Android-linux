@@ -1320,7 +1320,11 @@ void R_AddSkelSurfaces(trRefEntity_t *ent)
                 }
             }
 
-            if ((ent->e.customShader) && (ent->e.renderfx & RF_CUSTOMSHADERPASS)
+            /* retail @0x21B20 (R_AddSkelSurfaces): the custom-shader pass is drawn
+               inside `if (!saved_r6)`, i.e. only when the entity is not the
+               first-person personal model, so a local player's own body never
+               paints its RF_CUSTOMSHADERPASS surfaces over the camera. */
+            if (!personalModel && (ent->e.customShader) && (ent->e.renderfx & RF_CUSTOMSHADERPASS)
                 && !(dsurf->flags & 0x400)) {
                 shader = R_GetShaderByHandle(ent->e.customShader);
                 if (fadeSecond) {
@@ -2378,7 +2382,9 @@ void R_AddTikiSurfaces(trRefEntity_t *ent)
                                 }
                             }
 
-                            if ((ent->e.customShader) && (ent->e.renderfx & RF_CUSTOMSHADERPASS)) {
+                            /* retail @0x26950: same `if (!v3)` gate as the normal
+                               pass -- a personal model draws no custom pass. */
+                            if (!personalModel && (ent->e.customShader) && (ent->e.renderfx & RF_CUSTOMSHADERPASS)) {
                                 shader = R_GetShaderByHandle(ent->e.customShader);
                                 if (fadeSecond) {
                                     shader = R_FindShaderForceAlpha(shader->name);

@@ -1936,10 +1936,21 @@ void MSG_WriteDeltaPlayerstate(msg_t *msg, struct playerState_s *from, struct pl
 	MSG_WriteBits( msg, changeIndex, 5 );	
 
 	if ( changeIndex == -1 ) {
-		for ( i = 0; i + 8 <= (int)( 8 * sizeof( changeVector ) ); i += 8 ) {
+		int totalBits = (int)( 8 * sizeof( changeVector ) );
+
+		for ( i = 0; i + 8 <= totalBits; i += 8 ) {
 			MSG_WriteBits( msg, changeVector[i >> 3], 8 );
 		}
-		MSG_WriteBits( msg, changeVector[i >> 3], (int)( 8 * sizeof( changeVector ) ) - i );
+		/* changeVector is a whole number of bytes (ten), so totalBits - i is
+		   zero once the loop has written all of it.  The tail write was then
+		   MSG_WriteBits( ..., 0 ), which is the "bad bits 0" abort a second
+		   client caused on entry -- and it indexed one byte past the vector.
+		   The ten bytes the loop already wrote ARE the full vector retail
+		   sends; there is no tail to write.  A vector that is not a whole
+		   number of bytes still gets its remainder here. */
+		if ( i < totalBits ) {
+			MSG_WriteBits( msg, changeVector[i >> 3], totalBits - i );
+		}
 	}
 
 	for ( i = 0, field = playerStateFields ; (size_t)i < numFields ; i++, field++ ) {
@@ -1998,20 +2009,25 @@ void MSG_ReadDeltaPlayerstate(msg_t *msg, playerState_t *from, playerState_t *to
 
 	if ( changeIndex == numMsgPSChangeVectors ) {
 		int b, c;
+		int totalBits = (int)( 8 * sizeof( changeVector ) );
 
 		c_msgChangeVectorFullReads++;
-		for ( b = 0; b + 8 <= (int)( 8 * sizeof( changeVector ) ); b += 8 ) {
+		for ( b = 0; b + 8 <= totalBits; b += 8 ) {
 			c = MSG_ReadBits( msg, 8 );
 			if ( (size_t)msg->readcount > msg->cursize ) {
 				c = -1;
 			}
 			changeVector[b >> 3] = (byte)c;
 		}
-		c = MSG_ReadBits( msg, (int)( 8 * sizeof( changeVector ) ) - b );
-		if ( (size_t)msg->readcount > msg->cursize ) {
-			c = -1;
+		/* same whole-byte case as the writer: no zero-bit read, and no store
+		   one byte past the vector when the ten bytes are complete. */
+		if ( b < totalBits ) {
+			c = MSG_ReadBits( msg, totalBits - b );
+			if ( (size_t)msg->readcount > msg->cursize ) {
+				c = -1;
+			}
+			changeVector[b >> 3] = (byte)c;
 		}
-		changeVector[b >> 3] = (byte)c;
 		vector = changeVector;
 	} else {
 		c_msgChangeVectorHits++;

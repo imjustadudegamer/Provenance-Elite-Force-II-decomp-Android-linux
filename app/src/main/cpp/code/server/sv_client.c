@@ -447,7 +447,10 @@ static void SV_SendClientGameState( client_t *client ) {
 	MSG_GetNullEntityState( &nullstate );
 	for ( start = 0 ; start < MAX_GENTITIES; start++ ) {
 		base = &sv.svEntities[start].baseline;
-		if ( !base->number ) {
+		/* retail sends a baseline only for number >= 0; -1 is "this slot never
+		   held a map entity" and its baseline IS the null entity state, which is
+		   exactly what the client already has. */
+		if ( base->number < 0 ) {
 			continue;
 		}
 		MSG_WriteSVC( &msg, svc_baseline );
