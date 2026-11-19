@@ -90,131 +90,6 @@ void RB_2D_WindowState( int *win, int *scn ) {
 	scn[2] = r_scissor2D[2]; scn[3] = r_scissor2D[3];
 }
 
-/* the reference renderer's tr_draw.c carries this note in full */
-typedef enum {
-	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
-	D2P_tilepicoffset, D2P_trianglepic, D2P_bgsub, D2P_bgpixels, D2P_box,
-	D2P_lineloop, D2P_setwindow, D2P_scissor, D2P_shadertime, D2P_drawstring,
-	D2P_SLOTS
-} d2phase_t;
-
-static const char *s_d2Name[D2P_SLOTS] = {
-	"flush", "setcolor", "stretchpic", "stretchpic2", "tilepic",
-	"tilepicoffset", "trianglepic", "bgsub", "bgpixels", "box",
-	"lineloop", "setwindow", "scissor", "shadertime", "drawstring"
-};
-
-typedef struct { int calls; int usec; int max; } d2row_t;
-static d2row_t	s_d2[D2P_SLOTS];
-static int		s_d2WinStart;
-static int		s_d2WinFrame;
-static cvar_t  *s_d2Cvar;
-static int		s_d2Stall;
-static int		s_d2StallShown;
-
-/* Surfaces the batch issued: calls is what the UI asked, draws what reached the driver. */
-static int		s_d2Batches;
-
-/* the reference renderer's tr_draw.c carries this note in full */
-static int		s_d2VertsAsked;
-static int		s_d2VertsDrawn;
-static int		s_d2Drops;
-
-static qboolean D2_On( void ) {
-	if ( !s_d2Cvar ) {
-		s_d2Cvar = ri.Cvar_Get( "d2_stallStats", "1", 0 );
-	}
-	return ( s_d2Cvar && s_d2Cvar->integer ) ? qtrue : qfalse;
-}
-
-static int D2_T0( void ) {
-	return D2_On() ? BE_Microseconds() : 0;
-}
-
-static void D2_End( int slot, int t0 ) {
-	d2row_t	*r;
-	int		usec;
-
-	if ( !t0 ) {
-		return;
-	}
-
-	usec = BE_Microseconds() - t0;
-	r    = &s_d2[slot];
-	r->calls++;
-	r->usec += usec;
-	if ( usec > r->max ) {
-		r->max = usec;
-	}
-
-	/* A single call that outcosts a frame is the disease: first 8, then 1 in 64. */
-	if ( usec >= 2000 ) {
-		s_d2Stall++;
-		if ( s_d2StallShown < 8 || ( s_d2Stall % 64 ) == 0 ) {
-			s_d2StallShown++;
-			ri.Printf( PRINT_ALL, "[2D:stall] call=%s usec=%d calls=%d flushMax=%d f=%d\n",
-					   s_d2Name[slot], usec, r->calls, s_d2[D2P_flush].max,
-					   RB_FrameCount() );
-		}
-	}
-}
-
-/* the reference renderer's tr_draw.c carries this note in full */
-static int D2_Prepare( void ) {
-	/* the twin's prefix flushed the recorded frame and there is no immediate mode here, so the FLUSH collapses to nothing; the timestamp
-	   must not, because D2_End drops a zero t0 and every recorder through D2_Prepare read 0 in the [2D:sum] roll.  Only setcolor and drawstring, which take D2_T0 directly, were ever counted. */
-	return D2_T0();
-}
-
-static void D2_Roll( void ) {
-	int		now, win, i, sum, sumCalls;
-	int		frames;
-
-	if ( !D2_On() ) {
-		return;
-	}
-
-	now = BE_Microseconds();
-	if ( !s_d2WinStart ) {
-		s_d2WinStart = now;
-		s_d2WinFrame = RB_FrameCount();
-		return;
-	}
-
-	win = ( now - s_d2WinStart ) / 1000;
-	if ( win < 1000 ) {
-		return;
-	}
-	frames = RB_FrameCount() - s_d2WinFrame;
-	if ( frames < 1 ) {
-		frames = 1;
-	}
-
-	sum = sumCalls = 0;
-	for ( i = 0; i < D2P_SLOTS; i++ ) {
-		sum += s_d2[i].usec;
-		sumCalls += s_d2[i].calls;
-	}
-
-	ri.Printf( PRINT_ALL, "[2D:sum] window=%dms frames=%d calls=%d draws=%d vasked=%d vdrawn=%d"
-			   " drop=%d sum=%dus flush=%dus body=%dus max=",
-			   win, frames, sumCalls, s_d2Batches, s_d2VertsAsked, s_d2VertsDrawn,
-			   s_d2Drops, sum, s_d2[D2P_flush].usec, sum - s_d2[D2P_flush].usec );
-	for ( i = 0; i < D2P_SLOTS; i++ ) {
-		ri.Printf( PRINT_ALL, "%s=%d/%d%s", s_d2Name[i], s_d2[i].usec, s_d2[i].max,
-				   ( i + 1 < D2P_SLOTS ) ? " " : "\n" );
-	}
-
-	memset( s_d2, 0, sizeof( s_d2 ) );
-	s_d2Batches    = 0;
-	s_d2VertsAsked = 0;
-	s_d2VertsDrawn = 0;
-	s_d2Drops      = 0;
-	s_d2WinStart = now;
-	s_d2WinFrame = RB_FrameCount();
-	s_d2StallShown = 0;
-}
-
 static shader_t *s_2dBatchShader;
 static qboolean  s_2dBatchOpen;
 static int       s_2dBatchVerts;
@@ -337,26 +212,10 @@ qboolean RB_2D_SpanNote( void ) {
    own, so a window change still closes it, as it always did. */
 void RB_2D_FlushImmediate( void ) {
 	if ( s_2dTriOpen ) {
-		int	got;
-
 /* the reference renderer's tr_draw.c carries this note in full */
 		RB_ImmEndDeferred();
 		s_2dTriOpen  = qfalse;
 		s_2dTriBlend = -1;
-		s_d2Batches++;
-
-		got = RB_ImmStreamVerts() - s_2dTriBase;
-		if ( got != s_2dTriVerts ) {
-			static int	s_rows;
-
-			s_d2Drops += s_2dTriVerts - got;
-			s_rows++;
-			if ( D2_On() && ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) ) {
-				ri.Printf( PRINT_ALL, "[2D:drop] box lost=%d asked=%d got=%d f=%d\n",
-						   s_2dTriVerts - got, s_2dTriVerts, got, RB_FrameCount() );
-			}
-		}
-		s_d2VertsDrawn += got;
 		RB_ImmFlush();
 		/* Same: the pipeline bind and the draw returned their own result. */
 	}
@@ -386,28 +245,10 @@ static void RB_2D_OwnStateApply( void ) {
 
 void RB_2D_Flush( void ) {
 	if ( s_2dBatchOpen ) {
-		int	verts;
-
-/* the reference renderer's tr_draw.c carries this note in full */
-		verts = tess.numVertexes;
-		if ( verts != s_2dBatchVerts ) {
-			int			lost = s_2dBatchVerts - verts;
-			static int	s_rows;
-
-			s_d2Drops += lost;
-			s_rows++;
-			if ( D2_On() && ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) ) {
-				ri.Printf( PRINT_ALL, "[2D:drop] tess lost=%d asked=%d got=%d f=%d\n",
-						   lost, s_2dBatchVerts, verts, RB_FrameCount() );
-			}
-		}
-
 		/* Cleared before the draw: RB_EndSurface can reach RB_BeginSurface, which flushes too. */
 		s_2dBatchOpen   = qfalse;
 		s_2dBatchShader = NULL;
 		s_2dBatchVerts  = 0;
-		s_d2VertsDrawn += verts;
-		s_d2Batches++;
 
 		RB_EndSurface();
 		/* The tess path reports its own VkResult at the call site; nothing polls here. */
@@ -503,7 +344,6 @@ static void RB_2D_BatchQuad( shader_t *shader, const float (*xy)[2], const float
 	tess.numIndexes += 6;
 
 	s_2dBatchVerts += 4;
-	s_d2VertsAsked += 4;
 }
 
 void RB_2D_SetColor( const byte *rgba ) {
@@ -735,7 +575,6 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	}
 
 	s_2dTriVerts   += 6;
-	s_d2VertsAsked += 6;
 
 	if ( s_2dTriVerts >= RB_2D_TRI_BOX_MAX * 6 ) {
 		RB_2D_Flush();
@@ -819,23 +658,11 @@ void RB_2D_ShaderTime( float startTime ) {
 	}
 }
 
-/* the reference renderer's tr_draw.c carries this note in full */
-void D2_StringBegin( int *t0 ) {
-	*t0 = D2_T0();
-}
-
-void D2_StringEnd( int t0 ) {
-	D2_End( D2P_drawstring, t0 );
-}
-
 void Draw_SetColor(const vec4_t rgba) {
-	int	t0 = D2_T0();
 
 	if (!rgba) {
 		rgba = r_colorWhite;
 	}
-
-	D2_Roll();
 
 	r_color2D[0] = (byte)(rgba[0] * tr.identityLightByte);
 	r_color2D[1] = (byte)(rgba[1] * tr.identityLightByte);
@@ -852,8 +679,6 @@ void Draw_SetColor(const vec4_t rgba) {
 			Com_Memcpy( cmd->color, r_color2D, sizeof( r_color2D ) );
 		}
 	}
-
-	D2_End( D2P_setcolor, t0 );
 }
 
 void R_ChangeTextColor(int index) {
@@ -872,7 +697,6 @@ void R_ChangeTextColor(int index) {
 
 void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, float s2, float t2, qhandle_t hShader) {
 	shader_t* shader;
-	int		t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -896,13 +720,10 @@ void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, flo
 			cmd->s1 = s1; cmd->t1 = t1; cmd->s2 = s2; cmd->t2 = t2;
 		}
 	}
-
-	D2_End( D2P_stretchpic, t0 );
 }
 
 void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy, qhandle_t hShader) {
 	shader_t* shader;
-	int		t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -927,14 +748,11 @@ void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, fl
 			cmd->sx = sx; cmd->sy = sy;
 		}
 	}
-
-	D2_End( D2P_stretchpic2, t0 );
 }
 
 void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 	shader_t* shader;
 	float		picw, pich;
-	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -962,14 +780,11 @@ void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 			cmd->offsetX = 0; cmd->offsetY = 0;
 		}
 	}
-
-	D2_End( D2P_tilepic, t0 );
 }
 
 void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, int offsetX, int offsetY) {
 	shader_t* shader;
 	float		picw, pich;
-	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -997,13 +812,10 @@ void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, i
 			cmd->offsetX = offsetX; cmd->offsetY = offsetY;
 		}
 	}
-
-	D2_End( D2P_tilepicoffset, t0 );
 }
 
 void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhandle_t hShader) {
 	shader_t* shader;
-	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -1022,8 +834,6 @@ void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhand
 			Com_Memcpy( cmd->texCoords, vTexCoords, sizeof( cmd->texCoords ) );
 		}
 	}
-
-	D2_End( D2P_trianglepic, t0 );
 }
 
 void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
@@ -1290,8 +1100,6 @@ void AddBox(float x, float y, float w, float h) {
 		return;
 	}
 
-	D2_Prepare();
-
 	{
 		box2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -1308,8 +1116,6 @@ void DrawBox(float x, float y, float w, float h) {
 		return;
 	}
 
-	D2_Prepare();
-
 	{
 		box2DCommand_t *cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 
@@ -1322,13 +1128,10 @@ void DrawBox(float x, float y, float w, float h) {
 }
 
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask) {
-	int		t0;
 
 	if (!r_draw2d->integer) {
 		return;
 	}
-
-	t0 = D2_Prepare();
 
 	if ( count <= 0 ) {
 		return;
@@ -1346,8 +1149,6 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
 			Com_Memcpy( (vec2_t *)( cmd + 1 ), points, count * sizeof( vec2_t ) );
 		}
 	}
-
-	D2_End( D2P_lineloop, t0 );
 }
 
 /* The placement in force on THIS thread, where a string is queued: the run
@@ -1390,9 +1191,6 @@ void R_2DQueuePlacement( float *ox, float *oy, qboolean *scnValid, int *scn, byt
 }
 
 void Set2DWindow(int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f) {
-	int		t0;
-
-	t0 = D2_Prepare();
 
 	r_2dWindowSeen = qtrue;
 
@@ -1428,12 +1226,9 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 
 	/* the window defines the space: the placement the last widget set is gone */
 	Set2DOrigin( 0.0f, 0.0f );
-
-	D2_End( D2P_setwindow, t0 );
 }
 
 void RE_Scissor(int x, int y, int width, int height) {
-	D2_T0();
 
 	if ( r_scissor2DValid &&
 		 r_scissor2D[0] == x && r_scissor2D[1] == y && r_scissor2D[2] == width && r_scissor2D[3] == height ) {

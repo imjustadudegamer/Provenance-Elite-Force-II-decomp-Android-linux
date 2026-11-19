@@ -51,6 +51,25 @@ jobs:
           python3 -m pip install --quiet "cmake>=3.31" ninja
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Build the vendored SDL 2.30.9
+        run: |
+          set -euo pipefail
+          # Ubuntu 22.04 ships SDL 2.0.20; the engine calls SDL_CPUPauseInstruction
+          # (2.0.24+) and the port is tested against the 2.30.9 it vendors for
+          # Android.  Build that SDL here so the image carries the tested library
+          # and the floor stays the runner's glibc.  Wayland is off: the runner
+          # has no wayland-protocols XML, and XWayland carries the X11 driver on
+          # Wayland desktops.
+          cmake -S app/src/main/cpp/code/thirdparty/SDL2-2.30.9 -B /tmp/sdl \
+            -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DSDL_TESTS=OFF -DSDL_TEST_LIBRARY=OFF -DSDL_EXAMPLES=OFF \
+            -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_WAYLAND=OFF
+          cmake --build /tmp/sdl -j"$(nproc)"
+          sudo cmake --install /tmp/sdl
+          sudo ldconfig
+          pkg-config --modversion sdl2
+
       - name: Build and package the AppImage
         run: |
           set -euo pipefail

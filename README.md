@@ -39,6 +39,9 @@ comes from and there is an answer.
 - Full gamepad support (SDL GameController, EF1-style layout — see the table below),
   sharing one key map with the touch controls.
 - First-run game import through the system file picker — no storage permission needed.
+- Local-network multiplayer: host a match on one device and join it from another on
+  the same network, with no master server, no port forward and no account. The
+  engine's own notes are in [docs/LAN_MULTIPLAYER.md](docs/LAN_MULTIPLAYER.md).
 - Widescreen support for the 3D view, the HUD and the 2D menus.
 - Android 8.0+ (`arm64-v8a`, 16 KB page-size compatible) and Linux x86-64 from one tree.
 
@@ -124,6 +127,10 @@ almost all of the graphical bugs reported here are fixed. What is still open:
   the AppImage does not carry the GLES 3.2 module.)
 - **Saves are one way in practice** — a save written here can load oddly or
   crash in retail, so back your saves up and finish a run in this port.
+- **Multiplayer is local-network only** — the retail internet server list needs a
+  master server this port does not configure, so hosting and joining are for one
+  network. Use a home router or a phone hotspot with the VPN off; guest and hotel
+  networks that block device-to-device traffic cannot carry a match.
 - **One deliberate divergence** — some scripted movement threads resume in this
   port that retail itself cannot resume from its own saves; this is kept on
   purpose and will not be "fixed".
@@ -161,11 +168,11 @@ Ninja and the SDL 2 and Vulkan development headers (`libsdl2-dev`,
 `app/appimage/tools.lock`. The version in the file name comes from
 `app/src/main/cpp/VERSION`, the same file the engine banner and the APK read.
 The Linux release is **Vulkan only** — the GLES 3.2 twin is an Android concern
-and is configured out of this build (`-DBUILD_RENDERER_GLES3=OFF`). It is also
-probe-silent: the packaging lane compiles the release image without diagnostic probes, so the image
-compiles every probe row family out, writes no `qconsole.log`, and fails its own
-payload check if a row format survives. The crash channel (the fatal backtrace,
-`crashlog.txt` and the fault rows) is never gated and stays.
+and is configured out of this build (`-DBUILD_RENDERER_GLES3=OFF`). It also
+carries no diagnostic row emitters: the tree ships without them, so the image
+cannot print a probe row, and it writes no `qconsole.log` unless the engine log
+is asked for. The crash channel (the fatal backtrace, `crashlog.txt` and the
+fault rows) stays.
 
 ```sh
 app/package_appimage.sh

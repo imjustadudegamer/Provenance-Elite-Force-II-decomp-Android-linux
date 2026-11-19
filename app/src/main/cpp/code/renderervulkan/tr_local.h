@@ -1753,8 +1753,6 @@ int  RB_2D_SpanCount( void );
 void RB_2D_SpanGet( int i, int *firstIndex, int *count, float *ortho, int *win, int *scn );
 qboolean RB_2D_SpanBreak( void );
 qboolean RB_2D_SpanNote( void );
-void D2_StringBegin( int *t0 );
-void D2_StringEnd( int t0 );
 /* Draws the batch and drops the census before a purge frees the names they hold. */
 void RB_2D_OwnersPurged( void );
 qboolean R_PendingRenderCommands( void );

@@ -1747,7 +1747,9 @@ void Com_Init( char *commandLine ) {
 #endif
 		Cvar_SetDescription( perf, "Frame pacing log: 0 off, N seconds between [PERF:fps] rows (perf_fps.log)" );
 	}
-	com_logfile = Cvar_Get("logfile", "3", CVAR_TEMP);
+	/* shipped default: no engine log.  The launchers and the device property
+	   arm it (logfile 3) when a run needs one. */
+	com_logfile = Cvar_Get("logfile", "0", CVAR_TEMP);
 	/* the per-boot override file; CVAR_TEMP keeps it out of the archive */
 	com_execAfterConfig = Cvar_Get( "com_execAfterConfig", "", CVAR_TEMP );
 	com_timescale = Cvar_Get( "timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO );

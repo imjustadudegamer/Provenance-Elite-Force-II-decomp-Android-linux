@@ -1689,8 +1689,6 @@ void RB_2D_Flush( void );
 void RB_2D_EnterPhase( void );
 void RB_2D_InvalidateWindow( void );
 void RB_SetGL2D( void );
-void D2_StringBegin( int *t0 );
-void D2_StringEnd( int t0 );
 /* Draws the batch and drops the census before a purge frees the names they hold. */
 void RB_2D_OwnersPurged( void );
 qboolean R_PendingRenderCommands( void );

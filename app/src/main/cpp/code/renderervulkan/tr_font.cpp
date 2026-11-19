@@ -886,7 +886,6 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
     int curPage;
     float fWidthScale, fHeightScale;
     int record;
-    int s_fontStringT0 = 0;
 
     i = 0;
     startx = x;
@@ -940,11 +939,6 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
                        text ? text : "",
                        RB_FrameCount() );
         }
-    }
-
-    {
-        /* The string's run is recorded like every other 2D call, so this is the timing hook only. */
-        D2_StringBegin(&s_fontStringT0);
     }
 
     /* The run records quads and never names a window of its own: with the view's
@@ -1153,10 +1147,6 @@ void R_DrawString_sgl(fontheader_sgl_t* font, const char* text, float x, float y
         }
     }
 
-    if (s_fontStringT0) {
-        D2_StringEnd(s_fontStringT0);
-        s_fontStringT0 = 0;
-    }
 }
 
 void R_DrawString(fontheader_t* font, const char* text, float x, float y, int maxlen, const float *pvVirtualScreen) {

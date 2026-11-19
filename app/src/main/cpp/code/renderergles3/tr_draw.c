@@ -68,164 +68,6 @@ void RB_2D_InvalidateWindow( void ) {
 	s_walkScissorValid = qfalse;
 }
 
-/* ---- [2D:stall] per-call accounting of the 2D entry points ---------------- */
-/* a menu frame's cost is charged to whichever widget calls in here and the widget probe only sees the widget's total, so this splits it per entry point and
-   separates the flush prefix from the immediate body, naming the blocking call instead of inferring it.  Every read is behind the master probe gate. */
-typedef enum {
-	D2P_flush = 0, D2P_setcolor, D2P_stretchpic, D2P_stretchpic2, D2P_tilepic,
-	D2P_tilepicoffset, D2P_trianglepic, D2P_bgsub, D2P_bgpixels, D2P_box,
-	D2P_lineloop, D2P_setwindow, D2P_scissor, D2P_shadertime, D2P_drawstring,
-	D2P_SLOTS
-} d2phase_t;
-
-static const char *s_d2Name[D2P_SLOTS] = {
-	"flush", "setcolor", "stretchpic", "stretchpic2", "tilepic",
-	"tilepicoffset", "trianglepic", "bgsub", "bgpixels", "box",
-	"lineloop", "setwindow", "scissor", "shadertime", "drawstring"
-};
-
-typedef struct { int calls; int usec; int max; } d2row_t;
-static d2row_t	s_d2[D2P_SLOTS];
-static int		s_d2WinStart;
-static int		s_d2WinFrame;
-static cvar_t  *s_d2Cvar;
-static int		s_d2Stall;
-static int		s_d2StallShown;
-
-/* Surfaces the batch actually issued, so the row shows the collapse: calls is
-   what the UI asked for, draws is what reached the driver. */
-static int		s_d2Batches;
-
-/* Batch coverage. Every vertex the 2D path is asked for is counted here and counted again where it
-   is actually handed to the driver; the two must agree or something dropped a quad at a batch
-   boundary, which is exactly the bug class that cost the menu its backgrounds. */
-static int		s_d2VertsAsked;
-static int		s_d2VertsDrawn;
-static int		s_d2Drops;
-
-static qboolean D2_On( void ) {
-	if ( !s_d2Cvar ) {
-		s_d2Cvar = ri.Cvar_Get( "d2_stallStats", "0", 0 );
-	}
-	return ( s_d2Cvar && s_d2Cvar->integer ) ? qtrue : qfalse;
-}
-
-static int D2_T0( void ) {
-	return D2_On() ? BE_Microseconds() : 0;
-}
-
-static void D2_End( int slot, int t0 ) {
-	d2row_t	*r;
-	int		usec;
-
-	if ( !t0 ) {
-		return;
-	}
-
-	usec = BE_Microseconds() - t0;
-	r    = &s_d2[slot];
-	r->calls++;
-	r->usec += usec;
-	if ( usec > r->max ) {
-		r->max = usec;
-	}
-
-	/* A single call that outcosts a whole frame is the disease; name it before
-	   the roll drowns it in means.  First 8, then one in 64. */
-	if ( usec >= 2000 ) {
-		s_d2Stall++;
-		if ( s_d2StallShown < 8 || ( s_d2Stall % 64 ) == 0 ) {
-			s_d2StallShown++;
-			ri.Printf( PRINT_ALL, "[2D:stall] call=%s usec=%d calls=%d flushMax=%d f=%d\n",
-					   s_d2Name[slot], usec, r->calls, s_d2[D2P_flush].max,
-					   RB_FrameCount() );
-		}
-	}
-}
-
-/* The prefix every immediate 2D call shares.  Under a single-threaded back end
-   this runs the recorded frame, so its cost belongs to whichever widget called
-   first, which is exactly what the widget self-times were charging.  Returns 0
-   on the recorded path so the caller's D2_End is a no-op there. */
-static int D2_Prepare( void ) {
-	if ( glConfig.smpActive ) {
-		return 0;
-	} else {
-		int	f0 = D2_T0();
-		int	t0;
-
-		/* Draw the batch only when a recorded scene is actually waiting, so a menu model the UI submits
-		   mid-walk still lands *behind* the quads drawn before it. With nothing pending there is nothing
-		   to order against, and flushing would break the batch on every call. */
-		if ( R_PendingRenderCommands() ) {
-			RB_2D_Flush();
-		}
-
-		R_SyncRenderThread();
-		R_IssuePendingRenderCommands();
-		D2_End( D2P_flush, f0 );
-
-		t0 = D2_T0();
-		return t0;
-	}
-}
-
-static void D2_Roll( void ) {
-	int		now, win, i, sum, sumCalls;
-	int		frames;
-
-	if ( !D2_On() ) {
-		return;
-	}
-
-	now = BE_Microseconds();
-	if ( !s_d2WinStart ) {
-		s_d2WinStart = now;
-		s_d2WinFrame = RB_FrameCount();
-		return;
-	}
-
-	win = ( now - s_d2WinStart ) / 1000;
-	if ( win < 1000 ) {
-		return;
-	}
-	frames = RB_FrameCount() - s_d2WinFrame;
-	if ( frames < 1 ) {
-		frames = 1;
-	}
-
-	sum = sumCalls = 0;
-	for ( i = 0; i < D2P_SLOTS; i++ ) {
-		sum += s_d2[i].usec;
-		sumCalls += s_d2[i].calls;
-	}
-
-	ri.Printf( PRINT_ALL, "[2D:sum] window=%dms frames=%d calls=%d draws=%d vasked=%d vdrawn=%d"
-			   " drop=%d sum=%dus flush=%dus body=%dus max=",
-			   win, frames, sumCalls, s_d2Batches, s_d2VertsAsked, s_d2VertsDrawn,
-			   s_d2Drops, sum, s_d2[D2P_flush].usec, sum - s_d2[D2P_flush].usec );
-	for ( i = 0; i < D2P_SLOTS; i++ ) {
-		ri.Printf( PRINT_ALL, "%s=%d/%d%s", s_d2Name[i], s_d2[i].usec, s_d2[i].max,
-				   ( i + 1 < D2P_SLOTS ) ? " " : "\n" );
-	}
-
-	memset( s_d2, 0, sizeof( s_d2 ) );
-	s_d2Batches    = 0;
-	s_d2VertsAsked = 0;
-	s_d2VertsDrawn = 0;
-	s_d2Drops      = 0;
-	s_d2WinStart = now;
-	s_d2WinFrame = RB_FrameCount();
-	s_d2StallShown = 0;
-}
-
-/* ---- the 2D bodies: run directly when the back end is single-threaded, and
- * replayed on the render thread when the same call was recorded ---- */
-
-/* ---- the 2D batch --------------------------------------------------------- */
-/* a UI pass issued 400-650 of these calls a frame and every one was a complete surface of its own -- 70-115 us typical, spiking into milliseconds -- so quads
-   now append to one open surface, ended only when the shader, the primitive kind or the view changes.  Draw order survives because every change flushes first; colour never flushes, it is baked per vertex. */
-
 static shader_t *s_2dBatchShader;
 static qboolean  s_2dBatchOpen;
 static int       s_2dBatchVerts;
@@ -266,67 +108,6 @@ qboolean RB_2D_ScissorState( int *box ) {
 	return qtrue;
 }
 
-/* The batch's own rect against the clip it is about to draw under.  Retail scissor
-   clips every widget to its own rect (retail-gl-1031 trace: bkg_01's
-   glScissor(0,280,320,320) at call 186693 with the quad's vertices 0,0..320,320 at
-   186716), so a batch drawn outside its recorded clip is the missing-panel class
-   and must name itself instead of vanishing. */
-static void D2_ClipAudit( int verts ) {
-	static int	s_rows;
-	int			i;
-	float		x0, y0, x1, y1;
-	int			sc[4] = { 0, 0, 0, 0 };
-	unsigned char	wmask = 0;
-	int			inside;
-
-	if ( !D2_On() || verts <= 0 || !s_walkScissorValid ) {
-		return;
-	}
-
-	x0 = x1 = tess.xyz[0][0];
-	y0 = y1 = tess.xyz[0][1];
-	for ( i = 1; i < verts; i++ ) {
-		if ( tess.xyz[i][0] < x0 ) x0 = tess.xyz[i][0];
-		if ( tess.xyz[i][0] > x1 ) x1 = tess.xyz[i][0];
-		if ( tess.xyz[i][1] < y0 ) y0 = tess.xyz[i][1];
-		if ( tess.xyz[i][1] > y1 ) y1 = tess.xyz[i][1];
-	}
-
-	/* the ortho is y-down over the screen, the scissor y-up in GL's own units, so
-	   the rect is flipped before it is compared with the clip */
-	inside = ( (int)x0 >= s_walkScissor[0] && (int)x1 <= s_walkScissor[0] + s_walkScissor[2] &&
-			   (int)( glConfig.vidHeight - y1 ) >= s_walkScissor[1] &&
-			   (int)( glConfig.vidHeight - y0 ) <= s_walkScissor[1] + s_walkScissor[3] ) ? 1 : 0;
-
-	if ( qglGetIntegerv ) {
-		qglGetIntegerv( GL_SCISSOR_BOX, sc );
-	}
-	if ( qglGetBooleanv ) {
-		qglGetBooleanv( GL_DEPTH_WRITEMASK, &wmask );
-	}
-
-	s_rows++;
-	if ( inside && qglGetIntegerv && sc[0] == s_walkScissor[0] && sc[1] == s_walkScissor[1] &&
-		 sc[2] == s_walkScissor[2] && sc[3] == s_walkScissor[3] && s_rows > 8 ) {
-		return;
-	}
-	if ( s_rows > 64 && !inside ) {
-		return;
-	}
-
-	ri.Printf( PRINT_ALL,
-			   "[GLES3:2dclip] sh=%s rect=%.0f,%.0f %.0fx%.0f scn=%d,%d %dx%d drvSc=%d,%d %dx%d "
-			   "inside=%d scTest=%d depth=%d/%d blend=%d atest=%u f=%d\n",
-			   s_2dBatchShader && s_2dBatchShader->name[0] ? s_2dBatchShader->name : "-",
-			   (double)x0, (double)y0, (double)( x1 - x0 ), (double)( y1 - y0 ),
-			   s_walkScissor[0], s_walkScissor[1], s_walkScissor[2], s_walkScissor[3],
-			   sc[0], sc[1], sc[2], sc[3], inside,
-			   qglIsEnabled ? ( qglIsEnabled( GL_SCISSOR_TEST ) ? 1 : 0 ) : -1,
-			   qglIsEnabled ? ( qglIsEnabled( GL_DEPTH_TEST ) ? 1 : 0 ) : -1,
-			   wmask ? 1 : 0, qglIsEnabled ? ( qglIsEnabled( GL_BLEND ) ? 1 : 0 ) : -1,
-			   (unsigned)( ( glState.glStateBits & GLS_ATEST_BITS ) >> 28 ), RB_FrameCount() );
-}
-
 void RB_2D_Flush( void ) {
 	/* The batch, tess and GL are the walk's.  A recorder that reaches here has
 	   parked the walk first (R_FlushRenderCommands, the font run's fallback); one
@@ -334,40 +115,18 @@ void RB_2D_Flush( void ) {
 	   catches is closed with its quads never issued. */
 
 	if ( s_2dBatchOpen ) {
-		int	verts;
-
-		/* tess.numVertexes is what is actually about to be handed over; the counter is what the UI asked
-		   for. A gap means something reset the tess under the open batch and those quads are gone. */
-		verts = tess.numVertexes;
-
 		/* The clip the quads were recorded under, re-issued where they draw.  The
 		   batch outlives the widget's own scissor command, so a flush that lands
 		   after another writer moved GL's box would draw these quads under a rect
 		   they were never clipped to. */
-		D2_ClipAudit( verts );
 		if ( s_walkScissorValid ) {
 			RB_2D_ScissorApplied( s_walkScissor[0], s_walkScissor[1], s_walkScissor[2], s_walkScissor[3] );
 		}
-		if ( verts != s_2dBatchVerts ) {
-			int			lost = s_2dBatchVerts - verts;
-			static int	s_rows;
-
-			s_d2Drops += lost;
-			s_rows++;
-			if ( D2_On() && ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) ) {
-				ri.Printf( PRINT_ALL, "[2D:drop] tess lost=%d asked=%d got=%d f=%d\n",
-						   lost, s_2dBatchVerts, verts, RB_FrameCount() );
-			}
-		}
-
 		/* Cleared before the draw: RB_EndSurface can reach RB_BeginSurface, and
 		   that now flushes too, so an still-open flag here would recurse. */
 		s_2dBatchOpen   = qfalse;
 		s_2dBatchShader = NULL;
 		s_2dBatchVerts  = 0;
-		s_d2VertsDrawn += verts;
-		s_d2Batches++;
-
 		RB_EndSurface();
 	}
 	if ( s_2dTriOpen ) {
@@ -381,20 +140,7 @@ void RB_2D_Flush( void ) {
 		RB_ImmEndDeferred();
 		s_2dTriOpen  = qfalse;
 		s_2dTriBlend = -1;
-		s_d2Batches++;
-
 		got = RB_ImmStreamVerts() - s_2dTriBase;
-		if ( got != s_2dTriVerts ) {
-			static int	s_rows;
-
-			s_d2Drops += s_2dTriVerts - got;
-			s_rows++;
-			if ( D2_On() && ( s_rows <= 8 || ( s_rows % 32 ) == 0 ) ) {
-				ri.Printf( PRINT_ALL, "[2D:drop] box lost=%d asked=%d got=%d f=%d\n",
-						   s_2dTriVerts - got, s_2dTriVerts, got, RB_FrameCount() );
-			}
-		}
-
 		/* a quad the ring could not take whole does not write the texels the
 		   frame's clear would have, so it cannot settle the debt */
 		if ( s_2dTriClaim && got == s_2dTriVerts && s_2dTriVerts >= 6 ) {
@@ -402,7 +148,6 @@ void RB_2D_Flush( void ) {
 		}
 		s_2dTriClaim = qfalse;
 
-		s_d2VertsDrawn += got;
 		RB_ImmFlush();
 	}
 }
@@ -457,7 +202,6 @@ static void RB_2D_BatchQuad( shader_t *shader, const float (*xy)[2], const float
 	tess.numIndexes += 6;
 
 	s_2dBatchVerts += 4;
-	s_d2VertsAsked += 4;
 }
 
 void RB_2D_SetColor( const byte *rgba ) {
@@ -657,7 +401,6 @@ void RB_2D_Box( float x, float y, float w, float h, qboolean blend ) {
 	RB_ImmVertex2f(x, y + h);
 
 	s_2dTriVerts   += 6;
-	s_d2VertsAsked += 6;
 
 	if ( s_2dTriVerts >= RB_2D_TRI_BOX_MAX * 6 ) {
 		RB_2D_Flush();
@@ -873,25 +616,11 @@ void RB_2D_ShaderTime( float startTime ) {
 
 /* ---- entry points: record under r_smp, run the body otherwise ---- */
 
-/* A string's renderer cost, in the same roll as the quads. The load-game menu draws ~29 labels a
-   frame and the UI probe charges the whole of it to UIFakkLabel; without this slot the roll cannot
-   say how much of that is the renderer and how much is the widget's own measure-and-wrap work. */
-void D2_StringBegin( int *t0 ) {
-	*t0 = D2_T0();
-}
-
-void D2_StringEnd( int t0 ) {
-	D2_End( D2P_drawstring, t0 );
-}
-
 void Draw_SetColor(const vec4_t rgba) {
-	int	t0 = D2_T0();
 
 	if (!rgba) {
 		rgba = r_colorWhite;
 	}
-
-	D2_Roll();
 
 	r_color2D[0] = (byte)(rgba[0] * tr.identityLightByte);
 	r_color2D[1] = (byte)(rgba[1] * tr.identityLightByte);
@@ -920,8 +649,6 @@ void Draw_SetColor(const vec4_t rgba) {
 
 	/* Colour is per vertex in both stores, so a change splits neither. */
 	RB_2D_SetColor( r_color2D );
-
-	D2_End( D2P_setcolor, t0 );
 }
 
 void R_ChangeTextColor(int index) {
@@ -940,7 +667,6 @@ void R_ChangeTextColor(int index) {
 
 void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, float s2, float t2, qhandle_t hShader) {
 	shader_t* shader;
-	int		t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -967,13 +693,10 @@ void Draw_StretchPic(float x, float y, float w, float h, float s1, float t1, flo
 	}
 
 	RB_2D_StretchPic( shader, x, y, w, h, s1, t1, s2, t2 );
-
-	D2_End( D2P_stretchpic, t0 );
 }
 
 void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, float s2, float t2, float sx, float sy, qhandle_t hShader) {
 	shader_t* shader;
-	int		t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -1001,14 +724,11 @@ void Draw_StretchPic2(float x, float y, float w, float h, float s1, float t1, fl
 	}
 
 	RB_2D_StretchPic2( shader, x, y, w, h, s1, t1, s2, t2, sx, sy );
-
-	D2_End( D2P_stretchpic2, t0 );
 }
 
 void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 	shader_t* shader;
 	float		picw, pich;
-	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -1039,14 +759,11 @@ void Draw_TilePic(float x, float y, float w, float h, qhandle_t hShader) {
 	}
 
 	RB_2D_TilePic( shader, x, y, w, h, picw, pich );
-
-	D2_End( D2P_tilepic, t0 );
 }
 
 void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, int offsetX, int offsetY) {
 	shader_t* shader;
 	float		picw, pich;
-	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -1077,13 +794,10 @@ void Draw_TilePicOffset(float x, float y, float w, float h, qhandle_t hShader, i
 	}
 
 	RB_2D_TilePicOffset( shader, x, y, w, h, picw, pich, offsetX, offsetY );
-
-	D2_End( D2P_tilepicoffset, t0 );
 }
 
 void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhandle_t hShader) {
 	shader_t* shader;
-	int			t0 = D2_Prepare();
 
 	if (hShader) {
 		shader = R_GetShaderByHandle(hShader);
@@ -1105,8 +819,6 @@ void Draw_TrianglePic(const vec2_t vPoints[3], const vec2_t vTexCoords[3], qhand
 	}
 
 	RB_2D_TrianglePic( shader, vPoints, vTexCoords );
-
-	D2_End( D2P_trianglepic, t0 );
 }
 
 void RE_DrawBackground_TexSubImage(int cols, int rows, int bgr, byte* data) {
@@ -1240,16 +952,13 @@ void RE_DrawBackground_DrawPixels(int cols, int rows, int bgr, byte* data) {
 }
 
 void AddBox(float x, float y, float w, float h) {
-	int		t0;
 
 	if (!r_draw2d->integer) {
 		return;
 	}
 
 	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
 		RB_2D_Box( x, y, w, h, qfalse );
-		D2_End( D2P_box, t0 );
 		return;
 	}
 
@@ -1265,16 +974,13 @@ void AddBox(float x, float y, float w, float h) {
 }
 
 void DrawBox(float x, float y, float w, float h) {
-	int		t0;
 
 	if (!r_draw2d->integer) {
 		return;
 	}
 
 	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
 		RB_2D_Box( x, y, w, h, qtrue );
-		D2_End( D2P_box, t0 );
 		return;
 	}
 
@@ -1290,16 +996,13 @@ void DrawBox(float x, float y, float w, float h) {
 }
 
 void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipple_mask) {
-	int		t0;
 
 	if (!r_draw2d->integer) {
 		return;
 	}
 
 	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
 		RB_2D_LineLoop( points, count, stipple_factor, stipple_mask );
-		D2_End( D2P_lineloop, t0 );
 		return;
 	}
 
@@ -1322,12 +1025,9 @@ void DrawLineLoop(const vec2_t* points, int count, int stipple_factor, int stipp
 }
 
 void Set2DWindow(int x, int y, int w, int h, float left, float right, float bottom, float top, float n, float f) {
-	int		t0;
 
 	if ( !glConfig.smpActive ) {
-		t0 = D2_Prepare();
 		RB_2D_SetWindow( x, y, w, h, left, right, bottom, top, n, f );
-		D2_End( D2P_setwindow, t0 );
 		return;
 	}
 
@@ -1363,12 +1063,9 @@ void Set2DWindow(int x, int y, int w, int h, float left, float right, float bott
 }
 
 void RE_Scissor(int x, int y, int width, int height) {
-	int		t0;
 
 	if ( !glConfig.smpActive ) {
-		t0 = D2_T0();
 		RB_2D_Scissor( x, y, width, height );
-		D2_End( D2P_scissor, t0 );
 		return;
 	}
 
@@ -1393,10 +1090,8 @@ void RE_Scissor(int x, int y, int width, int height) {
 void Set2DInitialShaderTime(float startTime)
 {
 	if ( !glConfig.smpActive ) {
-		int		t0 = D2_T0();
 
 		RB_2D_ShaderTime( startTime );
-		D2_End( D2P_shadertime, t0 );
 		return;
 	}
 
